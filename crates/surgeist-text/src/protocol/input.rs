@@ -3,6 +3,7 @@ use super::*;
 
 #[derive(Clone, Copy)]
 pub(crate) struct RequestInput<'a> {
+    pub(crate) segment: &'a PreparedSourceSegment,
     pub(crate) start: &'a PreparedBoundary,
     pub(crate) end: &'a PreparedBoundary,
     pub(crate) participants: &'a [PreparedParticipant],
@@ -18,6 +19,7 @@ pub(crate) struct RequestInput<'a> {
 impl<'a> From<&'a LineSelectionRequest> for RequestInput<'a> {
     fn from(value: &'a LineSelectionRequest) -> Self {
         Self {
+            segment: &value.segment,
             start: &value.start,
             end: &value.end,
             participants: &value.participants,

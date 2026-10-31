@@ -80,7 +80,10 @@ fn auto_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
             assert!(request.atomics.is_empty());
             assert_struts(
                 &request.line_box_struts,
-                &[metric(16.0, 20.0), metric(12.0, 30.0)],
+                &[
+                    expected_metric(&fixture.scopes[0], 16.0, 20.0),
+                    expected_metric(&fixture.scopes[1], 12.0, 30.0),
+                ],
             );
             assert_eq!(receipt.feedback().advance, 0.0);
             assert_eq!(receipt.feedback().baseline, 16.0);

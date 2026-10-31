@@ -39,6 +39,7 @@ where
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow_invalidated(&capture, 0, request(80.0), dirty).unwrap()

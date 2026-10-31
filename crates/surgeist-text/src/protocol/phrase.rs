@@ -102,7 +102,12 @@ impl PreparedPhrase {
                             owner: PreparedPhrasePieceOwner::Original {
                                 origin: PreparedOrigin {
                                     prepared: Arc::clone(&self.prepared.inner),
-                                    index: piece.origin,
+                                    index: analyzed
+                                        .paragraph
+                                        .origin_map
+                                        .view_origin(piece.origin)
+                                        .expect("phrase piece retains its actual view origin")
+                                        .get(),
                                 },
                                 aggregate: piece.aggregate,
                                 local: piece.local,
@@ -139,6 +144,9 @@ pub struct PreparedPhrasePortion {
     pub(crate) query: super::PreparedConditionalSearch,
 }
 impl PreparedPhrasePortion {
+    pub fn source_segment(&self) -> super::PreparedSourceSegment {
+        self.query.source_segment()
+    }
     pub fn phrase(&self) -> PreparedPhrase {
         self.phrase.clone()
     }
@@ -162,6 +170,13 @@ impl PreparedPhrasePortion {
         prepared: &PreparedText,
         request: &LineSelectionRequest,
     ) -> crate::Result<()> {
+        let segment = self.source_segment();
+        if request.segment != segment {
+            return Err(protocol_error(ProtocolError::MismatchedSourceSegment {
+                expected: request.segment.index,
+                actual: segment.index,
+            }));
+        }
         if self.phrase.prepared != *prepared
             || request.start != self.start()
             || request.end != self.end()

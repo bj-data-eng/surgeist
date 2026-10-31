@@ -417,6 +417,18 @@ fn update(
     parent: NodeId,
     focus: NodeId,
 ) -> Result<TreeUpdate> {
+    // This request observes the complete placement. Refuse before constructing
+    // nodes or touching prior IDs/bindings; analyzed-source projection is separate.
+    if let Projection::Placed(layout, _) = projection {
+        for (line, placed) in layout.inner.lines.iter().enumerate() {
+            if let Some((cell, _)) = placed.finalized.data.cells.iter().enumerate().next() {
+                return Err(ax_error(ErrorDetail::UnsupportedAccessibilityCell {
+                    line,
+                    cell,
+                }));
+            }
+        }
+    }
     let analyzed = projection.analyzed();
     let host_text = original_host_text(analyzed)?;
     let locales = LocaleIndex::new(&analyzed.styles);
@@ -428,19 +440,13 @@ fn update(
     if let Projection::Placed(layout, _) = projection {
         for (line_index, line) in layout.inner.lines.iter().enumerate() {
             let data = &line.finalized.data;
-            let metrics = &data.metrics;
             for cluster in &data.clusters {
                 let run = cluster.content.font_run().map(|run| &data.font_runs[run]);
                 fragments.push(Fragment {
                     range: cluster.source,
                     bounds: crate::layout::line_rect(
                         line,
-                        Rect::new(
-                            cluster.x,
-                            metrics.block_min,
-                            cluster.advance,
-                            metrics.block_max - metrics.block_min,
-                        ),
+                        data.cell_rect(cluster.x, cluster.advance, cluster.reference),
                     ),
                     line: line_index,
                     rtl: cluster.level & 1 != 0,
@@ -622,13 +628,22 @@ fn update(
             let one_line = pieces.iter().all(|fragment| fragment.line == first.line);
             if direction {
                 node.set_text_direction(match (first.orientation, first.rtl) {
-                    (
-                        crate::LineOrientation::Sideways | crate::LineOrientation::Vertical,
-                        false,
-                    ) => TextDirection::TopToBottom,
-                    (crate::LineOrientation::Sideways | crate::LineOrientation::Vertical, true) => {
+                    (crate::LineOrientation::SidewaysCounterclockwise, false) => {
                         TextDirection::BottomToTop
                     }
+                    (crate::LineOrientation::SidewaysCounterclockwise, true) => {
+                        TextDirection::TopToBottom
+                    }
+                    (
+                        crate::LineOrientation::SidewaysClockwise
+                        | crate::LineOrientation::Vertical,
+                        false,
+                    ) => TextDirection::TopToBottom,
+                    (
+                        crate::LineOrientation::SidewaysClockwise
+                        | crate::LineOrientation::Vertical,
+                        true,
+                    ) => TextDirection::BottomToTop,
                     (_, true) => TextDirection::RightToLeft,
                     (_, false) => TextDirection::LeftToRight,
                 });
@@ -762,6 +777,8 @@ fn update(
 
 impl Layout {
     /// Builds a complete host update and atomically replaces its source bindings.
+    /// Placed Cells return [`ErrorDetail::UnsupportedAccessibilityCell`] without
+    /// changing the previous binding. Analyzed-source projection is independent.
     pub fn accessibility_update(
         &self,
         state: &mut Accessibility,

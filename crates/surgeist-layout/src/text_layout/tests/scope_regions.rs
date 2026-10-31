@@ -22,6 +22,9 @@ fn styles() -> (text::Style, text::Style, text::Style) {
 }
 fn block(style: &text::Style) -> text::SourceProcessingScope {
     text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: style.clone(),
@@ -127,6 +130,9 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
     for index in 0..COUNT {
         let scope = scopes.len();
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: Some(owner.clone()),
             boundaries: Some(text::SourceProcessingScopeBoundaries {
@@ -185,6 +191,8 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
     }
     events.push(E::ExitScope(0));
     let all = prepare(text::ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -238,6 +246,7 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
@@ -288,6 +297,8 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
         .collect();
     use text::SourceProcessingEvent as E;
     let all = prepare(text::ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source,
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -309,6 +320,9 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
         scopes: vec![
             block(&plain),
             text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: Some(owner),
                 boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -404,6 +418,7 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
 }

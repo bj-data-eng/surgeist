@@ -98,7 +98,10 @@ fn actual_run_scripts_and_exact_dflt_keep_distinct_origins_on_one_paint_face() {
         }
         let mut system = registered(bytes.clone());
         let input = analyzed(Source::new("A\u{3a5}"), own_style());
-        for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+        for orientation in [
+            LineOrientation::Horizontal,
+            LineOrientation::SidewaysClockwise,
+        ] {
             let prepared = prepare(&mut system, &input, orientation);
             let line = finalize(&prepared);
             // Per-font-component maxima7/3 and9/1 =>9/3, even on one
@@ -226,7 +229,10 @@ fn an_actual_fallback_face_uses_its_legacy_kana_reference_instead_of_the_primary
             ..own_style()
         },
     );
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let prepared = prepare(&mut system, &input, orientation);
         let line = finalize(&prepared);
         assert_eq!(
@@ -329,7 +335,10 @@ fn actual_fractional_base_variation_is_retained_beyond_the_vertical_metric_grid(
                 ..own_style()
             },
         );
-        for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+        for orientation in [
+            LineOrientation::Horizontal,
+            LineOrientation::SidewaysClockwise,
+        ] {
             let prepared = prepare(&mut system, &input, orientation);
             let line = finalize(&prepared);
             four_ulps(line.feedback().baseline, 8.0 - b);
@@ -385,7 +394,10 @@ fn actual_fractional_base_variation_is_retained_beyond_the_vertical_metric_grid(
 fn genuine_horizontal_absence_synthesizes_zero_but_consumed_malformed_base_retains_its_error() {
     let mut system = registered(AHEM.to_vec());
     let input = analyzed(Source::new("A"), own_style());
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let prepared = prepare(&mut system, &input, orientation);
         let line = finalize(&prepared);
         assert_eq!(
@@ -452,7 +464,10 @@ fn genuine_horizontal_absence_synthesizes_zero_but_consumed_malformed_base_retai
 fn requested_reference_pairs_preserve_raw_defaults_upright_central_and_orientation_precedence() {
     let mut system = registered(font(100));
     let horizontal = analyzed(Source::new("A"), own_style());
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let error = system
             .prepare(
                 &horizontal,

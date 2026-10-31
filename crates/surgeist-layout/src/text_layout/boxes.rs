@@ -21,13 +21,14 @@ pub(crate) enum NativeBoxCut {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BoxFrontier {
     pub boundary: PreparedBoundary,
+    pub segment: surgeist_text::PreparedSourceSegment,
     placement: BoxPlacement,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 enum BoxPlacement {
     Boundary(BoundaryPlacement),
-    ParagraphCompletion(Box<ParagraphCompletion>),
+    SegmentCompletion(Box<SegmentCompletion>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -37,11 +38,10 @@ struct BoundaryPlacement {
     relations: Vec<(usize, CapturedScopeIncidence)>,
 }
 
-/// Completion owns the paragraph remainder, not a new spelling incidence.
+/// Completion owns this actual structural segment remainder, not a new spelling incidence.
 /// The genuine force pin and its numerical receipt remain part of the proof.
 #[derive(Clone, Debug, PartialEq)]
-struct ParagraphCompletion {
-    paragraph: surgeist_text::CapturedParagraph,
+struct SegmentCompletion {
     termination: surgeist_text::PreparedOpportunity,
     pin: BoundaryPlacement,
     predecessor: CompletionPredecessor,
@@ -79,7 +79,10 @@ impl PartialEq for CompletionPredecessor {
             ) => {
                 // Keep the capability, but compare its deterministic admitted
                 // inputs, not the allocation identity of fresh finalization.
-                a.selected_line().request() == b.selected_line().request() && aa == ba && ac == bc
+                a.selected_line().request() == b.selected_line().request()
+                    && aa == ba
+                    && ac == bc
+                    && a.scope_allocations() == b.scope_allocations()
             }
             (
                 Self::Observed {
@@ -100,25 +103,34 @@ impl PartialEq for CompletionPredecessor {
 
 impl BoxFrontier {
     pub fn boundary(
+        segment: surgeist_text::PreparedSourceSegment,
         boundary: PreparedBoundary,
         incidence: Option<PreparedBoundaryIncidence>,
         native: NativeBoxCut,
         relations: Vec<(usize, CapturedScopeIncidence)>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, FitError> {
+        if segment.start().prepared_text() != boundary.prepared_text()
+            || incidence.as_ref().is_some_and(|incidence| {
+                incidence.source_segment() != segment || incidence.boundary() != boundary
+            })
+        {
+            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+        }
+        Ok(Self {
             boundary,
+            segment,
             placement: BoxPlacement::Boundary(BoundaryPlacement {
                 incidence,
                 native,
                 relations,
             }),
-        }
+        })
     }
 
     pub fn incidence(&self) -> Option<&PreparedBoundaryIncidence> {
         match &self.placement {
             BoxPlacement::Boundary(cut) => cut.incidence.as_ref(),
-            BoxPlacement::ParagraphCompletion(_) => None,
+            BoxPlacement::SegmentCompletion(_) => None,
         }
     }
 
@@ -127,14 +139,14 @@ impl BoxFrontier {
             BoxPlacement::Boundary(cut) => cut.native.clone(),
             // A paragraph horizon is not an original physical source seam.
             // An incident native encounter still needs its own side proof.
-            BoxPlacement::ParagraphCompletion(_) => NativeBoxCut::Unavailable,
+            BoxPlacement::SegmentCompletion(_) => NativeBoxCut::Unavailable,
         }
     }
 
     pub fn relations(&self) -> &[(usize, CapturedScopeIncidence)] {
         match &self.placement {
             BoxPlacement::Boundary(cut) => &cut.relations,
-            BoxPlacement::ParagraphCompletion(completion) => &completion.relations,
+            BoxPlacement::SegmentCompletion(completion) => &completion.relations,
         }
     }
 
@@ -163,9 +175,7 @@ impl BoxFrontier {
                         .map_err(FitError::from)
                 })
                 .transpose(),
-            BoxPlacement::ParagraphCompletion(completion) => {
-                horizon_relation(&completion.paragraph, scope)
-            }
+            BoxPlacement::SegmentCompletion(..) => horizon_relation(&self.segment, scope),
         }
     }
 
@@ -178,6 +188,9 @@ impl BoxFrontier {
         relations: Vec<(usize, CapturedScopeIncidence)>,
     ) -> Result<Option<Self>, FitError> {
         use surgeist_text::{LineEnd, PreparedBreakKind as K, PreparedTermination};
+        if incoming.segment != choice.source_segment() {
+            return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
+        }
         if choice.ending != LineEnd::Paragraph
             || choice.start != choice.end
             || incoming.boundary != *choice.start
@@ -205,6 +218,7 @@ impl BoxFrontier {
                     || force.view().boundary() != *choice.start
                     || prior.end != *choice.start
                     || prior.start.prepared_text() != choice.start.prepared_text()
+                    || prior.segment != request.segment
                     || preceding.boxes.outgoing != *incoming
                     || request.start != *choice.start
                     || request.end != *choice.end
@@ -249,6 +263,7 @@ impl BoxFrontier {
                         .zip(observations.iter())
                         .all(|(a, b)| a == b.segment())
                     || prior.end() != *choice.start
+                    || prior.source_segment() != segment.source_segment()
                     || force.view().kind() != K::Forced
                     || previous.request().context.end
                         != if prior.role() == surgeist_text::FlowSegmentRole::Target {
@@ -278,16 +293,17 @@ impl BoxFrontier {
         {
             return Ok(None);
         }
-        let Some(paragraph) = choice.end.prepared_text().captured_paragraph() else {
+        let segment = choice.source_segment();
+        if segment.exit_position().is_none() || termination != segment.end_opportunity() {
             return Ok(None);
-        };
+        }
         if choice.start.prepared_text() != choice.end.prepared_text() {
             return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
         }
         Ok(Some(Self {
             boundary: choice.end.clone(),
-            placement: BoxPlacement::ParagraphCompletion(Box::new(ParagraphCompletion {
-                paragraph,
+            segment,
+            placement: BoxPlacement::SegmentCompletion(Box::new(SegmentCompletion {
                 termination,
                 pin: pin.clone(),
                 predecessor,
@@ -298,13 +314,19 @@ impl BoxFrontier {
 }
 
 pub(super) fn horizon_relation(
-    paragraph: &surgeist_text::CapturedParagraph,
+    segment: &surgeist_text::PreparedSourceSegment,
     scope: &surgeist_text::CapturedScope,
 ) -> Result<Option<CapturedScopeIncidence>, FitError> {
     use std::cmp::Ordering;
     use surgeist_text::CapturedScopeIncidence as R;
-    let horizon = paragraph.exit_position();
-    if scope.domain() != paragraph.domain() || !scope.exit_position().same_capture(&horizon) {
+    let Some(horizon) = segment.exit_position() else {
+        return Ok(None);
+    };
+    let prepared = segment.start().prepared_text();
+    let Some(owner) = prepared.captured_owner() else {
+        return Ok(None);
+    };
+    if scope.domain() != owner.domain() || !scope.exit_position().same_capture(&horizon) {
         return Ok(None);
     }
     let relation = match scope.exit_position().partial_cmp(&horizon) {
@@ -336,7 +358,7 @@ impl BoxAssignment {
     pub fn struts(&self) -> Vec<LineBoxStrut> {
         self.contributions
             .iter()
-            .map(|allocation| allocation.original)
+            .map(|allocation| allocation.original.clone())
             .collect()
     }
 }
@@ -383,6 +405,15 @@ pub(crate) struct BoxChoice<'a> {
     pub controls: &'a [ControlAllocation],
     pub ending: surgeist_text::LineEnd,
     pub authority: BoxAuthority<'a>,
+}
+
+impl BoxChoice<'_> {
+    pub(crate) fn source_segment(&self) -> surgeist_text::PreparedSourceSegment {
+        match &self.authority {
+            BoxAuthority::Selected { request, .. } => request.segment.clone(),
+            BoxAuthority::Observed { recipe, .. } => recipe.source_segment(),
+        }
+    }
 }
 
 /// One projection owns both global incidence and authentic box-order proof.

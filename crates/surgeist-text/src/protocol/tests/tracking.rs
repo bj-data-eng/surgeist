@@ -136,7 +136,12 @@ fn whole(prepared: &PreparedText) -> FinalizedLine {
     request.context.available_inline = None;
     request.context.spacing = SpacingPolicy::None;
     let selected = prepared.select(request).unwrap();
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(line.selected_line(), selected);
     assert_eq!(line.prepared_text(), *prepared);
     line
@@ -310,7 +315,7 @@ mod atomic_boundaries;
 mod authored;
 mod cursive_boundaries;
 mod external_context;
-mod fixtures;
+pub(super) mod fixtures;
 mod inter_character;
 mod profile_boundaries;
 

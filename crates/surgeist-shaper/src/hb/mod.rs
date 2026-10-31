@@ -79,6 +79,7 @@ mod unicode_emoji_table;
 mod ucd_table;
 mod unicode;
 pub(crate) mod vertical_position;
+pub(crate) mod width_observation;
 
 use read_fonts::types::Tag as hb_tag_t;
 

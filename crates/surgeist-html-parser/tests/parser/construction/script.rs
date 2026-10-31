@@ -1,9 +1,6 @@
 use crate::parser::support::limits;
 use surgeist_html::{HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult};
-use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseMetadataStep, HtmlParseScriptReadySteps,
-    HtmlParseScriptResult, HtmlSource,
-};
+use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseMetadataStep, HtmlSource};
 
 // HTML877d raw47442–47447 initializes result/ready steps; Disabled preparation
 // returns at raw47640 before installing a result or result-ready callback.
@@ -32,12 +29,8 @@ fn disabled_preparation_preserves_uninitialized_result_and_absent_ready_steps() 
                         found = true;
                         assert!(script.already_started());
                         assert_eq!(script.script_type(), Some(expected));
-                        // Both existing parser public names directly name the
-                        // canonical HTML values returned by the actual reader.
                         let result: HtmlScriptResult = script.result();
-                        let result: HtmlParseScriptResult = result;
                         let ready: Option<HtmlScriptReadySteps> = script.steps_when_result_ready();
-                        let ready: Option<HtmlParseScriptReadySteps> = ready;
                         assert_eq!(result, HtmlScriptResult::Uninitialized);
                         assert_eq!(ready, None);
                     }

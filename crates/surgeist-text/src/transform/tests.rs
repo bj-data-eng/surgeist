@@ -2,6 +2,8 @@ use crate::{AnalyzedSource, Source, Style, Text, TextTransform};
 
 mod casing;
 mod math;
+mod origin_correspondence;
+mod selection_identity;
 mod separators;
 mod wbr;
 mod width;

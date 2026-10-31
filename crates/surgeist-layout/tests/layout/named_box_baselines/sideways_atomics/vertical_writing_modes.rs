@@ -4,7 +4,7 @@ mod supplemental;
 
 fn qualify(parent: &Captured) {
     let p = &parent.prepared;
-    assert_eq!(p.orientation(), t::LineOrientation::Sideways);
+    assert_eq!(p.orientation(), t::LineOrientation::SidewaysClockwise);
     assert_eq!(
         p.analyzed_source().typography(),
         t::AnalysisTypography::HorizontalComposition
@@ -16,6 +16,7 @@ fn qualify(parent: &Captured) {
         .handle();
     let line = p
         .select(t::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
             termination: t::PreparedTermination::Ordinary(end),
@@ -32,7 +33,7 @@ fn qualify(parent: &Captured) {
                 formatted_line: t::FormattedLineContext::default(),
                 base_direction: t::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: t::LineBoxDirection::LeftToRight,
-                orientation: t::LineOrientation::Sideways,
+                orientation: t::LineOrientation::SidewaysClockwise,
                 start: t::LineStart::Paragraph,
                 end: t::LineEnd::Paragraph,
                 available_inline: Some(40.0),
@@ -43,7 +44,10 @@ fn qualify(parent: &Captured) {
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (
@@ -93,7 +97,7 @@ fn qualify(parent: &Captured) {
                 inline_origin: 20.0,
                 baseline: 100.0,
             },
-            orientation: t::LineOrientation::Sideways,
+            orientation: t::LineOrientation::SidewaysClockwise,
             atomics: vec![],
         })],
     })
@@ -112,7 +116,7 @@ fn vertical_paragraph<S: l::LayoutScalar>() {
         "AB",
         None,
         t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         10.0,
     );
     // Existing public Text preparation, selection, finalization and placement
@@ -150,7 +154,7 @@ fn vertical_paragraph<S: l::LayoutScalar>() {
             unknown(node(entries, 0).named_baselines);
         }
         let text = placed(&batch, 0);
-        assert_eq!(text.orientation(), t::LineOrientation::Sideways);
+        assert_eq!(text.orientation(), t::LineOrientation::SidewaysClockwise);
         assert_eq!(text.source(), &parent.source);
         assert_eq!(
             text.analyzed_source().identity(),
@@ -205,7 +209,7 @@ fn vertical_paragraph<S: l::LayoutScalar>() {
             assert_eq!(line.prepared_text(), parent.prepared);
             assert_eq!(
                 line.selected_line().request().context.orientation,
-                t::LineOrientation::Sideways
+                t::LineOrientation::SidewaysClockwise
             );
             assert_eq!(
                 (

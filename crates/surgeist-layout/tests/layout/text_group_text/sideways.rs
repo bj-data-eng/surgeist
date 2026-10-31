@@ -5,8 +5,8 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
     let p = &paragraph.prepared;
     assert_eq!(p.orientation(), orientation);
     assert_eq!(
-        p.captured_paragraph(),
-        paragraph.capture.captured_paragraph(0)
+        p.captured_owner().unwrap().members().collect::<Vec<_>>(),
+        vec![paragraph.capture.captured_paragraph(0).unwrap()]
     );
     assert_eq!(p.analyzed_source().source().text().code_units(), [65, 66]);
     assert_eq!(
@@ -36,6 +36,7 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
         .handle();
     let line = p
         .select(t::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
             termination: t::PreparedTermination::Ordinary(end),
@@ -63,7 +64,10 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (line.feedback().advance, line.feedback().line_height),
@@ -98,7 +102,10 @@ fn qualify_preparation(paragraph: &Paragraph, orientation: t::LineOrientation) {
 fn finite<S: l::LayoutScalar>() {
     for (writing_mode, orientation) in [
         (l::WritingMode::HorizontalTb, t::LineOrientation::Horizontal),
-        (l::WritingMode::SidewaysRl, t::LineOrientation::Sideways),
+        (
+            l::WritingMode::SidewaysRl,
+            t::LineOrientation::SidewaysClockwise,
+        ),
     ] {
         let mut host = Host::<S>::new(l::Direction::Ltr, l::TextGroupAlign::None);
         host.box_change(0, |root| {
@@ -127,6 +134,7 @@ fn finite<S: l::LayoutScalar>() {
             0,
             vec![paragraph.binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         let request = l::LayoutRootRequestOf::viewport(l::Size::new(

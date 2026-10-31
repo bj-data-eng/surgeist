@@ -135,7 +135,10 @@ fn qualify_reference(paragraph: &PreparedParagraph) {
     let line = p
         .select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     // Ahem ascent8/descent2 at 10px; only the short prefix participates.
     // Its trailing SPACE is removed, leaving alignment10 and thus U=90.
@@ -225,6 +228,7 @@ fn check<S: LayoutScalar>(zone: f64, allowed: bool) {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();

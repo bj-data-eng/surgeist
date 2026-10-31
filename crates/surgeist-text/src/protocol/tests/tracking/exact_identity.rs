@@ -55,7 +55,12 @@ fn prefix() -> Prefix {
     let slot = slots[0].clone();
     boundary_custody(&selected, 0, 0.0);
     assert!(matches!(slot.target(), SpacingSlotTarget::Boundary { .. }));
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
     assert_eq!(paint_offsets(&natural), [(0.0, 0.0), (10.0, 0.0)]);
     assert_eq!(
@@ -87,7 +92,13 @@ fn amounts() -> (f64, f64) {
 }
 
 fn allocated(prefix: &Prefix, amount: f64) -> FinalizedLine {
-    let natural = prefix.selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = prefix
+        .selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     let line = natural
         .with_spacing(SpacingAllocations::Complete(vec![SpacingAllocation {
             slot: prefix.slot.clone(),
@@ -190,6 +201,9 @@ fn rounded_equal_character_replacements_keep_exact_framed_conditional_identity()
     let query = |frame: &FinalizedLine| {
         let search = prefix
             .prepared
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &prefix.start,
                 None,

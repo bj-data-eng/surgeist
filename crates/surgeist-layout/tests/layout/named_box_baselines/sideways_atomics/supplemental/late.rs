@@ -91,9 +91,14 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
         bindings: &[l::TextParagraphBinding<u32>],
         changed: &[u32],
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S, Refusal>> {
-        let flow =
-            l::LayoutFlowInput::try_new(self, 0, bindings.to_vec(), l::WrappingInput::default())
-                .expect("the incoming float is outside the actual captured source window");
+        let flow = l::LayoutFlowInput::try_new(
+            self,
+            0,
+            bindings.to_vec(),
+            l::WrappingInput::default(),
+            Vec::new(),
+        )
+        .expect("the incoming float is outside the actual captured source window");
         l::compute_layout_with_flow_invalidated(
             &flow,
             0,
@@ -193,7 +198,7 @@ fn refusal<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(3))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);

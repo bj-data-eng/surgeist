@@ -24,6 +24,9 @@ fn contextual_math_demands_actual_domain_winners_before_discard_and_trim() {
         let mut i = input(" c ", mode);
         math(&mut i, 0);
         i.scopes.push(SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             style: None,
             boundaries: None,
             trim: WhiteSpaceTrim {

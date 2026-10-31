@@ -55,7 +55,16 @@ fn explicit_rows_replace_before_casing_without_changing_original_phase_i_or_plai
         let row = &a.inner.transform.rows[1];
         assert_eq!(row.code_point, 0x200b);
         assert_eq!(row.source, Range::new(1, 2));
-        assert_eq!(row.processed, Range::new(1, 2));
+        let component = a
+            .inner
+            .transform
+            .components
+            .iter()
+            .find(|component| {
+                component.owner == crate::transform::relation::ComponentOwner::Original(1)
+            })
+            .expect("the separator retains its original component");
+        assert_eq!(component.processed, Range::new(1, 2));
         assert_eq!(row.separator_space, operation == WordSpaceTransform::Space);
         assert_eq!(
             a.inner.transform.original_pieces(1)[0].aggregate,
@@ -404,7 +413,15 @@ fn deleted_rows_empty_origins_and_oof_remain_transparent_to_the_actual_forced_ne
         a.inner.transform.original_pieces(1)[0].aggregate,
         Range::new(2, 3)
     );
-    assert_eq!(a.inner.transform.original_pieces(1)[0].origin, 2);
+    assert_eq!(
+        a.inner
+            .paragraph
+            .origin_map
+            .view_origin(a.inner.transform.original_pieces(1)[0].origin)
+            .expect("original contribution belongs to this view")
+            .get(),
+        2
+    );
 }
 
 #[test]
@@ -433,8 +450,11 @@ fn genuine_source_local_phase_i_receipts_allow_generated_width_in_all_modes() {
             crate::ValidatedStyle::for_processed(processed.base_style().clone()).unwrap();
         let mut styles =
             crate::engine::resolve::analyze_styles(&source, &[], &validated, &paragraph);
-        let (actual, map) =
-            super::super::apply(projection, &mut styles, &processed, &paragraph).unwrap();
+        let super::super::CompletedTransform {
+            projection: actual,
+            relation: map,
+            ..
+        } = super::super::apply(projection, &mut styles, &processed, &paragraph).unwrap();
         assert_eq!(actual.text, "Ａ\u{3000}Ａ", "{mode:?}");
         assert_eq!(processed.processed_text(), source.text());
         assert_eq!(map.rows[1].code_point, 0x200b);
@@ -478,6 +498,8 @@ fn original_separator_at_disconnected_join(
         SourceProcessingEvent::ExitScope(0),
     ]);
     let input = ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -504,6 +526,9 @@ fn original_separator_at_disconnected_join(
         boundary_policies: vec![],
         replacements: vec![],
         scopes: vec![SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: SourceProcessingTopology::Unknown,
             trim: WhiteSpaceTrim::default(),
             base_style: style(operation),

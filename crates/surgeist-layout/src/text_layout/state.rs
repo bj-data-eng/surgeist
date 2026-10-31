@@ -13,6 +13,8 @@ pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
 
 #[derive(Clone)]
 pub(crate) struct PendingParagraph<Node> {
+    pub binding_index: usize,
+    pub segment: surgeist_text::PreparedSourceSegment,
     pub line_box_start: crate::line_box::LineBoxContext,
     pub line_box_end: crate::line_box::LineBoxContext,
     pub container: Node,
@@ -26,6 +28,7 @@ pub(crate) struct PendingParagraph<Node> {
     pub bands: Vec<super::fit::LineBands>,
     pub flows: Vec<super::fit::LineFlow>,
     pub amounts: Vec<Vec<f64>>,
+    pub scopes: super::scope_alignment::ScopeBases,
     pub encounters: Vec<Vec<super::fit::EncounterBasis>>,
     pub zones: Vec<super::fit::ZoneBasis>,
     pub phrases: Vec<Vec<super::fit::PhraseBasis>>,
@@ -48,6 +51,7 @@ pub(crate) struct LineBasis {
     encounters: Vec<super::fit::EncounterBasis>,
     request: surgeist_text::LineSelectionRequest,
     amounts: Vec<f64>,
+    scopes: super::scope_alignment::ScopeBasis,
     anchor: surgeist_text::LineAnchor,
     orientation: surgeist_text::LineOrientation,
     atomics: Vec<surgeist_text::AtomicPlacement>,
@@ -75,6 +79,7 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     )>,
     pub absolute_baselines: Vec<(Node, f64)>,
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
+    pub scope_alignments: std::sync::Arc<super::scope_alignment::ScopeAlignmentSnapshot<S>>,
     pub hyphenation: Vec<(
         Node,
         crate::hyphenation::LineHyphenationState,
@@ -86,6 +91,42 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
         crate::text_indent::IndentLineState,
         crate::text_indent::IndentLineState,
     )>,
+}
+
+impl<Node, S: LayoutScalar> PassBasis<Node, S> {
+    pub(crate) fn admit_scope_comparison(
+        &self,
+        other: &Self,
+        resources: &super::scope_alignment::ScopeAlignmentResources<S>,
+    ) -> surgeist_text::Result<()> {
+        let Some(limits) = resources.key_limits()? else {
+            return Ok(());
+        };
+        super::scope_alignment::admit_key_comparison(
+            limits,
+            self.scope_alignments.rows().len(),
+            other.scope_alignments.rows().len(),
+            resources,
+        )?;
+        if self.lines.len() == other.lines.len() {
+            // Admit the descriptor preflight before walking the native line
+            // keys. Existing non-scope payload/equality remains native.
+            super::scope_alignment::ScopeAlignmentFacts::visit(
+                resources,
+                limits,
+                self.lines.len(),
+            )?;
+            for (line, other) in self.lines.iter().zip(&other.lines) {
+                super::scope_alignment::admit_key_comparison(
+                    limits,
+                    line.scopes.comparison_rows(),
+                    other.scopes.comparison_rows(),
+                    resources,
+                )?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -106,6 +147,7 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub graph: Option<&'input crate::engine::validation::ValidationGraph<Node>>,
     pub paragraphs: &'input [TextParagraphBinding<Node>],
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
+    pub scope_resources: super::scope_alignment::ScopeAlignmentResources<S>,
     pub frames: std::sync::Arc<[CanonicalFrame<Node, S>]>,
     pub pending: Vec<PendingParagraph<Node>>,
     pub boxes: Vec<super::boxes::BoxRunUse<Node, S>>,
@@ -132,16 +174,16 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         &self,
         container: Node,
         nodes: &[Node],
-        prepared: &surgeist_text::PreparedText,
+        segment: &surgeist_text::PreparedSourceSegment,
         input: crate::ComputeInputOf<S>,
         mode: super::fit::Available,
     ) -> super::formatted::FormattedTailSnapshot {
         if let Some(state) = &self.formatted {
-            state.snapshot(&state.binding(container, nodes, prepared, input, mode))
+            state.snapshot(&state.binding(container, nodes, segment, input, mode))
         } else {
             // A checked Layout run has actual complete tree authority. No tail
             // collection or sidecar lookup is performed until a reached demand.
-            super::formatted::FormattedTailSnapshot::known(prepared.clone(), None)
+            super::formatted::FormattedTailSnapshot::known(segment.clone(), None)
         }
     }
 
@@ -149,7 +191,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         &mut self,
         container: Node,
         nodes: &[Node],
-        prepared: &surgeist_text::PreparedText,
+        segment: &surgeist_text::PreparedSourceSegment,
         input: crate::ComputeInputOf<S>,
         mode: super::fit::Available,
         uses: super::formatted::FormattedTailUses,
@@ -162,7 +204,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             .get_or_insert_with(super::formatted::FormattedState::new);
         state.frames = self.frames.clone();
         state.wrapping = self.wrapping.clone();
-        let binding = state.binding(container, nodes, prepared, input, mode);
+        let binding = state.binding(container, nodes, segment, input, mode);
         let item =
             super::formatted::FormattedFlowItem::Text(binding.clone(), uses.accepted.clone());
         state.merge(binding, uses);
@@ -369,6 +411,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     pub fn new(
         paragraphs: &'input [TextParagraphBinding<Node>],
         associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
+        scope_resources: super::scope_alignment::ScopeAlignmentResources<S>,
     ) -> Self {
         Self {
             wrapping: None,
@@ -376,6 +419,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             graph: None,
             paragraphs,
             associations,
+            scope_resources,
             frames: std::sync::Arc::from([]),
             pending: Vec::new(),
             boxes: Vec::new(),
@@ -386,64 +430,129 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         }
     }
 
-    pub fn paragraph(
+    pub(crate) fn run(
         &self,
         container: Node,
         nodes: &[Node],
-    ) -> Option<&'input TextParagraphBinding<Node>> {
-        self.paragraphs
-            .iter()
-            .enumerate()
-            .find_map(|(index, binding)| {
-                (self.associations.paragraph_is_flow(index)
-                    && binding.container == container
-                    && binding.nodes == nodes)
-                    .then_some(binding)
-            })
-    }
-
-    pub fn paragraph_starting(
-        &self,
-        container: Node,
-        nodes: &[Node],
-    ) -> Option<&'input TextParagraphBinding<Node>> {
-        self.paragraphs
-            .iter()
-            .enumerate()
-            .find_map(|(index, binding)| {
-                (self.associations.paragraph_is_flow(index)
-                    && binding.container == container
-                    && nodes.starts_with(&binding.nodes))
-                .then_some(binding)
-            })
-    }
-
-    pub(crate) fn semantic_slots(
-        &self,
-        container: Node,
-    ) -> Vec<super::capture::SemanticParagraphSlot<Node>> {
-        self.associations
-            .semantic_slots(container)
-            .cloned()
-            .collect()
-    }
-    pub(crate) fn has_semantic(&self, container: Node) -> bool {
-        self.associations.semantic_slots(container).next().is_some()
-    }
-    pub(crate) fn semantic_paragraph(
-        &self,
-        container: Node,
-        prepared: &surgeist_text::PreparedText,
-    ) -> Option<&'input TextParagraphBinding<Node>> {
-        let slot = self.associations.semantic_slot(prepared)?;
-        if slot.container != container {
-            return None;
-        }
-        self.paragraphs.iter().find(|binding| {
-            binding.container == container
-                && binding.prepared == *prepared
-                && binding.prepared.captured_paragraph().as_ref() == Some(&slot.captured)
+    ) -> Option<super::AdmittedRun<'input, Node>> {
+        self.associations.runs().iter().find_map(|row| {
+            let binding = &self.paragraphs[row.paragraph];
+            (binding.container == container
+                && !row.nodes.is_empty()
+                && binding.nodes[row.nodes.clone()] == *nodes)
+                .then(|| self.associations.admitted_run(self.paragraphs, row))
         })
+    }
+
+    pub(crate) fn run_starting(
+        &self,
+        container: Node,
+        nodes: &[Node],
+    ) -> Option<super::AdmittedRun<'input, Node>> {
+        self.associations.runs().iter().find_map(|row| {
+            let binding = &self.paragraphs[row.paragraph];
+            (binding.container == container
+                && !row.nodes.is_empty()
+                && nodes.starts_with(&binding.nodes[row.nodes.clone()]))
+            .then(|| self.associations.admitted_run(self.paragraphs, row))
+        })
+    }
+
+    pub(crate) fn semantic_slots<M>(
+        &self,
+        container: Node,
+    ) -> crate::LayoutResultOf<Node, Vec<super::capture::NativeRunSlot>, S, M> {
+        let count = self
+            .associations
+            .runs()
+            .iter()
+            .filter(|row| {
+                row.nodes.is_empty() && self.paragraphs[row.paragraph].container == container
+            })
+            .count();
+        let mut slots = Vec::new();
+        slots.try_reserve_exact(count).map_err(|_| {
+            crate::LayoutErrorOf::new(
+                crate::LayoutErrorSiteOf::Node(container),
+                crate::LayoutOperation::TextCapture,
+                crate::LayoutErrorKindOf::Allocation,
+            )
+        })?;
+        slots.extend(
+            self.associations
+                .runs()
+                .iter()
+                .filter(|row| {
+                    row.nodes.is_empty() && self.paragraphs[row.paragraph].container == container
+                })
+                .map(|row| super::capture::NativeRunSlot {
+                    gap: row.children.start,
+                    segment: row.segment.clone(),
+                }),
+        );
+        slots.sort_unstable_by_key(|slot| slot.gap);
+        let ordering_error =
+            || super::binding_error(container, super::TextBindingError::ScopeAssociation);
+        let mut first = 0;
+        while first < slots.len() {
+            let gap = slots[first].gap;
+            let end = first + slots[first..].partition_point(|slot| slot.gap == gap);
+            if end - first > 1 {
+                // A native gap alone cannot order distinct source operations.
+                // Admit the actual issued positions before the pure comparison;
+                // a sole scheduled slot has no such ordering dependency.
+                let position = slots[first]
+                    .segment
+                    .entry_position()
+                    .ok_or_else(ordering_error)?;
+                for slot in &slots[first + 1..end] {
+                    let other = slot.segment.entry_position().ok_or_else(ordering_error)?;
+                    if !position.same_capture(&other) {
+                        return Err(ordering_error());
+                    }
+                }
+                slots[first..end].sort_unstable_by(|a, b| {
+                    a.segment
+                        .entry_position()
+                        .expect("admitted source ordering position")
+                        .partial_cmp(
+                            &b.segment
+                                .entry_position()
+                                .expect("admitted source ordering position"),
+                        )
+                        .expect("same immutable capture establishes comparison")
+                });
+                if slots[first..end].windows(2).any(|pair| {
+                    pair[0].segment.entry_position() == pair[1].segment.entry_position()
+                }) {
+                    return Err(ordering_error());
+                }
+            }
+            first = end;
+        }
+        Ok(slots)
+    }
+
+    pub(crate) fn has_semantic(&self, container: Node) -> bool {
+        self.associations.runs().iter().any(|row| {
+            row.nodes.is_empty() && self.paragraphs[row.paragraph].container == container
+        })
+    }
+
+    pub(crate) fn semantic_run(
+        &self,
+        container: Node,
+        segment: &surgeist_text::PreparedSourceSegment,
+    ) -> Option<super::AdmittedRun<'input, Node>> {
+        self.associations
+            .runs()
+            .iter()
+            .find(|row| {
+                self.paragraphs[row.paragraph].container == container
+                    && row.nodes.is_empty()
+                    && row.segment == *segment
+            })
+            .map(|row| self.associations.admitted_run(self.paragraphs, row))
     }
     pub fn frame(&self, node: Node) -> Option<CanonicalFrame<Node, S>> {
         self.frames.iter().find(|frame| frame.node == node).copied()
@@ -457,7 +566,9 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
 
     pub fn record(&mut self, paragraph: PendingParagraph<Node>) {
         if let Some(old) = self.pending.iter_mut().find(|old| {
-            old.container == paragraph.container
+            old.binding_index == paragraph.binding_index
+                && old.segment == paragraph.segment
+                && old.container == paragraph.container
                 && old.nodes == paragraph.nodes
                 && old.prepared == paragraph.prepared
         }) {
@@ -514,8 +625,25 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         }
     }
 
-    pub fn basis(&self, frames: Vec<CanonicalFrame<Node, S>>) -> PassBasis<Node, S> {
-        PassBasis {
+    pub fn basis(
+        &self,
+        frames: Vec<CanonicalFrame<Node, S>>,
+    ) -> surgeist_text::Result<PassBasis<Node, S>> {
+        if let Some(limits) = self.scope_resources.key_limits()? {
+            for paragraph in &self.pending {
+                super::scope_alignment::ScopeAlignmentFacts::visit(
+                    &self.scope_resources,
+                    limits,
+                    1,
+                )?;
+                super::scope_alignment::ScopeAlignmentFacts::visit(
+                    &self.scope_resources,
+                    limits,
+                    paragraph.entries.len(),
+                )?;
+            }
+        }
+        Ok(PassBasis {
             boxes: self.boxes.clone(),
             wrapping: self.wrapping.clone(),
             formatted: self
@@ -554,14 +682,21 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                         .zip(&paragraph.phrases)
                         .zip(&paragraph.boxes)
                         .zip(&paragraph.natural_advances)
+                        .zip(paragraph.scopes.iter(paragraph.entries.len()))
                 })
                 .map(
                     |(
                         (
-                            ((((((placement, band), flow), amounts), encounters), zone), phrases),
-                            boxes,
+                            (
+                                (
+                                    (((((placement, band), flow), amounts), encounters), zone),
+                                    phrases,
+                                ),
+                                boxes,
+                            ),
+                            natural_advance,
                         ),
-                        natural_advance,
+                        scopes,
                     )| {
                         LineBasis {
                             natural_advance: *natural_advance,
@@ -570,6 +705,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                             phrases: phrases.clone(),
                             encounters: encounters.clone(),
                             amounts: amounts.clone(),
+                            scopes,
                             request: placement.finalized_line().selected_line().request().clone(),
                             disposition: match placement {
                                 PlacementEntry::Formatted(_) => {
@@ -588,7 +724,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                                             baseline: line.origin.y,
                                         }
                                     }
-                                    surgeist_text::LineOrientation::Sideways
+                                    surgeist_text::LineOrientation::SidewaysClockwise
+                                    | surgeist_text::LineOrientation::SidewaysCounterclockwise
                                     | surgeist_text::LineOrientation::Vertical => {
                                         surgeist_text::LineAnchor {
                                             inline_origin: line.origin.y,
@@ -613,6 +750,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 .collect(),
             absolute_baselines: self.absolute_baselines.clone(),
             associations: self.associations.clone(),
+            scope_alignments: self.scope_resources.snapshot().clone(),
             hyphenation: self
                 .pending
                 .iter()
@@ -636,7 +774,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     )
                 })
                 .collect(),
-        }
+        })
     }
 
     pub fn finish<M>(
@@ -644,100 +782,132 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
     ) -> crate::LayoutResultOf<Node, Vec<crate::PlacedTextOutput<Node>>, S, M> {
         let frames = &self.frames;
         let baselines = &self.absolute_baselines;
-        self.pending
-            .drain(..)
-            .map(|mut paragraph| {
-                for (line_index, occurrence, node) in paragraph.outflows {
-                    let frame =
-                        frames
-                            .iter()
-                            .find(|frame| frame.node == node)
-                            .ok_or_else(|| {
-                                crate::LayoutErrorOf::new(
-                                    crate::LayoutErrorSiteOf::Node(node),
-                                    crate::LayoutOperation::TextPlacement,
-                                    crate::LayoutErrorKindOf::MissingContext(
-                                        crate::LayoutMissingContext::TextOutOfFlowGeometry,
-                                    ),
-                                )
-                            })?;
-                    let baseline = baselines
-                        .iter()
-                        .find(|(subject, _)| *subject == node)
-                        .map(|(_, value)| *value)
-                        .ok_or_else(|| {
-                            crate::LayoutErrorOf::new(
-                                crate::LayoutErrorSiteOf::Node(node),
-                                crate::LayoutOperation::TextPlacement,
-                                crate::LayoutErrorKindOf::MissingContext(
-                                    crate::LayoutMissingContext::TextOutOfFlowGeometry,
-                                ),
-                            )
-                        })?;
-                    let content = frame
-                        .output
-                        .scroll_geometry
-                        .map(|geometry| geometry.content_box())
-                        .ok_or_else(|| {
-                            crate::LayoutErrorOf::new(
-                                crate::LayoutErrorSiteOf::Node(node),
-                                crate::LayoutOperation::TextPlacement,
-                                crate::LayoutErrorKindOf::MissingContext(
-                                    crate::LayoutMissingContext::TextOutOfFlowGeometry,
-                                ),
-                            )
-                        })?;
-                    let border = surgeist_text::Rect::new(
-                        frame.origin.x,
-                        frame.origin.y,
-                        frame.output.size.width.to_f64(),
-                        frame.output.size.height.to_f64(),
-                    );
-                    let content = surgeist_text::Rect::new(
-                        placement_add(node, frame.origin.x, content.origin().x.to_f64())?,
-                        placement_add(node, frame.origin.y, content.origin().y.to_f64())?,
-                        content.size().width.to_f64(),
-                        content.size().height.to_f64(),
-                    );
-                    // Absolute layout records an already-physical block-axis
-                    // coordinate within the child; translate without reflection.
-                    let cross_origin = match paragraph.prepared.orientation() {
-                        surgeist_text::LineOrientation::Horizontal => frame.origin.y,
-                        surgeist_text::LineOrientation::Vertical
-                        | surgeist_text::LineOrientation::Sideways => frame.origin.x,
-                    };
-                    let baseline = placement_add(node, cross_origin, baseline)?;
-                    let baseline = (baseline + 0.5).floor();
-                    let atomics = match &mut paragraph.entries[line_index] {
-                        PlacementEntry::Formatted(line) => &mut line.atomics,
-                        PlacementEntry::NonFormatted(line) => &mut line.atomics,
-                    };
-                    atomics.push(surgeist_text::AtomicPlacement {
-                        occurrence,
-                        border,
-                        content,
-                        baseline,
-                    });
+        let mut pending = core::mem::take(&mut self.pending);
+        for paragraph in &mut pending {
+            for (line_index, occurrence, node) in core::mem::take(&mut paragraph.outflows) {
+                let frame = frames
+                    .iter()
+                    .find(|frame| frame.node == node)
+                    .ok_or_else(|| {
+                        crate::LayoutErrorOf::new(
+                            crate::LayoutErrorSiteOf::Node(node),
+                            crate::LayoutOperation::TextPlacement,
+                            crate::LayoutErrorKindOf::MissingContext(
+                                crate::LayoutMissingContext::TextOutOfFlowGeometry,
+                            ),
+                        )
+                    })?;
+                let baseline = baselines
+                    .iter()
+                    .find(|(subject, _)| *subject == node)
+                    .map(|(_, value)| *value)
+                    .ok_or_else(|| {
+                        crate::LayoutErrorOf::new(
+                            crate::LayoutErrorSiteOf::Node(node),
+                            crate::LayoutOperation::TextPlacement,
+                            crate::LayoutErrorKindOf::MissingContext(
+                                crate::LayoutMissingContext::TextOutOfFlowGeometry,
+                            ),
+                        )
+                    })?;
+                let content = frame
+                    .output
+                    .scroll_geometry
+                    .map(|geometry| geometry.content_box())
+                    .ok_or_else(|| {
+                        crate::LayoutErrorOf::new(
+                            crate::LayoutErrorSiteOf::Node(node),
+                            crate::LayoutOperation::TextPlacement,
+                            crate::LayoutErrorKindOf::MissingContext(
+                                crate::LayoutMissingContext::TextOutOfFlowGeometry,
+                            ),
+                        )
+                    })?;
+                let border = surgeist_text::Rect::new(
+                    frame.origin.x,
+                    frame.origin.y,
+                    frame.output.size.width.to_f64(),
+                    frame.output.size.height.to_f64(),
+                );
+                let content = surgeist_text::Rect::new(
+                    placement_add(node, frame.origin.x, content.origin().x.to_f64())?,
+                    placement_add(node, frame.origin.y, content.origin().y.to_f64())?,
+                    content.size().width.to_f64(),
+                    content.size().height.to_f64(),
+                );
+                // Absolute layout records an already-physical block-axis
+                // coordinate within the child; translate without reflection.
+                let cross_origin = match paragraph.prepared.orientation() {
+                    surgeist_text::LineOrientation::Horizontal => frame.origin.y,
+                    surgeist_text::LineOrientation::Vertical
+                    | surgeist_text::LineOrientation::SidewaysClockwise
+                    | surgeist_text::LineOrientation::SidewaysCounterclockwise => frame.origin.x,
+                };
+                let baseline = placement_add(node, cross_origin, baseline)?;
+                let baseline = (baseline + 0.5).floor();
+                let atomics = match &mut paragraph.entries[line_index] {
+                    PlacementEntry::Formatted(line) => &mut line.atomics,
+                    PlacementEntry::NonFormatted(line) => &mut line.atomics,
+                };
+                atomics.push(surgeist_text::AtomicPlacement {
+                    occurrence,
+                    border,
+                    content,
+                    baseline,
+                });
+            }
+        }
+        let mut completed = Vec::new();
+        while let Some(first) = pending.first() {
+            let index = first.binding_index;
+            let binding = &self.paragraphs[index];
+            let allocation = || {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(binding.container),
+                    crate::LayoutOperation::TextPlacement,
+                    crate::LayoutErrorKindOf::Allocation,
+                )
+            };
+            let mut entries = Vec::new();
+            // The Text-issued order, not raw member numbers or current packet
+            // insertion order, owns whole-output coverage. Move genuine entries;
+            // an absent segment remains absent and the Text receiver refuses it.
+            for segment in binding.prepared.source_segments() {
+                for paragraph in pending.iter_mut().filter(|paragraph| {
+                    paragraph.binding_index == index && paragraph.segment == segment
+                }) {
+                    entries
+                        .try_reserve(paragraph.entries.len())
+                        .map_err(|_| allocation())?;
+                    entries.append(&mut paragraph.entries);
                 }
-                let layout = surgeist_text::Layout::from_finalized_lines(PlacementRequest {
-                    prepared: paragraph.prepared,
-                    coverage: PlacementCoverage::WholeParagraph,
-                    entries: paragraph.entries,
-                })
-                .map_err(|error| {
-                    crate::LayoutErrorOf::new(
-                        crate::LayoutErrorSiteOf::Node(paragraph.container),
-                        crate::LayoutOperation::TextPlacement,
-                        crate::LayoutErrorKindOf::Text(error),
-                    )
-                })?;
-                Ok(crate::PlacedTextOutput::new(
-                    paragraph.container,
-                    paragraph.nodes,
-                    layout,
-                ))
+            }
+            pending.retain(|paragraph| paragraph.binding_index != index);
+            let layout = surgeist_text::Layout::from_finalized_lines(PlacementRequest {
+                prepared: binding.prepared.clone(),
+                coverage: PlacementCoverage::WholeParagraph,
+                entries,
             })
-            .collect()
+            .map_err(|error| {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(binding.container),
+                    crate::LayoutOperation::TextPlacement,
+                    crate::LayoutErrorKindOf::Text(error),
+                )
+            })?;
+            let mut nodes = Vec::new();
+            nodes
+                .try_reserve_exact(binding.nodes.len())
+                .map_err(|_| allocation())?;
+            nodes.extend_from_slice(&binding.nodes);
+            completed.try_reserve(1).map_err(|_| allocation())?;
+            completed.push(crate::PlacedTextOutput::new(
+                binding.container,
+                nodes,
+                layout,
+            ));
+        }
+        Ok(completed)
     }
 }
 

@@ -4,12 +4,13 @@
 use std::ops::Range as IndexRange;
 
 use crate::engine::analysis::wrapping::{Event, LogicalEvent};
-use crate::protocol::paragraph::{ParagraphData, SemanticAnchorItem};
-use crate::{ProcessedSource, Range, Source};
+use crate::processing::lexical_inventory::LexicalDeletion;
+use crate::protocol::paragraph::{FlowOriginKey, ParagraphContext, SemanticAnchorItem};
+use crate::{Range, Source};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OriginalPiece {
-    pub(crate) origin: usize,
+    pub(crate) origin: FlowOriginKey,
     pub(crate) aggregate: Range,
     pub(crate) local: Range,
 }
@@ -17,7 +18,6 @@ pub(crate) struct OriginalPiece {
 #[derive(Clone, Debug)]
 pub(crate) struct InputRow {
     pub(crate) source: Range,
-    pub(crate) processed: Range,
     pub(crate) code_point: u32,
     /// Actual separator-produced SPACE, eligible for width independently of Phase I.
     pub(crate) separator_space: bool,
@@ -47,6 +47,11 @@ pub(crate) struct ScopeData {
 
 #[derive(Clone, Debug)]
 pub(crate) struct VirtualSeparatorData {
+    /// The actual completed canonical phrase receipt which issued this site.
+    pub(crate) phrase: usize,
+    /// Genuine incident source endpoints for bounded diagnostics. These do
+    /// not authorize output membership or replace the captured insertion cut.
+    pub(crate) context_origins: [FlowOriginKey; 2],
     /// Actual insertion cut in the canonical captured event stream.
     pub(crate) capture_cut: usize,
     pub(crate) scope: usize,
@@ -61,32 +66,54 @@ pub(crate) struct Component {
     pub(crate) owner: ComponentOwner,
     pub(crate) source: Range,
     pub(crate) processed: Range,
-    pub(crate) code_point: u32,
-    pub(crate) separator_space: bool,
     pub(crate) style: usize,
     pub(crate) outputs: IndexRange<usize>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Emission {
+    /// Actual frozen source-selection occurrence, when domain selection ran.
+    /// This is correspondence, not a provider ordinal or standalone authority.
+    pub(crate) selection_part: Option<usize>,
     pub(crate) component: usize,
     pub(crate) subposition: usize,
     pub(crate) code_point: u32,
+    /// Actual post-case/MathAuto non-width identity of this emission. Ordinary
+    /// presentation remains independently width-then-kana transformed.
+    pub(crate) selection_identity: u32,
     pub(crate) atom: usize,
     pub(crate) event: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum RelationEvent {
-    Text { atom: usize },
-    Removal { row: usize },
-    PhaseIDeleted { source: Range, processed: usize },
-    Anchor { order: usize },
+    Text {
+        atom: usize,
+    },
+    Removal {
+        row: usize,
+        selection_part: Option<usize>,
+    },
+    /// A genuinely generated separator was selected, then suppressed by the
+    /// fixed cell's inner processing. Its real component remains source
+    /// custody; this event contributes no ordinary logical participant.
+    GeneratedSuppression {
+        component: usize,
+        selection_part: usize,
+    },
+    PhaseIDeleted {
+        source: Range,
+        processed: usize,
+        lexical: LexicalDeletion,
+    },
+    Anchor {
+        order: usize,
+    },
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TransformMap {
-    pub(crate) phrases: Vec<super::separators::automatic::PhraseAnalysis>,
+    pub(crate) phrases: Vec<std::sync::Arc<super::separators::automatic::PhraseAnalysis>>,
     pub(crate) scopes: Vec<ScopeData>,
     pub(crate) virtuals: Vec<VirtualSeparatorData>,
     pub(crate) rows: Vec<InputRow>,
@@ -99,86 +126,88 @@ pub(crate) struct TransformMap {
     /// Canonical cut after each real presentation participant, with only the
     /// consecutive removals in that exact local mixed seam consumed.
     pub(crate) participant_cuts: Vec<usize>,
+    /// Exact relation cut -> logical participant prefix. Unlike participant_cuts,
+    /// this preserves genuine frontiers inside consecutive removed mappings.
+    pub(super) logical_prefix: Vec<usize>,
 }
 
 impl TransformMap {
-    pub(super) fn identity(
+    /// Immutable original incidence only. No component is considered mapped
+    /// until the request transaction records its actual result.
+    pub(super) fn originals(
         projection: &crate::projection::SourceProjection,
-        styles: &[crate::engine::resolve::AnalyzedStyleRun],
-        processed: &ProcessedSource,
-        paragraph: &ParagraphData,
-        input_events: Vec<LogicalEvent>,
-    ) -> Self {
+        styles: &[super::context::StyleRow<'_>],
+        paragraph: &super::context::SourceContext<'_>,
+    ) -> crate::Result<Self> {
         let mut map = Self::default();
-        for (row, atom) in projection.atoms.iter().enumerate() {
+        map.rows
+            .try_reserve_exact(projection.atoms.len())
+            .map_err(|_| super::context::capacity())?;
+        for atom in &projection.atoms {
             let first = map.pieces.len();
-            map.pieces.extend(
-                paragraph
-                    .origin_intersections(processed, atom.source)
-                    .filter(|piece| !piece.aggregate.is_empty())
-                    .map(|piece| OriginalPiece {
-                        origin: piece.origin,
-                        aggregate: piece.aggregate,
-                        local: piece.local,
-                    }),
-            );
+            let original_start = paragraph
+                .origins
+                .partition_point(|origin| origin.aggregate.end <= atom.source.start);
+            for piece in paragraph.origins[original_start..]
+                .iter()
+                .take_while(|origin| origin.aggregate.start < atom.source.end)
+                .filter_map(|origin| {
+                    let start = origin.aggregate.start.max(atom.source.start);
+                    let end = origin.aggregate.end.min(atom.source.end);
+                    (start < end).then(|| OriginalPiece {
+                        origin: origin.key,
+                        aggregate: Range::new(start, end),
+                        local: Range::new(
+                            origin.local.start + (start - origin.aggregate.start),
+                            origin.local.start + (end - origin.aggregate.start),
+                        ),
+                    })
+                })
+            {
+                super::context::push(&mut map.pieces, piece)?;
+            }
             map.rows.push(InputRow {
                 source: atom.source,
-                processed: atom.processed,
                 code_point: atom.code_point,
                 separator_space: false,
-                style: crate::engine::resolve::source_style(styles, atom.source.start),
+                style: super::context::source_style(styles, atom.source.start),
                 pieces: first..map.pieces.len(),
-                outputs: row..row + 1,
+                outputs: 0..0,
             });
-            map.components.push(Component {
-                owner: ComponentOwner::Original(row),
-                source: atom.source,
-                processed: map.rows[row].processed,
-                code_point: atom.code_point,
-                separator_space: false,
-                style: map.rows[row].style,
-                outputs: row..row + 1,
-            });
-            map.emissions.push(Emission {
-                component: row,
-                subposition: 0,
-                code_point: atom.code_point,
-                atom: row,
-                event: 0,
-            });
-            map.atoms.push(row);
         }
-        for event in input_events {
-            let value = match event.kind {
-                Event::Text(atom) => {
-                    map.emissions[atom].event = map.events.len();
-                    RelationEvent::Text { atom }
-                }
-                Event::Deleted(source, processed) => {
-                    RelationEvent::PhaseIDeleted { source, processed }
-                }
-                Event::Anchor(anchor) => RelationEvent::Anchor {
-                    order: paragraph
-                        .anchor_order
-                        .iter()
-                        .position(|candidate| *candidate == anchor)
-                        .expect("captured exact anchor identity"),
-                },
-            };
-            map.events.push(value);
-        }
-        map.finish_cuts();
-        map
+        Ok(map)
     }
 
-    pub(super) fn finish_cuts(&mut self) {
+    pub(super) fn finish_cuts(&mut self) -> crate::Result<()> {
         self.participant_cuts.clear();
+        self.logical_prefix.clear();
+        let count = self
+            .events
+            .len()
+            .checked_add(1)
+            .ok_or_else(super::context::capacity)?;
+        self.participant_cuts
+            .try_reserve_exact(count)
+            .map_err(|_| super::context::capacity())?;
         self.participant_cuts.push(0);
+        self.logical_prefix
+            .try_reserve_exact(count)
+            .map_err(|_| super::context::capacity())?;
+        self.logical_prefix.push(0);
+        let mut logical = 0usize;
         let mut owns_following_removals = false;
         for (index, event) in self.events.iter().enumerate() {
+            if !matches!(
+                event,
+                RelationEvent::Removal { .. } | RelationEvent::GeneratedSuppression { .. }
+            ) {
+                logical = logical
+                    .checked_add(1)
+                    .ok_or_else(super::context::capacity)?;
+            }
+            self.logical_prefix.push(logical);
             match event {
-                RelationEvent::Removal { .. } => {
+                RelationEvent::Removal { .. } | RelationEvent::GeneratedSuppression { .. } => {
                     if owns_following_removals {
                         *self.participant_cuts.last_mut().expect("initial boundary") = index + 1;
                     }
@@ -189,6 +218,7 @@ impl TransformMap {
                 }
             }
         }
+        Ok(())
     }
 
     pub(crate) fn component_for_atom(&self, atom: usize) -> &Component {
@@ -242,12 +272,15 @@ impl TransformMap {
     pub(crate) fn event_source(
         &self,
         event: usize,
-        paragraph: &ParagraphData,
+        paragraph: &ParagraphContext,
         source: &Source,
     ) -> Range {
         match self.events[event] {
             RelationEvent::Text { atom } => self.component_for_atom(atom).source,
-            RelationEvent::Removal { row } => self.rows[row].source,
+            RelationEvent::Removal { row, .. } => self.rows[row].source,
+            RelationEvent::GeneratedSuppression { component, .. } => {
+                self.components[component].source
+            }
             RelationEvent::PhaseIDeleted { source, .. } => source,
             RelationEvent::Anchor { order } => {
                 let at = match paragraph.anchor_order[order].item {
@@ -268,10 +301,13 @@ impl TransformMap {
     pub(crate) fn cut_for_participant(&self, boundary: usize) -> usize {
         self.participant_cuts[boundary]
     }
+    pub(crate) fn logical_prefix_at_cut(&self, cut: usize) -> Option<usize> {
+        self.logical_prefix.get(cut).copied()
+    }
 
     pub(crate) fn logical_events(
         &self,
-        paragraph: &ParagraphData,
+        paragraph: &ParagraphContext,
         source: &Source,
     ) -> Vec<LogicalEvent> {
         let mut atom = 0;
@@ -283,15 +319,19 @@ impl TransformMap {
                         atom = index;
                         Event::Text(index)
                     }
-                    RelationEvent::Removal { .. } => return None,
-                    RelationEvent::PhaseIDeleted { source, processed } => {
-                        Event::Deleted(source, processed)
+                    RelationEvent::Removal { .. } | RelationEvent::GeneratedSuppression { .. } => {
+                        return None;
                     }
+                    RelationEvent::PhaseIDeleted {
+                        source,
+                        processed,
+                        lexical,
+                    } => Event::Deleted(source, processed, lexical),
                     RelationEvent::Anchor { order } => Event::Anchor(paragraph.anchor_order[order]),
                 };
                 let source = match kind {
                     Event::Text(index) => self.component_for_atom(index).source.start,
-                    Event::Deleted(source, _) => source.start,
+                    Event::Deleted(source, _, _) => source.start,
                     Event::Anchor(anchor) => match anchor.item {
                         SemanticAnchorItem::EmptyOrigin(index) => {
                             paragraph.origins[index].aggregate.start

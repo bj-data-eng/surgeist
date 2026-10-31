@@ -149,6 +149,7 @@ fn finalize(
         })
         .collect();
     let request = LineSelectionRequest {
+        segment: crate::test_wrapping::only_source_segment(prepared),
         boundary_context: vec![],
         incoming: None,
         start,
@@ -186,7 +187,10 @@ fn finalize(
     prepared
         .select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -224,7 +228,7 @@ fn real_uniform_runs_report_outline_basis_and_physical_source_geometry() {
             (0.0, 0.0, 10.0),
         ),
         (
-            LineOrientation::Sideways,
+            LineOrientation::SidewaysClockwise,
             GlyphBasis::Clockwise,
             Rect::new(98.0, 20.0, 10.0, 10.0),
             Point::new(100.0, 20.0),
@@ -294,7 +298,9 @@ fn real_uniform_runs_report_outline_basis_and_physical_source_geometry() {
                 .collect::<Vec<_>>(),
             [Range::new(0, 1)]
         );
-        let piece = unit.pieces().next().unwrap();
+        let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+            panic!("ordinary Range fixture must retain Line geometry");
+        };
         assert_eq!(piece.rect(), cell);
         assert_eq!(piece.advance_edges(), (20.0, 20.0 + f64::from(raw.2)));
         assert_eq!(piece.baseline(), 100.0);

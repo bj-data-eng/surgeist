@@ -162,6 +162,7 @@ fn batch_with_style<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -436,6 +437,7 @@ fn a_flow_box_does_not_invent_a_forced_barrier_for_missing_parent_continuation()
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let error = compute_layout_with_flow(&capture, 0, request(80.0)).unwrap_err();
@@ -511,6 +513,7 @@ fn genuine_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_pr
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             )
             .unwrap();
             let batch =
@@ -606,6 +609,7 @@ fn a_later_one_line_forced_segment_stays_independent_before_a_child_block_tail()
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(70.0)).unwrap();
@@ -790,7 +794,10 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
             .prepared
             .select(request)
             .unwrap()
-            .finalize(surgeist_text::SpacingAllocations::None)
+            .finalize(surgeist_text::LineAllocations {
+                spacing: surgeist_text::SpacingAllocations::None,
+                scopes: surgeist_text::ScopeAllocations::None,
+            })
             .unwrap();
         let measure = first.measurements().min_content_contribution();
         // Actual source/indication letters are0. NBSP retains raw10 and its

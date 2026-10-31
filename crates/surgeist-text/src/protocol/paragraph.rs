@@ -249,7 +249,7 @@ pub struct ParagraphBoundaryPolicy {
 }
 
 impl ParagraphBoundaryPolicy {
-    pub(crate) fn at(self, paragraph: &ParagraphData, boxes: &[crate::InlineBox]) -> usize {
+    pub(crate) fn at(self, paragraph: &ParagraphContext, boxes: &[crate::InlineBox]) -> usize {
         match self.definition {
             ParagraphBoundaryDefinition::Connection(i) => paragraph.connections[i].at,
             ParagraphBoundaryDefinition::AtomicBefore(i)
@@ -426,32 +426,179 @@ impl OriginData {
     }
 }
 
-/// Validated occurrence/context facts retained by the actual analysis allocation.
+/// An original occurrence in the retained source context, never a view index.
+/// Captured event ordinals are interpreted only with that context's capture.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FlowOriginKey {
+    CapturedEvent(usize),
+    ExactOrdinal(usize),
+}
+impl FlowOriginKey {
+    pub(crate) const fn captured_event(self) -> Option<usize> {
+        match self {
+            Self::CapturedEvent(order) => Some(order),
+            Self::ExactOrdinal(_) => None,
+        }
+    }
+}
+
+/// A checked index in this exact view's original declaration inventory.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ViewOriginIndex(usize);
+impl ViewOriginIndex {
+    pub(crate) const fn get(self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug)]
-pub(crate) struct ParagraphData {
-    pub(crate) scope_topology: Option<crate::processing::contextual::ParagraphTopology>,
-    pub(crate) terminal_edge: ParagraphTerminalEdge,
+enum OriginBasis {
+    Captured(Vec<usize>),
+    Exact(usize),
+}
+
+/// The sole correspondence between original context keys and this view's rows.
+/// The captured vector is moved from capture admission, not duplicated.
+#[derive(Clone, Debug)]
+pub(crate) struct OriginMap {
+    basis: OriginBasis,
+}
+impl OriginMap {
+    pub(crate) const fn exact(count: usize) -> Self {
+        Self {
+            basis: OriginBasis::Exact(count),
+        }
+    }
+
+    pub(crate) fn captured(orders: Vec<usize>, count: usize) -> Result<Self> {
+        if orders.len() != count || orders.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err(crate::processing::contextual::invalid(
+                crate::SourceProcessingError::OriginCorrespondence,
+            ));
+        }
+        Ok(Self {
+            basis: OriginBasis::Captured(orders),
+        })
+    }
+
+    pub(crate) fn view(&self, index: usize) -> Option<ViewOriginIndex> {
+        let count = match &self.basis {
+            OriginBasis::Captured(orders) => orders.len(),
+            OriginBasis::Exact(count) => *count,
+        };
+        (index < count).then_some(ViewOriginIndex(index))
+    }
+
+    pub(crate) fn flow_origin(&self, view: ViewOriginIndex) -> FlowOriginKey {
+        match &self.basis {
+            OriginBasis::Captured(orders) => FlowOriginKey::CapturedEvent(orders[view.0]),
+            OriginBasis::Exact(count) => {
+                assert!(view.0 < *count, "checked origin belongs to this exact view");
+                FlowOriginKey::ExactOrdinal(view.0)
+            }
+        }
+    }
+
+    pub(crate) fn view_origin(&self, key: FlowOriginKey) -> Option<ViewOriginIndex> {
+        self.visit_view_origin(key, || Ok(()))
+            .expect("borrowed origin correspondence has no fallible inspection")
+    }
+
+    /// Inspect precedes each searched captured row. The source owner does not
+    /// depend on a consuming phase's resource policy.
+    pub(crate) fn visit_view_origin(
+        &self,
+        key: FlowOriginKey,
+        mut inspect: impl FnMut() -> Result<()>,
+    ) -> Result<Option<ViewOriginIndex>> {
+        match (&self.basis, key) {
+            (OriginBasis::Exact(count), FlowOriginKey::ExactOrdinal(index)) => {
+                Ok((index < *count).then_some(ViewOriginIndex(index)))
+            }
+            (OriginBasis::Captured(orders), FlowOriginKey::CapturedEvent(order)) => {
+                let mut first = 0;
+                let mut end = orders.len();
+                while first < end {
+                    let middle = first + (end - first) / 2;
+                    inspect()?;
+                    match orders[middle].cmp(&order) {
+                        std::cmp::Ordering::Less => first = middle + 1,
+                        std::cmp::Ordering::Greater => end = middle,
+                        std::cmp::Ordering::Equal => return Ok(Some(ViewOriginIndex(middle))),
+                    }
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
+/// Validated occurrence/context facts retained by the actual analysis allocation.
+/// Canonical admitted occurrence inventory, independent of an output's used
+/// bidi/strut facts or its Raw/Joint authority.
+#[derive(Clone, Debug)]
+pub(crate) struct ParagraphContent {
     pub(crate) origins: Vec<OriginData>,
+    pub(crate) origin_map: OriginMap,
     pub(crate) connections: Vec<ParagraphConnection>,
-    /// Real preceding/following original endpoints for contextual connections.
     pub(crate) connection_ends: Option<Vec<(usize, usize)>>,
-    /// Actual contextual Connection event rank among this paragraph’s anchors.
     pub(crate) connection_anchor_cuts: Option<Vec<usize>>,
     pub(crate) controls: Vec<ParagraphControl>,
     pub(crate) boundary_policies: Vec<ParagraphBoundaryPolicy>,
     pub(crate) replacements: Vec<ParagraphReplacement>,
     pub(crate) anchor_order: Vec<SemanticAnchor>,
     pub(crate) computed_boundaries: Vec<ComputedBoundaryData>,
-    /// None is the standalone front's genuine Auto policy.
+    pub(crate) coverage: Option<Vec<Range>>,
+    pub(crate) envelope: Option<Range>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ParagraphContext {
+    pub(crate) content: ParagraphContent,
+    pub(crate) scope_topology: Option<crate::processing::contextual::ParagraphTopology>,
+    pub(crate) terminal_edge: ParagraphTerminalEdge,
     pub(crate) base_direction: Option<ParagraphBaseDirection>,
     pub(crate) paragraph_strut: ParagraphStrut,
     pub(crate) tab_reference: Option<crate::ParagraphTabReference>,
-    pub(crate) coverage: Option<Vec<Range>>,
-    pub(crate) envelope: Option<Range>,
     pub(crate) domain_style: Option<Style>,
 }
+impl std::ops::Deref for ParagraphContext {
+    type Target = ParagraphContent;
+    fn deref(&self) -> &Self::Target {
+        &self.content
+    }
+}
+impl std::ops::DerefMut for ParagraphContext {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.content
+    }
+}
 
-impl ParagraphData {
+/// An admitted raw input; completed output lowering never constructs this type.
+#[derive(Clone, Debug)]
+pub(crate) struct ParagraphData {
+    pub(crate) context: ParagraphContext,
+}
+impl std::ops::Deref for ParagraphData {
+    type Target = ParagraphContext;
+    fn deref(&self) -> &Self::Target {
+        &self.context
+    }
+}
+impl std::ops::DerefMut for ParagraphData {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.context
+    }
+}
+
+impl ParagraphContent {
+    pub(crate) fn captured_origin_event(&self, origin: usize) -> Option<usize> {
+        self.origin_map
+            .flow_origin(self.origin_map.view(origin)?)
+            .captured_event()
+    }
+
     /// Genuine Wbr separates original decoding, regardless of its replacement.
     /// These positions do not disconnect lexical or typographic context.
     pub(crate) fn wbr_decode_boundaries(&self) -> impl Iterator<Item = usize> + '_ {
@@ -460,9 +607,6 @@ impl ParagraphData {
         })
     }
 
-    pub(crate) fn base_style<'a>(&'a self, processed: &'a ProcessedSource) -> &'a Style {
-        self.domain_style.as_ref().unwrap_or(processed.base_style())
-    }
     pub(crate) fn extent_in(&self, source: &Source) -> Range {
         self.envelope.unwrap_or(Range::new(0, source.text().len()))
     }
@@ -537,6 +681,98 @@ impl ParagraphData {
         }
     }
 
+    /// Only actual disconnected connections sever original text adjacency.
+    /// In-flow box barriers are independently read from the canonical source.
+    pub(crate) fn disconnections(&self) -> impl Iterator<Item = usize> + '_ {
+        self.connections
+            .iter()
+            .enumerate()
+            .filter(|(_, connection)| connection.kind == ParagraphConnectionKind::Disconnected)
+            .flat_map(|(i, connection)| {
+                self.connection_ends
+                    .as_ref()
+                    .map_or([connection.at; 2], |ends| [ends[i].0, ends[i].1])
+            })
+    }
+
+    /// Fallible ownership facet of the same original-origin overlap operation.
+    /// Inspect is emitted before each searched/candidate row is read. It carries
+    /// no resource-policy dependency and performs no geometry projection.
+    pub(crate) fn visit_origin_indices(
+        &self,
+        selected: Range,
+        mut visit: impl FnMut(OriginVisit) -> crate::Result<()>,
+    ) -> crate::Result<()> {
+        let mut first = 0;
+        let mut end = self.origins.len();
+        while first < end {
+            let middle = first + (end - first) / 2;
+            visit(OriginVisit::Inspect)?;
+            if origin_precedes(&self.origins[middle], selected.start) {
+                first = middle + 1;
+            } else {
+                end = middle;
+            }
+        }
+        for index in first..self.origins.len() {
+            visit(OriginVisit::Inspect)?;
+            let origin = &self.origins[index];
+            if origin.aggregate.start > selected.end {
+                break;
+            }
+            if let Some(aggregate) = origin_overlap(origin, selected) {
+                visit(OriginVisit::Intersection {
+                    origin: index,
+                    aggregate,
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Candidate origin intersections in original vector order, including
+    /// incident empty anchors. Selected participant coverage decides which
+    /// same-offset empty occurrences belong to a particular line.
+    pub(crate) fn origin_intersections<'a>(
+        &'a self,
+        processed: &'a ProcessedSource,
+        selected: Range,
+    ) -> impl Iterator<Item = OriginIntersection> + 'a {
+        let first = self
+            .origins
+            .partition_point(|origin| origin_precedes(origin, selected.start));
+        self.origins
+            .iter()
+            .enumerate()
+            .skip(first)
+            .take_while(move |(_, origin)| origin.aggregate.start <= selected.end)
+            .filter_map(move |(index, origin)| {
+                let aggregate = origin_overlap(origin, selected)?;
+                let local = Range::new(
+                    origin.local.start + aggregate.start - origin.aggregate.start,
+                    origin.local.start + aggregate.end - origin.aggregate.start,
+                );
+                // All endpoints come from admitted original ranges in this same
+                // owner, and the correspondence preserves their bounds.
+                let start = processed.project(aggregate.start, Affinity::Before);
+                let end = processed.project(aggregate.end, Affinity::After);
+                Some(OriginIntersection {
+                    origin: index,
+                    aggregate,
+                    local,
+                    processed: Range::new(start, end),
+                })
+            })
+    }
+}
+
+impl ParagraphContext {
+    pub(crate) fn base_style<'a>(&'a self, processed: &'a ProcessedSource) -> &'a Style {
+        self.domain_style.as_ref().unwrap_or(processed.base_style())
+    }
+}
+
+impl ParagraphData {
     pub(crate) fn standalone(source: &Source) -> Self {
         let source_len = source.text().len();
         let mut anchors: Vec<_> = source
@@ -563,94 +799,58 @@ impl ParagraphData {
             );
         }
         Self {
-            scope_topology: None,
-            computed_boundaries: Vec::new(),
-            terminal_edge: ParagraphTerminalEdge::Unknown,
-            origins: vec![OriginData {
-                source: OriginSource::Canonical,
-                local: Range::new(0, source_len),
-                aggregate: Range::new(0, source_len),
-                kind: ParagraphOriginKind::Authored,
-                text_node: None,
-            }],
-            connections: Vec::new(),
-            connection_ends: None,
-            connection_anchor_cuts: None,
-            controls: Vec::new(),
-            boundary_policies: Vec::new(),
-            replacements: Vec::new(),
-            anchor_order,
-            base_direction: None,
-            paragraph_strut: ParagraphStrut::DefaultFont,
-            tab_reference: None,
-            coverage: None,
-            envelope: None,
-            domain_style: None,
+            context: ParagraphContext {
+                content: ParagraphContent {
+                    computed_boundaries: Vec::new(),
+                    origin_map: OriginMap::exact(1),
+                    origins: vec![OriginData {
+                        source: OriginSource::Canonical,
+                        local: Range::new(0, source_len),
+                        aggregate: Range::new(0, source_len),
+                        kind: ParagraphOriginKind::Authored,
+                        text_node: None,
+                    }],
+                    connections: Vec::new(),
+                    connection_ends: None,
+                    connection_anchor_cuts: None,
+                    controls: Vec::new(),
+                    boundary_policies: Vec::new(),
+                    replacements: Vec::new(),
+                    anchor_order,
+                    coverage: None,
+                    envelope: None,
+                },
+                scope_topology: None,
+                terminal_edge: ParagraphTerminalEdge::Unknown,
+                base_direction: None,
+                paragraph_strut: ParagraphStrut::DefaultFont,
+                tab_reference: None,
+                domain_style: None,
+            },
         }
     }
+}
 
-    /// Only actual disconnected connections sever original text adjacency.
-    /// In-flow box barriers are independently read from the canonical source.
-    pub(crate) fn disconnections(&self) -> impl Iterator<Item = usize> + '_ {
-        self.connections
-            .iter()
-            .enumerate()
-            .filter(|(_, connection)| connection.kind == ParagraphConnectionKind::Disconnected)
-            .flat_map(|(i, connection)| {
-                self.connection_ends
-                    .as_ref()
-                    .map_or([connection.at; 2], |ends| [ends[i].0, ends[i].1])
-            })
+fn origin_precedes(origin: &OriginData, start: usize) -> bool {
+    origin.aggregate.end < start || (origin.aggregate.end == start && !origin.aggregate.is_empty())
+}
+fn origin_overlap(origin: &OriginData, selected: Range) -> Option<Range> {
+    if origin.aggregate.is_empty() {
+        let at = origin.aggregate.start;
+        (at >= selected.start && at <= selected.end).then_some(origin.aggregate)
+    } else {
+        let start = origin.aggregate.start.max(selected.start);
+        let end = origin.aggregate.end.min(selected.end);
+        if start < end {
+            Some(Range::new(start, end))
+        } else {
+            None
+        }
     }
-
-    /// Candidate origin intersections in original vector order, including
-    /// incident empty anchors. Selected participant coverage decides which
-    /// same-offset empty occurrences belong to a particular line.
-    pub(crate) fn origin_intersections<'a>(
-        &'a self,
-        processed: &'a ProcessedSource,
-        selected: Range,
-    ) -> impl Iterator<Item = OriginIntersection> + 'a {
-        let first = self.origins.partition_point(|origin| {
-            origin.aggregate.end < selected.start
-                || (origin.aggregate.end == selected.start && !origin.aggregate.is_empty())
-        });
-        self.origins
-            .iter()
-            .enumerate()
-            .skip(first)
-            .take_while(move |(_, origin)| origin.aggregate.start <= selected.end)
-            .filter_map(move |(index, origin)| {
-                let aggregate = if origin.aggregate.is_empty() {
-                    let at = origin.aggregate.start;
-                    if at < selected.start || at > selected.end {
-                        return None;
-                    }
-                    origin.aggregate
-                } else {
-                    let start = origin.aggregate.start.max(selected.start);
-                    let end = origin.aggregate.end.min(selected.end);
-                    if start >= end {
-                        return None;
-                    }
-                    Range::new(start, end)
-                };
-                let local = Range::new(
-                    origin.local.start + aggregate.start - origin.aggregate.start,
-                    origin.local.start + aggregate.end - origin.aggregate.start,
-                );
-                // All endpoints come from admitted original ranges in this same
-                // owner, and the correspondence preserves their bounds.
-                let start = processed.project(aggregate.start, Affinity::Before);
-                let end = processed.project(aggregate.end, Affinity::After);
-                Some(OriginIntersection {
-                    origin: index,
-                    aggregate,
-                    local,
-                    processed: Range::new(start, end),
-                })
-            })
-    }
+}
+pub(crate) enum OriginVisit {
+    Inspect,
+    Intersection { origin: usize, aggregate: Range },
 }
 
 /// Exact actual source occurrence association used by finalized fragment views.
@@ -688,32 +888,37 @@ impl AnalyzedSource {
             anchor_order,
         } = input;
         let paragraph = ParagraphData {
-            scope_topology: None,
-            computed_boundaries: Vec::new(),
-            terminal_edge,
-            origins: origins
-                .into_iter()
-                .map(|origin| OriginData {
-                    source: OriginSource::Captured(origin.source),
-                    local: origin.local,
-                    aggregate: origin.aggregate,
-                    kind: origin.kind,
-                    text_node: origin.text_node,
-                })
-                .collect(),
-            connections,
-            connection_ends: None,
-            connection_anchor_cuts: None,
-            controls,
-            boundary_policies,
-            replacements,
-            anchor_order: anchor_order.into_iter().map(SemanticAnchor::from).collect(),
-            base_direction: Some(base_direction),
-            paragraph_strut,
-            tab_reference,
-            coverage: None,
-            envelope: None,
-            domain_style: None,
+            context: ParagraphContext {
+                content: crate::protocol::paragraph::ParagraphContent {
+                    computed_boundaries: Vec::new(),
+                    origin_map: OriginMap::exact(origins.len()),
+                    origins: origins
+                        .into_iter()
+                        .map(|origin| OriginData {
+                            source: OriginSource::Captured(origin.source),
+                            local: origin.local,
+                            aggregate: origin.aggregate,
+                            kind: origin.kind,
+                            text_node: origin.text_node,
+                        })
+                        .collect(),
+                    connections,
+                    connection_ends: None,
+                    connection_anchor_cuts: None,
+                    controls,
+                    boundary_policies,
+                    replacements,
+                    anchor_order: anchor_order.into_iter().map(SemanticAnchor::from).collect(),
+                    coverage: None,
+                    envelope: None,
+                },
+                scope_topology: None,
+                terminal_edge,
+                base_direction: Some(base_direction),
+                paragraph_strut,
+                tab_reference,
+                domain_style: None,
+            },
         };
         let processed = Arc::new(crate::processing::process_paragraph(
             source,

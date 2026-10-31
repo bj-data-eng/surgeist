@@ -117,7 +117,10 @@ fn preserved_document_delimiter_maps_one_blank_unit_but_retains_both_original_un
 fn whole(p: &PreparedText) -> FinalizedLine {
     p.select(request(p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -314,6 +317,9 @@ fn fullwidth_semantics_create_real_normal_opportunities_while_narrow_letters_nee
         unreachable!()
     };
     let conditional = neutral
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &query.start,
             None,
@@ -355,7 +361,10 @@ fn fullwidth_semantics_create_real_normal_opportunities_while_narrow_letters_nee
     let finalized = wide
         .select(first)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&finalized), [(36, 20.0)]);
     assert_eq!(finalized.feedback().advance, 20.0);

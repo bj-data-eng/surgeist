@@ -35,6 +35,19 @@ pub(crate) struct ResolvedStyle {
     pub(crate) letter_spacing: f64,
 }
 
+/// Canonical font-only fields shared by a body style and glyph-free context.
+/// This is not a paint/lexical style populated with placeholder values.
+pub(crate) struct ResolvedFontStyle {
+    pub(crate) font_family: Vec<FamilyId>,
+    pub(crate) font_size: f32,
+    pub(crate) font_width: FontWidth,
+    pub(crate) font_style: FontStyle,
+    pub(crate) font_weight: FontWeight,
+    pub(crate) font_variations: Vec<FontVariation>,
+    pub(crate) locale: Option<Language>,
+    pub(crate) line_height: LineHeight,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct AnalyzedStyleRun {
     pub(crate) owner: AnalyzedStyleOwner,
@@ -60,7 +73,7 @@ pub(crate) fn analyze_styles(
     source: &Source,
     spans: &[crate::source_model::ValidatedSpan],
     default_style: &ValidatedStyle,
-    paragraph: &crate::protocol::paragraph::ParagraphData,
+    paragraph: &crate::protocol::paragraph::ParagraphContext,
 ) -> Vec<AnalyzedStyleRun> {
     let extent = paragraph.extent_in(source);
     let mut boundaries = vec![extent.start, extent.end];
@@ -73,10 +86,7 @@ pub(crate) fn analyze_styles(
     let mut result: Vec<AnalyzedStyleRun> = Vec::new();
     for endpoints in boundaries.windows(2) {
         for range in paragraph.intersections(Range::new(endpoints[0], endpoints[1])) {
-            let style = spans
-                .iter()
-                .rev()
-                .find(|span| span.range().start <= range.start && span.range().end >= range.end)
+            let style = winning_span(spans, range, |span| span.range())
                 .map_or(default_style, |span| span.style());
             // A transparent child hole contributes no parent style transition.
             // Equal actual styles therefore retain one shaping row across it;
@@ -103,6 +113,19 @@ pub(crate) fn analyze_styles(
         });
     }
     result
+}
+
+/// Authored order is the one source-span winner rule. A transform-only reader
+/// borrows the winner without executing unrelated font or paint admission.
+pub(crate) fn winning_span<T>(
+    spans: &[T],
+    range: Range,
+    extent: impl Fn(&T) -> Range,
+) -> Option<&T> {
+    spans.iter().rev().find(|span| {
+        let own = extent(span);
+        own.start <= range.start && own.end >= range.end
+    })
 }
 
 pub(crate) fn resolve(
@@ -160,22 +183,272 @@ fn resolve_style(
     // Stable tag ordering preserves the actual last authored duplicate override.
     features.sort_by_key(|setting| setting.tag);
     variations.sort_by_key(|setting| setting.tag);
+    resolved_fields(
+        style,
+        validated.font_locale(),
+        families,
+        features,
+        variations,
+        scale,
+    )
+}
+
+fn resolved_fields(
+    style: &crate::Style,
+    locale: Option<Language>,
+    families: Vec<FamilyId>,
+    features: Vec<FontFeature>,
+    variations: Vec<FontVariation>,
+    scale: f32,
+) -> Result<ResolvedStyle> {
+    // Keep ordinary body scaling/error order intact while sharing the actual
+    // font-field owner with glyph-free receipts.
+    let font_size = scaled(style.size, scale, true, "font size")?;
+    let underline = scaled_decoration(style.underline, scale)?;
+    let strikethrough = scaled_decoration(style.strikethrough, scale)?;
+    let line_height = scaled_line_height(style.line_height, scale)?;
+    let font = resolved_font_fields(style, locale, families, variations, font_size, line_height);
     Ok(ResolvedStyle {
+        font_family: font.font_family,
+        font_size: font.font_size,
+        font_width: font.font_width,
+        font_style: font.font_style,
+        font_weight: font.font_weight,
+        font_variations: font.font_variations,
+        font_features: features,
+        locale: font.locale,
+        brush: style.brush,
+        underline,
+        strikethrough,
+        line_height: font.line_height,
+        word_spacing: scaled_logical(style.word_spacing, scale, false, "word spacing")?,
+        letter_spacing: scaled_logical(style.letter_spacing, scale, false, "letter spacing")?,
+    })
+}
+
+fn resolved_font_fields(
+    style: &crate::Style,
+    locale: Option<Language>,
+    families: Vec<FamilyId>,
+    variations: Vec<FontVariation>,
+    font_size: f32,
+    line_height: LineHeight,
+) -> ResolvedFontStyle {
+    ResolvedFontStyle {
         font_family: families,
-        font_size: scaled(style.size, scale, true, "font size")?,
+        font_size,
         font_width: style.font.width.into(),
         font_style: style.font.slant.into(),
         font_weight: style.font.weight.into(),
         font_variations: variations,
-        font_features: features,
-        locale: validated.font_locale(),
-        brush: style.brush,
-        underline: scaled_decoration(style.underline, scale)?,
-        strikethrough: scaled_decoration(style.strikethrough, scale)?,
-        line_height: scaled_line_height(style.line_height, scale)?,
-        word_spacing: scaled_logical(style.word_spacing, scale, false, "word spacing")?,
-        letter_spacing: scaled_logical(style.letter_spacing, scale, false, "letter spacing")?,
+        locale,
+        line_height,
+    }
+}
+
+/// The same actual used-height operation for body and glyph-free receipts. The
+/// caller supplies its owning phase; no sibling-expanded line extent enters it.
+pub(crate) fn font_line_height(
+    size: f32,
+    height: LineHeight,
+    normal: f64,
+    phase: TextNumericPhase,
+) -> Result<f64> {
+    let (left, right) = match height {
+        LineHeight::Absolute(value) => return Ok(value),
+        LineHeight::FontSizeRelative(value) => (value, f64::from(size)),
+        LineHeight::MetricsRelative(value) => (value, normal),
+    };
+    let product = left * right;
+    let category = if !product.is_finite() {
+        Some(TextNumericError::NonFinite)
+    } else if left != 0.0 && right != 0.0 && product == 0.0 {
+        Some(if left > 0.0 && right > 0.0 {
+            TextNumericError::PositiveLost
+        } else {
+            TextNumericError::NonZeroLost
+        })
+    } else {
+        None
+    };
+    if let Some(category) = category {
+        return Err(super::text_numeric_error(
+            "line height",
+            phase,
+            category,
+            product,
+        ));
+    }
+    Ok(product)
+}
+
+/// Glyph-free captured styles borrow the original request. Only canonical
+/// family ids/settings are materialized, under the feature transaction. The
+/// ordinary body resolver above keeps its existing parser and matching policy.
+pub(crate) fn resolve_scope(
+    collection: &mut Collection,
+    style: &crate::Style,
+    scale: f32,
+    budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
+) -> Result<ResolvedFontStyle> {
+    budget.work(3)?;
+    budget.work(style.locale.as_ref().map_or(0, String::len))?;
+    let locale = crate::style::scope_style_locale(style)?;
+    let mut families = Vec::new();
+    if style.font.family.is_empty() {
+        for id in collection.generic_families(GenericFamily::SansSerif) {
+            scope_push(budget, &mut families, id)?;
+        }
+    } else {
+        for source in &style.font.family {
+            budget.work(source.len())?;
+            // FontFamilyName::parse borrows its named input, including quoted
+            // names. This is the same first-entry rule as parse_font_families.
+            let family = FontFamilyName::parse(source)
+                .ok_or_else(|| Error::new(ErrorCode::InvalidStyle, "invalid scope font family"))?;
+            match family {
+                FontFamilyName::Named(name) => {
+                    if let Some(id) = collection.family_id(&name) {
+                        scope_push(budget, &mut families, id)?;
+                    }
+                }
+                FontFamilyName::Generic(generic) => {
+                    for id in collection.generic_families(generic) {
+                        scope_push(budget, &mut families, id)?;
+                    }
+                }
+            }
+        }
+    }
+    let variations_source = scope_settings_source(&style.font.variations, budget)?;
+    let mut variations: Vec<FontVariation> = Vec::new();
+    if let Some(source) = &variations_source {
+        budget.work(
+            source
+                .len()
+                .checked_mul(2)
+                .ok_or_else(scope_work_overflow)?,
+        )?;
+        let source = std::str::from_utf8(source).expect("joined UTF-8 source strings");
+        if source.trim().is_empty() {
+            return Err(setting_error());
+        }
+        for setting in FontVariation::parse_css_list(source) {
+            let setting = setting.map_err(|_| setting_error())?;
+            // Stable insertion preserves duplicate authored order without the
+            // hidden scratch allocation of a stable slice sort.
+            let at = crate::processing::contextual::alignment::operations::partition_point(
+                &variations,
+                Some(&mut *budget),
+                |old| old.tag <= setting.tag,
+            )?;
+            budget.add_records(1)?;
+            budget.reserve(&mut variations, 1)?;
+            // Reserve meters relocation independently. Insertion then moves
+            // exactly this suffix and writes its one new authored setting.
+            budget.work(
+                (variations.len() - at)
+                    .checked_add(1)
+                    .ok_or_else(scope_work_overflow)?,
+            )?;
+            variations.insert(at, setting);
+        }
+        if variations.is_empty() {
+            return Err(setting_error());
+        }
+    }
+    scope_drop_source(variations_source, budget)?;
+    let font_size = scaled(style.size, scale, true, "font size")?;
+    let line_height = scaled_line_height(style.line_height, scale)?;
+    Ok(resolved_font_fields(
+        style,
+        locale,
+        families,
+        variations,
+        font_size,
+        line_height,
+    ))
+}
+
+fn scope_work_overflow() -> Error {
+    super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
     })
+}
+
+fn scope_push<T>(
+    budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
+    values: &mut Vec<T>,
+    value: T,
+) -> Result<()> {
+    budget.work(1)?;
+    budget.add_records(1)?;
+    budget.reserve(values, 1)?;
+    values.push(value);
+    Ok(())
+}
+
+fn scope_settings_source(
+    values: &[String],
+    budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
+) -> Result<Option<Vec<u8>>> {
+    if values.is_empty() {
+        return Ok(None);
+    }
+    budget.work(values.len())?;
+    let kind = crate::ScopeAlignmentLimitKind::PayloadBytes;
+    let overflow =
+        || super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow { kind });
+    let mut len = values
+        .len()
+        .checked_sub(1)
+        .and_then(|n| n.checked_mul(2))
+        .ok_or_else(overflow)?;
+    for value in values {
+        len = len.checked_add(value.len()).ok_or_else(overflow)?;
+    }
+    budget.work(
+        len.checked_add(values.len())
+            .ok_or_else(scope_work_overflow)?,
+    )?;
+    let mut joined = Vec::new();
+    budget.reserve(&mut joined, len)?;
+    for (index, value) in values.iter().enumerate() {
+        if index != 0 {
+            joined.extend_from_slice(b", ");
+        }
+        joined.extend_from_slice(value.as_bytes());
+    }
+    Ok(Some(joined))
+}
+
+fn scope_drop_source(
+    source: Option<Vec<u8>>,
+    budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
+) -> Result<()> {
+    if let Some(source) = source {
+        let bytes = source.capacity();
+        drop(source);
+        budget.release_bytes(bytes)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn drop_scope_style(
+    style: ResolvedFontStyle,
+    budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
+) -> Result<()> {
+    use super::scope_alignment::accounting::bytes;
+    let mut total = 0usize;
+    for size in [bytes(&style.font_family)?, bytes(&style.font_variations)?] {
+        total = total.checked_add(size).ok_or_else(|| {
+            super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+                kind: crate::ScopeAlignmentLimitKind::PayloadBytes,
+            })
+        })?;
+    }
+    drop(style);
+    budget.release_bytes(total)
 }
 
 fn parse_features(style: &ValidatedStyle) -> Result<Vec<FontFeature>> {
@@ -263,7 +536,12 @@ fn scaled(value: f32, scale: f32, positive: bool, field: &'static str) -> Result
     Ok(result)
 }
 
-fn scaled_logical(value: f64, scale: f32, positive: bool, field: &'static str) -> Result<f64> {
+pub(in crate::engine) fn scaled_logical(
+    value: f64,
+    scale: f32,
+    positive: bool,
+    field: &'static str,
+) -> Result<f64> {
     let result = value * f64::from(scale);
     let category = if !result.is_finite() {
         Some(TextNumericError::NonFinite)
@@ -294,4 +572,76 @@ pub(crate) fn source_style(styles: &[AnalyzedStyleRun], at: usize) -> usize {
     styles[..source_count]
         .partition_point(|row| row.source_range().is_some_and(|range| range.end <= at))
         .min(source_count - 1)
+}
+
+/// Resolve the actual captured container's complete font settings for inner tabs.
+/// All owned parse/family/setting scratch is admitted before materialization.
+pub(crate) fn resolve_cell_tab_style(
+    collection: &mut Collection,
+    style: &crate::Style,
+    scale: f32,
+    budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
+) -> Result<ResolvedStyleRun> {
+    let font = resolve_scope(collection, style, scale, budget)?;
+    let source = scope_settings_source(&style.font.features, budget)?;
+    let mut features: Vec<FontFeature> = Vec::new();
+    if let Some(source) = &source {
+        budget.work(
+            source
+                .len()
+                .checked_mul(2)
+                .ok_or_else(scope_work_overflow)?,
+        )?;
+        let source = std::str::from_utf8(source).map_err(|_| setting_error())?;
+        if source.trim().is_empty() {
+            return Err(setting_error());
+        }
+        for feature in FontFeature::parse_css_list(source) {
+            let feature = feature.map_err(|_| setting_error())?;
+            let at = crate::processing::contextual::alignment::operations::partition_point(
+                &features,
+                Some(&mut *budget),
+                |old| old.tag <= feature.tag,
+            )?;
+            budget.add_records(1)?;
+            budget.reserve(&mut features, 1)?;
+            budget.work(
+                (features.len() - at)
+                    .checked_add(1)
+                    .ok_or_else(scope_work_overflow)?,
+            )?;
+            features.insert(at, feature);
+        }
+        if features.is_empty() {
+            return Err(setting_error());
+        }
+    }
+    scope_drop_source(source, budget)?;
+    Ok(ResolvedStyleRun {
+        style: ResolvedStyle {
+            font_family: font.font_family,
+            font_size: font.font_size,
+            font_width: font.font_width,
+            font_style: font.font_style,
+            font_weight: font.font_weight,
+            font_variations: font.font_variations,
+            font_features: features,
+            locale: font.locale,
+            brush: style.brush,
+            underline: scaled_decoration(style.underline, scale)?,
+            strikethrough: scaled_decoration(style.strikethrough, scale)?,
+            line_height: font.line_height,
+            word_spacing: scaled_logical(style.word_spacing, scale, false, "word spacing")?,
+            letter_spacing: 0.0,
+        },
+    })
+}
+pub(crate) fn drop_cell_tab_style(
+    style: ResolvedStyleRun,
+    ledger: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<()> {
+    use super::scope_alignment::accounting as account;
+    account::drop_vec(ledger, style.style.font_family)?;
+    account::drop_vec(ledger, style.style.font_variations)?;
+    account::drop_vec(ledger, style.style.font_features)
 }

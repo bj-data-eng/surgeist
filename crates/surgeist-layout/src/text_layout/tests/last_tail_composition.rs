@@ -152,6 +152,7 @@ fn check<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap_or_else(|error| {
@@ -463,6 +464,7 @@ fn check_choice_order<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(60.0)).unwrap();

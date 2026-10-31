@@ -70,6 +70,8 @@ fn prepare(
         vec![text::Range::new(0, 1)]
     };
     let capture = text::process_contextual_source(text::ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
         envelope: text::SourceProcessingEnvelope::Complete,
@@ -113,6 +115,9 @@ fn prepare(
         replacements: vec![],
         computed_line_boundaries: vec![],
         scopes: vec![text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             used_direction: text::ParagraphBaseDirection::LeftToRight,
             trim: text::WhiteSpaceTrim::default(),
@@ -177,7 +182,14 @@ fn prepare(
             text::PreparationOptions::default().with_orientation(orientation),
         )
         .unwrap();
-    assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+    assert_eq!(
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        [capture.captured_paragraph(0).unwrap()]
+    );
     prepared
 }
 
@@ -221,7 +233,12 @@ fn assert_composition(kind: text::InlineBoxKind) {
         text::Size::new(6.0, 14.0),
     ));
     let child_source = text::Source::identified("\u{3a7}", text::Id::from_u64(1556002), 11);
-    let parent = prepare(&mut system, &source, true, text::LineOrientation::Sideways);
+    let parent = prepare(
+        &mut system,
+        &source,
+        true,
+        text::LineOrientation::SidewaysClockwise,
+    );
     let child = prepare(
         &mut system,
         &child_source,
@@ -303,6 +320,7 @@ fn assert_composition(kind: text::InlineBoxKind) {
             },
         ],
         layout::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(
@@ -334,7 +352,10 @@ fn assert_composition(kind: text::InlineBoxKind) {
     let parent_layout = placed(&batch, 0);
     let child_layout = placed(&batch, 2);
     assert_eq!(batch.placed_text().len(), 2);
-    assert_eq!(parent_layout.orientation(), text::LineOrientation::Sideways);
+    assert_eq!(
+        parent_layout.orientation(),
+        text::LineOrientation::SidewaysClockwise
+    );
     assert_eq!(
         child_layout.orientation(),
         text::LineOrientation::Horizontal

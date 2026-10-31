@@ -44,12 +44,19 @@ impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
 
 fn metric(baseline: f64, extent: f64) -> t::LineBoxStrut {
     t::LineBoxStrut {
+        scope: None,
         metrics: t::LineStrut {
             baseline,
             line_extent: extent,
         },
         alignment: t::LineBoxAlignment::Baseline,
     }
+}
+
+fn expected_metric(scope: &t::CapturedScope, baseline: f64, extent: f64) -> t::LineBoxStrut {
+    let mut strut = metric(baseline, extent);
+    strut.scope = Some(scope.clone());
+    strut
 }
 
 struct Fixture<S: l::LayoutScalar> {
@@ -79,12 +86,17 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let mut source = t::Source::identified("AB", t::Id::from_u64(652900), 9);
         source.span(t::Range::new(0, 2), style.clone());
         let inline = || t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: None,
             boundaries: None,
         };
         let processed = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 source,
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -122,6 +134,9 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 },
                 scopes: vec![
                     t::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
+                        font_reference: None,
                         topology: t::SourceProcessingTopology::Complete,
                         trim: Default::default(),
                         base_style: style,
@@ -350,7 +365,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 side: t::SourceBoxSide::Before
             }
         );
-        let incidences = self.prepared.boundary_incidences(&forced).unwrap();
+        let incidences = self
+            .prepared
+            .boundary_incidences(&self.prepared.source_segments().next().unwrap(), &forced)
+            .unwrap();
         assert_eq!(incidences.len(), 1);
         assert_eq!(incidences[0].boundary(), forced);
         for (scope, expected) in self.scopes.iter().zip([
@@ -366,7 +384,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
         }
         assert_eq!(
             self.prepared
-                .boundary_incidences(&offers[2].view().boundary())
+                .boundary_incidences(
+                    &self.prepared.source_segments().next().unwrap(),
+                    &offers[2].view().boundary()
+                )
                 .unwrap(),
             incidences
         );
@@ -379,6 +400,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             0,
             vec![self.binding.clone()],
             self.inventory(),
+            Vec::new(),
         )
         .unwrap();
         let request = l::LayoutRootRequestOf::viewport(l::Size::new(
@@ -489,9 +511,12 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
     assert!(request.controls.is_empty());
     assert!(request.atomics.is_empty());
     let expected_struts = if forced {
-        vec![metric(16.0, 20.0)]
+        vec![expected_metric(&fixture.scopes[0], 16.0, 20.0)]
     } else {
-        vec![metric(16.0, 20.0), metric(12.0, 30.0)]
+        vec![
+            expected_metric(&fixture.scopes[0], 16.0, 20.0),
+            expected_metric(&fixture.scopes[1], 12.0, 30.0),
+        ]
     };
     assert_struts(&request.line_box_struts, &expected_struts);
     let source_glyphs = body
@@ -573,8 +598,13 @@ impl<S: l::LayoutScalar> Fixture<S> {
         &self,
         inventory: l::WrappingInput<u32>,
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-        let flow =
-            l::LayoutFlowInput::try_new(&self.tree, 0, vec![self.binding.clone()], inventory)?;
+        let flow = l::LayoutFlowInput::try_new(
+            &self.tree,
+            0,
+            vec![self.binding.clone()],
+            inventory,
+            Vec::new(),
+        )?;
         let request = l::LayoutRootRequestOf::viewport(l::Size::new(
             l::AvailableOf::definite(S::from_f64(30.0)),
             l::AvailableOf::MAX_CONTENT,
@@ -597,7 +627,7 @@ fn replace_t_metric(
                 metric_contribution,
                 ..
             } if scope == target => {
-                *metric_contribution = contribution;
+                *metric_contribution = contribution.clone();
                 replaced += 1;
             }
             _ => {}
@@ -702,7 +732,10 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
         request.participants,
         fixture.prepared.participants().collect::<Vec<_>>()
     );
-    assert_struts(&request.line_box_struts, &[metric(16.0, 20.0)]);
+    assert_struts(
+        &request.line_box_struts,
+        &[expected_metric(&fixture.scopes[0], 16.0, 20.0)],
+    );
     assert!(request.controls.is_empty());
     assert!(request.atomics.is_empty());
     assert_eq!(body.measurements().fit().advance(), 20.0);
@@ -794,7 +827,10 @@ fn assert_retained_phantom_receipt<S: l::LayoutScalar>(
     assert!(request.atomics.is_empty());
     assert_struts(
         &request.line_box_struts,
-        &[metric(16.0, 20.0), metric(12.0, tail_extent)],
+        &[
+            expected_metric(&fixture.scopes[0], 16.0, 20.0),
+            expected_metric(&fixture.scopes[1], 12.0, tail_extent),
+        ],
     );
     // Actual numerical receipts remain real: phantom disposition is not a
     // zero-allocation substitution or permission to discard T's witness.

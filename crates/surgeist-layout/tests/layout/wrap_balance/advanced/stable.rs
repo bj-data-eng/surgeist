@@ -37,7 +37,10 @@ fn assert_rows<S: l::LayoutScalar>(
         assert_eq!(selected.request().end.view().source_after().get(), end);
         assert_eq!(
             selected
-                .finalize(t::SpacingAllocations::None)
+                .finalize(surgeist_text::LineAllocations {
+                    spacing: t::SpacingAllocations::None,
+                    scopes: surgeist_text::ScopeAllocations::None
+                })
                 .unwrap()
                 .measurements()
                 .alignment()

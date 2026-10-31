@@ -153,7 +153,10 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(selection)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -242,7 +245,7 @@ fn explicit_alphabetic_preserves_raw_metrics_and_places_font_zero_beyond_the_sha
             GlyphBasis::Unrotated,
         ),
         (
-            LineOrientation::Sideways,
+            LineOrientation::SidewaysClockwise,
             100.0,
             Point::new(99.0, 20.0),
             Rect::new(97.0, 20.0, 10.0, 200.0),

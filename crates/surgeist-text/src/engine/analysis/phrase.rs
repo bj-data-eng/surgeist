@@ -14,7 +14,7 @@ use crate::phrase::{
     qualification::{Punctuation, punctuation, separator},
 };
 use crate::projection::SourceProjection;
-use crate::protocol::paragraph::{ParagraphControlKind, ParagraphData, SemanticAnchorItem};
+use crate::protocol::paragraph::{ParagraphContext, ParagraphControlKind, SemanticAnchorItem};
 use crate::{InlineBox, InlineBoxKind, Result};
 
 #[derive(Clone, Debug)]
@@ -62,7 +62,7 @@ pub(super) fn analyze(
     projection: &SourceProjection,
     styles: &[AnalyzedStyleRun],
     boxes: &[InlineBox],
-    paragraph: &ParagraphData,
+    paragraph: &ParagraphContext,
     units: &[Range<usize>],
 ) -> Result<PhraseCatalog> {
     let mut catalog = PhraseCatalog::default();

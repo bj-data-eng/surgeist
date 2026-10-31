@@ -93,10 +93,13 @@ fn finite_upright_centering_applies_indent_insets_and_actual_space_allocation_on
     assert_eq!(space.prepared_text(), prepared);
     assert_eq!(space.view().source_range(), Range::new(1, 2));
     let line = selected
-        .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-            slot: slots[0].clone(),
-            amount: 8.0,
-        }]))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                slot: slots[0].clone(),
+                amount: 8.0,
+            }]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.selected_line(), selected);
     assert_eq!(line.feedback().advance, 44.0);
@@ -195,7 +198,15 @@ fn finite_upright_centering_applies_indent_insets_and_actual_space_allocation_on
         .unwrap();
     assert_eq!(query.units().len(), 1);
     let unit = query.units().next().unwrap();
-    let pieces = unit.pieces().collect::<Vec<_>>();
+    let pieces = unit
+        .pieces()
+        .map(|piece| {
+            let crate::SourceRangeGeometry::Line(piece) = piece else {
+                panic!("ordinary Range fixture must retain Line geometry");
+            };
+            piece
+        })
+        .collect::<Vec<_>>();
     assert_eq!(pieces.len(), 1);
     assert_eq!(pieces[0].rect(), Rect::new(94.0, 84.0, 12.0, 12.0));
     assert_eq!(pieces[0].advance_edges(), (84.0, 96.0));

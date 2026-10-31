@@ -45,8 +45,8 @@ struct Cut {
 pub(crate) struct IncidenceIndex {
     cuts: Vec<Cut>,
     canonical: Arc<CanonicalFlow>,
-    paragraph_index: usize,
-    paragraph: (usize, usize),
+    domain: usize,
+    edges: Vec<usize>,
     represented: bool,
 }
 
@@ -54,6 +54,7 @@ pub(crate) struct IncidenceIndex {
 impl IncidenceIndex {
     pub(super) fn payload(&self, census: &mut super::IndexPayloadCensus) {
         census.buffer(&self.cuts);
+        census.buffer(&self.edges);
         self.canonical.payload(census);
     }
 }
@@ -97,7 +98,12 @@ impl IncidenceIndex {
                         ComponentOwner::Original(row) => support.extend(
                             core.transform.pieces[core.transform.rows[row].pieces.clone()]
                                 .iter()
-                                .map(|piece| topology.origin_orders[piece.origin]),
+                                .map(|piece| {
+                                    piece
+                                        .origin
+                                        .captured_event()
+                                        .expect("captured transform origin retains its event")
+                                }),
                         ),
                         ComponentOwner::Wbr(control) => {
                             support.push(topology.control_orders[control])
@@ -117,39 +123,74 @@ impl IncidenceIndex {
                         represented = false;
                     }
                 }
-                RelationEvent::Removal { row } => {
+                RelationEvent::Removal { row, .. } => {
                     support.extend(
                         core.transform.pieces[core.transform.rows[row].pieces.clone()]
                             .iter()
-                            .map(|piece| topology.origin_orders[piece.origin]),
+                            .map(|piece| {
+                                piece
+                                    .origin
+                                    .captured_event()
+                                    .expect("captured transform removal retains its event")
+                            }),
                     );
                     if support.is_empty() {
                         represented = false;
                     }
                 }
+                RelationEvent::GeneratedSuppression { component, .. } => match core
+                    .transform
+                    .components[component]
+                    .owner
+                {
+                    ComponentOwner::Original(row) => {
+                        support.extend(core.transform.original_pieces(row).iter().map(|piece| {
+                            piece
+                                .origin
+                                .captured_event()
+                                .expect("actual source occurrence")
+                        }));
+                    }
+                    ComponentOwner::Wbr(control) => support.push(topology.control_orders[control]),
+                    ComponentOwner::Virtual(index) => points.push((
+                        event_index,
+                        rank(core.transform.virtuals[index].capture_cut),
+                        false,
+                    )),
+                },
                 RelationEvent::PhaseIDeleted { source, .. } => {
                     support.extend(
                         core.paragraph
                             .origin_intersections(&core.processed, source)
                             .filter(|piece| !piece.aggregate.is_empty())
-                            .map(|piece| topology.origin_orders[piece.origin]),
+                            .map(|piece| {
+                                core.paragraph
+                                    .captured_origin_event(piece.origin)
+                                    .expect("captured deletion retains its original occurrence")
+                            }),
                     );
                     if support.is_empty() {
                         represented = false;
                     }
                 }
                 RelationEvent::Anchor { order } => match core.paragraph.anchor_order[order].item {
-                    SemanticAnchorItem::EmptyOrigin(origin) => {
-                        support.push(topology.origin_orders[origin])
-                    }
+                    SemanticAnchorItem::EmptyOrigin(origin) => support.push(
+                        core.paragraph
+                            .captured_origin_event(origin)
+                            .expect("captured empty origin retains its event"),
+                    ),
                     SemanticAnchorItem::Atomic(atomic) => {
                         support.push(capture.atomic_orders[atomic])
                     }
-                    SemanticAnchorItem::ComputedLineBoundary(index) => points.push((
-                        event_index,
-                        rank(core.paragraph.computed_boundaries[index].capture_cut),
-                        true,
-                    )),
+                    SemanticAnchorItem::ComputedLineBoundary(index) => {
+                        for &cause in &core.paragraph.computed_boundaries[index].causes {
+                            points.push((
+                                event_index,
+                                rank(capture.computed[cause].capture_cut),
+                                true,
+                            ));
+                        }
+                    }
                     SemanticAnchorItem::Control(control) => {
                         let original = topology.control_orders[control];
                         let alias = match capture.events[original].event {
@@ -246,21 +287,63 @@ impl IncidenceIndex {
                 valid,
             });
         }
-        let paragraph = capture.paragraphs[topology.paragraph];
+        let mut edges = Vec::new();
+        for ordinal in 0..topology.owner.len() {
+            let raw = topology.owner.member(ordinal).index;
+            let member_edges = flow.edges(raw);
+            edges
+                .try_reserve(member_edges.len())
+                .map_err(|_| ScopeIndexCapacity)?;
+            edges.extend_from_slice(member_edges);
+        }
+        edges.sort_unstable();
+        edges.dedup();
         Ok(Self {
             cuts,
             canonical: Arc::clone(&flow),
-            paragraph_index: topology.paragraph,
-            paragraph: (rank(paragraph.enter + 1), rank(paragraph.exit)),
+            domain: topology.domain,
+            edges,
             represented,
         })
     }
 
-    pub(crate) fn placements(&self, cut: usize) -> Option<Vec<Placement>> {
+    /// The issued section restricts real canonical placements, including when
+    /// several sections share one prepared participant cut. No byte offset or
+    /// guessed paragraph label can establish this association.
+    pub(crate) fn placements_in(
+        &self,
+        cut: usize,
+        section: &crate::engine::analysis::structural::Section,
+    ) -> Option<Vec<Placement>> {
+        let (Some(entry), Some(exit), Some(span)) = (section.entry, section.exit, section.span)
+        else {
+            return None;
+        };
+        self.placements_within(
+            cut,
+            (
+                self.canonical.rank(self.domain, span.entry),
+                self.canonical.rank(self.domain, span.exit),
+            ),
+            (
+                self.canonical.rank(self.domain, entry),
+                self.canonical.rank(self.domain, exit),
+            ),
+        )
+    }
+
+    fn placements_within(
+        &self,
+        cut: usize,
+        structural: (usize, usize),
+        bounds: (usize, usize),
+    ) -> Option<Vec<Placement>> {
         if !self.represented {
             return None;
         }
-        let state = *self.cuts.get(cut)?;
+        let mut state = *self.cuts.get(cut)?;
+        state.lower = state.lower.max(Point(structural.0, false));
+        state.upper = state.upper.min(Point(structural.1, false));
         if !state.valid || state.lower > state.upper {
             return None;
         }
@@ -272,7 +355,7 @@ impl IncidenceIndex {
         if let Some(pin) = state.pin {
             return fits(Point(pin, false)).then(|| vec![Placement::Cut(pin)]);
         }
-        let edges = self.canonical.edges(self.paragraph_index);
+        let edges = &self.edges;
         let start = edges.partition_point(|&edge| Point(edge, false) < state.lower);
         let end = edges.partition_point(|&edge| Point(edge, false) <= state.upper);
         if start < end {
@@ -284,8 +367,8 @@ impl IncidenceIndex {
                     .collect(),
             );
         }
-        let ordinary = state.lower.max(Point(self.paragraph.0, false));
-        (ordinary <= state.upper.min(Point(self.paragraph.1, false)))
+        let ordinary = state.lower.max(Point(bounds.0, false));
+        (ordinary <= state.upper.min(Point(bounds.1, false)))
             .then(|| vec![Placement::Cut(ordinary.0)])
     }
 

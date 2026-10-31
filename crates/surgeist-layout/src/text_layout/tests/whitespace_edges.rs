@@ -25,12 +25,41 @@ fn run_in_band<S: LayoutScalar>(
         S::from_f64(if narrow_before_twenty { 40.0 } else { 20.0 }),
         S::from_f64(10.0),
     );
+    let tree = paragraph.flat_text_tree::<S>(
+        0,
+        NodeInputOf {
+            display: Display::Block,
+            writing_mode: WritingMode::HorizontalTb,
+            direction: Direction::Ltr,
+            line_box_direction_policy: crate::LineBoxDirectionPolicy::Normal,
+            ..NodeInputOf::default()
+        },
+    );
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+        Vec::new(),
+    )
+    .unwrap();
+    let [row] = flow.associations.runs() else {
+        panic!("flat intrinsic fixture has one actual admitted native run");
+    };
+    let admitted = flow.associations.admitted_run(&flow.paragraphs, row);
+    let binding = admitted.binding;
     super::super::run::layout(
-        &binding,
-        &Default::default(),
+        &admitted,
+        &flow.associations,
         &[],
         &[],
         super::super::run::Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                flow.scope_alignments.clone(),
+            ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
                 &binding.prepared,

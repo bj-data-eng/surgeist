@@ -199,7 +199,7 @@ fn atomic<S: l::LayoutScalar>(
         display: l::Display::InlineBlock,
         writing_mode: mode,
         direction,
-        vertical_align: l::VerticalAlign::Baseline,
+        vertical_align: l::VerticalAlignOf::Baseline,
         inline_baseline_context: l::InlineBaselineContext::Physical,
         atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
             t::BidiLevel::try_new(u8::from(direction == l::Direction::Rtl)).unwrap(),
@@ -727,7 +727,7 @@ fn authority_refusals<S: l::LayoutScalar>() {
             );
         }
     }
-    for alignment in [l::VerticalAlign::Top, l::VerticalAlign::Bottom] {
+    for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
         for has_tail in [false, true] {
             let control = l::LineBreakInputOf::new()
                 .with_metrics(
@@ -1124,6 +1124,8 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -1140,6 +1142,9 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style.clone(),
@@ -1214,6 +1219,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
             0,
             vec![binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         l::compute_layout_with_flow(&flow, 0, request(l::WritingMode::HorizontalTb)).unwrap()
@@ -1251,6 +1257,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
             0,
             vec![binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         missing(l::compute_layout_with_flow_invalidated(
@@ -1565,7 +1572,7 @@ fn source_unknown_selection<S: l::LayoutScalar>() {
                                 )
                                 .unwrap(),
                             )
-                            .with_vertical_align(l::VerticalAlign::Top),
+                            .with_vertical_align(l::VerticalAlignOf::Top),
                     ),
                 );
             };
@@ -2262,6 +2269,8 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source,
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -2281,6 +2290,9 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -2392,6 +2404,7 @@ fn packet_text_float<S: l::LayoutScalar>() {
             0,
             vec![binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         l::compute_layout_with_flow_invalidated(&flow, 0, request(mode), changed)

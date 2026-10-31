@@ -217,8 +217,14 @@ fn solve<S: l::LayoutScalar>(
     space: l::Size<l::AvailableOf<S>>,
     dirty: &[u32],
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings.to_vec(), l::WrappingInput::default())
-        .unwrap();
+    let flow = l::LayoutFlowInput::try_new(
+        host,
+        0,
+        bindings.to_vec(),
+        l::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
@@ -649,6 +655,7 @@ fn publication<S: l::LayoutScalar>() {
             0,
             scene.bindings.clone(),
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .err()
         .expect("replacing a source occurrence cannot reuse its old paragraph binding");

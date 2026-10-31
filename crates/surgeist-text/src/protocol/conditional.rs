@@ -62,7 +62,7 @@ struct DispositionIdentity {
     alternative: Option<usize>,
     portion: Option<super::PreparedWordPortion>,
     line_limit: Option<usize>,
-    policy_context: Vec<u64>,
+    policy_context: PolicyContext,
     controls: Vec<(usize, bool)>,
     atomics: Vec<(usize, bool)>,
 }
@@ -84,6 +84,7 @@ impl ConditionalDisposition {
 #[derive(Clone, Debug)]
 pub struct PreparedConditionalOpportunity {
     prepared: PreparedText,
+    segment: super::PreparedSourceSegment,
     start: usize,
     incoming: Option<super::HyphenationContinuation>,
     ceiling: usize,
@@ -101,6 +102,7 @@ pub struct PreparedConditionalOpportunity {
 impl PartialEq for PreparedConditionalOpportunity {
     fn eq(&self, other: &Self) -> bool {
         self.prepared == other.prepared
+            && self.segment == other.segment
             && self.start == other.start
             && self.incoming == other.incoming
             && self.ceiling == other.ceiling
@@ -118,6 +120,7 @@ impl Eq for PreparedConditionalOpportunity {}
 impl Hash for PreparedConditionalOpportunity {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.prepared.hash(state);
+        self.segment.hash(state);
         self.start.hash(state);
         self.incoming.hash(state);
         self.ceiling.hash(state);
@@ -133,6 +136,9 @@ impl Hash for PreparedConditionalOpportunity {
 }
 
 impl PreparedConditionalOpportunity {
+    pub fn source_segment(&self) -> super::PreparedSourceSegment {
+        self.segment.clone()
+    }
     #[must_use]
     pub fn prepared_text(&self) -> PreparedText {
         self.prepared.clone()
@@ -181,6 +187,12 @@ impl PreparedConditionalOpportunity {
             return Err(protocol_error(ProtocolError::ForeignPreparation {
                 kind: ProtocolHandleKind::ConditionalOpportunity,
                 occurrence: self.end,
+            }));
+        }
+        if self.segment != request.segment {
+            return Err(protocol_error(ProtocolError::MismatchedSourceSegment {
+                expected: request.segment.index,
+                actual: self.segment.index,
             }));
         }
         let invalid = || {
@@ -290,15 +302,23 @@ impl PreparedText {
     /// interval and disposition validation still applies.
     fn arbitrary_opportunities(
         &self,
+        segment: &super::PreparedSourceSegment,
         start: &PreparedBoundary,
         incoming: Option<&super::HyphenationContinuation>,
         ceiling: &PreparedOpportunity,
         purpose: ConditionalPurpose,
         skipped_ordinary: &[ConditionalDisposition],
     ) -> crate::Result<Vec<PreparedConditionalOpportunity>> {
-        super::continuation::validate(self, start, incoming)?;
-        let (frontier, identities) =
-            validate_query(self, start, incoming, ceiling, purpose, skipped_ordinary)?;
+        super::continuation::validate(self, segment, start, incoming)?;
+        let (frontier, identities) = validate_query(
+            self,
+            segment,
+            start,
+            incoming,
+            ceiling,
+            purpose,
+            skipped_ordinary,
+        )?;
         let tables = &self.inner.tables;
         let end = tables.opportunities[ceiling.index].boundary;
         let boundaries = super::prepared::conditional_boundaries(
@@ -315,6 +335,7 @@ impl PreparedText {
             .filter(|end| *end > frontier)
             .map(|end| PreparedConditionalOpportunity {
                 prepared: self.clone(),
+                segment: segment.clone(),
                 start: start.index,
                 incoming: incoming.cloned(),
                 ceiling: ceiling.index,
@@ -334,12 +355,15 @@ impl PreparedText {
 
 fn validate_query(
     prepared: &PreparedText,
+    segment: &super::PreparedSourceSegment,
     start: &PreparedBoundary,
     incoming: Option<&super::HyphenationContinuation>,
     ceiling: &PreparedOpportunity,
     purpose: ConditionalPurpose,
     skipped_ordinary: &[ConditionalDisposition],
 ) -> crate::Result<(usize, Vec<DispositionIdentity>)> {
+    super::segments::admit_opportunity(prepared, segment, ceiling)?;
+    super::segments::admit_boundaries(prepared, segment, start, &ceiling.view().boundary())?;
     for (owner, kind, occurrence) in [
         (&start.prepared, ProtocolHandleKind::Boundary, start.index),
         (
@@ -372,6 +396,7 @@ fn validate_query(
     }
     validate_frontier(
         prepared,
+        segment,
         start,
         incoming,
         ceiling,
@@ -382,6 +407,7 @@ fn validate_query(
 
 fn validate_frontier(
     prepared: &PreparedText,
+    segment: &super::PreparedSourceSegment,
     start: &PreparedBoundary,
     incoming: Option<&super::HyphenationContinuation>,
     ceiling: &PreparedOpportunity,
@@ -436,7 +462,7 @@ fn validate_frontier(
                 alternative: variant,
                 portion: None,
                 line_limit: None,
-                policy_context: Vec::new(),
+                policy_context: PolicyContext::default(),
                 controls: Vec::new(),
                 atomics: Vec::new(),
             };
@@ -448,6 +474,12 @@ fn validate_frontier(
                 }
                 let selected = receipt.selected_line();
                 let request = selected.request();
+                if request.segment != *segment {
+                    return Err(protocol_error(ProtocolError::MismatchedSourceSegment {
+                        expected: segment.index,
+                        actual: request.segment.index,
+                    }));
+                }
                 if request.context.available_inline.is_some()
                     != (purpose == ConditionalPurpose::Overflow)
                 {
@@ -604,6 +636,17 @@ fn role(value: Option<bool>) -> u64 {
 fn number(values: &mut Vec<u64>, value: f64) {
     values.push(if value == 0.0 { 0 } else { value.to_bits() });
 }
+fn allocation_alignment(values: &mut Vec<u64>, alignment: super::LineBoxAlignment) {
+    match alignment {
+        super::LineBoxAlignment::Baseline => values.push(0),
+        super::LineBoxAlignment::Top => values.push(1),
+        super::LineBoxAlignment::Bottom => values.push(2),
+        super::LineBoxAlignment::Shift(shift) => {
+            values.push(3);
+            number(values, shift.get());
+        }
+    }
+}
 pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u64> {
     let context = request.context;
     let mut values = vec![
@@ -644,7 +687,8 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
                 box_geometry,
                 alignment,
             } => {
-                values.extend([1, alignment as u64]);
+                values.push(1);
+                allocation_alignment(&mut values, alignment);
                 for value in [
                     flow.advance,
                     flow.before_baseline,
@@ -675,7 +719,7 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
         }
         values.push(u64::from(allocation.strut.is_some()));
         if let Some(strut) = allocation.strut {
-            values.push(strut.alignment as u64);
+            allocation_alignment(&mut values, strut.alignment);
             number(&mut values, strut.baseline);
             number(&mut values, strut.line_extent);
         }
@@ -687,7 +731,7 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
     }
     values.push(request.line_box_struts.len() as u64);
     for allocation in request.line_box_struts {
-        values.push(allocation.alignment as u64);
+        allocation_alignment(&mut values, allocation.alignment);
         number(&mut values, allocation.metrics.baseline);
         number(&mut values, allocation.metrics.line_extent);
     }
@@ -698,14 +742,139 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
     }
     values
 }
-fn policy_context(line: &FinalizedLine) -> Vec<u64> {
+/// The native numeric proof remains unchanged. New scope identity borrows the
+/// actual completed immutable owner, rather than copying a shadow transcript.
+/// Completed frames precede each search/request: Prepared has no reverse cache.
+#[derive(Clone, Debug, Default)]
+struct PolicyContext {
+    native: Vec<u64>,
+    source_segment: Option<super::PreparedSourceSegment>,
+    scope_frame: Option<FinalizedLine>,
+}
+impl PolicyContext {
+    fn scopes(&self) -> &[crate::ScopeFrameAllocation] {
+        self.scope_frame
+            .as_ref()
+            .map_or(&[], |frame| frame.scope_allocations())
+    }
+}
+impl PartialEq for PolicyContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.native == other.native
+            && self.source_segment == other.source_segment
+            && self.scopes() == other.scopes()
+    }
+}
+impl Eq for PolicyContext {}
+impl Hash for PolicyContext {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.native.hash(state);
+        self.source_segment.hash(state);
+        self.scopes().len().hash(state);
+        for row in self.scopes() {
+            row.scope.hash(state);
+            for value in [row.displacement.get(), row.cumulative_displacement.get()] {
+                (if value == 0.0 { 0 } else { value.to_bits() }).hash(state);
+            }
+        }
+    }
+}
+fn policy_context(line: &FinalizedLine) -> PolicyContext {
     let selected = line.selected_line();
     let mut values = request_context(selected.request().into());
     number(&mut values, line.feedback().advance);
     for &amount in &line.inner.data.spacing_amounts {
         number(&mut values, amount);
     }
-    values
+    PolicyContext {
+        native: values,
+        source_segment: Some(selected.request().segment.clone()),
+        scope_frame: (!line.scope_allocations().is_empty()).then(|| line.clone()),
+    }
+}
+
+/// Bounded owner inspection, not an execution or source-membership transcript.
+pub(crate) enum ScopeProofVisit<'a> {
+    Work(usize),
+    Frame(&'a FinalizedLine),
+}
+fn visit_scope_policy<'a>(
+    context: &'a PolicyContext,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    emit(ScopeProofVisit::Work(1))?;
+    if let Some(frame) = &context.scope_frame {
+        emit(ScopeProofVisit::Frame(frame))?;
+    }
+    Ok(())
+}
+fn visit_scope_dispositions<'a>(
+    rows: &'a [DispositionIdentity],
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    emit(ScopeProofVisit::Work(rows.len()))?;
+    for row in rows {
+        visit_scope_policy(&row.policy_context, emit)?;
+    }
+    Ok(())
+}
+fn visit_scope_receipts<'a>(
+    rows: &'a [ConditionalDisposition],
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    emit(ScopeProofVisit::Work(rows.len()))?;
+    for row in rows {
+        if let Some(frame) = row.receipt() {
+            emit(ScopeProofVisit::Frame(frame))?;
+        }
+    }
+    Ok(())
+}
+fn visit_scope_search_identity<'a>(
+    search: &'a SearchIdentity,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    visit_scope_policy(&search.frame, emit)?;
+    visit_scope_dispositions(&search.ordinary, emit)
+}
+fn visit_scope_search<'a>(
+    search: &'a PreparedConditionalSearch,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    visit_scope_search_identity(&search.identity, emit)?;
+    visit_scope_receipts(&search.skipped, emit)
+}
+pub(crate) fn visit_termination_scope_frames<'a>(
+    termination: &'a super::PreparedTermination,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    emit(ScopeProofVisit::Work(1))?;
+    match termination {
+        super::PreparedTermination::Conditional(opportunity) => {
+            visit_scope_receipts(&opportunity.skipped, emit)?;
+            visit_scope_dispositions(&opportunity.identities, emit)?;
+            if let Some(search) = &opportunity.search {
+                visit_scope_search_identity(search, emit)?;
+            }
+            emit(ScopeProofVisit::Work(opportunity.decisions.len()))?;
+            for decision in &opportunity.decisions {
+                visit_scope_policy(&decision.context, emit)?;
+                visit_scope_search(&decision.portion.query, emit)?;
+            }
+            visit_scope_dispositions(&opportunity.history, emit)?;
+        }
+        super::PreparedTermination::PhraseMeasurement(portion) => {
+            visit_scope_search(&portion.query, emit)?
+        }
+        super::PreparedTermination::Ordinary(_) | super::PreparedTermination::Measurement(_) => {}
+    }
+    Ok(())
+}
+pub(crate) fn visit_request_scope_frames<'a>(
+    request: &'a LineSelectionRequest,
+    emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
+) -> crate::Result<()> {
+    visit_termination_scope_frames(&request.termination, emit)
 }
 
 /// Ordered finite relaxation tiers; intrinsic queries use only Arbitrary.
@@ -727,17 +896,18 @@ pub enum PhraseOverflowDecision {
 struct PhraseDecisionIdentity {
     portion: super::PreparedPhrasePortion,
     overflows: bool,
-    context: Vec<u64>,
+    context: PolicyContext,
 }
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(super) struct SearchIdentity {
     prepared: PreparedText,
+    segment: super::PreparedSourceSegment,
     start: usize,
     incoming: Option<super::HyphenationContinuation>,
     ceiling: usize,
     purpose: ConditionalPurpose,
     ordinary: Vec<DispositionIdentity>,
-    frame: Vec<u64>,
+    frame: PolicyContext,
     selection_context: Vec<u64>,
     auto_phrase: bool,
 }
@@ -789,10 +959,10 @@ impl Hash for PreparedConditionalBatch {
         self.opportunities.hash(state);
     }
 }
-impl PreparedText {
+impl super::PreparedSourceSegment {
     /// Captures one ordinary interval and its complete earlier variant dispositions.
     /// Finite AutoPhrase searches require an actual failed ordinary `frame` from
-    /// this preparation/start/incoming. Consumers own fit and frame freshness;
+    /// this segment's preparation/start/incoming. Consumers own fit and frame freshness;
     /// Text retains its visible context and authenticates all issued capabilities.
     /// Min-content requires no finite frame and independently issues only the
     /// arbitrary opportunities permitted by overflow-wrap:anywhere.
@@ -805,11 +975,12 @@ impl PreparedText {
         skipped: &[ConditionalDisposition],
         frame: Option<&FinalizedLine>,
     ) -> crate::Result<PreparedConditionalSearch> {
+        let prepared = self.prepared_text();
         let (frontier, ordinary) =
-            validate_query(self, start, incoming, ceiling, purpose, skipped)?;
-        let auto_phrase = self.inner.tables.auto_phrase_between(
+            validate_query(&prepared, self, start, incoming, ceiling, purpose, skipped)?;
+        let auto_phrase = self.prepared.tables.auto_phrase_between(
             start.index,
-            self.inner.tables.opportunities[ceiling.index].boundary,
+            self.prepared.tables.opportunities[ceiling.index].boundary,
         );
         if purpose == ConditionalPurpose::Overflow && auto_phrase && frame.is_none() {
             return Err(protocol_error(ProtocolError::InvalidConditionalStage));
@@ -818,7 +989,8 @@ impl PreparedText {
         let context = if let Some(frame) = frame {
             let selected = frame.selected_line();
             let request = selected.request();
-            if frame.prepared_text() != *self
+            if frame.prepared_text() != prepared
+                || request.segment != *self
                 || request.start != *start
                 || request.incoming.as_ref() != incoming
                 || request.context.available_inline.is_none()
@@ -830,11 +1002,12 @@ impl PreparedText {
             selection = selection_context(&request.context);
             policy_context(frame)
         } else {
-            Vec::new()
+            PolicyContext::default()
         };
         Ok(PreparedConditionalSearch {
             identity: SearchIdentity {
-                prepared: self.clone(),
+                prepared,
+                segment: self.clone(),
                 start: start.index,
                 incoming: incoming.cloned(),
                 ceiling: ceiling.index,
@@ -850,13 +1023,18 @@ impl PreparedText {
     }
 }
 impl PreparedConditionalSearch {
+    pub fn source_segment(&self) -> super::PreparedSourceSegment {
+        self.identity.segment.clone()
+    }
     pub(super) fn matches_flow_query(
         &self,
         prepared: &PreparedText,
+        segment: &super::PreparedSourceSegment,
         start: usize,
         incoming: Option<&super::HyphenationContinuation>,
     ) -> bool {
         self.identity.prepared == *prepared
+            && self.identity.segment == *segment
             && self.identity.start == start
             && self.identity.incoming.as_ref() == incoming
     }
@@ -1014,6 +1192,7 @@ impl PreparedConditionalSearch {
                 candidates.extend(
                     prepared
                         .arbitrary_opportunities(
+                            &self.identity.segment,
                             &start,
                             self.identity.incoming.as_ref(),
                             &ceiling,
@@ -1038,6 +1217,7 @@ impl PreparedConditionalSearch {
             .into_iter()
             .map(|(end, alternative)| PreparedConditionalOpportunity {
                 prepared: prepared.clone(),
+                segment: self.identity.segment.clone(),
                 start: self.identity.start,
                 incoming: self.identity.incoming.clone(),
                 ceiling: self.identity.ceiling,
@@ -1090,7 +1270,7 @@ impl PreparedConditionalBatch {
                 alternative: candidate.alternative,
                 portion: None,
                 line_limit: None,
-                policy_context: Vec::new(),
+                policy_context: PolicyContext::default(),
                 controls: Vec::new(),
                 atomics: Vec::new(),
             };

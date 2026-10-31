@@ -107,7 +107,10 @@ fn line(
     prepared
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn whole(prepared: &PreparedText, direction: ParagraphBaseDirection) -> FinalizedLine {

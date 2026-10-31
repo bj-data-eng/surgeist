@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 pub(crate) mod contextual;
-mod lexical;
+pub(crate) mod lexical;
+pub(crate) mod lexical_inventory;
 pub use contextual::*;
 
 use crate::{
@@ -128,6 +129,7 @@ pub struct ProcessedSource {
     plaintext_tokens: Vec<PlaintextToken>,
     /// Actual preserved U+0020 output, in Phase-I coordinates.
     preserved_spaces: Vec<Range>,
+    pub(crate) lexical: lexical_inventory::LexicalState,
 }
 
 /// Executes the selected source-local whitespace mode.
@@ -250,15 +252,19 @@ fn process_with_boundaries(
         decode_boundaries.sort_unstable();
         decode_boundaries.dedup();
     }
-    let (units, map, tokens) =
-        lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
-            source: &source,
-            breaks: &segment_breaks,
-            modes: &modes,
-            box_order: &box_order,
-            barriers,
-            decode_boundaries: &decode_boundaries,
-        })?;
+    let lexical_inventory::LexicalOutput {
+        units,
+        map,
+        plaintext_tokens: tokens,
+        lexical,
+    } = lexical::execute(lexical::ValidatedProcessingRequest::SourceLocal {
+        source: &source,
+        breaks: &segment_breaks,
+        modes: &modes,
+        box_order: &box_order,
+        barriers,
+        decode_boundaries: &decode_boundaries,
+    })?;
     let preserved_spaces = preserved_spaces(&units, &tokens)?;
     Ok(ProcessedSource {
         source,
@@ -270,6 +276,7 @@ fn process_with_boundaries(
         paragraphs: Vec::new(),
         plaintext_tokens: Vec::new(),
         preserved_spaces,
+        lexical,
     })
 }
 
@@ -305,6 +312,7 @@ pub(crate) fn identity(source: Source, base_style: Style) -> Result<ProcessedSou
         paragraphs: Vec::new(),
         plaintext_tokens: Vec::new(),
         preserved_spaces,
+        lexical: lexical_inventory::LexicalState::Untransformed,
     })
 }
 
@@ -545,17 +553,44 @@ impl ProcessedSource {
     }
 
     pub(crate) fn project(&self, at: usize, affinity: Affinity) -> usize {
-        let next = self.map.partition_point(|piece| piece.source.end <= at);
-        self.map.get(next).map_or(self.processed.len(), |piece| {
-            piece.processed
-                + match piece.kind {
-                    MappingKind::Copy => at - piece.source.start,
-                    MappingKind::Delete(_) => 0,
-                    MappingKind::Replace => {
-                        usize::from(at > piece.source.start && affinity == Affinity::After)
-                    }
+        match self.project_with(at, affinity, || Ok::<(), std::convert::Infallible>(())) {
+            Ok(projected) => projected,
+            Err(never) => match never {},
+        }
+    }
+
+    /// Inspect before each actual binary-search row probe and before reading the
+    /// chosen projection row. A terminal result has no additional row inspection.
+    pub(crate) fn project_with<E>(
+        &self,
+        at: usize,
+        affinity: Affinity,
+        mut inspect: impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<usize, E> {
+        let mut start = 0;
+        let mut end = self.map.len();
+        while start < end {
+            let middle = start + (end - start) / 2;
+            inspect()?;
+            if self.map[middle].source.end <= at {
+                start = middle + 1;
+            } else {
+                end = middle;
+            }
+        }
+        if start == self.map.len() {
+            return Ok(self.processed.len());
+        }
+        inspect()?;
+        let piece = &self.map[start];
+        Ok(piece.processed
+            + match piece.kind {
+                MappingKind::Copy => at - piece.source.start,
+                MappingKind::Delete(_) => 0,
+                MappingKind::Replace => {
+                    usize::from(at > piece.source.start && affinity == Affinity::After)
                 }
-        })
+            })
     }
     fn box_view<'a>(&'a self, ordinal: usize, original: &'a InlineBox) -> ProcessedInlineBox<'a> {
         ProcessedInlineBox {

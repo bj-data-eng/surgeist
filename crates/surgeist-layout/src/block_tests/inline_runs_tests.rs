@@ -231,6 +231,7 @@ fn prepared_fixed_metric_text_retains_actual_font_baseline_both_scalars() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(
@@ -549,6 +550,7 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(
@@ -1253,7 +1255,7 @@ fn block_line_break_metadata_positions_rtl_lines_and_preserves_two_line_extent()
             LineBreakInput::new()
                 .with_direction(Direction::Rtl)
                 .with_writing_mode(WritingMode::HorizontalTb)
-                .with_vertical_align(VerticalAlign::Top)
+                .with_vertical_align(VerticalAlignOf::Top)
                 .with_clear(Clear::Both)
                 .with_metrics(metrics),
         )

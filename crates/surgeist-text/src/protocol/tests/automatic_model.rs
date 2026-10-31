@@ -123,7 +123,10 @@ fn first(p: &PreparedText, cut: &PreparedHyphenationCut) -> FinalizedLine {
         .collect();
     p.select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn place_first(p: &PreparedText, line: FinalizedLine) -> crate::Layout {
@@ -353,7 +356,10 @@ fn measurement_portions_keep_indication_and_refuse_placement_and_foreign_owners(
         let line = p
             .select(value.clone())
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         values.push(line.feedback().advance);
         let error = crate::Layout::from_finalized_lines(PlacementRequest {
@@ -419,7 +425,10 @@ fn ordinary_trial(
     value.context.available_inline = width;
     p.select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 #[test]
@@ -463,6 +472,9 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         .map(crate::ConditionalDisposition::AutoFitExhausted)
         .collect::<Vec<_>>();
     let cuts = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -482,20 +494,23 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
     );
     assert_eq!(
         cuts,
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &receipts(20.0)
-                .into_iter()
-                .map(crate::ConditionalDisposition::AutoFitExhausted)
-                .collect::<Vec<_>>(),
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &receipts(20.0)
+                    .into_iter()
+                    .map(crate::ConditionalDisposition::AutoFitExhausted)
+                    .collect::<Vec<_>>(),
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .unwrap()
     );
     for bad in [
         vec![],
@@ -503,31 +518,37 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         vec![dispositions[0].clone(), dispositions[0].clone()],
     ] {
         assert!(
-            p.conditional_search(
+            p.source_segments()
+                .next()
+                .unwrap()
+                .conditional_search(
+                    &start,
+                    None,
+                    &ceiling,
+                    ConditionalPurpose::Overflow,
+                    &bad,
+                    None
+                )
+                .and_then(|search| search.begin(&[]))
+                .map(|batch| batch.opportunities().to_vec())
+                .is_err()
+        );
+    }
+    assert!(
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
                 &start,
                 None,
                 &ceiling,
-                ConditionalPurpose::Overflow,
-                &bad,
+                ConditionalPurpose::MinContent,
+                &dispositions,
                 None
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
             .is_err()
-        );
-    }
-    assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::MinContent,
-            &dispositions,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
     );
     let intrinsic = automatic
         .iter()
@@ -538,6 +559,9 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         })
         .collect::<Vec<_>>();
     let minimum = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -557,17 +581,20 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
         [1, 2, 3, 4, 5, 6, 7, 8]
     );
     assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &intrinsic,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &intrinsic,
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
     let foreign = prepare(input(Source::new("associate"), &[0, 9]));
     let wrong = ordinary_trial(
@@ -580,17 +607,20 @@ fn conditional_automatic_dispositions_preserve_variant_custody_and_semantic_iden
     let mut bad = dispositions.clone();
     bad[0] = crate::ConditionalDisposition::AutoFitExhausted(wrong);
     assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &bad,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &bad,
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
 }
 #[test]
@@ -617,7 +647,10 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
     let portion = p
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(portion.feedback().advance, 70.0);
     let automatic = p
@@ -636,44 +669,53 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
         portion: portion.clone(),
     }];
     assert!(
-        !p.conditional_search(
-            &part.start(),
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &dispositions,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .unwrap()
-        .is_empty()
+        !p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &part.start(),
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &dispositions,
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .unwrap()
+            .is_empty()
     );
     assert!(
-        p.conditional_search(
-            &part.start(),
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[crate::ConditionalDisposition::Phantom(portion.clone())],
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &part.start(),
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[crate::ConditionalDisposition::Phantom(portion.clone())],
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
     assert!(
-        p.conditional_search(
-            &part.start(),
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[crate::ConditionalDisposition::AutoFitExhausted(portion)],
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &part.start(),
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[crate::ConditionalDisposition::AutoFitExhausted(portion)],
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
     let manual = p
         .alternative_views()
@@ -689,17 +731,20 @@ fn automatic_manual_priority_requires_exact_admitted_portion_and_measurements_ne
         manual,
     )];
     assert!(
-        p.conditional_search(
-            &p.boundary_views().next().unwrap().handle(),
-            None,
-            &ceiling,
-            ConditionalPurpose::MinContent,
-            &impossible,
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &p.boundary_views().next().unwrap().handle(),
+                None,
+                &ceiling,
+                ConditionalPurpose::MinContent,
+                &impossible,
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
 }
 
@@ -723,6 +768,8 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -766,12 +813,18 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
             .collect(),
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: automatic_style(10.0),
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: automatic_style(10.0),
@@ -1015,7 +1068,10 @@ fn automatic_mixed_directional_occurrences_retain_actual_insertion_side() {
         let line = p
             .select(value)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let attachment = line.inner.selected.presentation.domains[0].attachment;
         let super::super::prepared::presentation::Attachment::Before { participant, atom } =
@@ -1293,6 +1349,9 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
         // An automatic disposition cannot discharge that endpoint's real None
         // variant, even when the exact automatic trial itself is supplied.
         let error = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -1308,6 +1367,9 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
             matches!(reason(&error), ProtocolError::InvalidConditionalReceipt { receipt: 0, opportunity } if *opportunity == offer.index)
         );
         let error = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -1338,6 +1400,9 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
                 crate::ConditionalDisposition::AutoIntrinsicRefinement(auto.clone())
             };
             let cuts = p
+                .source_segments()
+                .next()
+                .unwrap()
                 .conditional_search(
                     &start,
                     None,
@@ -1443,7 +1508,10 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
     let zero = dispositions(0);
     let finite = dispositions(1);
     let query = |purpose, rows: &[_]| {
-        p.conditional_search(&start, None, &ceiling, purpose, rows, None)
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(&start, None, &ceiling, purpose, rows, None)
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
     };
@@ -1501,7 +1569,10 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
     let line = p
         .select(request.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);
     request.context.available_inline = None;
@@ -1515,6 +1586,9 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
     };
     assert!(
         manual
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &manual.boundary_views().next().unwrap().handle(),
                 None,
@@ -1748,7 +1822,10 @@ fn ordinary_word_fallbacks_preserve_transparent_mixed_cut_family() {
         let line = p
             .select(value)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, 20.0);
         assert_eq!(
@@ -1847,7 +1924,10 @@ fn before_auto_uses_the_actual_lri_occurrence_in_an_rtl_paragraph() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, 60.0);
         let presentation = &line.inner.selected.presentation;

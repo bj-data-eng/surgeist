@@ -71,40 +71,46 @@ pub(super) struct Unit {
     pub(super) stop: bool,
 }
 
-pub(super) fn units(selected: &SelectedData) -> Vec<Unit> {
-    selected
-        .presentation
-        .analysis
-        .graphemes
-        .iter()
-        .filter_map(|range| {
-            let atoms = &selected.presentation.projection.atoms[range.clone()];
-            let props = properties(atoms)?;
-            let literal_quote = matches!(props.literal(), Some(0x22 | 0x27));
-            Some(Unit {
-                atoms: range.clone(),
-                presentation: PresentationRange {
-                    start: atoms.first()?.presentation.start,
-                    end: atoms.last()?.presentation.end,
-                },
-                style: selected.presentation.analysis.infos[range.start + props.base].1,
-                first: matches!(
-                    props.category,
-                    Category::OpenPunctuation
-                        | Category::FinalPunctuation
-                        | Category::InitialPunctuation
-                ) || literal_quote
-                    || props.literal() == Some(0x3000),
-                last: matches!(
-                    props.category,
-                    Category::ClosePunctuation
-                        | Category::FinalPunctuation
-                        | Category::InitialPunctuation
-                ) || literal_quote,
-                stop: props.literal().is_some_and(stop),
-            })
-        })
-        .collect()
+pub(super) fn units(
+    selected: &SelectedData,
+    ledger: &mut super::Ledger,
+) -> crate::Result<Vec<Unit>> {
+    super::account::work(ledger, selected.presentation.analysis.graphemes.len())?;
+    super::account::collect(
+        ledger,
+        selected
+            .presentation
+            .analysis
+            .graphemes
+            .iter()
+            .filter_map(|range| {
+                let atoms = &selected.presentation.projection.atoms[range.clone()];
+                let props = properties(atoms)?;
+                let literal_quote = matches!(props.literal(), Some(0x22 | 0x27));
+                Some(Unit {
+                    atoms: range.clone(),
+                    presentation: PresentationRange {
+                        start: atoms.first()?.presentation.start,
+                        end: atoms.last()?.presentation.end,
+                    },
+                    style: selected.presentation.analysis.infos[range.start + props.base].1,
+                    first: matches!(
+                        props.category,
+                        Category::OpenPunctuation
+                            | Category::FinalPunctuation
+                            | Category::InitialPunctuation
+                    ) || literal_quote
+                        || props.literal() == Some(0x3000),
+                    last: matches!(
+                        props.category,
+                        Category::ClosePunctuation
+                            | Category::FinalPunctuation
+                            | Category::InitialPunctuation
+                    ) || literal_quote,
+                    stop: props.literal().is_some_and(stop),
+                })
+            }),
+    )
 }
 
 fn stop(cp: u32) -> bool {

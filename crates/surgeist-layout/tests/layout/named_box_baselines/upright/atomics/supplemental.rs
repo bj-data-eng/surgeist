@@ -117,6 +117,7 @@ fn run<S: l::LayoutScalar>(
         0,
         scene.bindings.clone(),
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .expect("real tree membership and all issued bindings must validate before behavior");
     l::compute_layout_with_flow_invalidated(
@@ -329,7 +330,7 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
         } else {
             2.0
         };
-        for alignment in [l::VerticalAlign::Top, l::VerticalAlign::Bottom] {
+        for alignment in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
             let mut input = child_input::<S>();
             input.vertical_align = alignment;
             let scene = make_scene::<S>(&parent, mode, (40.0, 22.0), input, Some(&child));
@@ -339,7 +340,7 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
                 &scene.bindings[0],
                 t::Rect::new(
                     first
-                        + if alignment == l::VerticalAlign::Top {
+                        + if alignment == l::VerticalAlignOf::Top {
                             2.0
                         } else {
                             -2.0
@@ -366,7 +367,7 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
             };
             assert_eq!(
                 actual,
-                if alignment == l::VerticalAlign::Top {
+                if alignment == l::VerticalAlignOf::Top {
                     t::LineBoxAlignment::Top
                 } else {
                     t::LineBoxAlignment::Bottom

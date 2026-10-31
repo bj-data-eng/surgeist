@@ -57,7 +57,7 @@ impl<S: l::LayoutScalar> AtomicTree<S> {
             inputs.push(l::LayoutInputOf::box_input(l::NodeInputOf {
                 display: l::Display::InlineBlock,
                 direction,
-                vertical_align: l::VerticalAlign::Baseline,
+                vertical_align: l::VerticalAlignOf::Baseline,
                 atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
                     BidiLevel::try_new(level).unwrap(),
                     l::InlineBreakOpportunity::Allowed,

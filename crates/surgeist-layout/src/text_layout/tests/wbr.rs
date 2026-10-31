@@ -93,6 +93,7 @@ fn rejects<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("invalid actual wbr binding must refuse");
     };
@@ -115,6 +116,7 @@ fn generated_inventory<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         assert!(binding.origins.is_empty());
@@ -189,6 +191,7 @@ fn shared_order<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let reversed = tree::<S>(&p, &[1, 3, 2, 4]);

@@ -114,6 +114,8 @@ fn capture(
     }
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -149,6 +151,9 @@ fn capture(
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -192,8 +197,12 @@ fn capture(
         )
         .expect("the actual Text producer must succeed before any Layout geometry assertion");
     assert_eq!(
-        prepared.captured_paragraph(),
-        processed.captured_paragraph(0)
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![processed.captured_paragraph(0).unwrap()]
     );
     assert_eq!(prepared.analyzed_source().identity(), analysis.identity());
     assert_eq!(prepared.orientation(), orientation);
@@ -243,6 +252,7 @@ fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
         .unwrap()
         .handle();
     p.select(t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
         termination: t::PreparedTermination::Ordinary(end),
@@ -259,7 +269,7 @@ fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
             formatted_line: t::FormattedLineContext::default(),
             base_direction: t::ParagraphBaseDirection::LeftToRight,
             line_box_direction: t::LineBoxDirection::LeftToRight,
-            orientation: t::LineOrientation::Sideways,
+            orientation: t::LineOrientation::SidewaysClockwise,
             start: t::LineStart::Paragraph,
             end: t::LineEnd::Paragraph,
             available_inline: Some(40.0),
@@ -270,7 +280,10 @@ fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
         },
     })
     .unwrap()
-    .finalize(t::SpacingAllocations::None)
+    .finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
     .unwrap()
 }
 
@@ -286,7 +299,7 @@ fn explicit(
         entries: vec![t::PlacementEntry::Formatted(t::LinePlacement {
             line,
             anchor,
-            orientation: t::LineOrientation::Sideways,
+            orientation: t::LineOrientation::SidewaysClockwise,
             atomics: vec![geometry],
         })],
     })
@@ -404,7 +417,9 @@ fn run<S: l::LayoutScalar>(
     changed: &[u32],
     space: l::Size<l::AvailableOf<S>>,
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default()).unwrap();
+    let flow =
+        l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
+            .unwrap();
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
@@ -549,7 +564,7 @@ fn core<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(2))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         qualify_parent(&parent, kind);
@@ -574,7 +589,7 @@ fn core<S: l::LayoutScalar>() {
             unknown(node(entries, 0).named_baselines);
         }
         let text = placed(&batch, 0);
-        assert_eq!(text.orientation(), t::LineOrientation::Sideways);
+        assert_eq!(text.orientation(), t::LineOrientation::SidewaysClockwise);
         assert_eq!(text.lines().len(), 1);
         assert_eq!(text.lines()[0].baseline(), 32.0);
         assert_eq!(text.inline_boxes()[0].rect(), physical);

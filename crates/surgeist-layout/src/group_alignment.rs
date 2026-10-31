@@ -8,7 +8,7 @@ pub(crate) struct NumericError {
     reason: crate::LayoutTextNumericError,
 }
 impl NumericError {
-    fn new(value: f64, reason: crate::LayoutTextNumericError) -> Self {
+    pub(crate) fn new(value: f64, reason: crate::LayoutTextNumericError) -> Self {
         Self {
             bits: value.to_bits(),
             reason,

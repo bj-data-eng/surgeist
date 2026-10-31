@@ -95,6 +95,8 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![text::ComputedLineBoundaryInput::Scope {
                 scope: 1,
                 side: text::SourceBoxSide::Before,
@@ -128,12 +130,18 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
             replacements: vec![],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: Default::default(),
                     base_style: base,
                     used_direction: text::ParagraphBaseDirection::LeftToRight,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: None,
                     boundaries: None,
@@ -249,6 +257,7 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
             scopes: vec![],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(

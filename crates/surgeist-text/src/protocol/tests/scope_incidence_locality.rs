@@ -7,17 +7,25 @@ use crate::{CapturedScopeIncidence as R, SourceProcessingEvent as E};
 fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside() {
     let source = Source::new("AB");
     let processed = crate::process_contextual_source(crate::ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
         envelope: crate::SourceProcessingEnvelope::Complete,
         scopes: vec![
             crate::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style(),
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             crate::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: None,
                 boundaries: None,
@@ -91,7 +99,10 @@ fn enclosing_edges_localize_to_their_paragraph_and_remote_same_domain_is_outside
         } else {
             paragraph.boundary_views().last().unwrap().handle()
         };
-        let incidences = paragraph.boundary_incidences(&boundary).unwrap();
+        let source_segment = paragraph.source_segments().next().unwrap();
+        let incidences = paragraph
+            .boundary_incidences(&source_segment, &boundary)
+            .unwrap();
         assert_eq!(incidences.len(), 1);
         assert_eq!(
             paragraph

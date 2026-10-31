@@ -100,6 +100,7 @@ fn request(
         .unwrap()
         .handle();
     LineSelectionRequest {
+        segment: crate::test_wrapping::only_source_segment(prepared),
         boundary_context: vec![],
         incoming: None,
         start: prepared.boundary_views().next().unwrap().handle(),
@@ -209,7 +210,7 @@ fn first_and_repeated_allocation_use_one_actual_selected_provider_basis_in_nativ
     resource_premises(&bytes);
     for orientation in [
         LineOrientation::Horizontal,
-        LineOrientation::Sideways,
+        LineOrientation::SidewaysClockwise,
         LineOrientation::Vertical,
     ] {
         let mut system = system(&bytes);
@@ -251,7 +252,12 @@ fn first_and_repeated_allocation_use_one_actual_selected_provider_basis_in_nativ
         assert_ne!(system.font_catalogue_identity(), &old_catalogue);
         drop(system);
         assert_calls(calls);
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_calls(calls);
         assert_eq!(natural.feedback().advance, 13.0 + second);
         assert_eq!(inline_paints(&natural), [0.0, 13.0]);
@@ -264,10 +270,20 @@ fn first_and_repeated_allocation_use_one_actual_selected_provider_basis_in_nativ
                 (u32::from(font::B), second as f32)
             ]
         );
-        let repeated = selected.finalize(SpacingAllocations::None).unwrap();
+        let repeated = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_calls(calls);
         assert_eq!(packets(&repeated, &bytes), raw);
-        let expanded = selected.finalize(amounts(&selected, &[4.0])).unwrap();
+        let expanded = selected
+            .finalize(crate::LineAllocations {
+                spacing: amounts(&selected, &[4.0]),
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_calls(calls);
         assert_eq!(expanded.feedback().advance, 17.0 + second);
         assert_eq!(inline_paints(&expanded), [0.0, 17.0]);
@@ -396,7 +412,12 @@ fn actual_residual_only_receipts_publish_a_complete_empty_basis_and_keep_source_
         assert!(calls > 0);
         assert_eq!(exclusion_rows(&selected.inner.basis.shaped), [(0, false)]);
         assert_eq!(selected.spacing_slots().len(), 0);
-        let line = selected.finalize(SpacingAllocations::None).unwrap();
+        let line = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_calls(calls);
         assert_eq!(line.feedback().advance, 0.0);
         assert_eq!(line.feedback().line_height, 10.0);
@@ -450,7 +471,12 @@ fn residual_selector_and_repeated_edge_residuals_have_one_real_neighbor_gap_and_
                 expected_exclusions
             );
             assert_eq!(selected.spacing_slots().len(), 1);
-            let natural = selected.finalize(SpacingAllocations::None).unwrap();
+            let natural = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             assert_calls(calls);
             assert_eq!(natural.feedback().advance, 33.0);
             assert_eq!(inline_paints(&natural), [0.0, 13.0]);
@@ -513,7 +539,12 @@ fn optional_plan_changes_normal_di_to_selected_residual_before_complete_handles_
     let ordinary = prepared
         .select(request(&prepared, LTR, SpacingPolicy::None))
         .unwrap();
-    let ordinary_line = ordinary.finalize(SpacingAllocations::None).unwrap();
+    let ordinary_line = ordinary
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(
         packets(&ordinary_line, &bytes)
             .iter()
@@ -566,7 +597,12 @@ fn optional_plan_changes_normal_di_to_selected_residual_before_complete_handles_
             aggregate: Range::new(2, 3)
         }]
     );
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     assert_eq!(natural.feedback().advance, 30.0);
     assert_eq!(inline_paints(&natural), [0.0, 10.0]);
@@ -621,7 +657,12 @@ fn neutral_receipt(
     let calls = provider_calls();
     assert!(calls > 0);
     assert_eq!(exclusion_rows(&selected.inner.basis.shaped), exclusions);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     assert_eq!(
         packets(&line, bytes)
@@ -803,7 +844,10 @@ fn authored_optional_override_preserves_normal_di_and_refuses_its_real_unqualifi
     let ordinary = prepared
         .select(request(&prepared, LTR, SpacingPolicy::None))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(ordinary.feedback().advance, 45.0);
     assert_eq!(
@@ -1028,7 +1072,12 @@ fn conditional_zero_control(system: &mut System, bytes: &[u8]) {
         .unwrap();
     let calls = provider_calls();
     assert!(calls > 0);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     assert_eq!(
         packets(&line, bytes),
@@ -1130,7 +1179,12 @@ fn conditional_residual_demand_retains_required_ccmp_protection_after_neutral_pr
         .unwrap();
     let calls = provider_calls();
     assert!(calls > 0);
-    let ordinary_line = ordinary.finalize(SpacingAllocations::None).unwrap();
+    let ordinary_line = ordinary
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     let raw = [(Range::new(0, 3), 58, 0.0, 0.0, 15.0)];
     assert_eq!(packets(&ordinary_line, &bytes), raw);
@@ -1144,7 +1198,12 @@ fn conditional_residual_demand_retains_required_ccmp_protection_after_neutral_pr
     assert!(calls > 0);
     assert_eq!(selected.spacing_slots().len(), 1);
     assert_eq!(exclusion_rows(&selected.inner.basis.shaped), [(1, false)]);
-    let line = selected.finalize(amounts(&selected, &[0.0])).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: amounts(&selected, &[0.0]),
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     let row = line.spacing_slots().next().unwrap();
     assert_eq!(
@@ -1202,7 +1261,12 @@ fn conditional_residual_demand_masks_optional_liga_before_reconciled_boundary_sh
         .unwrap();
     let calls = provider_calls();
     assert!(calls > 0);
-    let ordinary_line = ordinary.finalize(SpacingAllocations::None).unwrap();
+    let ordinary_line = ordinary
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     assert_eq!(packets(&ordinary_line, &bytes), raw);
     assert_eq!(ordinary_line.feedback().advance, 34.0);
@@ -1215,7 +1279,12 @@ fn conditional_residual_demand_masks_optional_liga_before_reconciled_boundary_sh
     assert!(calls > 0);
     assert_eq!(selected.spacing_slots().len(), 1);
     assert_eq!(exclusion_rows(&selected.inner.basis.shaped), [(1, false)]);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     let row = line.spacing_slots().next().unwrap();
     assert_eq!(
@@ -1243,3 +1312,6 @@ mod conditional_envelopes;
 
 #[path = "mixed_basis_tests.rs"]
 mod mixed_basis_tests;
+
+#[path = "allocated_shift_tests.rs"]
+mod allocated_shift_tests;

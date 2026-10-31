@@ -195,6 +195,7 @@ fn compose(
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
             termination: text::PreparedTermination::Ordinary(end),
@@ -229,7 +230,10 @@ fn compose(
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared,

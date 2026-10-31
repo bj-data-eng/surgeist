@@ -65,6 +65,9 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
         unreachable!()
     };
     let offers = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &first.start,
             None,
@@ -89,7 +92,10 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
     let first = p
         .select(first)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let mut second = request(p);
     second.start = first.selected_line().request().end.clone();
@@ -100,7 +106,10 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
     let second = p
         .select(second)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     (first, second)
 }
@@ -189,6 +198,8 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
         ]);
         let processed = Arc::new(
             crate::process_contextual_source(ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
                 segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -224,6 +235,9 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
                 }],
                 replacements: Vec::new(),
                 scopes: vec![SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: SourceProcessingTopology::Complete,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
@@ -250,7 +264,19 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
         );
         let correspondence = (0..analyzed.inner.transform.rows.len())
             .flat_map(|row| analyzed.inner.transform.original_pieces(row))
-            .map(|piece| (piece.origin, piece.aggregate, piece.local))
+            .map(|piece| {
+                (
+                    analyzed
+                        .inner
+                        .paragraph
+                        .origin_map
+                        .view_origin(piece.origin)
+                        .expect("original contribution belongs to this view")
+                        .get(),
+                    piece.aggregate,
+                    piece.local,
+                )
+            })
             .collect::<Vec<_>>();
         assert_eq!(
             correspondence,
@@ -336,7 +362,10 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
             let line = prepared
                 .select(selected)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             start = line.selected_line().request().end.clone();
             lines.push(line);
@@ -565,6 +594,9 @@ fn expansion_preserves_normal_alphabetic_no_break_and_distinct_conditional_permi
         let start = p.boundary_views().next().unwrap().handle();
         let ceiling = p.opportunity_views().next().unwrap().handle();
         let offers = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -707,7 +739,10 @@ fn canonical_greek_title_sequences_use_the_same_real_glyph_without_changing_sour
         let line = p
             .select(request(&p))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         // The fixture's independent None controls qualify both canonical forms
         // at the title glyph192, with a genuine10px advance.
@@ -756,7 +791,10 @@ fn irish_inserted_hyphen_and_mapped_vowel_keep_the_vowel_row_as_their_real_emitt
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 30.0);
     let placed = layout(p, vec![line], false);
@@ -921,7 +959,10 @@ fn actual_casing_after_phase_i_deletion_never_fuses_two_original_opaque_halves()
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(ids(&line), [35, 35]);
     assert_eq!(line.feedback().advance, 20.0);
@@ -954,14 +995,23 @@ fn consecutive_greek_removals_retain_distinct_relation_cuts_and_exact_source() {
         p.analyzed_source().inner.transform.events(),
         [
             crate::transform::relation::RelationEvent::Text { atom: 0 },
-            crate::transform::relation::RelationEvent::Removal { row: 1 },
-            crate::transform::relation::RelationEvent::Removal { row: 2 },
+            crate::transform::relation::RelationEvent::Removal {
+                row: 1,
+                selection_part: _
+            },
+            crate::transform::relation::RelationEvent::Removal {
+                row: 2,
+                selection_part: _
+            },
         ]
     ));
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 10.0);
     assert_eq!(ids(&line), vec![35]);

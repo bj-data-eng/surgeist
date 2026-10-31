@@ -24,6 +24,7 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
         .handle();
     let selected = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -55,7 +56,12 @@ fn finalized(source: text::Source) -> (text::PreparedText, text::FinalizedLine) 
         })
         .unwrap();
     let stats = system.stats();
-    let line = selected.finalize(text::SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(line.feedback().advance, 40.0);
     assert_eq!(system.stats(), stats);
     // Returned preparations/finalized rows own the actual font resources.
@@ -189,6 +195,7 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -216,7 +223,10 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     // Retained Ahem has A35/period16 with one-em advances. ForceEnd changes
     // participation in the 20px frame, without shortening either 20px glyph.
@@ -302,6 +312,7 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
         .handle();
     let finalized = prepared
         .select(text::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,
             start: prepared.boundary_views().next().unwrap().handle(),
@@ -330,7 +341,10 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
             },
         })
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(finalized.feedback().advance, 12.5);
     let input = placed(prepared, finalized, 3.25, 41.5);

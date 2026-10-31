@@ -1,5 +1,6 @@
 //! Positive separator and character-boundary allocation over actual Text response.
-use super::{FinalizedLine, FitError, SpacingAllocation, SpacingAllocations};
+use super::super::scope_alignment::ScopeAlignmentFacts;
+use super::{FinalizedLine, FitError};
 use surgeist_text::{
     SpacingBoundaryGeometry, SpacingSlotDisposition, SpacingSlotGeometry, SpacingStretchability,
 };
@@ -11,7 +12,10 @@ pub(super) struct Allocation {
 
 /// None is a proved unexpandable line, requiring a fresh fallback selection.
 /// Numeric or unknown capability failures remain their actual owning errors.
-pub(super) fn allocate(natural: &FinalizedLine) -> Result<Option<Allocation>, FitError> {
+pub(super) fn allocate(
+    natural: &FinalizedLine,
+    facts: &dyn ScopeAlignmentFacts,
+) -> Result<Option<Allocation>, FitError> {
     let selected = natural.selected_line();
     let context = &selected.request().context;
     let rows = natural.spacing_slots().collect::<Vec<_>>();
@@ -67,11 +71,11 @@ pub(super) fn allocate(natural: &FinalizedLine) -> Result<Option<Allocation>, Fi
             }
     });
     if !direct.is_empty() {
-        return match direct_allocation(natural, capacity, extra, amounts.clone(), &direct) {
+        return match direct_allocation(natural, capacity, extra, amounts.clone(), &direct, facts) {
             Ok(allocation) => Ok(Some(allocation)),
             Err(error @ FitError::SpacingBudget { .. }) => {
                 if let Some(index) = unresolved {
-                    demand(natural, amounts, index, capacity, extra).map(Some)
+                    demand(natural, amounts, index, capacity, extra, facts).map(Some)
                 } else {
                     Err(error)
                 }
@@ -100,6 +104,7 @@ pub(super) fn allocate(natural: &FinalizedLine) -> Result<Option<Allocation>, Fi
             capacity,
             extra,
             natural.clone(),
+            facts,
         )?;
         if result.exact {
             return Ok(Some(Allocation {
@@ -112,7 +117,7 @@ pub(super) fn allocate(natural: &FinalizedLine) -> Result<Option<Allocation>, Fi
     // expansion is available. Demand the material operation through Text, using
     // genuine handles and a complete table; never construct its diagnostic here.
     if let Some(index) = unresolved {
-        return demand(natural, amounts, index, capacity, extra).map(Some);
+        return demand(natural, amounts, index, capacity, extra, facts).map(Some);
     }
     Ok(None)
 }
@@ -123,10 +128,11 @@ fn demand(
     index: usize,
     capacity: f64,
     extra: f64,
+    facts: &dyn ScopeAlignmentFacts,
 ) -> Result<Allocation, FitError> {
     amounts.fill(0.0);
     amounts[index] = extra;
-    let finalized = probe(natural, &amounts)?;
+    let finalized = probe(natural, &amounts, facts)?;
     if alignment(&finalized) == capacity {
         Ok(Allocation { finalized, amounts })
     } else {
@@ -140,6 +146,7 @@ fn direct_allocation(
     extra: f64,
     mut amounts: Vec<f64>,
     direct: &[usize],
+    facts: &dyn ScopeAlignmentFacts,
 ) -> Result<Allocation, FitError> {
     let share = super::finite(extra / direct.len() as f64)?;
     if share == 0.0 {
@@ -151,7 +158,7 @@ fn direct_allocation(
     for &index in direct {
         amounts[index] = share;
     }
-    let finalized = probe(natural, &amounts)?;
+    let finalized = probe(natural, &amounts, facts)?;
     if alignment(&finalized) == capacity {
         return Ok(Allocation { finalized, amounts });
     }
@@ -162,7 +169,7 @@ fn direct_allocation(
     for &index in direct.iter().rev() {
         let previous = amounts[index];
         amounts[index] = 0.0;
-        let lower = probe(natural, &amounts)?;
+        let lower = probe(natural, &amounts, facts)?;
         if alignment(&lower) > capacity {
             continue;
         }
@@ -172,7 +179,15 @@ fn direct_allocation(
                 amounts,
             });
         }
-        let result = search(natural, &mut amounts, index, capacity, previous, lower)?;
+        let result = search(
+            natural,
+            &mut amounts,
+            index,
+            capacity,
+            previous,
+            lower,
+            facts,
+        )?;
         return if result.exact {
             Ok(Allocation {
                 finalized: result.finalized,
@@ -207,6 +222,7 @@ fn search(
     capacity: f64,
     initial: f64,
     lower: FinalizedLine,
+    facts: &dyn ScopeAlignmentFacts,
 ) -> Result<SearchResult, FitError> {
     let mut low = Probe {
         amount: 0.0,
@@ -215,7 +231,7 @@ fn search(
     let mut upper = initial;
     let mut high = loop {
         amounts[index] = upper;
-        let finalized = probe(natural, amounts)?;
+        let finalized = probe(natural, amounts, facts)?;
         let measured = alignment(&finalized);
         if measured == capacity {
             return Ok(SearchResult {
@@ -265,7 +281,7 @@ fn search(
             middle
         };
         amounts[index] = middle;
-        let finalized = probe(natural, amounts)?;
+        let finalized = probe(natural, amounts, facts)?;
         let measured = alignment(&finalized);
         if measured == capacity {
             return Ok(SearchResult {
@@ -287,16 +303,14 @@ fn search(
     }
 }
 
-fn probe(natural: &FinalizedLine, amounts: &[f64]) -> Result<FinalizedLine, FitError> {
-    Ok(natural.with_spacing(SpacingAllocations::Complete(
-        natural
-            .selected_line()
-            .spacing_slots()
-            .zip(amounts)
-            .map(|(slot, &amount)| SpacingAllocation { slot, amount })
-            .collect(),
-    ))?)
+fn probe(
+    natural: &FinalizedLine,
+    amounts: &[f64],
+    facts: &dyn ScopeAlignmentFacts,
+) -> Result<FinalizedLine, FitError> {
+    super::finalize_spacing(natural, amounts, facts)
 }
+
 fn alignment(line: &FinalizedLine) -> f64 {
     line.measurements().alignment().advance()
 }

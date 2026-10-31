@@ -6,11 +6,11 @@
 //! `layout/line_break.rs` (7793b3a6d1ef56f1c7551c4ec4595ece5a33e09cf92dddfa08d3be46a0e6f91b)
 //! and `layout/alignment.rs`. Adjustments belong to this line, never preparation.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
-    Alignment, BidiLevel, Error, ErrorCode, InlineWhitespaceEdge, LineBoxDirection, Point, Rect,
-    Result, SuppliedInlineParticipant, SuppliedLine, TextNumericError, TextNumericPhase,
+    Alignment, BidiLevel, Error, ErrorCode, LineBoxDirection, Point, Rect, Result,
+    SuppliedInlineParticipant, SuppliedLine, TextNumericError, TextNumericPhase,
 };
 
 use super::super::{
@@ -18,6 +18,8 @@ use super::super::{
     shape::{self, ShapeContext},
 };
 use super::{add, data::*, finite};
+use crate::engine::scope_alignment::accounting::{self as account, Ledger};
+use crate::processing::contextual::alignment::operations;
 use crate::protocol::input::PresentationInput;
 use crate::protocol::selection::{LineMetricPolicy, SelectedData};
 use crate::protocol::{
@@ -32,18 +34,27 @@ mod phase_two;
 pub(super) fn shape_and_collapse(
     input: PresentationInput<'_>,
     scratch: &mut ShapeContext,
+    allowance: Option<crate::ScopeAlignmentAllowance>,
+    scope_input: super::super::scope_alignment::PlanInput<'_>,
 ) -> Result<(
     ShapedData,
     Arc<crate::protocol::prepared::SelectedMapping>,
     Vec<SpacingSlotDisposition>,
 )> {
-    let (mut shaped, mapping) = shape::finalize(input, scratch, crate::SpacingPolicy::None)?;
+    let (mut shaped, mapping, mut scope_plan) = shape::finalize(
+        input,
+        scratch,
+        crate::SpacingPolicy::None,
+        allowance,
+        scope_input,
+    )?;
     validate_rows(input, &shaped)?;
     let dispositions = collapse_edges(input, &mut shaped)?;
     let ordered = crate::protocol::prepared::presentation::order_presentation(
+        input.prepared,
         input.presentation,
-        input.prepared.analyzed.processed.source().boxes(),
         &shaped,
+        &mut scope_plan.budget,
     )?;
     let levels = item_levels(input.presentation, &shaped);
     let participants = levels
@@ -58,32 +69,76 @@ pub(super) fn shape_and_collapse(
         .composed_order(&ordered)
         .ok_or_else(|| invalid("flow character order"))?;
     super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
+    let character_input = super::super::spacing::character::Input::selected(
+        input.prepared,
+        input.presentation,
+        &mut scope_plan.budget,
+    )?;
     let graph = super::super::spacing::character::build(
-        &input.presentation.projection,
-        &input.presentation.analysis,
-        &input.prepared.styles,
-        input.prepared.analyzed.processed.source().boxes(),
-        Some(input.presentation),
+        character_input,
         false,
         Some(&shaped.character_exclusions),
+        &mut scope_plan.budget,
     )?;
-    super::super::spacing::character::apply_selected(
+    // Ordinary flow observation keeps its existing Native tracking owner;
+    // an unrelated scope ledger does not adopt its character scratch.
+    let mut native_character_budget = None;
+    let application_budget = if shaped.cells.is_empty() {
+        &mut native_character_budget
+    } else {
+        &mut scope_plan.budget
+    };
+    super::super::spacing::character::apply_selected_accounted(
         input,
         &graph,
         &mut shaped,
         &ordered,
         &dispositions,
         None,
+        application_budget,
     )?;
+    graph.drop_scratch(&mut scope_plan.budget)?;
+    if shaped.cells.is_empty() {
+        // Native ordering was deliberately not admitted by this scope ledger.
+        drop(ordered);
+    } else {
+        account::drop_vec(&mut scope_plan.budget, ordered)?;
+    }
     Ok((shaped, mapping, dispositions))
 }
 
 pub(super) fn finalize(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine> {
-    execute(selected, amounts)
+    let scopes = super::super::scope_alignment::allocation_frames(
+        &selected,
+        crate::ScopeAllocations::None,
+        None,
+        &crate::SpacingAllocations::None,
+    )?;
+    execute(selected, amounts, scopes)
 }
 
-pub(super) fn refinalize(line: &FinalizedLine, amounts: &[f64]) -> Result<FinalizedLine> {
-    execute(Arc::clone(&line.selected), amounts)
+pub(super) fn finalize_scoped(
+    selected: Arc<SelectedData>,
+    amounts: &[f64],
+    scopes: super::super::scope_alignment::FrameAllocations,
+) -> Result<FinalizedLine> {
+    execute(selected, amounts, scopes)
+}
+
+pub(super) fn refinalize(
+    line: &FinalizedLine,
+    amounts: &[f64],
+    allowance: Option<crate::ScopeAlignmentAllowance>,
+) -> Result<FinalizedLine> {
+    execute(
+        Arc::clone(&line.selected),
+        amounts,
+        super::super::scope_alignment::replay_frames(
+            line,
+            allowance,
+            &crate::SpacingAllocations::None,
+        )?,
+    )
 }
 
 /// Row presence depends on actual glyph output and edge disposition, not on
@@ -100,6 +155,10 @@ fn metric_only_run<'a>(
     has_paint: bool,
 ) -> Option<&'a PreparedRun> {
     if has_paint
+        || shaped
+            .items
+            .iter()
+            .any(|item| matches!(item, ShapedItem::Cell(_)))
         || !((shaped.empty_run.is_some()
             && !participants
                 .iter()
@@ -170,41 +229,61 @@ pub(super) fn qualify_selected_paint(
     Ok(())
 }
 
-fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine> {
+fn execute(
+    selected: Arc<SelectedData>,
+    amounts: &[f64],
+    mut scopes: super::super::scope_alignment::FrameAllocations,
+) -> Result<FinalizedLine> {
     let selection = &selected.request.context;
-    let atomics = atomic_allocations(&selected)?;
-    let controls = control_allocations(&selected)?;
-    let mut shaped = selected.basis.shaped.clone();
+    let mut ledger = scopes.budget.take();
+    account::header::<FinalizedLine>(&mut ledger)?;
+    let atomics = atomic_allocations(&selected, &mut ledger)?;
+    let controls = control_allocations(&selected, &mut ledger)?;
+    let mut shaped = account::clone_shaped(&mut ledger, &selected.basis.shaped)?;
     validate_rows(selected.presentation_input(), &shaped)?;
-    let mut dispositions = collapse_edges(selected.presentation_input(), &mut shaped)?;
-    let levels = item_levels(&selected.presentation, &shaped);
+    let mut dispositions =
+        collapse_edges_accounted(selected.presentation_input(), &mut shaped, &mut ledger)?;
+    let levels = item_levels_accounted(&selected.presentation, &shaped, &mut ledger)?;
     let base = selected.presentation.analysis.base_level;
     let ordered = &selected.basis.order;
-    let participants = levels
-        .iter()
-        .map(|&level| {
+    let participants = account::try_collect(
+        &mut ledger,
+        levels.iter().map(|&level| {
             crate::BidiLevel::try_new(level)
                 .map(|level| SuppliedInlineParticipant::Boundary { level })
                 .map_err(|_| invalid("selected line has an invalid resolved level"))
-        })
-        .collect::<Result<Vec<_>>>()?;
+        }),
+    )?;
     let order = SuppliedLine::new(&participants)
-        .composed_order(ordered)
+        .composed_order_accounted(ordered, &mut ledger)?
         .ok_or_else(|| invalid("composed line order is not a complete permutation"))?;
-    let mut word_halves =
-        super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
-    let character_order: Vec<_> = order.iter().map(|(i, _)| i).collect();
-    super::super::spacing::character::apply_selected(
+    let mut word_halves = super::super::spacing::visual_authored_accounted(
+        &mut shaped,
+        &order,
+        &dispositions,
+        &mut ledger,
+    )?;
+    let character_order = account::collect(&mut ledger, order.iter().map(|(i, _)| i))?;
+    super::super::spacing::character::apply_selected_accounted(
         selected.presentation_input(),
         &selected.basis.characters,
         &mut shaped,
         &character_order,
         &dispositions,
         None,
+        &mut ledger,
     )?;
-    resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
-    let natural = phase_two::natural(&selected, &shaped, &atomics, &order, &dispositions)?;
-    let responses = phase_two::spacing_responses(&selected, &shaped, &order, &natural)?;
+    resolve_tabs(&selected, &mut shaped, &atomics, &order, &mut ledger)?;
+    let natural = phase_two::natural(
+        &selected,
+        &shaped,
+        &atomics,
+        &order,
+        &dispositions,
+        &mut ledger,
+    )?;
+    let responses =
+        phase_two::spacing_responses(&selected, &shaped, &order, &natural, &mut ledger)?;
     let mut spacing_slots = apply_spacing(
         &selected,
         &mut shaped,
@@ -212,26 +291,36 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
         &dispositions,
         &responses,
         &character_order,
+        &mut ledger,
     )?;
+    account::drop_vec(&mut ledger, responses)?;
     if matches!(
         selection.spacing,
         crate::SpacingPolicy::InterWord | crate::SpacingPolicy::InterCharacter
     ) {
         super::super::spacing::character::restore(&mut shaped);
-        word_halves = super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
-        super::super::spacing::character::apply_selected(
+        let next = super::super::spacing::visual_authored_accounted(
+            &mut shaped,
+            &order,
+            &dispositions,
+            &mut ledger,
+        )?;
+        account::drop_vec(&mut ledger, word_halves)?;
+        word_halves = next;
+        super::super::spacing::character::apply_selected_accounted(
             selected.presentation_input(),
             &selected.basis.characters,
             &mut shaped,
             &character_order,
             &dispositions,
             (selection.spacing == crate::SpacingPolicy::InterCharacter).then_some(amounts),
+            &mut ledger,
         )?;
     }
     if amounts.iter().any(|amount| *amount != 0.0) {
-        resolve_tabs(&selected, &mut shaped, &atomics, &order)?;
+        resolve_tabs(&selected, &mut shaped, &atomics, &order, &mut ledger)?;
     }
-    let mut prefix_receipts = Vec::with_capacity(shaped.items.len() + 1);
+    let mut prefix_receipts = Vec::new();
     let mut metrics = line_metrics(
         &selected,
         &shaped,
@@ -239,6 +328,7 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
         &controls,
         &mut dispositions,
         &mut prefix_receipts,
+        &mut ledger,
     )?;
     let prefix = crate::protocol::prefix::PrefixData::new(
         &selected,
@@ -247,7 +337,8 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
         &controls,
         &dispositions,
         prefix_receipts,
-    );
+        &mut ledger,
+    )?;
     for row in &mut spacing_slots {
         if let Some(edge) = row.edge {
             let discarded = super::super::spacing::character::discarded(
@@ -255,7 +346,8 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                 edge,
                 &shaped,
                 &dispositions,
-            );
+                &mut ledger,
+            )?;
             row.disposition = if discarded {
                 SpacingSlotDisposition::DiscardedAtLineEdge
             } else {
@@ -292,15 +384,59 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
     if selected.metric_policy != LineMetricPolicy::Native {
         include_control_struts(
             &mut metrics,
-            controls.values().filter_map(|allocation| allocation.strut),
+            controls
+                .values()
+                .filter_map(|allocation| allocation.strut)
+                .chain(
+                    selected
+                        .request
+                        .line_box_struts
+                        .iter()
+                        .map(|allocation| ControlStrut {
+                            baseline: allocation.metrics.baseline,
+                            line_extent: allocation.metrics.line_extent,
+                            alignment: allocation.alignment,
+                        }),
+                ),
             selected.request.line_strut,
+            shaped.empty_run.is_some()
+                || !shaped.runs.is_empty()
+                || shaped
+                    .items
+                    .iter()
+                    .any(|item| matches!(item, ShapedItem::InlineBox { .. })),
         )?;
     }
-    let measurements =
-        phase_two::allocated(&selected, &shaped, &atomics, &order, natural, &mut metrics)?;
-    let width = selection.available_inline.unwrap_or_else(|| {
-        (measurements.alignment().advance() + selection.indent.max(0.0)).max(0.0)
-    });
+    // Captured domain context can retain feature accounting without selecting
+    // any aligned occurrence. Only actual allocated frames demand reference
+    // geometry (including an explicitly allocated zero contribution).
+    let scope_cell_band = (!scopes.frames.is_empty()).then_some((
+        metrics.baseline - metrics.block_min,
+        metrics.block_max - metrics.baseline,
+    ));
+    if !scopes.frames.is_empty() {
+        account::work(&mut ledger, selected.scopes.contributions.len())?;
+        metrics = native_metrics_scoped(
+            &selected,
+            &shaped,
+            &atomics,
+            &controls,
+            metrics,
+            Some(&scopes),
+        )?;
+    }
+    let measurements = phase_two::allocated(
+        &selected,
+        &shaped,
+        &atomics,
+        &order,
+        natural,
+        &mut metrics,
+        &mut ledger,
+    )?;
+    let width = selection
+        .available_inline
+        .unwrap_or_else(|| (measurements.alignment.advance() + selection.indent.max(0.0)).max(0.0));
     finite(
         "line available width",
         TextNumericPhase::Finalization,
@@ -310,7 +446,7 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
     metrics.inline_max = width;
     metrics.offset = {
         let mut measured = metrics;
-        measured.advance = measurements.alignment().advance();
+        measured.advance = measurements.alignment.advance();
         measured.trailing_whitespace = 0.0;
         let offset = alignment_offset(selection, base, width, &measured)?;
         add(
@@ -322,48 +458,64 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
     };
 
     let mut data = FinalizedLineData {
-        measurements: Some(measurements),
+        measurements: None,
         spacing_slots,
-        spacing_amounts: amounts
-            .iter()
-            .map(|&amount| if amount == 0.0 { 0.0 } else { amount })
-            .collect(),
+        spacing_amounts: account::collect(
+            &mut ledger,
+            amounts
+                .iter()
+                .map(|&amount| if amount == 0.0 { 0.0 } else { amount }),
+        )?,
         prefix,
-        clusters: shaped
-            .clusters
-            .iter()
-            .enumerate()
-            .map(|(index, cluster)| FinalizedCluster {
-                line_height: cluster.line_height,
-                shaped_advance: cluster.shaped_advance,
-                logical_adjustments: cluster.logical_adjustments,
-                provider_atoms: cluster.provider_group.clone(),
-                disposition: dispositions[index],
-                source: cluster.source,
-                presentation: {
-                    let atoms = &selected.presentation.projection.atoms[cluster.atoms.clone()];
-                    crate::Range::new(
-                        atoms[0].presentation.start,
-                        atoms[atoms.len() - 1].presentation.end,
-                    )
+        clusters: account::try_collect(
+            &mut ledger,
+            shaped.clusters.iter().enumerate().map(
+                |(index, cluster)| -> Result<FinalizedCluster> {
+                    Ok(FinalizedCluster {
+                        frame: FinalizedRunFrame::Line,
+                        reference: scope_cell_band
+                            .map(|_| {
+                                scoped_reference(
+                                    metrics.baseline,
+                                    scopes.displacement(selected.scopes.cluster_owners[index]),
+                                )
+                            })
+                            .transpose()?,
+                        line_height: cluster.line_height,
+                        shaped_advance: cluster.shaped_advance,
+                        logical_adjustments: cluster.logical_adjustments,
+                        provider_atoms: cluster.provider_group.clone(),
+                        disposition: dispositions[index],
+                        source: cluster.source,
+                        presentation: {
+                            let atoms =
+                                &selected.presentation.projection.atoms[cluster.atoms.clone()];
+                            crate::Range::new(
+                                atoms[0].presentation.start,
+                                atoms[atoms.len() - 1].presentation.end,
+                            )
+                        },
+                        content: cluster.content,
+                        #[cfg(feature = "text-accessibility")]
+                        style: cluster.style,
+                        x: 0.0,
+                        advance: cluster.advance,
+                        level: cluster.level,
+                        boundary: cluster.boundary,
+                        whitespace: cluster.whitespace,
+                    })
                 },
-                content: cluster.content,
-                #[cfg(feature = "text-accessibility")]
-                style: cluster.style,
-                x: 0.0,
-                advance: cluster.advance,
-                level: cluster.level,
-                boundary: cluster.boundary,
-                whitespace: cluster.whitespace,
-            })
-            .collect(),
+            ),
+        )?,
         metrics,
+        scope_cell_band,
         ..FinalizedLineData::default()
     };
     let mut pen = metrics.offset;
     let mut last_run = None;
-    let groups = crate::protocol::boundary::groups(&selected, &shaped);
-    let mut atom_groups = vec![0; selected.presentation.projection.atoms.len()];
+    let groups = crate::protocol::boundary::groups_accounted(&selected, &shaped, &mut ledger)?;
+    let mut atom_groups =
+        account::filled(&mut ledger, selected.presentation.projection.atoms.len(), 0)?;
     for (index, group) in groups.iter().enumerate() {
         atom_groups[group.clone()].fill(index);
     }
@@ -374,12 +526,34 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
         &order,
         &groups,
         &atom_groups,
-        &levels,
+        &mut ledger,
     )?;
-    let mut internal_edges = vec![0.0; groups.len()];
+    let mut internal_edges = account::filled(&mut ledger, groups.len(), 0.0)?;
+    let cell_gap_indices =
+        super::super::spacing::character::cell_gap_indices(&shaped, &mut ledger)?;
     for (ordinal, _) in order.iter() {
+        account::work(&mut ledger, 1)?;
         let level = levels[ordinal];
         match shaped.items[ordinal] {
+            ShapedItem::Cell(cell) => {
+                pen = append_cell(
+                    &selected,
+                    &shaped,
+                    &scopes,
+                    CellFlow {
+                        index: cell,
+                        gap: cell_gap_indices
+                            .get(cell)
+                            .copied()
+                            .flatten()
+                            .map(|index| &shaped.character_gaps[index]),
+                    },
+                    Point::new(pen, metrics.baseline),
+                    &mut data,
+                    &mut ledger,
+                )?;
+                last_run = None;
+            }
             ShapedItem::Anchor { unit, .. } => {
                 let advance =
                     crate::protocol::boundary::advance(selected.presentation_input(), unit);
@@ -425,27 +599,38 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                         advance,
                     )?;
                 }
-                data.visual_order
-                    .push(FinalizedVisualItem::Anchor(data.anchors.len()));
-                data.anchors.push(FinalizedAnchor {
-                    unit,
-                    slot: Point::new(
-                        slot,
-                        match selected.presentation.units[unit].kind {
-                            crate::protocol::prepared::PresentationUnitKind::Control {
-                                occurrence,
-                            } => {
-                                let allocation = controls.get(&occurrence).ok_or_else(|| {
-                                    protocol_error(ProtocolError::MissingControl { occurrence })
-                                })?;
-                                control_baseline(&metrics, allocation.strut)?
-                            }
-                            _ => metrics.baseline,
-                        },
-                    ),
-                    level,
-                    inline_end: slot_end,
-                });
+                account::push(
+                    &mut ledger,
+                    &mut data.visual_order,
+                    FinalizedVisualItem::Anchor(data.anchors.len()),
+                )?;
+                let delta = unit_scope_displacement(&selected, &scopes, unit, &controls);
+                let reference = scope_cell_band
+                    .map(|_| scoped_reference(metrics.baseline, delta))
+                    .transpose()?;
+                let slot_y = match selected.presentation.units[unit].kind {
+                    crate::protocol::prepared::PresentationUnitKind::Control { occurrence } => {
+                        let allocation = controls.get(&occurrence).ok_or_else(|| {
+                            protocol_error(ProtocolError::MissingControl { occurrence })
+                        })?;
+                        let mut local = metrics;
+                        local.baseline = reference.unwrap_or(metrics.baseline);
+                        control_baseline(&local, allocation.strut)?
+                    }
+                    _ => reference.unwrap_or(metrics.baseline),
+                };
+                account::push(
+                    &mut ledger,
+                    &mut data.anchors,
+                    FinalizedAnchor {
+                        reference: reference.map(|_| slot_y),
+                        scope_displacement: crate::BaselineShift::try_new(delta)?,
+                        unit,
+                        slot: Point::new(slot, slot_y),
+                        level,
+                        inline_end: slot_end,
+                    },
+                )?;
                 pen = inline_end;
             }
             ShapedItem::InlineBox { occurrence, .. } => {
@@ -454,8 +639,17 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                     .copied()
                     .ok_or_else(|| invalid("selected atomic has no admitted allocation"))?;
                 let (flow, geometry, alignment) = inflow_allocation(allocation)?;
+                let delta = atomic_scope_displacement(
+                    &selected,
+                    &scopes,
+                    occurrence,
+                    alignment,
+                    &mut ledger,
+                )?;
+                let reference = scoped_reference(metrics.baseline, delta)?;
                 let baseline = match alignment {
-                    LineBoxAlignment::Baseline => metrics.baseline,
+                    LineBoxAlignment::Baseline => reference,
+                    LineBoxAlignment::Shift(shift) => shifted_baseline(reference, shift)?,
                     LineBoxAlignment::Top => finite(
                         "atomic top baseline",
                         TextNumericPhase::Finalization,
@@ -493,41 +687,58 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                             gap,
                         ));
                     }
-                    data.character_anchors.push(WordSpacingAnchor {
-                        base: Point::new(
-                            add(
-                                "atomic pre-gap endpoint",
-                                TextNumericPhase::Finalization,
-                                pen,
-                                flow.advance,
-                            )?,
-                            baseline,
-                        ),
-                        half: gap,
-                    });
+                    account::push(
+                        &mut ledger,
+                        &mut data.character_anchors,
+                        SpacingDisplacement {
+                            frame: FinalizedRunFrame::Line,
+                            before: Point::new(before, baseline),
+                            after: Point::new(after, baseline),
+                            amount: gap,
+                        },
+                    )?;
                 }
                 let rect = translate_rect(geometry.border, pen, baseline)?;
                 translate_rect(geometry.content, pen, baseline)?;
+                if let LineBoxAlignment::Shift(shift) = alignment {
+                    for local in [
+                        geometry.border.origin.y,
+                        geometry.border.origin.y + geometry.border.size.height,
+                        geometry.content.origin.y,
+                        geometry.content.origin.y + geometry.content.size.height,
+                        geometry.baseline,
+                    ] {
+                        qualify_local_shift(reference, baseline, local, shift)?;
+                    }
+                }
                 add(
                     "atomic actual baseline",
                     TextNumericPhase::Finalization,
                     baseline,
                     geometry.baseline,
                 )?;
-                data.visual_order
-                    .push(FinalizedVisualItem::InlineBox(data.boxes.len()));
-                data.boxes.push(FinalizedBox {
-                    occurrence,
-                    atomic: allocation.occurrence.clone(),
-                    slot: Point::new(pen, baseline),
-                    following_gap: shaped.atomic_gaps.get(&occurrence).copied().unwrap_or(0.0),
-                    geometry: FinalizedBoxGeometry::InFlow {
-                        flow,
-                        alignment,
-                        box_geometry: geometry,
-                        rect,
+                account::push(
+                    &mut ledger,
+                    &mut data.visual_order,
+                    FinalizedVisualItem::InlineBox(data.boxes.len()),
+                )?;
+                account::push(
+                    &mut ledger,
+                    &mut data.boxes,
+                    FinalizedBox {
+                        scope_displacement: crate::BaselineShift::try_new(delta)?,
+                        occurrence,
+                        atomic: allocation.occurrence.clone(),
+                        slot: Point::new(pen, baseline),
+                        following_gap: shaped.atomic_gaps.get(&occurrence).copied().unwrap_or(0.0),
+                        geometry: FinalizedBoxGeometry::InFlow {
+                            flow,
+                            alignment,
+                            box_geometry: geometry,
+                            rect,
+                        },
                     },
-                });
+                )?;
                 last_run = None;
                 pen = add(
                     "atomic logical advance",
@@ -541,8 +752,11 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                 )?;
             }
             ShapedItem::TextCluster(cluster_index) => {
-                data.visual_order
-                    .push(FinalizedVisualItem::Cluster(cluster_index));
+                account::push(
+                    &mut ledger,
+                    &mut data.visual_order,
+                    FinalizedVisualItem::Cluster(cluster_index),
+                )?;
                 let cluster = &shaped.clusters[cluster_index];
                 let group = atom_groups[cluster.atoms.start];
                 let mut cluster_x = add(
@@ -565,16 +779,32 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                     dispositions[cluster_index] == SpacingSlotDisposition::DiscardedAtLineEdge;
                 let word_half = word_halves[cluster_index].half;
                 if !discarded && word_halves[cluster_index].unit_start && word_half != 0.0 {
-                    add(
+                    let after = add(
                         "word spacing unit half",
                         TextNumericPhase::Finalization,
                         cluster_x,
                         word_half,
                     )?;
-                    data.word_anchors.push(WordSpacingAnchor {
-                        base: Point::new(cluster_x, metrics.baseline),
-                        half: word_half,
-                    });
+                    account::push(
+                        &mut ledger,
+                        &mut data.word_anchors,
+                        SpacingDisplacement {
+                            frame: FinalizedRunFrame::Line,
+                            before: Point::new(
+                                cluster_x,
+                                data.clusters[cluster_index]
+                                    .reference
+                                    .unwrap_or(metrics.baseline),
+                            ),
+                            after: Point::new(
+                                after,
+                                data.clusters[cluster_index]
+                                    .reference
+                                    .unwrap_or(metrics.baseline),
+                            ),
+                            amount: word_half,
+                        },
+                    )?;
                 }
                 // RTL ligature/component shares are visited before their logical
                 // start. The one actual glyph belongs at the group's visual
@@ -604,7 +834,16 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                 )?;
                 let mut glyph_pen = 0.0;
                 if paints_cluster(cluster, dispositions[cluster_index]) {
-                    for glyph in &shaped.glyphs[cluster.glyphs.clone()] {
+                    for glyph_index in cluster.glyphs.clone() {
+                        let glyph = &shaped.glyphs[glyph_index];
+                        let reference = scope_cell_band
+                            .map(|_| {
+                                scoped_reference(
+                                    metrics.baseline,
+                                    scopes.displacement(selected.scopes.glyph_owners[glyph_index]),
+                                )
+                            })
+                            .transpose()?;
                         let continue_run = last_run.filter(|&run_index| {
                             let run: &FinalizedRun = &data.runs[run_index];
                             cluster.content.font_run().is_some_and(|font| {
@@ -617,39 +856,46 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                                         ))
                             }) && run.style == glyph.style
                                 && run.level == level
+                                && run.reference == reference
                         });
                         let run_index = if let Some(index) = continue_run {
                             index
                         } else {
                             let index = data.runs.len();
-                            data.runs.push(FinalizedRun {
-                                run: cluster
-                                    .content
-                                    .font_run()
-                                    .expect("provider glyph owns its font"),
-                                style: glyph.style,
-                                level,
-                                source: glyph.source,
-                                glyphs: data.glyphs.len()..data.glyphs.len(),
-                                x: add(
-                                    "paint run origin",
-                                    TextNumericPhase::Finalization,
-                                    glyph_x,
-                                    glyph_pen,
-                                )?,
-                                y: add(
-                                    "paint font origin",
-                                    TextNumericPhase::Finalization,
-                                    metrics.baseline,
-                                    shaped.runs[cluster
+                            account::push(
+                                &mut ledger,
+                                &mut data.runs,
+                                FinalizedRun {
+                                    frame: FinalizedRunFrame::Line,
+                                    reference,
+                                    run: cluster
                                         .content
                                         .font_run()
-                                        .expect("provider glyph owns its font")]
-                                    .metrics
-                                    .font_origin_offset(),
-                                )?,
-                                advance: 0.0,
-                            });
+                                        .expect("provider glyph owns its font"),
+                                    style: glyph.style,
+                                    level,
+                                    source: glyph.source,
+                                    glyphs: data.glyphs.len()..data.glyphs.len(),
+                                    x: add(
+                                        "paint run origin",
+                                        TextNumericPhase::Finalization,
+                                        glyph_x,
+                                        glyph_pen,
+                                    )?,
+                                    y: add(
+                                        "paint font origin",
+                                        TextNumericPhase::Finalization,
+                                        reference.unwrap_or(metrics.baseline),
+                                        shaped.runs[cluster
+                                            .content
+                                            .font_run()
+                                            .expect("provider glyph owns its font")]
+                                        .metrics
+                                        .font_origin_offset(),
+                                    )?,
+                                    advance: 0.0,
+                                },
+                            )?;
                             last_run = Some(index);
                             index
                         };
@@ -665,17 +911,21 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                             )?,
                             -run.x,
                         )?;
-                        data.glyphs.push(FinalizedGlyph {
-                            glyph: *glyph,
-                            pen: add(
-                                "word spacing glyph half",
-                                TextNumericPhase::Finalization,
-                                actual_pen,
+                        account::push(
+                            &mut ledger,
+                            &mut data.glyphs,
+                            FinalizedGlyph {
+                                glyph: *glyph,
+                                pen: add(
+                                    "word spacing glyph half",
+                                    TextNumericPhase::Finalization,
+                                    actual_pen,
+                                    word_half,
+                                )?,
+                                pen_base: actual_pen,
                                 word_half,
-                            )?,
-                            pen_base: actual_pen,
-                            word_half,
-                        });
+                            },
+                        )?;
                         run.glyphs.end = data.glyphs.len();
                         run.source.start = run.source.start.min(glyph.source.start);
                         run.source.end = run.source.end.max(glyph.source.end);
@@ -727,7 +977,7 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                     let before = add("character pre-gap endpoint", TextNumericPhase::Finalization, pen, gap.base)?;
                     let after = add("character cell endpoint", TextNumericPhase::Finalization, pen, output.advance)?;
                     if before == after { return Err(super::super::text_numeric_error("character boundary displacement", TextNumericPhase::Finalization, TextNumericError::NonZeroLost, gap.amount)); }
-                    data.character_anchors.push(WordSpacingAnchor { base: Point::new(before, metrics.baseline), half: gap.amount });
+                    account::push(&mut ledger,&mut data.character_anchors,SpacingDisplacement { frame: FinalizedRunFrame::Line, before: Point::new(before, output.reference.unwrap_or(metrics.baseline)), after: Point::new(after, output.reference.unwrap_or(metrics.baseline)), amount: gap.amount })?;
                 }
                 pen = add(
                     "line logical advance",
@@ -738,6 +988,7 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
             }
         }
     }
+    account::drop_vec(&mut ledger, cell_gap_indices)?;
     // Zero-glyph controls and actual empty lines still retain a real font/style
     // row, rather than publishing a fabricated source space or fallback range.
     if let Some(run) = metric_only_run(
@@ -749,70 +1000,84 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
         let run_index = if let Some(index) = shaped.runs.iter().position(|r| std::ptr::eq(r, run)) {
             index
         } else {
-            let run = run.clone();
-            shaped.runs.push(run);
+            let run = account::clone_run(&mut ledger, run)?;
+            account::push(&mut ledger, &mut shaped.runs, run)?;
             shaped.runs.len() - 1
         };
-        data.runs.push(FinalizedRun {
-            run: run_index,
-            style: shaped.runs[run_index].style,
-            level: base,
-            source,
-            glyphs: 0..0,
-            x: metrics.offset,
-            y: add(
-                "empty paint font origin",
-                TextNumericPhase::Finalization,
-                metrics.baseline,
-                shaped.runs[run_index].metrics.font_origin_offset(),
-            )?,
-            advance: 0.0,
-        });
+        account::push(
+            &mut ledger,
+            &mut data.runs,
+            FinalizedRun {
+                frame: FinalizedRunFrame::Line,
+                reference: scope_cell_band.map(|_| metrics.baseline),
+                run: run_index,
+                style: shaped.runs[run_index].style,
+                level: base,
+                source,
+                glyphs: 0..0,
+                x: metrics.offset,
+                y: add(
+                    "empty paint font origin",
+                    TextNumericPhase::Finalization,
+                    metrics.baseline,
+                    shaped.runs[run_index].metrics.font_origin_offset(),
+                )?,
+                advance: 0.0,
+            },
+        )?;
     }
-    install_out_of_flow(&selected, &mut data)?;
-    data.font_runs = shaped.runs;
-    data.fragments = crate::protocol::prepared::selected_origin_intersections(&selected)
-        .into_iter()
-        .map(|association| FinalizedFragmentData {
-            association,
-            bounds: None,
-        })
-        .collect();
-    let source_fragments: Vec<_> = data
-        .fragments
-        .iter()
-        .enumerate()
-        .filter_map(|(index, row)| {
-            if !matches!(
-                row.association.owner,
-                crate::protocol::paragraph::FragmentOwner::Origin(_)
-            ) {
-                return None;
-            }
-            row.association
-                .source
-                .filter(|source| !source.aggregate.is_empty())
-                .map(|source| (source.aggregate, index))
-        })
-        .collect();
-    let mut source_fragments = source_fragments;
-    source_fragments.sort_unstable_by_key(|(range, index)| (range.start, range.end, *index));
+    install_out_of_flow(&selected, &mut data, &scopes, &mut ledger)?;
+    data.font_runs = std::mem::take(&mut shaped.runs);
+    account::work(&mut ledger, selected.presentation.units.len())?;
+    crate::protocol::prepared::visit_selected_origin_intersections(&selected, |association| {
+        account::push(
+            &mut ledger,
+            &mut data.fragments,
+            FinalizedFragmentData {
+                association,
+                bounds: None,
+            },
+        )
+    })?;
+    let mut source_fragments = account::collect(
+        &mut ledger,
+        data.fragments
+            .iter()
+            .enumerate()
+            .filter_map(|(index, row)| {
+                if !matches!(
+                    row.association.owner,
+                    crate::protocol::paragraph::FragmentOwner::Origin(_)
+                ) {
+                    return None;
+                }
+                row.association
+                    .source
+                    .filter(|source| !source.aggregate.is_empty())
+                    .map(|source| (source.aggregate, index, 0))
+            }),
+    )?;
+    source_fragments.sort_unstable_by_key(|(range, index, _)| (range.start, range.end, *index));
     let mut maximum_end = 0;
-    let source_fragments: Vec<_> = source_fragments
-        .into_iter()
-        .map(|(range, index)| {
-            maximum_end = maximum_end.max(range.end);
-            (range, index, maximum_end)
-        })
-        .collect();
-    let mut owned_fragments: BTreeMap<_, Vec<usize>> = BTreeMap::new();
-    for (index, row) in data.fragments.iter().enumerate() {
-        owned_fragments
-            .entry(fragment_key(row.association.owner))
-            .or_default()
-            .push(index);
+    for (range, _, end) in &mut source_fragments {
+        maximum_end = maximum_end.max(range.end);
+        *end = maximum_end;
     }
+    let mut owned_fragments = account::collect(
+        &mut ledger,
+        data.fragments
+            .iter()
+            .enumerate()
+            .map(|(index, row)| (fragment_key(row.association.owner), index)),
+    )?;
+    operations::order_by(&mut owned_fragments, ledger.as_mut(), |left, right| {
+        left.cmp(right)
+    })?;
     for cluster in &data.clusters {
+        account::work(&mut ledger, 1)?;
+        if matches!(cluster.frame, FinalizedRunFrame::Cell(_)) {
+            continue;
+        }
         let end = add(
             "fragment cluster end",
             TextNumericPhase::Finalization,
@@ -830,18 +1095,24 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                     finite(
                         "source fragment strut top",
                         TextNumericPhase::Finalization,
-                        metrics.baseline - before,
+                        cluster.reference.unwrap_or(metrics.baseline) - before,
                     )?,
                     font.line_height,
                 )
             } else {
-                (metrics.baseline, 0.0)
+                (cluster.reference.unwrap_or(metrics.baseline), 0.0)
             }
         } else {
-            (metrics.block_min, metrics.block_max - metrics.block_min)
+            data.cell_band(cluster.reference)
         };
         let rect = Rect::new(cluster.x.min(end), top, (end - cluster.x).abs(), height);
-        add_fragment_bounds(&source_fragments, &mut data.fragments, cluster.source, rect);
+        add_fragment_bounds(
+            &source_fragments,
+            &mut data.fragments,
+            cluster.source,
+            rect,
+            &mut ledger,
+        )?;
         let first = selected
             .presentation
             .units
@@ -861,7 +1132,13 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                         crate::protocol::paragraph::FragmentOwner::VirtualSeparator(index)
                     }
                 };
-                add_owned_fragment_bounds(&owned_fragments, &mut data.fragments, owner, rect);
+                add_owned_fragment_bounds(
+                    &owned_fragments,
+                    &mut data.fragments,
+                    owner,
+                    rect,
+                    &mut ledger,
+                )?;
             }
             if let crate::protocol::prepared::PresentationUnitKind::Replacement {
                 alternative,
@@ -873,17 +1150,89 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                     &mut data.fragments,
                     crate::protocol::paragraph::FragmentOwner::Alternative(alternative),
                     rect,
-                );
+                    &mut ledger,
+                )?;
+            }
+        }
+    }
+    for cell in &data.cells {
+        let output = selected
+            .prepared
+            .analyzed
+            .combination
+            .as_deref()
+            .ok_or_else(|| invalid("finalized cell has no source operation"))?;
+        let binding = &output.bindings[cell.binding];
+        let group = &output.plan.groups[binding.group];
+        let rect = Rect::new(
+            cell.inline.start,
+            cell.under.start,
+            cell.inline.end - cell.inline.start,
+            cell.under.end - cell.under.start,
+        );
+        for part in &output.plan.parts[group.parts.clone()] {
+            account::work(&mut ledger, 1)?;
+            for piece in &part.pieces {
+                add_fragment_bounds(
+                    &source_fragments,
+                    &mut data.fragments,
+                    piece.aggregate,
+                    rect,
+                    &mut ledger,
+                )?;
+            }
+        }
+        use crate::transform::relation::{ComponentOwner, RelationEvent};
+        for event in &selected.prepared.analyzed.transform.events()[binding.events.clone()] {
+            account::work(&mut ledger, 1)?;
+            let component_owner = |owner| match owner {
+                ComponentOwner::Wbr(control) => {
+                    Some(crate::protocol::paragraph::FragmentOwner::Control(control))
+                }
+                ComponentOwner::Virtual(index) => Some(
+                    crate::protocol::paragraph::FragmentOwner::VirtualSeparator(index),
+                ),
+                ComponentOwner::Original(_) => None,
+            };
+            let owner = match *event {
+                RelationEvent::Text { atom } => component_owner(
+                    selected
+                        .prepared
+                        .analyzed
+                        .transform
+                        .component_for_atom(atom)
+                        .owner,
+                ),
+                RelationEvent::GeneratedSuppression { component, .. } => component_owner(
+                    selected.prepared.analyzed.transform.components[component].owner,
+                ),
+                RelationEvent::Anchor { order } => {
+                    match selected.prepared.analyzed.paragraph.anchor_order[order].item {
+                        crate::protocol::paragraph::SemanticAnchorItem::Control(control) => {
+                            Some(crate::protocol::paragraph::FragmentOwner::Control(control))
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            if let Some(owner) = owner {
+                add_owned_fragment_bounds(
+                    &owned_fragments,
+                    &mut data.fragments,
+                    owner,
+                    rect,
+                    &mut ledger,
+                )?;
             }
         }
     }
     for anchor in &data.anchors {
         let unit = &selected.presentation.units[anchor.unit];
-        let rect = Rect::new(
+        let rect = data.cell_rect(
             anchor.slot.x,
-            metrics.block_min,
             crate::protocol::boundary::advance(selected.presentation_input(), anchor.unit),
-            metrics.block_max - metrics.block_min,
+            anchor.reference,
         );
         use crate::protocol::{paragraph::FragmentOwner, prepared::PresentationUnitKind};
         match unit.kind {
@@ -900,23 +1249,30 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
                     &mut data.fragments,
                     FragmentOwner::Origin(origin),
                     bounds,
-                );
+                    &mut ledger,
+                )?;
             }
-            PresentationUnitKind::Deleted => {
-                add_fragment_bounds(&source_fragments, &mut data.fragments, unit.source, rect)
-            }
+            PresentationUnitKind::Deleted => add_fragment_bounds(
+                &source_fragments,
+                &mut data.fragments,
+                unit.source,
+                rect,
+                &mut ledger,
+            )?,
             PresentationUnitKind::Control { occurrence } => add_owned_fragment_bounds(
                 &owned_fragments,
                 &mut data.fragments,
                 FragmentOwner::Control(occurrence),
                 rect,
-            ),
+                &mut ledger,
+            )?,
             PresentationUnitKind::Replacement { alternative, .. } => add_owned_fragment_bounds(
                 &owned_fragments,
                 &mut data.fragments,
                 FragmentOwner::Alternative(alternative),
                 rect,
-            ),
+                &mut ledger,
+            )?,
             _ => {}
         }
     }
@@ -924,6 +1280,10 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
     let mut occupied_end = metrics.offset;
     for item in &data.visual_order {
         let (start, end) = match *item {
+            FinalizedVisualItem::Cell(index) => {
+                let cell = &data.cells[index];
+                (cell.inline.start, cell.inline.end)
+            }
             FinalizedVisualItem::Cluster(index) => {
                 let cluster = &data.clusters[index];
                 (
@@ -966,7 +1326,438 @@ fn execute(selected: Arc<SelectedData>, amounts: &[f64]) -> Result<FinalizedLine
     }
     data.metrics.occupied_start = occupied_start;
     data.metrics.occupied_end = occupied_end;
+    // Every consumer lends these same immutable local references. This separate
+    // publication pass charges one work unit per translated-band validation;
+    // output-row creation has already charged its bounded frame calculation.
+    if let Some((before, after)) = data.scope_cell_band {
+        for reference in data
+            .clusters
+            .iter()
+            .filter_map(|row| row.reference)
+            .chain(data.anchors.iter().filter_map(|row| row.reference))
+        {
+            account::work(&mut ledger, 1)?;
+            add(
+                "scope source-cell top",
+                TextNumericPhase::Finalization,
+                reference,
+                -before,
+            )?;
+            add(
+                "scope source-cell bottom",
+                TextNumericPhase::Finalization,
+                reference,
+                after,
+            )?;
+            finite(
+                "scope source-cell extent",
+                TextNumericPhase::Finalization,
+                before + after,
+            )?;
+        }
+    }
+    if !data.cells.is_empty() {
+        for cluster in &data.clusters {
+            account::work(&mut ledger, 1)?;
+            cell_geometry::qualify_cluster_rect(
+                &data,
+                cluster,
+                selected.request.context.orientation,
+                None,
+                TextNumericPhase::Finalization,
+            )?;
+        }
+        for cell in &data.cells {
+            account::work(&mut ledger, 1)?;
+            cell_geometry::qualify_edge_rect(cell, &data.metrics, TextNumericPhase::Finalization)?;
+            account::work(&mut ledger, cell.tabs.len())?;
+            cell_geometry::qualify_tabs(
+                cell,
+                selected.request.context.orientation,
+                None,
+                TextNumericPhase::Finalization,
+            )?;
+        }
+    }
+    account::drop_vec(&mut ledger, source_fragments)?;
+    account::drop_vec(&mut ledger, owned_fragments)?;
+    account::drop_vec(&mut ledger, groups)?;
+    account::drop_vec(&mut ledger, atom_groups)?;
+    account::drop_vec(&mut ledger, internal_edges)?;
+    if let Some(geometry) = endpoint_offsets {
+        account::drop_vec(&mut ledger, geometry.offsets)?;
+        account::drop_vec(&mut ledger, geometry.leading)?;
+    }
+    account::drop_vec(&mut ledger, character_order)?;
+    account::drop_vec(&mut ledger, word_halves)?;
+    account::drop_vec(&mut ledger, dispositions)?;
+    account::drop_vec(&mut ledger, levels)?;
+    account::drop_vec(&mut ledger, participants)?;
+    data.measurements = Some(measurements.seal(&data.cells, shaped.cells.len(), &mut ledger)?);
+    account::drop_shaped(&mut ledger, shaped)?;
+    account::drop_vec(&mut ledger, atomics.rows)?;
+    account::drop_vec(&mut ledger, controls.rows)?;
+    scopes.budget = ledger;
+    super::super::scope_alignment::finish_frames(&selected, &mut data, scopes)?;
     Ok(FinalizedLine { selected, data })
+}
+
+/// A genuine selected Cell paired with its canonical exterior gap receipt.
+struct CellFlow<'a> {
+    index: usize,
+    gap: Option<&'a super::super::spacing::character::Gap>,
+}
+
+/// The required half must survive the actual inner paint mapping, including
+/// compression and centering. Glyph-free units use the same baseline frame.
+fn qualify_cell_word_half(
+    frame: crate::GlyphFrame,
+    pen_base: f64,
+    pen: f64,
+    offset: Point,
+    half: f64,
+) -> Result<()> {
+    if half == 0.0 {
+        return Ok(());
+    }
+    let scaled = finite(
+        "cell word spacing scaled half",
+        TextNumericPhase::Finalization,
+        frame.outline_x().x * half,
+    )?;
+    let before = frame.point(pen_base, offset.x, offset.y);
+    let after = frame.point(pen, offset.x, offset.y);
+    for point in [before, after] {
+        finite(
+            "cell word spacing x",
+            TextNumericPhase::Finalization,
+            point.x,
+        )?;
+        finite(
+            "cell word spacing y",
+            TextNumericPhase::Finalization,
+            point.y,
+        )?;
+    }
+    if scaled == 0.0 || before.x == after.x {
+        return Err(super::super::text_numeric_error(
+            "cell word spacing displacement",
+            TextNumericPhase::Finalization,
+            TextNumericError::NonZeroLost,
+            half,
+        ));
+    }
+    Ok(())
+}
+
+fn append_cell(
+    selected: &SelectedData,
+    shaped: &ShapedData,
+    scopes: &super::super::scope_alignment::FrameAllocations,
+    flow: CellFlow<'_>,
+    origin: Point,
+    data: &mut FinalizedLineData,
+    ledger: &mut Ledger,
+) -> Result<f64> {
+    let cell_index = flow.index;
+    let cell = &shaped.cells[cell_index];
+    let mut unit = None;
+    for (index, candidate) in selected.presentation.units.iter().enumerate() {
+        account::work(ledger, 1)?;
+        if matches!(candidate.kind, crate::protocol::prepared::PresentationUnitKind::Cell { cell: original }
+            if selected.prepared.shaped.cells[original].binding == cell.binding)
+        {
+            unit = Some(index);
+            break;
+        }
+    }
+    let unit = unit.ok_or_else(|| invalid("cell has no actual selected participant"))?;
+    let participant = selected.presentation.units[unit]
+        .participant
+        .and_then(|index| selected.request.participants.get(index));
+    if !matches!(participant, Some(crate::PreparedParticipant::Cell(_))) {
+        return Err(invalid(
+            "cell selected unit has no genuine Cell participant",
+        ));
+    }
+    let owner = selected
+        .scopes
+        .unit_owners
+        .get(unit)
+        .copied()
+        .ok_or_else(|| invalid("cell has no admitted scope ownership"))?;
+    let delta = scopes.displacement(owner);
+    let shift = crate::BaselineShift::try_new(delta)?;
+    let reference = scoped_reference(origin.y, delta)?;
+    qualify_local_shift(origin.y, reference, -cell.before, shift)?;
+    qualify_local_shift(origin.y, reference, cell.after, shift)?;
+    let end = add(
+        "cell inline end",
+        TextNumericPhase::Finalization,
+        origin.x,
+        cell.extent,
+    )?;
+    let flow_end = add(
+        "cell flow end",
+        TextNumericPhase::Finalization,
+        origin.x,
+        cell.advance,
+    )?;
+    if let Some(gap) = flow.gap
+        && gap.amount != 0.0
+    {
+        let before = add(
+            "cell pre-gap endpoint",
+            TextNumericPhase::Finalization,
+            origin.x,
+            gap.base,
+        )?;
+        if before == flow_end {
+            return Err(super::super::text_numeric_error(
+                "cell boundary displacement",
+                TextNumericPhase::Finalization,
+                TextNumericError::NonZeroLost,
+                gap.amount,
+            ));
+        }
+        account::push(
+            ledger,
+            &mut data.character_anchors,
+            SpacingDisplacement {
+                frame: FinalizedRunFrame::Line,
+                before: Point::new(before, reference),
+                after: Point::new(flow_end, reference),
+                amount: gap.amount,
+            },
+        )?;
+    }
+    let top = add(
+        "cell square over edge",
+        TextNumericPhase::Finalization,
+        reference,
+        -cell.before,
+    )?;
+    let bottom = add(
+        "cell square under edge",
+        TextNumericPhase::Finalization,
+        reference,
+        cell.after,
+    )?;
+    let (frame, transform, tabs) = match &cell.payload {
+        CellPayload::NoProviderInput => (None, None, Vec::new()),
+        CellPayload::LaidOut { layout, provider } => (
+            provider.as_ref().map(|provider| CellFrame {
+                x_scale: layout.transform.x_scale,
+                x_offset: layout.transform.x_offset,
+                baseline: provider.baseline,
+            }),
+            Some(layout.transform),
+            account::clone_vec(ledger, &layout.tabs)?,
+        ),
+    };
+    let index = data.cells.len();
+    account::push(
+        ledger,
+        &mut data.cells,
+        FinalizedCell {
+            cell: cell_index,
+            unit,
+            binding: cell.binding,
+            reference,
+            inline: origin.x..end,
+            flow_end,
+            advance: cell.advance,
+            under: top..bottom,
+            scope_displacement: shift,
+            level: selected.presentation.units[unit].line_level,
+            frame,
+            transform,
+            tabs,
+        },
+    )?;
+    account::push(
+        ledger,
+        &mut data.visual_order,
+        FinalizedVisualItem::Cell(index),
+    )?;
+    let CellPayload::LaidOut { layout, provider } = &cell.payload else {
+        return Ok(flow_end);
+    };
+    for position in &layout.positions {
+        account::work(ledger, 1)?;
+        data.clusters[position.cluster].frame = FinalizedRunFrame::Cell(index);
+        data.clusters[position.cluster].x = position.pen;
+        data.clusters[position.cluster].reference = Some(reference);
+    }
+    let Some(provider) = provider else {
+        return Ok(flow_end);
+    };
+    let inner = CellFrame {
+        x_scale: layout.transform.x_scale,
+        x_offset: layout.transform.x_offset,
+        baseline: provider.baseline,
+    };
+    let unit_frame =
+        crate::GlyphFrame::horizontal(Point::new(inner.x_offset, inner.baseline), inner.x_scale);
+    let positions = &layout.positions;
+    let mut last_run: Option<usize> = None;
+    for position in positions {
+        account::work(ledger, 1)?;
+        let cluster = &shaped.clusters[position.cluster];
+        data.clusters[position.cluster].frame = FinalizedRunFrame::Cell(index);
+        data.clusters[position.cluster].x = position.pen;
+        data.clusters[position.cluster].reference = Some(reference);
+        let word_half = position.word.half;
+        if position.word.unit_start && word_half != 0.0 {
+            let after = add(
+                "cell word spacing unit half",
+                TextNumericPhase::Finalization,
+                position.pen,
+                word_half,
+            )?;
+            qualify_cell_word_half(
+                unit_frame,
+                position.pen,
+                after,
+                Point::new(0.0, 0.0),
+                word_half,
+            )?;
+            account::push(
+                ledger,
+                &mut data.word_anchors,
+                SpacingDisplacement {
+                    frame: FinalizedRunFrame::Cell(index),
+                    before: Point::new(position.pen, 0.0),
+                    after: Point::new(after, 0.0),
+                    amount: word_half,
+                },
+            )?;
+        }
+        let mut glyph_pen = 0.0;
+        for glyph in &shaped.glyphs[cluster.glyphs.clone()] {
+            account::work(ledger, 1)?;
+            let font = cluster
+                .content
+                .font_run()
+                .ok_or_else(|| invalid("cell provider glyph has no retained font"))?;
+            let actual = add(
+                "cell glyph horizontal pen",
+                TextNumericPhase::Finalization,
+                position.pen,
+                glyph_pen,
+            )?;
+            let run = if let Some(run) = last_run.filter(|&run| {
+                let run = &data.runs[run];
+                run.run == font && run.style == glyph.style && run.level == shaped.runs[font].level
+            }) {
+                run
+            } else {
+                let run = data.runs.len();
+                account::push(
+                    ledger,
+                    &mut data.runs,
+                    FinalizedRun {
+                        frame: FinalizedRunFrame::Cell(index),
+                        reference: Some(reference),
+                        run: font,
+                        style: glyph.style,
+                        level: shaped.runs[font].level,
+                        source: glyph.source,
+                        glyphs: data.glyphs.len()..data.glyphs.len(),
+                        x: actual,
+                        y: shaped.runs[font].metrics.font_origin_offset(),
+                        advance: 0.0,
+                    },
+                )?;
+                last_run = Some(run);
+                run
+            };
+            let relative = add(
+                "cell run-local horizontal pen",
+                TextNumericPhase::Finalization,
+                actual,
+                -data.runs[run].x,
+            )?;
+            let pen = add(
+                "cell word spacing glyph half",
+                TextNumericPhase::Finalization,
+                relative,
+                word_half,
+            )?;
+            if word_half != 0.0 {
+                // The run origin is PRE-half. Preserve that independent operand;
+                // never recover it by subtracting a half from rounded paint data.
+                let local_frame = crate::GlyphFrame::horizontal(
+                    Point::new(
+                        finite(
+                            "cell local run x",
+                            TextNumericPhase::Finalization,
+                            inner.x_offset + inner.x_scale * data.runs[run].x,
+                        )?,
+                        finite(
+                            "cell local run y",
+                            TextNumericPhase::Finalization,
+                            inner.baseline + data.runs[run].y,
+                        )?,
+                    ),
+                    inner.x_scale,
+                );
+                qualify_cell_word_half(
+                    local_frame,
+                    relative,
+                    pen,
+                    Point::new(f64::from(glyph.x), f64::from(glyph.y)),
+                    word_half,
+                )?;
+            }
+            account::push(
+                ledger,
+                &mut data.glyphs,
+                FinalizedGlyph {
+                    glyph: *glyph,
+                    pen,
+                    pen_base: relative,
+                    word_half,
+                },
+            )?;
+            data.runs[run].glyphs.end = data.glyphs.len();
+            data.runs[run].source.start = data.runs[run].source.start.min(glyph.source.start);
+            data.runs[run].source.end = data.runs[run].source.end.max(glyph.source.end);
+            glyph_pen = add(
+                "cell provider glyph advance",
+                TextNumericPhase::Finalization,
+                glyph_pen,
+                f64::from(glyph.advance),
+            )?;
+            data.runs[run].advance = add(
+                "cell glyph run advance",
+                TextNumericPhase::Finalization,
+                add(
+                    "cell glyph end",
+                    TextNumericPhase::Finalization,
+                    position.pen,
+                    glyph_pen,
+                )?,
+                -data.runs[run].x,
+            )?;
+        }
+        if let Some(run) = last_run
+            && cluster.content.font_run() == Some(data.runs[run].run)
+        {
+            data.runs[run].advance = add(
+                "cell cluster run advance",
+                TextNumericPhase::Finalization,
+                add(
+                    "cell cluster end",
+                    TextNumericPhase::Finalization,
+                    position.pen,
+                    cluster.advance,
+                )?,
+                -data.runs[run].x,
+            )?;
+        }
+    }
+    Ok(flow_end)
 }
 
 struct SharedEndpointGeometry {
@@ -984,42 +1775,43 @@ fn shared_endpoint_offsets(
     order: &crate::SuppliedVisualOrder<'_, '_>,
     groups: &[std::ops::Range<usize>],
     atom_groups: &[usize],
-    levels: &[u8],
+    ledger: &mut Ledger,
 ) -> Result<Option<SharedEndpointGeometry>> {
-    let mut endpoints = shaped
-        .items
-        .iter()
-        .enumerate()
-        .filter_map(|(ordinal, item)| {
-            let ShapedItem::Anchor { unit } = *item else {
-                return None;
-            };
-            let crate::protocol::prepared::PresentationUnitKind::Control { occurrence } =
-                selected.presentation.units[unit].kind
-            else {
-                return None;
-            };
-            if !crate::protocol::boundary::is_endpoint(
-                &selected.prepared.analyzed.paragraph.controls[occurrence].kind,
-            ) {
-                return None;
-            }
-            let cut = selected.presentation.units[unit].atoms.start;
-            let group = groups.partition_point(|group| group.end <= cut);
-            groups
-                .get(group)
-                .is_some_and(|group| group.start < cut && cut < group.end)
-                .then_some((unit, group, levels[ordinal] & 1 != 0))
-        });
+    account::work(ledger, shaped.items.len())?;
+    let mut endpoints = shaped.items.iter().filter_map(|item| {
+        let ShapedItem::Anchor { unit } = *item else {
+            return None;
+        };
+        let crate::protocol::prepared::PresentationUnitKind::Control { occurrence } =
+            selected.presentation.units[unit].kind
+        else {
+            return None;
+        };
+        if !crate::protocol::boundary::is_endpoint(
+            &selected.prepared.analyzed.paragraph.controls[occurrence].kind,
+        ) {
+            return None;
+        }
+        let cut = selected.presentation.units[unit].atoms.start;
+        let group = groups.partition_point(|group| group.end <= cut);
+        groups
+            .get(group)
+            .is_some_and(|group| group.start < cut && cut < group.end)
+            .then_some((
+                unit,
+                group,
+                selected.presentation.units[unit].line_level & 1 != 0,
+            ))
+    });
     // Ordinary lines retain their existing geometry path without allocating
     // shared-endpoint state. Reuse this same iterator after the first demand.
     let Some(first) = endpoints.next() else {
         return Ok(None);
     };
-    let mut endpoint_groups = vec![None; selected.presentation.units.len()];
-    let mut remaining = vec![None; groups.len()];
-    let mut consumed = vec![None; groups.len()];
-    let mut pending = vec![[0; 2]; groups.len()];
+    let mut endpoint_groups = account::filled(ledger, selected.presentation.units.len(), None)?;
+    let mut remaining = account::filled(ledger, groups.len(), None)?;
+    let mut consumed = account::filled(ledger, groups.len(), None)?;
+    let mut pending = account::filled(ledger, groups.len(), [0; 2])?;
     for (unit, group, odd) in std::iter::once(first).chain(endpoints) {
         endpoint_groups[unit] = Some((group, odd));
         if odd {
@@ -1030,8 +1822,8 @@ fn shared_endpoint_offsets(
         pending[group][usize::from(odd)] += 1;
     }
     let mut result = SharedEndpointGeometry {
-        offsets: vec![None; selected.presentation.units.len()],
-        leading: vec![0.0; groups.len()],
+        offsets: account::filled(ledger, selected.presentation.units.len(), None)?,
+        leading: account::filled(ledger, groups.len(), 0.0)?,
     };
     // Odd endpoints occupy the physical leading side. Retain the complete
     // leading inset so even the component visited before those endpoints moves
@@ -1064,13 +1856,13 @@ fn shared_endpoint_offsets(
                     }
                 }
             }
-            ShapedItem::InlineBox { .. } => {}
+            ShapedItem::Cell(_) | ShapedItem::InlineBox { .. } => {}
         }
     }
     // Even endpoints occupy the physical trailing side. Only the suffix needed
     // by an actual endpoint demands arithmetic; use the post-L1/L2 visual order.
-    let ordinals: Vec<_> = order.iter().map(|(ordinal, _)| ordinal).collect();
-    for ordinal in ordinals.into_iter().rev() {
+    let ordinals = account::collect(ledger, order.iter().map(|(ordinal, _)| ordinal))?;
+    for &ordinal in ordinals.iter().rev() {
         match shaped.items[ordinal] {
             ShapedItem::TextCluster(index) => {
                 let cluster = &shaped.clusters[index];
@@ -1092,9 +1884,14 @@ fn shared_endpoint_offsets(
                     }
                 }
             }
-            ShapedItem::InlineBox { .. } => {}
+            ShapedItem::Cell(_) | ShapedItem::InlineBox { .. } => {}
         }
     }
+    account::drop_vec(ledger, ordinals)?;
+    account::drop_vec(ledger, endpoint_groups)?;
+    account::drop_vec(ledger, remaining)?;
+    account::drop_vec(ledger, consumed)?;
+    account::drop_vec(ledger, pending)?;
     Ok(Some(result))
 }
 
@@ -1119,17 +1916,20 @@ fn fragment_key(owner: crate::protocol::paragraph::FragmentOwner) -> (u8, usize)
 }
 
 fn add_owned_fragment_bounds(
-    index: &BTreeMap<(u8, usize), Vec<usize>>,
+    index: &[((u8, usize), usize)],
     fragments: &mut [FinalizedFragmentData],
     owner: crate::protocol::paragraph::FragmentOwner,
     rect: Rect,
-) {
-    if let Some(indices) = index.get(&fragment_key(owner)) {
-        for &index in indices {
-            let row = &mut fragments[index];
-            row.bounds = Some(row.bounds.map_or(rect, |old| union(old, rect)));
-        }
+    ledger: &mut Ledger,
+) -> Result<()> {
+    let key = fragment_key(owner);
+    let first = index.partition_point(|(old, _)| *old < key);
+    for &(_, index) in index[first..].iter().take_while(|(old, _)| *old == key) {
+        account::work(ledger, 1)?;
+        let row = &mut fragments[index];
+        row.bounds = Some(row.bounds.map_or(rect, |old| union(old, rect)));
     }
+    Ok(())
 }
 
 fn add_fragment_bounds(
@@ -1137,12 +1937,14 @@ fn add_fragment_bounds(
     fragments: &mut [FinalizedFragmentData],
     source: crate::Range,
     rect: Rect,
-) {
+    ledger: &mut Ledger,
+) -> Result<()> {
     if source.is_empty() {
-        return;
+        return Ok(());
     }
     let first = index.partition_point(|(_, _, maximum_end)| *maximum_end <= source.start);
     for &(range, index, _) in &index[first..] {
+        account::work(ledger, 1)?;
         if range.start >= source.end {
             break;
         }
@@ -1151,6 +1953,7 @@ fn add_fragment_bounds(
             row.bounds = Some(row.bounds.map_or(rect, |old| union(old, rect)));
         }
     }
+    Ok(())
 }
 
 fn union(left: Rect, right: Rect) -> Rect {
@@ -1210,17 +2013,27 @@ fn inflow_allocation(
     }
 }
 
-fn install_out_of_flow(selected: &SelectedData, data: &mut FinalizedLineData) -> Result<()> {
+fn install_out_of_flow(
+    selected: &SelectedData,
+    data: &mut FinalizedLineData,
+    scopes: &super::super::scope_alignment::FrameAllocations,
+    ledger: &mut Ledger,
+) -> Result<()> {
     use crate::protocol::{
         AtomicLineAllocation, PreparedParticipant, prepared::PresentationUnitKind,
     };
     let units = &selected.presentation.units;
-    let mut slots = vec![None; units.len()];
+    let mut slots = account::filled(ledger, units.len(), None)?;
     for (index, unit) in units.iter().enumerate() {
-        let first = 0;
+        if matches!(unit.kind, PresentationUnitKind::Cell { .. }) {
+            continue;
+        }
         let mut first_cluster = None;
         let mut last_cluster = None;
-        for cluster in &data.clusters[first..] {
+        for cluster in &data.clusters {
+            if cluster.frame != FinalizedRunFrame::Line {
+                continue;
+            }
             if cluster.presentation.end > unit.presentation.start
                 && cluster.presentation.start < unit.presentation.end
                 && !cluster.presentation.is_empty()
@@ -1254,6 +2067,17 @@ fn install_out_of_flow(selected: &SelectedData, data: &mut FinalizedLineData) ->
             ));
         }
     }
+    // Inner clusters use intrinsic coordinates. An exterior static site instead
+    // consumes the actual Cell's executed outer flow endpoints, including its
+    // following tracking/allocation, in the selected line's resolved direction.
+    for cell in &data.cells {
+        account::work(ledger, 1)?;
+        slots[cell.unit] = Some(if cell.level & 1 == 0 {
+            (cell.inline.start, cell.flow_end)
+        } else {
+            (cell.flow_end, cell.inline.start)
+        });
+    }
     for anchor in &data.anchors {
         slots[anchor.unit] = Some(if anchor.level & 1 == 0 {
             (anchor.slot.x, anchor.inline_end)
@@ -1276,7 +2100,7 @@ fn install_out_of_flow(selected: &SelectedData, data: &mut FinalizedLineData) ->
             (end, item.slot.x)
         });
     }
-    let mut before = vec![None; units.len()];
+    let mut before = account::filled(ledger, units.len(), None)?;
     let mut prior = None;
     for (index, slot) in slots.iter().enumerate() {
         before[index] = prior;
@@ -1284,7 +2108,7 @@ fn install_out_of_flow(selected: &SelectedData, data: &mut FinalizedLineData) ->
             prior = Some(*end);
         }
     }
-    let mut after = vec![None; units.len()];
+    let mut after = account::filled(ledger, units.len(), None)?;
     let mut next = None;
     for (index, slot) in slots.iter().enumerate().rev() {
         after[index] = next;
@@ -1322,32 +2146,116 @@ fn install_out_of_flow(selected: &SelectedData, data: &mut FinalizedLineData) ->
             crate::Affinity::After => after[unit_index].or(before[unit_index]),
         }
         .unwrap_or(data.metrics.offset);
-        data.boxes.push(FinalizedBox {
-            occurrence,
-            atomic: atomic.clone(),
-            slot: Point::new(x, data.metrics.baseline),
-            following_gap: 0.0,
-            geometry: FinalizedBoxGeometry::OutOfFlow,
-        });
+        account::push(
+            ledger,
+            &mut data.boxes,
+            FinalizedBox {
+                occurrence,
+                atomic: atomic.clone(),
+                slot: Point::new(
+                    x,
+                    scoped_reference(
+                        data.metrics.baseline,
+                        scopes.displacement(
+                            selected
+                                .scopes
+                                .unit_owners
+                                .get(unit_index)
+                                .copied()
+                                .flatten(),
+                        ),
+                    )?,
+                ),
+                scope_displacement: crate::BaselineShift::try_new(
+                    scopes.displacement(
+                        selected
+                            .scopes
+                            .unit_owners
+                            .get(unit_index)
+                            .copied()
+                            .flatten(),
+                    ),
+                )?,
+                following_gap: 0.0,
+                geometry: FinalizedBoxGeometry::OutOfFlow,
+            },
+        )?;
     }
+    account::drop_vec(ledger, slots)?;
+    account::drop_vec(ledger, before)?;
+    account::drop_vec(ledger, after)?;
     Ok(())
 }
 
-fn control_allocations(selected: &SelectedData) -> Result<BTreeMap<usize, &ControlAllocation>> {
-    selected
-        .request
-        .controls
-        .iter()
-        .map(|allocation| {
-            let row = selected
-                .prepared
-                .tables
-                .controls
-                .get(allocation.occurrence.index)
-                .ok_or_else(|| invalid("selected control has no prepared occurrence"))?;
-            Ok((row.occurrence, allocation))
-        })
-        .collect()
+fn scoped_reference(baseline: f64, displacement: f64) -> Result<f64> {
+    add(
+        "scope occurrence reference",
+        TextNumericPhase::Finalization,
+        baseline,
+        -displacement,
+    )
+}
+
+fn unit_scope_displacement(
+    selected: &SelectedData,
+    scopes: &super::super::scope_alignment::FrameAllocations,
+    unit: usize,
+    controls: &OrdinalMap<&ControlAllocation>,
+) -> f64 {
+    if let crate::protocol::prepared::PresentationUnitKind::Control { occurrence } =
+        selected.presentation.units[unit].kind
+        && controls
+            .get(&occurrence)
+            .and_then(|allocation| allocation.strut)
+            .is_some_and(|strut| {
+                matches!(
+                    strut.alignment,
+                    LineBoxAlignment::Top | LineBoxAlignment::Bottom
+                )
+            })
+    {
+        return 0.0;
+    }
+    scopes.displacement(selected.scopes.unit_owners.get(unit).copied().flatten())
+}
+
+fn atomic_scope_displacement(
+    selected: &SelectedData,
+    scopes: &super::super::scope_alignment::FrameAllocations,
+    occurrence: usize,
+    alignment: LineBoxAlignment,
+    ledger: &mut Ledger,
+) -> Result<f64> {
+    if matches!(alignment, LineBoxAlignment::Top | LineBoxAlignment::Bottom) {
+        return Ok(0.0);
+    }
+    for (index, unit) in selected.presentation.units.iter().enumerate() {
+        account::work(ledger, 1)?;
+        if matches!(unit.kind,crate::protocol::prepared::PresentationUnitKind::Atomic{occurrence:actual} if actual==occurrence)
+        {
+            return Ok(
+                scopes.displacement(selected.scopes.unit_owners.get(index).copied().flatten())
+            );
+        }
+    }
+    Ok(0.0)
+}
+
+fn control_allocations<'a>(
+    selected: &'a SelectedData,
+    ledger: &mut Ledger,
+) -> Result<OrdinalMap<&'a ControlAllocation>> {
+    let mut result = OrdinalMap::default();
+    for allocation in &selected.request.controls {
+        let row = selected
+            .prepared
+            .tables
+            .controls
+            .get(allocation.occurrence.index)
+            .ok_or_else(|| invalid("selected control has no prepared occurrence"))?;
+        account::insert(ledger, &mut result, row.occurrence, allocation)?;
+    }
+    Ok(result)
 }
 
 /// The same metric-group algebra used by Layout's real box/control fitter.
@@ -1356,65 +2264,35 @@ fn include_control_struts(
     metrics: &mut LineMetrics,
     struts: impl Iterator<Item = ControlStrut>,
     empty: Option<crate::protocol::LineStrut>,
+    have_base: bool,
 ) -> Result<()> {
-    let mut baseline = metrics.baseline - metrics.block_min;
-    let mut after = metrics.block_max - metrics.baseline;
-    let mut top = 0.0_f64;
-    let mut bottom = 0.0_f64;
-    let mut any = false;
-    if let Some(strut) = empty {
-        any = true;
-        baseline = baseline.max(strut.baseline);
-        after = after.max(strut.line_extent - strut.baseline);
+    let mut groups = MetricGroups::default();
+    if have_base {
+        groups.include(
+            metrics.baseline - metrics.block_min,
+            metrics.block_max - metrics.baseline,
+            LineBoxAlignment::Baseline,
+        )?;
     }
+    if let Some(strut) = empty {
+        groups.include(
+            strut.baseline,
+            strut.line_extent - strut.baseline,
+            LineBoxAlignment::Baseline,
+        )?;
+    }
+    let mut any = false;
     for strut in struts {
         any = true;
-        match strut.alignment {
-            LineBoxAlignment::Baseline => {
-                baseline = baseline.max(strut.baseline);
-                after = after.max(strut.line_extent - strut.baseline);
-            }
-            LineBoxAlignment::Top => top = top.max(strut.line_extent),
-            LineBoxAlignment::Bottom => bottom = bottom.max(strut.line_extent),
-        }
+        groups.include(
+            strut.baseline,
+            strut.line_extent - strut.baseline,
+            strut.alignment,
+        )?;
     }
-    if !any {
-        return Ok(());
+    if any || empty.is_some() {
+        *metrics = groups.finish(*metrics)?;
     }
-    let under = finite(
-        "control line under extent",
-        TextNumericPhase::Finalization,
-        baseline + after,
-    )?
-    .max(top);
-    let over = finite(
-        "control line over extent",
-        TextNumericPhase::Finalization,
-        under - bottom,
-    )?
-    .min(0.0);
-    let actual_baseline = finite(
-        "control line baseline",
-        TextNumericPhase::Finalization,
-        baseline - over,
-    )?;
-    let actual_after = finite(
-        "control line after baseline",
-        TextNumericPhase::Finalization,
-        under - baseline,
-    )?;
-    let extent = finite(
-        "control line extent",
-        TextNumericPhase::Finalization,
-        actual_baseline + actual_after,
-    )?;
-    metrics.baseline = actual_baseline;
-    metrics.ascent = actual_baseline;
-    metrics.descent = actual_after;
-    metrics.leading = 0.0;
-    metrics.line_height = extent;
-    metrics.block_min = 0.0;
-    metrics.block_max = extent;
     Ok(())
 }
 
@@ -1427,27 +2305,28 @@ fn control_baseline(metrics: &LineMetrics, strut: Option<ControlStrut>) -> Resul
         TextNumericPhase::Finalization,
         match strut.alignment {
             LineBoxAlignment::Baseline => metrics.baseline,
+            LineBoxAlignment::Shift(shift) => return shifted_baseline(metrics.baseline, shift),
             LineBoxAlignment::Top => metrics.block_min + strut.baseline,
             LineBoxAlignment::Bottom => metrics.block_max - (strut.line_extent - strut.baseline),
         },
     )
 }
 
-fn atomic_allocations(selected: &SelectedData) -> Result<BTreeMap<usize, &AtomicAllocation>> {
-    selected
-        .request
-        .atomics
-        .iter()
-        .map(|allocation| {
-            let row = selected
-                .prepared
-                .tables
-                .atomics
-                .get(allocation.occurrence.index)
-                .ok_or_else(|| invalid("selected atomic has no prepared occurrence"))?;
-            Ok((row.occurrence, allocation))
-        })
-        .collect()
+fn atomic_allocations<'a>(
+    selected: &'a SelectedData,
+    ledger: &mut Ledger,
+) -> Result<OrdinalMap<&'a AtomicAllocation>> {
+    let mut result = OrdinalMap::default();
+    for allocation in &selected.request.atomics {
+        let row = selected
+            .prepared
+            .tables
+            .atomics
+            .get(allocation.occurrence.index)
+            .ok_or_else(|| invalid("selected atomic has no prepared occurrence"))?;
+        account::insert(ledger, &mut result, row.occurrence, allocation)?;
+    }
+    Ok(result)
 }
 
 fn validate_rows(selected: PresentationInput<'_>, shaped: &ShapedData) -> Result<()> {
@@ -1501,6 +2380,9 @@ fn validate_rows(selected: PresentationInput<'_>, shaped: &ShapedData) -> Result
             ShapedItem::TextCluster(index) if *index >= shaped.clusters.len() => {
                 return Err(invalid("selected text item has no cluster"));
             }
+            ShapedItem::Cell(index) if *index >= shaped.cells.len() => {
+                return Err(invalid("selected cell item has no retained cell"));
+            }
             ShapedItem::InlineBox { occurrence, .. }
                 if *occurrence >= selected.prepared.analyzed.processed.source().boxes().len() =>
             {
@@ -1515,17 +2397,30 @@ fn validate_rows(selected: PresentationInput<'_>, shaped: &ShapedData) -> Result
 fn line_metrics(
     selected: &SelectedData,
     shaped: &ShapedData,
-    atomics: &BTreeMap<usize, &AtomicAllocation>,
-    controls: &BTreeMap<usize, &ControlAllocation>,
+    atomics: &OrdinalMap<&AtomicAllocation>,
+    controls: &OrdinalMap<&ControlAllocation>,
     dispositions: &mut [SpacingSlotDisposition],
     prefix_receipts: &mut Vec<f64>,
+    ledger: &mut Ledger,
 ) -> Result<LineMetrics> {
+    account::work(ledger, shaped.items.len())?;
     let mut result = LineMetrics::default();
     let mut have_metrics = false;
     let mut have_cluster_height = false;
-    prefix_receipts.push(0.0);
+    account::push(ledger, prefix_receipts, 0.0)?;
     for item in &shaped.items {
         match *item {
+            ShapedItem::Cell(cell) => {
+                let cell = &shaped.cells[cell];
+                result.advance = add(
+                    "line cell advance",
+                    TextNumericPhase::Finalization,
+                    result.advance,
+                    cell.advance,
+                )?;
+                result.line_height = result.line_height.max(cell.extent);
+                have_cluster_height = true;
+            }
             ShapedItem::Anchor { unit } => {
                 result.advance = add(
                     "line boundary advance",
@@ -1574,7 +2469,7 @@ fn line_metrics(
                 )?);
             }
         }
-        prefix_receipts.push(result.advance);
+        account::push(ledger, prefix_receipts, result.advance)?;
     }
     result.trailing_whitespace = classify_trailing(selected, shaped, dispositions)?;
     if selected.metric_policy == LineMetricPolicy::Native {
@@ -1582,6 +2477,11 @@ fn line_metrics(
     }
     for item in shaped.items.iter().rev() {
         match *item {
+            ShapedItem::Cell(cell) => {
+                result.ascent = result.ascent.max(shaped.cells[cell].before);
+                result.descent = result.descent.max(shaped.cells[cell].after);
+                have_metrics = true;
+            }
             ShapedItem::Anchor { .. } => {}
             ShapedItem::TextCluster(index) => {
                 let cluster = &shaped.clusters[index];
@@ -1679,7 +2579,7 @@ fn line_metrics(
 
 /// A native inline box contributes its own signed half-leading before it is
 /// combined with any other font or allocated box. This is not paint ink.
-fn font_strut(metrics: RunMetrics) -> Result<(f64, f64)> {
+pub(super) fn font_strut(metrics: RunMetrics) -> Result<(f64, f64)> {
     let half = finite(
         "font half-leading",
         TextNumericPhase::Finalization,
@@ -1699,6 +2599,77 @@ fn font_strut(metrics: RunMetrics) -> Result<(f64, f64)> {
     ))
 }
 
+fn shifted_baseline(baseline: f64, shift: crate::BaselineShift) -> Result<f64> {
+    add(
+        "allocated baseline displacement",
+        TextNumericPhase::Finalization,
+        baseline,
+        -shift.get(),
+    )
+}
+
+fn qualify_local_shift(
+    before: f64,
+    after: f64,
+    local: f64,
+    shift: crate::BaselineShift,
+) -> Result<()> {
+    let before = finite(
+        "unshifted allocated coordinate",
+        TextNumericPhase::Finalization,
+        before + local,
+    )?;
+    let after = finite(
+        "shifted allocated coordinate",
+        TextNumericPhase::Finalization,
+        after + local,
+    )?;
+    if shift.get() != 0.0 && before == after {
+        return Err(super::super::text_numeric_error(
+            "allocated coordinate displacement",
+            TextNumericPhase::Finalization,
+            crate::TextNumericError::NonZeroLost,
+            shift.get(),
+        ));
+    }
+    Ok(())
+}
+
+/// Preserve local metrics; only their relative endpoints are displaced.
+fn shifted_bounds(before: f64, after: f64, shift: crate::BaselineShift) -> Result<(f64, f64)> {
+    let actual_before = add(
+        "allocated shifted over bound",
+        TextNumericPhase::Finalization,
+        before,
+        shift.get(),
+    )?;
+    let actual_after = add(
+        "allocated shifted under bound",
+        TextNumericPhase::Finalization,
+        after,
+        -shift.get(),
+    )?;
+    let extent = finite(
+        "allocated local extent",
+        TextNumericPhase::Finalization,
+        before + after,
+    )?;
+    let actual_extent = finite(
+        "allocated shifted extent",
+        TextNumericPhase::Finalization,
+        actual_before + actual_after,
+    )?;
+    if extent != 0.0 && actual_extent == 0.0 {
+        return Err(super::super::text_numeric_error(
+            "allocated shifted extent",
+            TextNumericPhase::Finalization,
+            crate::TextNumericError::NonZeroLost,
+            extent,
+        ));
+    }
+    Ok((actual_before, actual_after))
+}
+
 #[derive(Default)]
 struct MetricGroups {
     baseline: Option<(f64, f64)>,
@@ -1715,7 +2686,11 @@ impl MetricGroups {
         )?;
         finite("metric group after", TextNumericPhase::Finalization, after)?;
         match alignment {
-            LineBoxAlignment::Baseline => {
+            LineBoxAlignment::Baseline | LineBoxAlignment::Shift(_) => {
+                let (before, after) = match alignment {
+                    LineBoxAlignment::Shift(shift) => shifted_bounds(before, after, shift)?,
+                    _ => (before, after),
+                };
                 self.baseline = Some(self.baseline.map_or((before, after), |(above, below)| {
                     (above.max(before), below.max(after))
                 }));
@@ -1788,11 +2763,44 @@ impl MetricGroups {
 fn native_metrics(
     selected: &SelectedData,
     shaped: &ShapedData,
-    atomics: &BTreeMap<usize, &AtomicAllocation>,
-    controls: &BTreeMap<usize, &ControlAllocation>,
+    atomics: &OrdinalMap<&AtomicAllocation>,
+    controls: &OrdinalMap<&ControlAllocation>,
     result: LineMetrics,
 ) -> Result<LineMetrics> {
+    native_metrics_scoped(selected, shaped, atomics, controls, result, None)
+}
+
+fn native_metrics_scoped(
+    selected: &SelectedData,
+    shaped: &ShapedData,
+    atomics: &OrdinalMap<&AtomicAllocation>,
+    controls: &OrdinalMap<&ControlAllocation>,
+    result: LineMetrics,
+    scopes: Option<&super::super::scope_alignment::FrameAllocations>,
+) -> Result<LineMetrics> {
     let mut groups = MetricGroups::default();
+    if let Some(scopes) = scopes {
+        for row in &selected.scopes.contributions {
+            let delta = scopes.displacement(row.owner);
+            let alignment = match row.metrics.alignment {
+                LineBoxAlignment::Top | LineBoxAlignment::Bottom => row.metrics.alignment,
+                LineBoxAlignment::Baseline if delta == 0.0 => LineBoxAlignment::Baseline,
+                LineBoxAlignment::Baseline => {
+                    LineBoxAlignment::Shift(crate::BaselineShift::try_new(delta)?)
+                }
+                LineBoxAlignment::Shift(own) => {
+                    LineBoxAlignment::Shift(crate::BaselineShift::try_new(add(
+                        "scope leaf alignment",
+                        TextNumericPhase::Finalization,
+                        own.get(),
+                        delta,
+                    )?)?)
+                }
+            };
+            groups.include(row.metrics.before, row.metrics.after, alignment)?;
+        }
+        return groups.finish(result);
+    }
     if selected.prepared.analyzed.paragraph.paragraph_strut == crate::ParagraphStrut::DefaultFont {
         let font = selected
             .prepared
@@ -1803,8 +2811,15 @@ fn native_metrics(
         let (before, after) = font_strut(font.metrics)?;
         groups.include(before, after, LineBoxAlignment::Baseline)?;
     }
-    for cluster in &shaped.clusters {
-        if let Some(run) = cluster.content.font_run() {
+    for item in &shaped.items {
+        if let ShapedItem::Cell(cell) = *item {
+            let cell = &shaped.cells[cell];
+            groups.include(cell.before, cell.after, LineBoxAlignment::Baseline)?;
+        }
+        if let ShapedItem::TextCluster(cluster) = *item
+            && let Some(run) = shaped.clusters[cluster].content.font_run()
+        {
+            let cluster = &shaped.clusters[cluster];
             let metrics = RunMetrics {
                 line_height: cluster.line_height,
                 ..shaped.runs[run].metrics
@@ -1854,7 +2869,14 @@ fn collapse_edges(
     selected: PresentationInput<'_>,
     shaped: &mut ShapedData,
 ) -> Result<Vec<SpacingSlotDisposition>> {
-    let dispositions = edge_dispositions(selected, shaped)?;
+    collapse_edges_accounted(selected, shaped, &mut None)
+}
+fn collapse_edges_accounted(
+    selected: PresentationInput<'_>,
+    shaped: &mut ShapedData,
+    ledger: &mut Ledger,
+) -> Result<Vec<SpacingSlotDisposition>> {
+    let dispositions = edge_dispositions_accounted(selected, shaped, ledger)?;
     for (index, disposition) in dispositions.iter().enumerate() {
         if *disposition == SpacingSlotDisposition::DiscardedAtLineEdge {
             shaped.clusters[index].advance = 0.0;
@@ -1867,20 +2889,43 @@ fn edge_dispositions(
     selected: PresentationInput<'_>,
     shaped: &ShapedData,
 ) -> Result<Vec<SpacingSlotDisposition>> {
+    edge_dispositions_accounted(selected, shaped, &mut None)
+}
+fn edge_dispositions_accounted(
+    selected: PresentationInput<'_>,
+    shaped: &ShapedData,
+    ledger: &mut Ledger,
+) -> Result<Vec<SpacingSlotDisposition>> {
+    account::work(ledger, shaped.items.len())?;
     let mut projected = Vec::new();
     let mut clusters = Vec::new();
     for item in &shaped.items {
         match *item {
+            ShapedItem::Cell(cell) => {
+                account::push(
+                    ledger,
+                    &mut projected,
+                    SuppliedInlineParticipant::Cell {
+                        level: BidiLevel::try_new(shaped.cells[cell].level)
+                            .map_err(|_| invalid("invalid cell edge level"))?,
+                    },
+                )?;
+                account::push(ledger, &mut clusters, None)?;
+            }
             ShapedItem::Anchor { .. } => {}
             ShapedItem::InlineBox { occurrence, level } => {
                 if selected.prepared.analyzed.processed.source().boxes()[occurrence].kind()
                     == crate::InlineBoxKind::InFlow
                 {
-                    projected.push(SuppliedInlineParticipant::Atomic {
-                        level: BidiLevel::try_new(level)
-                            .map_err(|_| invalid("invalid atomic edge level"))?,
-                    });
-                    clusters.push(None);
+                    account::push(
+                        ledger,
+                        &mut projected,
+                        SuppliedInlineParticipant::Atomic {
+                            level: BidiLevel::try_new(level)
+                                .map_err(|_| invalid("invalid atomic edge level"))?,
+                        },
+                    )?;
+                    account::push(ledger, &mut clusters, None)?;
                 }
             }
             ShapedItem::TextCluster(index) => {
@@ -1899,37 +2944,42 @@ fn edge_dispositions(
                     .style
                     .authored()
                     .white_space;
-                let edge = if cluster.whitespace == Whitespace::Space && mode.collapses_spaces() {
-                    InlineWhitespaceEdge::DiscardAtBoth
-                } else if selected.metric_policy == LineMetricPolicy::Native
-                    && mode.collapses_spaces()
-                    && selected.presentation.projection.atoms[cluster.atoms.clone()]
+                let edge = crate::engine::analysis::edge::whitespace_edge(
+                    cluster.whitespace == Whitespace::Space,
+                    selected.presentation.projection.atoms[cluster.atoms.clone()]
                         .iter()
-                        .all(|atom| atom.code_point == 0x1680)
-                {
-                    InlineWhitespaceEdge::DiscardAtLineEnd
-                } else {
-                    InlineWhitespaceEdge::Preserve
-                };
-                projected.push(SuppliedInlineParticipant::Text {
-                    level: BidiLevel::try_new(cluster.level)
-                        .map_err(|_| invalid("invalid text edge level"))?,
-                    edge,
-                });
-                clusters.push(Some(index));
+                        .all(|atom| atom.code_point == 0x1680),
+                    mode,
+                    selected.metric_policy == LineMetricPolicy::Native,
+                );
+                account::push(
+                    ledger,
+                    &mut projected,
+                    SuppliedInlineParticipant::Text {
+                        level: BidiLevel::try_new(cluster.level)
+                            .map_err(|_| invalid("invalid text edge level"))?,
+                        edge,
+                    },
+                )?;
+                account::push(ledger, &mut clusters, Some(index))?;
             }
         }
     }
     let edges = SuppliedLine::new(&projected).edges();
-    let mut dispositions =
-        vec![SpacingSlotDisposition::Retained { trailing: false }; shaped.clusters.len()];
-    for (ordinal, index) in clusters.into_iter().enumerate() {
+    let mut dispositions = account::filled(
+        ledger,
+        shaped.clusters.len(),
+        SpacingSlotDisposition::Retained { trailing: false },
+    )?;
+    for (ordinal, &index) in clusters.iter().enumerate() {
         if let Some(index) = index
             && edges.is_discarded(ordinal) == Some(true)
         {
             dispositions[index] = SpacingSlotDisposition::DiscardedAtLineEdge;
         }
     }
+    account::drop_vec(ledger, clusters)?;
+    account::drop_vec(ledger, projected)?;
     Ok(dispositions)
 }
 
@@ -1976,6 +3026,7 @@ fn apply_spacing(
     dispositions: &[SpacingSlotDisposition],
     responses: &[(crate::SpacingStretchability, usize)],
     character_order: &[usize],
+    ledger: &mut Ledger,
 ) -> Result<Vec<FinalizedSpacingSlot>> {
     if amounts.len() != selected.spacing_slots.len() {
         return Err(invalid("spacing amounts do not cover selected slots"));
@@ -1988,21 +3039,21 @@ fn apply_spacing(
             dispositions,
             responses,
             character_order,
+            ledger,
         );
     }
     let mut result = Vec::new();
-    let mut cluster_at = vec![None; selected.presentation.projection.atoms.len()];
+    let mut cluster_at =
+        account::filled(ledger, selected.presentation.projection.atoms.len(), None)?;
     for (index, cluster) in shaped.clusters.iter().enumerate() {
         for atom in cluster.atoms.clone() {
             cluster_at[atom] = Some(index);
         }
     }
-    let units: BTreeMap<_, _> = shaped
-        .word_spacing
-        .iter()
-        .enumerate()
-        .map(|(index, unit)| (unit.base, index))
-        .collect();
+    let mut units = OrdinalMap::default();
+    for (index, unit) in shaped.word_spacing.iter().enumerate() {
+        account::insert(ledger, &mut units, unit.base, index)?;
+    }
     for (slot, (row, &amount)) in selected.spacing_slots.iter().zip(amounts).enumerate() {
         let crate::protocol::selection::SpacingTargetData::Separator { atoms, base, .. } =
             &row.target
@@ -2020,7 +3071,7 @@ fn apply_spacing(
             if let Some(index) = cluster_at[atom]
                 && members.last() != Some(&index)
             {
-                members.push(index);
+                account::push(ledger, &mut members, index)?;
             }
         }
         let index = members
@@ -2034,7 +3085,7 @@ fn apply_spacing(
                 let unit = &shaped.word_spacing[unit];
                 (unit.geometry, unit.shared.clone())
             } else {
-                super::super::spacing::geometry(shaped, &members, atoms.clone())?
+                super::super::spacing::geometry_accounted(shaped, &members, atoms.clone(), ledger)?
             };
         let authored = unit.map_or(0.0, |unit| shaped.word_spacing[unit].authored);
         if dispositions[index] == SpacingSlotDisposition::DiscardedAtLineEdge && amount != 0.0 {
@@ -2093,20 +3144,26 @@ fn apply_spacing(
                 return Err(invalid("None has no selected spacing slots"));
             }
         }
-        result.push(FinalizedSpacingSlot {
-            cluster: index,
-            edge: None,
-            members,
-            disposition: dispositions[index],
-            geometry,
-            stretchability: responses[index].0,
-            traversal_order: responses[index].1,
-            authored,
-            letter: 0.0,
-            allocation: amount,
-            advance: 0.0,
-        });
+        account::push(
+            ledger,
+            &mut result,
+            FinalizedSpacingSlot {
+                cluster: index,
+                edge: None,
+                members,
+                disposition: dispositions[index],
+                geometry,
+                stretchability: responses[index].0,
+                traversal_order: responses[index].1,
+                authored,
+                letter: 0.0,
+                allocation: amount,
+                advance: 0.0,
+            },
+        )?;
     }
+    account::drop_vec(ledger, cluster_at)?;
+    account::drop_vec(ledger, units.rows)?;
     Ok(result)
 }
 
@@ -2117,10 +3174,12 @@ fn character_slots(
     dispositions: &[SpacingSlotDisposition],
     responses: &[(crate::SpacingStretchability, usize)],
     order: &[usize],
+    ledger: &mut Ledger,
 ) -> Result<Vec<FinalizedSpacingSlot>> {
     use super::super::spacing::character::{self, Owner};
     use crate::{SpacingBoundaryGeometry as Geometry, SpacingSlotGeometry};
-    let mut rows = Vec::with_capacity(amounts.len());
+    let mut rows = Vec::new();
+    let owners = selected.basis.characters.owners(shaped, order, ledger)?;
     for (slot, (target, &amount)) in selected.spacing_slots.iter().zip(amounts).enumerate() {
         let crate::protocol::selection::SpacingTargetData::Boundary { edge, .. } = target.target
         else {
@@ -2140,10 +3199,11 @@ fn character_slots(
             ));
         }
         let boundary = &selected.basis.characters.boundaries[edge];
-        let geometry = selected
-            .basis
-            .characters
-            .geometry(edge, &shaped.character_invocations);
+        let geometry =
+            selected
+                .basis
+                .characters
+                .geometry(edge, &shaped.character_invocations, ledger)?;
         let geometry = if geometry == Geometry::Independent
             && !character::qualified(&selected.basis.characters, edge)
         {
@@ -2151,8 +3211,13 @@ fn character_slots(
         } else {
             geometry
         };
-        let discarded =
-            character::discarded(&selected.basis.characters, edge, shaped, dispositions);
+        let discarded = character::discarded(
+            &selected.basis.characters,
+            edge,
+            shaped,
+            dispositions,
+            ledger,
+        )?;
         let protected = matches!(
             geometry,
             Geometry::ProtectedRequired | Geometry::ProtectedCursive
@@ -2162,19 +3227,32 @@ fn character_slots(
                 slot,
             }));
         }
-        let owner = selected
-            .basis
-            .characters
-            .owner(shaped, boundary.before, order);
+        let owner = owners[boundary.before];
         let (cluster, response, rank) = match owner {
             Some(Owner::Cluster(i)) => (i, responses[i].0, responses[i].1),
-            Some(Owner::Atomic(occurrence)) => {
-                let mut traversal = order.to_vec();
+            Some(owner @ (Owner::Atomic(_) | Owner::Cell(_))) => {
+                let mut traversal = account::clone_vec(ledger, order)?;
+                let scans = traversal.len().checked_mul(3).ok_or_else(|| {
+                    super::super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+                        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+                    })
+                })?;
+                account::work(ledger, scans)?;
                 if selected.presentation.analysis.base_level & 1 != 0 {
                     traversal.reverse();
                 }
-                let rank=traversal.iter().position(|&i| matches!(shaped.items[i],ShapedItem::InlineBox {occurrence:actual,..} if actual==occurrence)).unwrap_or(0);
+                let rank = traversal
+                    .iter()
+                    .position(|&i| match (owner, shaped.items[i]) {
+                        (Owner::Atomic(expected), ShapedItem::InlineBox { occurrence, .. }) => {
+                            occurrence == expected
+                        }
+                        (Owner::Cell(expected), ShapedItem::Cell(cell)) => cell == expected,
+                        _ => false,
+                    })
+                    .unwrap_or(0);
                 let downstream_tab=traversal.iter().skip(rank+1).any(|&i| matches!(shaped.items[i],ShapedItem::TextCluster(c) if matches!(shaped.clusters[c].content,ClusterContent::CssTab(_)) && responses[c].0!=crate::SpacingStretchability::Excluded));
+                account::drop_vec(ledger, traversal)?;
                 (
                     usize::MAX,
                     if downstream_tab {
@@ -2187,32 +3265,37 @@ fn character_slots(
             }
             None => (usize::MAX, crate::SpacingStretchability::Excluded, 0),
         };
-        rows.push(FinalizedSpacingSlot {
-            cluster,
-            edge: Some(edge),
-            members: Vec::new(),
-            geometry: SpacingSlotGeometry::Boundary(geometry),
-            stretchability: if discarded || protected {
-                crate::SpacingStretchability::Excluded
-            } else {
-                response
+        account::push(
+            ledger,
+            &mut rows,
+            FinalizedSpacingSlot {
+                cluster,
+                edge: Some(edge),
+                members: Vec::new(),
+                geometry: SpacingSlotGeometry::Boundary(geometry),
+                stretchability: if discarded || protected {
+                    crate::SpacingStretchability::Excluded
+                } else {
+                    response
+                },
+                traversal_order: rank,
+                authored: 0.0,
+                letter: if geometry == Geometry::ProtectedRequired || discarded {
+                    0.0
+                } else {
+                    boundary.authored
+                },
+                allocation: amount,
+                advance: 0.0,
+                disposition: if discarded {
+                    SpacingSlotDisposition::DiscardedAtLineEdge
+                } else {
+                    SpacingSlotDisposition::Retained { trailing: false }
+                },
             },
-            traversal_order: rank,
-            authored: 0.0,
-            letter: if geometry == Geometry::ProtectedRequired || discarded {
-                0.0
-            } else {
-                boundary.authored
-            },
-            allocation: amount,
-            advance: 0.0,
-            disposition: if discarded {
-                SpacingSlotDisposition::DiscardedAtLineEdge
-            } else {
-                SpacingSlotDisposition::Retained { trailing: false }
-            },
-        });
+        )?;
     }
+    account::drop_vec(ledger, owners)?;
     Ok(rows)
 }
 
@@ -2394,10 +3477,18 @@ fn item_levels(
     presentation: &crate::protocol::prepared::SelectedPresentation,
     shaped: &ShapedData,
 ) -> Vec<u8> {
-    shaped
-        .items
-        .iter()
-        .map(|item| match *item {
+    item_levels_accounted(presentation, shaped, &mut None)
+        .expect("ordinary levels have no scope ledger")
+}
+fn item_levels_accounted(
+    presentation: &crate::protocol::prepared::SelectedPresentation,
+    shaped: &ShapedData,
+    ledger: &mut Ledger,
+) -> Result<Vec<u8>> {
+    account::collect(
+        ledger,
+        shaped.items.iter().map(|item| match *item {
+            ShapedItem::Cell(cell) => shaped.cells[cell].level,
             ShapedItem::Anchor { unit } => presentation.units[unit].line_level,
             ShapedItem::InlineBox { level, .. } => level,
             ShapedItem::TextCluster(i) => presentation
@@ -2405,8 +3496,8 @@ fn item_levels(
                 .iter()
                 .find(|u| u.atoms.contains(&shaped.clusters[i].atoms.start))
                 .map_or(shaped.clusters[i].level, |u| u.line_level),
-        })
-        .collect()
+        }),
+    )
 }
 
 fn invalid(message: &'static str) -> Error {
@@ -2418,8 +3509,9 @@ fn invalid(message: &'static str) -> Error {
 fn resolve_tabs(
     selected: &SelectedData,
     shaped: &mut ShapedData,
-    atomics: &BTreeMap<usize, &AtomicAllocation>,
+    atomics: &OrdinalMap<&AtomicAllocation>,
     order: &crate::SuppliedVisualOrder<'_, '_>,
+    ledger: &mut Ledger,
 ) -> Result<()> {
     if selected.prepared.options.tabs() != crate::TabPreparation::CssStops {
         return Ok(());
@@ -2433,7 +3525,11 @@ fn resolve_tabs(
     // The signed grid frame is a consumed capability, not another general
     // line-geometry pass. Absent and zero tabs cannot require its arithmetic.
     let mut remaining_tabs = 0;
-    for cluster in &shaped.clusters {
+    for item in &shaped.items {
+        let ShapedItem::TextCluster(index) = *item else {
+            continue;
+        };
+        let cluster = &shaped.clusters[index];
         if matches!(cluster.content, ClusterContent::CssTab(_)) {
             let metric = selected.prepared.tab_metrics[cluster.style]
                 .as_ref()
@@ -2450,13 +3546,15 @@ fn resolve_tabs(
         -1.0
     };
     let grid_sign = if intrinsic { 1.0 } else { sign };
+    let grid = crate::tabs::Grid::new(TextNumericPhase::Finalization);
     let mut pen = grid_sign * selected.request.context.indent;
-    let mut ordinals: Vec<_> = order.iter().map(|(ordinal, _)| ordinal).collect();
+    let mut ordinals = account::collect(ledger, order.iter().map(|(ordinal, _)| ordinal))?;
     if sign < 0.0 {
         ordinals.reverse();
     }
-    for ordinal in ordinals {
+    for &ordinal in &ordinals {
         let advance = match shaped.items[ordinal] {
+            ShapedItem::Cell(cell) => shaped.cells[cell].advance,
             ShapedItem::Anchor { unit } => {
                 crate::protocol::boundary::advance(selected.presentation_input(), unit)
             }
@@ -2481,14 +3579,7 @@ fn resolve_tabs(
                                 crate::PhaseTwoContext::TabOrigin,
                             ))
                         })?;
-                        // Retain the actual signed interval in preparation. Both
-                        // signs execute this one forward grid by its magnitude.
-                        let period = metric.period.abs();
-                        let mut distance = tab_grid_distance(origin, pen, grid_sign, period)?;
-                        if distance < metric.threshold {
-                            distance = tab_grid_add("tab threshold bump", distance, period)?;
-                        }
-                        distance
+                        grid.stop(origin, pen, grid_sign, metric.period, metric.threshold)?
                     };
                     cluster.advance = advance;
                     if metric.period != 0.0 {
@@ -2497,7 +3588,7 @@ fn resolve_tabs(
                             // This tab's resolved advance is the last consumed
                             // phase result. Its destination and later items use
                             // ordinary finalized geometry, not this grid frame.
-                            return Ok(());
+                            break;
                         }
                     }
                 }
@@ -2508,89 +3599,10 @@ fn resolve_tabs(
                 }
             }
         };
-        pen = tab_grid_add("tab traversal pen", pen, grid_sign * advance)?;
+        pen = grid.add("tab traversal pen", pen, grid_sign * advance)?;
     }
+    account::drop_vec(ledger, ordinals)?;
     Ok(())
-}
-
-/// Both operands define the consumed grid phase, unlike an ordinary adjustment
-/// to an already established base. Neither may silently vanish.
-fn tab_grid_add(field: &'static str, base: f64, delta: f64) -> Result<f64> {
-    let actual = add(field, TextNumericPhase::Finalization, base, delta)?;
-    if base != 0.0 && actual == delta {
-        return Err(super::super::text_numeric_error(
-            field,
-            TextNumericPhase::Finalization,
-            TextNumericError::NonZeroLost,
-            base,
-        ));
-    }
-    Ok(actual)
-}
-
-fn tab_grid_distance(origin: f64, pen: f64, sign: f64, period: f64) -> Result<f64> {
-    const FIELD: &str = "tab grid displacement";
-    // Reduce each coordinate before subtracting: a large whole-period offset
-    // must not round away a small, representable distance to the next stop.
-    // Keep signed remainders; normalizing a tiny negative remainder to a huge
-    // positive period first could itself erase the required contribution.
-    let origin = (sign * origin) % period;
-    let pen = (sign * pen) % period;
-    let cyclic_sum = |a: f64, b: f64, reverse: bool| -> Result<f64> {
-        let (large, small) = if a >= b { (a, b) } else { (b, a) };
-        if large < period * 0.5 {
-            let sum = tab_grid_add(FIELD, large, small)?;
-            return if reverse && sum != 0.0 {
-                tab_grid_add(FIELD, period, -sum)
-            } else {
-                Ok(sum)
-            };
-        }
-        // In the upper half, period-large is an exact binary64 subtraction.
-        // Compare against that gap before adding, avoiding both overflow and
-        // rounding a value just beyond the period back onto the period.
-        let gap = tab_grid_add(FIELD, period, -large)?;
-        let difference = tab_grid_add(FIELD, small, -gap)?;
-        // Compute the requested direction directly. Its opposite may be an
-        // unrepresentable period-small value even when this distance is exact.
-        let directed = if reverse { -difference } else { difference };
-        if directed < 0.0 {
-            tab_grid_add(FIELD, period, directed)
-        } else {
-            Ok(directed)
-        }
-    };
-    let forward_difference = |following: f64, preceding: f64| -> Result<f64> {
-        if following >= preceding {
-            return tab_grid_add(FIELD, following, -preceding);
-        }
-        let distance = if preceding >= period * 0.5 {
-            let gap = tab_grid_add(FIELD, period, -preceding)?;
-            tab_grid_add(FIELD, gap, following)?
-        } else {
-            let backwards = tab_grid_add(FIELD, preceding, -following)?;
-            tab_grid_add(FIELD, period, -backwards)?
-        };
-        if distance == period {
-            return Err(super::super::text_numeric_error(
-                FIELD,
-                TextNumericPhase::Finalization,
-                TextNumericError::NonZeroLost,
-                preceding - following,
-            ));
-        }
-        Ok(distance)
-    };
-    let distance = if origin >= 0.0 && pen < 0.0 {
-        cyclic_sum(origin, -pen, false)?
-    } else if origin < 0.0 && pen >= 0.0 {
-        cyclic_sum(-origin, pen, true)?
-    } else if origin < 0.0 {
-        forward_difference(-pen, -origin)?
-    } else {
-        forward_difference(origin, pen)?
-    };
-    Ok(if distance == 0.0 { period } else { distance })
 }
 
 fn same_paint_font(a: &PreparedRun, b: &PreparedRun) -> bool {
@@ -2779,6 +3791,7 @@ mod tests {
             .collect();
         prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: boundaries[0].clone(),
@@ -2838,7 +3851,12 @@ mod tests {
                 tall.clone(),
             );
             let selected = selected_with_source(source, short.clone(), None, None);
-            let whole = selected.finalize(SpacingAllocations::None).unwrap();
+            let whole = selected
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             // Real Ahem has one-em advances, ascent8/descent2 at10px. Only
             // the authored line-height differs; both original X glyphs keep
             // their same face, size and source custody.
@@ -2886,7 +3904,10 @@ mod tests {
             let prefix = prepared
                 .select(request)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(prefix.feedback().advance, 10.0);
             observations.push((
@@ -2950,7 +3971,10 @@ mod tests {
         }
         .select(request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
     }
 
@@ -3054,7 +4078,10 @@ mod tests {
             let mut source = Source::new("XX");
             source.span(range, ahem_strut(8.0, 20.0));
             let line = selected_with_source(source, ahem_strut(16.0, 20.0), None, None)
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             // Ahem8 contributes12.4/7.6, while the actual default16px strut
             // still contributes14.8/5.2 even when every body span is8px.
@@ -3165,6 +4192,7 @@ mod tests {
             .handle();
         let line = prepared
             .select(LineSelectionRequest {
+                segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
                 start: prepared.boundary_views().next().unwrap().handle(),
@@ -3212,7 +4240,10 @@ mod tests {
                 },
             })
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().line_height, 0.0);
         assert_eq!(line.feedback().baseline, -7.0);
@@ -3244,7 +4275,12 @@ mod tests {
     #[test]
     fn composed_collapse_suppresses_actual_line_edges_before_feedback_and_spacing() {
         let selected = selected("  X  ", WhiteSpace::Collapse, None, None);
-        let line = selected.finalize(SpacingAllocations::None).unwrap();
+        let line = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(line.feedback().advance, 10.0);
         assert_eq!(line.feedback().trailing_whitespace, 0.0);
         assert_eq!(line.inner.data.glyphs.len(), 1);
@@ -3266,16 +4302,19 @@ mod tests {
         let slots: Vec<_> = selected.spacing_slots().collect();
         assert_eq!(slots.len(), 2);
         let error = selected
-            .finalize(SpacingAllocations::Complete(
-                slots
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, slot)| SpacingAllocation {
-                        slot,
-                        amount: if index == 0 { 1.0 } else { 0.0 },
-                    })
-                    .collect(),
-            ))
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::Complete(
+                    slots
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, slot)| SpacingAllocation {
+                            slot,
+                            amount: if index == 0 { 1.0 } else { 0.0 },
+                        })
+                        .collect(),
+                ),
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap_err();
         assert!(matches!(
             error.detail(),
@@ -3309,7 +4348,12 @@ mod tests {
                     None,
                     None,
                 );
-                let line = selected.finalize(SpacingAllocations::None).unwrap();
+                let line = selected
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
+                    .unwrap();
                 assert_eq!(line.feedback().advance, raw, "{value:?}/{mode:?}/{wrap:?}");
                 assert_eq!(line.measurements().fit().advance(), contribution);
                 assert_eq!(line.measurements().alignment().advance(), contribution);
@@ -3349,7 +4393,10 @@ mod tests {
             None,
             None,
         )
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
         assert_eq!(line.feedback().advance, 20.0);
         assert_eq!(line.measurements().fit().advance(), 20.0);
@@ -3389,7 +4436,10 @@ mod tests {
             ("\u{a0}X\u{a0}", WhiteSpace::Collapse),
         ] {
             let line = selected(text, mode, None, None)
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(line.feedback().advance, 30.0);
             assert_eq!(line.inner.data.glyphs.len(), 3);
@@ -3407,7 +4457,10 @@ mod tests {
                     wrap: crate::Wrap::Word,
                 }),
             )
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
             assert_eq!(line.feedback().advance, 10.0);
             assert_eq!(line.inner.data.glyphs.len(), 1);
@@ -3422,7 +4475,10 @@ mod tests {
                 wrap: crate::Wrap::Word,
             }),
         )
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
         assert_eq!(line.feedback().advance, 25.0);
         assert_eq!(line.inner.data.glyphs.len(), 2);
@@ -3456,7 +4512,7 @@ mod tests {
                 line_extent: 18.0,
                 alignment,
             };
-            include_control_struts(&mut metrics, [strut].into_iter(), None).unwrap();
+            include_control_struts(&mut metrics, [strut].into_iter(), None, true).unwrap();
             assert_eq!(metrics.line_height, 18.0);
             assert_eq!(metrics.baseline, expected_baseline);
             assert_eq!(
@@ -3477,7 +4533,10 @@ mod tests {
             let line = prepared
                 .select(request)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(
                 (
@@ -3514,6 +4573,7 @@ mod tests {
             ]
             .into_iter(),
             None,
+            true,
         )
         .unwrap();
         assert_eq!((metrics.baseline, metrics.line_height), (14.0, 24.0));
@@ -3647,6 +4707,7 @@ mod tests {
             crate::test_wrapping::select_neutral(
                 &prepared,
                 LineSelectionRequest {
+                    segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,
                     start,
@@ -3709,10 +4770,12 @@ mod tests {
         assert_eq!(pdi_unit.code_point, Some(0x2069));
         assert_eq!(pdi_unit.bidi_class, Some(BidiClass::PopDirectionalIsolate));
         assert_eq!(pdi_unit.level, 2);
-        let (shaped, _) = shape::finalize(
+        let (shaped, _, _) = shape::finalize(
             first_selected.inner.presentation_input(),
             &mut ShapeContext::default(),
             first_selected.inner.request.context.spacing,
+            None,
+            crate::engine::scope_alignment::PlanInput::Selection(&first_selected.inner.request),
         )
         .unwrap();
         let pdi_item = shaped.items.iter().position(|item| matches!(item,
@@ -3728,8 +4791,18 @@ mod tests {
             1
         );
 
-        let first = first_selected.finalize(SpacingAllocations::None).unwrap();
-        let second = second_selected.finalize(SpacingAllocations::None).unwrap();
+        let first = first_selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
+        let second = second_selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(first.selected_line(), first_selected);
         assert_eq!(second.selected_line(), second_selected);
         assert_eq!(first.inner.selected.presentation.source, Range::new(0, 6));

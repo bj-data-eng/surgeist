@@ -1,13 +1,13 @@
 use super::{
     AtomicInlineParticipation, AvailableOf, Clear, DefaultScalar, Direction, Edges,
     InlineBoundaryEdgeOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetricsOf,
-    LayoutScalar, Size, TextAlign, VerticalAlign, WritingMode,
+    LayoutScalar, Size, TextAlign, WritingMode,
 };
-#[cfg(test)]
 use crate::Point;
-use crate::geometry::FlowAxes;
 #[cfg(test)]
-use crate::geometry::{LogicalPointOf, LogicalSizeOf};
+use crate::geometry::LogicalSizeOf;
+use crate::geometry::{FlowAxes, LogicalPointOf};
+use crate::inline_wrapping::NumericWrappingError;
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
 use crate::inline_wrapping::quality::{LineQualityGoal, LineQualityKey};
 #[cfg(test)]
@@ -17,6 +17,12 @@ use surgeist_text::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 
 mod input;
 
+#[cfg(test)]
+mod baseline_offset_tests;
+#[cfg(test)]
+mod named_float_phase_tests;
+#[cfg(test)]
+mod no_strut_tests;
 #[cfg(test)]
 mod wrap_edges_tests;
 #[cfg(test)]
@@ -85,10 +91,27 @@ pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum InlineSourcePositionOf<S: LayoutScalar = DefaultScalar> {
+    /// Numeric run-local coordinates, before the parent-frame projection.
+    Logical(LogicalPointOf<S>),
+    /// Native parent-relative coordinates from the actual accepted frame.
+    Physical(Point<S>),
+}
+
+#[cfg(test)]
+pub(super) fn expect_logical_position<S: LayoutScalar>(
+    position: InlineSourcePositionOf<S>,
+) -> LogicalPointOf<S> {
+    let InlineSourcePositionOf::Logical(position) = position else {
+        panic!("a numeric source must retain its logical position");
+    };
+    position
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct AtomicInlineSourceOf<S: LayoutScalar = DefaultScalar> {
     pub item: AtomicInlineBoxParticipant<S>,
-    pub inline_start: S,
-    pub block_start: S,
+    pub position: InlineSourcePositionOf<S>,
     pub line_index: usize,
     /// Present only when this geometry came from the numeric mixed-order owner.
     pub visual_index: Option<usize>,
@@ -129,10 +152,9 @@ pub(super) struct NonFormattedInlineControlOf<S: LayoutScalar = DefaultScalar> {
 pub(super) struct InlineControlSourceOf<S: LayoutScalar = DefaultScalar> {
     pub kind: InlineParticipantLayoutKind,
     pub source_index: usize,
-    pub inline_start: S,
+    pub position: InlineSourcePositionOf<S>,
     pub inline_extent: S,
     pub endpoint: Option<InlineEndpointOf<S>>,
-    pub block_start: S,
     pub line_index: usize,
     pub visual_index: Option<usize>,
 }
@@ -179,11 +201,46 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
     }
 }
 
+/// Accepted numeric run-local baseline distances before parent-frame projection.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct NumericBaselineReportOf<S: LayoutScalar = DefaultScalar> {
+    pub context: crate::InlineBaselineContext,
+    pub first: Option<S>,
+    pub last: Option<S>,
+    pub first_named: bool,
+    pub last_named: bool,
+}
+
+/// Physical baseline coordinates retain the frame in which they were obtained.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct PhysicalBaselineReport {
+    pub context: crate::InlineBaselineContext,
+    pub first: Option<f64>,
+    pub last: Option<f64>,
+    pub first_named: bool,
+    pub last_named: bool,
+    pub frame: crate::block::baseline_frame::BaselineFrame,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum InlineBaselineReportOf<S: LayoutScalar = DefaultScalar> {
+    Numeric(NumericBaselineReportOf<S>),
+    Native(PhysicalBaselineReport),
+}
+
+#[cfg(test)]
+impl<S: LayoutScalar> InlineBaselineReportOf<S> {
+    pub(super) fn numeric(&self) -> &NumericBaselineReportOf<S> {
+        let Self::Numeric(baselines) = self else {
+            panic!("a numeric report must retain numeric baseline facts");
+        };
+        baselines
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
-    pub inline_baseline_context: crate::InlineBaselineContext,
-    pub first_named_baseline: bool,
-    pub last_named_baseline: bool,
+    pub baselines: InlineBaselineReportOf<S>,
     pub group_lines: Vec<crate::group_alignment::NaturalLine<S>>,
     pub formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
     pub line_box_context: crate::line_box::LineBoxContext,
@@ -193,8 +250,6 @@ pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
     pub inline_extent: S,
     pub block_extent: S,
     pub float_edge_phase: Option<S>,
-    pub first_baseline: Option<S>,
-    pub last_baseline: Option<S>,
     pub atomics: Vec<AtomicInlineSourceOf<S>>,
     pub controls: Vec<InlineControlSourceOf<S>>,
     pub nonformatted_controls: Vec<NonFormattedInlineControlOf<S>>,
@@ -315,10 +370,11 @@ struct SelectedInlineLineOf<S: LayoutScalar> {
     has_in_flow_content: bool,
     split_baseline_edge_phase: Option<S>,
     inline_start_override: Option<S>,
-    uses_float_strut_phase: bool,
     incoming_strut: Option<ReferencedInlineStrutOf<S>>,
     scope_band: Option<LogicalLineBandQueryResultOf<S>>,
     band: LogicalLineBandOf<S>,
+    numeric_error: Option<crate::group_alignment::NumericError>,
+    has_displacement: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -333,6 +389,8 @@ struct InlineLineSummaryOf<S: LayoutScalar> {
     used_inline_extent: S,
     has_in_flow_content: bool,
     split_baseline_edge_phase: Option<S>,
+    numeric_error: Option<crate::group_alignment::NumericError>,
+    has_displacement: bool,
 }
 
 impl<S: LayoutScalar> InlineLineSummaryOf<S> {
@@ -421,6 +479,14 @@ pub(super) struct InlineMetricContributionOf<S: LayoutScalar> {
     pub after_baseline: S,
 }
 
+/// An active Start retains raw sides and its canonical operation. Its local
+/// baseline distance never replaces the selected line's common reference.
+#[derive(Clone, Copy, PartialEq)]
+struct ActiveInlineStrutOf<S: LayoutScalar> {
+    metrics: InlineMetricContributionOf<S>,
+    alignment: InlineControlAlignment<S>,
+}
+
 /// The actual reference travels with carried geometry through checkpoints.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) struct ReferencedInlineStrutOf<S: LayoutScalar> {
@@ -445,21 +511,57 @@ impl<S: LayoutScalar> InlineMetricContributionOf<S> {
     fn extent(self) -> S {
         self.baseline + self.after_baseline
     }
+
+    fn post_baseline(
+        self,
+        alignment: InlineControlAlignment<S>,
+        over_at_block_start: bool,
+    ) -> Result<Self, crate::group_alignment::NumericError> {
+        let InlineControlAlignment::Shift(offset) = alignment else {
+            return Ok(self);
+        };
+        let over = if over_at_block_start {
+            offset.get()
+        } else {
+            -offset.get()
+        };
+        Ok(Self {
+            baseline: crate::baseline_offset::displaced(self.baseline, over)?,
+            after_baseline: crate::baseline_offset::displaced(self.after_baseline, -over)?,
+        })
+    }
 }
 
 #[derive(Clone, Copy)]
-struct InlineLineMetricGroupsOf<S: LayoutScalar> {
+pub(crate) struct InlineLineMetricGroupsOf<S: LayoutScalar> {
+    has_baseline: bool,
     baseline: S,
     after_baseline: S,
     zero_after_baseline_peak: S,
     has_positive_after_baseline: bool,
     line_over_extent: S,
     line_under_extent: S,
+    over_at_block_start: bool,
+    has_displacement: bool,
+    numeric_error: Option<crate::group_alignment::NumericError>,
 }
 
 impl<S: LayoutScalar> InlineLineMetricGroupsOf<S> {
-    fn from_strut(strut: Option<InlineMetricContributionOf<S>>) -> Self {
+    fn from_strut(strut: Option<InlineMetricContributionOf<S>>, axes: FlowAxes) -> Self {
+        Self::with_reference(strut, axes.line_over() == axes.block_start())
+    }
+
+    /// Text's native local metric coordinates are already line-over/line-under.
+    pub(crate) fn typographic() -> Self {
+        Self::with_reference(None, true)
+    }
+
+    fn with_reference(
+        strut: Option<InlineMetricContributionOf<S>>,
+        over_at_block_start: bool,
+    ) -> Self {
         Self {
+            has_baseline: strut.is_some(),
             baseline: strut.map_or(S::ZERO, |metrics| metrics.baseline),
             after_baseline: strut.map_or(S::ZERO, |metrics| metrics.after_baseline),
             zero_after_baseline_peak: strut
@@ -469,22 +571,41 @@ impl<S: LayoutScalar> InlineLineMetricGroupsOf<S> {
                 .is_some_and(|metrics| metrics.after_baseline > S::ZERO),
             line_over_extent: S::ZERO,
             line_under_extent: S::ZERO,
+            over_at_block_start,
+            has_displacement: false,
+            numeric_error: None,
         }
     }
 
-    fn include(
+    pub(crate) fn include(
         &mut self,
-        alignment: InlineControlAlignment,
-        metrics: InlineMetricContributionOf<S>,
+        alignment: InlineControlAlignment<S>,
+        mut metrics: InlineMetricContributionOf<S>,
     ) {
+        if let InlineControlAlignment::Shift(offset) = alignment {
+            self.has_displacement |= offset.get() != S::ZERO;
+            match metrics.post_baseline(alignment, self.over_at_block_start) {
+                Ok(value) => metrics = value,
+                Err(error) => {
+                    self.numeric_error = self.numeric_error.or(Some(error));
+                    return;
+                }
+            }
+        }
         match alignment {
-            InlineControlAlignment::Baseline => {
-                self.baseline = self.baseline.max(metrics.baseline);
-                self.after_baseline = self.after_baseline.max(metrics.after_baseline);
+            InlineControlAlignment::Baseline | InlineControlAlignment::Shift(_) => {
+                if self.has_baseline {
+                    self.baseline = self.baseline.max(metrics.baseline);
+                    self.after_baseline = self.after_baseline.max(metrics.after_baseline);
+                } else {
+                    self.baseline = metrics.baseline;
+                    self.after_baseline = metrics.after_baseline;
+                    self.has_baseline = true;
+                }
                 if metrics.after_baseline == S::ZERO {
                     self.zero_after_baseline_peak =
                         self.zero_after_baseline_peak.max(metrics.baseline);
-                } else {
+                } else if metrics.after_baseline > S::ZERO {
                     self.has_positive_after_baseline = true;
                 }
             }
@@ -508,6 +629,19 @@ impl<S: LayoutScalar> InlineLineMetricGroupsOf<S> {
             baseline: self.baseline - line_over,
             after_baseline: line_under - self.baseline,
         }
+    }
+
+    pub(crate) fn checked(
+        self,
+    ) -> Result<InlineMetricContributionOf<S>, crate::group_alignment::NumericError> {
+        if let Some(error) = self.numeric_error {
+            return Err(error);
+        }
+        let metrics = self.resolve();
+        if self.has_displacement {
+            crate::baseline_offset::displaced(metrics.baseline, metrics.after_baseline)?;
+        }
+        Ok(metrics)
     }
 
     fn split_baseline_edge_phase(self) -> Option<S> {
@@ -586,7 +720,7 @@ impl<S: LayoutScalar> MixedInlineParticipantOf<S> {
         }
     }
 
-    fn alignment(self) -> InlineControlAlignment {
+    fn alignment(self) -> InlineControlAlignment<S> {
         match self {
             Self::Atomic { item, .. } => item.alignment,
             Self::ForcedLineBreak(control) => control.alignment(),
@@ -618,12 +752,55 @@ fn resolve_completed_fallback_envelope<S: LayoutScalar>(
     }
 
     if uses_float_band {
-        line.baseline = fallback_band.baseline;
-        line.after_baseline = fallback_band.after_baseline;
+        if !line.has_displacement {
+            line.baseline = fallback_band.baseline;
+            line.after_baseline = fallback_band.after_baseline;
+        }
         return;
     }
 
     line.fallback_line_band = None;
+}
+
+fn unshifted_alignment<S: LayoutScalar>(
+    alignment: InlineControlAlignment<S>,
+) -> InlineControlAlignment<S> {
+    match alignment {
+        InlineControlAlignment::Shift(_) => InlineControlAlignment::Baseline,
+        value => value,
+    }
+}
+
+fn displaced_fallback_groups<S: LayoutScalar>(
+    participants: &[MixedInlineParticipantOf<S>],
+    control: Option<ForcedLineBreakControlOf<S>>,
+    strut: Option<InlineMetricContributionOf<S>>,
+    raw_band: InlineMetricContributionOf<S>,
+    axes: FlowAxes,
+) -> InlineLineMetricGroupsOf<S> {
+    let mut groups = InlineLineMetricGroupsOf::from_strut(strut, axes);
+    if let Some(control) = control {
+        groups.include(
+            control.alignment(),
+            InlineMetricContributionOf {
+                baseline: control.metrics().baseline(),
+                after_baseline: control.metrics().after_baseline(),
+            },
+        );
+    }
+    for participant in participants.iter().copied() {
+        let mut metrics = participant.metrics(axes);
+        if let MixedInlineParticipantOf::Atomic { item, .. } = participant
+            && let Some(center) = item.fallback_block_start_in_band(axes, raw_band)
+        {
+            let margin = axes.logical_edges(item.margin);
+            let extent = metrics.extent();
+            metrics.baseline = raw_band.baseline - (center - margin.block_start);
+            metrics.after_baseline = extent - metrics.baseline;
+        }
+        groups.include(participant.alignment(), metrics);
+    }
+    groups
 }
 
 #[must_use]
@@ -648,7 +825,7 @@ fn summarize_inline_line<S: LayoutScalar>(
 ) -> InlineLineSummaryOf<S> {
     let participants = input.participants;
     let edges = SuppliedLine::new(input.supplied).edges();
-    let mut metric_groups = InlineLineMetricGroupsOf::from_strut(strut);
+    let mut metric_groups = InlineLineMetricGroupsOf::from_strut(strut, flow_axes);
     if let Some(control) = line_break {
         metric_groups.include(
             control.alignment(),
@@ -658,8 +835,19 @@ fn summarize_inline_line<S: LayoutScalar>(
             },
         );
     }
-    let fallback_line_band =
-        (strut.is_some() || line_break.is_some()).then(|| metric_groups.resolve());
+    let fallback_line_band = (strut.is_some() || line_break.is_some()).then(|| {
+        let mut raw = InlineLineMetricGroupsOf::from_strut(strut, flow_axes);
+        if let Some(control) = line_break {
+            raw.include(
+                unshifted_alignment(control.alignment()),
+                InlineMetricContributionOf {
+                    baseline: control.metrics().baseline(),
+                    after_baseline: control.metrics().after_baseline(),
+                },
+            );
+        }
+        raw.resolve()
+    });
     let mut used_inline_extent = S::ZERO;
     let discarded_start_end = edges.leading_discard_len();
     let discarded_end_start = edges.trailing_discard_start();
@@ -698,6 +886,8 @@ fn summarize_inline_line<S: LayoutScalar>(
         used_inline_extent,
         has_in_flow_content,
         split_baseline_edge_phase: metric_groups.split_baseline_edge_phase(),
+        numeric_error: metric_groups.checked().err(),
+        has_displacement: metric_groups.has_displacement,
     }
 }
 
@@ -741,9 +931,10 @@ fn selected_from_summary<S: LayoutScalar>(
         has_in_flow_content: summary.has_in_flow_content,
         split_baseline_edge_phase: summary.split_baseline_edge_phase,
         inline_start_override: None,
-        uses_float_strut_phase: false,
         incoming_strut: None,
         scope_band: None,
+        numeric_error: summary.numeric_error,
+        has_displacement: summary.has_displacement,
         band: LogicalLineBandOf {
             inline_start: S::ZERO,
             inline_end: S::ZERO,
@@ -755,14 +946,13 @@ fn selected_from_summary<S: LayoutScalar>(
 
 fn resolve_float_strut_phase<S: LayoutScalar>(
     line: &mut SelectedInlineLineOf<S>,
-    carried_strut: Option<InlineMetricContributionOf<S>>,
+    carried_strut: Option<ActiveInlineStrutOf<S>>,
     flow_axes: FlowAxes,
-) -> Option<InlineMetricContributionOf<S>> {
-    let mut metric_groups = InlineLineMetricGroupsOf::from_strut(None);
-    let mut active_strut = carried_strut;
-    let mut uses_phase = carried_strut.is_some();
+) -> Result<Option<ActiveInlineStrutOf<S>>, NumericWrappingError> {
+    let mut groups = InlineLineMetricGroupsOf::from_strut(None, flow_axes);
+    let mut active = carried_strut;
     if let Some(control) = line.line_break {
-        metric_groups.include(
+        groups.include(
             control.alignment(),
             InlineMetricContributionOf {
                 baseline: control.metrics().baseline(),
@@ -771,31 +961,27 @@ fn resolve_float_strut_phase<S: LayoutScalar>(
         );
     }
     for selected in line.units.iter().copied().filter(|unit| !unit.discarded) {
-        match selected.participant {
-            MixedInlineParticipantOf::Boundary(control) => {
-                uses_phase = true;
-                active_strut = match control.kind() {
-                    InlineBoundaryKind::Start => Some(InlineMetricContributionOf {
-                        baseline: control.metrics().baseline(),
-                        after_baseline: control.metrics().after_baseline(),
-                    }),
-                    InlineBoundaryKind::End => None,
-                };
-            }
-            participant => {
-                metric_groups.include(participant.alignment(), participant.metrics(flow_axes));
-            }
+        let participant = selected.participant;
+        groups.include(participant.alignment(), participant.metrics(flow_axes));
+        if let MixedInlineParticipantOf::Boundary(control) = participant {
+            active = match control.kind() {
+                InlineBoundaryKind::Start => Some(ActiveInlineStrutOf {
+                    metrics: participant.metrics(flow_axes),
+                    alignment: control.alignment(),
+                }),
+                InlineBoundaryKind::End => None,
+            };
         }
     }
-    let metrics = metric_groups.resolve();
-    let line_extent = active_strut.map_or(metrics.extent(), |strut| {
-        metrics.extent().max(strut.extent())
-    });
+    if let Some(strut) = active {
+        groups.include(strut.alignment, strut.metrics);
+    }
+    let metrics = groups.checked()?;
     line.baseline = metrics.baseline;
-    line.after_baseline = line_extent - metrics.baseline;
+    line.after_baseline = metrics.after_baseline;
     line.fallback_line_band = None;
-    line.uses_float_strut_phase = uses_phase;
-    active_strut
+    line.has_displacement |= groups.has_displacement;
+    Ok(active)
 }
 
 fn starts_inline_strut_phase<S: LayoutScalar>(line: &SelectedInlineLineOf<S>) -> bool {
@@ -1076,42 +1262,41 @@ struct NumericCandidateReceiptOf<S: LayoutScalar> {
     summary: InlineLineSummaryOf<S>,
     groups: InlineLineMetricGroupsOf<S>,
     phase_groups: InlineLineMetricGroupsOf<S>,
-    last_boundary: Option<Option<InlineMetricContributionOf<S>>>,
+    last_boundary: Option<Option<ActiveInlineStrutOf<S>>>,
     starts_phase: bool,
-    has_boundary: bool,
     has_fallback_atomic: bool,
-    uses_phase: bool,
     band: Option<LogicalLineBandQueryResultOf<S>>,
     capacity: Option<S>,
+    displaced_fallback: Option<InlineMetricContributionOf<S>>,
 }
 /// Prefix accumulator over actual numeric participants. Neither numeric variant
 /// is discardable Text, so these are the same ordered metric/advance folds as
 /// summarize_inline_line, with no independent width estimator.
 struct NumericReceiptAccumulatorOf<S: LayoutScalar> {
+    axes: FlowAxes,
     groups: InlineLineMetricGroupsOf<S>,
     phase_groups: InlineLineMetricGroupsOf<S>,
     advance: S,
     has_in_flow_content: bool,
-    last_boundary: Option<Option<InlineMetricContributionOf<S>>>,
+    last_boundary: Option<Option<ActiveInlineStrutOf<S>>>,
     starts_phase: bool,
-    has_boundary: bool,
     has_fallback_atomic: bool,
     fallback: Option<InlineMetricContributionOf<S>>,
 }
 impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
-    fn new(strut: Option<ReferencedInlineStrutOf<S>>) -> Self {
+    fn new(strut: Option<ReferencedInlineStrutOf<S>>, axes: FlowAxes) -> Self {
         let strut = strut.map(|strut| strut.metrics);
-        let groups = InlineLineMetricGroupsOf::from_strut(strut);
+        let groups = InlineLineMetricGroupsOf::from_strut(strut, axes);
         Self {
             groups,
-            phase_groups: InlineLineMetricGroupsOf::from_strut(None),
+            phase_groups: InlineLineMetricGroupsOf::from_strut(None, axes),
             advance: S::ZERO,
             has_in_flow_content: false,
             last_boundary: None,
             starts_phase: false,
-            has_boundary: false,
             has_fallback_atomic: false,
             fallback: strut.map(|_| groups.resolve()),
+            axes,
         }
     }
     fn push(&mut self, participant: MixedInlineParticipantOf<S>, axes: FlowAxes) {
@@ -1121,13 +1306,14 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
         self.advance = self.advance + participant.inline_advance(axes);
         match participant {
             MixedInlineParticipantOf::Boundary(control) => {
-                self.has_boundary = true;
+                self.phase_groups
+                    .include(control.alignment(), participant.metrics(axes));
                 self.last_boundary = Some(match control.kind() {
                     InlineBoundaryKind::Start => {
                         self.starts_phase = true;
-                        Some(InlineMetricContributionOf {
-                            baseline: control.metrics().baseline(),
-                            after_baseline: control.metrics().after_baseline(),
+                        Some(ActiveInlineStrutOf {
+                            metrics: participant.metrics(axes),
+                            alignment: control.alignment(),
                         })
                     }
                     InlineBoundaryKind::End => None,
@@ -1162,8 +1348,8 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
             groups.include(control.alignment(), metrics);
             phase_groups.include(control.alignment(), metrics);
             let mut initial =
-                InlineLineMetricGroupsOf::from_strut(pending.map(|strut| strut.metrics));
-            initial.include(control.alignment(), metrics);
+                InlineLineMetricGroupsOf::from_strut(pending.map(|strut| strut.metrics), self.axes);
+            initial.include(unshifted_alignment(control.alignment()), metrics);
             fallback = Some(initial.resolve());
         }
         let metrics = groups.resolve();
@@ -1182,26 +1368,27 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
                 used_inline_extent: self.advance,
                 has_in_flow_content: self.has_in_flow_content,
                 split_baseline_edge_phase: groups.split_baseline_edge_phase(),
+                numeric_error: groups.checked().err(),
+                has_displacement: groups.has_displacement,
             },
             groups,
             phase_groups,
             last_boundary: self.last_boundary,
             starts_phase: self.starts_phase,
-            has_boundary: self.has_boundary,
             has_fallback_atomic: self.has_fallback_atomic,
-            uses_phase: false,
             band: None,
             capacity: None,
+            displaced_fallback: None,
         }
     }
 }
 
-fn allocate_numeric_box_metrics<S: LayoutScalar>(
-    receipt: &mut NumericCandidateReceiptOf<S>,
+fn for_each_unowned_box_metric<S: LayoutScalar>(
     wrapping: &crate::inline_wrapping::NumericWrapping,
     participants: &[MixedInlineParticipantOf<S>],
     start: usize,
     end: usize,
+    mut include: impl FnMut(InlineControlAlignment<S>, InlineMetricContributionOf<S>),
 ) -> Result<(), crate::inline_wrapping::NumericWrappingError> {
     use crate::{InlineBoxMetricContribution as Contribution, WrappingScopeError};
     for allocation in wrapping.metrics(start, end) {
@@ -1217,7 +1404,7 @@ fn allocate_numeric_box_metrics<S: LayoutScalar>(
                 _ => Err(WrappingScopeError::CaptureAssociation),
             })
             .collect::<Result<_, _>>()?;
-        let (alignment, metrics) = match allocation.contribution {
+        let (alignment, metrics) = match &allocation.contribution {
             Contribution::NoContribution => {
                 if !owned.is_empty() {
                     return Err(WrappingScopeError::ConflictingBoxMetrics.into());
@@ -1234,6 +1421,14 @@ fn allocate_numeric_box_metrics<S: LayoutScalar>(
                     surgeist_text::LineBoxAlignment::Baseline => InlineControlAlignment::Baseline,
                     surgeist_text::LineBoxAlignment::Top => InlineControlAlignment::Top,
                     surgeist_text::LineBoxAlignment::Bottom => InlineControlAlignment::Bottom,
+                    surgeist_text::LineBoxAlignment::Shift(offset) => {
+                        InlineControlAlignment::Shift(
+                            crate::BaselineOffsetOf::try_new(crate::group_alignment::scalar::<S>(
+                                offset.get(),
+                            )?)
+                            .map_err(|_| WrappingScopeError::InvalidBoxMetrics)?,
+                        )
+                    }
                 };
                 if owned.iter().any(|(actual_alignment, metrics)| {
                     *actual_alignment != alignment
@@ -1252,20 +1447,35 @@ fn allocate_numeric_box_metrics<S: LayoutScalar>(
             }
         };
         if owned.is_empty() {
-            receipt.groups.include(alignment, metrics);
-            receipt.phase_groups.include(alignment, metrics);
+            include(alignment, metrics);
         }
     }
-    let metrics = receipt.groups.resolve();
+    Ok(())
+}
+
+fn allocate_numeric_box_metrics<S: LayoutScalar>(
+    receipt: &mut NumericCandidateReceiptOf<S>,
+    wrapping: &crate::inline_wrapping::NumericWrapping,
+    participants: &[MixedInlineParticipantOf<S>],
+    start: usize,
+    end: usize,
+) -> Result<(), NumericWrappingError> {
+    for_each_unowned_box_metric(wrapping, participants, start, end, |alignment, metrics| {
+        receipt.groups.include(alignment, metrics);
+        receipt.phase_groups.include(alignment, metrics);
+    })?;
+    let metrics = receipt.groups.checked()?;
     receipt.summary.baseline = metrics.baseline;
     receipt.summary.after_baseline = metrics.after_baseline;
     receipt.summary.split_baseline_edge_phase = receipt.groups.split_baseline_edge_phase();
+    receipt.summary.numeric_error = None;
+    receipt.summary.has_displacement = receipt.groups.has_displacement;
     Ok(())
 }
 
 fn resolve_numeric_candidate<S: LayoutScalar>(
     receipt: &mut NumericCandidateReceiptOf<S>,
-    carried: Option<InlineMetricContributionOf<S>>,
+    carried: Option<ActiveInlineStrutOf<S>>,
     block: S,
     indent: S,
     available: S,
@@ -1276,26 +1486,33 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
     {
         return Ok(true);
     }
+    receipt.groups.checked()?;
+    receipt.phase_groups.checked()?;
     let original = receipt.summary;
     let mut floating = false;
     let mut seen = Vec::new();
     loop {
         let phase = carried.is_some() || floating && receipt.starts_phase;
         let (metrics, fallback) = if phase {
-            let metrics = receipt.phase_groups.resolve();
+            let mut groups = receipt.phase_groups;
             let active = receipt.last_boundary.unwrap_or(carried);
-            let extent = active.map_or(metrics.extent(), |s| metrics.extent().max(s.extent()));
+            if let Some(strut) = active {
+                groups.include(strut.alignment, strut.metrics);
+            }
+            let metrics = groups.checked()?;
+            receipt.summary.has_displacement |= groups.has_displacement;
             (
                 InlineMetricContributionOf {
                     baseline: metrics.baseline,
-                    after_baseline: extent - metrics.baseline,
+                    after_baseline: metrics.after_baseline,
                 },
                 None,
             )
         } else if floating && receipt.has_fallback_atomic {
             (
-                original
-                    .fallback_line_band
+                receipt
+                    .displaced_fallback
+                    .or(original.fallback_line_band)
                     .unwrap_or(InlineMetricContributionOf {
                         baseline: original.baseline,
                         after_baseline: original.after_baseline,
@@ -1315,7 +1532,13 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
                 },
             )
         };
-        let band = band_source(block, block + metrics.extent());
+        let end = consumed_line_end(
+            block,
+            metrics.baseline,
+            metrics.after_baseline,
+            receipt.summary.has_displacement,
+        )?;
+        let band = band_source(block, end);
         let basis = (
             metrics.baseline,
             metrics.after_baseline,
@@ -1336,7 +1559,6 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
         receipt.summary.baseline = metrics.baseline;
         receipt.summary.after_baseline = metrics.after_baseline;
         receipt.summary.fallback_line_band = fallback;
-        receipt.uses_phase = phase && (carried.is_some() || receipt.has_boundary);
         receipt.band = Some(band);
         let width = (band.inline_end - band.inline_start).max(S::ZERO);
         let width = if width == S::ZERO && band.next_transition.is_none() {
@@ -1437,7 +1659,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
         Option<ReferencedInlineStrutOf<S>>,
         crate::inline_wrapping::NumericWrappingError,
     >,
-    mut fits: impl FnMut(
+    mut native_fits: impl FnMut(
         &mut NumericCandidateReceiptOf<S>,
     ) -> Result<bool, crate::inline_wrapping::NumericWrappingError>,
 ) -> Result<InlineSelectionStep<S>, crate::inline_wrapping::NumericWrappingError> {
@@ -1452,6 +1674,37 @@ fn select_scope_inline_line<S: LayoutScalar>(
         pending,
         axes,
     } = query;
+    let mut fits = |receipt: &mut NumericCandidateReceiptOf<S>| {
+        if receipt.summary.has_displacement
+            && let Some(raw) = receipt.summary.fallback_line_band
+        {
+            let end =
+                receipt.next_cursor.source - usize::from(receipt.summary.line_break.is_some());
+            let participants = &run.participants[cursor.source..end];
+            receipt.has_fallback_atomic = participants.iter().any(|participant| matches!(participant,
+                MixedInlineParticipantOf::Atomic { item, .. } if item.fallback_block_start_in_band(axes, raw).is_some()));
+            if receipt.has_fallback_atomic {
+                let mut groups = displaced_fallback_groups(
+                    participants,
+                    receipt.summary.line_break,
+                    pending.map(|strut| strut.metrics),
+                    raw,
+                    axes,
+                );
+                if let Some(wrapping) = wrapping {
+                    for_each_unowned_box_metric(
+                        wrapping,
+                        run.participants,
+                        cursor.source,
+                        end,
+                        |alignment, metrics| groups.include(alignment, metrics),
+                    )?;
+                }
+                receipt.displaced_fallback = Some(groups.checked()?);
+            }
+        }
+        native_fits(receipt)
+    };
     let baseline = || {
         select_next_inline_line(
             run,
@@ -1464,7 +1717,32 @@ fn select_scope_inline_line<S: LayoutScalar>(
         )
     };
     if wrapping.is_none() && goal.is_none() {
-        return prepare_selected_receiver(baseline(), &mut prepare_receiver);
+        let step = prepare_selected_receiver(baseline(), &mut prepare_receiver)?;
+        let InlineSelectionStep::Selected(Some(mut candidate)) = step else {
+            return Ok(step);
+        };
+        if !candidate.line.has_displacement {
+            return Ok(InlineSelectionStep::Selected(Some(candidate)));
+        }
+        let end = candidate.next_cursor.source - usize::from(candidate.line.line_break.is_some());
+        let mut accumulator = NumericReceiptAccumulatorOf::new(pending, axes);
+        for participant in run.participants[cursor.source..end].iter().copied() {
+            accumulator.push(participant, axes);
+        }
+        let mut receipt = accumulator.receipt(
+            candidate.end,
+            candidate.next_cursor,
+            candidate.line.line_break,
+            pending,
+            end - cursor.source,
+        );
+        let _ = fits(&mut receipt)?;
+        candidate.line = selected_from_summary(
+            run.line(cursor.source..end, cursor.descriptor),
+            receipt.summary,
+        );
+        candidate.line.scope_band = receipt.band;
+        return Ok(InlineSelectionStep::Selected(Some(candidate)));
     }
     let edge_stop = wrapping.and_then(|wrapping| {
         if !cursor.edge_consumed && wrapping.forced(cursor.source) {
@@ -1479,7 +1757,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
     let mut stop = run.participants.len();
     let mut forced = None;
     let mut mandatory = false;
-    let mut accumulator = NumericReceiptAccumulatorOf::new(pending);
+    let mut accumulator = NumericReceiptAccumulatorOf::new(pending, axes);
     for i in cursor.source..run.participants.len() {
         let participant = run.participants[i];
         if edge_stop == Some(i) {
@@ -1552,7 +1830,6 @@ fn select_scope_inline_line<S: LayoutScalar>(
             run.line(cursor.source..end, cursor.descriptor),
             receipt.summary,
         );
-        line.uses_float_strut_phase = receipt.uses_phase;
         line.scope_band = receipt.band;
         SelectedInlineLineCandidateOf {
             end: receipt.end,
@@ -1599,7 +1876,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
         fallback
     } else if let Some(candidate) = fallback {
         let end = candidate.next_cursor.source - usize::from(candidate.line.line_break.is_some());
-        let mut accumulator = NumericReceiptAccumulatorOf::new(pending);
+        let mut accumulator = NumericReceiptAccumulatorOf::new(pending, axes);
         for participant in run.participants[cursor.source..end].iter().copied() {
             accumulator.push(participant, axes);
         }
@@ -1657,7 +1934,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
         }
         Ok(())
     };
-    let mut accumulator = NumericReceiptAccumulatorOf::new(pending);
+    let mut accumulator = NumericReceiptAccumulatorOf::new(pending, axes);
     for end in cursor.source + 1..stop {
         let participant = run.participants[end - 1];
         accumulator.push(participant, axes);
@@ -1849,16 +2126,23 @@ fn selected_line_inline_start<S: LayoutScalar>(
 
 fn resolved_float_terminal_block_extent<S: LayoutScalar>(
     line: &SelectedInlineLineOf<S>,
-    carried_strut: Option<InlineMetricContributionOf<S>>,
+    carried_strut: Option<ActiveInlineStrutOf<S>>,
     float_transition: Option<S>,
     flow_axes: FlowAxes,
     line_inline_start: S,
     line_inline_end: S,
-) -> S {
+) -> Result<S, NumericWrappingError> {
     let line_block_end = line.band.block_end;
-    let Some(strut) = carried_strut.filter(|strut| strut.after_baseline > S::ZERO) else {
-        return line_block_end;
+    let Some(active) = carried_strut else {
+        return Ok(line_block_end);
     };
+    let strut = active.metrics.post_baseline(
+        active.alignment,
+        flow_axes.line_over() == flow_axes.block_start(),
+    )?;
+    if strut.after_baseline <= S::ZERO {
+        return Ok(line_block_end);
+    }
     let touches_float_edge = if flow_axes
         .logical_axis_progression(crate::LogicalAxis::Inline)
         .is_decreasing()
@@ -1868,10 +2152,23 @@ fn resolved_float_terminal_block_extent<S: LayoutScalar>(
         line_inline_end == line.band.inline_end
     };
     if float_transition != Some(line_block_end) || !touches_float_edge {
-        return line_block_end;
+        return Ok(line_block_end);
     }
-    let baseline_phase = (line.baseline - strut.baseline).max(S::ZERO) / strut.after_baseline;
-    line_block_end + baseline_phase
+    let displaced = matches!(active.alignment, InlineControlAlignment::Shift(offset) if offset.get() != S::ZERO);
+    let difference = if displaced {
+        crate::baseline_offset::displaced(line.baseline, -strut.baseline)?
+    } else {
+        line.baseline - strut.baseline
+    };
+    let baseline_phase = difference.max(S::ZERO) / strut.after_baseline;
+    if displaced {
+        Ok(crate::baseline_offset::displaced(
+            line_block_end,
+            baseline_phase,
+        )?)
+    } else {
+        Ok(line_block_end + baseline_phase)
+    }
 }
 
 fn resolved_inline_unit_slots<S: LayoutScalar>(
@@ -2031,7 +2328,7 @@ struct NumericFlowState<S: LayoutScalar> {
     indent_state: crate::text_indent::IndentLineState,
     line_box_context: crate::line_box::LineBoxContext,
     block_cursor: S,
-    float_strut: Option<InlineMetricContributionOf<S>>,
+    float_strut: Option<ActiveInlineStrutOf<S>>,
     continuation_inline_cursor: Option<S>,
     advanced_phase_transition: bool,
     resolved_terminal_block_extent: S,
@@ -2288,11 +2585,18 @@ where
             provisional.end.line_end(),
             provisional.line.has_in_flow_content,
         )?;
-        if float_strut.is_some() {
-            resolve_float_strut_phase(&mut provisional.line, float_strut, input.flow_axes);
+        if let Some(error) = provisional.line.numeric_error {
+            return Err(error.into());
         }
-        let provisional_block_end =
-            block_cursor + provisional.line.baseline + provisional.line.after_baseline;
+        if float_strut.is_some() {
+            let _ = resolve_float_strut_phase(&mut provisional.line, float_strut, input.flow_axes)?;
+        }
+        let provisional_block_end = consumed_line_end(
+            block_cursor,
+            provisional.line.baseline,
+            provisional.line.after_baseline,
+            provisional.line.has_displacement,
+        )?;
         let mut queried_band = band_source(block_cursor, provisional_block_end);
         let band_inline_end = queried_band.inline_end.max(queried_band.inline_start);
         let band_available = band_inline_end - queried_band.inline_start;
@@ -2387,7 +2691,7 @@ where
         let next_float_strut = if float_strut.is_some()
             || (has_float_transition && starts_inline_strut_phase(&selected.line))
         {
-            resolve_float_strut_phase(&mut selected.line, float_strut, input.flow_axes)
+            resolve_float_strut_phase(&mut selected.line, float_strut, input.flow_axes)?
         } else {
             float_strut
         };
@@ -2396,8 +2700,12 @@ where
             input.flow_axes,
             has_float_transition,
         );
-        let selected_block_end =
-            block_cursor + selected.line.baseline + selected.line.after_baseline;
+        let selected_block_end = consumed_line_end(
+            block_cursor,
+            selected.line.baseline,
+            selected.line.after_baseline,
+            selected.line.has_displacement,
+        )?;
         let continuation_overflows = continuation_inline_cursor
             .is_some_and(|cursor| cursor + selected.line.used_inline_extent > band_inline_end);
         if !advanced_phase_transition
@@ -2474,7 +2782,7 @@ where
             input.flow_axes,
             line_inline_start,
             line_inline_end,
-        );
+        )?;
         continuation_inline_cursor = float_strut.is_some().then_some(line_inline_end);
         float_strut = next_float_strut;
         advanced_phase_transition = false;
@@ -3144,14 +3452,17 @@ where
                     let logical_size = input.flow_axes.logical_size(item.size);
                     let line_block_extent = line.baseline + line.after_baseline;
                     let item_block_start = match item.alignment {
-                        InlineControlAlignment::Baseline => line
+                        InlineControlAlignment::Baseline | InlineControlAlignment::Shift(_) => line
                             .fallback_line_band
                             .and_then(|band| {
                                 item.fallback_block_start_in_band(input.flow_axes, band)
+                                    .map(|offset| (offset, band.baseline))
                             })
                             .map_or_else(
                                 || line_baseline - item.baseline_offset(input.flow_axes),
-                                |offset| block_start + offset,
+                                |(offset, raw_baseline)| {
+                                    block_start + offset + line.baseline - raw_baseline
+                                },
                             ),
                         InlineControlAlignment::Top | InlineControlAlignment::Bottom => {
                             let edge = if item.alignment == InlineControlAlignment::Top {
@@ -3170,33 +3481,39 @@ where
                             }
                         }
                     };
+                    let item_block_start = displaced_block_coordinate(
+                        item.alignment,
+                        input.flow_axes,
+                        item_block_start,
+                    )?;
                     atomics.push(AtomicInlineSourceOf {
                         item,
-                        inline_start: inline_start + logical_margin.inline_start,
-                        block_start: item_block_start,
+                        position: InlineSourcePositionOf::Logical(LogicalPointOf::new(
+                            inline_start + logical_margin.inline_start,
+                            item_block_start,
+                        )),
                         line_index,
                         visual_index: Some(visual_indices[source_index]),
                     });
                 }
                 MixedInlineParticipantOf::Boundary(control) => {
-                    let control_block = if line.uses_float_strut_phase {
-                        block_start + control.metrics().baseline()
-                    } else {
-                        control_block_position(
-                            control.alignment(),
-                            control.metrics(),
-                            block_start,
-                            line_baseline,
-                            line.baseline + line.after_baseline,
-                        )
-                    };
+                    let control_block = control_block_position(
+                        control.alignment(),
+                        control.metrics(),
+                        block_start,
+                        line_baseline,
+                        line.baseline + line.after_baseline,
+                        input.flow_axes,
+                    )?;
                     controls.push(InlineControlSourceOf {
                         kind: inline_boundary_layout_kind(control.kind()),
                         source_index: control.source_index(),
-                        inline_start,
+                        position: InlineSourcePositionOf::Logical(LogicalPointOf::new(
+                            inline_start,
+                            control_block,
+                        )),
                         inline_extent: control.edge().advance(),
                         endpoint: Some(InlineEndpointOf::from_control(control)),
-                        block_start: control_block,
                         line_index,
                         visual_index: Some(visual_indices[source_index]),
                     });
@@ -3213,14 +3530,17 @@ where
                 block_start,
                 line_baseline,
                 line.baseline + line.after_baseline,
-            );
+                input.flow_axes,
+            )?;
             controls.push(InlineControlSourceOf {
                 kind: InlineParticipantLayoutKind::ForcedLineBreak,
                 source_index: control.source_index(),
-                inline_start: line_inline_start + line.used_inline_extent,
+                position: InlineSourcePositionOf::Logical(LogicalPointOf::new(
+                    line_inline_start + line.used_inline_extent,
+                    control_block,
+                )),
                 inline_extent: S::ZERO,
                 endpoint: None,
-                block_start: control_block,
                 line_index,
                 visual_index: None,
             });
@@ -3229,9 +3549,13 @@ where
     }
 
     Ok(MixedInlineRunReportOf {
-        inline_baseline_context: input.inline_baseline_context,
-        first_named_baseline,
-        last_named_baseline,
+        baselines: InlineBaselineReportOf::Numeric(NumericBaselineReportOf {
+            context: input.inline_baseline_context,
+            first: first_baseline,
+            last: last_baseline,
+            first_named: first_named_baseline,
+            last_named: last_named_baseline,
+        }),
         group_lines,
         formatted_lines,
         line_box_context,
@@ -3241,8 +3565,6 @@ where
         inline_extent,
         block_extent: block_cursor.max(resolved_terminal_block_extent),
         float_edge_phase,
-        first_baseline,
-        last_baseline,
         atomics,
         controls,
         nonformatted_controls,
@@ -3262,7 +3584,7 @@ pub(super) struct AtomicInlineBoxParticipant<S: LayoutScalar = DefaultScalar> {
     pub border: Edges<S>,
     pub scrollbar_size: Size<S>,
     pub first_baseline: Option<S>,
-    pub alignment: InlineControlAlignment,
+    pub alignment: InlineControlAlignment<S>,
 }
 
 impl<S: LayoutScalar> AtomicInlineBoxParticipant<S> {
@@ -3289,7 +3611,7 @@ impl<S: LayoutScalar> AtomicInlineBoxParticipant<S> {
         flow_axes: FlowAxes,
         line_band: InlineMetricContributionOf<S>,
     ) -> Option<S> {
-        if self.alignment != InlineControlAlignment::Baseline || self.first_baseline.is_some() {
+        if !self.alignment.is_baseline_relative() || self.first_baseline.is_some() {
             return None;
         }
         let logical_size = flow_axes.logical_size(self.size);
@@ -3308,18 +3630,62 @@ impl<S: LayoutScalar> AtomicInlineBoxParticipant<S> {
 }
 
 fn control_block_position<S: LayoutScalar>(
-    alignment: InlineControlAlignment,
+    alignment: InlineControlAlignment<S>,
     metrics: InlineMetricsOf<S>,
     line_block_start: S,
     line_baseline: S,
     line_block_extent: S,
-) -> S {
-    match alignment {
-        InlineControlAlignment::Baseline => line_baseline,
+    flow_axes: FlowAxes,
+) -> Result<S, NumericWrappingError> {
+    let position = match alignment {
+        InlineControlAlignment::Baseline | InlineControlAlignment::Shift(_) => line_baseline,
         InlineControlAlignment::Top => line_block_start + metrics.baseline(),
         InlineControlAlignment::Bottom => {
             line_block_start + line_block_extent - metrics.after_baseline()
         }
+    };
+    displaced_block_coordinate(alignment, flow_axes, position)
+}
+
+/// Convert line-over displacement to the numeric fitter's block coordinate.
+fn block_displacement<S: LayoutScalar>(alignment: InlineControlAlignment<S>, axes: FlowAxes) -> S {
+    let InlineControlAlignment::Shift(offset) = alignment else {
+        return S::ZERO;
+    };
+    if axes.line_over() == axes.block_start() {
+        -offset.get()
+    } else {
+        offset.get()
+    }
+}
+
+fn displaced_block_coordinate<S: LayoutScalar>(
+    alignment: InlineControlAlignment<S>,
+    axes: FlowAxes,
+    position: S,
+) -> Result<S, NumericWrappingError> {
+    if let InlineControlAlignment::Shift(_) = alignment {
+        Ok(crate::baseline_offset::displaced(
+            position,
+            block_displacement(alignment, axes),
+        )?)
+    } else {
+        Ok(position)
+    }
+}
+
+fn consumed_line_end<S: LayoutScalar>(
+    start: S,
+    baseline: S,
+    after: S,
+    displaced: bool,
+) -> Result<S, NumericWrappingError> {
+    if displaced {
+        crate::baseline_offset::displaced(start, baseline)?;
+        let extent = crate::baseline_offset::displaced(baseline, after)?;
+        Ok(crate::baseline_offset::displaced(start, extent)?)
+    } else {
+        Ok(start + baseline + after)
     }
 }
 
@@ -3360,29 +3726,14 @@ impl<S: LayoutScalar> InlineFlowOf<S> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum InlineControlAlignment {
-    Baseline,
-    Top,
-    Bottom,
-}
-
-impl From<VerticalAlign> for InlineControlAlignment {
-    fn from(value: VerticalAlign) -> Self {
-        match value {
-            VerticalAlign::Baseline => Self::Baseline,
-            VerticalAlign::Top => Self::Top,
-            VerticalAlign::Bottom => Self::Bottom,
-        }
-    }
-}
+pub(super) use crate::VerticalAlignOf as InlineControlAlignment;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct ForcedLineBreakControlOf<S: LayoutScalar = DefaultScalar> {
     source_index: usize,
     flow: InlineFlowOf<S>,
     metrics: InlineMetricsOf<S>,
-    alignment: InlineControlAlignment,
+    alignment: InlineControlAlignment<S>,
     clear: Clear,
 }
 
@@ -3392,7 +3743,7 @@ impl<S: LayoutScalar> ForcedLineBreakControlOf<S> {
         source_index: usize,
         flow: InlineFlowOf<S>,
         metrics: InlineMetricsOf<S>,
-        alignment: InlineControlAlignment,
+        alignment: InlineControlAlignment<S>,
         clear: Clear,
     ) -> Self {
         Self {
@@ -3421,7 +3772,7 @@ impl<S: LayoutScalar> ForcedLineBreakControlOf<S> {
     }
 
     #[must_use]
-    pub(super) const fn alignment(self) -> InlineControlAlignment {
+    pub(super) const fn alignment(self) -> InlineControlAlignment<S> {
         self.alignment
     }
 
@@ -3437,7 +3788,7 @@ pub(super) struct InlineBoundaryControlOf<S: LayoutScalar = DefaultScalar> {
     kind: InlineBoundaryKind,
     flow: InlineFlowOf<S>,
     metrics: InlineMetricsOf<S>,
-    alignment: InlineControlAlignment,
+    alignment: InlineControlAlignment<S>,
     edge: InlineBoundaryEdgeOf<S>,
 }
 
@@ -3448,7 +3799,7 @@ impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
         kind: InlineBoundaryKind,
         flow: InlineFlowOf<S>,
         metrics: InlineMetricsOf<S>,
-        alignment: InlineControlAlignment,
+        alignment: InlineControlAlignment<S>,
         edge: InlineBoundaryEdgeOf<S>,
     ) -> Self {
         Self {
@@ -3487,7 +3838,7 @@ impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
     }
 
     #[must_use]
-    pub(super) const fn alignment(self) -> InlineControlAlignment {
+    pub(super) const fn alignment(self) -> InlineControlAlignment<S> {
         self.alignment
     }
 }
@@ -3625,7 +3976,7 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
                 kind: InlineParticipantLayoutKind::Box,
                 source_index: source.item.source_index,
                 location: flow_axes.physical_point(
-                    LogicalPointOf::new(source.inline_start, source.block_start),
+                    expect_logical_position(source.position),
                     logical_size,
                     report_size,
                 ),
@@ -3642,7 +3993,7 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
                 kind: source.kind,
                 source_index: source.source_index,
                 location: flow_axes.physical_point(
-                    LogicalPointOf::new(source.inline_start, source.block_start),
+                    expect_logical_position(source.position),
                     LogicalSizeOf::new(source.inline_extent, S::ZERO),
                     report_size,
                 ),
@@ -3664,8 +4015,8 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
     InlineRunReport {
         size: report_size,
         content_size: report_size,
-        first_baseline: report.first_baseline,
-        last_baseline: report.last_baseline,
+        first_baseline: report.baselines.numeric().first,
+        last_baseline: report.baselines.numeric().last,
         items,
     }
 }
@@ -3711,15 +4062,13 @@ fn participant_has_named_baseline<S: LayoutScalar>(
 ) -> bool {
     match participant {
         MixedInlineParticipantOf::Atomic { item, .. } => {
-            item.alignment == InlineControlAlignment::Baseline && item.first_baseline.is_some()
+            item.alignment.is_baseline_relative() && item.first_baseline.is_some()
         }
         MixedInlineParticipantOf::Boundary(control) => {
-            control.alignment() == InlineControlAlignment::Baseline
-                && control.metrics().reference() == reference
+            control.alignment().is_baseline_relative() && control.metrics().reference() == reference
         }
         MixedInlineParticipantOf::ForcedLineBreak(control) => {
-            control.alignment() == InlineControlAlignment::Baseline
-                && control.metrics().reference() == reference
+            control.alignment().is_baseline_relative() && control.metrics().reference() == reference
         }
     }
 }

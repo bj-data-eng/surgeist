@@ -164,7 +164,12 @@ fn real_interword_adds_authored_and_allocated_halves_and_replaces_an_immutable_n
                 .participants()
                 .all(|participant| selected.request().participants.contains(participant))
         );
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(natural.feedback().advance, 34.0);
         assert_eq!(paints(&natural), [0.0, 12.0, 24.0]);
         feedback(&natural, 10.0, 4.0, 0.0, 14.0);
@@ -202,7 +207,12 @@ fn real_interword_adds_authored_and_allocated_halves_and_replaces_an_immutable_n
         assert_eq!(replaced.feedback().advance, 36.0);
         assert_eq!(paints(&replaced), [0.0, 13.0, 26.0]);
         feedback(&replaced, 10.0, 4.0, 2.0, 16.0);
-        let fresh = selected.finalize(amounts(&selected, &[2.0])).unwrap();
+        let fresh = selected
+            .finalize(crate::LineAllocations {
+                spacing: amounts(&selected, &[2.0]),
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(raw(&replaced), raw(&fresh));
         assert_eq!(paints(&replaced), paints(&fresh));
         let restored = replaced.with_spacing(SpacingAllocations::None).unwrap();
@@ -227,7 +237,12 @@ fn intrinsic_zero_is_not_authored_cancellation_and_only_the_latter_can_expand() 
         let mut system = super::system(&bytes, ' ', true, native_zero);
         let prepared = super::prepare(&mut system, &source, orientation, 4.0);
         let selection = selected(&prepared);
-        let natural = selection.finalize(SpacingAllocations::None).unwrap();
+        let natural = selection
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         let body = if native_zero { 12.0 } else { 10.0 };
         feedback(&natural, 0.0, 0.0, 0.0, 0.0);
         assert!(!natural.spacing_slots().next().unwrap().can_expand());
@@ -249,7 +264,12 @@ fn intrinsic_zero_is_not_authored_cancellation_and_only_the_latter_can_expand() 
         let mut system = super::system(&bytes, ' ', false, false);
         let prepared = super::prepare(&mut system, &source, orientation, -10.0);
         let selection = selected(&prepared);
-        let natural = selection.finalize(SpacingAllocations::None).unwrap();
+        let natural = selection
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         feedback(&natural, 10.0, -10.0, 0.0, 0.0);
         assert!(natural.spacing_slots().next().unwrap().can_expand());
         assert_eq!(natural.feedback().advance, 20.0);
@@ -270,7 +290,12 @@ fn complete_allocation_custody_and_numeric_refusals_leave_the_same_basis_retryab
     let prepared = super::prepare(&mut system, &source, LineOrientation::Horizontal, 4.0);
     let selection = selected(&prepared);
     let other_selection = selected(&prepared);
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(
         reason(
             &natural
@@ -347,7 +372,10 @@ fn natural_shared_provider_geometry_stays_usable_until_a_real_interword_allocati
     .unwrap();
     system.register_fonts(bytes).unwrap();
     let source = Source::identified("A A", Id::from_u64(1564022), 1);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let mut style = own(0.0);
         style.font = style.font.feature("\"ccmp\" 1");
         let prepared = prepare_input(
@@ -356,7 +384,12 @@ fn natural_shared_provider_geometry_stays_usable_until_a_real_interword_allocati
             orientation,
         );
         let selection = selected(&prepared);
-        let natural = selection.finalize(SpacingAllocations::None).unwrap();
+        let natural = selection
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         assert_eq!(
             raw(&natural),
             [
@@ -428,7 +461,12 @@ fn cancelled_terminal_candidates_keep_closed_deferred_causes_until_spacing_makes
         request.context.spacing = SpacingPolicy::InterWord;
         request.context.available_inline = Some(15.0);
         let selection = prepared.select(request).unwrap();
-        let natural = selection.finalize(SpacingAllocations::None).unwrap();
+        let natural = selection
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         feedback(&natural, 10.0, -10.0, 0.0, 0.0);
         assert_eq!(natural.feedback().advance, 0.0);
         let zero = natural.with_spacing(amounts(&selection, &[0.0])).unwrap();
@@ -482,6 +520,8 @@ fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
     let wrap = style.wrap;
     let processed = std::sync::Arc::new(
         crate::process_contextual_source(crate::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: crate::DocumentSegmentBreaks::LineFeedDefault,
             envelope: crate::SourceProcessingEnvelope::Complete,
@@ -514,6 +554,9 @@ fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![crate::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -619,7 +662,12 @@ fn a_complete_marked_candidate_keeps_both_real_source_origin_pieces_and_moves_ev
             (expected.start, expected.end)
         );
     }
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(
         raw(&natural),
         [
@@ -703,7 +751,12 @@ fn selected_supplementary_indication_slots_keep_alternative_local_custody_and_or
         pieces[0].presentation_range().end() - pieces[0].presentation_range().start(),
         2
     );
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 64.0);
     assert_eq!(paints(&natural).last().copied(), Some(52.0));
     assert_eq!(raw(&natural).last().unwrap().0, Range::new(6, 6));
@@ -753,7 +806,12 @@ fn a_real_expanded_wbr_keeps_a_control_piece_without_fabricating_an_authored_spa
         ),
         (1, 2)
     );
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 34.0);
     assert_eq!(
         raw(&natural).iter().map(|row| row.0).collect::<Vec<_>>(),
@@ -799,7 +857,11 @@ fn a_published_phrase_separator_keeps_its_actual_virtual_owner_through_interword
     let prepared = system
         .prepare(&analysis, PreparationOptions::default())
         .unwrap();
-    assert!(prepared.captured_paragraph().is_some());
+    assert!(
+        prepared
+            .captured_owner()
+            .is_some_and(|owner| owner.members().next().is_some())
+    );
     let virtuals = prepared.virtual_separators().collect::<Vec<_>>();
     assert_eq!(virtuals.len(), 1);
     assert_eq!(virtuals[0].view().source_position().get(), 3);
@@ -819,7 +881,12 @@ fn a_published_phrase_separator_keeps_its_actual_virtual_owner_through_interword
         ),
         (3, 4)
     );
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 94.0);
     assert_eq!(
         paints(&natural),
@@ -839,7 +906,10 @@ fn a_published_phrase_separator_keeps_its_actual_virtual_owner_through_interword
 fn preserved_terminal_space_excludes_expansion_from_alignment_in_both_paragraph_directions() {
     let bytes = mapped(' ', false);
     let source = Source::identified("A ", Id::from_u64(1564028), 1);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         for direction in [
             ParagraphBaseDirection::LeftToRight,
             ParagraphBaseDirection::RightToLeft,
@@ -886,7 +956,12 @@ fn preserved_terminal_space_excludes_expansion_from_alignment_in_both_paragraph_
                 Range::new(1, 2),
                 Range::new(1, 2),
             );
-            let natural = selection.finalize(SpacingAllocations::None).unwrap();
+            let natural = selection
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
+                .unwrap();
             feedback(&natural, 10.0, 0.0, 0.0, 10.0);
             let mut glyphs = raw(&natural);
             glyphs.sort_by_key(|glyph| glyph.0.start);
@@ -944,7 +1019,12 @@ fn allocation_only_half_underflow_reports_finalization_and_preserves_the_retaine
     let mut system = super::system(&bytes, '\u{1361}', false, false);
     let prepared = super::prepare(&mut system, &source, LineOrientation::Horizontal, 0.0);
     let selection = selected(&prepared);
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     feedback(&natural, 10.0, 0.0, 0.0, 10.0);
     assert_eq!(natural.feedback().advance, 30.0);
     assert_eq!(paints(&natural), [0.0, 10.0, 20.0]);

@@ -2,7 +2,7 @@
 
 use std::mem::size_of;
 
-use surgeist_text::{Brush, GlyphBasis, Layout, LineOrientation, RunView};
+use surgeist_text::{Brush, Layout, RunView};
 
 use crate::{
     Color, Error, GlyphRunLimits, GlyphSynthesis, Layer, NormalizedCoordinate, Paint, Result,
@@ -380,27 +380,27 @@ fn text_glyph(run: &RunView<'_>, glyph: surgeist_text::GlyphPlacement) -> Result
     let dx = f64::from(glyph.x());
     let dy = f64::from(glyph.y());
     let pen = glyph.pen();
-    // The pen follows the physical line's inline axis. Express that displacement
-    // in glyph coordinates before the run's outline basis is applied.
-    let (x, y) = match (run.orientation(), run.glyph_basis()) {
-        (LineOrientation::Horizontal, GlyphBasis::Unrotated)
-        | (LineOrientation::Sideways | LineOrientation::Vertical, GlyphBasis::Clockwise) => {
-            (pen + dx, dy)
-        }
-        (LineOrientation::Sideways | LineOrientation::Vertical, GlyphBasis::Unrotated) => {
-            (dx, pen + dy)
-        }
-        (LineOrientation::Horizontal, GlyphBasis::Clockwise) => (dx, dy - pen),
+    // The executed frame owns the signed unit pen axis in outline coordinates.
+    // Keep native addition/subtraction order, including downward-positive y.
+    let direction = run.glyph_frame().pen_direction();
+    let (x, y) = if direction.x > 0.0 {
+        (pen + dx, dy)
+    } else if direction.x < 0.0 {
+        (dx - pen, dy)
+    } else if direction.y > 0.0 {
+        (dx, pen + dy)
+    } else {
+        (dx, dy - pen)
     };
     TextGlyph::try_new(glyph.id(), x, y, glyph.advance())
 }
 
 fn run_transform(run: &RunView<'_>, placement: Transform) -> Result<Transform> {
-    let origin = run.origin();
-    let transform = match run.glyph_basis() {
-        GlyphBasis::Unrotated => Transform::translation(origin.x, origin.y)?,
-        GlyphBasis::Clockwise => Transform::try_new([0.0, 1.0, -1.0, 0.0, origin.x, origin.y])?,
-    };
+    let frame = run.glyph_frame();
+    let origin = frame.origin();
+    let x = frame.outline_x();
+    let y = frame.outline_y();
+    let transform = Transform::try_new([x.x, x.y, y.x, y.y, origin.x, origin.y])?;
     transform.then(placement)
 }
 

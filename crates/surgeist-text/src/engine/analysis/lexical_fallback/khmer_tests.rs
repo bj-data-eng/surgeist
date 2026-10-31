@@ -95,7 +95,7 @@ fn khmer_actual_missing_constructor_not_empty_detector_supplies_letter_pair_assu
         // Consume the opaque witness RETURNED by the real provider owner.
         // Neither an empty cut inventory nor this test constructs absence.
         let policies = line_break::policies(&styles).unwrap();
-        let line_units = super::super::line_units::LineBreakUnits::new(&projection).unwrap();
+        let line_units = super::super::line_units::LineBreakUnits::new(&projection, None).unwrap();
         let units = projection
             .graphemes
             .windows(2)
@@ -591,6 +591,7 @@ fn line_request(
     let last = end.view().participant_offset();
     let rtl = prepared.analyzed_source().direction() == crate::Direction::RightToLeft;
     crate::LineSelectionRequest {
+        segment: crate::test_wrapping::only_source_segment(prepared),
         start,
         end,
         termination,
@@ -651,7 +652,10 @@ fn conditional_offsets(
                 Some(0.0),
             ))
             .unwrap()
-            .finalize(crate::SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: crate::SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         // Real full source/font finalization fails the finite zero capacity.
         // No nominal Khmer scalar width is assumed to manufacture exhaustion.
@@ -660,7 +664,7 @@ fn conditional_offsets(
     } else {
         None
     };
-    let search = prepared
+    let search = crate::test_wrapping::only_source_segment(prepared)
         .conditional_search(&start, None, &ceiling, purpose, &[], frame.as_ref())
         .unwrap();
     let batch = search.begin(&[]).unwrap();
@@ -687,7 +691,10 @@ fn conditional_offsets(
                 },
             ))
             .unwrap()
-            .finalize(crate::SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: crate::SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(selected.prepared_text(), *prepared);
         assert!(selected.has_in_flow_content());

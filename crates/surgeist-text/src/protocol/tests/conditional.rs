@@ -66,6 +66,9 @@ fn offers(
 ) -> Vec<PreparedConditionalOpportunity> {
     let start = prepared.boundary_views().next().unwrap().handle();
     prepared
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -202,7 +205,10 @@ fn conditional_capabilities_preserve_query_identity_and_do_not_claim_fit() {
     let line = prepared
         .select(selection(&prepared, &first[0]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     // Eligibility is not fit: this actual20px glyph was selected for a1px span.
     assert_eq!(line.feedback().advance, 20.0);
@@ -266,6 +272,9 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
     assert!(matches!(
         reason(
             &prepared
+                .source_segments()
+                .next()
+                .unwrap()
                 .conditional_search(&start, None, &end, ConditionalPurpose::Overflow, &[], None)
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -276,6 +285,9 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
     assert_eq!(
         sources(
             &prepared
+                .source_segments()
+                .next()
+                .unwrap()
                 .conditional_search(
                     &start,
                     None,
@@ -318,7 +330,10 @@ fn conditional_cuts_reshape_optional_ligatures_with_the_retained_instance() {
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&whole), [(Range::new(0, 2), 58)]);
     assert_eq!(whole.feedback().advance, 20.0);
@@ -328,7 +343,10 @@ fn conditional_cuts_reshape_optional_ligatures_with_the_retained_instance() {
     let line = prepared
         .select(selection(&prepared, &cuts[0]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&line), [(Range::new(0, 1), 35)]);
     assert_eq!(line.feedback().advance, 20.0);
@@ -356,7 +374,10 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let whole = prepared
         .select(control)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         glyphs(&whole),
@@ -374,11 +395,17 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let first = prepared
         .select(first_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&first), [(Range::new(0, 1), 100)]);
     let second_start = cuts[0].boundary();
     let second_cuts = prepared
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &second_start,
             None,
@@ -397,7 +424,10 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let second = prepared
         .select(second_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&second), [(Range::new(1, 2), 277)]);
     let mut last_request = request(&prepared);
@@ -409,7 +439,10 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
     let last = prepared
         .select(last_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(glyphs(&last), [(Range::new(2, 3), 82)]);
     for line in [first, second, last] {
@@ -458,7 +491,12 @@ fn conditional_termination_cannot_select_failed_ordinary_replacement() {
     ));
     let selected = prepared.select(selection(&prepared, &cuts[0])).unwrap();
     assert!(selected.request().alternative.is_none());
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(glyphs(&line), [(Range::new(0, 1), 35)]);
     assert_eq!(line.feedback().advance, 20.0);
     assert_eq!(prepared.analyzed_source().source().text(), &original);
@@ -524,7 +562,10 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
         prepared
             .select(selection(&prepared, &prior[0]))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -542,12 +583,18 @@ fn wrapping_binding_has_new_context_identity_and_preserves_the_executed_core() {
     let old_line = prepared
         .select(request(&prepared))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let new_line = other
         .select(request(&other))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let old_layout = place(prepared.clone(), old_line, 0.0, 16.0).unwrap();
     let new_layout = place(other.clone(), new_line, 0.0, 16.0).unwrap();
@@ -636,6 +683,9 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
     assert!(matches!(
         reason(
             &prepared
+                .source_segments()
+                .next()
+                .unwrap()
                 .conditional_search(
                     &start,
                     None,
@@ -655,7 +705,10 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
         prepared
             .select(request(&prepared))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -744,7 +797,10 @@ fn ordinary_receipt(
     prepared
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -773,6 +829,9 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
             .has_retained_flow_participation()
     );
     let cuts = prepared
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -788,7 +847,10 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
     let first = prepared
         .select(selection(&prepared, &cuts[0]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.selected_line().request().start, start);
     assert_eq!(first.selected_line().request().participants.len(), 2);
@@ -870,6 +932,9 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
         .collect();
     let ceiling = &inventory[3];
     let cuts = prepared
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -885,6 +950,9 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     assert_eq!(
         cuts,
         prepared
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -905,13 +973,19 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             prepared
                 .select(value)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap()
         })
         .collect();
     assert_eq!(
         cuts,
         prepared
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &start,
                 None,
@@ -940,6 +1014,9 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
         assert!(matches!(
             reason(
                 &prepared
+                    .source_segments()
+                    .next()
+                    .unwrap()
                     .conditional_search(
                         &start,
                         None,
@@ -968,6 +1045,9 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     assert!(matches!(
         reason(
             &prepared
+                .source_segments()
+                .next()
+                .unwrap()
                 .conditional_search(
                     &start,
                     None,
@@ -992,11 +1072,17 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             prepared
                 .select(value)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap()
         })
         .collect();
     let minimum = prepared
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -1012,7 +1098,10 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
     let minimum_line = prepared
         .select(selection(&prepared, &minimum[0]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(minimum_line.feedback().advance, 20.0);
 }
@@ -1076,6 +1165,9 @@ fn retained_zero_or_signed_text_cannot_be_a_phantom_receipt() {
         assert!(matches!(
             reason(
                 &prepared
+                    .source_segments()
+                    .next()
+                    .unwrap()
                     .conditional_search(
                         &start,
                         None,
@@ -1177,6 +1269,9 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
     assert!(matches!(
         reason(
             &prepared
+                .source_segments()
+                .next()
+                .unwrap()
                 .conditional_search(
                     &start,
                     None,
@@ -1200,6 +1295,9 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
     assert!(matches!(
         reason(
             &prepared
+                .source_segments()
+                .next()
+                .unwrap()
                 .conditional_search(
                     &start,
                     None,
@@ -1320,7 +1418,10 @@ fn true_outer_permission_does_not_vote_immediate_empty_chain_facts_or_collapse_c
             assert_eq!(selected.request().participants.len(), index + 1);
             assert_eq!(
                 selected
-                    .finalize(SpacingAllocations::None)
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None
+                    })
                     .unwrap()
                     .feedback()
                     .advance,
@@ -1444,7 +1545,10 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     let whole = prepared
         .select(whole_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(glyphs(&whole).contains(&(Range::new(1, 2), 100)));
     let first = prepared.opportunity_views().next().unwrap();
@@ -1464,7 +1568,10 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     let trial = prepared
         .select(trial)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(trial.feedback().advance > 20.0);
     assert!(trial.selected_line().request().alternative.is_some());
@@ -1476,7 +1583,10 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     let line = prepared
         .select(selected)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         glyphs(&line),
@@ -1507,7 +1617,10 @@ fn conditional_provider_and_numeric_refusals_leave_prior_actual_results_valid() 
     let whole = prepared
         .select(whole_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let prior = glyphs(&whole);
     assert!(prior.contains(&(Range::new(0, 1), 100)));
@@ -1579,6 +1692,9 @@ fn raw_analysis_keeps_its_ordinary_model_without_additional_native_cuts() {
         assert!(matches!(
             reason(
                 &prepared
+                    .source_segments()
+                    .next()
+                    .unwrap()
                     .conditional_search(
                         &foreign_start,
                         None,
@@ -1616,6 +1732,8 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -1644,6 +1762,9 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
         }],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
@@ -1653,6 +1774,9 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
                 },
             },
             SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
@@ -1721,7 +1845,10 @@ fn contextual_conditional_cuts_keep_child_holes_and_actual_incident_endpoints() 
     let first = prepared
         .select(selection(&prepared, &cuts[1]))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.selected_line().request().participants.len(), 2);
     assert_eq!(glyphs(&first), [(Range::new(0, 1), 35)]);
@@ -1880,7 +2007,10 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     let first = p
         .select(trial.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.feedback().advance, 30.0);
     assert!(first.has_in_flow_content());
@@ -1890,20 +2020,26 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
         .unwrap()
         .handle();
     assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
     let disposition = ConditionalDisposition::ConsumerHyphenationPolicy(first);
     let cuts = p
+        .source_segments()
+        .next()
+        .unwrap()
         .conditional_search(
             &start,
             None,
@@ -1928,54 +2064,69 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
     let line = p
         .select(selected)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 70.0);
     assert!(line.selected_line().request().alternative.is_none());
     let second = p
         .select(trial)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         cuts,
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[ConditionalDisposition::ConsumerHyphenationPolicy(second)],
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[ConditionalDisposition::ConsumerHyphenationPolicy(second)],
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .unwrap()
     );
     assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::MinContent,
-            std::slice::from_ref(&disposition),
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::MinContent,
+                std::slice::from_ref(&disposition),
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
     assert!(
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[disposition.clone(), disposition],
-            None
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
-        .is_err()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[disposition.clone(), disposition],
+                None
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
+            .is_err()
     );
 }
 
@@ -2023,20 +2174,26 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
         r.context.available_inline = Some(width);
         p.select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap()
     };
     let query = |line| {
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
-            None,
-        )
-        .and_then(|search| search.begin(&[]))
-        .map(|batch| batch.opportunities().to_vec())
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
+                None,
+            )
+            .and_then(|search| search.begin(&[]))
+            .map(|batch| batch.opportunities().to_vec())
     };
     assert!(query(make(&foreign, 70.0, 0)).is_err());
     assert!(query(make(&p, 70.0, 1)).is_err());
@@ -2051,7 +2208,10 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
     let ordinary = p
         .select(ordinary)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(
         query(ordinary).is_err(),
@@ -2075,7 +2235,10 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
     let line = plain
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert!(line.has_in_flow_content());
     let end = plain
@@ -2085,6 +2248,9 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
         .handle();
     assert!(
         plain
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &begin,
                 None,
@@ -2124,6 +2290,9 @@ fn unrelated_auto_phrase_owners_do_not_change_a_normal_intervals_authority() {
         let normal_start = at(if phrase_first { 6 } else { 0 });
         let normal_ceiling = first_after(&p, &normal_start);
         let search = p
+            .source_segments()
+            .next()
+            .unwrap()
             .conditional_search(
                 &normal_start,
                 None,
@@ -2146,15 +2315,18 @@ fn unrelated_auto_phrase_owners_do_not_change_a_normal_intervals_authority() {
         );
         let affected_start = at(if phrase_first { 0 } else { 6 });
         assert!(
-            p.conditional_search(
-                &affected_start,
-                None,
-                &first_after(&p, &affected_start),
-                ConditionalPurpose::Overflow,
-                &[],
-                None
-            )
-            .is_err(),
+            p.source_segments()
+                .next()
+                .unwrap()
+                .conditional_search(
+                    &affected_start,
+                    None,
+                    &first_after(&p, &affected_start),
+                    ConditionalPurpose::Overflow,
+                    &[],
+                    None
+                )
+                .is_err(),
             "the actual AutoPhrase interval still requires its finite frame"
         );
     }

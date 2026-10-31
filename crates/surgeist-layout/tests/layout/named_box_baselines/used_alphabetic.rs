@@ -254,6 +254,8 @@ fn capture(
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -289,6 +291,9 @@ fn capture(
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -332,8 +337,12 @@ fn capture(
     assert_eq!(prepared.preparation_options(), options);
     assert_eq!(prepared.analyzed_source().identity(), analysis.identity());
     assert_eq!(
-        prepared.captured_paragraph(),
-        processed.captured_paragraph(0)
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![processed.captured_paragraph(0).unwrap()]
     );
     assert_eq!(prepared.orientation(), orientation);
     assert_eq!(prepared.atomic_views().count(), usize::from(atomic));
@@ -353,6 +362,7 @@ fn select(
     parent
         .prepared
         .select(t::LineSelectionRequest {
+            segment: parent.prepared.source_segments().next().unwrap(),
             start,
             end,
             termination: t::PreparedTermination::Ordinary(offer),
@@ -393,7 +403,10 @@ fn select(
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn terminal(p: &t::PreparedText) -> t::PreparedOpportunity {
@@ -425,8 +438,9 @@ fn solve<S: l::LayoutScalar>(
     width: f64,
     height: f64,
 ) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default())
-        .expect("actual issued origins/atomic must bind to real tree members");
+    let flow =
+        l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
+            .expect("actual issued origins/atomic must bind to real tree members");
     l::compute_layout_with_flow(
         &flow,
         0,
@@ -999,7 +1013,7 @@ fn core<S: l::LayoutScalar>() {
         &mut system,
         "A\nB",
         style(5.0, 6.0),
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         false,
     );
     qualify_child_text(&child_h, &bytes, false);
@@ -1019,7 +1033,7 @@ fn core<S: l::LayoutScalar>() {
         &mut system,
         "AB",
         style(10.0, 10.0),
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         true,
     );
     // All standalone new-producer controls precede the intended Layout RED.

@@ -124,7 +124,10 @@ fn actual_captured_rtl_keeps_odd_level_source_order_and_carets_in_both_named_fra
     let source = Source::identified("\u{5d0}\u{5d0}", Id::from_u64(1561040), 7);
     let input = capture(source.clone(), own_style(), true, false);
     assert_eq!(input.direction(), crate::Direction::RightToLeft);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let prepared = system
             .prepare(
                 &input,
@@ -149,7 +152,10 @@ fn actual_captured_rtl_keeps_odd_level_source_order_and_carets_in_both_named_fra
         let line = prepared
             .select(selection)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (
@@ -267,7 +273,10 @@ fn actual_decoration_overflow_refuses_placement_without_changing_a_retained_name
     let bytes = font(0);
     qualify(&bytes, 0);
     let mut system = registered(bytes);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         // The finite authored offset is relative to the used alignment line.
         // Native Absolute1e308 gives B5e307/H1e308. At anchor9e307 the
         // metric hull4e307..1.4e308 is finite with a positive representable
@@ -358,7 +367,10 @@ fn an_actual_nonzero_font_displacement_cannot_vanish_in_an_enormous_native_line(
     // Binary64 spacing here exceeds1. The raw b1 from romn100 is a required
     // nonzero contribution to font zero, independent of the derived leading.
     assert_eq!(5e307_f64 + 1.0, 5e307_f64);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let options = PreparationOptions::default()
             .with_orientation(orientation)
             .with_baseline_reference(ALPHA);
@@ -380,7 +392,12 @@ fn an_actual_nonzero_font_displacement_cannot_vanish_in_an_enormous_native_line(
         selection.context.orientation = orientation;
         selection.context.spacing = SpacingPolicy::None;
         let selected = huge.select(selection).unwrap();
-        let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+        let error = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap_err();
         assert_eq!(error.code, crate::ErrorCode::InvalidTextNumeric);
         assert_eq!(
             error.detail(),
@@ -403,7 +420,10 @@ fn signed_native_font_struts_do_not_relax_supplied_line_or_control_strut_contain
     qualify(&bytes, 2000);
     let mut system = registered(bytes);
     let input = capture(Source::new("A"), own_style(), false, true);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let prepared = system
             .prepare(
                 &input,
@@ -450,7 +470,10 @@ fn signed_native_font_struts_do_not_relax_supplied_line_or_control_strut_contain
         let native = prepared
             .select(selection.clone())
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (native.feedback().baseline, native.feedback().line_height),

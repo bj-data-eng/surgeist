@@ -218,6 +218,7 @@
 #[cfg(test)]
 use surgeist_text::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
 
+mod baseline_offset;
 mod block;
 mod cache;
 mod engine;
@@ -236,6 +237,7 @@ mod output;
 #[cfg(test)]
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
+pub use baseline_offset::{BaselineOffset, BaselineOffsetOf, BaselineOffsetResolutionError};
 pub use hyphenation::{HyphenateLimitLast, HyphenateLimitLines};
 mod inline_wrapping;
 mod line_box;
@@ -251,7 +253,7 @@ pub use inline_wrapping::{
 pub use text_layout::{
     LayoutFlowInput, TextAtomicBinding, TextBindingError, TextControlBinding,
     TextControlParticipation, TextOriginBinding, TextParagraphBinding, TextParticipation,
-    TextScopeAssociation, TextScopeBinding,
+    TextScopeAlignmentInput, TextScopeAlignmentInputOf, TextScopeAssociation, TextScopeBinding,
 };
 mod scalar;
 mod scroll;
@@ -330,7 +332,7 @@ pub use node_input::{
     ScrollPaddingValueOf, ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop,
     ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf,
     TextAlign, TextAlignLast, TextGroupAlign, TextIndent, TextIndentOf, TextJustification,
-    TextWrapStyle, VerticalAlign, WritingMode,
+    TextWrapStyle, VerticalAlign, VerticalAlignOf, WritingMode,
 };
 pub use output::{
     BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, Baselines, BaselinesOf,

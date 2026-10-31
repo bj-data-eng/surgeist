@@ -33,6 +33,9 @@ fn system() -> System {
 
 fn block(topology: SourceProcessingTopology) -> SourceProcessingScope {
     SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology,
         trim: WhiteSpaceTrim::default(),
         base_style: style(WordSpaceTransform::None),
@@ -106,6 +109,8 @@ fn continuation(enabled: bool, known: bool) -> Arc<ProcessedSource> {
     };
     Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -136,6 +141,9 @@ fn continuation(enabled: bool, known: bool) -> Arc<ProcessedSource> {
                     SourceProcessingTopology::Unknown
                 }),
                 SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: WhiteSpaceTrim::default(),
                     style: known.then(|| {
                         style(if enabled {
@@ -184,10 +192,15 @@ fn continuation(enabled: bool, known: bool) -> Arc<ProcessedSource> {
 
 fn inline(prepared: &PreparedText) -> CapturedScope {
     prepared
-        .captured_paragraph()
+        .captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|intersection| intersection.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|intersection| intersection.scope())
+                .collect::<Vec<_>>()
+        })
         .find(|scope| scope.role() == ScopeRole::Inline)
         .unwrap()
 }
@@ -202,10 +215,15 @@ fn independent_preparations_share_capture_but_keep_prepared_identity() {
     let other = second[0].scopes().next().unwrap();
     assert_ne!(owner, other);
     assert_eq!(owner.captured_scope(), other.captured_scope());
+    let first_capture = first[0].captured_owner().unwrap();
+    let second_capture = second[0].captured_owner().unwrap();
     assert_eq!(
-        first[0].captured_paragraph(),
-        second[0].captured_paragraph()
+        first_capture.members().collect::<Vec<_>>(),
+        second_capture.members().collect::<Vec<_>>()
     );
+    assert_eq!(first_capture.facts_owner(), second_capture.facts_owner());
+    assert_eq!(first_capture.joint_flow(), second_capture.joint_flow());
+    assert_eq!(first_capture.domain(), second_capture.domain());
     let first_control = first[0].control_views().next().unwrap().handle();
     let other_control = second[0].control_views().next().unwrap().handle();
     assert_ne!(first_control, other_control);
@@ -256,8 +274,8 @@ fn middle_and_endpoint_only_paragraphs_retain_the_complete_global_owner() {
     assert!(middle.view().exit_control().is_none());
     let start = canonical.entry_control().unwrap();
     let end = canonical.exit_control().unwrap();
-    assert_eq!(start.paragraph(), prepared[0].captured_paragraph().unwrap());
-    assert_eq!(end.paragraph(), prepared[4].captured_paragraph().unwrap());
+    assert_eq!(start.paragraph(), flow::captured(&prepared[0]));
+    assert_eq!(end.paragraph(), flow::captured(&prepared[4]));
     assert_eq!(start.kind(), &ParagraphControlKind::InlineBoundaryStart);
     assert_eq!(end.kind(), &ParagraphControlKind::InlineBoundaryEnd);
     assert_eq!(
@@ -286,7 +304,7 @@ fn middle_and_endpoint_only_paragraphs_retain_the_complete_global_owner() {
             .collect::<Vec<_>>(),
         vec![12]
     );
-    let paragraph = prepared[2].captured_paragraph().unwrap();
+    let paragraph = flow::captured(&prepared[2]);
     let intersection = paragraph
         .scope_intersections()
         .find(|item| item.scope() == canonical)
@@ -296,12 +314,13 @@ fn middle_and_endpoint_only_paragraphs_retain_the_complete_global_owner() {
     assert_eq!(intersection.exit_position(), paragraph.exit_position());
     assert!(canonical.enter_position() < intersection.enter_position());
     assert!(intersection.exit_position() < canonical.exit_position());
-    let child = prepared[1].captured_paragraph().unwrap();
+    let child = prepared[1].captured_owner().unwrap();
     assert_ne!(child.domain(), canonical.domain());
     assert_eq!(child.domain().parent(), Some(canonical.clone()));
     assert!(
         child
-            .scope_intersections()
+            .members()
+            .flat_map(|member| member.scope_intersections().collect::<Vec<_>>())
             .any(|item| item.scope() == canonical)
     );
 }
@@ -379,6 +398,9 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
         }
         let child = match kind {
             InlineBoxKind::InFlow => SourceProcessingScope::AtomicBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(WordSpaceTransform::None),
@@ -386,6 +408,9 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
                 atomic: 0,
             },
             InlineBoxKind::OutOfFlow => SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: SourceProcessingTopology::Unknown,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(WordSpaceTransform::None),
@@ -395,6 +420,8 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
         };
         let processed = Arc::new(
             process_contextual_source(ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
                 segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -455,7 +482,7 @@ fn same_anchor_atomic_domains_retain_the_exact_nominated_occurrence() {
             .collect();
         assert_ne!(atomics[0], atomics[1]);
         assert!(atomics[0] < atomics[1]);
-        let domain = prepared[1].captured_paragraph().unwrap().domain();
+        let domain = prepared[1].captured_owner().unwrap().domain();
         let expected = match kind {
             InlineBoxKind::InFlow => CapturedDomainDefinition::AtomicBlock {
                 atomic: atomics[0].clone(),
@@ -477,12 +504,17 @@ fn empty_nested_owners_keep_distinct_same_anchor_endpoints_without_emitting() {
         affinity: Affinity::After,
     };
     let inline = |start, end| SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: WhiteSpaceTrim::default(),
         style: None,
         boundaries: Some(SourceProcessingScopeBoundaries { start, end }),
     };
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: Source::new(""),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -541,10 +573,16 @@ fn empty_nested_owners_keep_distinct_same_anchor_endpoints_without_emitting() {
             .windows(2)
             .all(|pair| pair[0].event_position() < pair[1].event_position())
     );
-    let paragraph = prepared[0].captured_paragraph().unwrap();
-    let scopes: Vec<_> = paragraph
-        .scope_intersections()
-        .map(|item| item.scope())
+    let scopes: Vec<_> = prepared[0]
+        .captured_owner()
+        .unwrap()
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|item| item.scope())
+                .collect::<Vec<_>>()
+        })
         .filter(|scope| scope.role() == ScopeRole::Inline)
         .collect();
     let outer = scopes
@@ -573,7 +611,7 @@ fn standalone_preparation_does_not_acquire_contextual_authority() {
     let prepared = system()
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
-    assert!(prepared.captured_paragraph().is_none());
+    assert!(prepared.captured_owner().is_none());
     assert!(
         prepared
             .origin_views()

@@ -27,44 +27,71 @@ fn capital_vowel(cp: u32) -> bool {
     )
 }
 
-pub(super) fn prefix(input: &[u32]) -> Prefix {
-    let first = input.first().copied();
-    let second = input.get(1).copied();
-    let third = input.get(2).copied();
+/// The affected recipient is selected before any word/context read.
+pub(super) fn recipient(cp: u32, operation: super::casing::Operation) -> bool {
+    match operation {
+        super::casing::Operation::Upper => matches!(
+            cp,
+            0x62 | 0x64 | 0x67 | 0x6d | 0x6e | 0x68 | 0x74 | 0x2d | 0x2010 | 0x2011
+        ),
+        super::casing::Operation::Lower => capital_vowel(cp),
+        _ => false,
+    }
+}
+
+/// One canonical finite predicate. Reads are lazy and may extend beyond the
+/// ICU word containing the first prefix letter (notably t-uisce).
+pub(super) fn prefix_with(
+    mut read: impl FnMut(usize) -> Result<Option<u32>, super::casing::MappingError>,
+) -> Result<Prefix, super::casing::MappingError> {
+    let Some(first) = read(0)? else {
+        return Ok(Prefix::default());
+    };
+    if !matches!(first, 0x62 | 0x64 | 0x67 | 0x6d | 0x6e | 0x68 | 0x74) {
+        return Ok(Prefix::default());
+    }
+    let second = read(1)?;
     let mut result = Prefix::default();
-    if matches!(
-        (first, second, third),
-        (Some(0x62), Some(0x68), Some(0x66 | 0x46))
-    ) {
-        result.preserve = 2;
-    } else if matches!(
-        (first, second),
-        (Some(0x62), Some(0x70 | 0x50))
-            | (Some(0x64), Some(0x74 | 0x54))
-            | (Some(0x67), Some(0x63 | 0x43))
-            | (Some(0x6d), Some(0x62 | 0x42))
-            | (Some(0x6e), Some(0x64 | 0x44 | 0x67 | 0x47))
-    ) || first == Some(0x68) && second.is_some_and(capital_vowel)
-    {
-        result.preserve = 1;
-    } else if matches!(first, Some(0x6e | 0x74)) {
-        if second.is_some_and(capital_vowel) {
-            result.preserve = 1;
-            result.insert_before = Some(1);
-        } else if matches!(second, Some(0x2d | 0x2010 | 0x2011)) && third.is_some_and(vowel) {
-            result.preserve = 1;
-            result.remove = Some(1);
+    match first {
+        0x62 if second == Some(0x68) => {
+            if matches!(read(2)?, Some(0x66 | 0x46)) {
+                result.preserve = 2;
+            }
         }
+        0x62 if matches!(second, Some(0x70 | 0x50)) => result.preserve = 1,
+        0x64 if matches!(second, Some(0x74 | 0x54)) => result.preserve = 1,
+        0x67 if matches!(second, Some(0x63 | 0x43)) => result.preserve = 1,
+        0x6d if matches!(second, Some(0x62 | 0x42)) => result.preserve = 1,
+        0x6e if matches!(second, Some(0x64 | 0x44 | 0x67 | 0x47)) => result.preserve = 1,
+        0x68 if second.is_some_and(capital_vowel) => result.preserve = 1,
+        0x6e | 0x74 => {
+            if second.is_some_and(capital_vowel) {
+                result.preserve = 1;
+                result.insert_before = Some(1);
+            } else if matches!(second, Some(0x2d | 0x2010 | 0x2011)) && read(2)?.is_some_and(vowel)
+            {
+                result.preserve = 1;
+                result.remove = Some(1);
+            }
+            if first == 0x74
+                && matches!(second, Some(0x73 | 0x53))
+                && read(2)?.is_some_and(|cp| {
+                    vowel(cp)
+                        || capital_vowel(cp)
+                        || matches!(cp, 0x6c | 0x4c | 0x6e | 0x4e | 0x72 | 0x52)
+                })
+            {
+                result.preserve = 1;
+            }
+        }
+        _ => (),
     }
-    if first == Some(0x74)
-        && matches!(second, Some(0x73 | 0x53))
-        && third.is_some_and(|cp| {
-            vowel(cp) || capital_vowel(cp) || matches!(cp, 0x6c | 0x4c | 0x6e | 0x4e | 0x72 | 0x52)
-        })
-    {
-        result.preserve = 1;
-    }
-    result
+    Ok(result)
+}
+
+#[cfg(test)]
+pub(super) fn prefix(input: &[u32]) -> Prefix {
+    prefix_with(|index| Ok(input.get(index).copied())).expect("known scalar prefix")
 }
 
 #[cfg(test)]

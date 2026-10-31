@@ -118,7 +118,11 @@ fn authored_atomic_shape_band_break_target_keeps_34_38_then_42_46_both_scalars()
             actual
                 .atomics
                 .iter()
-                .map(|row| (row.item.source_index, row.line_index, row.inline_start))
+                .map(|row| (
+                    row.item.source_index,
+                    row.line_index,
+                    crate::inline::expect_logical_position(row.position).inline
+                ))
                 .collect::<Vec<_>>(),
             vec![
                 (0, 0, S::from_f64(44.0)),
@@ -165,8 +169,8 @@ fn fri06_mr02_inline_linear_empty_strut_and_forced_clear_preserve_metrics_both_s
         // Only the actual Forced selection is formatted; its nominal
         // Paragraph receiver has no independent content or Forced ending.
         assert_eq!(report.block_extent, S::from_f64(12.0));
-        assert_eq!(report.first_baseline, Some(S::from_f64(9.0)));
-        assert_eq!(report.last_baseline, Some(S::from_f64(9.0)));
+        assert_eq!(report.baselines.numeric().first, Some(S::from_f64(9.0)));
+        assert_eq!(report.baselines.numeric().last, Some(S::from_f64(9.0)));
         assert!(report.atomics.is_empty());
         assert_eq!(report.controls.len(), 1);
         assert_eq!(report.controls[0].source_index, 7);
@@ -217,7 +221,7 @@ fn supplied_edges_and_real_atomic_overflow_preserve_discard_and_endpoint_roles_b
             (
                 report.atomics[0].item.source_index,
                 report.atomics[0].line_index,
-                report.atomics[0].inline_start
+                crate::inline::expect_logical_position(report.atomics[0].position).inline
             ),
             (11, 0, S::ZERO)
         );
@@ -243,8 +247,14 @@ fn supplied_edges_and_real_atomic_overflow_preserve_discard_and_endpoint_roles_b
         // Both real atomics remain formatted; the final mandatory edge
         // does not turn its empty Paragraph receiver into a third line.
         assert_eq!(endpoint_breaks.line_bands.len(), 2);
-        assert_eq!(endpoint_breaks.first_baseline, Some(S::from_f64(8.0)));
-        assert_eq!(endpoint_breaks.last_baseline, Some(S::from_f64(18.0)));
+        assert_eq!(
+            endpoint_breaks.baselines.numeric().first,
+            Some(S::from_f64(8.0))
+        );
+        assert_eq!(
+            endpoint_breaks.baselines.numeric().last,
+            Some(S::from_f64(18.0))
+        );
     }
     assert_lane::<f32>();
     assert_lane::<f64>();
@@ -285,6 +295,7 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(
@@ -384,22 +395,37 @@ fn fri06_mr02_inline_linear_bidi_mixed_sources_preserve_visual_order_and_baselin
 
         assert_eq!(report.inline_extent, S::from_f64(22.0));
         assert_eq!(report.block_extent, S::from_f64(12.0));
-        assert_eq!(report.first_baseline, Some(S::from_f64(9.0)));
-        assert_eq!(report.last_baseline, Some(S::from_f64(9.0)));
+        assert_eq!(report.baselines.numeric().first, Some(S::from_f64(9.0)));
+        assert_eq!(report.baselines.numeric().last, Some(S::from_f64(9.0)));
         assert_eq!(report.atomics.len(), 3);
         assert_eq!(report.atomics[0].item.source_index, 40);
-        assert_eq!(report.atomics[0].inline_start, S::from_f64(12.0));
-        assert_eq!(report.atomics[0].block_start, S::from_f64(1.0));
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[0].position).inline,
+            S::from_f64(12.0)
+        );
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[0].position).block,
+            S::from_f64(1.0)
+        );
         assert_eq!(report.atomics[0].visual_index, Some(3));
         assert_eq!(report.atomics[2].item.source_index, 43);
-        assert_eq!(report.atomics[2].inline_start, S::ZERO);
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[2].position).inline,
+            S::ZERO
+        );
         assert_eq!(report.atomics[2].visual_index, Some(0));
         assert_eq!(report.atomics[1].item.source_index, 42);
-        assert_eq!(report.atomics[1].inline_start, S::from_f64(7.0));
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[1].position).inline,
+            S::from_f64(7.0)
+        );
         assert_eq!(report.atomics[1].visual_index, Some(1));
         assert_eq!(report.controls.len(), 1);
         assert_eq!(report.controls[0].source_index, 41);
-        assert_eq!(report.controls[0].inline_start, S::from_f64(12.0));
+        assert_eq!(
+            crate::inline::expect_logical_position(report.controls[0].position).inline,
+            S::from_f64(12.0)
+        );
         assert_eq!(report.controls[0].visual_index, Some(2));
     }
 
@@ -495,8 +521,14 @@ fn fri06_mr02_inline_linear_float_band_retry_preserves_queries_and_reselection_b
         );
         assert_eq!(report.line_bands.len(), 2);
         assert_eq!(report.atomics[0].item.source_index, 60);
-        assert_eq!(report.atomics[0].inline_start, S::from_f64(20.0));
-        assert_eq!(report.atomics[0].block_start, S::from_f64(10.0));
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[0].position).inline,
+            S::from_f64(20.0)
+        );
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[0].position).block,
+            S::from_f64(10.0)
+        );
         assert_eq!(report.atomics[1].line_index, 1);
         assert_eq!(report.atomics[2].line_index, 1);
     }
@@ -753,8 +785,8 @@ fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_inten
         // Boundary13/5 and actual Forced15/5 share one20px line.
         // The pending Paragraph strut preserves metrics without a new line.
         assert_eq!(report.block_extent, S::from_f64(20.0));
-        assert_eq!(report.first_baseline, Some(S::from_f64(15.0)));
-        assert_eq!(report.last_baseline, Some(S::from_f64(15.0)));
+        assert_eq!(report.baselines.numeric().first, Some(S::from_f64(15.0)));
+        assert_eq!(report.baselines.numeric().last, Some(S::from_f64(15.0)));
         assert_eq!(report.post_line_clear_intents, [PostLineClearIntent::Both]);
         assert_eq!(report.controls[0].visual_index, Some(0));
         assert_eq!(report.controls[1].visual_index, None);
@@ -848,8 +880,14 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
         assert_eq!(report.atomics.len(), 3);
         assert_eq!(report.atomics[0].item.source_index, 0);
         assert_eq!(report.atomics[0].line_index, 0);
-        assert_eq!(report.atomics[0].inline_start, S::from_f64(20.0));
-        assert_eq!(report.atomics[0].block_start, S::from_f64(10.0));
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[0].position).inline,
+            S::from_f64(20.0)
+        );
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[0].position).block,
+            S::from_f64(10.0)
+        );
         assert_eq!(report.atomics[1].item.source_index, 1);
         assert_eq!(report.atomics[1].line_index, 1);
         assert_eq!(report.atomics[2].item.source_index, 2);
@@ -1966,10 +2004,19 @@ fn resolved_bidi_level_126_preserves_l2_mixed_line_order_both_scalars() {
         assert_eq!(visual, [(Some(0), 2), (Some(1), 1), (Some(2), 0)]);
         assert_eq!(report.inline_extent, S::from_f64(15.0));
         assert_eq!(report.atomics[0].item.source_index, 0);
-        assert_eq!(report.atomics[0].inline_start, S::from_f64(12.0));
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[0].position).inline,
+            S::from_f64(12.0)
+        );
         assert_eq!(report.atomics[2].item.source_index, 2);
-        assert_eq!(report.atomics[2].inline_start, S::ZERO);
-        assert_eq!(report.atomics[1].inline_start, S::from_f64(7.0));
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[2].position).inline,
+            S::ZERO
+        );
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[1].position).inline,
+            S::from_f64(7.0)
+        );
     }
     assert_line::<f32>();
     assert_line::<f64>();
@@ -2033,7 +2080,10 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
             layout_mixed_inline_run(mr02_input(AvailableOf::definite(1.0), participants)).unwrap();
         assert_eq!(report.atomics.len(), count);
         assert_eq!(report.atomics.last().unwrap().line_index, count - 1);
-        assert_eq!(report.atomics.last().unwrap().inline_start, 0.0);
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics.last().unwrap().position).inline,
+            0.0
+        );
         assert_eq!(inline_work_visits(), [count, count, count * 2]);
     }
 }
@@ -2062,9 +2112,9 @@ fn assert_mandatory_atomic_queries_are_confined_to_each_actual_line<S: LayoutSca
         // Every mandatory atomic is real, including the last. Its empty
         // Paragraph completion adds no band, baseline or unit-query work.
         assert_eq!(report.line_bands.len(), count);
-        assert_eq!(report.first_baseline, Some(S::from_f64(8.0)));
+        assert_eq!(report.baselines.numeric().first, Some(S::from_f64(8.0)));
         assert_eq!(
-            report.last_baseline,
+            report.baselines.numeric().last,
             Some(S::from_f64(
                 f64::from(u32::try_from(count - 1).unwrap()) * 10.0 + 8.0
             ))
@@ -2140,7 +2190,7 @@ fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
                 input.text_align = align;
                 let report = layout_mixed_inline_run(input).unwrap();
                 assert_eq!(
-                    report.atomics[0].inline_start,
+                    crate::inline::expect_logical_position(report.atomics[0].position).inline,
                     S::from_f64(expected),
                     "{align:?}/{rtl}"
                 );
@@ -2166,7 +2216,10 @@ fn numeric_unexpandable_alignment_uses_actual_last_line_policy_both_scalars() {
             input.text_align = TextAlign::Justify;
             input.text_align_last = last;
             let report = layout_mixed_inline_run(input).unwrap();
-            assert_eq!(report.atomics[0].inline_start, S::from_f64(expected));
+            assert_eq!(
+                crate::inline::expect_logical_position(report.atomics[0].position).inline,
+                S::from_f64(expected)
+            );
         }
     }
     lane::<f32>();
@@ -2193,15 +2246,21 @@ fn assert_numeric_mandatory_atomic_last_alignment<S: LayoutScalar>() {
         let report = layout_mixed_inline_run(input).unwrap();
         assert_eq!(report.atomics.len(), 2);
         assert_eq!(report.line_bands.len(), 2);
-        assert_eq!(report.atomics[0].block_start, S::ZERO);
-        assert_eq!(report.atomics[1].block_start, S::from_f64(10.0));
         assert_eq!(
-            report.atomics[0].inline_start,
+            crate::inline::expect_logical_position(report.atomics[0].position).block,
+            S::ZERO
+        );
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[1].position).block,
+            S::from_f64(10.0)
+        );
+        assert_eq!(
+            crate::inline::expect_logical_position(report.atomics[0].position).inline,
             S::from_f64(first_x),
             "nonterminal mandatory line/{last:?}"
         );
         assert_eq!(
-            report.atomics[1].inline_start,
+            crate::inline::expect_logical_position(report.atomics[1].position).inline,
             S::from_f64(second_x),
             "paragraph end/{last:?}"
         );
@@ -2305,7 +2364,10 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
             let report =
                 layout_mixed_inline_run(mr02_input(available, participants(edge))).unwrap();
             assert_eq!(report.inline_extent, S::from_f64(28.0));
-            assert_eq!(report.atomics[1].inline_start, S::from_f64(18.0));
+            assert_eq!(
+                crate::inline::expect_logical_position(report.atomics[1].position).inline,
+                S::from_f64(18.0)
+            );
             assert_eq!(report.controls[0].inline_extent, S::from_f64(8.0));
         }
         for (edge, width, expected_y) in
@@ -2329,7 +2391,7 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
             assert_eq!(report.line_bands.len(), 1);
             assert_eq!(report.line_bands[0].block_start, S::from_f64(expected_y));
             assert_eq!(
-                report.atomics[1].inline_start,
+                crate::inline::expect_logical_position(report.atomics[1].position).inline,
                 S::from_f64(10.0) + edge.advance()
             );
         }

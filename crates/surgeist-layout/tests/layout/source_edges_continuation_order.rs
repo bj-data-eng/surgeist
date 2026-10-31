@@ -53,6 +53,9 @@ fn processed() -> Arc<t::ProcessedSource> {
     let mut source = t::Source::identified("AXB", t::Id::from_u64(658100), 31);
     source.span(t::Range::new(0, 3), base.clone());
     let block = || t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base.clone(),
@@ -68,6 +71,8 @@ fn processed() -> Arc<t::ProcessedSource> {
     };
     Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -97,6 +102,9 @@ fn processed() -> Arc<t::ProcessedSource> {
             scopes: vec![
                 block(),
                 t::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: Default::default(),
                     style: Some(base.clone()),
                     boundaries: Some(t::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -323,7 +331,7 @@ fn request<S: l::LayoutScalar>() -> l::LayoutRootRequestOf<S> {
 fn full<S: l::LayoutScalar>(captured_order: bool) {
     let (tree, bindings, capture) = fixture::<S>();
     let scope = captured_order.then(|| capture.captured_scope(1).unwrap());
-    let flow=l::LayoutFlowInput::try_new(&tree,0,bindings.clone(),wrapping(false, scope)).expect("all real parent paragraphs plus actual child block must cover S's complete continued extent");
+    let flow=l::LayoutFlowInput::try_new(&tree,0,bindings.clone(),wrapping(false, scope), Vec::new()).expect("all real parent paragraphs plus actual child block must cover S's complete continued extent");
     let batch = l::compute_layout_with_flow(&flow, 0, request()).unwrap();
     let output = |node| {
         batch
@@ -433,6 +441,7 @@ fn partial<S: l::LayoutScalar>() {
         0,
         bindings,
         wrapping(false, capture.captured_scope(1)),
+        Vec::new(),
     )
     .err()
     .expect("real ending text paragraph cannot be omitted");
@@ -456,6 +465,7 @@ fn contradictory<S: l::LayoutScalar>() {
         0,
         bindings,
         wrapping(true, capture.captured_scope(1)),
+        Vec::new(),
     )
     .err()
     .expect("complete order B,Block,A contradicts actual source and native A,Block,B");

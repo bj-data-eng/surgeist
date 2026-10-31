@@ -76,7 +76,10 @@ fn forced_completion<S: l::LayoutScalar>() {
             completion.origin,
             t::Point::new(if twice { 20.0 } else { 30.0 }, 0.0)
         );
-        assert_eq!(completion.orientation, t::LineOrientation::Sideways);
+        assert_eq!(
+            completion.orientation,
+            t::LineOrientation::SidewaysClockwise
+        );
         assert_eq!(
             layout.metrics().size(),
             t::Size::new(if twice { 20.0 } else { 10.0 }, 10.0)
@@ -223,6 +226,7 @@ fn refusal_transaction<S: l::LayoutScalar>() {
             0,
             vec![p.binding.clone()],
             l::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         let error = l::compute_layout_with_flow_invalidated(
@@ -269,9 +273,15 @@ fn refusal_transaction<S: l::LayoutScalar>() {
     let mut stale = p.binding.clone();
     stale.prepared = fresh.prepared;
     host.box_change(0, |root| root.writing_mode = l::WritingMode::HorizontalTb);
-    let error = l::LayoutFlowInput::try_new(&host, 0, vec![stale], l::WrappingInput::default())
-        .err()
-        .expect("foreign issued origins cannot satisfy preparation coverage");
+    let error = l::LayoutFlowInput::try_new(
+        &host,
+        0,
+        vec![stale],
+        l::WrappingInput::default(),
+        Vec::new(),
+    )
+    .err()
+    .expect("foreign issued origins cannot satisfy preparation coverage");
     assert!(matches!(
         error.kind(),
         l::LayoutErrorKindOf::InvalidInput(l::LayoutInvalidInputOf::TextBinding(

@@ -22,6 +22,8 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     let ancestor_wrap = style.wrap;
     let capture = std::sync::Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
             envelope: text::SourceProcessingEnvelope::Complete,
@@ -38,6 +40,9 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: text::SourceProcessingTopology::Unknown,
                 used_direction: text::ParagraphBaseDirection::LeftToRight,
                 trim: text::WhiteSpaceTrim::default(),
@@ -77,10 +82,18 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     let prepared = system
         .prepare(
             &analyzed,
-            text::PreparationOptions::default().with_orientation(text::LineOrientation::Sideways),
+            text::PreparationOptions::default()
+                .with_orientation(text::LineOrientation::SidewaysClockwise),
         )
         .unwrap();
-    assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+    assert_eq!(
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        [capture.captured_paragraph(0).unwrap()]
+    );
     let origin = prepared.origin_views().next().unwrap().handle();
     let tree = Tree {
         inputs: [
@@ -116,6 +129,7 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
             line_strut: None,
         }],
         layout::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(
@@ -133,7 +147,10 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     assert_eq!(entry.container(), 0);
     assert_eq!(entry.nodes(), [1]);
     let placed = entry.layout();
-    assert_eq!(placed.orientation(), text::LineOrientation::Sideways);
+    assert_eq!(
+        placed.orientation(),
+        text::LineOrientation::SidewaysClockwise
+    );
     assert_eq!(placed.source(), &source);
     assert_eq!(placed.source().id(), Some(text::Id::from_u64(1520001)));
     assert_eq!(placed.source().revision(), 3);
@@ -145,7 +162,7 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     let runs = placed
         .run_views()
         .map(|run| {
-            assert_eq!(run.orientation(), text::LineOrientation::Sideways);
+            assert_eq!(run.orientation(), text::LineOrientation::SidewaysClockwise);
             assert_eq!(run.face().bytes(), AHEM);
             assert_eq!(run.face().index(), 0);
             assert_eq!(

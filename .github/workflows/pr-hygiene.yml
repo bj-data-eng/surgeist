@@ -85,7 +85,7 @@ jobs:
           {
             echo "### Issues this pull request closes"
             echo
-            echo "Merging closes these issues, and the Project then sets them to Done."
+            echo "Merging closes these issues."
             echo
             printf '%s\n' "$text" | grep -aioE "$single" | grep -aoE "$issue" | sort -u | sed 's/^/- /' || echo "- none"
           } >> "$GITHUB_STEP_SUMMARY"

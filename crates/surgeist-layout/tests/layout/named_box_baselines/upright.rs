@@ -169,6 +169,7 @@ fn select_line_in_direction(
     let terminal = offer.view().kind() == t::PreparedBreakKind::ParagraphEnd;
     prepared
         .select(t::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start,
             end,
             participants: prepared.participants().skip(from).take(to - from).collect(),
@@ -208,7 +209,10 @@ fn select_line_in_direction(
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -272,6 +276,8 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -288,6 +294,9 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -450,8 +459,14 @@ fn compute<S: l::LayoutScalar>(
         atomics: vec![],
         line_strut: Some(STRUT),
     };
-    let flow = l::LayoutFlowInput::try_new(&host, 0, vec![binding], l::WrappingInput::default())
-        .expect("genuine processed capture and issued origin must bind to the actual host");
+    let flow = l::LayoutFlowInput::try_new(
+        &host,
+        0,
+        vec![binding],
+        l::WrappingInput::default(),
+        Vec::new(),
+    )
+    .expect("genuine processed capture and issued origin must bind to the actual host");
     let viewport = l::LayoutRootRequestOf::viewport(l::Size::new(
         l::AvailableOf::definite(n(40.0)),
         l::AvailableOf::definite(n(4.0)),

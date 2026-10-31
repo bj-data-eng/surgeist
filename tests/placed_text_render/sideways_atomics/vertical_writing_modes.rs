@@ -16,7 +16,12 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
         text::Size::new(6.0, 14.0),
     ));
     let child_source = text::Source::identified("\u{3a7}", text::Id::from_u64(1558002), 17);
-    let parent = prepare(&mut system, &source, true, text::LineOrientation::Sideways);
+    let parent = prepare(
+        &mut system,
+        &source,
+        true,
+        text::LineOrientation::SidewaysClockwise,
+    );
     let child = prepare(
         &mut system,
         &child_source,
@@ -100,6 +105,7 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
             },
         ],
         layout::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(
@@ -143,7 +149,10 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
     assert_eq!(batch.placed_text().len(), 2);
     assert_eq!(parent_layout.source(), &source);
     assert_eq!(child_layout.source(), &child_source);
-    assert_eq!(parent_layout.orientation(), text::LineOrientation::Sideways);
+    assert_eq!(
+        parent_layout.orientation(),
+        text::LineOrientation::SidewaysClockwise
+    );
     assert_eq!(
         child_layout.orientation(),
         text::LineOrientation::Horizontal
@@ -172,7 +181,7 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
                 run.face().catalogue_identity(),
                 parent.font_catalogue_identity()
             );
-            assert_eq!(run.orientation(), text::LineOrientation::Sideways);
+            assert_eq!(run.orientation(), text::LineOrientation::SidewaysClockwise);
             assert_eq!(run.glyph_basis(), text::GlyphBasis::Clockwise);
             assert_eq!(run.origin().x, cross);
             run.glyphs()

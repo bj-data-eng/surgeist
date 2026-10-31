@@ -166,7 +166,10 @@ fn selected_request(
     r
 }
 fn finish(p: &PreparedText, r: LineSelectionRequest) -> crate::Result<FinalizedLine> {
-    p.select(r)?.finalize(SpacingAllocations::None)
+    p.select(r)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
 }
 fn place_lines(
     p: &PreparedText,
@@ -1620,7 +1623,10 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
         let line = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(line.feedback().advance, 50.0);
         assert_eq!(line.inner.data.boxes.len(), if with_oof { 3 } else { 2 });

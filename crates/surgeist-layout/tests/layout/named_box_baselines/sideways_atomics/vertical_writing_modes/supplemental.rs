@@ -24,6 +24,7 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
     let rtl = p.analyzed_source().direction() == t::Direction::RightToLeft;
     let line = p
         .select(t::LineSelectionRequest {
+            segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
             termination: t::PreparedTermination::Ordinary(end),
@@ -46,7 +47,7 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
                     t::ParagraphBaseDirection::LeftToRight
                 },
                 line_box_direction: t::LineBoxDirection::LeftToRight,
-                orientation: t::LineOrientation::Sideways,
+                orientation: t::LineOrientation::SidewaysClockwise,
                 start: t::LineStart::Paragraph,
                 end: t::LineEnd::Paragraph,
                 available_inline: Some(40.0),
@@ -57,7 +58,10 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     let text_advance = if parent.source.text().is_empty() {
         0.0
@@ -139,7 +143,7 @@ fn directions<S: l::LayoutScalar>() {
             if rtl { "\u{5d0}\u{5d1}" } else { "AB" },
             None,
             body,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         let whole = standalone(&parent, None);
@@ -208,7 +212,7 @@ fn directions<S: l::LayoutScalar>() {
                         let line = fragment.finalized_fragment().finalized_line();
                         assert_eq!(
                             line.selected_line().request().context.orientation,
-                            t::LineOrientation::Sideways
+                            t::LineOrientation::SidewaysClockwise
                         );
                         assert_eq!(line.selected_line().request().context.base_direction, body);
                         assert_eq!(
@@ -242,35 +246,39 @@ fn atomics<S: l::LayoutScalar>() {
     );
     qualify_child::<S>(&child);
     // Four rows cover the changed mode choice together with normal bidi, both
-    // containing directions, all three box alignments and inline alignment.
+    // containing directions, the three keyword alignments and inline alignment.
     let rows = [
         (
             false,
             l::Direction::Ltr,
-            l::VerticalAlign::Baseline,
+            l::VerticalAlignOf::Baseline,
             l::TextAlign::Start,
+            0.0,
         ),
         (
             true,
             l::Direction::Ltr,
-            l::VerticalAlign::Top,
+            l::VerticalAlignOf::Top,
             l::TextAlign::Center,
+            2.0,
         ),
         (
             false,
             l::Direction::Rtl,
-            l::VerticalAlign::Bottom,
+            l::VerticalAlignOf::Bottom,
             l::TextAlign::End,
+            -2.0,
         ),
         (
             true,
             l::Direction::Rtl,
-            l::VerticalAlign::Baseline,
+            l::VerticalAlignOf::Baseline,
             l::TextAlign::Start,
+            0.0,
         ),
     ];
     for kind in [t::InlineBoxKind::InFlow, t::InlineBoxKind::OutOfFlow] {
-        for (rtl, direction, alignment, text_align) in rows {
+        for (rtl, direction, alignment, text_align, cross_offset) in rows {
             let body = if rtl {
                 t::ParagraphBaseDirection::RightToLeft
             } else {
@@ -281,7 +289,7 @@ fn atomics<S: l::LayoutScalar>() {
                 if rtl { "\u{5d0}\u{5d1}" } else { "AB" },
                 Some((kind, t::Id::from_u64(2))),
                 body,
-                t::LineOrientation::Sideways,
+                t::LineOrientation::SidewaysClockwise,
                 10.0,
             );
             standalone(&parent, Some(kind));
@@ -311,12 +319,7 @@ fn atomics<S: l::LayoutScalar>() {
                         0.0
                     }
                 } else {
-                    c(mode)
-                        + match alignment {
-                            l::VerticalAlign::Baseline => 0.0,
-                            l::VerticalAlign::Top => 2.0,
-                            l::VerticalAlign::Bottom => -2.0,
-                        }
+                    c(mode) + cross_offset
                 };
                 // AbsoluteAxis aligns an all-auto inline axis to inline-start.
                 // Under containing RTL that is the bottom edge, so the actual
@@ -395,7 +398,7 @@ fn constraints<S: l::LayoutScalar>() {
         "AB",
         None,
         t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         10.0,
     );
     standalone(&parent, None);
@@ -473,7 +476,7 @@ fn completion<S: l::LayoutScalar>() {
             "",
             Some((kind, t::Id::from_u64(1))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         let line = standalone(&parent, Some(kind));
@@ -582,7 +585,7 @@ fn replay<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(3))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         standalone(&parent, Some(kind));
@@ -671,6 +674,7 @@ fn forced_line(
     parent
         .prepared
         .select(t::LineSelectionRequest {
+            segment: parent.prepared.source_segments().next().unwrap(),
             start,
             end,
             termination: t::PreparedTermination::Ordinary(offer),
@@ -692,7 +696,7 @@ fn forced_line(
                 formatted_line: t::FormattedLineContext::default(),
                 base_direction: t::ParagraphBaseDirection::LeftToRight,
                 line_box_direction: t::LineBoxDirection::LeftToRight,
-                orientation: t::LineOrientation::Sideways,
+                orientation: t::LineOrientation::SidewaysClockwise,
                 start: if from == 0 {
                     t::LineStart::Paragraph
                 } else {
@@ -711,7 +715,10 @@ fn forced_line(
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn forced<S: l::LayoutScalar>() {
@@ -720,7 +727,7 @@ fn forced<S: l::LayoutScalar>() {
         "A\nB",
         None,
         t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         10.0,
     );
     let p = &parent.prepared;
@@ -762,7 +769,7 @@ fn forced<S: l::LayoutScalar>() {
                         inline_origin: 0.0,
                         baseline,
                     },
-                    orientation: t::LineOrientation::Sideways,
+                    orientation: t::LineOrientation::SidewaysClockwise,
                     atomics: vec![],
                 })
             })
@@ -889,9 +896,14 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
         bindings: &[l::TextParagraphBinding<u32>],
         changed: &[u32],
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S, Refusal>> {
-        let flow =
-            l::LayoutFlowInput::try_new(self, 0, bindings.to_vec(), l::WrappingInput::default())
-                .unwrap();
+        let flow = l::LayoutFlowInput::try_new(
+            self,
+            0,
+            bindings.to_vec(),
+            l::WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
         l::compute_layout_with_flow_invalidated(
             &flow,
             0,
@@ -979,7 +991,7 @@ fn late_refusal<S: l::LayoutScalar>() {
             "AB",
             Some((kind, t::Id::from_u64(3))),
             t::ParagraphBaseDirection::LeftToRight,
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             10.0,
         );
         standalone(&parent, Some(kind));
@@ -1108,7 +1120,7 @@ fn guards<S: l::LayoutScalar>() {
         "AB",
         None,
         t::ParagraphBaseDirection::LeftToRight,
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         10.0,
     );
     standalone(&cw, None);

@@ -18,6 +18,17 @@ mod conditional;
 pub(crate) use conditional::request_context;
 mod continuation;
 mod direction;
+pub(crate) mod scope_alignment;
+mod scope_census;
+pub use scope_alignment::{
+    LineAllocations, PreparedScopeMetrics, ScopeAlignmentAllowance, ScopeAlignmentRetention,
+    ScopeAllocation, ScopeAllocations, ScopeFrameAllocation, ScopeMetricContribution,
+    SelectedScope,
+};
+pub use scope_census::{
+    ScopeAlignmentCensus, ScopeAlignmentCensusInput, ScopeAlignmentProduct, ScopeAlignmentProducts,
+    ScopeAlignmentWeakProduct, scope_alignment_census,
+};
 mod wrapping_scope;
 pub use wrapping_scope::{
     CapturedScopeIncidence, PreparedBoundaryIncidence, WrappingScopeQueryError,
@@ -42,8 +53,10 @@ pub(crate) mod placement;
 pub(crate) mod prefix;
 pub(crate) mod prepared;
 pub(crate) mod readback;
+pub(crate) mod segments;
 pub(crate) mod selection;
 pub use continuation::HyphenationContinuation;
+pub use segments::PreparedSourceSegment;
 
 pub use conditional::{
     ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
@@ -94,8 +107,8 @@ impl PreparationOptions {
     }
     /// Requests a physical preparation basis. Matching issued upright analysis
     /// admits the native Vertical profile; Mixed retains ordinary bidi with
-    /// source-selected per-run axes. Horizontal and clockwise
-    /// Sideways retain horizontal composition. Unsupported inputs refuse atomically.
+    /// source-selected per-run axes. Horizontal and both sideways profiles
+    /// retain horizontal composition. Unsupported inputs refuse atomically.
     #[must_use]
     pub const fn with_orientation(mut self, orientation: LineOrientation) -> Self {
         self.orientation = orientation;
@@ -103,7 +116,7 @@ impl PreparationOptions {
     }
     /// Requests a used named font reference for the complete preparation.
     ///
-    /// Alphabetic is supported for Horizontal and clockwise Sideways; Central
+    /// Alphabetic is supported for Horizontal and both sideways profiles; Central
     /// is supported for native Upright and Mixed. Unsupported combinations refuse during
     /// preparation. Without a request, H/Sideways use raw font-design zero and
     /// native Upright uses its existing Central reference.
@@ -121,7 +134,9 @@ impl PreparationOptions {
     pub(crate) const fn resolved_baseline_reference(self) -> Option<crate::FontBaseline> {
         match self.orientation {
             LineOrientation::Vertical => Some(crate::FontBaseline::Central),
-            LineOrientation::Horizontal | LineOrientation::Sideways => self.baseline_reference,
+            LineOrientation::Horizontal
+            | LineOrientation::SidewaysClockwise
+            | LineOrientation::SidewaysCounterclockwise => self.baseline_reference,
         }
     }
     /// Requested basis, authenticated again by selection and placement.
@@ -171,7 +186,7 @@ impl Hash for PreparedText {
     }
 }
 impl PreparedText {
-    /// Actual admitted horizontal, native upright, or clockwise sideways basis.
+    /// Actual admitted horizontal, native upright, or sideways basis.
     #[must_use]
     pub fn orientation(&self) -> LineOrientation {
         self.inner.options.orientation()
@@ -250,6 +265,7 @@ prepared_handle!(
     PreparedScope,
     PreparedVirtualSeparator,
     PreparedUnit,
+    PreparedCell,
     PreparedAtomic,
     PreparedControl,
     PreparedComputedLineBoundary,
@@ -264,6 +280,7 @@ prepared_handle!(
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PreparedParticipant {
     Text(PreparedUnit),
+    Cell(PreparedCell),
     Atomic(PreparedAtomic),
     Control(PreparedControl),
     ComputedLineBoundary(PreparedComputedLineBoundary),
@@ -279,7 +296,9 @@ pub enum LineOrientation {
     Vertical,
     /// Horizontal composition physically rotated 90 degrees clockwise.
     /// This does not denote CSS sideways-lr or mixed/upright typography.
-    Sideways,
+    SidewaysClockwise,
+    /// Horizontal typography presented counterclockwise by ninety degrees.
+    SidewaysCounterclockwise,
 }
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum LineStart {
@@ -422,12 +441,17 @@ pub struct AtomicAllocation {
     pub allocation: AtomicLineAllocation,
 }
 
-/// Alignment of an actual Layout-allocated atomic box or control strut.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+/// Alignment of an actual Layout-allocated atomic box or strut.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LineBoxAlignment {
     Baseline,
     Top,
     Bottom,
+    /// Match the actual baseline, then displace toward line-over by this amount.
+    /// The displacement is already allocated in used line-coordinate units,
+    /// like the accompanying box/strut geometry. Preparation scale is not
+    /// applied again. This does not execute standalone Requested metadata.
+    Shift(crate::BaselineShift),
 }
 
 /// Coupled allocated control geometry; these are Layout facts, not font metrics.
@@ -496,8 +520,10 @@ pub struct LineStrut {
 }
 
 /// One actual allocated line-box contribution, independent of a control.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LineBoxStrut {
+    /// Authentic captured owner of this own-box contribution; None is common line.
+    pub scope: Option<crate::CapturedScope>,
     pub metrics: LineStrut,
     pub alignment: LineBoxAlignment,
 }
@@ -524,6 +550,8 @@ pub enum PreparedTermination {
 /// together by `PreparedText::select` before a selected result is issued.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineSelectionRequest {
+    /// The genuine prepared structural interval owning this selection.
+    pub segment: PreparedSourceSegment,
     pub start: PreparedBoundary,
     pub end: PreparedBoundary,
     pub participants: Vec<PreparedParticipant>,
@@ -778,7 +806,7 @@ impl PartialEq for FinalizedFragment {
 impl Eq for FinalizedFragment {}
 
 /// Physical location of local x=0 on the line baseline, not its top-left.
-/// Horizontal uses (inline_origin, baseline); Vertical and clockwise Sideways
+/// Horizontal uses (inline_origin, baseline); Vertical and both sideways profiles
 /// use (baseline, inline_origin). The baseline is a cross-axis coordinate.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LineAnchor {
@@ -882,7 +910,7 @@ pub struct LineFeedback {
     pub line_height: f64,
     /// Signed line-local coordinate from the line-over edge to the shared baseline.
     /// Native Vertical uses its resolved Central reference; Horizontal and
-    /// clockwise Sideways use their preparation's raw or named reference. This
+    /// both sideways profiles use their preparation's raw or named reference. This
     /// is distinct from any displaced per-font paint origin.
     pub baseline: f64,
 }
@@ -891,15 +919,21 @@ pub struct AtomicSlotFeedback {
     pub occurrence: PreparedAtomic,
     /// Actual line-local flow baseline, before physical line-anchor mapping.
     pub origin: Point,
+    /// Actual cumulative scope contribution, positive toward line-over.
+    /// In-flow origins already contain it; OOF static-anchor policy consumes
+    /// this contribution once without reconstructing it from an absolute slot.
+    pub scope_displacement: crate::BaselineShift,
     pub allocation: AtomicLineAllocation,
 }
 
 /// Semantic capability kind used by an exact protocol admission diagnostic.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProtocolHandleKind {
+    SourceSegment,
     WordPortion,
     Origin,
     Unit,
+    Cell,
     Atomic,
     Control,
     ComputedLineBoundary,
@@ -928,6 +962,13 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    InvalidSourceSegment {
+        segment: usize,
+    },
+    MismatchedSourceSegment {
+        expected: usize,
+        actual: usize,
+    },
     WrappingScopeQuery {
         reason: WrappingScopeQueryError,
     },

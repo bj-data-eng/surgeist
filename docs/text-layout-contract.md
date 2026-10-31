@@ -338,7 +338,7 @@ captured ancestor wrapping still govern analysis and admission.
 
 `AnalyzedSource::new(source, style, typography)` performs the font-independent analysis once and returns an immutable value with an opaque allocation identity. Clones retain that identity; independently analyzed equal text does not. It preserves exact source units, grapheme and host-projection mappings, source affinity and applicable language facts. Isolated UTF-16 units remain valid analysis inputs; a host requiring scalar UTF-8 may reject their accessibility projection at that boundary. Font preparation retains the same analyzed allocation. `System::layout_analyzed` consumes this analysis through the same preparation, selection, finalization and placement machinery as the `System::layout` convenience path.
 
-All three analysis constructors take an explicit `AnalysisTypography`. Horizontal composition retains ordinary horizontal and clockwise-sideways interpretation. Whole-upright analysis retains its separately supplied computed direction while resolving used LTR under the [native bidi policy](../references/text-upright-bidi--native-determination.md). Captured paragraph used-base authority is validated independently of the nearest block's tab reference. Analysis and logical accessibility remain font-independent; matching explicit Vertical preparation uses the [native whole-upright profile](../crates/surgeist-text/docs/reference.md#native-whole-upright-paragraphs), followed by issued selection, finalization and placement.
+All three analysis constructors take an explicit `AnalysisTypography`. Horizontal composition retains ordinary horizontal interpretation for horizontal and both native sideways profiles. Whole-upright analysis retains its separately supplied computed direction while resolving used LTR under the [native bidi policy](../references/text-upright-bidi--native-determination.md). Captured paragraph used-base authority is validated independently of the nearest block's tab reference. Analysis and logical accessibility remain font-independent; matching explicit Vertical preparation uses the [native whole-upright profile](../crates/surgeist-text/docs/reference.md#native-whole-upright-paragraphs), followed by issued selection, finalization and placement.
 
 Original graphemes remain selectable without glyphs through the analyzed-source front door, as qualified by `absent_selected_font_does_not_erase_original_selectable_graphemes`. Source-only accessibility needs no fabricated font, glyph, prepared value or geometry.
 
@@ -1057,6 +1057,17 @@ query order and finite cache history cannot change their result. Actual policy,
 containing basis, incoming accepted state and resolved candidate context remain
 part of captured pass/request/replay identity.
 
+### Captured-scope alignment
+
+The [captured-scope contract](../crates/surgeist-text/docs/scope-alignment.md)
+owns early formatting facts, authentic glyph-free parent metrics, selected
+allocation and feature-local resource accounting. Layout admits scalar-typed
+alignment facts through actual scope associations and resolves line-relative
+aligned subtrees. Text retains lexical custody while executing each participating
+frame once; Top/Bottom children remain independent containing-line groups.
+Font references are context, not invented struts. Raw/named reference bridges,
+signed fitting, replay and OOF static edges use the actual retained frame.
+
 ### Native text-group alignment
 
 The [native group-alignment determination](../references/text-group-alignment--native-determination.md)
@@ -1194,6 +1205,14 @@ receipts; no compatibility alias or second whitespace formatter is selected.
 
 ### Preserved CSS tab stops
 
+The block-grid rules below govern ordinary and replacement TABs exposed to the
+outer line. A preserved TAB inside an admitted native combined Cell follows
+the [Cell contract](../crates/surgeist-text/docs/reference.md#contextual-source-processing):
+preparation executes its horizontal zero-origin grid before width selection,
+and finalization retains that inner geometry. An ordinary TAB elsewhere still
+requires its actual block reference and late origin, even when both occurrences
+share one style.
+
 Text owns preserved-tab advances and source custody; Layout owns the actual block
 edge, line span and placement supplied to finalization. This contract selects the
 CSS operation under #64/#72, independently of native font-advance tabs. It follows
@@ -1210,8 +1229,9 @@ chooses either font-advance or CSS-stop demand independently of the capture.
 Resolve every selectable original and replacement TAB under the chosen demand
 before publishing the preparation. Missing required facts or resources fail
 atomically. A later request must match that prepared capability; `NoTabs` instead
-checks actual selected absence. Retain every consumed font instance and include
-the capture, style and demand in their owning cache identities.
+checks actual selected absence of outer TAB operations. Retain every consumed
+font instance and include the capture, style and demand in their owning cache
+identities.
 
 A checked tab size is either a finite nonnegative number or absolute length,
 initially eight spaces. A number multiplies the nearest block's hypothetical
@@ -2061,11 +2081,11 @@ actual placed result. Its ordered observations retain selected source
 intersections, expanded typographic-unit coverage where applicable, finalized
 line/fragment and placement identities, advance edges and associated font-metric
 extent. Native `Layout::source_range_fragments` implements this observation
-boundary for admitted Horizontal and clockwise Sideways placements; the complete
-web consumer remains separate. Piece rectangles use the actual physical placed
-basis. Directed advance edges are physical inline coordinates; the baseline is
-the physical cross coordinate. Font ascent/descent retain their unrotated
-before/after distances, interpreted through the query's actual Layout orientation.
+boundary for admitted Native placements; the complete web consumer remains
+separate. Piece rectangles use the actual physical placed basis. Ordinary line
+pieces expose directed advance edges in physical inline coordinates and a
+baseline in the physical cross coordinate. Ordinary font ascent/descent retain their unrotated before/after distances,
+interpreted through the query's actual Layout orientation.
 Generic source slots and caret affinities are distinct.
 The selected evidence is the [current CSSOM View §9 capture](../references/cssom-view-range--editor-capture-20261022.md),
 checked with the [bounded CSSWG and browser-test audit](../references/range-geometry-csswg-tests--20261022.md).
@@ -2079,6 +2099,18 @@ They are distinct from float-prefix units: an optional Latin `AA` ligature can
 share one provider cluster while containing two Range units; a base and combining
 mark remain one grapheme-based unit. Partial selection expands the actual Range
 unit, not every provider cluster touching it.
+
+A combined Cell retains its actual post-edge semantic EGC partition for Range,
+rather than becoming one opaque unit or a one-em rectangle. Partial original
+selection closes only its actual EGC; selected source endpoints remain exact and
+expanded coverage retains all original members. Removed-only selection units
+retain metadata and no geometry. Font-backed pieces use actual retained
+horizontal metrics through the executed compression, centering and once-applied
+scope/placement frame. Their common metric reference differs from the
+font-design paint origin by the retained font baseline offset; do not apply that
+offset twice. Native CSS TAB pieces instead consume their executed spans and
+real container-referenced em band, without a body font or glyph baseline. Ordinary
+line, Cell font and Cell native-layout geometry remain explicit variants.
 
 Preserve authentic per-unit advance positions and allocated adjustments first.
 For an admitted monotonic horizontal shaped cluster containing multiple complete

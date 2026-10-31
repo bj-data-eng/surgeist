@@ -15,4 +15,3 @@ pub use capture::*;
 pub use controlled_option_value::*;
 pub use hyperlink::*;
 pub use semantics::*;
-pub use surgeist_html::HtmlCustomElementState;

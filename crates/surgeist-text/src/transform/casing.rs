@@ -11,6 +11,29 @@ use std::{borrow::Cow, ops::Range};
 
 use super::greek;
 
+pub(super) const CAPITAL_SIGMA: u32 = 0x3a3;
+const FINAL_SIGMA: u32 = 0x3c2;
+
+/// Complete locale-independent alternatives of the native lower-Sigma rule.
+/// This reads canonical case data; it does not choose a contextual mapping or
+/// publish an emission for a component which the request does not own.
+pub(super) fn lower_sigma_family() -> Result<[u32; 2], MappingError> {
+    let mapper = Mapper::new()?;
+    let ordinary = match mapper.ordinary(CAPITAL_SIGMA, Operation::Lower)? {
+        Mapping::Scalar(cp) => cp,
+        Mapping::Text(text) => {
+            let mut chars = text.chars();
+            let first = chars.next().ok_or(MappingError::InvalidException)?;
+            if chars.next().is_some() {
+                return Err(MappingError::InvalidException);
+            }
+            u32::from(first)
+        }
+        _ => return Err(MappingError::InvalidException),
+    };
+    Ok([ordinary, FINAL_SIGMA])
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Operation {
     Lower,
@@ -71,13 +94,106 @@ impl Locale {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub(super) enum MappingError {
     DataUnavailable,
     InvalidException,
     InvalidScalar,
     InvalidLocale,
     Storage,
+    Context(super::context::MissingEdge),
+    Source(crate::Error),
+}
+
+/// Immutable canonical values with unavailable relationships at real component
+/// cuts. Readers check only cuts actually traversed by their native predicate.
+pub(super) enum Input<'a> {
+    Known {
+        values: &'a [u32],
+        missing: &'a [(usize, super::context::MissingEdge)],
+    },
+    Source {
+        length: usize,
+        value: &'a dyn Fn(usize) -> Result<Option<u32>, MappingError>,
+        crossing: &'a dyn Fn(usize, bool) -> Result<bool, MappingError>,
+    },
+}
+impl Input<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Known { values, .. } => values.len(),
+            Self::Source { length, .. } => *length,
+        }
+    }
+    fn value(&self, at: usize) -> Result<Option<u32>, MappingError> {
+        match self {
+            Self::Known { values, .. } => Ok(values.get(at).copied()),
+            Self::Source { value, .. } => value(at),
+        }
+    }
+    fn crossing(&self, cut: usize, reverse: bool) -> Result<bool, MappingError> {
+        match self {
+            Self::Known { missing, .. } => {
+                if let Some((_, edge)) = missing.iter().find(|(at, _)| *at == cut) {
+                    return Err(MappingError::Context(*edge));
+                }
+                Ok(false)
+            }
+            Self::Source { crossing, .. } => crossing(cut, reverse),
+        }
+    }
+    pub(super) fn before(&self, at: usize) -> Cursor<'_> {
+        Cursor {
+            input: self,
+            position: at,
+            reverse: true,
+        }
+    }
+    pub(super) fn after(&self, at: usize) -> Cursor<'_> {
+        Cursor {
+            input: self,
+            position: at + 1,
+            reverse: false,
+        }
+    }
+}
+#[derive(Clone, Copy)]
+pub(super) struct Cursor<'a> {
+    input: &'a Input<'a>,
+    position: usize,
+    reverse: bool,
+}
+impl Iterator for Cursor<'_> {
+    type Item = Result<u32, MappingError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let (row, cut) = if self.reverse {
+                (self.position.checked_sub(1)?, self.position)
+            } else {
+                if self.position >= self.input.len() {
+                    return None;
+                }
+                (self.position, self.position)
+            };
+            match self.input.crossing(cut, self.reverse) {
+                Ok(true) => {
+                    self.position = if self.reverse { 0 } else { self.input.len() };
+                    return None;
+                }
+                Err(error) => {
+                    self.position = if self.reverse { 0 } else { self.input.len() };
+                    return Some(Err(error));
+                }
+                Ok(false) => (),
+            }
+            self.position = if self.reverse { row } else { row + 1 };
+            match self.input.value(row) {
+                Ok(Some(cp)) => return Some(Ok(cp)),
+                Ok(None) => (),
+                Err(error) => return Some(Err(error)),
+            }
+        }
+    }
 }
 
 enum Mapping<'a> {
@@ -146,14 +262,32 @@ impl Mapper {
         })
     }
 
-    fn cased(&self, mut input: impl Iterator<Item = u32>) -> bool {
-        input
-            .find(|&cp| !self.0.get().trie.get32(cp).ignoreable)
-            .is_some_and(|cp| self.case_type(cp).is_some())
+    fn cased(&self, input: Cursor<'_>) -> Result<bool, MappingError> {
+        for cp in input {
+            let cp = cp?;
+            if !self.0.get().trie.get32(cp).ignoreable {
+                return Ok(self.case_type(cp).is_some());
+            }
+        }
+        Ok(false)
     }
 
-    fn after_soft_dotted(&self, before: &[u32]) -> Result<bool, MappingError> {
-        for &cp in before.iter().rev() {
+    fn final_sigma(&self, before: Cursor<'_>, after: Cursor<'_>) -> Result<bool, MappingError> {
+        match self.cased(before) {
+            Ok(false) => Ok(false),
+            Ok(true) => self.cased(after).map(|after| !after),
+            Err(MappingError::Context(edge)) => match self.cased(after) {
+                Ok(true) => Ok(false),
+                Ok(false) | Err(MappingError::Context(_)) => Err(MappingError::Context(edge)),
+                Err(error) => Err(error),
+            },
+            Err(error) => Err(error),
+        }
+    }
+
+    fn after_soft_dotted(&self, before: Cursor<'_>) -> Result<bool, MappingError> {
+        for cp in before {
+            let cp = cp?;
             match self.dot(cp)? {
                 DotType::SoftDotted => return Ok(true),
                 DotType::OtherAccent => (),
@@ -163,8 +297,9 @@ impl Mapper {
         Ok(false)
     }
 
-    fn after_i(&self, before: &[u32]) -> Result<bool, MappingError> {
-        for &cp in before.iter().rev() {
+    fn after_i(&self, before: Cursor<'_>) -> Result<bool, MappingError> {
+        for cp in before {
+            let cp = cp?;
             if cp == 0x49 {
                 return Ok(true);
             }
@@ -175,8 +310,9 @@ impl Mapper {
         Ok(false)
     }
 
-    fn more_above(&self, after: &[u32]) -> Result<bool, MappingError> {
-        for &cp in after {
+    fn more_above(&self, after: Cursor<'_>) -> Result<bool, MappingError> {
+        for cp in after {
+            let cp = cp?;
             match self.dot(cp)? {
                 DotType::Above => return Ok(true),
                 DotType::OtherAccent => (),
@@ -186,8 +322,9 @@ impl Mapper {
         Ok(false)
     }
 
-    fn before_dot(&self, after: &[u32]) -> Result<bool, MappingError> {
-        for &cp in after {
+    fn before_dot(&self, after: Cursor<'_>) -> Result<bool, MappingError> {
+        for cp in after {
+            let cp = cp?;
             if cp == 0x307 {
                 return Ok(true);
             }
@@ -202,10 +339,32 @@ impl Mapper {
     /// independently decides whether this component's own transform/locale
     /// permits the title-context operation.
     pub(super) fn dutch_j(&self, before: &[u32], after: &[u32]) -> Result<bool, MappingError> {
-        let mut before = before.iter().rev().copied();
+        let input_before = Input::Known {
+            values: before,
+            missing: &[],
+        };
+        let input_after = Input::Known {
+            values: after,
+            missing: &[],
+        };
+        self.dutch_context(
+            input_before.before(before.len()),
+            Cursor {
+                input: &input_after,
+                position: 0,
+                reverse: false,
+            },
+        )
+    }
+
+    fn dutch_context(
+        &self,
+        mut before: Cursor<'_>,
+        after: Cursor<'_>,
+    ) -> Result<bool, MappingError> {
         let mut i_acute = false;
         loop {
-            match before.next() {
+            match before.next().transpose()? {
                 Some(0x69 | 0x49) => break,
                 Some(0xed | 0xcd) => {
                     i_acute = true;
@@ -215,11 +374,12 @@ impl Mapper {
                 _ => return Ok(false),
             }
         }
-        if before.next().is_some() {
+        if before.next().transpose()?.is_some() {
             return Ok(false);
         }
         let mut j_acute = false;
-        for &cp in after {
+        for cp in after {
+            let cp = cp?;
             if cp == 0x301 {
                 j_acute = true;
                 continue;
@@ -232,11 +392,10 @@ impl Mapper {
         Ok(i_acute == j_acute)
     }
 
-    /// Writes into one caller-owned flat output buffer. Each input row lends
-    /// its actual span; no per-scalar heap allocation is needed.
-    pub(super) fn map_into(
+    /// Writes each actual component once into the caller's flat output buffer.
+    pub(super) fn map_in_context(
         &self,
-        input: &[u32],
+        input: &Input<'_>,
         at: usize,
         operation: Operation,
         locale: Locale,
@@ -255,7 +414,16 @@ impl Mapper {
         locale: Locale,
     ) -> Result<Vec<u32>, MappingError> {
         let mut output = Vec::new();
-        self.map_into(input, at, operation, locale, &mut output)?;
+        self.map_in_context(
+            &Input::Known {
+                values: input,
+                missing: &[],
+            },
+            at,
+            operation,
+            locale,
+            &mut output,
+        )?;
         Ok(output)
     }
 
@@ -263,19 +431,19 @@ impl Mapper {
     /// output. Removal is a real result owned by this input row.
     fn mapping(
         &self,
-        input: &[u32],
+        input: &Input<'_>,
         at: usize,
         operation: Operation,
         locale: Locale,
     ) -> Result<Mapping<'_>, MappingError> {
-        let cp = *input.get(at).ok_or(MappingError::InvalidScalar)?;
+        let cp = input.value(at)?.ok_or(MappingError::InvalidScalar)?;
         // An isolated UTF-16 unit is opaque. It is not the replacement glyph
         // scalar used by the font-facing UTF-8 projection.
         if (0xd800..=0xdfff).contains(&cp) {
             return Ok(Mapping::Scalar(cp));
         }
-        let before = &input[..at];
-        let after = &input[at + 1..];
+        let before = input.before(at);
+        let after = input.after(at);
         let text = |s| Mapping::Text(Cow::Borrowed(s));
         let upper = matches!(
             operation,
@@ -284,7 +452,7 @@ impl Mapper {
         if operation == Operation::TitleContext {
             if locale == Locale::Dutch
                 && matches!(cp, 0x6a | 0x4a)
-                && self.dutch_j(before, after)?
+                && self.dutch_context(before, after)?
             {
                 return Ok(Mapping::Scalar(0x4a));
             }
@@ -328,11 +496,8 @@ impl Mapper {
             if cp == 0x130 {
                 return Ok(text("i\u{307}"));
             }
-            if cp == 0x3a3
-                && self.cased(before.iter().rev().copied())
-                && !self.cased(after.iter().copied())
-            {
-                return Ok(Mapping::Scalar(0x3c2));
+            if cp == CAPITAL_SIGMA && self.final_sigma(before, after)? {
+                return Ok(Mapping::Scalar(FINAL_SIGMA));
             }
         }
         if upper {
@@ -353,7 +518,7 @@ impl Mapper {
         }
         if operation == Operation::Upper
             && locale == Locale::Greek
-            && let Some(mapped) = self.greek(cp, before, after)
+            && let Some(mapped) = self.greek(cp, before, after)?
         {
             return Ok(mapped);
         }
@@ -416,18 +581,26 @@ impl Mapper {
         }
     }
 
-    fn greek(&self, cp: u32, before: &[u32], after: &[u32]) -> Option<Mapping<'_>> {
-        if greek::removed_mark(cp) && greek::preceded_by_letter(before) {
-            return Some(Mapping::Remove);
+    fn greek(
+        &self,
+        cp: u32,
+        before: Cursor<'_>,
+        after: Cursor<'_>,
+    ) -> Result<Option<Mapping<'_>>, MappingError> {
+        if greek::removed_mark(cp) && greek::preceded_by_letter(before)? {
+            return Ok(Some(Mapping::Remove));
         }
-        match greek::letter(cp)? {
+        let Some(letter) = greek::letter(cp) else {
+            return Ok(None);
+        };
+        Ok(match letter {
             greek::Letter::Consonant { rho: true } => Some(Mapping::Scalar(0x3a1)),
             greek::Letter::Consonant { rho: false } => None,
             greek::Letter::Vowel(vowel, mut precomposed) => {
-                let mut d = greek::following(precomposed, after);
+                let mut d = greek::following(precomposed, after)?;
                 if !d.dialytika
                     && matches!(vowel, 'Ι' | 'Υ')
-                    && let Some((prev, combining)) = greek::preceding(before)
+                    && let Some((prev, combining)) = greek::preceding(before)?
                     && !prev.dialytika
                     && !combining.dialytika
                 {
@@ -442,8 +615,8 @@ impl Mapper {
                 result[0] = match vowel {
                     'Η' if d.accented
                         && !d.ypogegrammeni
-                        && !self.cased(before.iter().rev().copied())
-                        && !self.cased(after.iter().copied()) =>
+                        && !self.cased(before)?
+                        && !self.cased(after)? =>
                     {
                         if precomposed.accented {
                             0x389
@@ -473,7 +646,7 @@ impl Mapper {
                     _ => Mapping::Triple(result[0], result[1], result[2]),
                 })
             }
-        }
+        })
     }
 }
 

@@ -8,7 +8,7 @@ fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle)
         l::LayoutInputOf::box_input(l::NodeInputOf {
             display: l::Display::InlineBlock,
             direction,
-            vertical_align: l::VerticalAlign::Baseline,
+            vertical_align: l::VerticalAlignOf::Baseline,
             atomic_inline_participation: Some(l::AtomicInlineParticipation::new(
                 t::BidiLevel::try_new(if direction == l::Direction::Ltr { 0 } else { 1 }).unwrap(),
                 l::InlineBreakOpportunity::Allowed,
@@ -88,6 +88,7 @@ fn compute<S: l::LayoutScalar>(
                 // The actual pair has these same Baseline metrics. The witness
                 // identifies that contribution; it must not duplicate it.
                 metric_contribution: Some(l::InlineBoxMetricContribution::Strut(t::LineBoxStrut {
+                    scope: None,
                     metrics: t::LineStrut {
                         baseline: 8.0,
                         line_extent: 10.0,
@@ -97,6 +98,7 @@ fn compute<S: l::LayoutScalar>(
             }],
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = l::LayoutRootRequestOf::viewport(l::Size::new(

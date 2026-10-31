@@ -20,9 +20,14 @@ fn solve<S: l::LayoutScalar>(
     width: f64,
     height: f64,
 ) -> l::CompletedLayoutBatchOf<u32, S> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default()).expect(
-        "actual processed captures and issued occurrence roles must bind to their real nodes",
-    );
+    let flow = l::LayoutFlowInput::try_new(
+        host,
+        0,
+        bindings,
+        l::WrappingInput::default(),
+        Vec::new(),
+    )
+    .expect("actual processed captures and issued occurrence roles must bind to their real nodes");
     l::compute_layout_with_flow(
         &flow,
         0,
@@ -159,6 +164,8 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
     use t::SourceProcessingEvent as E;
     let capture = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -209,6 +216,9 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -285,7 +295,14 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
         .expect(
             "the real captured InFlow parent must satisfy the independently GREEN Text producer",
         );
-    assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+    assert_eq!(
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![capture.captured_paragraph(0).unwrap()]
+    );
     assert_eq!(prepared.analyzed_source().identity(), analysis.identity());
     assert_eq!(
         prepared.origin_views().count(),
@@ -326,6 +343,7 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
         .handle();
     let line = prepared
         .select(t::LineSelectionRequest {
+            segment: prepared.source_segments().next().unwrap(),
             start,
             end: end.view().boundary(),
             termination: t::PreparedTermination::Ordinary(end),
@@ -370,7 +388,10 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
             },
         })
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (

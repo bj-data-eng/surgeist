@@ -115,7 +115,10 @@ fn connected_origins_and_effective_instances_share_one_word_but_disconnections_d
         let whole = p
             .select(request(&p))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(whole.feedback().advance, 70.0);
         assert_eq!(
@@ -223,7 +226,10 @@ fn suppressed_native_points_do_not_resolve_unused_indication_resources_or_placem
         let whole = p
             .select(request(&p))
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             whole.feedback().advance,
@@ -270,6 +276,8 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
             })
             .collect();
         let capture = ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -290,12 +298,18 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
             }],
             scopes: vec![
                 SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: crate::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
                     base_style: style(),
                 },
                 SourceProcessingScope::OutOfFlowBlock {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: crate::SourceProcessingTopology::Unknown,
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     trim: WhiteSpaceTrim::default(),
@@ -369,7 +383,10 @@ fn child_domain_hole_cannot_supply_or_remove_the_parent_words_counting_units() {
         let whole = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             whole.feedback().advance,
@@ -422,7 +439,10 @@ fn one_lexical_word_survives_a_real_registered_face_change() {
     let whole = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(whole.feedback().advance, 100.0);
     let actual: Vec<_> = whole

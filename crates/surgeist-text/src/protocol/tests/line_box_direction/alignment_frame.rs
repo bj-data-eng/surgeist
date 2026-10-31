@@ -125,7 +125,12 @@ fn justification_spends_only_the_real_reduced_capacity_on_authenticated_space_sl
                 let mut r = framed(&p, direction, Alignment::Justify, (20.0, 20.0));
                 r.context.spacing = SpacingPolicy::Spaces;
                 let selected = p.select(r).unwrap();
-                let unexpanded = selected.finalize(SpacingAllocations::None).unwrap();
+                let unexpanded = selected
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
+                    .unwrap();
                 assert_eq!(unexpanded.measurements().alignment().advance(), natural);
                 let slots: Vec<_> = selected.spacing_slots().collect();
                 assert_eq!(slots.len(), 1);
@@ -141,10 +146,13 @@ fn justification_spends_only_the_real_reduced_capacity_on_authenticated_space_sl
                     }]
                 );
                 let expanded = selected
-                    .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-                        slot: slots[0].clone(),
-                        amount,
-                    }]))
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                            slot: slots[0].clone(),
+                            amount,
+                        }]),
+                        scopes: crate::ScopeAllocations::None,
+                    })
                     .unwrap();
                 assert_eq!(expanded.selected_line(), selected);
                 assert_eq!(expanded.feedback().advance, 60.0);
@@ -275,15 +283,18 @@ fn frame_identity_is_semantic_but_conditional_candidates_may_use_their_actual_fr
         .unwrap()
         .handle();
     let search = |frame: &FinalizedLine| {
-        p.conditional_search(
-            &start,
-            None,
-            &ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            Some(frame),
-        )
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &start,
+                None,
+                &ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                Some(frame),
+            )
+            .unwrap()
     };
     assert_eq!(search(&first), search(&first));
     assert_ne!(search(&first), search(&other));

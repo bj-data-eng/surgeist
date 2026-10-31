@@ -158,7 +158,10 @@ fn rtl_line(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(selection)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -197,9 +200,13 @@ fn physical_glyphs(layout: &crate::Layout) -> Vec<(Range, Point)> {
                             origin.x + glyph.pen() + f64::from(glyph.x()),
                             origin.y + f64::from(glyph.y()),
                         ),
-                        LineOrientation::Sideways => Point::new(
+                        LineOrientation::SidewaysClockwise => Point::new(
                             origin.x - f64::from(glyph.y()),
                             origin.y + glyph.pen() + f64::from(glyph.x()),
+                        ),
+                        LineOrientation::SidewaysCounterclockwise => Point::new(
+                            origin.x + f64::from(glyph.y()),
+                            origin.y - glyph.pen() - f64::from(glyph.x()),
                         ),
                         LineOrientation::Vertical => Point::new(
                             origin.x + f64::from(glyph.x()),
@@ -239,6 +246,8 @@ fn assert_custody(
             layout.cursor(cursor).unwrap().rect(),
             if horizontal {
                 Rect::new(20.0 + inline, low, 1.0, 10.0)
+            } else if prepared.orientation() == LineOrientation::SidewaysCounterclockwise {
+                Rect::new(low, 19.0 - inline, 10.0, 1.0)
             } else {
                 Rect::new(low, 20.0 + inline, 10.0, 1.0)
             }
@@ -271,6 +280,8 @@ fn assert_custody(
             .collect::<Vec<_>>(),
         [if horizontal {
             Rect::new(30.0, low, 14.0, 10.0)
+        } else if prepared.orientation() == LineOrientation::SidewaysCounterclockwise {
+            Rect::new(low, -4.0, 10.0, 14.0)
         } else {
             Rect::new(low, 30.0, 10.0, 14.0)
         }]
@@ -289,7 +300,10 @@ fn odd_rtl_separator_paints_between_equal_authored_halves_in_horizontal_and_cloc
     );
     let mut system = super::system(&bytes, '\u{a0}', false, false);
     let source = Source::identified("\u{5d0}\u{a0}\u{5d1}", Id::from_u64(1564020), 3);
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let control = prepare_profile(
             &mut system,
             &source,
@@ -484,7 +498,10 @@ fn authored_inline_halves_do_not_become_a_second_used_alphabetic_cross_displacem
         qualify_base(&bytes, coordinate);
         let mut system = super::system(&bytes, '\u{a0}', false, false);
         let b = f64::from(coordinate) / 100.0;
-        for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+        for orientation in [
+            LineOrientation::Horizontal,
+            LineOrientation::SidewaysClockwise,
+        ] {
             let control = prepare_profile(
                 &mut system,
                 &source,

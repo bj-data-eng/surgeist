@@ -252,7 +252,10 @@ fn same_script_joining_and_nonjoining_arabic_letters_have_no_tracking_or_extra_c
         let control_source = source(text, 0.0);
         let control_prepared = prepare(&bytes, &control_source, 0.0);
         let control = select(&control_prepared, SpacingPolicy::None)
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let expected_raw = [
             (Range::new(0, 1), ids[0], 0.0, 0.0, 10.0),
@@ -269,13 +272,19 @@ fn same_script_joining_and_nonjoining_arabic_letters_have_no_tracking_or_extra_c
         assert_eq!(prepared.analyzed_source().style().letter_spacing, 4.0);
         assert_eq!(source.spans()[0].style().letter_spacing, 8.0);
         let authored = select(&prepared, SpacingPolicy::None)
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(sorted_raw(&authored, &bytes), expected_raw);
         assert_eq!(authored.feedback().advance, 20.0);
         assert_eq!(source_paints(&authored), source_paints(&control));
         let line = select(&prepared, SpacingPolicy::InterCharacter)
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(sorted_raw(&line, &bytes), expected_raw);
         assert_eq!(line.feedback().advance, 20.0);
@@ -308,7 +317,10 @@ fn arabic_punctuation_keeps_authored_tracking_but_has_no_default_cursive_justifi
     let control_source = source("\u{60d}\u{621}", 0.0);
     let control_prepared = prepare(&bytes, &control_source, 0.0);
     let control = select(&control_prepared, SpacingPolicy::None)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let expected_raw = [
         (Range::new(0, 1), 82, 0.0, 0.0, 10.0),
@@ -323,7 +335,10 @@ fn arabic_punctuation_keeps_authored_tracking_but_has_no_default_cursive_justifi
     let source = source("\u{60d}\u{621}", 8.0);
     let prepared = prepare(&bytes, &source, 4.0);
     let authored = select(&prepared, SpacingPolicy::None)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(sorted_raw(&authored, &bytes), expected_raw);
     assert_eq!(authored.feedback().advance, 26.0);
@@ -332,7 +347,10 @@ fn arabic_punctuation_keeps_authored_tracking_but_has_no_default_cursive_justifi
         [(Range::new(0, 1), 16.0), (Range::new(1, 2), 0.0)]
     );
     let line = select(&prepared, SpacingPolicy::InterCharacter)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(sorted_raw(&line, &bytes), expected_raw);
     assert_eq!(line.feedback().advance, 26.0);

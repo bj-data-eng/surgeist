@@ -8,6 +8,12 @@ const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 #[path = "casing.rs"]
 mod casing;
+#[path = "combined_width.rs"]
+mod combined_width;
+pub(crate) use combined_width::{
+    COMBINED_TAB_WIDTH_FAMILY, COMBINED_WIDTH_FAMILY, combined_tab_width_ahem, combined_width_ahem,
+    qualify_combined_tab_width,
+};
 #[path = "kana.rs"]
 mod kana;
 #[path = "math.rs"]
@@ -32,6 +38,20 @@ fn words(values: &[u16]) -> Vec<u8> {
         .iter()
         .flat_map(|value| value.to_be_bytes())
         .collect()
+}
+
+/// Real DFLT/curs GPOS3 over unchanged licensed Ahem glyphs and metrics.
+/// A exits at(300,500), B enters at(100,200); C is outside coverage.
+pub(crate) fn cross_unit_cursive_ahem() -> Vec<u8> {
+    let mut gpos = words(&[1, 0, 10, 30, 44, 1]);
+    gpos.extend(*b"DFLT");
+    gpos.extend(words(&[8, 4, 0, 0, 0xffff, 1, 0, 1]));
+    gpos.extend(*b"curs");
+    gpos.extend(words(&[8, 0, 1, 0, 1, 4, 3, 0, 1, 8]));
+    gpos.extend(words(&[
+        1, 14, 2, 0, 22, 28, 0, 1, 2, 35, 36, 1, 300, 500, 1, 100, 200,
+    ]));
+    replace_tables(AHEM, vec![(*b"GPOS", gpos)])
 }
 
 fn offset(value: usize) -> u16 {

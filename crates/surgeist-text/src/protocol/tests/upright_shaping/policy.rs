@@ -145,7 +145,10 @@ fn finish(prepared: &PreparedText, tabs: TabContext) -> FinalizedLine {
     prepared
         .select(input)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 

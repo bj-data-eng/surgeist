@@ -111,6 +111,7 @@ fn select(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
             start,
@@ -172,7 +173,10 @@ fn select(
             },
         })
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn place(prepared: PreparedText, x: f64, y: f64) -> Layout {
@@ -218,6 +222,14 @@ fn place(prepared: PreparedText, x: f64, y: f64) -> Layout {
     })
     .unwrap()
 }
+fn line_piece<'a>(piece: SourceRangeGeometry<'a>) -> SourceRangePiece<'a> {
+    match piece {
+        SourceRangeGeometry::Line(piece) => piece,
+        SourceRangeGeometry::CellFont(_) | SourceRangeGeometry::CellTab(_) => {
+            panic!("ordinary Range fixture must retain Line geometry")
+        }
+    }
+}
 fn rectangles(result: &SourceRangeFragments<'_>) -> Vec<Rect> {
     result
         .units()
@@ -258,6 +270,7 @@ fn actual_zero_formatting_units_use_own_font_metrics_and_distinct_placement_iden
     assert_eq!(
         first
             .pieces()
+            .map(line_piece)
             .next()
             .unwrap()
             .effective_instance()
@@ -384,6 +397,7 @@ fn surrogate_halves_and_cross_font_grapheme_parts_expand_without_borrowing_neigh
     assert_eq!(partial.units().count(), 1);
     assert_eq!(
         unit.pieces()
+            .map(line_piece)
             .map(|p| p.effective_instance().font_size())
             .collect::<Vec<_>>(),
         [10.0, 20.0]
@@ -686,7 +700,7 @@ fn own_formatting_font_survives_catalogue_replacement_and_system_drop() {
     drop(fonts);
     let l = place(p, 0.0, 30.0);
     let q = l.source_range_fragments(&o, Range::new(1, 2)).unwrap();
-    let piece = q.units().next().unwrap().pieces().next().unwrap();
+    let piece = line_piece(q.units().next().unwrap().pieces().next().unwrap());
     assert_eq!(piece.effective_instance().font_size(), 20.0);
     assert_eq!(piece.effective_instance().face().catalogue_identity(), &old);
     near(piece.rect().origin.y, 14.0);
@@ -987,6 +1001,8 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -1015,12 +1031,18 @@ fn contextual_holes_remain_real_pieces_of_shared_units_and_generated_origins_are
         replacements: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style(10.0),
             },
             SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
@@ -1567,7 +1589,10 @@ fn ccmp_ligature_keeps_selected_space_allocation_on_its_own_range_unit() {
         .map(|slot| SpacingAllocation { slot, amount: 4.0 })
         .collect();
     let line = selected
-        .finalize(SpacingAllocations::Complete(allocations))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(allocations),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let l = Layout::from_finalized_lines(PlacementRequest {
         prepared: p,

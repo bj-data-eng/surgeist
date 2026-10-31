@@ -82,7 +82,10 @@ fn finish(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(value)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn close(actual: f64, expected: f64) {
@@ -375,6 +378,10 @@ fn mixed_marks_retain_complete_egc_axes_attachment_and_independent_style_height(
                 GlyphBasis::Clockwise => Point::new(
                     origin.x - f64::from(glyph.y()),
                     origin.y + glyph.pen() + f64::from(glyph.x()),
+                ),
+                GlyphBasis::Counterclockwise => Point::new(
+                    origin.x + f64::from(glyph.y()),
+                    origin.y + glyph.pen() - f64::from(glyph.x()),
                 ),
                 GlyphBasis::Unrotated => Point::new(
                     origin.x + f64::from(glyph.x()),
@@ -685,7 +692,10 @@ fn place_prepared(
     value.context.line_box_direction = LineBoxDirection::LeftToRight;
     value.context.available_inline = None;
     value.context.spacing = SpacingPolicy::None;
-    let line = prepared.select(value)?.finalize(SpacingAllocations::None)?;
+    let line = prepared.select(value)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })?;
     crate::Layout::from_finalized_lines(PlacementRequest {
         prepared,
         coverage: PlacementCoverage::WholeParagraph,

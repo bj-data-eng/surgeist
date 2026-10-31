@@ -34,7 +34,7 @@ pub(super) fn paragraph<S: l::LayoutScalar>(
         parts,
         text_style,
         body,
-        t::PreparationOptions::default().with_orientation(t::LineOrientation::Sideways),
+        t::PreparationOptions::default().with_orientation(t::LineOrientation::SidewaysClockwise),
     )
 }
 pub(super) fn available<S: l::LayoutScalar>(width: f64, height: f64) -> l::Size<l::AvailableOf<S>> {
@@ -54,6 +54,7 @@ pub(super) fn run<S: l::LayoutScalar>(
         0,
         paragraphs.iter().map(|p| p.binding.clone()).collect(),
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let request = l::LayoutRootRequestOf::viewport(available).unwrap();
@@ -99,7 +100,7 @@ fn two_columns<S: l::LayoutScalar>(
     request_capacity: Option<f64>,
 ) {
     let layout = placed(batch, p);
-    assert_eq!(layout.orientation(), t::LineOrientation::Sideways);
+    assert_eq!(layout.orientation(), t::LineOrientation::SidewaysClockwise);
     assert_eq!(layout.source().text().code_units(), [65, 66]);
     assert_eq!(
         layout.analyzed_source().identity(),

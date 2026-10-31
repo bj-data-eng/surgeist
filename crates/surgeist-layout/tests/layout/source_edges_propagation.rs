@@ -259,6 +259,7 @@ impl<S: l::LayoutScalar> Host<S> {
                         edges: d.edges,
                         metric_contribution: Some(l::InlineBoxMetricContribution::Strut(
                             t::LineBoxStrut {
+                                scope: None,
                                 metrics: t::LineStrut {
                                     baseline: 8.0,
                                     line_extent: 10.0,
@@ -370,12 +371,18 @@ fn source(case: Case) -> t::ContextualSourceInput {
     let mut source = t::Source::identified("PAQ", t::Id::from_u64(658000), 21);
     source.span(t::Range::new(0, 3), style.clone());
     let inline = |boundaries| t::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: Default::default(),
         style: None,
         boundaries,
     };
     let mut scopes = vec![
         t::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style,
@@ -424,6 +431,8 @@ fn source(case: Case) -> t::ContextualSourceInput {
         E::ExitScope(0),
     ]);
     t::ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         source,
         segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
         envelope: t::SourceProcessingEnvelope::Complete,
@@ -636,6 +645,7 @@ fn run<S: l::LayoutScalar>(case: Case) {
         0,
         vec![binding],
         host.final_wrapping(&processed),
+        Vec::new(),
         &receipt,
     )
     .unwrap();
@@ -724,6 +734,7 @@ fn run<S: l::LayoutScalar>(case: Case) {
             request.line_box_struts,
             if matches!(case, Case::EmptyBefore) && i == 0 {
                 vec![t::LineBoxStrut {
+                    scope: Some(processed.captured_scope(3).unwrap()),
                     metrics: t::LineStrut {
                         baseline: 8.0,
                         line_extent: 10.0,

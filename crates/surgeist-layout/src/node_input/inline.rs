@@ -189,12 +189,23 @@ impl TextAlign {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum VerticalAlign {
+/// Resolved line alignment. Shift matches the actual baseline first, then moves
+/// toward line-over without changing the child's intrinsic/local metrics.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum VerticalAlignOf<S: LayoutScalar = DefaultScalar> {
     #[default]
     Baseline,
     Top,
     Bottom,
+    Shift(crate::BaselineOffsetOf<S>),
+}
+
+pub type VerticalAlign = VerticalAlignOf<DefaultScalar>;
+
+impl<S: LayoutScalar> VerticalAlignOf<S> {
+    pub(crate) const fn is_baseline_relative(self) -> bool {
+        matches!(self, Self::Baseline | Self::Shift(_))
+    }
 }
 
 /// The writing-mode state supplied to layout.
@@ -371,7 +382,7 @@ pub struct LineBreakInputOf<S: LayoutScalar = DefaultScalar> {
     display: LineBreakDisplay,
     direction: Direction,
     writing_mode: WritingMode,
-    vertical_align: VerticalAlign,
+    vertical_align: VerticalAlignOf<S>,
     clear: Clear,
     metrics: InlineMetricsOf<S>,
 }
@@ -409,7 +420,7 @@ impl<S: LayoutScalar> LineBreakInputOf<S> {
     }
 
     #[must_use]
-    pub const fn with_vertical_align(mut self, vertical_align: VerticalAlign) -> Self {
+    pub const fn with_vertical_align(mut self, vertical_align: VerticalAlignOf<S>) -> Self {
         self.vertical_align = vertical_align;
         self
     }
@@ -436,7 +447,7 @@ impl<S: LayoutScalar> LineBreakInputOf<S> {
     }
 
     #[must_use]
-    pub const fn vertical_align(self) -> VerticalAlign {
+    pub const fn vertical_align(self) -> VerticalAlignOf<S> {
         self.vertical_align
     }
 
@@ -457,7 +468,7 @@ impl<S: LayoutScalar> Default for LineBreakInputOf<S> {
             display: LineBreakDisplay::Break,
             direction: Direction::Ltr,
             writing_mode: WritingMode::HorizontalTb,
-            vertical_align: VerticalAlign::Baseline,
+            vertical_align: VerticalAlignOf::Baseline,
             clear: Clear::None,
             metrics: InlineMetricsOf::default(),
         }
@@ -523,7 +534,7 @@ pub struct InlineBoundaryInputOf<S: LayoutScalar = DefaultScalar> {
     kind: InlineBoundaryKind,
     writing_mode: WritingMode,
     direction: Direction,
-    vertical_align: VerticalAlign,
+    vertical_align: VerticalAlignOf<S>,
     metrics: InlineMetricsOf<S>,
     edge: InlineBoundaryEdgeOf<S>,
 }
@@ -541,7 +552,7 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
             kind,
             writing_mode: WritingMode::HorizontalTb,
             direction: Direction::Ltr,
-            vertical_align: VerticalAlign::Baseline,
+            vertical_align: VerticalAlignOf::Baseline,
             metrics,
             edge,
         }
@@ -560,7 +571,7 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
     }
 
     #[must_use]
-    pub const fn with_vertical_align(mut self, vertical_align: VerticalAlign) -> Self {
+    pub const fn with_vertical_align(mut self, vertical_align: VerticalAlignOf<S>) -> Self {
         self.vertical_align = vertical_align;
         self
     }
@@ -586,7 +597,7 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
     }
 
     #[must_use]
-    pub const fn vertical_align(self) -> VerticalAlign {
+    pub const fn vertical_align(self) -> VerticalAlignOf<S> {
         self.vertical_align
     }
 

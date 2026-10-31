@@ -403,6 +403,9 @@ impl Paragraph {
         }
         events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
         let mut scopes = vec![t::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: t::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: style.clone(),
@@ -410,6 +413,9 @@ impl Paragraph {
         }];
         if let Some(boundaries) = boundary_pair {
             scopes.push(t::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: None,
                 boundaries: Some(boundaries),
@@ -417,6 +423,8 @@ impl Paragraph {
         }
         let capture = Arc::new(
             t::process_contextual_source(t::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 source,
                 segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
                 envelope: t::SourceProcessingEnvelope::Complete,
@@ -456,7 +464,14 @@ impl Paragraph {
         let prepared = system
             .prepare(&analyzed.with_wrapping_policies(wrapping).unwrap(), options)
             .unwrap();
-        assert_eq!(prepared.captured_paragraph(), capture.captured_paragraph(0));
+        assert_eq!(
+            prepared
+                .captured_owner()
+                .unwrap()
+                .members()
+                .collect::<Vec<_>>(),
+            vec![capture.captured_paragraph(0).unwrap()]
+        );
         assert_eq!(prepared.origin_views().count(), origin_nodes.len());
         assert_eq!(prepared.control_views().count(), control_nodes.len());
         assert_eq!(prepared.atomic_views().count(), atomic_nodes.len());
@@ -524,6 +539,7 @@ fn compute<S: l::LayoutScalar>(
             .map(|paragraph| paragraph.binding.clone())
             .collect(),
         l::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     let request = l::LayoutRootRequestOf::viewport(l::Size::new(

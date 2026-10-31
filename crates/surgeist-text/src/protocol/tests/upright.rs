@@ -215,7 +215,10 @@ fn qualified_native_upright_reaches_placed_geometry() {
     let line = prepared
         .select(selected_request)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     // Scale design units once by 10/1000. Central = (0+1200)/2 = 600;
     // em sides 600/600, advance 1200, effective origin (600,800+100).

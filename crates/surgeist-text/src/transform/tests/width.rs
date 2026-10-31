@@ -96,7 +96,16 @@ fn width_and_neutral_component_styles_preserve_connected_origin_mark_and_oof_cus
     assert_eq!(analyzed.inner.analysis.graphemes, [0..1, 1..3, 3..4]);
     let map = &analyzed.inner.transform;
     for (row, origin) in [(0, 0), (1, 1), (2, 2), (3, 4)] {
-        assert_eq!(map.original_pieces(row)[0].origin, origin);
+        assert_eq!(
+            analyzed
+                .inner
+                .paragraph
+                .origin_map
+                .view_origin(map.original_pieces(row)[0].origin)
+                .expect("original contribution belongs to this view")
+                .get(),
+            origin
+        );
         assert_eq!(
             map.original_pieces(row)[0].aggregate,
             Range::new(row, row + 1)
@@ -340,7 +349,9 @@ fn source_local_processing_lends_real_preservation_to_the_transform_owner() {
             crate::ValidatedStyle::for_processed(executed.base_style().clone()).unwrap();
         let mut styles =
             crate::engine::resolve::analyze_styles(&source, &[], &validated, &paragraph);
-        let (actual, _) = super::super::apply(input, &mut styles, &executed, &paragraph).unwrap();
+        let actual = super::super::apply(input, &mut styles, &executed, &paragraph)
+            .unwrap()
+            .projection;
         assert_eq!(actual.text, expected);
         assert_eq!(executed.source(), &source);
     }

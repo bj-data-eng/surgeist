@@ -50,6 +50,7 @@ impl<S: LayoutScalar> LayoutTree for NumericTree<S> {
 
 fn strut(baseline: f64, extent: f64, alignment: LineBoxAlignment) -> LineBoxStrut {
     LineBoxStrut {
+        scope: None,
         metrics: LineStrut {
             baseline,
             line_extent: extent,
@@ -58,11 +59,22 @@ fn strut(baseline: f64, extent: f64, alignment: LineBoxAlignment) -> LineBoxStru
     }
 }
 
-fn vertical(alignment: LineBoxAlignment) -> VerticalAlign {
+fn vertical<S: LayoutScalar>(alignment: LineBoxAlignment) -> VerticalAlignOf<S> {
     match alignment {
-        LineBoxAlignment::Baseline => VerticalAlign::Baseline,
-        LineBoxAlignment::Top => VerticalAlign::Top,
-        LineBoxAlignment::Bottom => VerticalAlign::Bottom,
+        LineBoxAlignment::Baseline => VerticalAlignOf::Baseline,
+        LineBoxAlignment::Top => VerticalAlignOf::Top,
+        LineBoxAlignment::Bottom => VerticalAlignOf::Bottom,
+        LineBoxAlignment::Shift(offset) => {
+            let value = S::from_f64(offset.get());
+            assert!(
+                offset.get() == 0.0 || value != S::ZERO,
+                "an actual nonzero Text shift must survive scalar narrowing"
+            );
+            VerticalAlignOf::Shift(
+                BaselineOffsetOf::try_new(value)
+                    .expect("the actual Text shift must fit the Layout scalar"),
+            )
+        }
     }
 }
 
@@ -97,7 +109,7 @@ impl<S: LayoutScalar> NumericTree<S> {
                 .unwrap(),
                 InlineBoundaryEdgeOf::ZERO,
             )
-            .with_vertical_align(vertical(actual.alignment)),
+            .with_vertical_align(vertical::<S>(actual.alignment)),
         ));
         self.children.push(node);
         node
@@ -148,6 +160,7 @@ impl<S: LayoutScalar> NumericTree<S> {
                 scopes: self.scopes.clone(),
                 child_order: vec![],
             },
+            Vec::new(),
         )?;
         let request = LayoutRootRequestOf::viewport(Size::new(
             AvailableOf::definite(S::from_f64(width)),
@@ -195,7 +208,7 @@ fn assert_geometry<S: LayoutScalar>(
 fn one_box<S: LayoutScalar>(contribution: Option<InlineBoxMetricContribution>) -> NumericTree<S> {
     let actual = strut(12.0, 20.0, LineBoxAlignment::Baseline);
     let mut tree = NumericTree::new(40.0);
-    let start = tree.boundary(InlineBoundaryKind::Start, actual);
+    let start = tree.boundary(InlineBoundaryKind::Start, actual.clone());
     tree.atomic();
     let end = tree.boundary(InlineBoundaryKind::End, actual);
     tree.associate(start, end, contribution);
@@ -219,7 +232,7 @@ fn conflicting_same_box_witness<S: LayoutScalar>() {
         InlineBoxMetricContribution::Strut(strut(12.0, 20.0, LineBoxAlignment::Top)),
         InlineBoxMetricContribution::NoContribution,
     ] {
-        let error = one_box::<S>(Some(contradiction))
+        let error = one_box::<S>(Some(contradiction.clone()))
             .compute(40.0)
             .expect_err("contradictory same-box witness must refuse");
         assert!(
@@ -241,16 +254,18 @@ fn fragmented_mixed_groups<S: LayoutScalar>() {
         strut(7.0, 40.0, LineBoxAlignment::Bottom),
     ];
     let mut tree: NumericTree<S> = NumericTree::new(10.0);
-    let starts = values.map(|value| tree.boundary(InlineBoundaryKind::Start, value));
+    let starts = values
+        .clone()
+        .map(|value| tree.boundary(InlineBoundaryKind::Start, value));
     for _ in 0..4 {
         tree.atomic();
     }
     for i in (0..values.len()).rev() {
-        let end = tree.boundary(InlineBoundaryKind::End, values[i]);
+        let end = tree.boundary(InlineBoundaryKind::End, values[i].clone());
         tree.associate(
             starts[i],
             end,
-            Some(InlineBoxMetricContribution::Strut(values[i])),
+            Some(InlineBoxMetricContribution::Strut(values[i].clone())),
         );
     }
     // Actual atomic following cuts produce four one-box fragments. All three

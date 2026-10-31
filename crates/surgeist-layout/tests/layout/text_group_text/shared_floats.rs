@@ -108,7 +108,12 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
     };
     assert_eq!(offer.view().kind(), t::PreparedBreakKind::ParagraphEnd);
     assert_eq!(offer.view().boundary(), request.end);
-    let natural = selected.finalize(t::SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.measurements().alignment().advance(), 80.0);
     assert_eq!(line.measurements().fit().advance(), 80.0);
     assert_eq!(line.feedback().line_height, 10.0);

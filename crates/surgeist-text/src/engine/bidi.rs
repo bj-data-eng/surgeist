@@ -83,20 +83,23 @@ impl BidiResolver {
         self.base_level = 0;
     }
 
-    /// Resolves a paragraph with the specified base direction and
-    /// precomputed types.
+    /// Resolves actual bidi units with the specified base direction.
+    /// Characterless source cells supply their class without bracket evidence;
+    /// ordinary characters retain their actual paired-bracket metadata.
     pub(crate) fn resolve(
         &mut self,
-        chars: impl Iterator<Item = (char, (BidiClass, BidiMirroringGlyph))>,
+        units: impl Iterator<Item = (BidiClass, Option<(char, BidiMirroringGlyph)>)>,
         base_level: Option<u8>,
     ) {
         self.clear();
         let mut needs_bidi = false;
         let mut len = 0;
-        for (i, (ch, (t, bracket))) in chars.enumerate() {
+        for (i, (t, bracket)) in units.enumerate() {
             self.initial_types.push(t);
 
-            if bracket.paired_bracket_type != BidiPairedBracketType::None {
+            if let Some((ch, bracket)) = bracket
+                && bracket.paired_bracket_type != BidiPairedBracketType::None
+            {
                 self.brackets.push((i, ch, bracket));
             }
 

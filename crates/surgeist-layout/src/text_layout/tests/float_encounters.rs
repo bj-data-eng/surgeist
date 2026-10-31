@@ -76,6 +76,7 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
@@ -179,6 +180,7 @@ fn assert_ordinary<S: LayoutScalar>(rtl: bool, side: Float) {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(30.0)).unwrap();
@@ -242,6 +244,7 @@ impl<S: LayoutScalar> CachedHost<S> {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )?;
         compute_layout_with_flow_invalidated(&capture, 2, request(30.0), dirty)
     }
@@ -488,6 +491,7 @@ fn leading_empty_origin_float_keeps_its_encounter_while_text_avoids_its_band() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
@@ -523,6 +527,7 @@ fn assert_soft_replay<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(25.0)).unwrap();
@@ -583,6 +588,7 @@ fn assert_clear<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
@@ -681,6 +687,7 @@ fn assert_signed<S: LayoutScalar>(adjustment: f64) {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(12.0)).unwrap();
@@ -745,6 +752,7 @@ fn preceding_unbreakable_content_keeps_its_line_and_defers_the_encountered_float
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
@@ -781,6 +789,7 @@ fn assert_discarded_prefix<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
@@ -859,6 +868,7 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(26.0)).unwrap();
@@ -945,6 +955,7 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(35.0)).unwrap();
@@ -1025,6 +1036,7 @@ fn assert_retained_zero_prefix<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
@@ -1096,6 +1108,7 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )?;
         compute_layout_with_flow_invalidated(&capture, 2, request(10.0), &[2])
     };
@@ -1260,6 +1273,7 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let ordinary = compute_layout_with_flow(&ordinary, 2, request).unwrap();
@@ -1273,6 +1287,7 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let actual = compute_layout_with_flow(&capture, 2, request).unwrap();
@@ -1341,6 +1356,7 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(40.0)).unwrap();
@@ -1438,6 +1454,7 @@ fn assert_max_float_cohort<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
@@ -1575,6 +1592,7 @@ fn expired_captured_max_cohorts<S: LayoutScalar>() -> f64 {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
@@ -1643,6 +1661,7 @@ fn source_ordered_clear_tops<S: LayoutScalar>(mirror: bool, capture_all: bool) -
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 2, request(100.0)).unwrap();
@@ -1725,6 +1744,7 @@ fn transparent_leading_capture<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .map_err(|e| format!("admission {e:?}"))?;
     let batch = compute_layout_with_flow(&capture, 2, request(40.0))
@@ -1879,6 +1899,7 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(
@@ -2060,6 +2081,7 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
@@ -2138,6 +2160,7 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();

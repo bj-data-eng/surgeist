@@ -116,7 +116,12 @@ fn inter_character_replaces_allocations_on_the_same_qualified_basis_and_shared_c
     for index in 0..2 {
         boundary_custody(&selected, index, 4.0);
     }
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(raw(&natural, AHEM), abc_raw());
     assert_eq!(natural.feedback().advance, 38.0);
     assert_eq!(natural.measurements().alignment().advance(), 38.0);
@@ -152,7 +157,10 @@ fn inter_character_replaces_allocations_on_the_same_qualified_basis_and_shared_c
         [(0.0, 0.0), (15.0, 0.0), (30.0, 0.0)]
     );
     let fresh = selected
-        .finalize(allocations(&selected, &[1.0, 1.0]))
+        .finalize(crate::LineAllocations {
+            spacing: allocations(&selected, &[1.0, 1.0]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(raw(&replaced, AHEM), raw(&fresh, AHEM));
     assert_eq!(paint_offsets(&replaced), paint_offsets(&fresh));
@@ -176,7 +184,12 @@ fn inter_character_complete_amounts_reject_foreign_missing_duplicate_and_invalid
     let source = Source::identified("ABC", Id::from_u64(1566011), 1);
     let prepared = prepare(AHEM, &source, own(4.0), &UNITS);
     let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(raw(&natural, AHEM), abc_raw());
     assert_eq!(natural.feedback().advance, 38.0);
     let slots = selected.spacing_slots().collect::<Vec<_>>();
@@ -254,7 +267,10 @@ fn real_liga_and_clig_defaults_change_the_spacing_capable_natural_width_before_a
         let source = Source::identified("fiA", Id::from_u64(1566012), 1);
         let prepared = prepare(&bytes, &source, own(0.0), &UNITS);
         let ordinary = select_method(&prepared, SpacingPolicy::None)
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let ordinary_raw = [
             (Range::new(0, 2), 58, 0.0, 0.0, 10.0),
@@ -263,7 +279,12 @@ fn real_liga_and_clig_defaults_change_the_spacing_capable_natural_width_before_a
         assert_eq!(raw(&ordinary, &bytes), ordinary_raw);
         assert_eq!(ordinary.feedback().advance, 20.0);
         let selected = select_method(&prepared, SpacingPolicy::InterCharacter);
-        let natural = selected.finalize(SpacingAllocations::None).unwrap();
+        let natural = selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+            .unwrap();
         let unligated = [
             (UNITS[0], 35, 0.0, 0.0, 10.0),
             (UNITS[1], 36, 0.0, 0.0, 10.0),
@@ -313,7 +334,12 @@ fn authored_optional_ligature_keeps_the_internal_candidate_and_allows_only_real_
     for index in 0..2 {
         boundary_custody(&selected, index, 0.0);
     }
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(raw(&natural, &bytes), expected_raw);
     assert_eq!(natural.feedback().advance, 20.0);
     let rows = natural.spacing_slots().collect::<Vec<_>>();
@@ -421,7 +447,12 @@ fn actual_rlig_protects_its_internal_pair_and_preserves_an_independent_outside_b
     for index in 0..2 {
         boundary_custody(&selected, index, 0.0);
     }
-    let natural = selected.finalize(SpacingAllocations::None).unwrap();
+    let natural = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(raw(&natural, &bytes), expected_raw);
     assert_eq!(natural.feedback().advance, 20.0);
     let rows = natural.spacing_slots().collect::<Vec<_>>();

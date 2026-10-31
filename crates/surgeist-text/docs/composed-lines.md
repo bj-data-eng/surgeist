@@ -160,15 +160,20 @@ uses the same selected-line and placement machinery.
    suppress a manual sibling, or certify consumer counter/fit arithmetic. Text validates their
    owners and roles; the consumer owns actual fit and recomputes on replay.
 4. `PreparedText::select` shapes the selected presentation and returns `SelectedLine`
-   with complete, receipt-qualified slots, including replacement spaces. Finalize first with
-   `SpacingAllocations::None`, or provide a complete slot table including zeros.
+   with complete, receipt-qualified slots, including replacement spaces. Finalize
+   with `LineAllocations { spacing, scopes }`: spacing can initially be
+   `SpacingAllocations::None`, or a complete slot table including zeros.
+   Captured-scope placement requires complete actual selected-scope allocations,
+   including explicit zero; `ScopeAllocations::None` is for selections without
+   that demand. See [captured-scope alignment](scope-alignment.md).
    `SpacingPolicy::InterWord` selects the native declared separator repertoire;
    None/Spaces retain their distinct operations. Slots expose complete ordered
    `pieces()` and plural `participants()`. Actual natural feedback supplies measured
    intrinsic/shared geometry and alignment response, including deferred terminal
    dependencies. `FinalizedLine::with_spacing` replaces the complete amounts from
    the same immutable selected provider basis and reruns dependent geometry without
-   reshaping; it never accumulates the prior allocation.
+   reshaping; it never accumulates the prior allocation and retains the executed
+   scope placement.
    Foreign, missing and duplicate slots refuse. Actual feedback carries advances,
    occupied/hanging extents, metrics and atomic slots; the consumer decides fit.
    Raw provider glyph advances remain `f32`, separate from logical `f64` pens.
@@ -267,9 +272,15 @@ combining sequence selects the complete unit. An optional multi-grapheme ligatur
 retains its separate Range units under the
 [Range allocation policy](../../../docs/text-layout-contract.md#nonempty-text-range-fragments).
 
-Each unit's `pieces()` lends actual font-metric rectangles, advance edges,
-baseline, effective instance and contributing finalized cluster indices. It keeps
-distinct font pieces and genuine zero-width rectangles. Shared provider advance
+Each unit's `pieces()` yields `SourceRangeGeometry`: `Line` retains the surrounding
+line's font metrics, `CellFont` retains a combined Cell's horizontal font metrics,
+and `CellTab` retains an executed native TAB span. Every variant exposes `rect()`;
+match the variant for its own frame and references. Cell font edges precede
+compression, and `metric_frame()` identifies their common metric reference. This
+can differ from the font-design paint origin when a font baseline is nonzero.
+Native TABs expose their layout frame and genuine container metrics without a
+body font or glyph baseline. Distinct font pieces and genuine zero-width
+rectangles remain distinct. Shared provider advance
 uses the qualified allocation policy while retaining each unit's actual letter,
 word and selected spacing contributions. Queries neither reshape text nor choose
 fonts. A preserved authored newline belongs to its terminating line; a terminal
@@ -277,6 +288,15 @@ empty line adds no selected authored unit. Deleted custody and source-less contr
 anchors do not invent rectangles. These are native Text observations; DOM
 membership, element boxes, collapsed ranges, transforms and web rectangle grouping
 remain consumer responsibilities.
+
+Inside a combined Cell, `cell_unit()` identifies the actual used semantic EGC,
+independently of provider and glyph counts. Selected original intersections stay
+clipped to the request; expanded intersections retain the EGC's full original
+contributions, including separate source occurrences. A fully removed Cell unit
+retains its pre-used selection identity and source metadata with no geometry.
+An activated Cell query accounts for its complete retained placement and shared
+result/scratch buffers under the captured scope limits; `scope_alignment_usage()`
+reports that transaction. Disjoint ordinary queries retain their native ownership.
 
 `Layout::bounds` reports admitted physical placement bounds. `positions()` issues
 placement-bound `PlacedPosition` values from actual interaction occurrences.
@@ -306,8 +326,8 @@ coverage, and `is_collapsed()` compares exact relation cuts. Removed components
 can have distinct cuts and source coverage at the same geometry, without creating
 glyphs or additional wrapping opportunities.
 
-Native composition retains the preparation's Horizontal, clockwise Sideways or
-matching whole-upright Vertical profile through selection, finalization and
+Native composition retains the preparation's Horizontal, either Sideways or
+matching Mixed/whole-upright Vertical profile through selection, finalization and
 placement. See [sideways placement](reference.md#clockwise-sideways-placement)
 and [native upright paragraphs](reference.md#native-whole-upright-paragraphs)
 for admission and capability limits. Glyph outline axes remain distinct from the
@@ -315,10 +335,11 @@ for admission and capability limits. Glyph outline axes remain distinct from the
 spacing requests remain in the local inline frame.
 `TabContext::FontAdvance` executes the
 retained-font U+0009 glyph advance, which can be the actual `.notdef` advance; it is
-not CSS tab stops. `NoTabs` requires actual selected absence. CSS preparation
-uses `TabPreparation::CssStops` and a captured `ParagraphTabReference` containing
+not CSS tab stops. `NoTabs` requires actual selected absence of outer TAB
+operations. For ordinary and replacement TABs, CSS preparation uses
+`TabPreparation::CssStops` and a captured `ParagraphTabReference` containing
 the real nearest block Style and used direction. It readies every selectable
-original and replacement tab under the exact catalogue and scale. The line
+ordinary original and replacement tab under the exact catalogue and scale. The line
 request supplies `TabContext::CssStops { origin }`: the physical block start
 relative to unaligned paragraph start, or `None` for a genuinely unknown phase.
 Nonzero tabs consume that phase; zero tabs retain custody without unused font
@@ -329,7 +350,16 @@ even/LTR level; upright uses its actual vertical metric operation. This does not
 borrow a source run script or claim arbitrary script-sensitive metric conformance. The shared
 finalizer orders the mixed line, resolves glyph-free tab
 advances with actual spacing/atomic contributions, then builds prefix, metrics,
-paint and interaction rows. Re-finalization recomputes stops; alignment follows.
+paint and interaction rows. Re-finalization recomputes outer stops; alignment follows.
+Inside an actual Cell, preserved CSS TABs instead execute during preparation on
+its fixed horizontal zero-origin grid, in its explicit inner direction. The
+actual Inline/RootInline container supplies specified horizontal SPACE/ch
+resources and effective word spacing; the TAB occurrence supplies tab-size.
+Candidate-specific stops follow inner L1/L2 and word spacing before fitting.
+The winning layout, including tab-only geometry without a body provider, is
+retained; finalization/replay neither shape nor query those references again.
+A Cell needs no outer tab origin. A style shared with an ordinary TAB does not
+waive that ordinary operation's block reference or origin requirement.
 Fontless tabs cannot invent font metrics for Range observations. A nonzero signed
 spacing-derived interval retains its actual SPACE and ZERO resources. Both
 nonzero signs use the same forward grid with the interval's magnitude and exactly

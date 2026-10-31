@@ -10,6 +10,9 @@ fn base() -> t::Style {
 }
 fn block(base: t::Style) -> t::SourceProcessingScope {
     t::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology: t::SourceProcessingTopology::Complete,
         trim: Default::default(),
         base_style: base,
@@ -17,12 +20,31 @@ fn block(base: t::Style) -> t::SourceProcessingScope {
     }
 }
 fn inline(p: &t::PreparedText) -> Vec<t::CapturedScope> {
-    p.captured_paragraph()
+    p.captured_owner()
         .unwrap()
-        .scope_intersections()
-        .map(|i| i.scope())
+        .members()
+        .flat_map(|member| {
+            member
+                .scope_intersections()
+                .map(|i| i.scope())
+                .collect::<Vec<_>>()
+        })
         .filter(|s| s.role() == t::ScopeRole::Inline)
-        .collect()
+        .fold(Vec::new(), |mut scopes, scope| {
+            if !scopes.contains(&scope) {
+                scopes.push(scope);
+            }
+            scopes
+        })
+}
+fn single_source_segment(p: &t::PreparedText) -> t::PreparedSourceSegment {
+    let mut segments = p.source_segments();
+    assert_eq!(
+        segments.len(),
+        1,
+        "this fixture has one actual structural source segment"
+    );
+    segments.next().unwrap()
 }
 fn local(p: &t::PreparedText, c: &t::CapturedControl) -> t::PreparedControl {
     p.control_views()
@@ -79,6 +101,8 @@ fn input(value: &str, base: t::Style, ranges: &[(usize, usize)]) -> t::Contextua
     }
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     t::ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
@@ -247,7 +271,8 @@ fn ordinary_cuts_distinguish_nested_sibling_and_absolute_prefix_membership() {
     ] {
         for (scope, expected) in [&outer, &inner, &sibling].into_iter().zip(membership) {
             assert_eq!(
-                p.boundary_inside_captured_scope(&boundary, scope).unwrap(),
+                p.boundary_inside_captured_scope(&single_source_segment(&p), &boundary, scope)
+                    .unwrap(),
                 expected
             );
         }
@@ -274,8 +299,12 @@ fn ordinary_cuts_distinguish_nested_sibling_and_absolute_prefix_membership() {
             .unwrap()
     );
     assert!(
-        p.boundary_inside_captured_scope(&selected.request().end, &outer)
-            .unwrap()
+        p.boundary_inside_captured_scope(
+            &single_source_segment(&p),
+            &selected.request().end,
+            &outer
+        )
+        .unwrap()
     );
 }
 
@@ -389,9 +418,15 @@ fn deleted_positive_space_keeps_distinct_logical_cuts_at_one_processed_position(
         late.view().processed_position()
     );
     assert!(!p.boundary_consumes_control(&early, &close).unwrap());
-    assert!(p.boundary_inside_captured_scope(&early, &scope).unwrap());
+    assert!(
+        p.boundary_inside_captured_scope(&single_source_segment(&p), &early, &scope)
+            .unwrap()
+    );
     assert!(p.boundary_consumes_control(&late, &close).unwrap());
-    assert!(!p.boundary_inside_captured_scope(&late, &scope).unwrap());
+    assert!(
+        !p.boundary_inside_captured_scope(&single_source_segment(&p), &late, &scope)
+            .unwrap()
+    );
 }
 
 #[test]
@@ -445,7 +480,10 @@ fn removed_and_empty_origins_do_not_leave_a_closed_zero_output_scope_active() {
             .unwrap();
         assert!(p.boundary_consumes_control(&boundary, &close).unwrap());
         assert!(p.boundary_consumes_control(&boundary, &explicit).unwrap());
-        assert!(!p.boundary_inside_captured_scope(&boundary, &scope).unwrap());
+        assert!(
+            !p.boundary_inside_captured_scope(&single_source_segment(&p), &boundary, &scope)
+                .unwrap()
+        );
         if mode == t::WhiteSpace::Discard {
             assert_eq!(
                 p.analyzed_source().processed_source().processed_text(),
@@ -472,12 +510,18 @@ fn cross_tcu_logical_scope_membership_does_not_inherit_a_layout_pairing_limit() 
         let mut value = input("A\u{301}B", base(), &[(0, 1), (1, 3)]);
         value.scopes.extend([
             t::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: Some(base()),
                 boundaries: paired
                     .then_some(t::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
             },
             t::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
                 trim: Default::default(),
                 style: Some(base()),
                 boundaries: paired
@@ -556,16 +600,20 @@ fn cross_tcu_logical_scope_membership_does_not_inherit_a_layout_pairing_limit() 
         // The trailing whole-TCU cut has consumed A's exit and the acute's
         // actual scope entry, while B in that second scope remains ahead.
         assert!(
-            !p.boundary_inside_captured_scope(&boundary, &scopes[0])
+            !p.boundary_inside_captured_scope(&single_source_segment(&p), &boundary, &scopes[0])
                 .unwrap()
         );
         assert!(
-            p.boundary_inside_captured_scope(&boundary, &scopes[1])
+            p.boundary_inside_captured_scope(&single_source_segment(&p), &boundary, &scopes[1])
                 .unwrap()
         );
         assert!(
-            !p.boundary_inside_captured_scope(&end(&p).view().boundary(), &scopes[1])
-                .unwrap()
+            !p.boundary_inside_captured_scope(
+                &single_source_segment(&p),
+                &end(&p).view().boundary(),
+                &scopes[1]
+            )
+            .unwrap()
         );
         if paired {
             // Both middle markers originate inside A+acute and must move to a
@@ -660,7 +708,10 @@ fn executed_case_transform_preserves_original_scope_and_source_custody() {
     );
     let scope = inline(&p).pop().unwrap();
     let boundary = cut(&p, 1).view().boundary();
-    assert!(!p.boundary_inside_captured_scope(&boundary, &scope).unwrap());
+    assert!(
+        !p.boundary_inside_captured_scope(&single_source_segment(&p), &boundary, &scope)
+            .unwrap()
+    );
     let whole = finish(&p, p.boundary_views().next().unwrap().handle(), end(&p));
     assert_eq!(
         whole
@@ -733,7 +784,10 @@ fn control_owned_generated_space_does_not_create_a_scope_at_its_source_anchor() 
         .find(|at| unit_consumed(&p, at, &emitted) && !unit_consumed(&p, at, &b))
         .unwrap();
     assert!(p.boundary_consumes_control(&boundary, &wbr).unwrap());
-    assert!(!p.boundary_inside_captured_scope(&boundary, &scope).unwrap());
+    assert!(
+        !p.boundary_inside_captured_scope(&single_source_segment(&p), &boundary, &scope)
+            .unwrap()
+    );
     let line = finish(&p, p.boundary_views().next().unwrap().handle(), end(&p));
     let generated = line
         .mapping_views()
@@ -808,12 +862,18 @@ fn computed_before_indication_keeps_the_actual_original_scope_exit() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(t::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: t::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     let selected = line.selected_line();
     let boundary = &selected.request().end;
     assert!(p.boundary_consumes_control(boundary, &close).unwrap());
-    assert!(!p.boundary_inside_captured_scope(boundary, &scope).unwrap());
+    assert!(
+        !p.boundary_inside_captured_scope(&single_source_segment(&p), boundary, &scope)
+            .unwrap()
+    );
     assert!(
         line.mapping_views()
             .any(|m| m.alternative() == Some(alternative.clone()))
@@ -829,12 +889,18 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
     value.scopes = vec![
         block(base()),
         t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: Some(base()),
             boundaries: None,
         },
         block(base()),
         t::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: Some(base()),
             boundaries: None,
@@ -872,19 +938,24 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
     let last = &paragraphs[2];
     let outer = inline(first)
         .into_iter()
-        .find(|s| s.domain() == first.captured_paragraph().unwrap().domain())
+        .find(|s| s.domain() == first.captured_owner().unwrap().domain())
         .unwrap();
     let child_scope = inline(child)
         .into_iter()
-        .find(|s| s.domain() == child.captured_paragraph().unwrap().domain())
+        .find(|s| s.domain() == child.captured_owner().unwrap().domain())
         .unwrap();
     assert!(
         first
-            .boundary_inside_captured_scope(&end(first).view().boundary(), &outer)
+            .boundary_inside_captured_scope(
+                &single_source_segment(first),
+                &end(first).view().boundary(),
+                &outer
+            )
             .unwrap()
     );
     assert!(
         last.boundary_inside_captured_scope(
+            &single_source_segment(last),
             &last.boundary_views().next().unwrap().handle(),
             &outer
         )
@@ -892,20 +963,29 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
     );
     assert!(
         !last
-            .boundary_inside_captured_scope(&end(last).view().boundary(), &outer)
+            .boundary_inside_captured_scope(
+                &single_source_segment(last),
+                &end(last).view().boundary(),
+                &outer
+            )
             .unwrap()
     );
     scope_error(
         &first
-            .boundary_inside_captured_scope(&end(first).view().boundary(), &child_scope)
+            .boundary_inside_captured_scope(
+                &single_source_segment(first),
+                &end(first).view().boundary(),
+                &child_scope,
+            )
             .unwrap_err(),
         t::WrappingScopeQueryError::WrongDomain,
     );
     scope_error(
         &first
             .boundary_inside_captured_scope(
+                &single_source_segment(first),
                 &end(first).view().boundary(),
-                &first.captured_paragraph().unwrap().domain(),
+                &first.captured_owner().unwrap().domain(),
             )
             .unwrap_err(),
         t::WrappingScopeQueryError::NonInlineScope,
@@ -962,7 +1042,11 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
     assert!(matches!(
         reason(
             &paired
-                .boundary_inside_captured_scope(&end(first).view().boundary(), &scope)
+                .boundary_inside_captured_scope(
+                    &single_source_segment(&paired),
+                    &end(first).view().boundary(),
+                    &scope
+                )
                 .unwrap_err()
         ),
         t::ProtocolError::ForeignPreparation {
@@ -972,7 +1056,7 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
     ));
     scope_error(
         &paired
-            .boundary_inside_captured_scope(&boundary, &outer)
+            .boundary_inside_captured_scope(&single_source_segment(&paired), &boundary, &outer)
             .unwrap_err(),
         t::WrappingScopeQueryError::ForeignCapture,
     );
@@ -993,7 +1077,11 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
         .unwrap();
     scope_error(
         &flat
-            .boundary_inside_captured_scope(&end(&flat).view().boundary(), &scope)
+            .boundary_inside_captured_scope(
+                &single_source_segment(&flat),
+                &end(&flat).view().boundary(),
+                &scope,
+            )
             .unwrap_err(),
         t::WrappingScopeQueryError::MissingCapture,
     );

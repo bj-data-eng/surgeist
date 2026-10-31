@@ -131,6 +131,7 @@ fn compute<S: LayoutScalar>(p: &PreparedParagraph, width: f64) -> CompletedLayou
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let result = compute_layout_with_flow(&captured, 0, request(width)).unwrap();

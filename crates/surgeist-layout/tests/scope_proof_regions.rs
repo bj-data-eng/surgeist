@@ -97,6 +97,9 @@ fn inline(
         },
     ]);
     scopes.push(text::SourceProcessingScope::Inline {
+        horizontal_inner_direction: None,
+        alignment_boundary: None,
+        font_reference: None,
         trim: text::WhiteSpaceTrim::default(),
         style: Some(style),
         boundaries: Some(text::SourceProcessingScopeBoundaries {
@@ -143,6 +146,9 @@ fn fixture_with_child_topology(
         ..plain.clone()
     };
     let block = |base_style, topology| text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology,
         trim: text::WhiteSpaceTrim::default(),
         base_style,
@@ -306,6 +312,8 @@ fn fixture_with_child_topology(
     let control_facts = controls.clone();
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -360,7 +368,7 @@ fn fixture_with_child_topology(
         assert_eq!(paragraph.atomic_views().count(), 0);
         assert_eq!(paragraph.participants().count(), 0);
         assert_eq!(paragraph.scopes().count(), 0);
-        assert!(paragraph.captured_paragraph().is_some());
+        assert!(paragraph.captured_owner().is_some());
     }
     for (index, expected) in [
         (0, !matches!(owners, Owners::DormantSpanning)),
@@ -404,7 +412,7 @@ fn fixture_with_child_topology(
         assert!(
             local.exit_position()
                 < prepared[1]
-                    .captured_paragraph()
+                    .captured_owner()
                     .unwrap()
                     .domain()
                     .enter_position()
@@ -548,6 +556,7 @@ fn compute(fixture: &Fixture, with_child: bool) -> layout::CompletedLayoutBatch<
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     layout::compute_layout_with_flow(&capture, 0, request()).unwrap()
@@ -566,6 +575,7 @@ fn rejects(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("invalid scope association must refuse {reason:?}")
     };
@@ -710,11 +720,23 @@ fn dormant_empty_paragraph_cannot_request_a_line_strut() {
 #[test]
 fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory_order() {
     let fixture = fixture_with_empty_paragraphs(Owners::SpanningBlock, 2);
-    let first = fixture.empty_child.prepared.captured_paragraph().unwrap();
-    let second = fixture.additional_empty_children[0]
+    let [first]: [_; 1] = fixture
+        .empty_child
         .prepared
-        .captured_paragraph()
-        .unwrap();
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("fixture has one captured paragraph");
+    let [second]: [_; 1] = fixture.additional_empty_children[0]
+        .prepared
+        .captured_owner()
+        .unwrap()
+        .members()
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("fixture has one captured paragraph");
     assert_ne!(first, second);
     assert_eq!(first.domain(), second.domain());
     assert!(first.exit_position() < second.enter_position());
@@ -735,6 +757,7 @@ fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
@@ -751,8 +774,20 @@ fn a_foreign_empty_paragraph_cannot_supply_the_spanning_owners_child_marker() {
     let actual = fixture(Owners::SpanningBlock);
     let foreign = fixture(Owners::SpanningBlock);
     assert_ne!(
-        actual.empty_child.prepared.captured_paragraph(),
-        foreign.empty_child.prepared.captured_paragraph()
+        actual
+            .empty_child
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        foreign
+            .empty_child
+            .prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>()
     );
     let mut paragraphs = actual.parents.clone();
     // Equal source text, empty inventories and the same actual node number do
@@ -805,6 +840,9 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
         })
         .collect();
     let block = || text::SourceProcessingScope::Block {
+        writing_axis: None,
+        horizontal_inner_direction: None,
+        font_reference: None,
         topology: text::SourceProcessingTopology::Complete,
         trim: text::WhiteSpaceTrim::default(),
         base_style: style.clone(),
@@ -817,6 +855,8 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source,
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -894,8 +934,8 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
     assert_eq!(prepared[2].atomic_views().count(), 0);
     assert_eq!(prepared[2].participants().count(), 0);
     assert_eq!(
-        prepared[1].captured_paragraph().unwrap().domain(),
-        prepared[2].captured_paragraph().unwrap().domain()
+        prepared[1].captured_owner().unwrap().domain(),
+        prepared[2].captured_owner().unwrap().domain()
     );
     let mut inputs = HashMap::from([
         (
@@ -961,6 +1001,7 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let baseline = layout::compute_layout_with_flow(&baseline_capture, 0, request()).unwrap();
@@ -974,6 +1015,7 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
@@ -1020,6 +1062,7 @@ fn one_empty_paragraph_cannot_certify_a_nonempty_domain_with_its_real_neighbor_o
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("missing genuine neighbor flow cannot establish empty-paragraph incidence")
     };
@@ -1044,7 +1087,7 @@ fn unknown_child_inline_topology_preserves_genuine_empty_domain_authority() {
     assert_eq!(
         fixture.parents[0]
             .prepared
-            .captured_paragraph()
+            .captured_owner()
             .unwrap()
             .domain()
             .domain_topology(),
@@ -1054,7 +1097,7 @@ fn unknown_child_inline_topology_preserves_genuine_empty_domain_authority() {
         fixture
             .empty_child
             .prepared
-            .captured_paragraph()
+            .captured_owner()
             .unwrap()
             .domain()
             .domain_topology(),
@@ -1114,7 +1157,7 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
-    assert!(prepared.captured_paragraph().is_none());
+    assert!(prepared.captured_owner().is_none());
     assert_eq!(prepared.origin_views().count(), 0);
     assert_eq!(prepared.control_views().count(), 0);
     assert_eq!(prepared.atomic_views().count(), 0);
@@ -1150,6 +1193,7 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("empty output alone cannot provide canonical paragraph/domain authority")
     };

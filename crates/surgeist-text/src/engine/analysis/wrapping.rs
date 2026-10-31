@@ -1,19 +1,20 @@
 //! One font-independent logical occurrence stream and influencing-neighbor map.
 
 use crate::engine::{OriginalAtom, resolve::AnalyzedStyleRun};
+use crate::processing::lexical_inventory::LexicalDeletion;
 use crate::projection::SourceProjection;
 use crate::protocol::paragraph::{
-    ParagraphBoundaryDefinition, ParagraphControlKind, ParagraphData, SemanticAnchor,
+    ParagraphBoundaryDefinition, ParagraphContext, ParagraphControlKind, SemanticAnchor,
     SemanticAnchorItem,
 };
 use crate::{InlineBoxKind, ProcessedSource, Range, Wrap, WrappingNeighbor};
 
-use super::{Analysis, anchor_atom, anchor_position, is_hard_separator};
+use super::{Analysis, is_hard_separator};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Event {
     Text(usize),
-    Deleted(Range, usize),
+    Deleted(Range, usize, LexicalDeletion),
     Anchor(SemanticAnchor),
 }
 
@@ -60,7 +61,7 @@ impl Influence {
         }
     }
 
-    fn starts_hard_separator(self, atoms: &[OriginalAtom], paragraph: &ParagraphData) -> bool {
+    fn starts_hard_separator(self, atoms: &[OriginalAtom], paragraph: &ParagraphContext) -> bool {
         match self {
             Self::Text { atom, .. } => is_hard_separator(atoms[atom].code_point),
             Self::Control { occurrence, .. } => {
@@ -96,52 +97,93 @@ pub(crate) struct LogicalParagraph {
     pub(crate) relation_indices: Vec<usize>,
 }
 
+/// The canonical mixed source stream and its already completed cell partition
+/// are interpreted together. Cells change effects, never occurrence custody.
+pub(crate) struct LogicalInput<'a> {
+    pub(crate) events: Vec<LogicalEvent>,
+    pub(crate) combination: Option<&'a crate::transform::combined::CombinedOutput>,
+}
+
 impl LogicalParagraph {
     pub(crate) fn new(
         processed: &ProcessedSource,
-        paragraph: &ParagraphData,
+        paragraph: &ParagraphContext,
         projection: &SourceProjection,
         styles: &[AnalyzedStyleRun],
         analysis: &Analysis,
+        input: LogicalInput<'_>,
     ) -> crate::Result<Self> {
         use icu_properties::{CodePointMapData, props::LineBreak};
-        let events = events(processed, paragraph, projection, styles);
+        let LogicalInput {
+            events,
+            combination,
+        } = input;
+        let bindings = combination.map_or(&[][..], |output| output.bindings.as_slice());
+        let mut cell = 0;
         let influences: Vec<_> = events
             .iter()
             .enumerate()
-            .filter_map(|(participant, event)| match event.kind {
-                Event::Text(atom) => Some(Influence::Text { participant, atom }),
-                Event::Anchor(SemanticAnchor {
-                    item: SemanticAnchorItem::Atomic(occurrence),
-                    ..
-                }) if processed.source().boxes()[occurrence].kind() == InlineBoxKind::InFlow => {
-                    Some(Influence::Atomic {
-                        participant,
-                        occurrence,
-                    })
+            .filter_map(|(participant, event)| {
+                while bindings
+                    .get(cell)
+                    .is_some_and(|binding| binding.participants.end <= participant)
+                {
+                    cell += 1;
                 }
-                Event::Anchor(SemanticAnchor {
-                    item: SemanticAnchorItem::Control(control),
-                    ..
-                }) => {
-                    let kind = &paragraph.controls[control].kind;
-                    match kind {
-                        ParagraphControlKind::ForcedBreak
-                        | ParagraphControlKind::OptionalBreak { .. }
-                        | ParagraphControlKind::DiscretionaryBreak { .. } => {
-                            Some(Influence::Control {
-                                participant,
-                                occurrence: control,
-                            })
-                        }
-                        _ => None,
+                let in_cell = bindings
+                    .get(cell)
+                    .is_some_and(|binding| binding.participants.contains(&participant));
+                let suppressed = in_cell
+                    && match event.kind {
+                        Event::Anchor(SemanticAnchor {
+                            item: SemanticAnchorItem::ComputedLineBoundary(_),
+                            ..
+                        }) => true,
+                        Event::Anchor(SemanticAnchor {
+                            item: SemanticAnchorItem::Control(control),
+                            ..
+                        }) => paragraph.controls[control].kind == ParagraphControlKind::ForcedBreak,
+                        _ => false,
+                    };
+                if suppressed {
+                    return None;
+                }
+                match event.kind {
+                    Event::Text(atom) => Some(Influence::Text { participant, atom }),
+                    Event::Anchor(SemanticAnchor {
+                        item: SemanticAnchorItem::Atomic(occurrence),
+                        ..
+                    }) if processed.source().boxes()[occurrence].kind()
+                        == InlineBoxKind::InFlow =>
+                    {
+                        Some(Influence::Atomic {
+                            participant,
+                            occurrence,
+                        })
                     }
+                    Event::Anchor(SemanticAnchor {
+                        item: SemanticAnchorItem::Control(control),
+                        ..
+                    }) => {
+                        let kind = &paragraph.controls[control].kind;
+                        match kind {
+                            ParagraphControlKind::ForcedBreak
+                            | ParagraphControlKind::OptionalBreak { .. }
+                            | ParagraphControlKind::DiscretionaryBreak { .. } => {
+                                Some(Influence::Control {
+                                    participant,
+                                    occurrence: control,
+                                })
+                            }
+                            _ => None,
+                        }
+                    }
+                    Event::Anchor(SemanticAnchor {
+                        item: SemanticAnchorItem::ComputedLineBoundary(_),
+                        ..
+                    }) => Some(Influence::ComputedLineBoundary { participant }),
+                    _ => None,
                 }
-                Event::Anchor(SemanticAnchor {
-                    item: SemanticAnchorItem::ComputedLineBoundary(_),
-                    ..
-                }) => Some(Influence::ComputedLineBoundary { participant }),
-                _ => None,
             })
             .collect();
         let classes = CodePointMapData::<LineBreak>::new();
@@ -213,7 +255,7 @@ impl LogicalParagraph {
                     let origin = &paragraph.origins[connection];
                     events.iter().enumerate().filter(|(_, event)| match event.kind {
                         Event::Text(atom) => projection.atoms[atom].source.end == origin.aggregate.end,
-                        Event::Deleted(range, _) => range.end == origin.aggregate.end,
+                        Event::Deleted(range, _, _) => range.end == origin.aggregate.end,
                         Event::Anchor(SemanticAnchor { item: SemanticAnchorItem::EmptyOrigin(index), .. }) => index == connection,
                         _ => false,
                     }).map(|(index, _)| index + 1).next_back()
@@ -281,7 +323,7 @@ fn neighbor(
     influence: Influence,
     following: bool,
     processed: &ProcessedSource,
-    paragraph: &ParagraphData,
+    paragraph: &ParagraphContext,
     projection: &SourceProjection,
 ) -> Option<WrappingNeighbor> {
     match influence {
@@ -302,133 +344,4 @@ fn neighbor(
         }
         Influence::Control { .. } | Influence::ComputedLineBoundary { .. } => None,
     }
-}
-
-pub(crate) fn events(
-    processed: &ProcessedSource,
-    paragraph: &ParagraphData,
-    projection: &SourceProjection,
-    styles: &[AnalyzedStyleRun],
-) -> Vec<LogicalEvent> {
-    if let Some(map) = &projection.transform {
-        return map.logical_events(paragraph, processed.source());
-    }
-    transform_events(processed, paragraph, projection, styles)
-}
-
-/// Wbr expansion needs its real scalar seam before typography reconstruction.
-pub(crate) fn transform_events(
-    processed: &ProcessedSource,
-    paragraph: &ParagraphData,
-    projection: &SourceProjection,
-    styles: &[AnalyzedStyleRun],
-) -> Vec<LogicalEvent> {
-    capture_events(processed, paragraph, projection, styles, false)
-}
-
-/// Original scalar seams and actual anchor order used only for separator
-/// admission/insertion, before typography is rebuilt. No source atoms split.
-pub(crate) fn separator_events(
-    processed: &ProcessedSource,
-    paragraph: &ParagraphData,
-    projection: &SourceProjection,
-    styles: &[AnalyzedStyleRun],
-) -> Vec<LogicalEvent> {
-    capture_events(processed, paragraph, projection, styles, true)
-}
-
-fn capture_events(
-    processed: &ProcessedSource,
-    paragraph: &ParagraphData,
-    projection: &SourceProjection,
-    styles: &[AnalyzedStyleRun],
-    scalar_seams: bool,
-) -> Vec<LogicalEvent> {
-    use crate::processing::MappingKind;
-    let source = processed.source();
-    let mut events = Vec::new();
-    for (atom, value) in projection.atoms.iter().enumerate() {
-        events.push((atom, 1usize, value.source.start, 0usize, Event::Text(atom)));
-    }
-    let mut cuts: Vec<_> = paragraph
-        .origins
-        .iter()
-        .flat_map(|origin| [origin.aggregate.start, origin.aggregate.end])
-        .collect();
-    cuts.extend(
-        paragraph
-            .anchor_order
-            .iter()
-            .map(|anchor| anchor_position(anchor.item, paragraph, source.boxes())),
-    );
-    cuts.sort_unstable();
-    cuts.dedup();
-    // Lexical correspondence may coalesce adjacent collapsed SPACE originals.
-    // Keep their actual source-style owners' seams before the transformation
-    // map records custody, so an interior owner's local gate remains callable.
-    // Other deletion causes retain their existing native/anchor partition.
-    let mut collapsed_cuts = cuts.clone();
-    collapsed_cuts.extend(
-        styles
-            .iter()
-            .filter_map(AnalyzedStyleRun::source_range)
-            .flat_map(|range| [range.start, range.end]),
-    );
-    collapsed_cuts.sort_unstable();
-    collapsed_cuts.dedup();
-    for piece in processed.operations() {
-        if !matches!(piece.kind, MappingKind::Delete(_)) {
-            continue;
-        }
-        let cuts = if piece.kind
-            == MappingKind::Delete(crate::processing::DeletionCause::CollapsedSpace)
-        {
-            &collapsed_cuts
-        } else {
-            &cuts
-        };
-        for piece_range in paragraph.intersections(piece.source) {
-            let first = cuts.partition_point(|at| *at <= piece_range.start);
-            let last = cuts.partition_point(|at| *at < piece_range.end);
-            let mut start = piece_range.start;
-            for end in cuts[first..last]
-                .iter()
-                .copied()
-                .chain(std::iter::once(piece_range.end))
-            {
-                let atom = projection
-                    .atoms
-                    .partition_point(|value| value.source.end <= start);
-                events.push((
-                    atom,
-                    0,
-                    start,
-                    usize::MAX,
-                    Event::Deleted(Range::new(start, end), piece.processed),
-                ));
-                start = end;
-            }
-        }
-    }
-    for (order, &anchor) in paragraph.anchor_order.iter().enumerate() {
-        events.push((
-            if scalar_seams {
-                let at = anchor_position(anchor.item, paragraph, source.boxes());
-                projection
-                    .atoms
-                    .partition_point(|atom| atom.source.end <= at)
-            } else {
-                anchor_atom(order, paragraph, source.boxes(), projection)
-            },
-            0,
-            anchor_position(anchor.item, paragraph, source.boxes()),
-            order,
-            Event::Anchor(anchor),
-        ));
-    }
-    events.sort_by_key(|event| (event.0, event.1, event.2, event.3));
-    events
-        .into_iter()
-        .map(|(atom, _, source, _, kind)| LogicalEvent { atom, source, kind })
-        .collect()
 }

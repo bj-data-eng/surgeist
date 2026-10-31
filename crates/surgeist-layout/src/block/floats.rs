@@ -155,6 +155,7 @@ impl AcceptedFloatPrefix {
                     surgeist_text::TextSeam::BeforeParticipant(participant)
                     | surgeist_text::TextSeam::AfterParticipant(participant) => match participant {
                         surgeist_text::PreparedParticipant::Text(p) => p.prepared_text(),
+                        surgeist_text::PreparedParticipant::Cell(p) => p.prepared_text(),
                         surgeist_text::PreparedParticipant::Atomic(p) => p.prepared_text(),
                         surgeist_text::PreparedParticipant::Control(p) => p.prepared_text(),
                         surgeist_text::PreparedParticipant::ComputedLineBoundary(p) => {

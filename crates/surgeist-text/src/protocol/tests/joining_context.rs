@@ -206,7 +206,10 @@ fn selected_line(
         PreparedBreakKind::ParagraphEnd => LineEnd::Paragraph,
     };
     value.termination = crate::PreparedTermination::Ordinary(ending);
-    prepared.select(value)?.finalize(SpacingAllocations::None)
+    prepared.select(value)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
 }
 fn source_glyphs(line: &FinalizedLine, fixture: &[u8]) -> Vec<(Range, u32, f32)> {
     let mut result = Vec::new();
@@ -500,6 +503,8 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
         Size::new(5.0, 10.0),
     ));
     let capture = ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         computed_line_boundaries: vec![],
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
@@ -528,12 +533,18 @@ fn child_domain_hole_is_excluded_from_parent_joining_context() {
         }],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
                 base_style: breaking_style(),
             },
             SourceProcessingScope::OutOfFlowBlock {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: crate::SourceProcessingTopology::Unknown,
                 used_direction: crate::ParagraphBaseDirection::LeftToRight,
                 trim: WhiteSpaceTrim::default(),
@@ -705,7 +716,10 @@ fn discretionary_line(
         LineStart::Continuation
     };
     value.context.end = LineEnd::Soft;
-    prepared.select(value)?.finalize(SpacingAllocations::None)
+    prepared.select(value)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
 }
 
 type OriginalBehForms = Vec<(Range, u32, f32)>;

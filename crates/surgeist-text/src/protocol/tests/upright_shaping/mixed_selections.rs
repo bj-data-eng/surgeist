@@ -27,6 +27,8 @@ fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::Proc
     let source = Source::new(text);
     let ranges = [Range::new(0, at), Range::new(at, source.text().len())];
     let input = ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         source: source.clone(),
         segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
         envelope: SourceProcessingEnvelope::Complete,
@@ -63,12 +65,18 @@ fn captured(text: &str, at: usize, style: Style, force: bool) -> Arc<crate::Proc
         replacements: vec![],
         scopes: vec![
             SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: SourceProcessingTopology::Complete,
                 trim: WhiteSpaceTrim::default(),
                 base_style: style,
                 used_direction: ParagraphBaseDirection::LeftToRight,
             },
             SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
                 trim: WhiteSpaceTrim::default(),
                 style: None,
                 boundaries: None,
@@ -221,12 +229,18 @@ fn mixed_real_computed_scope_cut_retains_cause_and_each_selected_native_basis() 
             forced.handle(),
         ))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let second = p
         .select(ending(&p, forced.boundary(), terminal(&p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         packets(&first, &bytes),
@@ -306,7 +320,10 @@ fn mixed_real_before_after_both_indications_derive_roles_from_generated_source()
                     terminal(&p),
                 ))
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert_eq!(whole.feedback().advance, 50.0);
             assert_eq!(
@@ -357,7 +374,10 @@ fn mixed_real_before_after_both_indications_derive_roles_from_generated_source()
             let first = p
                 .select(r)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             let before = mode != HyphenationPlacement::LogicalAfter;
             let after = mode != HyphenationPlacement::LogicalBefore;
@@ -367,7 +387,10 @@ fn mixed_real_before_after_both_indications_derive_roles_from_generated_source()
             let second = p
                 .select(r)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             assert!(second.hyphenation_continuation().is_none());
             let mut first_packets = vec![
@@ -501,7 +524,10 @@ fn mixed_real_computed_empty_cut_uses_its_selected_metric_only_decoration_owner(
             terminal(&p),
         ))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         packets(&line, &bytes),
@@ -542,7 +568,12 @@ fn mixed_real_computed_empty_cut_uses_its_selected_metric_only_decoration_owner(
             p.boundary_views().next().unwrap().handle(),
             offer.handle(),
         ))
-        .and_then(|selected| selected.finalize(SpacingAllocations::None))
+        .and_then(|selected| {
+            selected.finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
+        })
         .and_then(|line| {
             crate::Layout::from_finalized_lines(PlacementRequest {
                 prepared: p.clone(),

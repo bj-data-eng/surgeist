@@ -16,6 +16,8 @@ mod auto_phrase;
 mod automatic_phrase;
 #[path = "tests/automatic_priority.rs"]
 mod automatic_priority;
+#[path = "tests/baseline_offsets.rs"]
+mod baseline_offsets;
 #[path = "tests/before_indication_bidi.rs"]
 mod before_indication_bidi;
 #[path = "tests/both_sides.rs"]
@@ -30,6 +32,10 @@ mod canonical;
 mod computed_line_boundaries;
 #[path = "tests/conditional_overflow.rs"]
 mod conditional_overflow;
+#[path = "tests/domain_empty_segments.rs"]
+mod domain_empty_segments;
+#[path = "tests/domain_output_segments.rs"]
+mod domain_output_segments;
 #[path = "tests/float_fit.rs"]
 mod float_fit;
 #[path = "tests/hanging_punctuation.rs"]
@@ -60,8 +66,12 @@ mod line_policy;
 mod logical_after;
 #[path = "tests/manual_css_minima.rs"]
 mod manual_css_minima;
+#[path = "tests/native_physical_publication.rs"]
+mod native_physical_publication;
 #[path = "tests/negative_tabs.rs"]
 mod negative_tabs;
+#[path = "tests/scope_alignment.rs"]
+mod scope_alignment;
 #[path = "tests/scope_continuation.rs"]
 mod scope_continuation;
 #[path = "tests/scope_domain_binding.rs"]
@@ -138,6 +148,7 @@ fn assert_native_invalidation_source_order<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let cold = compute_layout_with_flow(&capture, 70, request(40.0)).unwrap();
@@ -183,6 +194,7 @@ fn assert_terminal_phantom_completion_scroll<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
@@ -284,6 +296,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(
@@ -313,12 +326,19 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         Some(20.0)
     );
     let size = Size::new(S::from_f64(20.0), S::from_f64(10.0));
+    let [row] = capture.associations.runs() else {
+        panic!("actual intrinsic fixture has one admitted native run");
+    };
+    let admitted = capture.associations.admitted_run(&capture.paragraphs, row);
     let output = super::run::layout(
-        &binding,
-        &Default::default(),
+        &admitted,
+        &capture.associations,
         &[],
         &[],
         super::run::Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                capture.scope_alignments.clone(),
+            ),
             orientation: super::run::text_orientation(WritingMode::HorizontalTb, &binding.prepared)
                 .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
             inline_baseline_context: crate::InlineBaselineContext::Physical,
@@ -521,6 +541,7 @@ fn assert_fractional_float_clearance<S: LayoutScalar>(explicit_clear: bool) {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
@@ -605,6 +626,7 @@ fn assert_no_clear_preserves_fractional_line_position<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
@@ -700,6 +722,7 @@ fn assert_actual_no_clear_round_trip<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
@@ -775,6 +798,7 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(35.0)).unwrap();
@@ -883,6 +907,7 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
@@ -1013,6 +1038,7 @@ fn assert_optional_control<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(20.0)).unwrap();
@@ -1070,6 +1096,7 @@ fn assert_directional_controls<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
@@ -1152,6 +1179,7 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(30.0)).unwrap();
@@ -1196,9 +1224,9 @@ fn source_less_discretionary_tries_all_actual_alternatives_and_preserves_origina
 
 fn assert_atomic_alignment<S: LayoutScalar>() {
     for (vertical_align, baseline, height) in [
-        (VerticalAlign::Baseline, 20.0, 22.0),
-        (VerticalAlign::Top, 8.0, 20.0),
-        (VerticalAlign::Bottom, 18.0, 20.0),
+        (VerticalAlignOf::Baseline, 20.0, 22.0),
+        (VerticalAlignOf::Top, 8.0, 20.0),
+        (VerticalAlignOf::Bottom, 18.0, 20.0),
     ] {
         let style = ahem_style(10.0, 10.0);
         let paragraph = PreparedParagraph::new(
@@ -1244,6 +1272,7 @@ fn assert_atomic_alignment<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
@@ -1315,6 +1344,7 @@ fn assert_rtl_asymmetric_insets<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
@@ -1404,6 +1434,7 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
@@ -1510,6 +1541,7 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
@@ -1597,6 +1629,7 @@ fn assert_genuine_out_of_flow<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
@@ -1683,7 +1716,8 @@ fn distinct_out_of_flow_occurrences_cannot_claim_one_absolute_node() {
             crate::WrappingInput {
                 scopes: Vec::new(),
                 child_order: Vec::new()
-            }
+            },
+            Vec::new(),
         )
         .is_ok()
     );
@@ -1697,6 +1731,7 @@ fn distinct_out_of_flow_occurrences_cannot_claim_one_absolute_node() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .err()
     .unwrap();
@@ -1747,6 +1782,7 @@ fn assert_conflicting_atomic_authority<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("conflicting level/break authority must refuse capture")
     };
@@ -1804,6 +1840,7 @@ fn semantic_control_requires_exact_preparation_and_structural_role() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("foreign issued control must refuse")
     };
@@ -1822,6 +1859,7 @@ fn semantic_control_requires_exact_preparation_and_structural_role() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) else {
         panic!("optional control is not an actual forced line break")
     };
@@ -1855,6 +1893,7 @@ fn assert_terminal_break<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();
@@ -1941,6 +1980,7 @@ fn assert_fractional_line_allocation_scroll<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(35.0)).unwrap();
@@ -2117,6 +2157,7 @@ fn assert_logical_allocation_float_sliver<S: LayoutScalar>() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = compute_layout_with_flow(&capture, 0, request(35.0)).unwrap();

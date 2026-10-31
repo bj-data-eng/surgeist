@@ -46,6 +46,8 @@ fn atomic_capture(
     events.extend([E::ExitParagraph(0), E::ExitScope(0)]);
     let processed = Arc::new(
         t::process_contextual_source(t::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             source: source.clone(),
             segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
             envelope: t::SourceProcessingEnvelope::Complete,
@@ -77,6 +79,9 @@ fn atomic_capture(
             replacements: vec![],
             computed_line_boundaries: vec![],
             scopes: vec![t::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
                 topology: t::SourceProcessingTopology::Complete,
                 trim: Default::default(),
                 base_style: style,
@@ -120,8 +125,12 @@ fn atomic_capture(
     assert_eq!(prepared.preparation_options(), options);
     assert_eq!(prepared.analyzed_source().identity(), analysis.identity());
     assert_eq!(
-        prepared.captured_paragraph(),
-        processed.captured_paragraph(0)
+        prepared
+            .captured_owner()
+            .unwrap()
+            .members()
+            .collect::<Vec<_>>(),
+        vec![processed.captured_paragraph(0).unwrap()]
     );
     assert_eq!(prepared.orientation(), orientation);
     assert_eq!(prepared.atomic_views().count(), 1);
@@ -151,7 +160,7 @@ fn clockwise(mode: l::WritingMode) -> bool {
 }
 fn orientation(mode: l::WritingMode) -> t::LineOrientation {
     if clockwise(mode) {
-        t::LineOrientation::Sideways
+        t::LineOrientation::SidewaysClockwise
     } else {
         t::LineOrientation::Horizontal
     }
@@ -268,8 +277,14 @@ fn compute<S: l::LayoutScalar>(
     changed: &[u32],
     available: l::Size<l::AvailableOf<S>>,
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
-    let flow = l::LayoutFlowInput::try_new(host, 0, bindings.to_vec(), l::WrappingInput::default())
-        .unwrap();
+    let flow = l::LayoutFlowInput::try_new(
+        host,
+        0,
+        bindings.to_vec(),
+        l::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
@@ -316,7 +331,7 @@ fn knowledge<S: l::LayoutScalar>() {
         &mut system,
         "A\nB",
         style(5.0, 6.0),
-        t::LineOrientation::Sideways,
+        t::LineOrientation::SidewaysClockwise,
         false,
     );
     for (child, cw) in [(&child_h, false), (&child_cw, true)] {
@@ -390,12 +405,12 @@ fn knowledge<S: l::LayoutScalar>() {
             "{mode:?}: {error:?}"
         );
         // Edge alignment never consumes the otherwise unavailable child name.
-        for align in [l::VerticalAlign::Top, l::VerticalAlign::Bottom] {
+        for align in [l::VerticalAlignOf::Top, l::VerticalAlignOf::Bottom] {
             let mut input = child_input::<S>(cw, l::InlineBaselineContext::Physical);
             input.vertical_align = align;
             let (host, bindings) = scene::<S>(mode, &parent, input, Some(child));
             let batch = compute(&host, &bindings, &[], space(40.0, 40.0)).unwrap();
-            let top = align == l::VerticalAlign::Top;
+            let top = align == l::VerticalAlignOf::Top;
             let b = if cw {
                 common(mode)
             } else if top {
@@ -473,7 +488,7 @@ fn positioned<S: l::LayoutScalar>() {
             &mut system,
             "A\nB",
             style(5.0, 6.0),
-            t::LineOrientation::Sideways,
+            t::LineOrientation::SidewaysClockwise,
             false,
         ),
     ];
@@ -510,12 +525,12 @@ fn positioned<S: l::LayoutScalar>() {
         for child_cw in [false, true] {
             let child = &children[usize::from(child_cw)];
             for alignment in [
-                l::VerticalAlign::Baseline,
-                l::VerticalAlign::Top,
-                l::VerticalAlign::Bottom,
+                l::VerticalAlignOf::Baseline,
+                l::VerticalAlignOf::Top,
+                l::VerticalAlignOf::Bottom,
             ] {
                 for inset in [false, true] {
-                    let child_named = alignment == l::VerticalAlign::Baseline && !inset;
+                    let child_named = alignment == l::VerticalAlignOf::Baseline && !inset;
                     let mut input = child_input::<S>(
                         child_cw,
                         if child_named {
@@ -1090,9 +1105,14 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
         bindings: &[l::TextParagraphBinding<u32>],
         changed: &[u32],
     ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S, Refusal>> {
-        let flow =
-            l::LayoutFlowInput::try_new(self, 0, bindings.to_vec(), l::WrappingInput::default())
-                .unwrap();
+        let flow = l::LayoutFlowInput::try_new(
+            self,
+            0,
+            bindings.to_vec(),
+            l::WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
         l::compute_layout_with_flow_invalidated(
             &flow,
             0,

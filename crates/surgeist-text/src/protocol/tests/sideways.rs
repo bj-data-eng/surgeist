@@ -10,7 +10,7 @@ mod source_ranges;
 use super::*;
 use crate::{Affinity, Cursor, Hit, Id, Movement, Point, Range, Rect, Selection, Size};
 
-const CW: LineOrientation = LineOrientation::Sideways;
+const CW: LineOrientation = LineOrientation::SidewaysClockwise;
 const H: LineOrientation = LineOrientation::Horizontal;
 
 fn own_style() -> Style {
@@ -154,7 +154,10 @@ fn terminal(p: &PreparedText) -> PreparedOpportunity {
 fn whole(p: &PreparedText) -> FinalizedLine {
     p.select(selected_request(p, start(p), terminal(p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn placed(p: &PreparedText, rows: Vec<(FinalizedLine, f64, f64)>) -> crate::Layout {
@@ -476,12 +479,18 @@ fn forced_columns_use_real_anchors_nearest_rectangles_and_line_ordinals() {
     let first = p
         .select(selected_request(&p, start(&p), forced.clone()))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let second = p
         .select(selected_request(&p, forced.view().boundary(), terminal(&p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (first.feedback().advance, second.feedback().advance),
@@ -549,12 +558,18 @@ fn terminal_forced_receipt_and_nonformatted_completion_keep_distinct_custody() {
     let first = p
         .select(selected_request(&p, start(&p), forced.clone()))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let last = p
         .select(selected_request(&p, forced.view().boundary(), terminal(&p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(first.feedback().advance, 10.0);
     assert_eq!(last.feedback().advance, 0.0);
@@ -639,10 +654,13 @@ fn spacing_and_css_tabs_remain_logical_while_physical_extent_turns_once() {
     let slots = selected.spacing_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 1);
     let line = selected
-        .finalize(SpacingAllocations::Complete(vec![SpacingAllocation {
-            slot: slots[0].clone(),
-            amount: 20.0,
-        }]))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(vec![SpacingAllocation {
+                slot: slots[0].clone(),
+                amount: 20.0,
+            }]),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 50.0);
     assert_eq!(
@@ -683,7 +701,10 @@ fn spacing_and_css_tabs_remain_logical_while_physical_extent_turns_once() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 50.0);
     assert_eq!(
@@ -738,14 +759,20 @@ fn before_after_and_both_indications_keep_one_source_choice_and_rotated_receiver
         let first = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let mut r = selected_request(&p, offer.view().boundary(), terminal(&p));
         r.incoming = first.hyphenation_continuation();
         let second = p
             .select(r)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             (first.feedback().advance, second.feedback().advance),
@@ -993,12 +1020,18 @@ fn authentic_wbr_control_is_an_optional_source_free_cut_with_clockwise_receipts(
     let first = p
         .select(selected_request(&p, start(&p), offer.clone()))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let second = p
         .select(selected_request(&p, offer.view().boundary(), terminal(&p)))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(
         (first.feedback().advance, second.feedback().advance),

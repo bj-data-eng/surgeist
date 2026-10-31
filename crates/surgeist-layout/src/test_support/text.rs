@@ -418,6 +418,26 @@ impl PreparedParagraph {
         }
     }
 
+    /// A genuine flat fixture tree for paragraphs composed solely of Text
+    /// occurrences. Other participant roles require their own actual inputs.
+    pub(crate) fn flat_text_tree<S: LayoutScalar>(
+        &self,
+        container: u32,
+        container_input: crate::NodeInputOf<S>,
+    ) -> super::layout_tree::PublicLayoutTreeOf<S> {
+        assert!(
+            self.atomics.is_empty() && self.controls.is_empty(),
+            "flat text fixture requires actual text-only associations"
+        );
+        let mut tree = super::layout_tree::PublicLayoutTreeOf::<S>::new()
+            .children(container, self.nodes.iter().copied())
+            .style(container, container_input);
+        for &node in &self.nodes {
+            tree = tree.children(node, []).input(node, self.text_input(node));
+        }
+        tree
+    }
+
     pub(crate) fn text_input<S: LayoutScalar>(&self, node: u32) -> LayoutInputOf<S> {
         let origin = self
             .origins

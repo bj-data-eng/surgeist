@@ -501,7 +501,8 @@ fn check_literal(id: u8, nodes: &[NativeNode]) -> bool {
             Attribute::new(QualifiedName::new(Namespace::from_uri("http://www.w3.org/1999/xlink"),Some("xlink".into()),"href"),"x"),
             Attribute::new(QualifiedName::new(Namespace::none(),None,"viewBox"),"0 0 1 1")])},
         4=>{let t=elements("template");t.len()==1 && p.len()==2 && p.iter().any(|n|text(n,&[84]) && n.parent==t[0].template) && p.iter().any(|n|text(n,&[90]) && n.parent!=t[0].template)},
-        5=>p.len()==1 && text(p[0],&[80]) && nodes.iter().filter(|n|matches!(&n.kind,HtmlNodeKind::ProcessingInstruction(i) if i.target()==&DocumentString::from("target"))).count()==1,
+        // HTML 877d 13.2.5.73-76: both `<?target data?>` and `<?target data>` yield target "target" and data "data".
+        5|8=>p.len()==1 && text(p[0],&[80]) && nodes.iter().filter(|n|matches!(&n.kind,HtmlNodeKind::ProcessingInstruction(i) if i.target()==&DocumentString::from("target") && i.data()==&DocumentString::from("data"))).count()==1,
         6=>p.len()==2 && text(p[0],&[65]) && text(p[1],&[66]) && p[0].parent==p[1].parent,
         7=>{let t=elements("table");let x=nodes.iter().position(|n|matches!(&n.kind,HtmlNodeKind::Text(s) if s.code_units()==[88]));t.len()==1 && x.is_some_and(|i|nodes[i].parent==t[0].parent && i<nodes.iter().position(|n|n.id==t[0].id).expect("existing table"))},
         _=>false,
@@ -843,3 +844,5 @@ pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<Cas
         }
     }
 }
+#[cfg(test)]
+mod tests;

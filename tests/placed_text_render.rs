@@ -222,6 +222,7 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(
@@ -317,6 +318,8 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
     let analyzed = if contextual {
         let processed = std::sync::Arc::new(
             text::process_contextual_source(text::ContextualSourceInput {
+                joint_flows: Vec::new(),
+                scope_alignment_limits: None,
                 computed_line_boundaries: vec![],
                 source: source.clone(),
                 segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -328,12 +331,18 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
                 replacements: vec![],
                 scopes: vec![
                     text::SourceProcessingScope::Block {
+                        writing_axis: None,
+                        horizontal_inner_direction: None,
+                        font_reference: None,
                         topology: text::SourceProcessingTopology::Unknown,
                         used_direction: text::ParagraphBaseDirection::LeftToRight,
                         trim: text::WhiteSpaceTrim::default(),
                         base_style: style,
                     },
                     text::SourceProcessingScope::Inline {
+                        horizontal_inner_direction: None,
+                        alignment_boundary: None,
+                        font_reference: None,
                         style: None,
                         boundaries: None,
                         trim: text::WhiteSpaceTrim {
@@ -451,6 +460,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = layout::LayoutRootRequest::viewport(layout::Size::new(
@@ -772,6 +782,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let batch = layout::compute_layout_with_flow(
@@ -1187,6 +1198,7 @@ mod kana_transform {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let batch = layout::compute_layout_with_flow(

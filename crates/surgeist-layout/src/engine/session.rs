@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod scope_resource_tests;
+
 use super::contracts::{CacheAccess, Compute, Round, UnroundedInlineFragmentState};
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
@@ -252,6 +255,9 @@ where
             let mut text = crate::text_layout::state::TextComputation::new(
                 &capture.paragraphs,
                 capture.associations.clone(),
+                crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                    capture.scope_alignments.clone(),
+                ),
             );
             text.graph = Some(&capture.graph);
             text.wrapping = session.wrapping.clone();
@@ -344,12 +350,40 @@ where
 
     pub(super) fn text_pass_basis(
         &self,
+        root: Tree::Node,
         frames: Vec<crate::text_layout::state::CanonicalFrame<Tree::Node, Tree::Scalar>>,
-    ) -> crate::text_layout::state::PassBasis<Tree::Node, Tree::Scalar> {
+    ) -> SessionResult<Tree, crate::text_layout::state::PassBasis<Tree::Node, Tree::Scalar>> {
         self.text
             .as_ref()
             .expect("Text compute entry initialized its state")
             .basis(frames)
+            .map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(root),
+                    LayoutOperation::TextPlacement,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })
+    }
+
+    pub(super) fn admit_text_pass_comparison(
+        &self,
+        root: Tree::Node,
+        current: Option<&crate::text_layout::state::PassBasis<Tree::Node, Tree::Scalar>>,
+        previous: Option<&crate::text_layout::state::PassBasis<Tree::Node, Tree::Scalar>>,
+    ) -> SessionResult<Tree, ()> {
+        let (Some(text), Some(current), Some(previous)) = (&self.text, current, previous) else {
+            return Ok(());
+        };
+        current
+            .admit_scope_comparison(previous, &text.scope_resources)
+            .map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(root),
+                    LayoutOperation::TextPlacement,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })
     }
 
     pub(super) fn text_basis(
@@ -817,6 +851,7 @@ where
             let mut state = crate::text_layout::state::TextComputation::new(
                 text.paragraphs,
                 text.associations.clone(),
+                text.scope_resources.clone(),
             );
             state.frames = text.frames.clone();
             state.wrapping = text.wrapping.clone();
@@ -882,6 +917,7 @@ where
             let mut state = crate::text_layout::state::TextComputation::new(
                 text.paragraphs,
                 text.associations.clone(),
+                text.scope_resources.clone(),
             );
             state.frames = std::sync::Arc::clone(&text.frames);
             state.wrapping = text.wrapping.clone();
@@ -1526,6 +1562,7 @@ mod tests {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         for fragments in [
@@ -1846,6 +1883,7 @@ mod grid_overflow_observation_tests {
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
+                    Vec::new(),
                 )
                 .unwrap();
                 let reference =
@@ -1878,6 +1916,7 @@ mod grid_overflow_observation_tests {
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
+                    Vec::new(),
                 )
                 .unwrap();
                 let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());
@@ -1941,6 +1980,7 @@ mod grid_overflow_observation_tests {
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
+                    Vec::new(),
                 )
                 .unwrap();
                 let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());
@@ -2050,6 +2090,7 @@ mod grid_overflow_observation_tests {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let mut session = ComputeSession::with_flow(&capture, capture.invalidated.clone());

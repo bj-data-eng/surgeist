@@ -61,7 +61,10 @@ fn select(
     alignment: crate::Alignment,
 ) -> FinalizedLine {
     selected(p, start, ending, width, alignment)
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -371,13 +374,16 @@ fn allocated(selected: &SelectedLine, amounts: &[f64]) -> FinalizedLine {
     let slots: Vec<_> = selected.spacing_slots().collect();
     assert_eq!(slots.len(), amounts.len());
     selected
-        .finalize(SpacingAllocations::Complete(
-            slots
-                .into_iter()
-                .zip(amounts)
-                .map(|(slot, &amount)| SpacingAllocation { slot, amount })
-                .collect(),
-        ))
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::Complete(
+                slots
+                    .into_iter()
+                    .zip(amounts)
+                    .map(|(slot, &amount)| SpacingAllocation { slot, amount })
+                    .collect(),
+            ),
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -394,7 +400,12 @@ fn allocated_conditional_space_remeasures_signed_exclusion_in_natural_frame() {
         15.0,
         crate::Alignment::Center,
     );
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
     let mut observed = vec![];
     for amount in [4.0, -3.0, -5.0, -8.0, -12.0] {
@@ -436,7 +447,10 @@ fn naturally_fitting_conditional_space_does_not_become_eligible_after_expansion(
     let selection = selected(&p, first(&p), forced.clone(), 40.0, crate::Alignment::Left);
     assert_eq!(
         selection
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -488,7 +502,10 @@ fn upstream_allocation_moves_eligible_conditional_space_before_exclusion() {
     }
     assert_eq!(
         selection
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -527,7 +544,10 @@ fn natural_terminal_group_stays_fixed_through_reverse_conditional_advance() {
     let selection = selected(&p, first(&p), forced.clone(), 15.0, crate::Alignment::Left);
     assert_eq!(
         selection
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -573,7 +593,10 @@ fn rtl_allocated_conditional_space_reports_the_physical_start_edge() {
     );
     assert_eq!(
         selection
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .unwrap()
             .feedback()
             .advance,
@@ -714,7 +737,10 @@ fn ordinary_start_alignment_uses_actual_geometry_without_hanging_capacity() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .expect("ordinary start-aligned text consumes no hanging edge");
     assert_eq!(line.feedback().advance, 10.0);
     assert_eq!(
@@ -738,7 +764,12 @@ fn conditional_space_allocation_to_zero_preserves_source_and_alignment() {
         15.0,
         crate::Alignment::Center,
     );
-    let natural = selection.finalize(SpacingAllocations::None).unwrap();
+    let natural = selection
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_eq!(natural.feedback().advance, 20.0);
     assert_eq!(
         glyphs(&natural, 2)
@@ -892,7 +923,7 @@ fn discard_surviving_separator_needs_no_hanging_terminal_or_available_edge() {
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations { spacing: SpacingAllocations::None, scopes: crate::ScopeAllocations::None })
         .expect("ordinary Discard advance needs neither terminal-block nor available-edge hanging context");
     discard_separator_custody(&p, &line, &bytes);
     let fit = line.measurements().fit();
@@ -1074,7 +1105,10 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                 let line = p
                     .select(r)
                     .unwrap()
-                    .finalize(SpacingAllocations::None)
+                    .finalize(crate::LineAllocations {
+                        spacing: SpacingAllocations::None,
+                        scopes: crate::ScopeAllocations::None,
+                    })
                     .unwrap();
                 ordinary_discard_measurements(&line, 30.0);
                 let bytes = crate::shaping_test_fonts::width_ahem();
@@ -1168,7 +1202,10 @@ fn discard_surviving_separator_consumes_no_terminal_or_available_context_in_both
                     let line = p
                         .select(r)
                         .unwrap()
-                        .finalize(SpacingAllocations::None)
+                        .finalize(crate::LineAllocations {
+                            spacing: SpacingAllocations::None,
+                            scopes: crate::ScopeAllocations::None,
+                        })
                         .unwrap();
                     ordinary_discard_measurements(&line, 30.0);
                 }

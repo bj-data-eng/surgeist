@@ -20,7 +20,7 @@ const AHEM: &[u8] = include_bytes!(concat!(
 ));
 const FRAMES: [LineOrientation; 3] = [
     LineOrientation::Horizontal,
-    LineOrientation::Sideways,
+    LineOrientation::SidewaysClockwise,
     LineOrientation::Vertical,
 ];
 
@@ -210,7 +210,10 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
     prepared
         .select(selection)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 
@@ -255,6 +258,7 @@ fn assert_placement(
     let orientation = prepared.orientation();
     let horizontal = orientation == LineOrientation::Horizontal;
     let upright = orientation == LineOrientation::Vertical;
+    let counterclockwise = orientation == LineOrientation::SidewaysCounterclockwise;
     let cross = if horizontal { 70.0 } else { 100.0 };
     let layout = crate::Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
@@ -277,6 +281,8 @@ fn assert_placement(
     );
     let low = if horizontal {
         62.0
+    } else if counterclockwise {
+        92.0
     } else if upright {
         95.0
     } else {
@@ -286,6 +292,8 @@ fn assert_placement(
         layout.bounds(),
         if horizontal {
             Rect::new(20.0, low, total, 10.0)
+        } else if counterclockwise {
+            Rect::new(low, 20.0 - total, 10.0, total)
         } else {
             Rect::new(low, 20.0, 10.0, total)
         }
@@ -295,10 +303,11 @@ fn assert_placement(
         .flat_map(|run| {
             assert_eq!(
                 run.glyph_basis(),
-                if orientation == LineOrientation::Sideways {
-                    GlyphBasis::Clockwise
-                } else {
-                    GlyphBasis::Unrotated
+                match orientation {
+                    LineOrientation::Horizontal | LineOrientation::Vertical =>
+                        GlyphBasis::Unrotated,
+                    LineOrientation::SidewaysClockwise => GlyphBasis::Clockwise,
+                    LineOrientation::SidewaysCounterclockwise => GlyphBasis::Counterclockwise,
                 }
             );
             let origin = run.origin();
@@ -308,9 +317,13 @@ fn assert_placement(
                         origin.x + glyph.pen() + f64::from(glyph.x()),
                         origin.y + f64::from(glyph.y()),
                     ),
-                    LineOrientation::Sideways => Point::new(
+                    LineOrientation::SidewaysClockwise => Point::new(
                         origin.x - f64::from(glyph.y()),
                         origin.y + glyph.pen() + f64::from(glyph.x()),
+                    ),
+                    LineOrientation::SidewaysCounterclockwise => Point::new(
+                        origin.x + f64::from(glyph.y()),
+                        origin.y - glyph.pen() - f64::from(glyph.x()),
                     ),
                     LineOrientation::Vertical => Point::new(
                         origin.x + f64::from(glyph.x()),
@@ -326,6 +339,8 @@ fn assert_placement(
         .map(|(index, position)| {
             if horizontal {
                 Point::new(20.0 + position, 70.0)
+            } else if counterclockwise {
+                Point::new(100.0, 20.0 - position)
             } else if upright {
                 Point::new(
                     95.0,
@@ -356,6 +371,8 @@ fn assert_placement(
             layout.cursor(cursor).unwrap().rect(),
             if horizontal {
                 Rect::new(20.0 + pen, low, 1.0, 10.0)
+            } else if counterclockwise {
+                Rect::new(low, 19.0 - pen, 10.0, 1.0)
             } else {
                 Rect::new(low, 20.0 + pen, 10.0, 1.0)
             }

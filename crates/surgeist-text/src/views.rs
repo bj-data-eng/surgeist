@@ -117,16 +117,16 @@ impl RunView<'_> {
     pub fn face(&self) -> FontFace<'_> {
         self.shaped.font.face()
     }
-    /// Actual physical paint origin, Central for a whole-upright run.
-    /// For named Alphabetic H/Sideways composition this is font-design zero,
-    /// displaced from the shared line alignment reference by the actual font.
-    ///
-    /// Rotate raw offsets `(dx,dy)` by [`Self::glyph_basis`]: Unrotated keeps
-    /// `(dx,dy)`, Clockwise gives `(-dy,dx)`. Add those offsets to this origin,
-    /// with the pen along physical x for Horizontal or y for Vertical/Sideways.
+    /// Executed glyph frame, including actual cell compression and pen axes.
+    #[must_use]
+    pub fn glyph_frame(&self) -> crate::GlyphFrame {
+        crate::layout::run_glyph_frame(self.placed, self.run, self.shaped)
+    }
+    /// Actual physical font-design origin. Use [`Self::glyph_frame`] for raw
+    /// offsets and pens; a combined cell's pen is horizontal within its square.
     #[must_use]
     pub fn origin(&self) -> Point {
-        crate::layout::line_point(self.placed, Point::new(self.run.x, self.run.y))
+        self.glyph_frame().origin()
     }
     /// Raw canonical glyph offsets and advances with separate logical run-local pens.
     pub fn glyphs(&self) -> impl Iterator<Item = GlyphPlacement> + '_ {
@@ -193,8 +193,8 @@ impl GlyphPlacement {
     pub const fn id(self) -> u32 {
         self.id
     }
-    /// Raw font-x offset, scaled once to layout units. The pen follows the
-    /// run's inline axis independently; see [`RunView::origin`].
+    /// Raw font-x offset, scaled once to layout units. Apply the actual
+    /// [`RunView::glyph_frame`] for cell compression and physical placement.
     #[must_use]
     pub const fn x(self) -> f32 {
         self.x
@@ -205,8 +205,8 @@ impl GlyphPlacement {
     pub const fn y(self) -> f32 {
         self.y
     }
-    /// Actual logical run-local inline pen, including line spacing allocation.
-    /// It follows physical y for Vertical, independently of the raw x offset.
+    /// Actual logical run-local pen. Its physical direction is given by
+    /// [`RunView::glyph_frame`], including horizontal pens inside vertical cells.
     #[must_use]
     pub const fn pen(self) -> f64 {
         self.pen
@@ -274,7 +274,12 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
         let rect = if run.orientation() == crate::LineOrientation::Horizontal {
             let alignment_origin = crate::layout::line_point(
                 run.placed,
-                Point::new(run.run.x, run.placed.finalized.data.metrics.baseline),
+                Point::new(
+                    run.run.x,
+                    run.run
+                        .reference
+                        .unwrap_or(run.placed.finalized.data.metrics.baseline),
+                ),
             );
             Rect::new(
                 alignment_origin.x,
@@ -288,7 +293,9 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
                 Rect::new(
                     run.run.x,
                     crate::layout::decoration_top(
-                        run.placed.finalized.data.metrics.baseline,
+                        run.run
+                            .reference
+                            .unwrap_or(run.placed.finalized.data.metrics.baseline),
                         offset,
                     ) - half_thickness,
                     run.run.advance,

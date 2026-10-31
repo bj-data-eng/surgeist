@@ -495,6 +495,7 @@ fn finish(
         })
         .collect();
     p.select(t::LineSelectionRequest {
+        segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
         participants,
@@ -547,7 +548,10 @@ fn finish(
         },
     })
     .unwrap()
-    .finalize(t::SpacingAllocations::None)
+    .finalize(surgeist_text::LineAllocations {
+        spacing: t::SpacingAllocations::None,
+        scopes: surgeist_text::ScopeAllocations::None,
+    })
     .unwrap()
 }
 

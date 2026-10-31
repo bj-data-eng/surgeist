@@ -42,6 +42,8 @@ fn captured_pair(system: &mut text::System) -> text::PreparedText {
     };
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
+            joint_flows: Vec::new(),
+            scope_alignment_limits: None,
             computed_line_boundaries: vec![],
             source: source.clone(),
             segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
@@ -80,12 +82,18 @@ fn captured_pair(system: &mut text::System) -> text::PreparedText {
             replacements: vec![],
             scopes: vec![
                 text::SourceProcessingScope::Block {
+                    writing_axis: None,
+                    horizontal_inner_direction: None,
+                    font_reference: None,
                     topology: text::SourceProcessingTopology::Complete,
                     trim: text::WhiteSpaceTrim::default(),
                     base_style: base.clone(),
                     used_direction: text::ParagraphBaseDirection::LeftToRight,
                 },
                 text::SourceProcessingScope::Inline {
+                    horizontal_inner_direction: None,
+                    alignment_boundary: None,
+                    font_reference: None,
                     trim: text::WhiteSpaceTrim::default(),
                     style: Some(base),
                     boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
@@ -184,6 +192,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
         })
         .collect();
     let mut request = text::LineSelectionRequest {
+        segment: prepared.source_segments().next().unwrap(),
         line_box_struts: Vec::new(),
         start: prepared.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
@@ -227,7 +236,10 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
     let line = prepared
         .select(request)
         .unwrap()
-        .finalize(text::SpacingAllocations::None)
+        .finalize(surgeist_text::LineAllocations {
+            spacing: text::SpacingAllocations::None,
+            scopes: surgeist_text::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 20.0 + opening);
     let slots = line.control_slots().collect::<Vec<_>>();

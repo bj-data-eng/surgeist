@@ -221,6 +221,9 @@ fn mixed_input(
     ]);
     let mut scopes = vec![
         text::SourceProcessingScope::Block {
+            writing_axis: None,
+            horizontal_inner_direction: None,
+            font_reference: None,
             topology: text::SourceProcessingTopology::Complete,
             trim: Default::default(),
             base_style: text::Style {
@@ -231,6 +234,9 @@ fn mixed_input(
             used_direction: base,
         },
         text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: None,
             boundaries: Some(text::SourceProcessingScopeBoundaries { start: 1, end: 2 }),
@@ -238,12 +244,17 @@ fn mixed_input(
     ];
     if empty {
         scopes.push(text::SourceProcessingScope::Inline {
+            horizontal_inner_direction: None,
+            alignment_boundary: None,
+            font_reference: None,
             trim: Default::default(),
             style: None,
             boundaries: None,
         });
     }
     text::ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
         source: text::Source::identified("PAQ", text::Id::from_u64(659100), 23),
         segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
         envelope: text::SourceProcessingEnvelope::Complete,

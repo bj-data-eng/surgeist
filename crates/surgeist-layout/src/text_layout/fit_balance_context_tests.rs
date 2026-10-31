@@ -80,6 +80,7 @@ fn tab_batch(
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput::default(),
+        Vec::new(),
     )
     .unwrap();
     crate::compute_layout_with_flow(
@@ -198,6 +199,14 @@ fn fitting_ordinary_trials(
     wrap_style: crate::TextWrapStyle,
 ) -> Vec<FinalizedLine> {
     let observed = RefCell::new(Vec::<LineSelectionRequest>::new());
+    let scope_alignments = crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+        crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
+            Vec::new(),
+            &[],
+        )
+        .unwrap()
+        .freeze(),
+    );
     let lines = super::super::fit(
         FitInput {
             groups: crate::group_alignment::Snapshot::default(),
@@ -208,6 +217,8 @@ fn fitting_ordinary_trials(
                 crate::Direction::Ltr,
             ),
             prepared: &paragraph.prepared,
+            segment: paragraph.prepared.source_segments().next().unwrap(),
+            scope_alignments: &scope_alignments,
             available: Available::Definite(60.0),
             base_direction: ParagraphBaseDirection::LeftToRight,
             block_direction: ParagraphBaseDirection::LeftToRight,
@@ -436,6 +447,7 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput::default(),
+            Vec::new(),
         )
         .unwrap();
         let mut session = crate::engine::ComputeSession::with_flow(&flow, Vec::new());
@@ -478,7 +490,7 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
             "{mode:?}"
         );
 
-        let basis = state.basis(state.frames.to_vec());
+        let basis = state.basis(state.frames.to_vec()).unwrap();
         assert_eq!(basis.selections.len(), 1);
         let (container, retained_mode, portfolio) = &basis.selections[0];
         assert_eq!(*container, pending.container);

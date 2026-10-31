@@ -29,6 +29,7 @@ fn prepare_direct(processed: &Arc<t::ProcessedSource>) -> t::PreparedText {
 fn assert_late_geometry<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     controls: &[t::PreparedControl],
+    empty: &t::CapturedScope,
 ) {
     let placed = batch.placed_text()[0].layout();
     assert_eq!(placed.source().id(), Some(t::Id::from_u64(658000)));
@@ -104,6 +105,7 @@ fn assert_late_geometry<S: l::LayoutScalar>(
             request.line_box_struts,
             if i == 0 {
                 vec![t::LineBoxStrut {
+                    scope: Some(empty.clone()),
                     metrics: t::LineStrut {
                         baseline: 8.0,
                         line_extent: 10.0,
@@ -242,7 +244,7 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
     assert_eq!(siblings.children.len(), 2);
     assert_eq!(
         siblings.children[0].box_,
-        l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(empty))
+        l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(empty.clone()))
     );
     assert_eq!(
         siblings.children[1].box_,
@@ -252,7 +254,7 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
         siblings.children.swap(0, 1);
     }
     let tree = Final(&host);
-    let result = l::LayoutFlowInput::try_new(&tree, 0, vec![binding], wrapping);
+    let result = l::LayoutFlowInput::try_new(&tree, 0, vec![binding], wrapping, Vec::new());
     if false_order {
         let error = result
             .err()
@@ -275,7 +277,7 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
         ))
         .unwrap();
         let batch = l::compute_layout_with_flow(&flow, 0, request).unwrap();
-        assert_late_geometry(&batch, &controls);
+        assert_late_geometry(&batch, &controls, &empty);
     }
 }
 

@@ -142,6 +142,7 @@ fn compute<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(&capture, 0, request(width)).unwrap()
@@ -356,6 +357,7 @@ fn chronology<S: LayoutScalar>() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         compute_layout_with_flow(&capture, 0, request(40.0)).unwrap()
@@ -464,12 +466,41 @@ fn intrinsic<S: LayoutScalar>(
 ) -> super::super::run::Output<u32, S> {
     let binding = p.binding(0);
     let size = Size::new(S::from_f64(100.0), S::from_f64(10.0));
+    let tree = p.flat_text_tree::<S>(
+        0,
+        NodeInputOf {
+            display: Display::Block,
+            writing_mode: WritingMode::HorizontalTb,
+            direction: Direction::Rtl,
+            line_box_direction_policy: LineBoxDirectionPolicy::Plaintext,
+            ..NodeInputOf::default()
+        },
+    );
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+        Vec::new(),
+    )
+    .unwrap();
+    let [row] = flow.associations.runs() else {
+        panic!("flat intrinsic fixture has one actual admitted native run");
+    };
+    let admitted = flow.associations.admitted_run(&flow.paragraphs, row);
+    let binding = admitted.binding;
     super::super::run::layout(
-        &binding,
-        &Default::default(),
+        &admitted,
+        &flow.associations,
         &[],
         &[],
         super::super::run::Context {
+            scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
+                flow.scope_alignments.clone(),
+            ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
                 &binding.prepared,
@@ -727,6 +758,7 @@ fn numeric_overflow_cases<S: LayoutScalar>(
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },
+                Vec::new(),
             )
             .unwrap();
             let batch = compute_layout_with_flow(&capture, 0, request(40.0)).unwrap();

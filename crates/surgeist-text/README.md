@@ -9,7 +9,8 @@ Standalone layout retains raw Preserve and automatic direction. Explicit compose
 paragraphs execute source processing and capture their actual base direction;
 inline-box alignment requests do not imply CSS vertical-alignment execution.
 See the [support reference](docs/reference.md) for the current contract.
-Native prepared lines also support [clockwise sideways placement](docs/reference.md#clockwise-sideways-placement),
+Native prepared lines also support [clockwise](docs/reference.md#clockwise-sideways-placement)
+and [counterclockwise sideways placement](docs/reference.md#counterclockwise-sideways-placement),
 with preparation-bound font features and the same physical basis for paint and
 interaction. Matching upright analyses also support a complete
 [native unrotated upright paragraph](docs/reference.md#native-whole-upright-paragraphs)
@@ -23,6 +24,11 @@ source pieces and occurrences through analysis, preparation and placement;
 internal child text remains outside the parent view. Both fronts share whitespace
 correspondence and partial plaintext without inserting presentation characters.
 See [contextual processing](docs/reference.md#contextual-source-processing).
+
+[Captured-scope alignment](docs/scope-alignment.md) retains genuine parent font
+context and allocates complete selected subtrees. Its early formatting facts,
+line-relative edge groups and feature limits remain separate from a standalone
+inline-box request.
 
 `Text` retains exact UTF-16 code units, and public source positions and ranges
 count those units. Edits can split or join surrogate pairs. `AnalyzedSource`
@@ -109,7 +115,7 @@ with retained font/script identity and unhinted horizontal-Y or vertical-X
 coordinates. Alphabetic and central availability are independent. These metrics
 leave vertical paragraph shaping and placement with their own capability gates.
 
-Horizontal and clockwise Sideways preparation can explicitly request
+Horizontal and either sideways preparation can explicitly request
 [used Alphabetic composition](docs/reference.md#used-named-preparation-references).
 It retains raw font observations while carrying the shared alignment reference
 and each actual font's displaced paint origin through placement.

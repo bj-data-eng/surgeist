@@ -8,7 +8,7 @@ use std::{ops::Range as IndexRange, sync::Arc};
 use crate::projection::SourceProjection;
 use crate::protocol::{
     PreparationOptions,
-    paragraph::ParagraphData,
+    paragraph::{ParagraphContext, ParagraphData},
     prepared::{PreparedIndicationFonts, PreparedTables, SelectedMapping},
     selection::SelectedData,
 };
@@ -21,6 +21,7 @@ pub(crate) mod editing;
 pub(crate) mod layout;
 mod lru_cache;
 pub(crate) mod resolve;
+pub(crate) mod scope_alignment;
 pub(crate) mod shape;
 pub(crate) mod spacing;
 pub(crate) mod upright;
@@ -61,7 +62,9 @@ pub(crate) struct AnalyzedCore {
         std::result::Result<analysis::scope::ScopeCutIndex, analysis::scope::ScopeIndexCapacity>,
     >,
     pub(crate) processed: Arc<crate::ProcessedSource>,
-    pub(crate) paragraph: ParagraphData,
+    pub(crate) paragraph: ParagraphContext,
+    pub(crate) sections: Vec<analysis::structural::Section>,
+    pub(crate) combination: Option<Arc<crate::transform::combined::CombinedOutput>>,
     pub(crate) host_projection: SourceProjection,
     pub(crate) projection: SourceProjection,
     pub(crate) transform: Arc<crate::transform::relation::TransformMap>,
@@ -78,6 +81,7 @@ pub(crate) struct AnalyzedCore {
 /// allocation; neither selection nor placement reconstructs authored input.
 pub(crate) struct PreparedData {
     pub(crate) options: PreparationOptions,
+    pub(crate) scope_alignment: scope_alignment::PreparedScopes,
     pub(crate) tab_metrics: Vec<Option<crate::tabs::ResolvedTab>>,
     pub(crate) analyzed: Arc<AnalyzedData>,
     pub(crate) font_catalogue: FontCatalogueIdentity,
@@ -92,6 +96,8 @@ pub(crate) struct PreparedData {
 
 /// Inputs coupled to one shaping operation, without a mutable System escape.
 pub(crate) struct ShapingInput<'a> {
+    pub(crate) formatting_breaks: &'a [usize],
+    pub(crate) scope_custody: Option<scope_alignment::CustodyInput<'a>>,
     pub(crate) separator_geometry: bool,
     pub(crate) characters: Option<&'a spacing::character::PlanRequirements>,
     pub(crate) profile: upright::ShapingProfile<'a>,
@@ -101,7 +107,7 @@ pub(crate) struct ShapingInput<'a> {
     pub(crate) styles: &'a [resolve::ResolvedStyleRun],
     pub(crate) boxes: &'a [InlineBox],
     pub(crate) font_catalogue: &'a FontCatalogueIdentity,
-    pub(crate) paragraph: &'a ParagraphData,
+    pub(crate) paragraph: &'a ParagraphContext,
     pub(crate) css_tabs: bool,
 }
 
@@ -110,6 +116,22 @@ pub(crate) struct ShapingInput<'a> {
 pub(crate) struct FinalizedLine {
     pub(crate) selected: Arc<SelectedData>,
     pub(crate) data: layout::data::FinalizedLineData,
+}
+
+impl FinalizedLine {
+    /// Borrow the actual completed source binding of this finalized Cell row.
+    /// The caller supplies an admitted view index or an actual row enumeration.
+    pub(crate) fn source_cell(&self, cell: usize) -> crate::AnalyzedCombinedCell<'_> {
+        let analyzed = &self.selected.prepared.analyzed;
+        crate::AnalyzedCombinedCell {
+            core: &analyzed.core,
+            output: analyzed
+                .combination
+                .as_deref()
+                .expect("finalized cells retain their completed source operation"),
+            index: self.data.cells[cell].binding,
+        }
+    }
 }
 
 /// Actual selected provider output before any allocation-dependent operation.
@@ -156,28 +178,7 @@ pub(crate) fn analyze_paragraph(
             },
         ));
     }
-    let (span_styles, default_style) = if paragraph.base_direction.is_some() {
-        (
-            crate::source_model::processed_span_styles(
-                processed.source(),
-                paragraph.coverage.as_deref(),
-            )?,
-            crate::ValidatedStyle::for_processed(
-                paragraph
-                    .domain_style
-                    .as_ref()
-                    .unwrap_or(processed.base_style())
-                    .clone(),
-            )?,
-        )
-    } else {
-        (
-            crate::ValidatedSource::try_from(processed.source().clone())?
-                .span_styles()
-                .to_vec(),
-            crate::ValidatedStyle::try_from(processed.base_style().clone())?,
-        )
-    };
+    let (span_styles, default_style) = admitted_output_styles(&processed, &paragraph)?;
     let mut host_projection = SourceProjection::host(processed.source(), &paragraph)?;
     if let Some(coverage) = &paragraph.coverage {
         host_projection.graphemes.retain(|at| {
@@ -199,8 +200,64 @@ pub(crate) fn analyze_paragraph(
         host_projection.graphemes.dedup();
     }
     let projection = SourceProjection::from_processed(&processed, &paragraph)?;
-    let mut styles =
-        resolve::analyze_styles(processed.source(), &span_styles, &default_style, &paragraph);
+    let mut styles = output_style_runs(&processed, &paragraph, &span_styles, &default_style)?;
+    let crate::transform::CompletedTransform {
+        projection,
+        relation: transform,
+        combination,
+    } = crate::transform::apply(projection, &mut styles, &processed, &paragraph)?;
+    complete_analysis(
+        processed,
+        typography,
+        CompletedPresentation {
+            paragraph: paragraph.context,
+            host_projection,
+            projection,
+            transform,
+            styles,
+            combination,
+        },
+    )
+}
+
+pub(crate) fn admitted_output_styles(
+    processed: &crate::ProcessedSource,
+    paragraph: &ParagraphContext,
+) -> crate::Result<(
+    Vec<crate::source_model::ValidatedSpan>,
+    crate::ValidatedStyle,
+)> {
+    if paragraph.base_direction.is_some() {
+        Ok((
+            crate::source_model::processed_span_styles(
+                processed.source(),
+                paragraph.coverage.as_deref(),
+            )?,
+            crate::ValidatedStyle::for_processed(
+                paragraph
+                    .domain_style
+                    .as_ref()
+                    .unwrap_or(processed.base_style())
+                    .clone(),
+            )?,
+        ))
+    } else {
+        Ok((
+            crate::ValidatedSource::try_from(processed.source().clone())?
+                .span_styles()
+                .to_vec(),
+            crate::ValidatedStyle::try_from(processed.base_style().clone())?,
+        ))
+    }
+}
+
+pub(crate) fn output_style_runs(
+    processed: &crate::ProcessedSource,
+    paragraph: &ParagraphContext,
+    spans: &[crate::source_model::ValidatedSpan],
+    default: &crate::ValidatedStyle,
+) -> crate::Result<Vec<resolve::AnalyzedStyleRun>> {
+    let mut styles = resolve::analyze_styles(processed.source(), spans, default, paragraph);
     for (index, control) in paragraph.controls.iter().enumerate() {
         if let crate::ParagraphControlKind::DiscretionaryBreak { style }
         | crate::ParagraphControlKind::Wbr { style } = &control.kind
@@ -211,14 +268,44 @@ pub(crate) fn analyze_paragraph(
             });
         }
     }
-    let (projection, transform) =
-        crate::transform::apply(projection, &mut styles, &processed, &paragraph)?;
+    Ok(styles)
+}
+
+/// Completed canonical presentation, ready for the sole Unicode analyzer.
+pub(crate) struct CompletedPresentation {
+    pub(crate) paragraph: ParagraphContext,
+    pub(crate) host_projection: SourceProjection,
+    pub(crate) projection: SourceProjection,
+    pub(crate) transform: Arc<crate::transform::relation::TransformMap>,
+    pub(crate) styles: Vec<resolve::AnalyzedStyleRun>,
+    pub(crate) combination: Option<Arc<crate::transform::combined::CombinedOutput>>,
+}
+pub(crate) fn complete_analysis(
+    processed: Arc<crate::ProcessedSource>,
+    typography: AnalysisTypography,
+    presentation: CompletedPresentation,
+) -> crate::Result<Arc<AnalyzedData>> {
+    let CompletedPresentation {
+        paragraph,
+        host_projection,
+        projection,
+        transform,
+        styles,
+        combination,
+    } = presentation;
+    let sections = analysis::structural::sections(&paragraph, &transform, &projection, &processed)?;
+    let logical_events = transform.logical_events(&paragraph, processed.source());
     let (analysis, words, direction) = analysis::analyze(
         &projection,
         &styles,
         processed.source().boxes(),
         &paragraph,
         typography,
+        analysis::BidiScope::Completed {
+            sections: &sections,
+            combination: combination.as_deref(),
+            events: &logical_events,
+        },
     )?;
     let words = analysis::hyphenation::Words::new(&projection, &analysis.graphemes, words);
     let logical = analysis::wrapping::LogicalParagraph::new(
@@ -227,8 +314,14 @@ pub(crate) fn analyze_paragraph(
         &projection,
         &styles,
         &analysis,
+        analysis::wrapping::LogicalInput {
+            events: logical_events,
+            combination: combination.as_deref(),
+        },
     )?;
-    let direction = direction.bind(&logical.events)?;
+    let logical_sections =
+        analysis::storage::collect(sections.iter().map(|section| section.participants.clone()))?;
+    let direction = direction.bind(&logical.events, &logical_sections, combination.as_deref())?;
     let wrapping = logical
         .relations
         .iter()
@@ -240,6 +333,8 @@ pub(crate) fn analyze_paragraph(
             scope_cuts: std::sync::OnceLock::new(),
             processed,
             paragraph,
+            sections,
+            combination,
             host_projection,
             projection,
             transform,
@@ -251,6 +346,14 @@ pub(crate) fn analyze_paragraph(
         }),
         wrapping,
     }))
+}
+
+pub(crate) fn analyze_domain(
+    processed: Arc<crate::ProcessedSource>,
+    member: crate::ProcessedParagraph,
+    typography: AnalysisTypography,
+) -> crate::Result<crate::AnalyzedDomain> {
+    crate::transform::domain::analyze(processed, member.data(), typography)
 }
 
 /// Actual producer front; composed preparation retains its requested paragraph
@@ -268,6 +371,24 @@ pub(crate) fn prepare(
     profile: PreparationProfile,
     scratch: &mut shape::ShapeContext,
 ) -> crate::Result<Arc<PreparedData>> {
+    let has_cells = analyzed
+        .combination
+        .as_ref()
+        .is_some_and(|output| !output.cells.is_empty());
+    shape::admit_cells(&analyzed)?;
+    if has_cells
+        && !matches!(
+            options.orientation(),
+            crate::LineOrientation::Vertical
+                | crate::LineOrientation::SidewaysClockwise
+                | crate::LineOrientation::SidewaysCounterclockwise
+        )
+    {
+        return Err(crate::transform::combined::refused(
+            crate::TextCombineError::UnsupportedCellPreparation,
+        ));
+    }
+
     if (analyzed.typography.is_upright() || analyzed.typography == AnalysisTypography::Mixed)
         && options.orientation() != crate::LineOrientation::Vertical
     {
@@ -296,7 +417,9 @@ pub(crate) fn prepare(
             crate::LineOrientation::Vertical,
             None | Some(crate::FontBaseline::Central)
         ) | (
-            crate::LineOrientation::Horizontal | crate::LineOrientation::Sideways,
+            crate::LineOrientation::Horizontal
+                | crate::LineOrientation::SidewaysClockwise
+                | crate::LineOrientation::SidewaysCounterclockwise,
             None | Some(crate::FontBaseline::Alphabetic)
         )
     ) {
@@ -313,6 +436,7 @@ pub(crate) fn prepare(
         &upright::UprightProvenance::Original,
         options.orientation(),
     )?;
+    let (mut scope_alignment, mut scope_budget) = scope_alignment::plan(&analyzed)?;
     let mut styles = resolve::resolve(
         catalogue.collection_mut(),
         &analyzed.styles,
@@ -339,18 +463,32 @@ pub(crate) fn prepare(
     } else {
         None
     };
+    scope_alignment::prepare_cell_resources(
+        &mut scope_alignment,
+        catalogue,
+        &analyzed,
+        options,
+        &mut scope_budget,
+    )?;
+    let cell_tabs = scope_alignment::prepare_cell_tabs(
+        &mut scope_alignment,
+        catalogue,
+        &analyzed,
+        options,
+        scratch,
+        &mut scope_budget,
+    )?;
     let font_catalogue = catalogue.identity().clone();
     let characters = spacing::character::plan(
-        &analyzed.projection,
-        &analyzed.analysis,
-        &styles,
-        analyzed.processed.source().boxes(),
-        None,
+        spacing::character::Input::original(&analyzed, &styles, options.scale()),
         false,
+        &mut scope_budget,
     )?;
-    let mut shaped = shape::shape(
+    let mut shaped = shape::prepare(
         catalogue,
         ShapingInput {
+            formatting_breaks: &scope_alignment.breaks,
+            scope_custody: scope_alignment.custody(&analyzed),
             characters: Some(&characters),
             separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
             profile: upright::original_profile(
@@ -369,19 +507,21 @@ pub(crate) fn prepare(
             css_tabs: options.tabs() == crate::TabPreparation::CssStops,
         },
         scratch,
+        &analyzed,
+        &scope_alignment,
+        &cell_tabs,
+        &mut scope_budget,
     )?;
     shaped.character_requirements = Some(characters);
-    spacing::authored_original(&analyzed, &styles, &mut shaped)?;
+    spacing::authored_original(&analyzed, &styles, &mut shaped, &mut scope_budget)?;
     let characters = spacing::character::build(
-        &analyzed.projection,
-        &analyzed.analysis,
-        &styles,
-        analyzed.processed.source().boxes(),
-        None,
+        spacing::character::Input::original(&analyzed, &styles, options.scale()),
         false,
         Some(&shaped.character_exclusions),
+        &mut scope_budget,
     )?;
-    spacing::character::original(&analyzed, &characters, &mut shaped)?;
+    spacing::character::original(&analyzed, &characters, &mut shaped, &mut scope_budget)?;
+    characters.drop_scratch(&mut scope_budget)?;
     let metrics_index = default_style_index.or_else(|| {
         (profile == PreparationProfile::Standalone
             && analyzed.projection.atoms.is_empty()
@@ -392,6 +532,8 @@ pub(crate) fn prepare(
         shaped.empty_run = Some(shape::default_metrics(
             catalogue.query(),
             &ShapingInput {
+                formatting_breaks: &scope_alignment.breaks,
+                scope_custody: scope_alignment.custody(&analyzed),
                 characters: None,
                 separator_geometry: spacing::authored_demand(&analyzed.analysis, &styles),
                 profile: upright::original_profile(
@@ -413,8 +555,14 @@ pub(crate) fn prepare(
             scratch,
         )?);
     }
-    let tables =
-        crate::protocol::prepared::prepare_tables(catalogue, &styles, &analyzed, &shaped, profile)?;
+    let tables = crate::protocol::prepared::prepare_tables(
+        catalogue,
+        &styles,
+        &analyzed,
+        &shaped,
+        profile,
+        &mut scope_budget,
+    )?;
     let indication_fonts = crate::protocol::prepared::prepare_indication_fonts(
         catalogue, &analyzed, &styles, &tables, scratch, options,
     )?;
@@ -425,9 +573,21 @@ pub(crate) fn prepare(
         &indication_fonts,
         options,
         scratch,
+        &mut scope_budget,
+    )?;
+    cell_tabs.drop(&mut scope_budget)?;
+    scope_alignment::prepare_resources(
+        &mut scope_alignment,
+        catalogue,
+        &analyzed,
+        options,
+        &shaped,
+        &tables,
+        scope_budget,
     )?;
     Ok(Arc::new(PreparedData {
         options,
+        scope_alignment,
         tab_metrics,
         analyzed,
         font_catalogue,

@@ -88,8 +88,14 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
             1,
             LayoutInputOf::inline_text(TextParticipation::new(origin.clone())),
         );
-    let flow =
-        LayoutFlowInput::try_new(&tree, 0, vec![binding], crate::WrappingInput::default()).unwrap();
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![binding],
+        crate::WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
     let batch = compute_layout_with_flow(
         &flow,
         0,
@@ -182,7 +188,10 @@ fn allocated<S: LayoutScalar>(orientation: text::LineOrientation, mode: WritingM
 #[test]
 fn clockwise_and_upright_character_fill_preserve_raw_packets_and_physical_cell_edges() {
     for (orientation, mode) in [
-        (text::LineOrientation::Sideways, WritingMode::SidewaysRl),
+        (
+            text::LineOrientation::SidewaysClockwise,
+            WritingMode::SidewaysRl,
+        ),
         (text::LineOrientation::Vertical, WritingMode::VerticalRl),
     ] {
         allocated::<f32>(orientation, mode);

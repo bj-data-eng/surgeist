@@ -30,7 +30,10 @@ fn nonzero_alignment_insets_require_a_real_outer_width_but_not_a_width_bound_on_
     assert!(
         p.select(overconstrained)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
             .is_ok()
     );
 }
@@ -43,7 +46,12 @@ fn a_finite_pair_with_unrepresentable_consumed_content_width_fails_numerically()
     r.context.available_inline = Some(1.0);
     r.context.alignment_insets = LineAlignmentInsets::try_new(f64::MAX, f64::MAX).unwrap();
     let selected = p.select(r).unwrap();
-    let error = selected.finalize(SpacingAllocations::None).unwrap_err();
+    let error = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap_err();
     assert!(matches!(
         error.detail(),
         Some(ErrorDetail::InvalidTextNumeric {
@@ -103,12 +111,18 @@ fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_n
     let first = p
         .select(zero.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     let second = p
         .select(right.clone())
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     for frame in [&first, &second] {
         assert_eq!(frame.measurements().alignment().advance(), 60.0);
@@ -126,15 +140,18 @@ fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_n
         unreachable!()
     };
     let search = |frame: &FinalizedLine| {
-        p.conditional_search(
-            &zero.start,
-            None,
-            ceiling,
-            ConditionalPurpose::Overflow,
-            &[],
-            Some(frame),
-        )
-        .unwrap()
+        p.source_segments()
+            .next()
+            .unwrap()
+            .conditional_search(
+                &zero.start,
+                None,
+                ceiling,
+                ConditionalPurpose::Overflow,
+                &[],
+                Some(frame),
+            )
+            .unwrap()
     };
     let first_search = search(&first);
     let second_search = search(&second);
@@ -159,5 +176,12 @@ fn geometry_search_identity_keeps_insets_while_conditional_selection_accepts_a_n
         selected.request().context.alignment_insets,
         LineAlignmentInsets::try_new(2.0, 0.0).unwrap()
     );
-    assert!(selected.finalize(SpacingAllocations::None).is_ok());
+    assert!(
+        selected
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None
+            })
+            .is_ok()
+    );
 }

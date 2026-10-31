@@ -84,7 +84,10 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         .collect();
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32, f64, Range)> {
@@ -135,7 +138,10 @@ fn transformed_native_glyphs_metrics_mapping_and_partial_surrogate_ranges_share_
     let line = p
         .select(request(&p))
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 25.0);
     assert_eq!(
@@ -517,7 +523,10 @@ fn part(
     r.context.available_inline = None;
     p.select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap()
 }
 #[test]
@@ -664,7 +673,10 @@ fn native_rtl_frame_and_foreign_positions_keep_exact_transformed_source_identity
     let line = p
         .select(r)
         .unwrap()
-        .finalize(SpacingAllocations::None)
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
         .unwrap();
     assert_eq!(line.feedback().advance, 25.0);
     // Actual Latin/kana L characters remain one LTR sequence at level2 in RTL.

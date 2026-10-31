@@ -49,8 +49,11 @@ fn actual_geometry<S: LayoutScalar>() {
     assert_eq!(units.len(), 1);
     let pieces: Vec<_> = units[0].pieces().collect();
     assert_eq!(pieces.len(), 1);
-    assert_eq!(pieces[0].advance_edges(), (10.0, 20.0));
-    assert_eq!(pieces[0].rect().size.width, 10.0);
+    let surgeist_text::SourceRangeGeometry::Line(piece) = pieces[0] else {
+        panic!("ordinary intrinsic text retains Line geometry");
+    };
+    assert_eq!(piece.advance_edges(), (10.0, 20.0));
+    assert_eq!(piece.rect().size.width, 10.0);
     assert_eq!(
         layout
             .cursor(surgeist_text::Cursor::new(
@@ -104,6 +107,7 @@ fn block_end_claim_cannot_hide_known_later_in_flow_content() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     ) {
         Err(error) => error,
         Ok(_) => panic!("known later block contradicts BlockEnd"),

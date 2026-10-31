@@ -46,6 +46,7 @@ fn compute<S: LayoutScalar>(
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     compute_layout_with_flow(
@@ -130,6 +131,7 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
+            Vec::new(),
         )
         .unwrap();
         let cases = [
@@ -332,6 +334,7 @@ fn float_probe_tail_truth_is_merged_only_when_its_packet_is_accepted() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let mut session = ComputeSession::with_flow(&capture, vec![]);
@@ -454,6 +457,7 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
+        Vec::new(),
     )
     .unwrap();
     let request = LayoutRootRequestOf::viewport(Size::new(

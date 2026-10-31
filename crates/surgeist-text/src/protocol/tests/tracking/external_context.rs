@@ -184,7 +184,10 @@ fn execute(prepared: &PreparedText) -> crate::Result<FinalizedLine> {
     value.context.line_box_direction = crate::LineBoxDirection::RightToLeft;
     value.context.available_inline = None;
     value.context.spacing = SpacingPolicy::None;
-    prepared.select(value)?.finalize(SpacingAllocations::None)
+    prepared.select(value)?.finalize(crate::LineAllocations {
+        spacing: SpacingAllocations::None,
+        scopes: crate::ScopeAllocations::None,
+    })
 }
 
 #[test]

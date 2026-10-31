@@ -54,7 +54,8 @@ fn every_final_material_endpoint_was_covered(selected: &SelectedLine) {
         }
         let movement = basis
             .characters
-            .movement_geometry(edge, &basis.shaped.character_invocations);
+            .movement_geometry(edge, &basis.shaped.character_invocations, &mut None)
+            .unwrap();
         if matches!(
             movement,
             crate::SpacingBoundaryGeometry::ProtectedRequired
@@ -98,7 +99,12 @@ fn select_counted(
 
 fn finalize_retained(selected: &SelectedLine, calls: usize) -> FinalizedLine {
     let coverage = coverage_signature(selected);
-    let line = selected.finalize(SpacingAllocations::None).unwrap();
+    let line = selected
+        .finalize(crate::LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: crate::ScopeAllocations::None,
+        })
+        .unwrap();
     assert_calls(calls);
     let restored = line.with_spacing(SpacingAllocations::None).unwrap();
     assert_calls(calls);

@@ -115,7 +115,10 @@ fn actual_css_tab_reference_keeps_latin_metrics_and_does_not_merge_distinct_scri
                 ..own_style()
             },
         );
-        for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+        for orientation in [
+            LineOrientation::Horizontal,
+            LineOrientation::SidewaysClockwise,
+        ] {
             let prepared = system
                 .prepare(
                     &input,
@@ -132,7 +135,10 @@ fn actual_css_tab_reference_keeps_latin_metrics_and_does_not_merge_distinct_scri
             let line = prepared
                 .select(selection)
                 .unwrap()
-                .finalize(SpacingAllocations::None)
+                .finalize(crate::LineAllocations {
+                    spacing: SpacingAllocations::None,
+                    scopes: crate::ScopeAllocations::None,
+                })
                 .unwrap();
             let only_tab = text == "\t";
             // Four real one-em spaces create a40px interval. Greek10 then
@@ -260,7 +266,10 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
             ..input.style().clone()
         },
     );
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         // The same actual4/2/2 source cut remains ineligible under native
         // Auto5/2/2. The positive case explicitly captures its smaller minimum.
         let denied = system
@@ -328,7 +337,10 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
         let first = prepared
             .select(prefix)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         let terminal = prepared
             .opportunity_views()
@@ -340,7 +352,10 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
         let second = prepared
             .select(suffix)
             .unwrap()
-            .finalize(SpacingAllocations::None)
+            .finalize(crate::LineAllocations {
+                spacing: SpacingAllocations::None,
+                scopes: crate::ScopeAllocations::None,
+            })
             .unwrap();
         assert_eq!(
             first.selected_line().request().alternative,
@@ -447,7 +462,10 @@ fn real_selected_greek_indication_uses_its_own_reference_and_retains_original_so
 fn accessibility_uses_named_line_geometry_and_preserves_original_character_positions() {
     let mut system = system();
     let input = analyzed(Source::new("A"), own_style());
-    for orientation in [LineOrientation::Horizontal, LineOrientation::Sideways] {
+    for orientation in [
+        LineOrientation::Horizontal,
+        LineOrientation::SidewaysClockwise,
+    ] {
         let prepared = system
             .prepare(
                 &input,

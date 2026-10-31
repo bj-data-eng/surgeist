@@ -15,10 +15,32 @@ use icu_properties::{
     CodePointSetData,
     props::{DefaultIgnorableCodePoint, GeneralCategory, GeneralCategoryGroup, Script},
 };
-use std::{collections::BTreeMap, ops::Range};
+use std::ops::Range;
 
+use super::super::scope_alignment::accounting::{self as account, Ledger};
+mod construction;
+mod index;
+mod input;
 mod planning;
+mod storage;
+pub(crate) use input::Input;
 pub(crate) use planning::{PlanRequirements, plan};
+pub(crate) use storage::{GapArenaOwnership, cell_gap_indices, visit_shaped_allocations};
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum GraphOwnership {
+    #[default]
+    Native,
+    CellScratch,
+    CellRetained,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Subject {
+    Text,
+    Atomics,
+    Cell(usize),
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PlanReason {
@@ -40,6 +62,8 @@ pub(crate) enum Exclusion {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Unit {
+    subject: Subject,
+    order: (usize, usize),
     pub(crate) atoms: Vec<Range<usize>>,
     pub(crate) atomics: Vec<usize>,
     pub(crate) base: Option<usize>,
@@ -61,6 +85,12 @@ pub(crate) struct Unit {
     level: u8,
 }
 
+impl Unit {
+    pub(crate) fn subject(&self) -> Subject {
+        self.subject
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Boundary {
     pub(crate) before: usize,
@@ -70,12 +100,14 @@ pub(crate) struct Boundary {
     pub(crate) geometry: SpacingBoundaryGeometry,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Graph {
     pub(crate) units: Vec<Unit>,
     pub(crate) boundaries: Vec<Boundary>,
     pub(crate) potential: bool,
     regions: Vec<Region>,
+    ownership: GraphOwnership,
+    index: index::Index,
 }
 
 #[derive(Clone, Debug)]
@@ -96,18 +128,6 @@ pub(crate) struct Invocation {
     pub(crate) components: Vec<Vec<usize>>,
     pub(crate) generated: Vec<Vec<usize>>,
     pub(crate) constraints: Vec<Constraint>,
-}
-
-pub(crate) fn needed(
-    analysis: &Analysis,
-    styles: &[ResolvedStyleRun],
-    boxes: &[InlineBox],
-) -> bool {
-    analysis
-        .infos
-        .iter()
-        .any(|(_, i)| styles[*i].style.letter_spacing != 0.0)
-        || boxes.iter().any(|b| b.letter_spacing() != 0.0)
 }
 
 fn supported(script: Script) -> bool {
@@ -137,27 +157,27 @@ fn cursive(script: Script) -> bool {
             | Script::Syriac
     )
 }
-fn explicit_family(tag: &str) -> Option<Vec<Script>> {
+fn explicit_family(tag: &str) -> Option<&'static [Script]> {
     Some(match tag {
-        "Latn" => vec![Script::Latin],
-        "Grek" => vec![Script::Greek],
-        "Cyrl" => vec![Script::Cyrillic],
-        "Armn" => vec![Script::Armenian],
-        "Hebr" => vec![Script::Hebrew],
-        "Hant" | "Hans" | "Hani" | "Hanb" | "Bopo" => vec![Script::Han, Script::Bopomofo],
-        "Jpan" | "Hrkt" | "Hira" | "Kana" => vec![Script::Han, Script::Hiragana, Script::Katakana],
-        "Kore" | "Hang" | "Jamo" => vec![Script::Hangul, Script::Han],
-        "Arab" => vec![Script::Arabic],
-        "Rohg" => vec![Script::HanifiRohingya],
-        "Mand" => vec![Script::Mandaic],
-        "Mong" => vec![Script::Mongolian],
-        "Nkoo" => vec![Script::Nko],
-        "Phag" => vec![Script::PhagsPa],
-        "Syrc" => vec![Script::Syriac],
+        "Latn" => &[Script::Latin],
+        "Grek" => &[Script::Greek],
+        "Cyrl" => &[Script::Cyrillic],
+        "Armn" => &[Script::Armenian],
+        "Hebr" => &[Script::Hebrew],
+        "Hant" | "Hans" | "Hani" | "Hanb" | "Bopo" => &[Script::Han, Script::Bopomofo],
+        "Jpan" | "Hrkt" | "Hira" | "Kana" => &[Script::Han, Script::Hiragana, Script::Katakana],
+        "Kore" | "Hang" | "Jamo" => &[Script::Hangul, Script::Han],
+        "Arab" => &[Script::Arabic],
+        "Rohg" => &[Script::HanifiRohingya],
+        "Mand" => &[Script::Mandaic],
+        "Mong" => &[Script::Mongolian],
+        "Nkoo" => &[Script::Nko],
+        "Phag" => &[Script::PhagsPa],
+        "Syrc" => &[Script::Syriac],
         _ => return None,
     })
 }
-fn locale_family(locale: &fontique::Language) -> Option<Vec<Script>> {
+fn locale_family(locale: &fontique::Language) -> Option<&'static [Script]> {
     let fields =
         1 + usize::from(locale.script().is_some()) + usize::from(locale.region().is_some());
     if locale.as_str().split('-').count() != fields {
@@ -182,515 +202,154 @@ fn locale_family(locale: &fontique::Language) -> Option<Vec<Script>> {
     })
 }
 
-fn operation_graphemes(
-    projection: &SourceProjection,
-    analysis: &Analysis,
-    exclusions: Option<&BTreeMap<usize, Exclusion>>,
-) -> Vec<Range<usize>> {
-    let Some(exclusions) = exclusions.filter(|e| !e.is_empty()) else {
-        return analysis.graphemes.clone();
-    };
-    // Only the completed invocation establishes transparency. Native shaping
-    // already consumed these inputs, and their source EGC custody is retained.
-    let mut components = projection.barrier_atoms.clone();
-    components.extend([0, projection.atoms.len()]);
-    components.sort_unstable();
-    components.dedup();
-    let mut scalars = projection.segmentation.chars().enumerate();
-    let mut output: Vec<Range<usize>> = Vec::new();
-    for component in components.windows(2) {
-        let mut text = String::new();
-        let mut kept = Vec::new();
-        for (atom, ch) in scalars.by_ref().take(component[1] - component[0]) {
-            if !exclusions.contains_key(&atom) {
-                kept.push((text.len(), atom));
-                text.push(ch);
-            }
-        }
-        let stops: Vec<_> = icu_segmenter::GraphemeClusterSegmenter::new()
-            .segment_str(&text)
-            .collect();
-        for pair in stops.windows(2) {
-            let first = kept.partition_point(|(byte, _)| *byte < pair[0]);
-            let end = kept.partition_point(|(byte, _)| *byte < pair[1]);
-            if first == end {
-                continue;
-            }
-            let a = kept[first].1;
-            let b = kept[end - 1].1;
-            let start = analysis.graphemes.partition_point(|g| g.end <= a);
-            let last = analysis.graphemes.partition_point(|g| g.end <= b);
-            let range = analysis.graphemes[start].start..analysis.graphemes[last].end;
-            if exclusions.range(range.clone()).next().is_some() {
-                if let Some(prior) = output.last_mut()
-                    && prior.end > range.start
-                {
-                    prior.end = prior.end.max(range.end);
-                } else {
-                    output.push(range);
-                }
-            } else {
-                for g in &analysis.graphemes[start..=last] {
-                    if output.last() != Some(g) {
-                        output.push(g.clone());
-                    }
-                }
-            }
-        }
-    }
-    output
-}
-
-pub(crate) fn build(
-    projection: &SourceProjection,
-    analysis: &Analysis,
-    styles: &[ResolvedStyleRun],
-    boxes: &[InlineBox],
-    presentation: Option<&SelectedPresentation>,
-    potential: bool,
-    exclusions: Option<&BTreeMap<usize, Exclusion>>,
-) -> Result<Graph> {
-    if !potential && !needed(analysis, styles, boxes) {
-        return Ok(Graph::default());
-    }
-    let mut units = Vec::new();
-    for atoms in &operation_graphemes(projection, analysis, exclusions) {
-        if atoms.is_empty() {
-            continue;
-        }
-        let eligible: Vec<_> = atoms
-            .clone()
-            .filter(|atom| exclusions.is_none_or(|e| !e.contains_key(atom)))
-            .collect();
-        if eligible.is_empty() {
-            continue;
-        }
-        let retained: Vec<_> = eligible
-            .iter()
-            .map(|&i| projection.atoms[i].clone())
-            .collect();
-        let slice = retained.as_slice();
-        let base = unit_properties::base(slice).expect("nonempty presentation EGC");
-        let base_index = eligible[slice
-            .iter()
-            .position(|a| std::ptr::eq(a, base))
-            .expect("EGC base")];
-        let style = &styles[analysis.infos[base_index].1].style;
-        let properties = unit_properties::properties(slice)?;
-        let scripts = properties.scripts.clone();
-        let real: Vec<_> = scripts
-            .iter()
-            .copied()
-            .filter(|s| !matches!(*s, Script::Common | Script::Inherited | Script::Unknown))
-            .collect();
-        let family = style.locale.as_ref().and_then(locale_family);
-        let unspecified = style.locale.as_ref().is_none_or(|l| l.as_str() == "und");
-        let numeric = GeneralCategoryGroup::Number.contains(properties.category);
-        let letter = GeneralCategoryGroup::Letter.contains(properties.category) || numeric;
-        let symbol = GeneralCategoryGroup::Symbol.contains(properties.category)
-            || GeneralCategoryGroup::Punctuation.contains(properties.category);
-        let source_supported = !real.is_empty() && real.iter().all(|s| supported(*s));
-        let uniform_rule =
-            !letter || real.iter().all(|s| cursive(*s)) || real.iter().all(|s| !cursive(*s));
-        let mut resolved_scripts = real.clone();
-        let mut qualified = if unspecified {
-            source_supported && uniform_rule
-                || (numeric || properties.category == GeneralCategory::SpaceSeparator)
-                    && real.is_empty()
-        } else {
-            family.is_some() && (source_supported && uniform_rule || real.is_empty())
-        };
-        let ambiguous = (letter || symbol)
-            && real.len() > 1
-            && (!source_supported || real.iter().any(|s| cursive(*s)));
-        let mut justify_qualified = qualified;
-        if ambiguous {
-            resolved_scripts = family
-                .as_ref()
-                .map(|f| real.iter().copied().filter(|s| f.contains(s)).collect())
-                .unwrap_or_default();
-            // The captured profile can exclude unrelated SCX alternatives.
-            // Several admitted noncursive scripts share the ordinary operation;
-            // cursive protection still needs one actual resolved script.
-            let coherent = !resolved_scripts.is_empty()
-                && resolved_scripts.iter().all(|s| supported(*s))
-                && (resolved_scripts.iter().all(|s| !cursive(*s)) || resolved_scripts.len() == 1);
-            justify_qualified = coherent;
-            if letter {
-                qualified = coherent;
-            } else {
-                qualified |= coherent;
-            }
-        }
-        let is_cursive =
-            letter && !resolved_scripts.is_empty() && resolved_scripts.iter().all(|s| cursive(*s));
-        let justify_cursive = is_cursive
-            || symbol
-                && !resolved_scripts.is_empty()
-                && resolved_scripts.iter().all(|s| cursive(*s));
-        let domain = presentation.and_then(|p| {
-            p.domains.iter().position(|d| {
-                p.units[d.units.clone()]
-                    .iter()
-                    .any(|u| u.atoms.contains(&base_index))
-            })
-        });
-        units.push(Unit {
-            atoms: vec![atoms.clone()],
-            atomics: Vec::new(),
-            base: Some(base_index),
-            left: style.letter_spacing,
-            right: style.letter_spacing,
-            qualified,
-            cursive: is_cursive,
-            justify_cursive,
-            justify_qualified,
-            symbol,
-            resolved_scripts,
-            context_scripts: family.unwrap_or_default(),
-            content_context: false,
-            scripts,
-            domain,
-            native_only: slice.iter().all(|a| {
-                CodePointSetData::new::<DefaultIgnorableCodePoint>().contains32(a.code_point)
-            }),
-            barrier: slice
-                .iter()
-                .any(|a| matches!(a.code_point, 9 | 10 | 13 | 0x2028 | 0x2029)),
-            level: analysis.levels[base_index],
-        });
-    }
-    for (occurrence, b) in boxes.iter().enumerate() {
-        if b.kind() == InlineBoxKind::OutOfFlow {
-            continue;
-        }
-        if presentation.is_some_and(|p| !p.units.iter().any(|u| matches!(u.kind, crate::protocol::prepared::PresentationUnitKind::Atomic { occurrence: i } if i == occurrence))) { continue; }
-        units.push(Unit {
-            atoms: Vec::new(),
-            atomics: vec![occurrence],
-            base: None,
-            left: b.letter_spacing(),
-            right: b.letter_spacing(),
-            qualified: true,
-            cursive: false,
-            justify_cursive: false,
-            justify_qualified: true,
-            symbol: false,
-            resolved_scripts: Vec::new(),
-            scripts: Vec::new(),
-            context_scripts: Vec::new(),
-            content_context: false,
-            domain: None,
-            barrier: false,
-            native_only: false,
-            level: analysis.box_levels[occurrence],
-        });
-    }
-    // Resolve Common P/S only from actual source context; declared writing-system facts remain separate.
-    for i in 0..units.len() {
-        if !units[i].symbol
-            || units[i].base.is_none()
-            || units[i]
-                .scripts
-                .iter()
-                .any(|s| !matches!(*s, Script::Common | Script::Inherited | Script::Unknown))
-        {
-            continue;
-        }
-        units[i].content_context = true;
-        let mut counts = std::collections::BTreeMap::<Script, usize>::new();
-        for other in &units {
-            if other.domain != units[i].domain {
-                continue;
-            }
-            let real: Vec<_> = other
-                .scripts
-                .iter()
-                .copied()
-                .filter(|s| !matches!(*s, Script::Common | Script::Inherited | Script::Unknown))
-                .collect();
-            if real.len() == 1 {
-                *counts.entry(real[0]).or_default() += 1;
-            }
-        }
-        let maximum = counts.values().copied().max().unwrap_or(0);
-        let dominant: Vec<_> = counts
-            .into_iter()
-            .filter_map(|(script, count)| (count == maximum).then_some(script))
-            .collect();
-        let declared = &units[i].context_scripts;
-        let mut actual = if dominant.is_empty() {
-            declared.clone()
-        } else {
-            dominant
-        };
-        if actual.len() > 1 && actual.iter().any(|s| cursive(*s)) {
-            let selected: Vec<_> = actual
-                .iter()
-                .copied()
-                .filter(|s| declared.contains(s))
-                .collect();
-            if selected.len() == 1 {
-                actual = selected;
-            }
-        }
-        let uniform = !actual.is_empty()
-            && actual.iter().all(|s| supported(*s))
-            && (actual.iter().all(|s| cursive(*s)) || actual.iter().all(|s| !cursive(*s)));
-        let actual_cursive = uniform && actual.iter().all(|s| cursive(*s));
-        let declared_uniform = declared.is_empty()
-            || declared.iter().all(|s| cursive(*s))
-            || declared.iter().all(|s| !cursive(*s));
-        let conflict = !declared.is_empty()
-            && (!declared_uniform || declared.iter().all(|s| cursive(*s)) != actual_cursive);
-        let base = units[i].base.expect("text symbol base");
-        let unspecified = styles[analysis.infos[base].1]
-            .style
-            .locale
-            .as_ref()
-            .is_none_or(|l| l.as_str() == "und");
-        units[i].qualified = uniform && (unspecified || !declared.is_empty());
-        units[i].justify_qualified =
-            units[i].qualified && !conflict && (!actual_cursive || actual.len() == 1);
-        units[i].justify_cursive = actual_cursive;
-        units[i].resolved_scripts = actual;
-    }
-    let mut selected_members = None;
-    if let Some(p) = presentation {
-        let order =
-            crate::protocol::prepared::presentation::unit_order(&p.units, &p.domains, boxes)?;
-        selected_members = Some(
-            order
-                .iter()
-                .filter_map(|&i| {
-                    let u = &p.units[i];
-                    match u.kind {
-                        crate::protocol::prepared::PresentationUnitKind::Atomic { occurrence } => {
-                            (boxes[occurrence].kind() == InlineBoxKind::InFlow)
-                                .then_some(Member::Atomic(occurrence))
-                        }
-                        _ => (!u.atoms.is_empty()).then(|| Member::Text(u.atoms.clone())),
-                    }
-                })
-                .collect::<Vec<_>>(),
-        );
-        let mut rank = vec![0; p.units.len()];
-        for (i, unit) in order.into_iter().enumerate() {
-            rank[unit] = i;
-        }
-        units.sort_by_key(|u| {
-            let index = p.units.iter().position(|p| if let Some(base) = u.base { p.atoms.contains(&base) } else { matches!(p.kind, crate::protocol::prepared::PresentationUnitKind::Atomic { occurrence } if u.atomics.contains(&occurrence)) }).expect("selected unit retains source custody");
-            let sub = u.base.unwrap_or(0);
-            (rank[index], if p.units[index].line_level & 1 == 0 { sub } else { usize::MAX - sub })
-        });
-    } else {
-        units.sort_by_key(|u| {
-            if let Some(base) = u.base {
-                (projection.atoms[base].source.start, 1)
-            } else {
-                (boxes[u.atomics[0]].index(), 0)
-            }
-        });
-        let mut reordered = Vec::with_capacity(units.len());
-        let mut start = 0;
-        for end in (0..units.len())
-            .filter(|&i| units[i].barrier)
-            .chain(std::iter::once(units.len()))
-        {
-            let participants = units[start..end]
-                .iter()
-                .map(|u| {
-                    crate::BidiLevel::try_new(u.level)
-                        .map(|level| crate::SuppliedInlineParticipant::Boundary { level })
-                })
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(|_| {
-                    crate::Error::new(crate::ErrorCode::LayoutFailed, "character unit level")
-                })?;
-            let mut order = vec![0; participants.len()];
-            crate::SuppliedLine::new(&participants)
-                .reorder_into(&mut order)
-                .map_err(|_| {
-                    crate::Error::new(crate::ErrorCode::LayoutFailed, "character unit order")
-                })?;
-            reordered.extend(order.into_iter().map(|i| units[start + i].clone()));
-            if end < units.len() {
-                reordered.push(units[end].clone());
-            }
-            start = end.saturating_add(1);
-        }
-        units = reordered;
-    }
-    let mut grouped: Vec<Unit> = Vec::new();
-    for unit in units {
-        if !unit.atomics.is_empty()
-            && let Some(prior) = grouped.last_mut()
-            && !prior.atomics.is_empty()
-        {
-            prior.right = unit.right;
-            prior.atomics.extend(unit.atomics);
-            continue;
-        }
-        grouped.push(unit);
-    }
-    let mut boundaries = Vec::new();
-    for i in 1..grouped.len() {
-        if grouped[i - 1].barrier || grouped[i].barrier {
-            continue;
-        }
-        let same_script = grouped[i - 1].resolved_scripts.len() == 1
-            && grouped[i].resolved_scripts.len() == 1
-            && grouped[i - 1].resolved_scripts == grouped[i].resolved_scripts;
-        let protected = same_script && grouped[i - 1].cursive && grouped[i].cursive;
-        let justify_protected =
-            same_script && grouped[i - 1].justify_cursive && grouped[i].justify_cursive;
-        let a = grouped[i - 1].right;
-        let b = grouped[i].left;
-        let authored = if protected || a == -b {
-            0.0
-        } else {
-            a.midpoint(b)
-        };
-        let mean_lost = !protected && a != -b && authored == 0.0;
-        boundaries.push(Boundary {
-            before: i - 1,
-            after: i,
-            authored,
-            mean_lost,
-            geometry: if justify_protected {
-                SpacingBoundaryGeometry::ProtectedCursive
-            } else {
-                SpacingBoundaryGeometry::Independent
-            },
-        });
-    }
-    let mut graph = Graph {
-        units: grouped,
-        boundaries,
-        potential,
-        regions: Vec::new(),
-    };
-    if let Some(members) = selected_members {
-        graph.regions = graph.find_regions(&members);
-    }
-    Ok(graph)
-}
+pub(crate) use construction::build;
 
 /// The resolver owns which units depend on domain content. The caller proves
 /// source contributions invariant; an absent proof is conditional, not a new
 /// script winner. Counts and actual resolution remain solely in the rule above.
-fn conditional_context_consumers(units: &[Unit], contributions_invariant: &[bool]) -> Vec<usize> {
-    let affected: std::collections::BTreeSet<_> = units
-        .iter()
-        .enumerate()
-        .filter(|(i, unit)| {
-            unit.base.is_some() && !contributions_invariant.get(*i).copied().unwrap_or(false)
-        })
-        .map(|(_, unit)| unit.domain)
-        .collect();
-    units
-        .iter()
-        .enumerate()
-        .filter_map(|(i, unit)| {
-            (unit.content_context && affected.contains(&unit.domain)).then_some(i)
-        })
-        .collect()
+fn conditional_context_consumers(
+    units: &[Unit],
+    contributions_invariant: &[bool],
+    ledger: &mut Ledger,
+) -> Result<Vec<usize>> {
+    let mut affected = Vec::new();
+    for (i, unit) in units.iter().enumerate() {
+        account::work(ledger, 1)?;
+        if unit.base.is_some() && !contributions_invariant.get(i).copied().unwrap_or(false) {
+            let mut found = false;
+            for domain in &affected {
+                account::work(ledger, 1)?;
+                if *domain == unit.domain {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                account::push(ledger, &mut affected, unit.domain)?;
+            }
+        }
+    }
+    let mut output = Vec::new();
+    for (i, unit) in units.iter().enumerate() {
+        account::work(ledger, 1)?;
+        if unit.content_context {
+            for domain in &affected {
+                account::work(ledger, 1)?;
+                if *domain == unit.domain {
+                    account::push(ledger, &mut output, i)?;
+                    break;
+                }
+            }
+        }
+    }
+    account::drop_vec(ledger, affected)?;
+    Ok(output)
 }
 
 impl Graph {
-    pub(crate) fn demand(&self) -> bool {
-        self.boundaries.iter().any(|b| {
-            (b.authored != 0.0 || b.mean_lost)
+    pub(crate) fn demand(&self, ledger: &mut Ledger) -> Result<bool> {
+        for b in &self.boundaries {
+            account::work(ledger, 1)?;
+            if b.authored != 0.0
+                || b.mean_lost
                 || self.potential && b.geometry != SpacingBoundaryGeometry::ProtectedCursive
-        })
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
-    pub(crate) fn owner(&self, shaped: &ShapedData, unit: usize, order: &[usize]) -> Option<Owner> {
-        order
-            .iter()
-            .rev()
-            .find_map(|&ordinal| match shaped.items[ordinal] {
-                ShapedItem::TextCluster(i)
-                    if !shaped
-                        .character_exclusions
-                        .contains_key(&shaped.clusters[i].atoms.start)
-                        && self.units[unit]
-                            .atoms
-                            .iter()
-                            .any(|r| r.contains(&shaped.clusters[i].atoms.start)) =>
-                {
-                    Some(Owner::Cluster(i))
-                }
-                ShapedItem::InlineBox { occurrence, .. }
-                    if self.units[unit].atomics.contains(&occurrence) =>
-                {
-                    Some(Owner::Atomic(occurrence))
-                }
-                _ => None,
-            })
-    }
-    fn crosses(&self, edge: usize, members: &[usize]) -> bool {
-        let side = |component| {
-            self.units
-                .iter()
-                .position(|u| u.atoms.iter().any(|a| a.contains(&component)))
-                .map(|i| i <= self.boundaries[edge].before)
-        };
-        members.iter().any(|&i| side(i) == Some(true))
-            && members.iter().any(|&i| side(i) == Some(false))
-    }
-    fn touches(&self, edge: usize, invocation: &Invocation) -> bool {
-        let boundary = &self.boundaries[edge];
-        [boundary.before, boundary.after].iter().any(|&u| {
-            self.units[u]
-                .atoms
-                .iter()
-                .any(|a| a.start < invocation.atoms.end && a.end > invocation.atoms.start)
-        })
+    pub(crate) fn owners(
+        &self,
+        shaped: &ShapedData,
+        order: &[usize],
+        ledger: &mut Ledger,
+    ) -> Result<Vec<Option<Owner>>> {
+        self.index.owners(shaped, order, self.units.len(), ledger)
     }
     pub(crate) fn geometry(
         &self,
         edge: usize,
         invocations: &[Invocation],
-    ) -> SpacingBoundaryGeometry {
-        let movement = self.movement_geometry(edge, invocations);
-        if movement == SpacingBoundaryGeometry::ProtectedRequired {
+        ledger: &mut Ledger,
+    ) -> Result<SpacingBoundaryGeometry> {
+        let movement = self.movement_geometry(edge, invocations, ledger)?;
+        Ok(if movement == SpacingBoundaryGeometry::ProtectedRequired {
             movement
         } else if self.boundaries[edge].geometry == SpacingBoundaryGeometry::ProtectedCursive {
             SpacingBoundaryGeometry::ProtectedCursive
         } else {
             movement
+        })
+    }
+    fn crosses_accounted(
+        &self,
+        edge: usize,
+        members: &[usize],
+        ledger: &mut Ledger,
+    ) -> Result<bool> {
+        let mut before = false;
+        let mut after = false;
+        for &component in members {
+            account::work(ledger, 1)?;
+            if let Some(unit) = self.index.atom(component, ledger)? {
+                before |= unit <= self.boundaries[edge].before;
+                after |= unit > self.boundaries[edge].before;
+            }
         }
+        Ok(before && after)
+    }
+    fn touches_accounted(
+        &self,
+        edge: usize,
+        invocation: &Invocation,
+        ledger: &mut Ledger,
+    ) -> Result<bool> {
+        let b = &self.boundaries[edge];
+        for u in [b.before, b.after] {
+            for a in &self.units[u].atoms {
+                account::work(ledger, 1)?;
+                if a.start < invocation.atoms.end && a.end > invocation.atoms.start {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
     }
     pub(crate) fn movement_geometry(
         &self,
         edge: usize,
         invocations: &[Invocation],
-    ) -> SpacingBoundaryGeometry {
+        ledger: &mut Ledger,
+    ) -> Result<SpacingBoundaryGeometry> {
         let mut constrained = false;
         for invocation in invocations {
-            if !invocation.complete && self.touches(edge, invocation) {
+            account::work(ledger, 1)?;
+            if !invocation.complete && self.touches_accounted(edge, invocation, ledger)? {
                 constrained = true;
             }
             for relation in &invocation.constraints {
-                if self.crosses(edge, &relation.components) {
+                account::work(ledger, 1)?;
+                if self.crosses_accounted(edge, &relation.components, ledger)? {
                     if relation.required && relation.kind == crate::SpacingConstraintKind::Ligature
                     {
-                        return SpacingBoundaryGeometry::ProtectedRequired;
+                        return Ok(SpacingBoundaryGeometry::ProtectedRequired);
                     }
                     constrained = true;
                 }
             }
             for components in invocation.components.iter().chain(&invocation.generated) {
-                if self.crosses(edge, components) {
+                account::work(ledger, 1)?;
+                if self.crosses_accounted(edge, components, ledger)? {
                     constrained = true;
                 }
             }
         }
-        if constrained {
+        Ok(if constrained {
             SpacingBoundaryGeometry::Constrained
         } else {
             SpacingBoundaryGeometry::Independent
-        }
+        })
     }
 }
 
@@ -698,6 +357,22 @@ impl Graph {
 pub(crate) enum Owner {
     Cluster(usize),
     Atomic(usize),
+    Cell(usize),
+}
+
+struct DiagnosticContext {
+    pieces: Vec<crate::SpacingPiece>,
+    locale: Option<String>,
+}
+// Failure diagnostics are Native-owned, outside ScopeAlignmentLimits payload.
+fn cell_context(
+    analyzed: &crate::engine::AnalyzedData,
+    binding: usize,
+) -> Result<DiagnosticContext> {
+    let input = Input::original(analyzed, &[], 1.0);
+    let pieces = input.cell_pieces(binding, &mut None)?;
+    let locale = input.cell_locale(binding, &mut None)?;
+    Ok(DiagnosticContext { pieces, locale })
 }
 
 pub(crate) fn failure(
@@ -713,29 +388,7 @@ pub(crate) fn failure(
         invocations,
         crate::SpacingStage::SelectedShaping,
         operation,
-        |unit| {
-            let mut pieces = Vec::new();
-            for atoms in &unit.atoms {
-                pieces.extend(
-                    super::slot_pieces(input.prepared, input.presentation, atoms.clone())
-                        .into_iter()
-                        .map(|p| p.owner),
-                );
-            }
-            pieces.extend(
-                unit.atomics
-                    .iter()
-                    .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
-            );
-            pieces
-        },
-        |base| {
-            input.prepared.styles[input.presentation.analysis.infos[base].1]
-                .style
-                .locale
-                .as_ref()
-                .map(|l| l.as_str().to_owned())
-        },
+        |unit| DiagnosticSource::Selected(input).context(unit),
     )
 }
 
@@ -745,77 +398,83 @@ fn diagnostic(
     invocations: &[Invocation],
     stage: crate::SpacingStage,
     operation: crate::SpacingOperation,
-    content: impl Fn(&Unit) -> Vec<crate::SpacingPiece>,
-    locale: impl Fn(usize) -> Option<String>,
+    mut context: impl FnMut(&Unit) -> Result<DiagnosticContext>,
 ) -> crate::Error {
-    let boundary = &graph.boundaries[edge];
-    let mut pieces = Vec::new();
-    let mut contexts = Vec::new();
-    for index in [boundary.before, boundary.after] {
-        let unit = &graph.units[index];
-        let own = content(unit);
-        pieces.extend(own.iter().copied());
-        contexts.push(unit_context(unit, own, unit.base.and_then(&locale)));
-    }
-    let mut constraints: Vec<_> = invocations
-        .iter()
-        .flat_map(|i| &i.constraints)
-        .filter(|c| graph.crosses(edge, &c.components))
-        .map(|c| crate::SpacingConstraint {
-            kind: c.kind.clone(),
-            run: c.run,
-            components: c.components.iter().map(|&a| a..a + 1).collect(),
-            provenance: c.provenance.clone().into_boxed_slice(),
-        })
-        .collect();
-    for invocation in invocations.iter().filter(|i| graph.touches(edge, i)) {
-        if let Some(path) = invocation.path {
-            constraints.push(crate::SpacingConstraint {
-                kind: crate::SpacingConstraintKind::UnqualifiedProviderPath(path),
-                run: invocation.run,
-                components: vec![invocation.atoms.clone()].into_boxed_slice(),
-                provenance: Box::new([]),
-            });
+    let build = (|| -> Result<crate::Error> {
+        let boundary = &graph.boundaries[edge];
+        let mut pieces = Vec::new();
+        let mut contexts = Vec::new();
+        let mut providers = Vec::new();
+        for index in [boundary.before, boundary.after] {
+            let unit = &graph.units[index];
+            let own = context(unit)?;
+            pieces.extend(own.pieces.iter().copied());
+            contexts.push(unit_context(unit, own.pieces, own.locale));
+            providers.extend(unit.atoms.iter().cloned());
         }
+        let mut constraints = Vec::new();
+        let mut incomplete = false;
+        let mut optional = false;
+        let mut external = false;
+        for invocation in invocations {
+            incomplete |=
+                !invocation.complete && graph.touches_accounted(edge, invocation, &mut None)?;
+            for relation in &invocation.constraints {
+                if graph.crosses_accounted(edge, &relation.components, &mut None)? {
+                    optional |= !relation.required
+                        && relation.kind == crate::SpacingConstraintKind::Ligature;
+                    external |= matches!(
+                        relation.kind,
+                        crate::SpacingConstraintKind::ExternalJoiningContext { .. }
+                    );
+                    constraints.push(crate::SpacingConstraint {
+                        kind: relation.kind.clone(),
+                        run: relation.run,
+                        components: relation.components.iter().map(|&a| a..a + 1).collect(),
+                        provenance: relation.provenance.clone().into_boxed_slice(),
+                    });
+                }
+            }
+        }
+        // Preserve canonical relation-first diagnostic ordering.
+        for invocation in invocations {
+            if graph.touches_accounted(edge, invocation, &mut None)?
+                && let Some(path) = invocation.path
+            {
+                constraints.push(crate::SpacingConstraint {
+                    kind: crate::SpacingConstraintKind::UnqualifiedProviderPath(path),
+                    run: invocation.run,
+                    components: vec![invocation.atoms.clone()].into_boxed_slice(),
+                    provenance: Box::new([]),
+                });
+            }
+        }
+        let reason = if !qualified(graph, edge) {
+            SpacingFailureReason::UnqualifiedWritingSystem
+        } else if incomplete || external {
+            SpacingFailureReason::UnqualifiedProviderPath
+        } else if optional {
+            SpacingFailureReason::PreservedOptionalLigature
+        } else {
+            SpacingFailureReason::CrossUnitConstraint
+        };
+        Ok(crate::Error::new(
+            crate::ErrorCode::LayoutFailed,
+            "material character spacing cannot preserve this boundary",
+        )
+        .with_detail(crate::ErrorDetail::UnsupportedSpacing {
+            stage,
+            operation,
+            pieces: pieces.into_boxed_slice(),
+            provider_atoms: providers.into_boxed_slice(),
+            reason,
+            contexts: contexts.into_boxed_slice(),
+            constraints: constraints.into_boxed_slice(),
+        }))
+    })();
+    match build {
+        Ok(error) | Err(error) => error,
     }
-    let reason = if !qualified(graph, edge) {
-        SpacingFailureReason::UnqualifiedWritingSystem
-    } else if invocations
-        .iter()
-        .any(|i| !i.complete && graph.touches(edge, i))
-        || constraints.iter().any(|c| {
-            matches!(
-                c.kind,
-                crate::SpacingConstraintKind::ExternalJoiningContext { .. }
-            )
-        })
-    {
-        SpacingFailureReason::UnqualifiedProviderPath
-    } else if invocations.iter().flat_map(|i| &i.constraints).any(|c| {
-        graph.crosses(edge, &c.components)
-            && !c.required
-            && c.kind == crate::SpacingConstraintKind::Ligature
-    }) {
-        SpacingFailureReason::PreservedOptionalLigature
-    } else {
-        SpacingFailureReason::CrossUnitConstraint
-    };
-    crate::Error::new(
-        crate::ErrorCode::LayoutFailed,
-        "material character spacing cannot preserve this boundary",
-    )
-    .with_detail(crate::ErrorDetail::UnsupportedSpacing {
-        stage,
-        operation,
-        pieces: pieces.into_boxed_slice(),
-        provider_atoms: [boundary.before, boundary.after]
-            .into_iter()
-            .flat_map(|u| graph.units[u].atoms.clone())
-            .collect(),
-        reason,
-        contexts: contexts.into_boxed_slice(),
-        constraints: constraints.into_boxed_slice(),
-    })
 }
 
 pub(crate) fn qualified(graph: &Graph, edge: usize) -> bool {
@@ -827,62 +486,43 @@ pub(crate) fn original(
     analyzed: &super::super::AnalyzedData,
     graph: &Graph,
     shaped: &mut ShapedData,
+    ledger: &mut Ledger,
 ) -> Result<()> {
+    let mut native = None;
+    let ledger = if graph.ownership != GraphOwnership::Native {
+        storage::require_ledger(ledger)?;
+        ledger
+    } else {
+        &mut native
+    };
     if graph.units.is_empty() {
         return Ok(());
     }
-    let members = original_members(shaped)?;
-    let regions = graph.find_regions(&members);
+    let members = original_members(shaped, ledger)?;
+    let mut regions = graph.find_regions_accounted(&members, ledger)?;
     for region in &regions {
-        if graph.region_material(region) {
+        if graph.region_material(region, ledger)? {
             return Err(original_region_error(analyzed, graph, region));
         }
     }
-    if let Some(unit) = graph
-        .units
-        .iter()
-        .enumerate()
-        .find(|(i, u)| unqualified_unit(u) && unit_material(graph, *i))
-        .map(|(_, u)| u)
-    {
-        return Err(original_unit_error(analyzed, unit));
+    for (i, unit) in graph.units.iter().enumerate() {
+        account::work(ledger, 1)?;
+        if unqualified_unit(unit) && unit_material(graph, i, ledger)? {
+            return Err(original_unit_error(analyzed, unit));
+        }
     }
-    if !graph.demand() {
+    if !graph.demand(ledger)? {
+        drop_regions(regions, ledger)?;
+        account::drop_vec(ledger, members)?;
         return Ok(());
     }
-    let order: Vec<_> = graph
-        .units
-        .iter()
-        .flat_map(|unit| {
-            let mut members: Vec<_> = shaped
-                .items
-                .iter()
-                .enumerate()
-                .filter_map(|(i, item)| match *item {
-                    ShapedItem::TextCluster(c)
-                        if unit
-                            .atoms
-                            .iter()
-                            .any(|a| a.contains(&shaped.clusters[c].atoms.start)) =>
-                    {
-                        Some(i)
-                    }
-                    ShapedItem::InlineBox { occurrence, .. }
-                        if unit.atomics.contains(&occurrence) =>
-                    {
-                        Some(i)
-                    }
-                    _ => None,
-                })
-                .collect();
-            if unit.level & 1 != 0 {
-                members.reverse();
-            }
-            members
-        })
-        .collect();
+    if graph.ownership != GraphOwnership::Native {
+        storage::fund_gaps(shaped, ledger)?;
+    }
+    let order = graph.index.original_order(shaped, &graph.units, ledger)?;
+    let owners = graph.owners(shaped, &order, ledger)?;
     for (edge, boundary) in graph.boundaries.iter().enumerate() {
-        let geometry = graph.movement_geometry(edge, &shaped.character_invocations);
+        let geometry = graph.movement_geometry(edge, &shaped.character_invocations, ledger)?;
         if matches!(geometry, SpacingBoundaryGeometry::ProtectedRequired) {
             continue;
         }
@@ -905,10 +545,14 @@ pub(crate) fn original(
                 crate::SpacingStage::Preparation,
                 crate::SpacingOperation::AuthoredTracking,
                 |unit| {
+                    if let Subject::Cell(binding) = unit.subject {
+                        return cell_context(analyzed, binding);
+                    }
                     let mut pieces = Vec::new();
                     for atoms in &unit.atoms {
                         for atom in atoms.clone() {
-                            super::original_pieces(analyzed, atom, &mut pieces);
+                            super::original_pieces(analyzed, atom, &mut pieces, &mut None)
+                                .expect("Native source-piece collection has no scope admission");
                         }
                     }
                     pieces.extend(
@@ -916,60 +560,68 @@ pub(crate) fn original(
                             .iter()
                             .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
                     );
-                    pieces
-                },
-                |base| {
-                    analyzed.styles[analyzed.analysis.infos[base].1]
-                        .style
-                        .locale_tag()
-                        .map(str::to_owned)
+                    let locale = unit.base.and_then(|base| {
+                        analyzed.styles[analyzed.analysis.infos[base].1]
+                            .style
+                            .locale_tag()
+                            .map(str::to_owned)
+                    });
+                    Ok(DiagnosticContext { pieces, locale })
                 },
             ));
         }
-        if let Some(owner) = graph.owner(shaped, boundary.before, &order) {
-            if regions
-                .iter()
-                .any(|region| splits_region(&members, region, owner, shaped))
-            {
-                return Err(original_region_error(
-                    analyzed,
-                    graph,
-                    regions
-                        .iter()
-                        .find(|region| splits_region(&members, region, owner, shaped))
-                        .expect("actual split"),
-                ));
+        if let Some(owner) = owners[boundary.before] {
+            for region in &regions {
+                account::work(ledger, 1)?;
+                if splits_region(&members, region, owner, shaped, ledger)? {
+                    return Err(original_region_error(analyzed, graph, region));
+                }
             }
-            apply_gap(
+            apply_gap_accounted(
                 shaped,
                 owner,
                 TextNumericPhase::Shaping,
                 boundary.authored,
                 0.0,
+                ledger,
             )?;
         }
     }
+    for region in &mut regions {
+        account::drop_vec(ledger, std::mem::take(&mut region.units))?;
+        account::drop_vec(ledger, std::mem::take(&mut region.members))?;
+    }
+    account::drop_vec(ledger, regions)?;
+    account::drop_vec(ledger, members)?;
+    account::drop_vec(ledger, order)?;
+    account::drop_vec(ledger, owners)?;
     Ok(())
 }
 
-fn apply_gap(
+fn apply_gap_accounted(
     shaped: &mut ShapedData,
     owner: Owner,
     phase: TextNumericPhase,
     authored: f64,
     allocation: f64,
+    ledger: &mut Ledger,
 ) -> Result<()> {
     let gap = super::super::layout::add("character spacing total", phase, authored, allocation)?;
     let base = match owner {
         Owner::Cluster(i) => shaped.clusters[i].advance,
         Owner::Atomic(_) => 0.0,
+        Owner::Cell(i) => shaped.cells[i].advance,
     };
-    shaped.character_gaps.push(Gap {
-        owner,
-        base,
-        amount: gap,
-        allocation,
-    });
+    account::push(
+        ledger,
+        &mut shaped.character_gaps,
+        Gap {
+            owner,
+            base,
+            amount: gap,
+            allocation,
+        },
+    )?;
     match owner {
         Owner::Cluster(i) => {
             let cluster = &mut shaped.clusters[i];
@@ -981,7 +633,15 @@ fn apply_gap(
             }
         }
         Owner::Atomic(i) => {
-            shaped.atomic_gaps.insert(i, gap);
+            account::insert(ledger, &mut shaped.atomic_gaps, i, gap)?;
+        }
+        Owner::Cell(i) => {
+            shaped.cells[i].advance = super::super::layout::add(
+                "combined character cell advance",
+                phase,
+                shaped.cells[i].advance,
+                gap,
+            )?;
         }
     }
     Ok(())
@@ -1005,32 +665,42 @@ pub(crate) fn discarded(
     edge: usize,
     shaped: &ShapedData,
     dispositions: &[crate::SpacingSlotDisposition],
-) -> bool {
+    ledger: &mut Ledger,
+) -> Result<bool> {
     let boundary = &graph.boundaries[edge];
-    [boundary.before, boundary.after].into_iter().any(|u| {
-        shaped.clusters.iter().enumerate().any(|(i, c)| {
-            graph.units[u]
-                .atoms
-                .iter()
-                .any(|a| a.contains(&c.atoms.start))
-                && dispositions[i] == crate::SpacingSlotDisposition::DiscardedAtLineEdge
-        })
-    })
+    for u in [boundary.before, boundary.after] {
+        for (i, c) in shaped.clusters.iter().enumerate() {
+            account::work(ledger, 1)?;
+            for a in &graph.units[u].atoms {
+                account::work(ledger, 1)?;
+                if a.contains(&c.atoms.start)
+                    && dispositions[i] == crate::SpacingSlotDisposition::DiscardedAtLineEdge
+                {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    Ok(false)
 }
 
-pub(crate) fn apply_selected(
+pub(crate) fn apply_selected_accounted(
     selected: PresentationInput<'_>,
     graph: &Graph,
     shaped: &mut ShapedData,
     order: &[usize],
     dispositions: &[crate::SpacingSlotDisposition],
     allocations: Option<&[f64]>,
+    ledger: &mut Ledger,
 ) -> Result<()> {
     if graph.units.is_empty() {
         return Ok(());
     }
+    if graph.ownership != GraphOwnership::Native {
+        storage::fund_gaps(shaped, ledger)?;
+    }
     for region in &graph.regions {
-        if graph.region_material(region) {
+        if graph.region_material(region, ledger)? {
             return Err(region_error(
                 selected,
                 graph,
@@ -1040,37 +710,40 @@ pub(crate) fn apply_selected(
             ));
         }
     }
-    if let Some(unit) = graph
-        .units
-        .iter()
-        .enumerate()
-        .find(|(i, u)| unqualified_unit(u) && unit_material(graph, *i))
-        .map(|(_, u)| u)
-    {
-        return Err(unit_error(
-            selected,
-            unit,
-            crate::SpacingStage::SelectedShaping,
-            crate::SpacingOperation::AuthoredTracking,
-        ));
+    for (i, unit) in graph.units.iter().enumerate() {
+        account::work(ledger, 1)?;
+        if unqualified_unit(unit) && unit_material(graph, i, ledger)? {
+            return Err(unit_error(
+                selected,
+                unit,
+                crate::SpacingStage::SelectedShaping,
+                crate::SpacingOperation::AuthoredTracking,
+            ));
+        }
     }
-    if !graph.demand() && allocations.is_none() {
+    if !graph.demand(ledger)? && allocations.is_none() {
         return Ok(());
     }
-    let members: Vec<_> = order
-        .iter()
-        .filter_map(|&i| match shaped.items[i] {
+    let owners = graph.owners(shaped, order, ledger)?;
+    let mut members = Vec::new();
+    for &i in order {
+        account::work(ledger, 1)?;
+        let member = match shaped.items[i] {
             ShapedItem::TextCluster(c) => Some(Member::Text(shaped.clusters[c].atoms.clone())),
             ShapedItem::InlineBox { occurrence, .. } => Some(Member::Atomic(occurrence)),
+            ShapedItem::Cell(cell) => Some(Member::Cell(shaped.cells[cell].binding)),
             _ => None,
-        })
-        .collect();
-    let regions = graph.find_regions(&members);
+        };
+        if let Some(member) = member {
+            account::push(ledger, &mut members, member)?;
+        }
+    }
+    let mut regions = graph.find_regions_accounted(&members, ledger)?;
     for (edge, boundary) in graph.boundaries.iter().enumerate() {
-        if discarded(graph, edge, shaped, dispositions) {
+        if discarded(graph, edge, shaped, dispositions, ledger)? {
             continue;
         }
-        let geometry = graph.geometry(edge, &shaped.character_invocations);
+        let geometry = graph.geometry(edge, &shaped.character_invocations, ledger)?;
         let allocation = allocations.map_or(0.0, |a| a[edge]);
         if matches!(
             geometry,
@@ -1101,7 +774,7 @@ pub(crate) fn apply_selected(
         )?;
         if material != 0.0
             && (!qualified(graph, edge)
-                || graph.movement_geometry(edge, &shaped.character_invocations)
+                || graph.movement_geometry(edge, &shaped.character_invocations, ledger)?
                     == SpacingBoundaryGeometry::Constrained)
         {
             return Err(failure(
@@ -1116,33 +789,42 @@ pub(crate) fn apply_selected(
                 &shaped.character_invocations,
             ));
         }
-        if let Some(owner) = graph.owner(shaped, boundary.before, order) {
-            if material != 0.0
-                && let Some(region) = regions
-                    .iter()
-                    .find(|region| splits_region(&members, region, owner, shaped))
-            {
-                return Err(region_error(
-                    selected,
-                    graph,
-                    region,
-                    crate::SpacingStage::SelectedShaping,
-                    if allocation == 0.0 {
-                        crate::SpacingOperation::AuthoredTracking
-                    } else {
-                        crate::SpacingOperation::InterCharacterAllocation
-                    },
-                ));
+        if let Some(owner) = owners[boundary.before] {
+            if material != 0.0 {
+                for region in &regions {
+                    account::work(ledger, 1)?;
+                    if splits_region(&members, region, owner, shaped, ledger)? {
+                        return Err(region_error(
+                            selected,
+                            graph,
+                            region,
+                            crate::SpacingStage::SelectedShaping,
+                            if allocation == 0.0 {
+                                crate::SpacingOperation::AuthoredTracking
+                            } else {
+                                crate::SpacingOperation::InterCharacterAllocation
+                            },
+                        ));
+                    }
+                }
             }
-            apply_gap(
+            apply_gap_accounted(
                 shaped,
                 owner,
                 TextNumericPhase::Finalization,
                 boundary.authored,
                 allocation,
+                ledger,
             )?;
         }
     }
+    for region in &mut regions {
+        account::drop_vec(ledger, std::mem::take(&mut region.units))?;
+        account::drop_vec(ledger, std::mem::take(&mut region.members))?;
+    }
+    account::drop_vec(ledger, regions)?;
+    account::drop_vec(ledger, members)?;
+    account::drop_vec(ledger, owners)?;
     Ok(())
 }
 
@@ -1156,6 +838,9 @@ pub(crate) struct Gap {
 
 pub(crate) fn restore(shaped: &mut ShapedData) {
     for gap in &shaped.character_gaps {
+        if let Owner::Cell(i) = gap.owner {
+            shaped.cells[i].advance = gap.base;
+        }
         if let Owner::Cluster(i) = gap.owner {
             shaped.clusters[i].advance = gap.base;
             shaped.clusters[i].logical_adjustments[0] = 0.0;
@@ -1172,6 +857,32 @@ pub(crate) fn restore(shaped: &mut ShapedData) {
 enum Member {
     Text(Range<usize>),
     Atomic(usize),
+    Cell(usize),
+}
+
+fn member_matches(unit: &Unit, member: &Member, ledger: &mut Ledger) -> Result<bool> {
+    account::work(ledger, 1)?;
+    match member {
+        Member::Text(atoms) => {
+            for range in &unit.atoms {
+                account::work(ledger, 1)?;
+                if range.start < atoms.end && range.end > atoms.start {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Member::Atomic(i) => {
+            for occurrence in &unit.atomics {
+                account::work(ledger, 1)?;
+                if occurrence == i {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Member::Cell(binding) => Ok(unit.subject == Subject::Cell(*binding)),
+    }
 }
 #[derive(Clone, Debug)]
 struct Region {
@@ -1181,109 +892,140 @@ struct Region {
     members: Vec<Member>,
 }
 
+fn drop_regions(mut regions: Vec<Region>, ledger: &mut Ledger) -> Result<()> {
+    for region in &mut regions {
+        account::drop_vec(ledger, std::mem::take(&mut region.units))?;
+        account::drop_vec(ledger, std::mem::take(&mut region.members))?;
+    }
+    account::drop_vec(ledger, regions)
+}
+
 impl Graph {
-    fn find_regions(&self, members: &[Member]) -> Vec<Region> {
+    fn find_regions_accounted(
+        &self,
+        members: &[Member],
+        ledger: &mut Ledger,
+    ) -> Result<Vec<Region>> {
         let mut regions = Vec::new();
-        for unit in self.units.iter().filter(|u| !u.atoms.is_empty()) {
-            let positions: Vec<_> = members
-                .iter()
-                .enumerate()
-                .filter_map(|(i, m)| match m {
-                    Member::Text(atoms)
-                        if unit
-                            .atoms
-                            .iter()
-                            .any(|a| a.start < atoms.end && a.end > atoms.start) =>
-                    {
-                        Some(i)
-                    }
-                    _ => None,
-                })
-                .collect();
-            let (Some(&first), Some(&last)) = (positions.first(), positions.last()) else {
+        for unit in &self.units {
+            account::work(ledger, 1)?;
+            if unit.subject != Subject::Text {
+                continue;
+            }
+            let mut first = None;
+            let mut last = None;
+            for (i, member) in members.iter().enumerate() {
+                if member_matches(unit, member, ledger)? {
+                    first.get_or_insert(i);
+                    last = Some(i);
+                }
+            }
+            let (Some(first), Some(last)) = (first, last) else {
                 continue;
             };
-            if !members[first..=last].iter().any(|m| matches!(m, Member::Atomic(i) if self.units.iter().any(|u| u.atomics.contains(i)))) { continue; }
-            let units = self
-                .units
-                .iter()
-                .enumerate()
-                .filter_map(|(i, u)| {
-                    members[first..=last]
-                        .iter()
-                        .any(|m| match m {
-                            Member::Text(atoms) => u
-                                .atoms
-                                .iter()
-                                .any(|a| a.start < atoms.end && a.end > atoms.start),
-                            Member::Atomic(occurrence) => u.atomics.contains(occurrence),
-                        })
-                        .then_some(i)
-                })
-                .collect();
-            regions.push(Region {
-                first,
-                last,
-                units,
-                members: members[first..=last].to_vec(),
-            });
+            let mut interleaved = false;
+            for member in &members[first..=last] {
+                account::work(ledger, 1)?;
+                if !matches!(member, Member::Text(_)) {
+                    for unit in &self.units {
+                        if member_matches(unit, member, ledger)? {
+                            interleaved = true;
+                            break;
+                        }
+                    }
+                }
+                if interleaved {
+                    break;
+                }
+            }
+            if !interleaved {
+                continue;
+            }
+            let mut owned = Vec::new();
+            for (i, unit) in self.units.iter().enumerate() {
+                for member in &members[first..=last] {
+                    if member_matches(unit, member, ledger)? {
+                        account::push(ledger, &mut owned, i)?;
+                        break;
+                    }
+                }
+            }
+            let members = account::clone_vec(ledger, &members[first..=last])?;
+            account::push(
+                ledger,
+                &mut regions,
+                Region {
+                    first,
+                    last,
+                    units: owned,
+                    members,
+                },
+            )?;
         }
-        regions
+        Ok(regions)
     }
-    fn region_material(&self, region: &Region) -> bool {
-        region
-            .units
-            .iter()
-            .any(|&i| self.units[i].left != 0.0 || self.units[i].right != 0.0)
+    fn region_material(&self, region: &Region, ledger: &mut Ledger) -> Result<bool> {
+        for &i in &region.units {
+            account::work(ledger, 1)?;
+            if self.units[i].left != 0.0 || self.units[i].right != 0.0 {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }
 
-fn original_members(shaped: &ShapedData) -> Result<Vec<Member>> {
-    let participants = shaped
-        .items
-        .iter()
-        .map(|item| {
-            let level = match *item {
-                ShapedItem::TextCluster(i) => shaped.clusters[i].level,
-                ShapedItem::InlineBox { level, .. } => level,
-                ShapedItem::Anchor { .. } => 0,
-            };
-            crate::BidiLevel::try_new(level)
-                .map(|level| crate::SuppliedInlineParticipant::Boundary { level })
-                .map_err(|_| {
-                    crate::Error::new(
-                        crate::ErrorCode::LayoutFailed,
-                        "original mixed spacing level",
-                    )
-                })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let mut order = vec![0; participants.len()];
-    crate::SuppliedLine::new(&participants)
-        .reorder_into(&mut order)
-        .map_err(|_| {
-            crate::Error::new(
-                crate::ErrorCode::LayoutFailed,
-                "original mixed spacing order",
-            )
-        })?;
-    Ok(order
-        .into_iter()
-        .filter_map(|i| match shaped.items[i] {
+fn original_members(shaped: &ShapedData, ledger: &mut Ledger) -> Result<Vec<Member>> {
+    let mut levels = Vec::new();
+    for item in &shaped.items {
+        account::work(ledger, 1)?;
+        let level = match *item {
+            ShapedItem::TextCluster(i) => shaped.clusters[i].level,
+            ShapedItem::Cell(i) => shaped.cells[i].level,
+            ShapedItem::InlineBox { level, .. } => level,
+            ShapedItem::Anchor { .. } => 0,
+        };
+        account::push(ledger, &mut levels, level)?;
+    }
+    let order = construction::order_levels(&levels, ledger)?;
+    let mut members = Vec::new();
+    for i in &order {
+        account::work(ledger, 1)?;
+        let member = match shaped.items[*i] {
             ShapedItem::TextCluster(c) => Some(Member::Text(shaped.clusters[c].atoms.clone())),
             ShapedItem::InlineBox { occurrence, .. } => Some(Member::Atomic(occurrence)),
+            ShapedItem::Cell(i) => Some(Member::Cell(shaped.cells[i].binding)),
             _ => None,
-        })
-        .collect())
+        };
+        if let Some(member) = member {
+            account::push(ledger, &mut members, member)?;
+        }
+    }
+    account::drop_vec(ledger, order)?;
+    account::drop_vec(ledger, levels)?;
+    Ok(members)
 }
 
-fn splits_region(members: &[Member], region: &Region, owner: Owner, shaped: &ShapedData) -> bool {
-    let position = members.iter().position(|m| match (m, owner) {
-        (Member::Text(atoms), Owner::Cluster(i)) => atoms.contains(&shaped.clusters[i].atoms.start),
-        (Member::Atomic(a), Owner::Atomic(b)) => *a == b,
-        _ => false,
-    });
-    position.is_some_and(|p| region.first <= p && p < region.last)
+fn splits_region(
+    members: &[Member],
+    region: &Region,
+    owner: Owner,
+    shaped: &ShapedData,
+    ledger: &mut Ledger,
+) -> Result<bool> {
+    for (position, m) in members.iter().enumerate() {
+        account::work(ledger, 1)?;
+        let matched = match (m, owner) {
+            (Member::Text(a), Owner::Cluster(i)) => a.contains(&shaped.clusters[i].atoms.start),
+            (Member::Atomic(a), Owner::Atomic(b)) => *a == b,
+            (Member::Cell(a), Owner::Cell(i)) => *a == shaped.cells[i].binding,
+            _ => false,
+        };
+        if matched {
+            return Ok(region.first <= position && position < region.last);
+        }
+    }
+    Ok(false)
 }
 
 fn unit_context(
@@ -1314,6 +1056,110 @@ fn unit_context(
     }
 }
 
+#[derive(Clone, Copy)]
+enum DiagnosticSource<'a> {
+    Original(&'a crate::engine::AnalyzedData),
+    Selected(PresentationInput<'a>),
+}
+impl<'a> DiagnosticSource<'a> {
+    fn analyzed(self) -> &'a crate::engine::AnalyzedData {
+        match self {
+            Self::Original(a) => a,
+            Self::Selected(i) => &i.prepared.analyzed,
+        }
+    }
+    fn pieces(self, member: &Member) -> Result<Vec<crate::SpacingPiece>> {
+        match member {
+            Member::Cell(binding) => {
+                Input::original(self.analyzed(), &[], 1.0).cell_pieces(*binding, &mut None)
+            }
+            Member::Atomic(occurrence) => Ok(vec![crate::SpacingPiece::Atomic {
+                occurrence: *occurrence,
+            }]),
+            Member::Text(atoms) => match self {
+                Self::Original(analyzed) => {
+                    let mut pieces = Vec::new();
+                    for atom in atoms.clone() {
+                        super::original_pieces(analyzed, atom, &mut pieces, &mut None)?;
+                    }
+                    Ok(pieces)
+                }
+                Self::Selected(input) => {
+                    super::slot_owners(input.prepared, input.presentation, atoms.clone(), &mut None)
+                }
+            },
+        }
+    }
+    fn context(self, unit: &Unit) -> Result<DiagnosticContext> {
+        if let Subject::Cell(binding) = unit.subject {
+            return cell_context(self.analyzed(), binding);
+        }
+        let mut pieces = Vec::new();
+        for atoms in &unit.atoms {
+            pieces.extend(self.pieces(&Member::Text(atoms.clone()))?);
+        }
+        pieces.extend(
+            unit.atomics
+                .iter()
+                .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
+        );
+        let locale = unit
+            .base
+            .and_then(|base| match self {
+                Self::Original(analyzed) => analyzed.styles[analyzed.analysis.infos[base].1]
+                    .style
+                    .locale_tag(),
+                Self::Selected(input) => input.prepared.styles
+                    [input.presentation.analysis.infos[base].1]
+                    .style
+                    .locale
+                    .as_ref()
+                    .map(|locale| locale.as_str()),
+            })
+            .map(str::to_owned);
+        Ok(DiagnosticContext { pieces, locale })
+    }
+}
+fn region_diagnostic(
+    source: DiagnosticSource<'_>,
+    graph: &Graph,
+    region: &Region,
+    stage: crate::SpacingStage,
+    operation: crate::SpacingOperation,
+) -> crate::Error {
+    let build = (|| -> Result<crate::Error> {
+        let mut contexts = Vec::new();
+        for &i in &region.units {
+            let unit = &graph.units[i];
+            let own = source.context(unit)?;
+            contexts.push(unit_context(unit, own.pieces, own.locale));
+        }
+        let mut pieces = Vec::new();
+        let mut providers = Vec::new();
+        for member in &region.members {
+            pieces.extend(source.pieces(member)?);
+            if let Member::Text(atoms) = member {
+                providers.push(atoms.clone());
+            }
+        }
+        Ok(crate::Error::new(
+            crate::ErrorCode::LayoutFailed,
+            "interleaved text and atomic topology is not qualified for material spacing",
+        )
+        .with_detail(crate::ErrorDetail::UnsupportedSpacing {
+            stage,
+            operation,
+            reason: SpacingFailureReason::InterleavedUnit,
+            pieces: pieces.into_boxed_slice(),
+            provider_atoms: providers.into_boxed_slice(),
+            contexts: contexts.into_boxed_slice(),
+            constraints: Box::new([]),
+        }))
+    })();
+    match build {
+        Ok(error) | Err(error) => error,
+    }
+}
 fn region_error(
     input: PresentationInput<'_>,
     graph: &Graph,
@@ -1321,133 +1167,44 @@ fn region_error(
     stage: crate::SpacingStage,
     operation: crate::SpacingOperation,
 ) -> crate::Error {
-    let content = |member: &Member| match member {
-        Member::Text(atoms) => {
-            super::slot_pieces(input.prepared, input.presentation, atoms.clone())
-                .into_iter()
-                .map(|p| p.owner)
-                .collect::<Vec<_>>()
-        }
-        Member::Atomic(occurrence) => vec![crate::SpacingPiece::Atomic {
-            occurrence: *occurrence,
-        }],
-    };
-    let mut contexts = Vec::new();
-    for &i in &region.units {
-        let unit = &graph.units[i];
-        let pieces = unit
-            .atoms
-            .iter()
-            .flat_map(|a| content(&Member::Text(a.clone())))
-            .chain(
-                unit.atomics
-                    .iter()
-                    .flat_map(|&a| content(&Member::Atomic(a))),
-            )
-            .collect();
-        let locale = unit.base.and_then(|b| {
-            input.prepared.styles[input.presentation.analysis.infos[b].1]
-                .style
-                .locale
-                .as_ref()
-                .map(|l| l.as_str().to_owned())
-        });
-        contexts.push(unit_context(unit, pieces, locale));
-    }
-    crate::Error::new(
-        crate::ErrorCode::LayoutFailed,
-        "interleaved text and atomic topology is not qualified for material spacing",
-    )
-    .with_detail(crate::ErrorDetail::UnsupportedSpacing {
+    region_diagnostic(
+        DiagnosticSource::Selected(input),
+        graph,
+        region,
         stage,
         operation,
-        reason: SpacingFailureReason::InterleavedUnit,
-        pieces: region.members.iter().flat_map(content).collect(),
-        provider_atoms: region
-            .members
-            .iter()
-            .filter_map(|m| {
-                if let Member::Text(a) = m {
-                    Some(a.clone())
-                } else {
-                    None
-                }
-            })
-            .collect(),
-        contexts: contexts.into_boxed_slice(),
-        constraints: Box::new([]),
-    })
+    )
 }
-
 fn original_region_error(
-    analyzed: &super::super::AnalyzedData,
+    analyzed: &crate::engine::AnalyzedData,
     graph: &Graph,
     region: &Region,
 ) -> crate::Error {
-    let content = |member: &Member| match member {
-        Member::Text(atoms) => {
-            let mut pieces = Vec::new();
-            for a in atoms.clone() {
-                super::original_pieces(analyzed, a, &mut pieces);
-            }
-            pieces
-        }
-        Member::Atomic(occurrence) => vec![crate::SpacingPiece::Atomic {
-            occurrence: *occurrence,
-        }],
-    };
-    let contexts = region
-        .units
-        .iter()
-        .map(|&i| {
-            let unit = &graph.units[i];
-            let pieces = unit
-                .atoms
-                .iter()
-                .flat_map(|a| content(&Member::Text(a.clone())))
-                .chain(
-                    unit.atomics
-                        .iter()
-                        .flat_map(|&a| content(&Member::Atomic(a))),
-                )
-                .collect();
-            let locale = unit.base.and_then(|b| {
-                analyzed.styles[analyzed.analysis.infos[b].1]
-                    .style
-                    .locale_tag()
-                    .map(str::to_owned)
-            });
-            unit_context(unit, pieces, locale)
-        })
-        .collect();
-    crate::Error::new(
-        crate::ErrorCode::LayoutFailed,
-        "interleaved text and atomic topology is not qualified for material spacing",
+    region_diagnostic(
+        DiagnosticSource::Original(analyzed),
+        graph,
+        region,
+        crate::SpacingStage::Preparation,
+        crate::SpacingOperation::AuthoredTracking,
     )
-    .with_detail(crate::ErrorDetail::UnsupportedSpacing {
-        stage: crate::SpacingStage::Preparation,
-        operation: crate::SpacingOperation::AuthoredTracking,
-        reason: SpacingFailureReason::InterleavedUnit,
-        pieces: region.members.iter().flat_map(content).collect(),
-        provider_atoms: region
-            .members
-            .iter()
-            .filter_map(|m| {
-                if let Member::Text(a) = m {
-                    Some(a.clone())
-                } else {
-                    None
-                }
-            })
-            .collect(),
-        contexts,
-        constraints: Box::new([]),
-    })
 }
 
-pub(crate) fn admit(input: PresentationInput<'_>, graph: &Graph, basis: bool) -> Result<()> {
+pub(crate) fn admit(
+    input: PresentationInput<'_>,
+    graph: &Graph,
+    basis: bool,
+    ledger: &mut Ledger,
+) -> Result<()> {
+    let mut native = None;
+    let ledger = if graph.ownership == GraphOwnership::Native {
+        &mut native
+    } else {
+        storage::require_ledger(ledger)?;
+        ledger
+    };
     for region in &graph.regions {
-        if basis || graph.region_material(region) {
+        account::work(ledger, 1)?;
+        if basis || graph.region_material(region, ledger)? {
             return Err(region_error(
                 input,
                 graph,
@@ -1461,47 +1218,50 @@ pub(crate) fn admit(input: PresentationInput<'_>, graph: &Graph, basis: bool) ->
             ));
         }
     }
-    if let Some(unit) = graph
-        .units
-        .iter()
-        .enumerate()
-        .find(|(i, u)| {
-            let boundary = graph
-                .boundaries
-                .iter()
-                .any(|b| b.before == *i || b.after == *i);
-            (unqualified_unit(u) || basis && !u.justify_qualified && !u.barrier)
-                && if basis {
-                    !u.native_only || boundary
-                } else {
-                    unit_material(graph, *i)
-                }
-        })
-        .map(|(_, u)| u)
-    {
-        return Err(unit_error(
-            input,
-            unit,
-            crate::SpacingStage::Selection,
-            if basis {
-                crate::SpacingOperation::InterCharacterBasis
+    for (i, u) in graph.units.iter().enumerate() {
+        account::work(ledger, 1)?;
+        let mut boundary = false;
+        for b in &graph.boundaries {
+            account::work(ledger, 1)?;
+            if b.before == i || b.after == i {
+                boundary = true;
+                break;
+            }
+        }
+        if (unqualified_unit(u) || basis && !u.justify_qualified && !u.barrier)
+            && if basis {
+                !u.native_only || boundary
             } else {
-                crate::SpacingOperation::AuthoredTracking
-            },
-        ));
+                unit_material(graph, i, ledger)?
+            }
+        {
+            return Err(unit_error(
+                input,
+                u,
+                crate::SpacingStage::Selection,
+                if basis {
+                    crate::SpacingOperation::InterCharacterBasis
+                } else {
+                    crate::SpacingOperation::AuthoredTracking
+                },
+            ));
+        }
     }
     Ok(())
 }
 
-fn unit_material(graph: &Graph, index: usize) -> bool {
+fn unit_material(graph: &Graph, index: usize, ledger: &mut Ledger) -> Result<bool> {
     let unit = &graph.units[index];
     if !unit.native_only {
-        return unit.left != 0.0 || unit.right != 0.0;
+        return Ok(unit.left != 0.0 || unit.right != 0.0);
     }
-    graph
-        .boundaries
-        .iter()
-        .any(|b| (b.before == index || b.after == index) && (b.authored != 0.0 || b.mean_lost))
+    for b in &graph.boundaries {
+        account::work(ledger, 1)?;
+        if (b.before == index || b.after == index) && (b.authored != 0.0 || b.mean_lost) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn unqualified_unit(unit: &Unit) -> bool {
@@ -1513,27 +1273,11 @@ fn unit_error(
     stage: crate::SpacingStage,
     operation: crate::SpacingOperation,
 ) -> crate::Error {
-    let pieces: Vec<_> = unit
-        .atoms
-        .iter()
-        .flat_map(|a| {
-            super::slot_pieces(input.prepared, input.presentation, a.clone())
-                .into_iter()
-                .map(|p| p.owner)
-        })
-        .chain(
-            unit.atomics
-                .iter()
-                .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
-        )
-        .collect();
-    let locale = unit.base.and_then(|b| {
-        input.prepared.styles[input.presentation.analysis.infos[b].1]
-            .style
-            .locale
-            .as_ref()
-            .map(|l| l.as_str().to_owned())
-    });
+    let own = match DiagnosticSource::Selected(input).context(unit) {
+        Ok(own) => own,
+        Err(error) => return error,
+    };
+    let context = unit_context(unit, own.pieces.clone(), own.locale);
     crate::Error::new(
         crate::ErrorCode::LayoutFailed,
         "character-unit topology is not qualified for this spacing operation",
@@ -1542,17 +1286,19 @@ fn unit_error(
         stage,
         operation,
         reason: SpacingFailureReason::UnqualifiedWritingSystem,
-        contexts: vec![unit_context(unit, pieces.clone(), locale)].into_boxed_slice(),
-        pieces: pieces.into_boxed_slice(),
+        contexts: vec![context].into_boxed_slice(),
+        pieces: own.pieces.into_boxed_slice(),
         provider_atoms: unit.atoms.clone().into_boxed_slice(),
         constraints: Box::new([]),
     })
 }
+
 fn original_unit_error(analyzed: &super::super::AnalyzedData, unit: &Unit) -> crate::Error {
     let mut pieces = Vec::new();
     for atoms in &unit.atoms {
         for a in atoms.clone() {
-            super::original_pieces(analyzed, a, &mut pieces);
+            super::original_pieces(analyzed, a, &mut pieces, &mut None)
+                .expect("Native source-piece collection has no scope admission");
         }
     }
     pieces.extend(

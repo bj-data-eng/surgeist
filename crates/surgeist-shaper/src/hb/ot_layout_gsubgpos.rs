@@ -12,10 +12,34 @@ use crate::hb::ot::{ClassDefInfo, CoverageInfo};
 use crate::hb::ot_layout_gsubgpos::OT::check_glyph_property;
 use crate::hb::unicode::GeneralCategory;
 use alloc::boxed::Box;
+use core::cell::Cell;
 use read_fonts::tables::layout::SequenceLookupRecord;
 use read_fonts::types::GlyphId;
 
 pub(crate) type MatchPositions = smallvec::SmallVec<[u32; 8]>;
+
+// Quality of carriers actually consulted by this native matching search. This
+// is not a decoding failure, action witness, or union of observer roots.
+pub(crate) struct MatchingQuality {
+    dependency: Cell<bool>,
+    work: Cell<Option<usize>>,
+}
+impl MatchingQuality {
+    fn new() -> Self {
+        Self {
+            dependency: Cell::new(false),
+            work: Cell::new(Some(0)),
+        }
+    }
+    fn note(&self, buffer: &hb_buffer_t, component: u32) {
+        self.work
+            .set(self.work.get().and_then(|n| n.checked_add(1)));
+        self.dependency.set(
+            self.dependency.get()
+                || super::width_observation::removal_dependency_failed(buffer, component),
+        );
+    }
+}
 
 /// Value represents glyph id.
 pub fn match_glyph(info: &mut GlyphInfo, value: u16) -> bool {
@@ -63,6 +87,7 @@ pub fn match_input(
     }
 
     let count = usize::from(input_len) + 1;
+    ctx.observe_match_info(ctx.buffer.cur(0));
 
     if count == 1 {
         *end_position = ctx.buffer.idx + 1;
@@ -114,7 +139,10 @@ pub fn match_input(
                     let out = iter.buffer.out_info();
                     let mut j = iter.buffer.out_len;
                     let mut found = false;
-                    while j > 0 && out[j - 1].lig_id() == first_lig_id {
+                    while j > 0 && {
+                        iter.observe_info(&out[j - 1]);
+                        out[j - 1].lig_id() == first_lig_id
+                    } {
                         if out[j - 1].lig_comp() == 0 {
                             j -= 1;
                             found = true;
@@ -326,6 +354,8 @@ pub struct skipping_iterator_t<'f, 'c, F> {
     match_func: Option<F>,
     lookup_props: u32,
     syllable: u8,
+    matching_quality: &'c MatchingQuality,
+    observe_quality: bool,
 }
 
 impl<'f, 'c> skipping_iterator_t<'f, 'c, fn(&mut GlyphInfo, u16) -> bool> {
@@ -354,6 +384,8 @@ where
             &ctx.matcher
         };
         let buf_len = ctx.buffer.len;
+        let observe_quality =
+            ctx.table_index == TableIndex::GSUB && ctx.buffer.components.width.requested.is_some();
         skipping_iterator_t {
             buffer: ctx.buffer,
             face: ctx.face,
@@ -365,6 +397,8 @@ where
             match_positions: &mut ctx.match_positions,
             lookup_props: matcher.lookup_props,
             syllable: 0,
+            matching_quality: &ctx.matching_quality,
+            observe_quality,
         }
     }
 
@@ -459,12 +493,14 @@ where
         // For GSUB forward iterator
         self.buf_idx = start_index;
         self.buf_len = self.buffer.len;
+        self.observe_info(self.buffer.cur(0));
         self.syllable = self.buffer.cur(0).syllable();
     }
 
     pub fn reset_back(&mut self, start_index: usize) {
         // For GSUB backward iterator
         self.buf_idx = start_index;
+        self.observe_info(self.buffer.cur(0));
         self.syllable = self.buffer.cur(0).syllable();
     }
 
@@ -474,11 +510,24 @@ where
     }
 
     pub fn may_skip(&self, info: &GlyphInfo) -> may_skip_t {
+        self.observe_info(info);
         self.matcher.may_skip(info, self.face, self.lookup_props)
+    }
+    fn observe_info(&self, info: &GlyphInfo) {
+        if self.observe_quality {
+            self.matching_quality.note(self.buffer, info.component_set);
+        }
     }
 
     #[inline]
     pub fn match_at(&mut self, idx: usize, source: MatchSource) -> match_t {
+        if self.observe_quality {
+            let component = match &source {
+                MatchSource::Info => self.buffer.info[idx].component_set,
+                MatchSource::OutInfo => self.buffer.out_info()[idx].component_set,
+            };
+            self.matching_quality.note(self.buffer, component);
+        }
         let info = match source {
             MatchSource::Info => &mut self.buffer.info[idx],
             MatchSource::OutInfo => &mut self.buffer.out_info_mut()[idx],
@@ -508,6 +557,21 @@ where
 
         match_t::SKIP
     }
+}
+
+pub(crate) fn apply_lookup_with_reads(
+    ctx: &mut hb_ot_apply_context_t,
+    input_len: usize,
+    match_end: usize,
+    lookups: &[SequenceLookupRecord],
+    reads: &super::ot::read_observation::Reads,
+) {
+    ctx.with_removal_dependency(
+        reads.failed() || ctx.matching_quality.dependency.get(),
+        |ctx| {
+            apply_lookup(ctx, input_len, match_end, lookups);
+        },
+    );
 }
 
 pub(crate) fn apply_lookup(
@@ -700,14 +764,16 @@ pub(crate) enum SubtableExternalCacheMode {
 
 pub(crate) struct LigatureSubstFormat1Cache {
     pub seconds: hb_set_digest_t,
+    pub recovered: bool,
     pub coverage: MappingCache,
 }
 
 impl LigatureSubstFormat1Cache {
-    pub fn new(seconds: hb_set_digest_t) -> Self {
+    pub fn new((seconds, recovered): (hb_set_digest_t, bool)) -> Self {
         LigatureSubstFormat1Cache {
             coverage: MappingCache::new(),
             seconds,
+            recovered,
         }
     }
 }
@@ -715,6 +781,7 @@ impl LigatureSubstFormat1Cache {
 pub(crate) struct LigatureSubstFormat1SmallCache {
     pub coverage: CoverageInfo,
     pub seconds: hb_set_digest_t,
+    pub recovered: bool,
 }
 
 pub(crate) struct PairPosFormat1Cache {
@@ -879,6 +946,10 @@ pub mod OT {
         pub(crate) component_map: Option<&'a super::super::ot_map::hb_ot_map_t>,
         pub(crate) component_stage: usize,
         pub(crate) component_parent: super::super::components::ProvenanceSet,
+        width_source: super::super::components::ProvenanceSet,
+        removal_dependency: bool,
+        pub(crate) lookup_read_recovery: bool,
+        pub(crate) matching_quality: MatchingQuality,
         pub face: &'a hb_font_t<'a>,
         pub buffer: &'a mut hb_buffer_t,
         lookup_mask: hb_mask_t,
@@ -892,6 +963,7 @@ pub mod OT {
         pub random_state: u32,
         pub new_syllables: Option<u8>,
         pub last_base: i32,
+        pub(crate) last_base_recovered: bool,
         pub last_base_until: u32,
         pub(crate) matcher: matcher_t,
         pub(crate) context_matcher: matcher_t,
@@ -910,6 +982,10 @@ pub mod OT {
                 component_map: None,
                 component_stage: 0,
                 component_parent: super::super::components::ProvenanceSet::default(),
+                width_source: super::super::components::ProvenanceSet::default(),
+                removal_dependency: false,
+                lookup_read_recovery: false,
+                matching_quality: MatchingQuality::new(),
                 face,
                 buffer,
                 lookup_mask: 1,
@@ -923,11 +999,240 @@ pub mod OT {
                 random_state: 1,
                 new_syllables: None,
                 last_base: -1,
+                last_base_recovered: false,
                 last_base_until: 0,
                 matcher: matcher_t::default(),
                 context_matcher: matcher_t::default(),
                 match_positions_len: 0,
                 match_positions: MatchPositions::from_elem(0, 1),
+            }
+        }
+
+        // Only a top-level lookup establishes feature provenance. Contextual
+        // recursion inherits that entry scope; a child lookup's static feature
+        // references and matching observers cannot grant selected-tag credit.
+        pub(crate) fn next_width_lookup(&mut self, after: Option<u16>) -> Option<u16> {
+            let feature = self.buffer.components.width.requested?;
+            let map = self.component_map?;
+            let Some(work) = map.width_provenance_work(self.table_index) else {
+                self.buffer.refuse(ShapingRefusal::WorkLimit);
+                self.buffer.successful = false;
+                return None;
+            };
+            if !super::super::original_joining::work(self.buffer, work) {
+                return None;
+            }
+            map.next_width_lookup(self.table_index, self.component_stage, feature.tag(), after)
+        }
+        pub(crate) fn qualify_width_lookup(
+            &mut self,
+            admission: super::super::ot::lookup::LookupAdmission,
+            index: u16,
+            inherited: bool,
+        ) -> bool {
+            use super::super::ot::lookup::LookupAdmission;
+            let Some(feature) = self.buffer.components.width.requested else {
+                return true;
+            };
+            if admission == LookupAdmission::Admitted {
+                return true;
+            }
+            if inherited {
+                if !super::super::original_joining::work(self.buffer, 1) {
+                    return false;
+                }
+                if self.width_active() {
+                    super::super::width_observation::unqualify_lookup(self.buffer);
+                }
+                return true;
+            }
+            let Some(map) = self.component_map else {
+                return true;
+            };
+            let Some(work) = map.width_provenance_work(self.table_index) else {
+                self.buffer.refuse(ShapingRefusal::WorkLimit);
+                self.buffer.successful = false;
+                return false;
+            };
+            for i in 0..self.buffer.len {
+                let info = self.buffer.info[i];
+                if !super::super::original_joining::work(self.buffer, work)
+                    || !super::super::original_joining::work(self.buffer, 1)
+                {
+                    return false;
+                }
+                let Some(cluster) =
+                    super::super::width_observation::mask_cluster(self.buffer, info.component_set)
+                else {
+                    // Never reconstruct a missing assignment domain from roots
+                    // or mutable final clusters and claim qualified absence.
+                    super::super::width_observation::unqualify_lookup(self.buffer);
+                    return true;
+                };
+                let inputs = [(info.mask, cluster)];
+                if map
+                    .width_lookup_provenance(self.table_index, self.component_stage, index, &inputs)
+                    .any(|p| p.tag() == feature.tag())
+                {
+                    super::super::width_observation::unqualify_lookup(self.buffer);
+                    return true;
+                }
+            }
+            true
+        }
+        pub(crate) fn begin_width_application(&mut self) -> bool {
+            self.width_source = super::super::components::ProvenanceSet::default();
+            let Some(feature) = self.buffer.components.width.requested else {
+                return true;
+            };
+            let Some(map) = self.component_map else {
+                return true;
+            };
+            let Some(work) = map.provenance_work(self.table_index) else {
+                self.buffer.refuse(ShapingRefusal::WorkLimit);
+                self.buffer.successful = false;
+                return false;
+            };
+            let info = self.buffer.cur(0);
+            let (component, mask) = (info.component_set, info.mask);
+            if !super::super::original_joining::work(self.buffer, work)
+                || !super::super::original_joining::work(self.buffer, 1)
+            {
+                return false;
+            }
+            let Some(cluster) =
+                super::super::width_observation::mask_cluster(self.buffer, component)
+            else {
+                super::super::width_observation::unqualify_lookup(self.buffer);
+                return true;
+            };
+            let input = [(mask, cluster)];
+            let Some(proof) = super::super::components::collect_provenance(
+                self.buffer,
+                self.width_source,
+                map.lookup_provenance(
+                    self.table_index,
+                    self.component_stage,
+                    self.lookup_index,
+                    &input,
+                )
+                .filter(|p| p.tag() == feature.tag()),
+            ) else {
+                return false;
+            };
+            self.width_source = proof;
+            true
+        }
+
+        pub(crate) fn width_action(&mut self, index: usize) -> bool {
+            super::super::width_observation::act(self.buffer, index, self.width_source)
+        }
+        pub(crate) fn width_active(&self) -> bool {
+            !super::super::components::provenance(self.buffer, self.width_source).is_empty()
+        }
+        pub(crate) fn with_width_reads<T>(
+            &mut self,
+            positioning: bool,
+            f: impl FnOnce(&mut Self, &super::super::ot::read_observation::Reads) -> T,
+        ) -> T {
+            let demanded = self.width_active();
+            // A later exclusion can depend on reached non-width GSUB reads.
+            // Retain them locally; only selected-width demand publishes here.
+            let lineage = self.table_index == TableIndex::GSUB
+                && self.buffer.components.width.requested.is_some();
+            let reads = super::super::ot::read_observation::Reads::new(demanded || lineage);
+            let result = f(self, &reads);
+            if lineage && reads.failed() {
+                self.lookup_read_recovery = true;
+            }
+            if reads.active() {
+                if let Some(work) = reads.work() {
+                    super::super::original_joining::work(self.buffer, work);
+                } else {
+                    self.buffer.refuse(ShapingRefusal::WorkLimit);
+                    self.buffer.successful = false;
+                }
+                if reads.failed() && demanded {
+                    if positioning {
+                        super::super::width_observation::unqualify_value(self.buffer);
+                    } else {
+                        super::super::width_observation::unqualify_lookup(self.buffer);
+                    }
+                }
+            }
+            result
+        }
+        pub(crate) fn with_removal_dependency<T>(
+            &mut self,
+            dependency: bool,
+            f: impl FnOnce(&mut Self) -> T,
+        ) -> T {
+            let saved = self.removal_dependency;
+            if self.table_index == TableIndex::GSUB
+                && self.buffer.components.width.requested.is_some()
+            {
+                self.removal_dependency |= dependency;
+            }
+            let result = f(self);
+            self.removal_dependency = saved;
+            result
+        }
+        pub(crate) fn with_removal_lookup<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+            if self.table_index != TableIndex::GSUB
+                || self.buffer.components.width.requested.is_none()
+            {
+                return f(self);
+            }
+            let saved = self.lookup_read_recovery;
+            let saved_quality = self.matching_quality.dependency.replace(false);
+            let saved_work = self.matching_quality.work.replace(Some(0));
+            self.lookup_read_recovery = false;
+            let result = f(self);
+            if let Some(work) = self.matching_quality.work.get() {
+                super::super::original_joining::work(self.buffer, work);
+            } else {
+                self.buffer.refuse(ShapingRefusal::WorkLimit);
+                self.buffer.successful = false;
+            }
+            self.lookup_read_recovery = saved;
+            self.matching_quality.dependency.set(saved_quality);
+            self.matching_quality.work.set(saved_work);
+            result
+        }
+        pub(crate) fn observe_match_info(&self, info: &GlyphInfo) {
+            if self.table_index == TableIndex::GSUB
+                && self.buffer.components.width.requested.is_some()
+            {
+                self.matching_quality.note(self.buffer, info.component_set);
+            }
+        }
+        pub(crate) fn prepare_removal_dependency(&mut self, local: bool) -> bool {
+            if self.table_index != TableIndex::GSUB {
+                return true;
+            }
+            super::super::width_observation::depend_on_recovery(
+                self.buffer,
+                self.buffer.idx,
+                self.removal_dependency || local || self.matching_quality.dependency.get(),
+            )
+        }
+        pub(crate) fn discard_width_source(&mut self, local: bool) -> bool {
+            super::super::width_observation::discard(
+                self.buffer,
+                self.buffer.idx,
+                self.removal_dependency || local || self.matching_quality.dependency.get(),
+            )
+        }
+
+        pub(crate) fn width_value_result(&mut self, index: usize, acted: bool, unqualified: bool) {
+            if super::super::components::provenance(self.buffer, self.width_source).is_empty() {
+                return;
+            }
+            if unqualified {
+                super::super::width_observation::unqualify_value(self.buffer);
+            }
+            if acted {
+                self.width_action(index);
             }
         }
 
@@ -1005,6 +1310,7 @@ pub mod OT {
         pub fn set_lookup_mask(&mut self, mask: hb_mask_t) {
             self.lookup_mask = mask;
             self.last_base = -1;
+            self.last_base_recovered = false;
             self.last_base_until = 0;
         }
 
@@ -1032,6 +1338,16 @@ pub mod OT {
                 self.buffer.refuse(ShapingRefusal::WorkLimit);
                 self.buffer.successful = false;
                 return None;
+            }
+
+            if self.buffer.components.width.requested.is_some() {
+                let admission = self
+                    .face
+                    .ot_tables
+                    .lookup_admission(self.table_index, sub_lookup_index);
+                if !self.qualify_width_lookup(admission, sub_lookup_index, true) {
+                    return None;
+                }
             }
 
             self.nesting_level_left -= 1;
@@ -1110,6 +1426,9 @@ pub mod OT {
             if !super::super::default_ignorable::output_room(self.buffer, 1, 1, 1) {
                 return;
             }
+            if !self.prepare_removal_dependency(false) || !self.width_action(self.buffer.idx) {
+                return;
+            }
             self.buffer.cur_mut(0).di_normal();
             self.set_glyph_class(glyph_id, GlyphPropsFlags::empty(), false, false);
             self.buffer.replace_glyph(u32::from(glyph_id));
@@ -1117,6 +1436,9 @@ pub mod OT {
 
         pub fn replace_glyph_inplace(&mut self, glyph_id: GlyphId) {
             if !super::super::default_ignorable::copy_work(self.buffer, 1) {
+                return;
+            }
+            if !self.prepare_removal_dependency(false) || !self.width_action(self.buffer.idx) {
                 return;
             }
             self.buffer.cur_mut(0).di_normal();
@@ -1132,6 +1454,9 @@ pub mod OT {
             if !super::super::default_ignorable::output_room(self.buffer, 1, 1, 1) {
                 return;
             }
+            if !self.prepare_removal_dependency(false) || !self.width_action(self.buffer.idx) {
+                return;
+            }
             self.buffer.cur_mut(0).di_normal();
             self.set_glyph_class(glyph_id, class_guess, true, false);
             self.buffer.replace_glyph(u32::from(glyph_id));
@@ -1145,6 +1470,9 @@ pub mod OT {
             if !super::super::default_ignorable::output_room(self.buffer, 0, 1, 1)
                 || !super::super::default_ignorable::copy_work(self.buffer, 1)
             {
+                return;
+            }
+            if !self.prepare_removal_dependency(false) || !self.width_action(self.buffer.idx) {
                 return;
             }
             self.buffer.cur_mut(0).di_normal();

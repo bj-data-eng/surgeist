@@ -389,6 +389,9 @@ fn manual_retains_declared_overflow_conditional_eligibility_and_readback() {
                 // The only ordinary endpoint is the ceiling; no earlier variant
                 // needs a disposition. Enumeration asserts eligibility, not fit.
                 let actual = p
+                    .source_segments()
+                    .next()
+                    .unwrap()
                     .conditional_search(&start, None, &ceiling, purpose, &[], None)
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())

@@ -220,7 +220,7 @@ fn actual_relation_keeps_reordered_noncontiguous_emissions_and_a_real_removal() 
         [
             RelationEvent::Text { atom: 0 },
             RelationEvent::Text { atom: 1 },
-            RelationEvent::Removal { row: 2 },
+            RelationEvent::Removal { row: 2, .. },
             RelationEvent::Text { atom: 2 }
         ]
     ));
@@ -449,7 +449,17 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
             for row in 0..2 {
                 let piece = &map.original_pieces(row)[0];
                 assert_eq!(
-                    (piece.origin, piece.local, piece.aggregate),
+                    (
+                        analyzed
+                            .inner
+                            .paragraph
+                            .origin_map
+                            .view_origin(piece.origin)
+                            .expect("original contribution belongs to this view")
+                            .get(),
+                        piece.local,
+                        piece.aggregate,
+                    ),
                     (row, Range::new(0, 1), Range::new(row, row + 1))
                 );
             }
@@ -459,7 +469,7 @@ fn split_origin_dot_and_acute_use_actual_context_through_neutral_oof() {
                 assert!(
                     map.events()
                         .iter()
-                        .any(|event| matches!(event, RelationEvent::Removal { row: 1 }))
+                        .any(|event| matches!(event, RelationEvent::Removal { row: 1, .. }))
                 );
             }
         }
