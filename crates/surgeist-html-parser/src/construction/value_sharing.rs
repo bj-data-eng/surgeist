@@ -871,8 +871,10 @@ impl Finalizing {
         );
         let (parts_value, c) = parts.parts();
         let parts_value = &mut parts_value.0;
+        // The count is known, but a single reserve would precede the logical
+        // admission of the first row; each push keeps its own order.
         for _ in 0..original.len() {
-            parts_value.try_push_geometric(c, [None; 4])?;
+            parts_value.try_push_geometric_toward(c, [None; 4], original.len())?;
         }
         let mut next = self.joins[container].head;
         while let Some(slot) = next {

@@ -828,6 +828,20 @@ impl ParseControl {
     ) -> Result<Option<ReservationPlan>, ParseStop> {
         self.geometric_capacity::<T>(vector.len(), vector.capacity(), additional)
     }
+    fn geometric_plan_toward<T>(
+        &self,
+        vector: &Vec<T>,
+        additional: usize,
+        final_len: usize,
+    ) -> Result<Option<ReservationPlan>, ParseStop> {
+        self.geometric_sized(
+            size_of::<T>(),
+            vector.len(),
+            vector.capacity(),
+            additional,
+            final_len,
+        )
+    }
     fn geometric_capacity<T>(
         &self,
         len: usize,
@@ -1747,8 +1761,9 @@ impl ReservationPlan {
 enum Growth {
     /// Exactly the slots required.
     Exact,
-    /// Spare capacity that at least doubles it, clamped to the finite limits.
-    Geometric,
+    /// Spare capacity that at least doubles it, clamped to the finite limits
+    /// and never planned beyond the given final length (`usize::MAX`: unknown).
+    Geometric(usize),
 }
 
 /// Private variable storage. No mutable Vec escape can bypass fallible growth.
@@ -1915,7 +1930,9 @@ impl<T> OwnedVec<T> {
         self.require_owner(control)?;
         let plan = match growth {
             Growth::Exact => ReservationPlan::for_vec(&self.vector, additional),
-            Growth::Geometric => control.geometric_plan(&self.vector, additional),
+            Growth::Geometric(final_len) => {
+                control.geometric_plan_toward(&self.vector, additional, final_len)
+            }
         };
         let plan = match plan {
             Ok(plan) => plan,
@@ -2052,7 +2069,18 @@ impl<T> OwnedVec<T> {
         control: &mut ParseControl,
         value: T,
     ) -> Result<(), ParseStop> {
-        self.push_with(control, value, Growth::Geometric)
+        self.push_with(control, value, Growth::Geometric(usize::MAX))
+    }
+    /// `try_push_geometric` for a list whose final length is known to be at most
+    /// `final_len`: spare capacity never exceeds it, so a list that fills ends
+    /// with exactly the capacity an exact policy would have retained.
+    pub(crate) fn try_push_geometric_toward(
+        &mut self,
+        control: &mut ParseControl,
+        value: T,
+        final_len: usize,
+    ) -> Result<(), ParseStop> {
+        self.push_with(control, value, Growth::Geometric(final_len))
     }
     fn push_with(
         &mut self,
@@ -2137,7 +2165,7 @@ impl<T> OwnedVec<T> {
         control: &mut ParseControl,
         value: T,
     ) -> Result<(), (ParseStop, T)> {
-        self.recover_with(control, value, Growth::Geometric)
+        self.recover_with(control, value, Growth::Geometric(usize::MAX))
     }
     fn recover_with(
         &mut self,
@@ -2773,6 +2801,29 @@ mod tests {
         );
         // Old plus new bytes of each growth: 4 + (4+8) + (8+16) + (16+32) + (32+64).
         assert_eq!(c.usage().work(WorkCategory::ReserveByte), 184);
+        values.release(&mut c).unwrap();
+        assert_eq!(c.usage().actual_capacity_bytes, 0);
+    }
+
+    #[test]
+    fn bounded_geometric_push_ends_at_exactly_the_known_final_length() {
+        let mut c = control();
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        let mut capacities = Vec::new();
+        for value in 0..11u32 {
+            values.try_push_geometric_toward(&mut c, value, 11).unwrap();
+            if capacities.last() != Some(&values.capacity()) {
+                capacities.push(values.capacity());
+            }
+        }
+        // Doubling stops at the known length instead of reaching sixteen.
+        assert_eq!(capacities, [1, 2, 4, 8, 11]);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            11
+        );
         values.release(&mut c).unwrap();
         assert_eq!(c.usage().actual_capacity_bytes, 0);
     }
