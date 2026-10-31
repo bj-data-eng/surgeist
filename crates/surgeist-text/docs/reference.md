@@ -702,8 +702,14 @@ no exterior targets succeeds with an empty complete allocation. The selected all
 payload participates in the existing scope allowance and shared-product census.
 
 Source-resolved inner directional controls retain their effect in the used bidi
-levels without becoming provider scalars or additional outer units. Interior
-inline-boundary controls still return `TextCombineError::UnsupportedCellPreparation`.
+levels without becoming provider scalars or additional outer units. With complete
+captured box topology, an Inline's own Start/End controls remain exterior to its
+Cells and contribute their actual allocated flow and endpoint footprints. Every
+real box, including an empty Inline, fences combination without splitting an
+indivisible typographic unit. An unscoped native endpoint pair does not establish
+captured box authority. Preparation defensively returns
+`TextCombineError::UnsupportedCellPreparation` if an inline-boundary control
+occurs inside a Cell binding.
 A preserved in-cell TAB under CssStops executes during preparation on a horizontal
 zero-origin grid in the captured inner direction. Its actual computed tab-size
 uses the text-containing Inline or derived RootInline's specified horizontal
