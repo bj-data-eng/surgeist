@@ -635,11 +635,14 @@ member inventory with one designated facts owner. Source continuity supplies
 context, not permission to merge outputs. The exact single-view constructor
 keeps its original coverage when an indivisible unit requires domain analysis.
 Combination reads the captured writing axis and inner direction; typography
-does not supply either fact. Native cell preparation supports matching explicit
-Vertical composition with horizontal scalar payloads, or source-proved absence
-of provider input.
+does not supply either fact. Native cell preparation supports Vertical with
+matching Mixed/upright analysis, and SidewaysClockwise/SidewaysCounterclockwise
+with HorizontalComposition analysis. The inner payload remains physically
+horizontal in each profile, or source proves that provider input is absent.
 It demands the genuine text-containing Inline or same-domain inherited
 RootInline font reference and captured limits, including for glyph-free cells.
+Vertical preparation uses that container's VerticalX metrics; sideways
+preparation uses its HorizontalY metrics before the enclosing scope shift.
 The cell's intrinsic square is one em; its inner runs retain their actual horizontal
 advances. A fitting normal composition retains its executed glyphs. Otherwise,
 bounded `hwid`, `twid` and `qwid` trials reuse its actual font instances and

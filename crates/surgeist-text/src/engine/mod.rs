@@ -376,7 +376,14 @@ pub(crate) fn prepare(
         .as_ref()
         .is_some_and(|output| !output.cells.is_empty());
     shape::admit_cells(&analyzed, options.tabs())?;
-    if has_cells && options.orientation() != crate::LineOrientation::Vertical {
+    if has_cells
+        && !matches!(
+            options.orientation(),
+            crate::LineOrientation::Vertical
+                | crate::LineOrientation::SidewaysClockwise
+                | crate::LineOrientation::SidewaysCounterclockwise
+        )
+    {
         return Err(crate::transform::combined::refused(
             crate::TextCombineError::UnsupportedCellPreparation,
         ));

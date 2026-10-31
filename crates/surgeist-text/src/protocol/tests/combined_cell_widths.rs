@@ -11,6 +11,9 @@ mod resources;
 #[path = "combined_cell_width_mixed.rs"]
 mod mixed;
 
+#[path = "combined_cell_sideways_widths.rs"]
+mod sideways;
+
 use super::*;
 
 fn source_with_full_coverage(
@@ -30,6 +33,22 @@ fn source_with_font_features_and_font(
     text: &str,
     features: &[&str],
     body: Vec<u8>,
+) -> (System, Arc<ProcessedSource>, AnalyzedSource, Vec<u8>) {
+    source_with_profile(
+        text,
+        features,
+        body,
+        AnalysisTypography::Mixed,
+        font_reference(),
+    )
+}
+
+fn source_with_profile(
+    text: &str,
+    features: &[&str],
+    body: Vec<u8>,
+    typography: AnalysisTypography,
+    reference: ScopeFontReference,
 ) -> (System, Arc<ProcessedSource>, AnalyzedSource, Vec<u8>) {
     assert!(!text.is_empty() && text.chars().all(|character| matches!(character, 'A' | 'B')));
     let extent = Range::new(0, text.encode_utf16().count());
@@ -85,14 +104,14 @@ fn source_with_font_features_and_font(
                     used_direction: ParagraphBaseDirection::LeftToRight,
                     writing_axis: Some(SourceWritingAxis::Vertical),
                     horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
-                    font_reference: Some(font_reference()),
+                    font_reference: Some(reference),
                 },
                 SourceProcessingScope::Inline {
                     trim: WhiteSpaceTrim::default(),
                     style: Some(child_style),
                     boundaries: None,
                     alignment_boundary: None,
-                    font_reference: Some(font_reference()),
+                    font_reference: Some(reference),
                     horizontal_inner_direction: Some(ParagraphBaseDirection::LeftToRight),
                 },
             ],
@@ -134,7 +153,7 @@ fn source_with_font_features_and_font(
         raw.captured_paragraph(),
         processed.captured_paragraph(0).unwrap()
     );
-    let domain = AnalyzedDomain::from_processed_paragraph(raw, AnalysisTypography::Mixed).unwrap();
+    let domain = AnalyzedDomain::from_processed_paragraph(raw, typography).unwrap();
     assert!(Arc::ptr_eq(domain.processed_source(), &processed));
     assert_eq!(domain.outputs().len(), 1);
     let output = domain.outputs().next().unwrap();
