@@ -38,7 +38,7 @@ fn limited_capture(text: &str, limits: ScopeAlignmentLimits) -> Captured {
             inner: ParagraphBaseDirection::LeftToRight,
         },
         TextCombineUpright::All,
-        COMBINED_TAB_WIDTH_FAMILY,
+        Font::new().family(COMBINED_TAB_WIDTH_FAMILY),
         limits,
     )
 }

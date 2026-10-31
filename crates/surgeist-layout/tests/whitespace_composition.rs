@@ -539,7 +539,12 @@ fn preserve_spaces_block_end_is_conditional_and_nowrap_keeps_ordinary_measures()
                 .units()
                 .flat_map(|unit| {
                     unit.pieces()
-                        .map(|piece| piece.advance_edges())
+                        .map(|piece| {
+                            let surgeist_text::SourceRangeGeometry::Line(piece) = piece else {
+                                panic!("ordinary whitespace retains Line geometry");
+                            };
+                            piece.advance_edges()
+                        })
                         .collect::<Vec<_>>()
                 })
                 .collect();
@@ -697,7 +702,12 @@ fn collapse_removes_only_trailing_ogham_and_retains_its_original_range() {
             .units()
             .flat_map(|unit| {
                 unit.pieces()
-                    .map(|piece| piece.advance_edges())
+                    .map(|piece| {
+                        let surgeist_text::SourceRangeGeometry::Line(piece) = piece else {
+                            panic!("ordinary whitespace retains Line geometry");
+                        };
+                        piece.advance_edges()
+                    })
                     .collect::<Vec<_>>()
             })
             .collect();

@@ -148,12 +148,12 @@ fn qualified_font() -> Vec<u8> {
     bytes
 }
 
-struct Captured {
-    processed: Arc<ProcessedSource>,
-    analyzed: AnalyzedSource,
+pub(super) struct Captured {
+    pub(super) processed: Arc<ProcessedSource>,
+    pub(super) analyzed: AnalyzedSource,
 }
 
-fn captured(
+pub(super) fn captured(
     text: &str,
     size: TabSize,
     root_size: f32,
@@ -171,7 +171,7 @@ fn captured(
             inner,
         },
         mode,
-        body_family,
+        Font::new().family(body_family),
         ScopeAlignmentLimits::new(4096, 4096, 1_000_000, 16_777_216),
     )
 }
@@ -179,7 +179,7 @@ fn captured(
 fn captured_with_limits(
     case: Case<'_>,
     mode: TextCombineUpright,
-    body_family: &str,
+    body_font: Font,
     limits: ScopeAlignmentLimits,
 ) -> Captured {
     let Case {
@@ -205,7 +205,7 @@ fn captured_with_limits(
         ..Style::default()
     };
     let body = Style {
-        font: Font::new().family(body_family),
+        font: body_font,
         size: 10.0,
         line_height: LineHeight::Absolute(10.0),
         text_combine_upright: mode,
@@ -585,16 +585,96 @@ fn observe(
         origin.view().capture_position(),
         Some(capture.processed.captured_origin(0).unwrap())
     );
-    let error = layout
+    let range = layout
         .source_range_fragments(&origin, Range::new(0, 1))
-        .unwrap_err();
-    assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+        .unwrap();
+    assert_eq!(range.origin(), &origin);
+    assert_eq!(range.local_range(), Range::new(0, 1));
+    let units = range.units().collect::<Vec<_>>();
+    let [unit] = units.as_slice() else {
+        panic!("the first original owns one semantic EGC");
+    };
+    let cell_unit = unit.cell_unit().unwrap();
+    assert_eq!((cell_unit.line_index(), cell_unit.cell_index()), (0, 0));
     assert_eq!(
-        error.detail(),
-        Some(&ErrorDetail::SourceRangeFragments {
-            reason: SourceRangeFragmentError::UnsupportedCell { line: 0, cell: 0 },
-        })
+        cell_unit.kind(),
+        SourceRangeCellUnitKind::Semantic { ordinal: 0 }
     );
+    assert_eq!(
+        cell_unit.source_cell().scope(),
+        capture.processed.captured_scope(1).unwrap()
+    );
+    for intersections in [
+        unit.selected_intersections().collect::<Vec<_>>(),
+        unit.expanded_intersections().collect::<Vec<_>>(),
+    ] {
+        let [piece] = intersections.as_slice() else {
+            panic!("one actual first-original contribution");
+        };
+        assert_eq!(piece.origin(), origin);
+        assert_eq!(piece.local_range(), Range::new(0, 1));
+        assert_eq!(piece.aggregate_range(), Range::new(0, 1));
+    }
+    let pieces = unit.pieces().collect::<Vec<_>>();
+    if capture.processed.source().text().code_units()[0] == 0x09 {
+        // The selected original is a native TAB, including numeric-zero TAB+A.
+        // Its body may contain fonts; this selected span has no body baseline.
+        let [SourceRangeGeometry::CellTab(tab)] = pieces.as_slice() else {
+            panic!("native TAB span must not borrow a body font");
+        };
+        assert!(tab.cell_unit().same_unit(&cell_unit));
+        assert_eq!(tab.span_index(), 0);
+        let scope = capture.processed.captured_scope(1).unwrap();
+        let size = scope.style().unwrap().tab_size;
+        if size.is_spaces() {
+            assert_eq!(size.value(), 0.0);
+        }
+        assert!(size.value() == 20.0 || size.value() == 0.0);
+        let count = capture.processed.source().text().len() as f64;
+        let period = size.value();
+        // Literal packet width is qualified above for mixed TAB+A. TAB-only
+        // fixtures execute one actual period per source occurrence.
+        let total = width.unwrap_or(count * period);
+        let scale = if total > 10.0 { 10.0 / total } else { 1.0 };
+        let center = (10.0 - total * scale) / 2.0;
+        assert_eq!(tab.inner_advance_edges(), (0.0, period));
+        assert_eq!(tab.advance(), period);
+        assert_eq!(tab.container_metrics().captured_scope(), scope);
+        assert_eq!(tab.container_metrics().font_size(), 10.0);
+        assert_eq!(
+            tab.container_metrics().font_reference(),
+            reference(orientation)
+        );
+        assert_eq!(
+            tab.layout_frame().origin(),
+            Point::new(square.origin.x + center, square.origin.y)
+        );
+        close(tab.layout_frame().x_scale(), scale);
+        assert_eq!(tab.layout_frame().em_band_extent(), 10.0);
+        close(tab.rect().origin.x, square.origin.x + center);
+        assert_eq!(tab.rect().origin.y, square.origin.y);
+        close(tab.rect().size.width, period * scale);
+        assert_eq!(tab.rect().size.height, 10.0);
+    } else {
+        // The requested source0..1 is A even for the genuine RTL inner case.
+        // Literal raw packet positions above give its physical normalized pen;
+        // its10px font band is compressed, never rotated with the outer pen.
+        let [SourceRangeGeometry::CellFont(piece)] = pieces.as_slice() else {
+            panic!("A keeps real font geometry beside native TABs");
+        };
+        let pen = raw.iter().find(|(ch, _)| *ch == 'A').unwrap().1;
+        let scale = 10.0 / width.unwrap();
+        assert!(piece.cell_unit().same_unit(&cell_unit));
+        let (start, end) = piece.inner_advance_edges();
+        close(end - start, 10.0);
+        assert_eq!(piece.effective_instance().face().bytes(), bytes);
+        assert_eq!((piece.font_ascent(), piece.font_descent()), (8.0, 2.0));
+        close(piece.metric_frame().x_scale(), scale);
+        close(piece.rect().origin.x, square.origin.x + pen * scale);
+        assert_eq!(piece.rect().origin.y, square.origin.y);
+        close(piece.rect().size.width, 10.0 * scale);
+        assert_eq!(piece.rect().size.height, 10.0);
+    }
     #[cfg(feature = "text-accessibility")]
     {
         use accesskit::NodeId;
@@ -970,3 +1050,12 @@ mod widths;
 
 #[path = "combined_cell_inner_tabs_outer_incidence.rs"]
 mod outer_incidence;
+
+#[path = "combined_cell_range_tabs.rs"]
+mod ranges;
+
+#[path = "combined_cell_range_budgets.rs"]
+mod range_budgets;
+
+#[path = "combined_cell_range_providers.rs"]
+mod provider_ranges;

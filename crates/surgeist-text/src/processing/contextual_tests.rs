@@ -2,6 +2,7 @@
 use crate::*;
 use std::sync::Arc;
 
+mod cell_endpoints;
 mod combination_facts;
 mod continuity;
 mod domain_analysis;

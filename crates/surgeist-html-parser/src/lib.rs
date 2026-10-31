@@ -15,7 +15,6 @@ mod source;
 pub use request::*;
 pub use settings::*;
 pub use source::*;
-pub use surgeist_html::{HtmlNativeFormAssociationKind, HtmlScriptKind};
 
 pub use construction::read::{HtmlInputImageSource, HtmlParseRetiredDestination};
 pub use construction::{
@@ -134,9 +133,6 @@ pub use parser::tree_builder::head::{
 };
 pub use parser::tree_builder::prologue::{
     PrologueCondition as HtmlPrologueDiagnostic, PrologueMode as HtmlPrologueMode,
-};
-pub use surgeist_html::{
-    HtmlScriptReadySteps as HtmlParseScriptReadySteps, HtmlScriptResult as HtmlParseScriptResult,
 };
 
 pub use construction::context::FragmentParserOrigin as HtmlParseOpaqueOrigin;

@@ -446,7 +446,9 @@ fn source_range_piece_uses_decreasing_physical_edges_and_retained_instance() {
             .collect::<Vec<_>>(),
         [(origin, Range::new(0, 1))]
     );
-    let piece = unit.pieces().next().unwrap();
+    let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+        panic!("ordinary Range fixture must retain Line geometry");
+    };
     assert_eq!(piece.rect(), Rect::new(-15.25, 3.5, 10.0, 10.0));
     assert_eq!(piece.advance_edges(), (13.5, 3.5));
     assert_eq!(piece.baseline(), -7.25);
@@ -786,7 +788,9 @@ fn genuine_odd_rtl_range_pieces_use_actual_visual_provider_intervals_in_h_and_cc
                     .collect::<Vec<_>>(),
                 [range]
             );
-            let piece = unit.pieces().next().unwrap();
+            let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+                panic!("ordinary Range fixture must retain Line geometry");
+            };
             assert_eq!(piece.rect(), rect, "{orientation:?} source{range:?}");
             assert_eq!(
                 piece.advance_edges(),

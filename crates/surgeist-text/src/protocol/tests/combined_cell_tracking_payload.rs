@@ -738,3 +738,6 @@ fn line_edge_tracking_adds_no_outer_term_to_the_compressed_qwid_packet() {
         (16, 3.0, 5.0 / 6.0),
     );
 }
+
+#[path = "combined_cell_range_expansion.rs"]
+mod range_expansion;

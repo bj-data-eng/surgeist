@@ -67,11 +67,10 @@ impl CssColorInput<'_> {
 /// names the resource, never a standard color failure.
 ///
 /// [`Default`] admits inputs of up to 1,024 original units. Its record and action ceilings are
-/// four times the worst requirement per unit measured over the color cases of the
-/// characterization corpus, scaled to that length; the margin holds for the corpus, not for
-/// every input of that length. The actions ceiling is a coarse work bound: a value made of many
-/// extreme numeric literals such as `1e308` can need far more work than any corpus input before
-/// it is refused. A caller with longer inputs, more extreme literals or a tighter work budget
+/// fixed reference values, scaled to that length and multiplied by four. They leave large
+/// headroom over the requirement per unit of every color case of the characterization corpus;
+/// the headroom is measured on that corpus, not guaranteed for every input of that length. The
+/// actions ceiling is a coarse work bound. A caller with longer inputs or a tighter work budget
 /// passes explicit limits, raising the record and action ceilings together with `input_units`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorOrdinaryLimits {
@@ -91,8 +90,8 @@ impl Default for CssColorOrdinaryLimits {
     /// 275,295 algorithm records, 3,476 arithmetic records, 3,476 evaluation records and
     /// 2,036,468,185 actions.
     ///
-    /// The record and action ceilings are four times the worst corpus requirement per input
-    /// unit, scaled to 1,024 units. Callers with larger inputs pass explicit limits.
+    /// The record and action ceilings are fixed reference values per input unit, scaled to
+    /// 1,024 units and multiplied by four. Callers with larger inputs pass explicit limits.
     fn default() -> Self {
         Self {
             input_units: DEFAULT_INPUT_UNITS,

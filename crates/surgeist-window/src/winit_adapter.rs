@@ -6,6 +6,7 @@ use super::{
     capability::CapabilityProvider,
     command::Action,
     descriptor::WindowSnapshotSeed,
+    environment_native::CaptureProfile,
     event::EventKind,
     lease::{LeaseWeak, ReleaseNotifier},
     loop_::PreparedLoop,
@@ -644,6 +645,8 @@ pub(crate) struct WinitRunner<H> {
     draw: DrawScheduler,
     capabilities: Option<HostCapabilities>,
     clipboard: Box<dyn Clipboard>,
+    system_theme: Option<Theme>,
+    capture_profile: CaptureProfile,
     #[cfg(test)]
     pub(crate) commands: Vec<Command>,
     #[cfg(test)]
@@ -713,6 +716,8 @@ impl<H> WinitRunner<H> {
             draw: window_loop.draw,
             capabilities: None,
             clipboard: window_loop.clipboard,
+            system_theme: None,
+            capture_profile: CaptureProfile::NativeContent,
             #[cfg(test)]
             commands: window_loop.commands,
             #[cfg(test)]
@@ -1324,6 +1329,8 @@ impl<H: Handler> WinitRunner<H> {
         plan: HostCommandPlan,
         callbacks: &mut Vec<BackendCallback>,
     ) -> Result<()> {
+        self.system_theme = event_loop.system_theme().map(Into::into);
+        self.capture_profile = capture_profile_for_target(winit_target(event_loop));
         let resolved = take_resolved_host_command(plan);
         let ime_request = resolved.ime_request;
         #[cfg(feature = "accessibility")]
@@ -1357,7 +1364,15 @@ impl<H: Handler> WinitRunner<H> {
                             Error::new(ErrorCode::WindowCreateFailed, "failed to create window")
                                 .with_source(source)
                         })?;
-                        let state = state_from_winit(id, &request, &window)?;
+                        let profile = capture_profile_for_target(winit_target(event_loop));
+                        let state = state_from_winit(id, &request, &window, profile)?;
+                        let environment = crate::environment_native::observe_environment(
+                            &window,
+                            state.metrics(),
+                            event_loop.system_theme().map(Into::into),
+                            profile,
+                        )?;
+                        let state = state.with_environment(environment);
                         let window_id = window.id();
                         #[cfg(feature = "accessibility")]
                         let adapter = prepare_accessible_open(
@@ -1490,7 +1505,18 @@ impl<H: Handler> WinitRunner<H> {
             Command::SetTheme { id, theme } => {
                 self.handle(id)?
                     .with_winit(|window| window.set_theme(theme.map(Into::into)))?;
-                if let Some(event) = self.apply_patch(WindowStatePatch::Theme { id, theme })? {
+                let metrics = self
+                    .registry
+                    .get(id)
+                    .expect("the native handle is live")
+                    .metrics()
+                    .clone();
+                let transition = self.attach_environment(
+                    id,
+                    &metrics,
+                    NativeEventTransition::theme_changed(id, theme),
+                )?;
+                if let Some(event) = self.apply_native_transition_state(id, transition)? {
                     callbacks.push(BackendCallback::Event(event));
                 }
             }
@@ -2212,6 +2238,7 @@ fn with_planned_open_reservation<T>(
 
 impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunner<H> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.capture_profile = capture_profile_for_target(winit_target(event_loop));
         let mut provider = WinitCapabilityProvider { event_loop };
         self.resolve_capabilities_once(&mut provider);
         match self.stage_first_resume() {
@@ -2265,6 +2292,7 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
+        self.system_theme = event_loop.system_theme().map(Into::into);
         let live_id = self.id_for_winit(window_id);
         let closing_id = self.id_for_closing_winit(window_id);
         if matches!(&event, winit::event::WindowEvent::Destroyed) {
@@ -2313,6 +2341,9 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
                 }
             }
             winit::event::WindowEvent::Moved(position) => {
+                if self.capture_profile == CaptureProfile::BrowserCanvas {
+                    return;
+                }
                 match self.moved_transition(
                     id,
                     PhysicalPoint {
@@ -2333,8 +2364,25 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
             }
             winit::event::WindowEvent::ThemeChanged(theme) => {
                 let theme = Some(theme.into());
-                let transition = NativeEventTransition::theme_changed(id, theme);
-                self.apply_native_transition(event_loop, id, transition);
+                let result = self
+                    .registry
+                    .get(id)
+                    .map(|window| window.metrics().clone())
+                    .ok_or_else(|| Error::new(ErrorCode::StaleWindow, "unknown window").with_id(id))
+                    .and_then(|metrics| {
+                        self.attach_environment(
+                            id,
+                            &metrics,
+                            NativeEventTransition::theme_changed(id, theme),
+                        )
+                    });
+                match result {
+                    Ok(transition) => self.apply_native_transition(event_loop, id, transition),
+                    Err(error) => {
+                        self.fail_terminal(error);
+                        self.drain_pump(event_loop);
+                    }
+                }
             }
             winit::event::WindowEvent::Occluded(occluded) => {
                 if !occluded {
@@ -2546,6 +2594,15 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
             return;
         }
 
+        if let Err(error) =
+            self.refresh_environment_baselines(event_loop.system_theme().map(Into::into))
+        {
+            self.fail_terminal(error);
+        }
+        self.drain_pump(event_loop);
+        if !self.pump.is_running() {
+            return;
+        }
         if self.handler.wants_idle() {
             self.dispatch_callback(event_loop, BackendCallback::Idle);
         }
@@ -2672,14 +2729,15 @@ impl<H: Handler> WinitRunner<H> {
             id,
             PhysicalSize { width, height },
             existing.scale_factor(),
-        )?
-        .with_outer_geometry(existing.outer_position(), existing.outer_size())?;
-        Ok(match event {
-            MetricsEvent::Resized => NativeEventTransition::resized(metrics),
+        )?;
+        let metrics = self.refresh_outer_geometry(id, metrics, existing.outer_position())?;
+        let transition = match event {
+            MetricsEvent::Resized => NativeEventTransition::resized(metrics.clone()),
             MetricsEvent::ScaleFactorChanged => {
-                NativeEventTransition::scale_factor_changed(metrics)
+                NativeEventTransition::scale_factor_changed(metrics.clone())
             }
-        })
+        };
+        self.attach_environment(id, &metrics, transition)
     }
 
     fn scale_factor_transition(&self, id: Id, scale_factor: f64) -> Result<NativeEventTransition> {
@@ -2688,9 +2746,16 @@ impl<H: Handler> WinitRunner<H> {
             .get(id)
             .map(|window| window.metrics())
             .ok_or_else(|| Error::new(ErrorCode::CommandFailed, "unknown window").with_id(id))?;
-        let metrics = Metrics::from_physical_size(id, existing.physical_size(), scale_factor)?
-            .with_outer_geometry(existing.outer_position(), existing.outer_size())?;
-        Ok(NativeEventTransition::scale_factor_changed(metrics))
+        let metrics = Metrics::from_physical_size(id, existing.physical_size(), scale_factor)?;
+        let position = (scale_factor == existing.scale_factor())
+            .then(|| existing.outer_position())
+            .flatten();
+        let metrics = self.refresh_outer_geometry(id, metrics, position)?;
+        self.attach_environment(
+            id,
+            &metrics,
+            NativeEventTransition::scale_factor_changed(metrics.clone()),
+        )
     }
 
     fn moved_transition(
@@ -2703,10 +2768,93 @@ impl<H: Handler> WinitRunner<H> {
             .get(id)
             .map(|window| window.metrics())
             .ok_or_else(|| Error::new(ErrorCode::CommandFailed, "unknown window").with_id(id))?;
-        Ok(NativeEventTransition::moved(
+        self.attach_environment(
             id,
-            metrics.physical_to_logical_point(physical_position),
-        ))
+            &metrics,
+            NativeEventTransition::moved(id, metrics.physical_to_logical_point(physical_position)),
+        )
+    }
+
+    fn refresh_outer_geometry(
+        &self,
+        id: Id,
+        metrics: Metrics,
+        retained_position: Option<Point>,
+    ) -> Result<Metrics> {
+        let window = self
+            .registry
+            .get(id)
+            .ok_or_else(|| Error::new(ErrorCode::StaleWindow, "unknown window").with_id(id))?;
+        let Some(handle) = window.instance.handle.as_ref() else {
+            let position = if self.capture_profile == CaptureProfile::NativeContent {
+                retained_position
+            } else {
+                None
+            };
+            return metrics.with_outer_geometry(position, None);
+        };
+        let (position, size) = handle.with_winit(observe_outer_geometry)?;
+        metrics_from_profile_geometry(
+            self.capture_profile,
+            id,
+            metrics.physical_size(),
+            position,
+            size,
+            metrics.scale_factor(),
+        )
+    }
+
+    fn attach_environment(
+        &self,
+        id: Id,
+        metrics: &Metrics,
+        transition: NativeEventTransition,
+    ) -> Result<NativeEventTransition> {
+        let window = self
+            .registry
+            .get(id)
+            .ok_or_else(|| Error::new(ErrorCode::StaleWindow, "unknown window").with_id(id))?;
+        let Some(handle) = window.instance.handle.as_ref() else {
+            return Ok(transition);
+        };
+        let environment = handle.with_winit(|native| {
+            crate::environment_native::observe_environment(
+                native,
+                metrics,
+                self.system_theme,
+                self.capture_profile,
+            )
+        })??;
+        Ok(transition.with_environment(environment))
+    }
+
+    fn refresh_environment_baselines(&mut self, theme: Option<Theme>) -> Result<()> {
+        self.system_theme = theme;
+        let ids = self.windows.values().copied().collect::<Vec<_>>();
+        for id in ids {
+            let Some(window) = self.registry.get(id) else {
+                continue;
+            };
+            if window
+                .instance
+                .state()
+                .environment()
+                .preferences
+                .color_scheme
+                == theme
+            {
+                continue;
+            }
+            let mut environment = window.instance.state().environment().clone();
+            environment.preferences.color_scheme = theme;
+            if let Some(event) = self.apply_native_transition_state(
+                id,
+                NativeEventTransition::environment_changed(id, environment),
+            )? {
+                self.enqueue_callback(BackendCallback::Event(event));
+            }
+        }
+        Ok(())
     }
 
     fn apply_native_transition_patch_state(
@@ -2785,24 +2933,19 @@ pub(crate) fn state_from_winit(
     id: Id,
     request: &WindowRequest,
     window: &winit::window::Window,
+    profile: CaptureProfile,
 ) -> Result<WindowSnapshot> {
     let inner_size = window.inner_size();
-    let outer_position = window.outer_position().ok().map(|position| PhysicalPoint {
-        x: position.x,
-        y: position.y,
-    });
-    let outer_size = window.outer_size();
-    let metrics = metrics_from_winit_geometry(
+    let (outer_position, outer_size) = observe_outer_geometry(window);
+    let metrics = metrics_from_profile_geometry(
+        profile,
         id,
         PhysicalSize {
             width: inner_size.width,
             height: inner_size.height,
         },
         outer_position,
-        Some(PhysicalSize {
-            width: outer_size.width,
-            height: outer_size.height,
-        }),
+        outer_size,
         window.scale_factor(),
     )?;
     Ok(WindowSnapshot::from_seed(WindowSnapshotSeed {
@@ -2818,6 +2961,47 @@ pub(crate) fn state_from_winit(
         role: request.role().clone(),
         metrics,
     }))
+}
+
+fn capture_profile_for_target(target: WinitTarget) -> CaptureProfile {
+    if target == WinitTarget::Web {
+        CaptureProfile::BrowserCanvas
+    } else {
+        CaptureProfile::NativeContent
+    }
+}
+
+fn observe_outer_geometry(
+    window: &winit::window::Window,
+) -> (Option<PhysicalPoint>, Option<PhysicalSize>) {
+    let position = window
+        .outer_position()
+        .ok()
+        .map(|p| PhysicalPoint { x: p.x, y: p.y });
+    let size = window.outer_size();
+    (
+        position,
+        Some(PhysicalSize {
+            width: size.width,
+            height: size.height,
+        }),
+    )
+}
+
+fn metrics_from_profile_geometry(
+    profile: CaptureProfile,
+    id: Id,
+    inner_size: PhysicalSize,
+    outer_position: Option<PhysicalPoint>,
+    outer_size: Option<PhysicalSize>,
+    scale_factor: f64,
+) -> Result<Metrics> {
+    let (position, size) = if profile == CaptureProfile::BrowserCanvas {
+        (None, None)
+    } else {
+        (outer_position, outer_size)
+    };
+    metrics_from_winit_geometry(id, inner_size, position, size, scale_factor)
 }
 
 fn metrics_from_winit_geometry(
@@ -3532,6 +3716,72 @@ mod tests {
     struct NoopHandler;
 
     impl Handler for NoopHandler {}
+
+    #[test]
+    fn native_baseline_refresh_updates_behind_window_theme_override() {
+        #[derive(Default)]
+        struct Observer {
+            observed: Vec<(Option<Theme>, Option<Theme>)>,
+        }
+        impl Handler for Observer {
+            fn event(&mut self, event: &mut Event<'_>) -> Result<()> {
+                if matches!(event.event(), EventKind::EnvironmentChanged { .. }) {
+                    let state = event.state().unwrap();
+                    self.observed
+                        .push((state.theme(), state.environment().preferences.color_scheme));
+                }
+                Ok(())
+            }
+        }
+        let id = Id::from_u64(1);
+        let mut window_loop = Loop::new(Observer::default());
+        let environment = HostEnvironment {
+            preferences: UserPreferences {
+                color_scheme: Some(Theme::Light),
+                ..UserPreferences::default()
+            },
+            ..HostEnvironment::default()
+        };
+        window_loop
+            .registry
+            .insert(Instance::new(state(id).with_environment(environment)))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+        runner.windows.insert(winit::window::WindowId::dummy(), id);
+        runner
+            .apply_patch(WindowStatePatch::Theme {
+                id,
+                theme: Some(Theme::Light),
+            })
+            .unwrap();
+        runner
+            .refresh_environment_baselines(Some(Theme::Dark))
+            .unwrap();
+        runner.drain_pump_for_test();
+        assert_eq!(
+            runner.handler.observed,
+            [(Some(Theme::Light), Some(Theme::Dark))]
+        );
+        runner
+            .apply_patch(WindowStatePatch::Theme { id, theme: None })
+            .unwrap();
+        assert_eq!(
+            runner
+                .registry
+                .get(id)
+                .unwrap()
+                .environment()
+                .preferences
+                .color_scheme,
+            Some(Theme::Dark)
+        );
+        runner
+            .refresh_environment_baselines(Some(Theme::Dark))
+            .unwrap();
+        runner.drain_pump_for_test();
+        assert_eq!(runner.handler.observed.len(), 1);
+    }
 
     fn state(id: Id) -> WindowSnapshot {
         WindowSnapshot::new(
@@ -5545,6 +5795,196 @@ mod tests {
     }
 
     #[test]
+    fn fresh_native_outer_geometry_uses_event_size_and_scale_for_clamping() {
+        let id = Id::from_u64(31);
+        let metrics = metrics_from_profile_geometry(
+            capture_profile_for_target(WinitTarget::MacOs),
+            id,
+            PhysicalSize {
+                width: 1600,
+                height: 1200,
+            },
+            Some(PhysicalPoint { x: 200, y: 100 }),
+            Some(PhysicalSize {
+                width: 1632,
+                height: 1276,
+            }),
+            2.0,
+        )
+        .unwrap();
+        assert_eq!(
+            metrics.logical_size(),
+            Size {
+                width: 800.0,
+                height: 600.0
+            }
+        );
+        assert_eq!(metrics.outer_position(), Some(Point { x: 100.0, y: 50.0 }));
+        assert_eq!(
+            metrics.outer_size(),
+            Some(Size {
+                width: 816.0,
+                height: 638.0
+            })
+        );
+        let snapshot = WindowSnapshot::new("fresh", metrics);
+        let authorization = NativeGeometryAuthorization::clamp_to(Rect {
+            origin: Point::default(),
+            size: Size {
+                width: 1000.0,
+                height: 800.0,
+            },
+        })
+        .unwrap();
+        let outcome = NativeGeometryRequest::resize_to(1000, 800)
+            .resolve_against(
+                &snapshot,
+                NativeGeometryBasis::new(Point::default(), 1.0).unwrap(),
+                authorization,
+            )
+            .unwrap();
+        assert_eq!(
+            outcome.command(),
+            Some(&Command::SetInnerSize {
+                id,
+                size: Size {
+                    width: 984.0,
+                    height: 762.0
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn web_profile_canvas_outer_geometry_does_not_become_desktop_geometry() {
+        let id = Id::from_u64(31);
+        let metrics = metrics_from_profile_geometry(
+            capture_profile_for_target(WinitTarget::Web),
+            id,
+            PhysicalSize {
+                width: 800,
+                height: 600,
+            },
+            Some(PhysicalPoint { x: 20, y: 40 }),
+            Some(PhysicalSize {
+                width: 800,
+                height: 600,
+            }),
+            2.0,
+        )
+        .unwrap();
+        assert_eq!(
+            metrics.logical_size(),
+            Size {
+                width: 400.0,
+                height: 300.0
+            }
+        );
+        assert_eq!(metrics.outer_position(), None);
+        assert_eq!(metrics.outer_size(), None);
+    }
+
+    fn runner_with_observed_outer_geometry() -> (WinitRunner<NoopHandler>, Id) {
+        let id = Id::from_u64(32);
+        let metrics = Metrics::from_physical_size(
+            id,
+            PhysicalSize {
+                width: 400,
+                height: 300,
+            },
+            1.0,
+        )
+        .unwrap()
+        .with_outer_geometry(
+            Some(Point { x: 20.0, y: 40.0 }),
+            Some(Size {
+                width: 416.0,
+                height: 338.0,
+            }),
+        )
+        .unwrap();
+        let mut window_loop = Loop::new(NoopHandler);
+        window_loop
+            .registry
+            .insert(Instance::new(WindowSnapshot::new("observed", metrics)))
+            .unwrap();
+        (WinitRunner::from_loop(window_loop), id)
+    }
+
+    fn clamped_resize_after_native_resize(width: u32, height: u32) -> NativeGeometryOutcome {
+        let (mut runner, id) = runner_with_observed_outer_geometry();
+        let transition = runner
+            .metrics_transition(id, width, height, MetricsEvent::Resized)
+            .unwrap();
+        runner
+            .apply_native_transition_state(id, transition)
+            .unwrap();
+        let basis = NativeGeometryBasis::new(Point::default(), 1.0).unwrap();
+        let authorization = NativeGeometryAuthorization::clamp_to(Rect {
+            origin: Point::default(),
+            size: Size {
+                width: 1000.0,
+                height: 800.0,
+            },
+        })
+        .unwrap();
+        NativeGeometryRequest::resize_to(1000, 800)
+            .resolve_against(
+                runner.registry.get(id).unwrap().instance.state(),
+                basis,
+                authorization,
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn native_resize_growth_without_fresh_outer_extent_keeps_clamp_unavailable() {
+        let outcome = clamped_resize_after_native_resize(800, 600);
+        assert_eq!(
+            outcome.disposition(),
+            NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+        );
+    }
+
+    #[test]
+    fn native_resize_shrink_without_fresh_outer_extent_keeps_clamp_unavailable() {
+        let outcome = clamped_resize_after_native_resize(200, 150);
+        assert_eq!(
+            outcome.disposition(),
+            NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+        );
+    }
+
+    #[test]
+    fn native_scale_change_without_fresh_outer_extent_keeps_clamp_unavailable() {
+        let (mut runner, id) = runner_with_observed_outer_geometry();
+        let transition = runner.scale_factor_transition(id, 2.0).unwrap();
+        runner
+            .apply_native_transition_state(id, transition)
+            .unwrap();
+        let basis = NativeGeometryBasis::new(Point::default(), 1.0).unwrap();
+        let authorization = NativeGeometryAuthorization::clamp_to(Rect {
+            origin: Point::default(),
+            size: Size {
+                width: 1000.0,
+                height: 800.0,
+            },
+        })
+        .unwrap();
+        let outcome = NativeGeometryRequest::resize_to(1000, 800)
+            .resolve_against(
+                runner.registry.get(id).unwrap().instance.state(),
+                basis,
+                authorization,
+            )
+            .unwrap();
+        assert_eq!(
+            outcome.disposition(),
+            NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+        );
+    }
+
+    #[test]
     fn moved_then_resized_preserves_canonical_logical_position() {
         let id = Id::from_u64(33);
         let mut window_loop = Loop::new(NoopHandler);
@@ -5581,7 +6021,7 @@ mod tests {
     }
 
     #[test]
-    fn moved_then_scale_factor_change_preserves_canonical_logical_position() {
+    fn native_scale_change_without_fresh_position_discards_old_logical_basis() {
         let id = Id::from_u64(34);
         let mut window_loop = Loop::new(NoopHandler);
         window_loop
@@ -5612,7 +6052,7 @@ mod tests {
                 .expect("window remains live")
                 .metrics()
                 .outer_position(),
-            Some(Point { x: 100.0, y: 50.0 })
+            None
         );
     }
 

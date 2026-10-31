@@ -290,7 +290,9 @@ fn nested_real_scopes_move_paint_source_carets_selection_and_decoration_once_in_
                 .handle();
             let query = layout.source_range_fragments(&origin, range).unwrap();
             let unit = query.units().next().unwrap();
-            let piece = unit.pieces().next().unwrap();
+            let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+                panic!("ordinary Range fixture must retain Line geometry");
+            };
             assert_eq!(piece.rect(), cell(orientation, i, shift));
             assert_eq!((piece.font_ascent(), piece.font_descent()), (8.0, 2.0));
             let point = layout

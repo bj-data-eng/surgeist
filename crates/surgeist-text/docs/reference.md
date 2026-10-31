@@ -40,7 +40,7 @@ private implementation organization.
 | Borrowed readback | `RunView`, `FinalizedRunView`, `GlyphBasis`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
 | Prepared hyphenation | `PreparedWord`, `PreparedHyphenationCut`, borrowed views, `PreparedWordPortion`, `HyphenationResource`, `HyphenationProvenance` | [hyphenation.rs](../src/protocol/hyphenation.rs), [resource support](hyphenation-resources.md) |
 | Finalized logical prefixes | `TextSeam`, `FinalizedPrefixView`, `FinalizedSharedUnitView`, `FinalizedLine::prefix_at` | [prefix.rs](../src/protocol/prefix.rs), [composition guide](composed-lines.md) |
-| Placed original-source fragments | `SourceRangeFragments`, `SourceRangeUnit`, `SourceRangePiece`, `SourceRangeFragmentError`, `Layout::source_range_fragments` | [range_fragments.rs](../src/range_fragments.rs), [composition guide](composed-lines.md) |
+| Placed original-source fragments | `SourceRangeFragments`, `SourceRangeUnit`, `SourceRangeGeometry`, `SourceRangeFragmentError`, `Layout::source_range_fragments` | [range_fragments.rs](../src/range_fragments.rs), [composition guide](composed-lines.md) |
 | Output and interaction | `Layout`, glyph runs, line/box facts, `PlacedPosition`, `PlacedSelection`, `PlacedSelectionPiece`, source cursors/selections and movement | [layout.rs](../src/layout.rs) |
 | Ranges and edits | `Range`, `SourcePosition`, `SourceRange`, `Edit`, `TextEdit` | [range.rs](../src/range.rs), [edit.rs](../src/edit.rs) |
 | Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
@@ -183,9 +183,9 @@ logical advances remain line
 measurements. Point hits choose the nearest actual line metric rectangle, with
 line ordinal breaking ties.
 
-`source_range_fragments` uses that same placed basis. Piece rectangles are
-physical; directed advance edges use the physical inline coordinate and the
-baseline uses the physical cross coordinate. For clockwise placement these are
+`source_range_fragments` uses that same placed basis. All piece rectangles are
+physical. Ordinary `SourceRangeGeometry::Line` directed advance edges use the
+physical inline coordinate and its baseline uses the physical cross coordinate. For clockwise placement these are
 y and x respectively. Font ascent/descent keep their unrotated before/after
 distances; the query's retained `layout().orientation()` identifies their physical
 placement frame.
@@ -702,8 +702,14 @@ no exterior targets succeeds with an empty complete allocation. The selected all
 payload participates in the existing scope allowance and shared-product census.
 
 Source-resolved inner directional controls retain their effect in the used bidi
-levels without becoming provider scalars or additional outer units. Interior
-inline-boundary controls still return `TextCombineError::UnsupportedCellPreparation`.
+levels without becoming provider scalars or additional outer units. With complete
+captured box topology, an Inline's own Start/End controls remain exterior to its
+Cells and contribute their actual allocated flow and endpoint footprints. Every
+real box, including an empty Inline, fences combination without splitting an
+indivisible typographic unit. An unscoped native endpoint pair does not establish
+captured box authority. Preparation defensively returns
+`TextCombineError::UnsupportedCellPreparation` if an inline-boundary control
+occurs inside a Cell binding.
 A preserved in-cell TAB under CssStops executes during preparation on a horizontal
 zero-origin grid in the captured inner direction. Its actual computed tab-size
 uses the text-containing Inline or derived RootInline's specified horizontal
@@ -719,9 +725,13 @@ retains its actual relation-event interval for direction queries. Its whole
 occurrence can supply an eligible strong bidi contribution when a raw empty point cannot;
 the complete body context still determines isolate eligibility.
 
-`source_range_fragments` returns `SourceRangeFragmentError::UnsupportedCell` when
-the requested original range intersects an actual placed Cell's source pieces.
-Disjoint ordinary ranges remain observable in the same layout. Placed
+`source_range_fragments` observes actual inner semantic EGCs through
+`SourceRangeGeometry::CellFont` and genuine native TABs through `CellTab`.
+Cell font metrics use their common horizontal metric reference; native TABs
+retain a separate layout/em-band reference without borrowing a body font.
+Removed-only Cell units preserve source metadata with no rectangle. See the
+[Range query guide](composed-lines.md) for source closure, identity and accounting.
+Placed
 `accessibility_update` returns `ErrorDetail::UnsupportedAccessibilityCell` without
 replacing the prior binding; source-only analyzed accessibility remains available.
 

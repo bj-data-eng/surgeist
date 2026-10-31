@@ -224,13 +224,13 @@ fn visit_selected_own_allocations(
 }
 
 fn visit_finalized_own_allocations(
-    frame: &crate::protocol::FinalizedLine,
+    frame: &Arc<crate::engine::FinalizedLine>,
     visit: &mut AllocationVisitor<'_>,
 ) -> Result<()> {
-    if frame.inner.data.scope_retention.is_none() {
+    if frame.data.scope_retention.is_none() {
         return Ok(());
     }
-    let selected = &frame.inner.selected;
+    let selected = &frame.selected;
     visit_selected_own_allocations(
         &selected.prepared,
         &selected.scopes,
@@ -239,7 +239,7 @@ fn visit_finalized_own_allocations(
         &selected.spacing_slots,
         visit,
     )?;
-    frame.inner.visit_scope_allocations(visit)
+    frame.visit_scope_allocations(visit)
 }
 
 /// The stored closure is already unique and transitive. Emit each actual
@@ -254,7 +254,7 @@ fn visit_selected_allocations(
 ) -> Result<()> {
     visit_selected_own_allocations(prepared, scopes, basis, policy, slots, visit)?;
     for frame in &scopes.proof_frames {
-        visit_finalized_own_allocations(frame, visit)?;
+        visit_finalized_own_allocations(&frame.inner, visit)?;
     }
     Ok(())
 }
@@ -275,7 +275,7 @@ pub(crate) fn proof_frames_contain_resource(
     let resource = AllocationWitness::resource(bytes).identity();
     let mut retained = false;
     for frame in frames {
-        visit_finalized_own_allocations(frame, &mut |witness| {
+        visit_finalized_own_allocations(&frame.inner, &mut |witness| {
             budget.work(checked_sum(work, witness.records(), 1)?)?;
             if witness.records() == 0 && witness.payload_bytes() == 0 {
                 return Ok(());
@@ -342,6 +342,7 @@ fn product_prepared<'a>(product: crate::protocol::ScopeAlignmentProduct<'a>) -> 
 #[derive(Clone, Copy)]
 enum Input<'a> {
     Product(crate::protocol::ScopeAlignmentProduct<'a>),
+    Placed(&'a crate::engine::layout::data::PlacedLayout),
     Selection {
         prepared: &'a PreparedData,
         request: &'a crate::protocol::LineSelectionRequest,
@@ -375,6 +376,7 @@ impl<'a> Input<'a> {
     fn prepared(self) -> &'a PreparedData {
         match self {
             Self::Product(product) => product_prepared(product),
+            Self::Placed(layout) => &layout.prepared,
             Self::Selection { prepared, .. } | Self::Flow { prepared, .. } => prepared,
         }
     }
@@ -414,14 +416,14 @@ enum Phase {
 enum Root<'a> {
     Prepared(&'a PreparedData),
     Selected(&'a Arc<crate::protocol::selection::SelectedData>),
-    Finalized(&'a crate::protocol::FinalizedLine),
+    Finalized(&'a Arc<crate::engine::FinalizedLine>),
 }
 impl Root<'_> {
     fn same(self, other: Self) -> bool {
         match (self, other) {
             (Self::Prepared(a), Self::Prepared(b)) => std::ptr::eq(a, b),
             (Self::Selected(a), Self::Selected(b)) => Arc::ptr_eq(a, b),
-            (Self::Finalized(a), Self::Finalized(b)) => Arc::ptr_eq(&a.inner, &b.inner),
+            (Self::Finalized(a), Self::Finalized(b)) => Arc::ptr_eq(a, b),
             _ => false,
         }
     }
@@ -462,11 +464,28 @@ fn visit_closed_roots<'a>(
     emit(RootVisit::Work(frames.len()))?;
     for frame in frames {
         emit(RootVisit::Owner {
-            root: Root::Finalized(frame),
+            root: Root::Finalized(&frame.inner),
             phase,
         })?;
     }
     Ok(())
+}
+
+/// Open one actual finalized owner and its already transitive proof closure.
+/// Placement receipts borrow the same Arc directly, including nonformatted rows.
+fn visit_finalized_roots<'a>(
+    frame: &'a Arc<crate::engine::FinalizedLine>,
+    phase: Phase,
+    emit: &mut dyn FnMut(RootVisit<'a>) -> Result<()>,
+) -> Result<()> {
+    if frame.data.scope_retention.is_none() {
+        return Ok(());
+    }
+    emit(RootVisit::Owner {
+        root: Root::Finalized(frame),
+        phase,
+    })?;
+    visit_closed_roots(&frame.selected.scopes.proof_frames, phase, emit)
 }
 
 fn visit_product_roots<'a>(
@@ -489,15 +508,34 @@ fn visit_product_roots<'a>(
             })?;
             visit_closed_roots(&value.inner.scopes.proof_frames, phase, emit)
         }
-        Product::Finalized(value) if value.inner.data.scope_retention.is_some() => {
-            emit(RootVisit::Owner {
-                root: Root::Finalized(value),
-                phase,
-            })?;
-            visit_closed_roots(&value.inner.selected.scopes.proof_frames, phase, emit)
-        }
+        Product::Finalized(value) => visit_finalized_roots(&value.inner, phase, emit),
         _ => Ok(()),
     }
+}
+
+/// Active Cell preparation publishes retention at every subsequent selected and
+/// finalized owner, even for ordinary or nonformatted selections. Missing facts
+/// are an incomplete canonical product, not Native ownership or absent limits.
+fn require_range_frame_retention(frame: &Arc<crate::engine::FinalizedLine>) -> Result<()> {
+    if frame.selected.prepared.scope_alignment.retention.is_none() {
+        return Err(crate::Error::new(
+            crate::ErrorCode::LayoutFailed,
+            "activated Cell Range frame has no prepared retention",
+        ));
+    }
+    if frame.selected.scopes.retention.is_none() {
+        return Err(crate::Error::new(
+            crate::ErrorCode::LayoutFailed,
+            "activated Cell Range frame has no selected retention",
+        ));
+    }
+    if frame.data.scope_retention.is_none() {
+        return Err(crate::Error::new(
+            crate::ErrorCode::LayoutFailed,
+            "activated Cell Range frame has no finalized retention",
+        ));
+    }
+    Ok(())
 }
 
 fn visit_input_roots<'a>(
@@ -508,18 +546,42 @@ fn visit_input_roots<'a>(
     if let Input::Product(product) = input {
         return visit_product_roots(product, Phase::Input, emit);
     }
+    if matches!(input, Input::Placed(_)) && input.prepared().scope_alignment.retention.is_none() {
+        return Err(crate::Error::new(
+            crate::ErrorCode::LayoutFailed,
+            "activated Cell Range placement has no prepared retention",
+        ));
+    }
     if input.prepared().scope_alignment.retention.is_some() {
         emit(RootVisit::Owner {
             root: Root::Prepared(input.prepared()),
             phase: Phase::Input,
         })?;
     }
+    if let Input::Placed(layout) = input {
+        // Receipts are the complete semantic sequence. Visible lines alias these
+        // same owners; iterating only lines would omit nonformatted custody.
+        emit(RootVisit::Work(layout.receipts.len()))?;
+        for frame in &layout.receipts {
+            require_range_frame_retention(frame)?;
+            // Validate the actual closed proof owners before the legacy generic
+            // visitor can skip an owner without feature retention. These are
+            // separate real inspections, in addition to their later emission.
+            let proofs = &frame.selected.scopes.proof_frames;
+            emit(RootVisit::Work(proofs.len()))?;
+            for proof in proofs {
+                require_range_frame_retention(&proof.inner)?;
+            }
+            visit_finalized_roots(frame, Phase::Input, emit)?;
+        }
+        return Ok(());
+    }
     let mut proof = |edge: Proof<'a>| match edge {
         Proof::Work(count) => emit(RootVisit::Work(count)),
         Proof::Frame(frame) => {
             emit(RootVisit::Work(1))?;
             emit(RootVisit::Owner {
-                root: Root::Finalized(frame),
+                root: Root::Finalized(&frame.inner),
                 phase: Phase::Input,
             })?;
             // This list is already transitive. Do not follow older lists again.
@@ -535,7 +597,7 @@ fn visit_input_roots<'a>(
             crate::protocol::scope_alignment::visit_request_scope_frames(request, &mut proof)
         }
         Input::Flow { segment, .. } => segment.visit_scope_frames(&mut proof),
-        Input::Product(_) => Ok(()),
+        Input::Product(_) | Input::Placed(_) => Ok(()),
     }
 }
 
@@ -757,6 +819,21 @@ pub(crate) fn begin_flow(
         allowance,
     )?
     .map(|value| value.budget))
+}
+
+/// Start an activated Cell Range query from the actual complete placed input.
+/// The immutable receipt/proof stream is borrowed through both census passes;
+/// no wrapper storage or summed per-receipt retention seeds the transaction.
+pub(crate) fn begin_range(
+    layout: &crate::engine::layout::data::PlacedLayout,
+) -> Result<ScopeAlignmentBudget> {
+    let value = census(
+        Input::Placed(layout),
+        crate::protocol::ScopeAlignmentProducts::Mixed(&[]),
+        None,
+    )?
+    .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
+    Ok(value.budget)
 }
 
 pub(crate) fn live_products(

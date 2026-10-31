@@ -1442,8 +1442,8 @@ mod tests {
                 input.shared_code_units()
             ));
             assert_eq!(selected.value.len(), expected_units);
-            for chunk in selected.value.code_units().chunks_exact(4) {
-                assert_eq!(chunk, [65, 0xd800, 0, 0xdc00]);
+            for chunk in selected.value.code_units().as_chunks::<4>().0 {
+                assert_eq!(chunk, &[65, 0xd800, 0, 0xdc00]);
             }
             selected.release(sharing.control);
             inspected
@@ -1456,8 +1456,8 @@ mod tests {
         assert_eq!(input.len(), expected_units);
         assert_eq!(equal.len(), expected_units);
         for value in [&input, &equal] {
-            for chunk in value.code_units().chunks_exact(4) {
-                assert_eq!(chunk, [65, 0xd800, 0, 0xdc00]);
+            for chunk in value.code_units().as_chunks::<4>().0 {
+                assert_eq!(chunk, &[65, 0xd800, 0, 0xdc00]);
             }
         }
         // On an empty pool there are no candidate payload comparisons. The

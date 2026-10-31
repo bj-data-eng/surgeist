@@ -245,7 +245,7 @@ pub struct HtmlValuePoolSeal {
 static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
 fn owner_id() -> Option<u64> {
     NEXT_OWNER
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
         .ok()
 }
 

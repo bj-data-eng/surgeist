@@ -272,9 +272,15 @@ combining sequence selects the complete unit. An optional multi-grapheme ligatur
 retains its separate Range units under the
 [Range allocation policy](../../../docs/text-layout-contract.md#nonempty-text-range-fragments).
 
-Each unit's `pieces()` lends actual font-metric rectangles, advance edges,
-baseline, effective instance and contributing finalized cluster indices. It keeps
-distinct font pieces and genuine zero-width rectangles. Shared provider advance
+Each unit's `pieces()` yields `SourceRangeGeometry`: `Line` retains the surrounding
+line's font metrics, `CellFont` retains a combined Cell's horizontal font metrics,
+and `CellTab` retains an executed native TAB span. Every variant exposes `rect()`;
+match the variant for its own frame and references. Cell font edges precede
+compression, and `metric_frame()` identifies their common metric reference. This
+can differ from the font-design paint origin when a font baseline is nonzero.
+Native TABs expose their layout frame and genuine container metrics without a
+body font or glyph baseline. Distinct font pieces and genuine zero-width
+rectangles remain distinct. Shared provider advance
 uses the qualified allocation policy while retaining each unit's actual letter,
 word and selected spacing contributions. Queries neither reshape text nor choose
 fonts. A preserved authored newline belongs to its terminating line; a terminal
@@ -282,6 +288,15 @@ empty line adds no selected authored unit. Deleted custody and source-less contr
 anchors do not invent rectangles. These are native Text observations; DOM
 membership, element boxes, collapsed ranges, transforms and web rectangle grouping
 remain consumer responsibilities.
+
+Inside a combined Cell, `cell_unit()` identifies the actual used semantic EGC,
+independently of provider and glyph counts. Selected original intersections stay
+clipped to the request; expanded intersections retain the EGC's full original
+contributions, including separate source occurrences. A fully removed Cell unit
+retains its pre-used selection identity and source metadata with no geometry.
+An activated Cell query accounts for its complete retained placement and shared
+result/scratch buffers under the captured scope limits; `scope_alignment_usage()`
+reports that transaction. Disjoint ordinary queries retain their native ownership.
 
 `Layout::bounds` reports admitted physical placement bounds. `positions()` issues
 placement-bound `PlacedPosition` values from actual interaction occurrences.
