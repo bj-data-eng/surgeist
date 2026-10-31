@@ -3,6 +3,9 @@
 //! these CssStops operations and no TAB action is inferred from a glyph.
 
 use super::*;
+
+#[path = "combined_cell_inner_tabs_resources.rs"]
+mod resources;
 use crate::shaping_test_fonts::{
     COMBINED_TAB_WIDTH_FAMILY, combined_tab_width_ahem, qualify_combined_tab_width,
 };

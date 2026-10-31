@@ -28,9 +28,14 @@ fn prepared_inner(mixed: &Mixed) -> AllocationIdentity {
     let [cell] = data.shaped.cells.as_slice() else {
         panic!("one actual inner payload");
     };
-    let CellPayload::Shaped { positions, .. } = &cell.payload else {
+    let CellPayload::LaidOut {
+        layout,
+        provider: Some(_),
+    } = &cell.payload
+    else {
         panic!("real A SPACE A provider input");
     };
+    let positions = &layout.positions;
     assert_eq!(positions.len(), 3);
     let expected = backing(positions);
     let mut seen = 0;
@@ -58,14 +63,15 @@ fn outer_words(selected: &SelectedLine, prepared_positions: AllocationIdentity) 
     let [cell] = shaped.cells.as_slice() else {
         panic!("one selected Cell");
     };
-    let CellPayload::Shaped {
-        positions,
-        clusters,
-        ..
+    let CellPayload::LaidOut {
+        layout,
+        provider: Some(_),
     } = &cell.payload
     else {
         panic!("retained inner provider packet");
     };
+    let positions = &layout.positions;
+    let clusters = &layout.clusters;
     assert_eq!(positions.len(), 3);
     let selected_positions = backing(positions).identity;
     assert_ne!(selected_positions, prepared_positions); // Real separately retained Vec copies.

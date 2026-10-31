@@ -1205,6 +1205,14 @@ receipts; no compatibility alias or second whitespace formatter is selected.
 
 ### Preserved CSS tab stops
 
+The block-grid rules below govern ordinary and replacement TABs exposed to the
+outer line. A preserved TAB inside an admitted native combined Cell follows
+the [Cell contract](../crates/surgeist-text/docs/reference.md#contextual-source-processing):
+preparation executes its horizontal zero-origin grid before width selection,
+and finalization retains that inner geometry. An ordinary TAB elsewhere still
+requires its actual block reference and late origin, even when both occurrences
+share one style.
+
 Text owns preserved-tab advances and source custody; Layout owns the actual block
 edge, line span and placement supplied to finalization. This contract selects the
 CSS operation under #64/#72, independently of native font-advance tabs. It follows
@@ -1221,8 +1229,9 @@ chooses either font-advance or CSS-stop demand independently of the capture.
 Resolve every selectable original and replacement TAB under the chosen demand
 before publishing the preparation. Missing required facts or resources fail
 atomically. A later request must match that prepared capability; `NoTabs` instead
-checks actual selected absence. Retain every consumed font instance and include
-the capture, style and demand in their owning cache identities.
+checks actual selected absence of outer TAB operations. Retain every consumed
+font instance and include the capture, style and demand in their owning cache
+identities.
 
 A checked tab size is either a finite nonnegative number or absolute length,
 initially eight spaces. A number multiplies the nearest block's hypothetical

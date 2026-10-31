@@ -54,8 +54,11 @@ fn positions(shaped: &ShapedData) -> &Vec<CellClusterPosition> {
         panic!("one genuine NBSP Cell");
     };
     match &cell.payload {
-        CellPayload::Shaped { positions, .. } => positions,
-        CellPayload::NoProviderInput => panic!("surviving NBSP is real provider input"),
+        CellPayload::LaidOut {
+            layout,
+            provider: Some(_),
+        } => &layout.positions,
+        _ => panic!("surviving NBSP is real provider input"),
     }
 }
 
@@ -64,17 +67,18 @@ fn assert_word(shaped: &ShapedData) {
         panic!("one genuine NBSP Cell");
     };
     assert_eq!((cell.extent, cell.advance), (10.0, 10.0));
-    let CellPayload::Shaped {
-        clusters,
-        glyphs,
-        positions,
-        advance,
-        frame,
-        ..
+    let CellPayload::LaidOut {
+        layout,
+        provider: Some(provider),
     } = &cell.payload
     else {
         panic!("real NBSP provider packet");
     };
+    let clusters = &layout.clusters;
+    let glyphs = &provider.glyphs;
+    let positions = &layout.positions;
+    let advance = &layout.advance;
+    let frame = &layout.transform;
     let [position] = positions.as_slice() else {
         panic!("one actual cluster position");
     };

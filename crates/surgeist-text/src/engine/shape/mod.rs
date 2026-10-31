@@ -366,32 +366,41 @@ fn provider_features(
     style: &ResolvedStyle,
     native_isolated: bool,
     role: super::upright::RunRole,
-) -> Vec<surgeist_shaper::Feature> {
-    let mut features = Vec::with_capacity(style.font_features.len() + usize::from(native_isolated));
+    ledger: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<Vec<surgeist_shaper::Feature>> {
+    use super::scope_alignment::accounting as account;
+    let mut features = if ledger.is_none() {
+        Vec::with_capacity(style.font_features.len() + usize::from(native_isolated))
+    } else {
+        Vec::new()
+    };
     if role == super::upright::RunRole::SidewaysClockwise {
-        features.push(surgeist_shaper::Feature::new(
-            surgeist_shaper::Tag::new(b"vrtr"),
-            1,
-            ..,
-        ));
+        account::push(
+            ledger,
+            &mut features,
+            surgeist_shaper::Feature::new(surgeist_shaper::Tag::new(b"vrtr"), 1, ..),
+        )?;
     }
     if native_isolated {
-        features.push(surgeist_shaper::Feature::new(
-            surgeist_shaper::Tag::new(b"isol"),
-            1,
-            ..,
-        ));
+        account::push(
+            ledger,
+            &mut features,
+            surgeist_shaper::Feature::new(surgeist_shaper::Tag::new(b"isol"), 1, ..),
+        )?;
     }
-    features.extend(style.font_features.iter().map(|feature| {
-        surgeist_shaper::Feature::new(
-            surgeist_shaper::Tag::new(&feature.tag.to_bytes()),
-            u32::from(feature.value),
-            ..,
-        )
-    }));
-    features
+    for feature in &style.font_features {
+        account::push(
+            ledger,
+            &mut features,
+            surgeist_shaper::Feature::new(
+                surgeist_shaper::Tag::new(&feature.tag.to_bytes()),
+                u32::from(feature.value),
+                ..,
+            ),
+        )?;
+    }
+    Ok(features)
 }
-
 fn joining_source_error(error: surgeist_shaper::JoiningSourceError) -> Error {
     super::shaping_refused(match error {
         surgeist_shaper::JoiningSourceError::Refused(reason) => reason,
@@ -439,11 +448,8 @@ pub(crate) fn shape(
     shape_impl(catalogue, input, scratch, false, scope_budget, None)
 }
 
-pub(crate) fn admit_cells(
-    analyzed: &super::AnalyzedData,
-    tabs: crate::TabPreparation,
-) -> Result<()> {
-    cell::admit(analyzed, tabs)
+pub(crate) fn admit_cells(analyzed: &super::AnalyzedData) -> Result<()> {
+    cell::admit(analyzed)
 }
 
 /// Execute real native source cells alongside ordinary body shaping. Each
@@ -454,6 +460,7 @@ pub(crate) fn prepare(
     scratch: &mut ShapeContext,
     analyzed: &super::AnalyzedData,
     scopes: &super::scope_alignment::PreparedScopes,
+    tabs: &crate::tabs::cell::CellTabPlan,
     scope_budget: &mut super::scope_alignment::accounting::Ledger,
 ) -> Result<ShapedData> {
     if !analyzed
@@ -464,7 +471,7 @@ pub(crate) fn prepare(
         return shape(catalogue, input, scratch, scope_budget);
     }
     let horizontal = cell::horizontal_input(&input);
-    let mut cells = cell::Inputs::new(analyzed, scopes, scope_budget)?;
+    let mut cells = cell::Inputs::new(analyzed, scopes, tabs, scope_budget)?;
     let mut output = shape_impl(
         catalogue,
         input,
@@ -499,7 +506,7 @@ fn shape_impl(
     scratch: &mut ShapeContext,
     capture_only: bool,
     scope_budget: &mut super::scope_alignment::accounting::Ledger,
-    mut cells: Option<&mut cell::Inputs>,
+    mut cells: Option<&mut cell::Inputs<'_>>,
 ) -> Result<ShapedData> {
     let intrinsic = if input
         .projection
@@ -583,7 +590,17 @@ fn shape_impl(
                     .begin(cell, output.scope_relations.len());
             }
             if input.css_tabs && input.projection.atoms[item_start].code_point == 9 {
-                append_tab(input, item_start, None, &mut output);
+                let level = cells
+                    .as_deref()
+                    .map_or(input.analysis.levels[item_start], |cells| {
+                        cells.level(item_start, input.analysis.levels[item_start])
+                    });
+                if cell.is_some()
+                    && let Some(inputs) = cells.as_deref()
+                {
+                    inputs.before_tab(&mut output, scope_budget)?;
+                }
+                append_tab(input, item_start, None, level, &mut output, scope_budget)?;
                 if let Some(cell) = cell {
                     cells
                         .as_deref_mut()
@@ -690,6 +707,9 @@ fn shape_impl(
                     };
                 if current.as_ref().is_some_and(|font| font != &selected) {
                     let old = current.take().expect("the selected segment owns a font");
+                    if let (Some(cell), Some(inputs)) = (cell, cells.as_deref_mut()) {
+                        inputs.dispatched(cell);
+                    }
                     append_selected(
                         input,
                         SelectedSegment {
@@ -710,6 +730,12 @@ fn shape_impl(
                 current = Some(selected);
             }
             let selected = current.ok_or_else(no_font)?;
+            if let Some(cell) = cell {
+                cells
+                    .as_deref_mut()
+                    .expect("actual cell input")
+                    .dispatched(cell);
+            }
             append_selected(
                 input,
                 SelectedSegment {
@@ -1174,7 +1200,14 @@ pub(crate) fn finalize(
                 } else {
                     None
                 };
-                append_tab(&input, atom, font, &mut output);
+                append_tab(
+                    &input,
+                    atom,
+                    font,
+                    input.analysis.levels[atom],
+                    &mut output,
+                    &mut scope_budget,
+                )?;
             }
         }
         output.clusters.sort_by_key(|cluster| cluster.atoms.start);
@@ -1869,7 +1902,7 @@ fn append_request(
             .iter()
             .filter_map(|unit| unit.upright())
             .any(|unit| unit.isolate() && unit.atoms.contains(&request.atoms.start));
-    let mut features = provider_features(style, native_isolated, request.role());
+    let mut features = provider_features(style, native_isolated, request.role(), &mut None)?;
     let mut funded_features = false;
     if let Some(graph) = request.input.characters {
         let masks = graph.masks(request.atoms.clone(), scope_budget)?;
@@ -3340,10 +3373,17 @@ pub(crate) fn automatic_hyphen(
         .ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::MissingPrimaryFont))
 }
 
-fn append_tab(input: &ShapingInput<'_>, atom: usize, font: Option<usize>, output: &mut ShapedData) {
+fn append_tab(
+    input: &ShapingInput<'_>,
+    atom: usize,
+    font: Option<usize>,
+    level: u8,
+    output: &mut ShapedData,
+    ledger: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<()> {
     let original = &input.projection.atoms[atom];
     let (info, style) = input.analysis.infos[atom];
-    output.clusters.push(PreparedCluster {
+    let cluster = PreparedCluster {
         // The admitted tab font was measured under this tab's actual style.
         line_height: font.map_or(0.0, |run| output.runs[run].metrics.line_height),
         shaped_advance: 0.0,
@@ -3355,26 +3395,45 @@ fn append_tab(input: &ShapingInput<'_>, atom: usize, font: Option<usize>, output
         glyphs: output.glyphs.len()..output.glyphs.len(),
         content: ClusterContent::CssTab(font),
         style,
-        level: input.analysis.levels[atom],
+        level,
         advance: 0.0,
         boundary: info.boundary,
         whitespace: Whitespace::Tab,
         is_whitespace: true,
         ligature_start: false,
         ligature_component: false,
-    });
+    };
+    if output.cell_arenas == super::layout::data::CellArenaOwnership::Owned {
+        super::scope_alignment::accounting::push(ledger, &mut output.clusters, cluster)?;
+    } else {
+        output.clusters.push(cluster);
+    }
+    Ok(())
 }
 
 /// Internal hypothetical character operation. No authored source or occurrence is created.
+pub(crate) struct CharacterProbe<'a> {
+    pub(crate) input: ShapingInput<'a>,
+    pub(crate) style_index: usize,
+    pub(crate) ch: char,
+    pub(crate) direction: crate::ParagraphBaseDirection,
+    pub(crate) content: crate::UprightContent,
+}
 pub(crate) fn measure_character(
     mut query: Query<'_>,
-    mut input: ShapingInput<'_>,
-    style_index: usize,
-    ch: char,
-    direction: crate::ParagraphBaseDirection,
-    content: crate::UprightContent,
+    probe: CharacterProbe<'_>,
     scratch: &mut ShapeContext,
+    ledger: &mut super::scope_alignment::accounting::Ledger,
+    pinned: &[(usize, usize)],
 ) -> Result<Option<(f64, PreparedRun)>> {
+    use super::scope_alignment::accounting as account;
+    let CharacterProbe {
+        mut input,
+        style_index,
+        ch,
+        direction,
+        content,
+    } = probe;
     // Independent hypothetical character analysis: Common uses the existing
     // isolated Latin fallback. SPACE WS follows the actual block base, while
     // ZERO EN is requested with its even/LTR resolved level.
@@ -3397,51 +3456,95 @@ pub(crate) fn measure_character(
         provider_direction(level)
     };
     let style = &input.styles[style_index].style;
-    configure_query(
-        &mut query,
-        style,
-        Script::Latin,
-        false,
-        &AnalysisDataSources,
-    );
-    let mut selected = None;
-    query.matches_with(|font| {
-        if font
-            .charmap()
-            .and_then(|map| map.map(ch))
-            .is_some_and(|id| id != 0)
-        {
-            selected = Some(SelectedFont {
-                font: SelectedResource::Matched(font.clone()),
-                attrs: attributes(style),
-            });
-            QueryStatus::Stop
-        } else {
-            QueryStatus::Continue
+    let run = if let Some(budget) = ledger.as_mut() {
+        let Some(canonical) =
+            font_instance::character_font(query, style, ch, input.font_catalogue, budget, pinned)?
+        else {
+            return Ok(None);
+        };
+        let metric_face =
+            skrifa::FontRef::from_index(canonical.font.bytes(), canonical.font.index())
+                .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid metric face"))?;
+        budget.work(6)?;
+        for tag in [*b"head", *b"hhea", *b"OS/2", *b"BASE", *b"post", *b"MVAR"] {
+            if let Some(table) = metric_face.table_data(skrifa::Tag::new(&tag)) {
+                budget.work(table.as_bytes().len())?;
+            }
         }
-    });
-    let Some(font) = selected else {
-        return Ok(None);
-    };
-    let mut output = ShapedData::default();
-    append_selected(
-        &input,
-        SelectedSegment {
+        let font =
+            surgeist_shaper::FontRef::from_index(canonical.font.bytes(), canonical.font.index())
+                .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid metric face"))?;
+        let instance = surgeist_shaper::ShaperInstance::from_coords(
+            &font,
+            canonical
+                .coords
+                .iter()
+                .copied()
+                .map(surgeist_shaper::NormalizedCoord::from_bits),
+        );
+        let request = RunRequest {
+            input: &input,
             atoms: 0..0,
             style: style_index,
             script: Script::Latin,
             level,
-            font,
-            context: 0..0,
-        },
-        scratch,
-        &mut output,
-        &mut None,
-        false,
-    )?;
-    let run = output
-        .empty_run
-        .expect("zero-atom metric operation retains its actual face");
+            font: &canonical.font,
+            attrs: attributes(style),
+            synthesis: canonical.synthesis,
+            suggested_variations: Vec::new(),
+            retained_coords: Some(&canonical.coords),
+            context: RunContext::new(input.projection, 0..0, 0..0),
+        };
+        let (run, _, _) = resolved_run(&request, instance.coords(), Some(ledger))?;
+        account::drop_vec(ledger, canonical.coords)?;
+        run
+    } else {
+        configure_query(
+            &mut query,
+            style,
+            Script::Latin,
+            false,
+            &AnalysisDataSources,
+        );
+        let mut selected = None;
+        query.matches_with(|font| {
+            if font
+                .charmap()
+                .and_then(|map| map.map(ch))
+                .is_some_and(|id| id != 0)
+            {
+                selected = Some(SelectedFont {
+                    font: SelectedResource::Matched(font.clone()),
+                    attrs: attributes(style),
+                });
+                QueryStatus::Stop
+            } else {
+                QueryStatus::Continue
+            }
+        });
+        let Some(font) = selected else {
+            return Ok(None);
+        };
+        let mut output = ShapedData::default();
+        append_selected(
+            &input,
+            SelectedSegment {
+                atoms: 0..0,
+                style: style_index,
+                script: Script::Latin,
+                level,
+                font,
+                context: 0..0,
+            },
+            scratch,
+            &mut output,
+            &mut None,
+            false,
+        )?;
+        output
+            .empty_run
+            .expect("zero-atom metric operation retains its actual face")
+    };
     let font = surgeist_shaper::FontRef::from_index(run.font.bytes(), run.font.index())
         .map_err(|_| Error::new(ErrorCode::FontLoadFailed, "invalid metric face"))?;
     let instance = surgeist_shaper::ShaperInstance::from_coords(
@@ -3457,7 +3560,7 @@ pub(crate) fn measure_character(
         .instance(Some(&instance))
         .point_size(Some(style.font_size))
         .build();
-    let features = provider_features(style, false, input.role(0));
+    let features = provider_features(style, false, input.role(0), ledger)?;
     let language = style
         .locale
         .as_ref()
@@ -3500,14 +3603,38 @@ pub(crate) fn measure_character(
         let receipt = buffer
             .default_ignorable_receipt()
             .map_err(super::shaping_refused)?;
-        buffer
-            .glyph_positions()
-            .enumerate()
-            .filter_map(|(index, position)| {
-                (!receipt.residual_glyph_positions().contains(&(index as u32)))
-                    .then_some(-position.y_advance)
-            })
-            .collect()
+        account::work(
+            ledger,
+            buffer
+                .glyph_positions()
+                .len()
+                .checked_mul(
+                    receipt
+                        .residual_glyph_positions()
+                        .len()
+                        .checked_add(1)
+                        .ok_or_else(|| {
+                            super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+                                kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+                            })
+                        })?,
+                )
+                .ok_or_else(|| {
+                    super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+                        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+                    })
+                })?,
+        )?;
+        account::collect(
+            ledger,
+            buffer
+                .glyph_positions()
+                .enumerate()
+                .filter_map(|(index, position)| {
+                    (!receipt.residual_glyph_positions().contains(&(index as u32)))
+                        .then_some(-position.y_advance)
+                }),
+        )?
     } else {
         let buffer = shaper.shape_with_plan(&plan, buffer, &features);
         if let surgeist_shaper::ShapingStatus::Refused(reason) = buffer.shaping_status() {
@@ -3516,18 +3643,47 @@ pub(crate) fn measure_character(
         let receipt = buffer
             .default_ignorable_receipt()
             .map_err(super::shaping_refused)?;
-        buffer
-            .glyph_positions()
-            .iter()
-            .enumerate()
-            .filter_map(|(index, position)| {
-                (!receipt.residual_glyph_positions().contains(&(index as u32)))
-                    .then_some(f64::from(position.x_advance))
-            })
-            .collect()
+        account::work(
+            ledger,
+            buffer
+                .glyph_positions()
+                .len()
+                .checked_mul(
+                    receipt
+                        .residual_glyph_positions()
+                        .len()
+                        .checked_add(1)
+                        .ok_or_else(|| {
+                            super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+                                kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+                            })
+                        })?,
+                )
+                .ok_or_else(|| {
+                    super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+                        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+                    })
+                })?,
+        )?;
+        account::collect(
+            ledger,
+            buffer
+                .glyph_positions()
+                .iter()
+                .enumerate()
+                .filter_map(|(index, position)| {
+                    (!receipt.residual_glyph_positions().contains(&(index as u32)))
+                        .then_some(f64::from(position.x_advance))
+                }),
+        )?
     };
-    let advance = advances.into_iter().try_fold(0.0, |total, advance| {
-        logical_add("tab character advance", total, advance)
+    let phase = if ledger.is_some() {
+        TextNumericPhase::Preparation
+    } else {
+        TextNumericPhase::Shaping
+    };
+    let advance = advances.iter().try_fold(0.0, |total, &advance| {
+        super::layout::add("tab character advance", phase, total, advance)
     })? * f64::from(style.font_size)
         / f64::from(
             font.head()
@@ -3542,6 +3698,8 @@ pub(crate) fn measure_character(
             advance,
         ));
     }
+    account::drop_vec(ledger, advances)?;
+    account::drop_vec(ledger, features)?;
     let advance = if ch == ' ' {
         super::spacing::hypothetical_space(advance, style.letter_spacing, style.word_spacing)?
     } else {

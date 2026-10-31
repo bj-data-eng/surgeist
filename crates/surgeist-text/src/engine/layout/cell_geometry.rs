@@ -177,6 +177,9 @@ fn metric_rect(
         return data.cell_rect(cluster.x, cluster.advance, cluster.reference);
     };
     let cell = &data.cells[index];
+    if matches!(cluster.content, super::ClusterContent::CssTab(_)) {
+        return tab_cluster_rect(cell, cluster, orientation, placed, math);
+    }
     let frame = cell
         .frame
         .expect("published inner cluster has an executed Cell frame");
@@ -262,11 +265,14 @@ pub(crate) fn qualify_cluster_rect(
             .cells
             .get(index)
             .ok_or_else(|| invalid("inner cluster has no actual Cell"))?;
-        if cell.frame.is_none()
-            || cluster
-                .content
-                .font_run()
-                .is_none_or(|run| run >= data.font_runs.len())
+        let tab = matches!(cluster.content, super::ClusterContent::CssTab(_));
+        if (tab && cell.transform.is_none())
+            || (!tab
+                && (cell.frame.is_none()
+                    || cluster
+                        .content
+                        .font_run()
+                        .is_none_or(|run| run >= data.font_runs.len())))
         {
             return Err(invalid("inner cluster has no executed frame/font metrics"));
         }
@@ -366,4 +372,104 @@ pub(crate) fn outline_rect(
 }
 fn invalid(message: &'static str) -> Error {
     Error::new(ErrorCode::LayoutFailed, message)
+}
+
+fn layout_point(
+    cell: &FinalizedCell,
+    transform: super::CellTransform,
+    point: Point,
+    orientation: LineOrientation,
+    placed: Option<&PlacedLine>,
+    math: &mut Arithmetic,
+) -> Point {
+    let x = math.mul("cell layout x scale", transform.x_scale, point.x);
+    let x = math.coordinate("cell layout x offset", transform.x_offset, x);
+    if let Some(line) = placed {
+        let origin = crate::layout::cell_square_origin(line, cell);
+        Point::new(
+            math.coordinate("placed cell layout x", origin.x, x),
+            math.coordinate("placed cell layout y", origin.y, point.y),
+        )
+    } else {
+        square_point(
+            cell,
+            orientation,
+            Point::new(x, point.y),
+            |field, base, offset| math.coordinate(field, base, offset),
+        )
+    }
+}
+fn tab_cluster_rect(
+    cell: &FinalizedCell,
+    cluster: &FinalizedCluster,
+    orientation: LineOrientation,
+    placed: Option<&PlacedLine>,
+    math: &mut Arithmetic,
+) -> Rect {
+    let transform = cell
+        .transform
+        .expect("a published TAB has its executed Cell layout");
+    let end = math.add("cell tab allocation end", cluster.x, cluster.advance);
+    let extent = math.finite(
+        "cell tab square extent",
+        cell.inline.end - cell.inline.start,
+    );
+    let points = [
+        Point::new(cluster.x, 0.0),
+        Point::new(end, 0.0),
+        Point::new(end, extent),
+        Point::new(cluster.x, extent),
+    ]
+    .map(|point| layout_point(cell, transform, point, orientation, placed, math));
+    metric_hull(points, math)
+}
+/// Qualify the actual executed endpoint pairs, independent of glyph baselines.
+pub(crate) fn qualify_tabs(
+    cell: &FinalizedCell,
+    orientation: LineOrientation,
+    placed: Option<&PlacedLine>,
+    phase: TextNumericPhase,
+) -> Result<()> {
+    if cell.tabs.is_empty() {
+        return Ok(());
+    }
+    let transform = cell
+        .transform
+        .ok_or_else(|| invalid("Cell TAB spans lost their layout"))?;
+    let mut math = Arithmetic::checked(phase);
+    math.finite("cell tab scale", transform.x_scale);
+    math.finite("cell tab offset", transform.x_offset);
+    if transform.x_scale <= 0.0 {
+        math.reject(
+            "cell tab scale",
+            TextNumericError::PositiveLost,
+            transform.x_scale,
+        );
+    }
+    for span in &cell.tabs {
+        let before = layout_point(
+            cell,
+            transform,
+            Point::new(span.before, 0.0),
+            orientation,
+            placed,
+            &mut math,
+        );
+        let after = layout_point(
+            cell,
+            transform,
+            Point::new(span.after, 0.0),
+            orientation,
+            placed,
+            &mut math,
+        );
+        if span.amount != 0.0 && before == after {
+            math.reject(
+                "cell tab displacement",
+                TextNumericError::NonZeroLost,
+                span.amount,
+            );
+        }
+    }
+    math.finish()
 }

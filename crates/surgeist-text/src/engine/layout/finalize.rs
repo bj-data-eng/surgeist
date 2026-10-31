@@ -1370,6 +1370,13 @@ fn execute(
         for cell in &data.cells {
             account::work(&mut ledger, 1)?;
             cell_geometry::qualify_edge_rect(cell, &data.metrics, TextNumericPhase::Finalization)?;
+            account::work(&mut ledger, cell.tabs.len())?;
+            cell_geometry::qualify_tabs(
+                cell,
+                selected.request.context.orientation,
+                None,
+                TextNumericPhase::Finalization,
+            )?;
         }
     }
     account::drop_vec(&mut ledger, source_fragments)?;
@@ -1536,9 +1543,17 @@ fn append_cell(
         reference,
         cell.after,
     )?;
-    let frame = match &cell.payload {
-        CellPayload::NoProviderInput => None,
-        CellPayload::Shaped { frame, .. } => Some(*frame),
+    let (frame, transform, tabs) = match &cell.payload {
+        CellPayload::NoProviderInput => (None, None, Vec::new()),
+        CellPayload::LaidOut { layout, provider } => (
+            provider.as_ref().map(|provider| CellFrame {
+                x_scale: layout.transform.x_scale,
+                x_offset: layout.transform.x_offset,
+                baseline: provider.baseline,
+            }),
+            Some(layout.transform),
+            account::clone_vec(ledger, &layout.tabs)?,
+        ),
     };
     let index = data.cells.len();
     account::push(
@@ -1556,6 +1571,8 @@ fn append_cell(
             scope_displacement: shift,
             level: selected.presentation.units[unit].line_level,
             frame,
+            transform,
+            tabs,
         },
     )?;
     account::push(
@@ -1563,16 +1580,26 @@ fn append_cell(
         &mut data.visual_order,
         FinalizedVisualItem::Cell(index),
     )?;
-    let CellPayload::Shaped {
-        positions,
-        frame: inner,
-        ..
-    } = &cell.payload
-    else {
+    let CellPayload::LaidOut { layout, provider } = &cell.payload else {
         return Ok(flow_end);
+    };
+    for position in &layout.positions {
+        account::work(ledger, 1)?;
+        data.clusters[position.cluster].frame = FinalizedRunFrame::Cell(index);
+        data.clusters[position.cluster].x = position.pen;
+        data.clusters[position.cluster].reference = Some(reference);
+    }
+    let Some(provider) = provider else {
+        return Ok(flow_end);
+    };
+    let inner = CellFrame {
+        x_scale: layout.transform.x_scale,
+        x_offset: layout.transform.x_offset,
+        baseline: provider.baseline,
     };
     let unit_frame =
         crate::GlyphFrame::horizontal(Point::new(inner.x_offset, inner.baseline), inner.x_scale);
+    let positions = &layout.positions;
     let mut last_run: Option<usize> = None;
     for position in positions {
         account::work(ledger, 1)?;
@@ -3482,7 +3509,11 @@ fn resolve_tabs(
     // The signed grid frame is a consumed capability, not another general
     // line-geometry pass. Absent and zero tabs cannot require its arithmetic.
     let mut remaining_tabs = 0;
-    for cluster in &shaped.clusters {
+    for item in &shaped.items {
+        let ShapedItem::TextCluster(index) = *item else {
+            continue;
+        };
+        let cluster = &shaped.clusters[index];
         if matches!(cluster.content, ClusterContent::CssTab(_)) {
             let metric = selected.prepared.tab_metrics[cluster.style]
                 .as_ref()
@@ -3499,6 +3530,7 @@ fn resolve_tabs(
         -1.0
     };
     let grid_sign = if intrinsic { 1.0 } else { sign };
+    let grid = crate::tabs::Grid::new(TextNumericPhase::Finalization);
     let mut pen = grid_sign * selected.request.context.indent;
     let mut ordinals = account::collect(ledger, order.iter().map(|(ordinal, _)| ordinal))?;
     if sign < 0.0 {
@@ -3531,14 +3563,7 @@ fn resolve_tabs(
                                 crate::PhaseTwoContext::TabOrigin,
                             ))
                         })?;
-                        // Retain the actual signed interval in preparation. Both
-                        // signs execute this one forward grid by its magnitude.
-                        let period = metric.period.abs();
-                        let mut distance = tab_grid_distance(origin, pen, grid_sign, period)?;
-                        if distance < metric.threshold {
-                            distance = tab_grid_add("tab threshold bump", distance, period)?;
-                        }
-                        distance
+                        grid.stop(origin, pen, grid_sign, metric.period, metric.threshold)?
                     };
                     cluster.advance = advance;
                     if metric.period != 0.0 {
@@ -3558,90 +3583,10 @@ fn resolve_tabs(
                 }
             }
         };
-        pen = tab_grid_add("tab traversal pen", pen, grid_sign * advance)?;
+        pen = grid.add("tab traversal pen", pen, grid_sign * advance)?;
     }
     account::drop_vec(ledger, ordinals)?;
     Ok(())
-}
-
-/// Both operands define the consumed grid phase, unlike an ordinary adjustment
-/// to an already established base. Neither may silently vanish.
-fn tab_grid_add(field: &'static str, base: f64, delta: f64) -> Result<f64> {
-    let actual = add(field, TextNumericPhase::Finalization, base, delta)?;
-    if base != 0.0 && actual == delta {
-        return Err(super::super::text_numeric_error(
-            field,
-            TextNumericPhase::Finalization,
-            TextNumericError::NonZeroLost,
-            base,
-        ));
-    }
-    Ok(actual)
-}
-
-fn tab_grid_distance(origin: f64, pen: f64, sign: f64, period: f64) -> Result<f64> {
-    const FIELD: &str = "tab grid displacement";
-    // Reduce each coordinate before subtracting: a large whole-period offset
-    // must not round away a small, representable distance to the next stop.
-    // Keep signed remainders; normalizing a tiny negative remainder to a huge
-    // positive period first could itself erase the required contribution.
-    let origin = (sign * origin) % period;
-    let pen = (sign * pen) % period;
-    let cyclic_sum = |a: f64, b: f64, reverse: bool| -> Result<f64> {
-        let (large, small) = if a >= b { (a, b) } else { (b, a) };
-        if large < period * 0.5 {
-            let sum = tab_grid_add(FIELD, large, small)?;
-            return if reverse && sum != 0.0 {
-                tab_grid_add(FIELD, period, -sum)
-            } else {
-                Ok(sum)
-            };
-        }
-        // In the upper half, period-large is an exact binary64 subtraction.
-        // Compare against that gap before adding, avoiding both overflow and
-        // rounding a value just beyond the period back onto the period.
-        let gap = tab_grid_add(FIELD, period, -large)?;
-        let difference = tab_grid_add(FIELD, small, -gap)?;
-        // Compute the requested direction directly. Its opposite may be an
-        // unrepresentable period-small value even when this distance is exact.
-        let directed = if reverse { -difference } else { difference };
-        if directed < 0.0 {
-            tab_grid_add(FIELD, period, directed)
-        } else {
-            Ok(directed)
-        }
-    };
-    let forward_difference = |following: f64, preceding: f64| -> Result<f64> {
-        if following >= preceding {
-            return tab_grid_add(FIELD, following, -preceding);
-        }
-        let distance = if preceding >= period * 0.5 {
-            let gap = tab_grid_add(FIELD, period, -preceding)?;
-            tab_grid_add(FIELD, gap, following)?
-        } else {
-            let backwards = tab_grid_add(FIELD, preceding, -following)?;
-            tab_grid_add(FIELD, period, -backwards)?
-        };
-        if distance == period {
-            return Err(super::super::text_numeric_error(
-                FIELD,
-                TextNumericPhase::Finalization,
-                TextNumericError::NonZeroLost,
-                preceding - following,
-            ));
-        }
-        Ok(distance)
-    };
-    let distance = if origin >= 0.0 && pen < 0.0 {
-        cyclic_sum(origin, -pen, false)?
-    } else if origin < 0.0 && pen >= 0.0 {
-        cyclic_sum(-origin, pen, true)?
-    } else if origin < 0.0 {
-        forward_difference(-pen, -origin)?
-    } else {
-        forward_difference(origin, pen)?
-    };
-    Ok(if distance == 0.0 { period } else { distance })
 }
 
 fn same_paint_font(a: &PreparedRun, b: &PreparedRun) -> bool {

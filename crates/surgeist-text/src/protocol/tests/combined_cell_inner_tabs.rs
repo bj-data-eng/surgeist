@@ -162,6 +162,33 @@ fn captured(
     orientation: LineOrientation,
     body_family: &str,
 ) -> Captured {
+    captured_with_limits(
+        Case {
+            text,
+            size,
+            root_size,
+            orientation,
+            inner,
+        },
+        mode,
+        body_family,
+        ScopeAlignmentLimits::new(4096, 4096, 1_000_000, 16_777_216),
+    )
+}
+
+fn captured_with_limits(
+    case: Case<'_>,
+    mode: TextCombineUpright,
+    body_family: &str,
+    limits: ScopeAlignmentLimits,
+) -> Captured {
+    let Case {
+        text,
+        size,
+        root_size,
+        orientation,
+        inner,
+    } = case;
     let length = text.encode_utf16().count();
     assert!(length > 0);
     let root_style = Style {
@@ -238,9 +265,7 @@ fn captured(
             replacements: vec![],
             computed_line_boundaries: vec![],
             joint_flows: vec![],
-            scope_alignment_limits: Some(ScopeAlignmentLimits::new(
-                4096, 4096, 1_000_000, 16_777_216,
-            )),
+            scope_alignment_limits: Some(limits),
             scopes: vec![
                 SourceProcessingScope::Block {
                     topology: SourceProcessingTopology::Complete,
@@ -942,3 +967,6 @@ mod zero_metrics;
 
 #[path = "combined_cell_inner_tabs_widths.rs"]
 mod widths;
+
+#[path = "combined_cell_inner_tabs_outer_incidence.rs"]
+mod outer_incidence;

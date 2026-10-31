@@ -116,6 +116,19 @@ fn retained_pins(
             budget,
         )?;
     }
+    for reference in &data.cell_tabs {
+        budget.work(1)?;
+        for metric in [&reference.space, &reference.ch].into_iter().flatten() {
+            budget.work(1)?;
+            if let Some(font) = &metric.font {
+                remember_pin(
+                    &mut pinned,
+                    (font.font.bytes().as_ptr() as usize, font.font.bytes().len()),
+                    budget,
+                )?;
+            }
+        }
+    }
     Ok(pinned)
 }
 
@@ -672,6 +685,20 @@ pub(crate) fn visit_prepared_allocations(
         visit(AllocationWitness::buffer(&row.coords, row.coords.len())?)?;
         visit(AllocationWitness::resource(row.font.bytes()))?;
     }
+    if data.cell_tabs.capacity() != 0 {
+        visit(AllocationWitness::buffer(
+            &data.cell_tabs,
+            data.cell_tabs.len(),
+        )?)?;
+    }
+    for reference in &data.cell_tabs {
+        for metric in [&reference.space, &reference.ch].into_iter().flatten() {
+            if let Some(font) = &metric.font {
+                visit(AllocationWitness::buffer(&font.coords, font.coords.len())?)?;
+                visit(AllocationWitness::resource(font.font.bytes()))?;
+            }
+        }
+    }
     visit_cell_allocations(shaped, visit)?;
     if !shaped.cells.is_empty() {
         accounting::visit_cell_items(shaped, visit)?;
@@ -714,8 +741,14 @@ pub(crate) fn visit_cell_allocations(
         shaped.cells.len(),
     )?)?;
     for cell in &shaped.cells {
-        if let crate::engine::layout::data::CellPayload::Shaped { positions, .. } = &cell.payload {
-            visit(AllocationWitness::buffer(positions, positions.len())?)?;
+        if let crate::engine::layout::data::CellPayload::LaidOut { layout, .. } = &cell.payload {
+            visit(AllocationWitness::buffer(
+                &layout.positions,
+                layout.positions.len(),
+            )?)?;
+            if layout.tabs.capacity() != 0 {
+                visit(AllocationWitness::buffer(&layout.tabs, layout.tabs.len())?)?;
+            }
         }
     }
     Ok(())
@@ -729,4 +762,275 @@ fn prepared_retention(
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<crate::ScopeAlignmentRetention> {
     super::census::retained_prepared(data, analyzed, shaped, tables, budget)
+}
+
+/// Complete the genuine fixed container references before any Cell packet trial.
+pub(crate) fn prepare_cell_tabs(
+    data: &mut PreparedScopes,
+    catalogue: &mut crate::catalogue::Catalogue,
+    analyzed: &AnalyzedData,
+    options: crate::PreparationOptions,
+    scratch: &mut crate::engine::shape::ShapeContext,
+    ledger: &mut accounting::Ledger,
+) -> Result<crate::tabs::cell::CellTabPlan> {
+    use crate::tabs::cell::{CellTabMetric, CellTabOperation, CellTabPlan, CellTabReference};
+    let mut plan = CellTabPlan::default();
+    if options.tabs() != crate::TabPreparation::CssStops {
+        return Ok(plan);
+    }
+    let Some(output) = &analyzed.combination else {
+        return Ok(plan);
+    };
+    if output.bindings.is_empty() {
+        return Ok(plan);
+    }
+    for (binding, row) in output.bindings.iter().enumerate() {
+        accounting::work(ledger, 1)?;
+        let mut scope = None;
+        for atom in row.atoms.clone() {
+            accounting::work(ledger, 1)?;
+            if analyzed.projection.atoms[atom].code_point != 9 {
+                continue;
+            }
+            let budget = ledger
+                .as_mut()
+                .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
+            let owner = if let Some(owner) = scope {
+                owner
+            } else {
+                let owner = cell_container(analyzed, binding, budget)?;
+                scope = Some(owner);
+                owner
+            };
+            let mut reference = None;
+            for (index, existing) in data.cell_tabs.iter().enumerate() {
+                budget.work(1)?;
+                if existing.scope.index == owner {
+                    reference = Some(index);
+                    break;
+                }
+            }
+            let reference = if let Some(index) = reference {
+                index
+            } else {
+                let topology = analyzed
+                    .paragraph
+                    .scope_topology
+                    .as_ref()
+                    .ok_or_else(|| refusal(ScopeAlignmentError::MissingCapture))?;
+                let index = data.cell_tabs.len();
+                push(
+                    budget,
+                    &mut data.cell_tabs,
+                    CellTabReference {
+                        scope: CapturedScope {
+                            capture: Arc::clone(&topology.capture),
+                            index: owner,
+                        },
+                        direction: output.plan.groups[row.group].inner_direction,
+                        space: None,
+                        ch: None,
+                    },
+                )?;
+                index
+            };
+            let size = analyzed.styles[analyzed.analysis.infos[atom].1]
+                .style
+                .authored()
+                .tab_size;
+            accounting::push(
+                ledger,
+                &mut plan.operations,
+                CellTabOperation {
+                    atom,
+                    reference,
+                    size,
+                    period: 0.0,
+                    threshold: 0.0,
+                },
+            )?;
+        }
+    }
+    if plan.operations.is_empty() {
+        return Ok(plan);
+    }
+    operations::order_by(&mut plan.operations, ledger.as_mut(), |a, b| {
+        a.atom.cmp(&b.atom)
+    })?;
+    let mut pinned = retained_pins(
+        data,
+        ledger
+            .as_mut()
+            .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?,
+    )?;
+    let catalogue_identity = catalogue.identity().clone();
+    for reference in 0..data.cell_tabs.len() {
+        let mut needed = false;
+        let mut space = false;
+        for operation in &plan.operations {
+            accounting::work(ledger, 1)?;
+            if operation.reference == reference && operation.size.value() != 0.0 {
+                needed = true;
+                space |= operation.size.is_spaces();
+            }
+        }
+        if !needed {
+            continue;
+        }
+        let scope = data.cell_tabs[reference].scope.clone();
+        let style = scope
+            .style()
+            .ok_or_else(|| refusal(ScopeAlignmentError::MissingStyle { scope: scope.index }))?;
+        let resolved = crate::engine::resolve::resolve_cell_tab_style(
+            catalogue.collection_mut(),
+            style,
+            options.scale(),
+            ledger
+                .as_mut()
+                .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?,
+        )?;
+        let styles = [resolved];
+        if space {
+            let direction = data.cell_tabs[reference].direction;
+            let probe = crate::engine::shape::CharacterProbe {
+                input: cell_tab_probe_input(analyzed, &styles, &catalogue_identity),
+                style_index: 0,
+                ch: ' ',
+                direction,
+                content: crate::UprightContent::TabMeasurement {
+                    role: crate::UprightTabMeasurement::SpaceInterval,
+                    owner: crate::TextStyleOwner::Scope { scope: scope.index },
+                },
+            };
+            let (advance, font) = crate::engine::shape::measure_character(
+                catalogue.query(),
+                probe,
+                scratch,
+                ledger,
+                &pinned,
+            )?
+            .ok_or_else(|| {
+                crate::protocol::protocol_error(crate::ProtocolError::UnsupportedContext {
+                    field: crate::ProtocolContextField::TabMetrics,
+                })
+            })?;
+            remember_pin(
+                &mut pinned,
+                (font.font.bytes().as_ptr() as usize, font.font.bytes().len()),
+                ledger
+                    .as_mut()
+                    .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?,
+            )?;
+            data.cell_tabs[reference].space = Some(CellTabMetric {
+                advance,
+                font: Some(font),
+            });
+        }
+        let mut ch_needed = false;
+        for operation in &mut plan.operations {
+            accounting::work(ledger, 1)?;
+            if operation.reference != reference || operation.size.value() == 0.0 {
+                continue;
+            }
+            let factor = if operation.size.is_spaces() {
+                data.cell_tabs[reference]
+                    .space
+                    .as_ref()
+                    .ok_or_else(|| {
+                        refusal(ScopeAlignmentError::MissingMetrics {
+                            scope: data.cell_tabs[reference].scope.index,
+                        })
+                    })?
+                    .advance
+            } else {
+                f64::from(options.scale())
+            };
+            operation.period =
+                crate::tabs::multiply("cell tab interval", operation.size.value(), factor)?;
+            ch_needed |= operation.period != 0.0;
+        }
+        if ch_needed {
+            let owner = data.cell_tabs[reference].scope.index;
+            let probe = crate::engine::shape::CharacterProbe {
+                input: cell_tab_probe_input(analyzed, &styles, &catalogue_identity),
+                style_index: 0,
+                ch: '0',
+                direction: crate::ParagraphBaseDirection::LeftToRight,
+                content: crate::UprightContent::TabMeasurement {
+                    role: crate::UprightTabMeasurement::ZeroThreshold,
+                    owner: crate::TextStyleOwner::Scope { scope: owner },
+                },
+            };
+            let measured = crate::engine::shape::measure_character(
+                catalogue.query(),
+                probe,
+                scratch,
+                ledger,
+                &pinned,
+            )?;
+            let metric = if let Some((advance, font)) = measured {
+                remember_pin(
+                    &mut pinned,
+                    (font.font.bytes().as_ptr() as usize, font.font.bytes().len()),
+                    ledger
+                        .as_mut()
+                        .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?,
+                )?;
+                CellTabMetric {
+                    advance,
+                    font: Some(font),
+                }
+            } else {
+                CellTabMetric {
+                    advance: crate::tabs::multiply(
+                        "tab ch fallback",
+                        f64::from(styles[0].style.font_size),
+                        0.5,
+                    )?,
+                    font: None,
+                }
+            };
+            if metric.advance < 0.0 {
+                return Err(crate::protocol::protocol_error(
+                    crate::ProtocolError::UnsupportedContext {
+                        field: crate::ProtocolContextField::TabMetrics,
+                    },
+                ));
+            }
+            let threshold = crate::tabs::multiply("cell tab half ch", metric.advance, 0.5)?;
+            data.cell_tabs[reference].ch = Some(metric);
+            for operation in &mut plan.operations {
+                accounting::work(ledger, 1)?;
+                if operation.reference == reference && operation.period != 0.0 {
+                    operation.threshold = threshold;
+                }
+            }
+        }
+        for style in styles {
+            crate::engine::resolve::drop_cell_tab_style(style, ledger)?;
+        }
+    }
+    accounting::drop_vec(ledger, pinned)?;
+    Ok(plan)
+}
+fn cell_tab_probe_input<'a>(
+    analyzed: &'a AnalyzedData,
+    styles: &'a [crate::engine::resolve::ResolvedStyleRun],
+    catalogue: &'a crate::FontCatalogueIdentity,
+) -> crate::engine::ShapingInput<'a> {
+    crate::engine::ShapingInput {
+        formatting_breaks: &[],
+        scope_custody: None,
+        characters: None,
+        separator_geometry: false,
+        profile: crate::engine::upright::ShapingProfile::Horizontal,
+        baseline_reference: Some(crate::FontBaseline::Alphabetic),
+        projection: &analyzed.projection,
+        analysis: &analyzed.analysis,
+        styles,
+        boxes: &[],
+        font_catalogue: catalogue,
+        paragraph: &analyzed.paragraph,
+        css_tabs: true,
+    }
 }

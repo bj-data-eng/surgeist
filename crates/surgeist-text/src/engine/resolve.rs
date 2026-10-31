@@ -573,3 +573,75 @@ pub(crate) fn source_style(styles: &[AnalyzedStyleRun], at: usize) -> usize {
         .partition_point(|row| row.source_range().is_some_and(|range| range.end <= at))
         .min(source_count - 1)
 }
+
+/// Resolve the actual captured container's complete font settings for inner tabs.
+/// All owned parse/family/setting scratch is admitted before materialization.
+pub(crate) fn resolve_cell_tab_style(
+    collection: &mut Collection,
+    style: &crate::Style,
+    scale: f32,
+    budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
+) -> Result<ResolvedStyleRun> {
+    let font = resolve_scope(collection, style, scale, budget)?;
+    let source = scope_settings_source(&style.font.features, budget)?;
+    let mut features: Vec<FontFeature> = Vec::new();
+    if let Some(source) = &source {
+        budget.work(
+            source
+                .len()
+                .checked_mul(2)
+                .ok_or_else(scope_work_overflow)?,
+        )?;
+        let source = std::str::from_utf8(source).map_err(|_| setting_error())?;
+        if source.trim().is_empty() {
+            return Err(setting_error());
+        }
+        for feature in FontFeature::parse_css_list(source) {
+            let feature = feature.map_err(|_| setting_error())?;
+            let at = crate::processing::contextual::alignment::operations::partition_point(
+                &features,
+                Some(&mut *budget),
+                |old| old.tag <= feature.tag,
+            )?;
+            budget.add_records(1)?;
+            budget.reserve(&mut features, 1)?;
+            budget.work(
+                (features.len() - at)
+                    .checked_add(1)
+                    .ok_or_else(scope_work_overflow)?,
+            )?;
+            features.insert(at, feature);
+        }
+        if features.is_empty() {
+            return Err(setting_error());
+        }
+    }
+    scope_drop_source(source, budget)?;
+    Ok(ResolvedStyleRun {
+        style: ResolvedStyle {
+            font_family: font.font_family,
+            font_size: font.font_size,
+            font_width: font.font_width,
+            font_style: font.font_style,
+            font_weight: font.font_weight,
+            font_variations: font.font_variations,
+            font_features: features,
+            locale: font.locale,
+            brush: style.brush,
+            underline: scaled_decoration(style.underline, scale)?,
+            strikethrough: scaled_decoration(style.strikethrough, scale)?,
+            line_height: font.line_height,
+            word_spacing: scaled_logical(style.word_spacing, scale, false, "word spacing")?,
+            letter_spacing: 0.0,
+        },
+    })
+}
+pub(crate) fn drop_cell_tab_style(
+    style: ResolvedStyleRun,
+    ledger: &mut super::scope_alignment::accounting::Ledger,
+) -> Result<()> {
+    use super::scope_alignment::accounting as account;
+    account::drop_vec(ledger, style.style.font_family)?;
+    account::drop_vec(ledger, style.style.font_variations)?;
+    account::drop_vec(ledger, style.style.font_features)
+}

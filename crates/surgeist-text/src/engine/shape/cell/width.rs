@@ -19,6 +19,7 @@ pub(super) struct Trial {
 }
 
 struct InputRole {
+    provider: bool,
     unit: usize,
     attached_mark: bool,
     default_ignorable: bool,
@@ -38,7 +39,12 @@ struct Lineage {
     units: usize,
 }
 impl Lineage {
-    fn new(analyzed: &AnalyzedData, input: &Input, ledger: &mut Ledger) -> Result<Self> {
+    fn new(
+        analyzed: &AnalyzedData,
+        input: &Input,
+        tabs: &crate::tabs::cell::CellTabPlan,
+        ledger: &mut Ledger,
+    ) -> Result<Self> {
         use icu_properties::{
             CodePointMapData, CodePointSetData,
             props::{DefaultIgnorableCodePoint, GeneralCategory, GeneralCategoryGroup},
@@ -94,10 +100,12 @@ impl Lineage {
                 // A surviving Normal DI root needs its own width action. Keep
                 // its genuine attachment distinct from permission to inherit,
                 // so a covered attached DI cannot become a false base donor.
+                let provider = !tabs.contains(atom, ledger)?;
                 account::push(
                     ledger,
                     &mut roles,
                     InputRole {
+                        provider,
                         unit: unit_index,
                         attached_mark: mark && has_base,
                         default_ignorable,
@@ -178,6 +186,12 @@ impl Observation<'_> {
                 .input(local)
                 .ok_or_else(|| invalid_output(local, atoms.len()))?;
             let index = atoms.start + local - self.lineage.atoms.start;
+            if !self.lineage.roles[index].provider {
+                return Err(Error::new(
+                    ErrorCode::LayoutFailed,
+                    "CSS tab entered a provider width invocation",
+                ));
+            }
             if self.outcomes[index].is_some() {
                 return Err(unsupported());
             }
@@ -218,6 +232,9 @@ impl Observation<'_> {
         let mut positive = false;
         for (index, outcome) in self.outcomes.iter().enumerate() {
             account::work(ledger, 1)?;
+            if !self.lineage.roles[index].provider {
+                continue;
+            }
             let outcome = outcome.ok_or_else(|| {
                 Error::new(
                     ErrorCode::LayoutFailed,
@@ -234,6 +251,9 @@ impl Observation<'_> {
         let mut covered = positive;
         for (index, outcome) in self.outcomes.iter().enumerate() {
             account::work(ledger, 1)?;
+            if !self.lineage.roles[index].provider {
+                continue;
+            }
             covered &= matches!(
                 outcome,
                 Some(WidthInputOutcome::Covered | WidthInputOutcome::NoSurvivingOperand)
@@ -265,22 +285,22 @@ pub(super) fn choose(
 ) -> Result<(CellPayload, Option<Trial>)> {
     let analyzed = composition.analyzed;
     let horizontal = composition.horizontal;
-    let CellPayload::Shaped { advance, runs, .. } = &normal_payload else {
+    let CellPayload::LaidOut { layout, provider } = &normal_payload else {
         return Ok((normal_payload, None));
     };
-    if advance.end - advance.start <= input.extent {
+    if layout.advance.end - layout.advance.start <= input.extent {
         return Ok((normal_payload, None));
     }
-    let CellPayload::Shaped {
-        runs: original_runs,
-        clusters,
-        glyphs,
-        scope_relations,
-        ..
-    } = &normal_payload
-    else {
-        unreachable!("measured actual provider input")
+    let Some(provider) = provider else {
+        let mut payload = normal_payload;
+        compress(&mut payload, input.extent)?;
+        return Ok((payload, None));
     };
+    let runs = provider.runs.clone();
+    let original_runs = &provider.runs;
+    let clusters = &layout.clusters;
+    let glyphs = &provider.glyphs;
+    let scope_relations = &provider.scope_relations;
     let provider_start =
         operations::partition_point(&normal.provider_groups, ledger.as_mut(), |row| {
             row.run < original_runs.start
@@ -297,7 +317,7 @@ pub(super) fn choose(
         relations: scope_relations.clone(),
         atoms: input.atoms.clone(),
     };
-    let lineage = Lineage::new(analyzed, input, ledger)?;
+    let lineage = Lineage::new(analyzed, input, composition.tabs, ledger)?;
     let output = analyzed.combination.as_ref().expect("actual cell plan");
     let group = &output.plan.groups[output.bindings[input.binding].group];
     account::work(ledger, group.parts.len())?;
@@ -341,18 +361,22 @@ pub(super) fn choose(
                 ledger,
             )?;
         }
-        let covered = observation.covered(ledger)?;
-        observation.drop(ledger)?;
-        if !covered {
-            drop_trial(
-                Trial {
-                    data,
-                    original: original.clone(),
-                },
-                ledger,
-            )?;
-            continue;
+        for cluster in &normal.clusters[layout.clusters.clone()] {
+            account::work(ledger, 1)?;
+            if matches!(cluster.content, ClusterContent::CssTab(_)) {
+                super::super::append_tab(
+                    horizontal,
+                    cluster.atoms.start,
+                    None,
+                    cluster.level,
+                    &mut data,
+                    ledger,
+                )?;
+            }
         }
+        operations::order_by(&mut data.clusters, ledger.as_mut(), |a, b| {
+            a.atoms.start.cmp(&b.atoms.start)
+        })?;
         let trial_input = Input {
             binding: input.binding,
             metrics: input.metrics,
@@ -363,8 +387,23 @@ pub(super) fn choose(
             atoms: input.atoms.clone(),
             events: input.events.clone(),
             scope_relations: Some(0..data.scope_relations.len()),
+            provider_dispatched: true,
+            direction: input.direction,
         };
         let payload = super::normal_payload(&mut data, &trial_input, composition, ledger)?;
+        let covered = observation.covered(ledger)?;
+        observation.drop(ledger)?;
+        if !covered {
+            drop_payload(payload, ledger)?;
+            drop_trial(
+                Trial {
+                    data,
+                    original: original.clone(),
+                },
+                ledger,
+            )?;
+            continue;
+        }
         let width = payload_width(&payload);
         let better = best.as_ref().is_none_or(|(old, _)| {
             let previous = payload_width(old);
@@ -411,12 +450,14 @@ pub(super) fn choose(
 }
 fn payload_width(payload: &CellPayload) -> f64 {
     match payload {
-        CellPayload::Shaped { advance, .. } => advance.end - advance.start,
+        CellPayload::LaidOut { layout, .. } => layout.advance.end - layout.advance.start,
         CellPayload::NoProviderInput => 0.0,
     }
 }
 fn compress(payload: &mut CellPayload, extent: f64) -> Result<()> {
-    if let CellPayload::Shaped { advance, frame, .. } = payload {
+    if let CellPayload::LaidOut { layout, .. } = payload {
+        let advance = &layout.advance;
+        let frame = &mut layout.transform;
         let width = logical_add("cell occupied advance", advance.end, -advance.start)?;
         let scale = if width > extent { extent / width } else { 1.0 };
         if width > extent && scale == 0.0 {
@@ -437,8 +478,9 @@ fn compress(payload: &mut CellPayload, extent: f64) -> Result<()> {
     Ok(())
 }
 fn drop_payload(payload: CellPayload, ledger: &mut Ledger) -> Result<()> {
-    if let CellPayload::Shaped { positions, .. } = payload {
-        account::drop_vec(ledger, positions)?;
+    if let CellPayload::LaidOut { layout, .. } = payload {
+        account::drop_vec(ledger, layout.positions)?;
+        account::drop_vec(ledger, layout.tabs)?;
     }
     Ok(())
 }
@@ -709,26 +751,28 @@ pub(super) fn assemble(
     }
     for (index, cell) in output.cells.iter_mut().enumerate() {
         let trial = trials[index].is_some().then_some(index);
-        if let CellPayload::Shaped {
-            runs: cell_runs,
-            clusters: cell_clusters,
-            glyphs: cell_glyphs,
-            scope_relations,
-            positions,
-            ..
-        } = &mut cell.payload
-        {
-            account::work(ledger, 4)?;
-            *cell_runs = mapped_range(cell_runs.clone(), trial, &runs)?;
-            *cell_clusters = mapped_range(cell_clusters.clone(), trial, &clusters)?;
-            *cell_glyphs = mapped_range(cell_glyphs.clone(), trial, &glyphs)?;
-            *scope_relations = mapped_range(scope_relations.clone(), trial, &relations)?;
-            for position in positions {
+        if let CellPayload::LaidOut { layout, provider } = &mut cell.payload {
+            layout.clusters = mapped_range(layout.clusters.clone(), trial, &clusters)?;
+            if let Some(provider) = provider {
+                provider.runs = mapped_range(provider.runs.clone(), trial, &runs)?;
+                provider.glyphs = mapped_range(provider.glyphs.clone(), trial, &glyphs)?;
+                provider.scope_relations =
+                    mapped_range(provider.scope_relations.clone(), trial, &relations)?;
+            }
+            for position in &mut layout.positions {
                 account::work(ledger, 1)?;
                 position.cluster = if let Some(trial) = trial {
                     clusters.trial(trial)?.start + position.cluster
                 } else {
                     clusters.index(position.cluster)?
+                };
+            }
+            for span in &mut layout.tabs {
+                account::work(ledger, 1)?;
+                span.cluster = if let Some(trial) = trial {
+                    clusters.trial(trial)?.start + span.cluster
+                } else {
+                    clusters.index(span.cluster)?
                 };
             }
         }
