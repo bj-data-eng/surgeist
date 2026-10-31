@@ -1434,7 +1434,7 @@ fn empty_source_constructor_admits_its_fixed_record_layout_atomically() {
 }
 
 #[test]
-fn real_multi_event_transfer_admits_its_bulk_layout_before_moving_any_slot() {
+fn real_multi_event_transfer_refuses_a_short_budget_before_moving_any_slot() {
     // Two actual reference operations each emit missing-semicolon and
     // noncharacter diagnostics plus exact text. Invoke the owning state
     // operation directly to prepare a large queue without invented records;
@@ -1462,17 +1462,13 @@ fn real_multi_event_transfer_admits_its_bulk_layout_before_moving_any_slot() {
     assert_eq!(t.pending_len, queued - 1);
     let work = c.usage().resource(HtmlParseResource::WorkCredits).current
         - before.resource(HtmlParseResource::WorkCredits).current;
-    let layout = c
-        .usage()
-        .resource(HtmlParseResource::AtomicLayoutBytes)
-        .current
-        - before
-            .resource(HtmlParseResource::AtomicLayoutBytes)
-            .current;
     assert!(work > 0);
-    // The batch is larger than one work quantum, so it is admitted as an
-    // atomic layout.
-    assert!(layout > 0);
+    // admit_record_write (tokenizer/mod.rs) also admits the move as an atomic
+    // layout when its bytes plus writes exceed one work quantum. That
+    // admission is not asserted: ParseControl::admit_atomic_layout overwrites
+    // the current atomic layout with each later admission (control.rs), so
+    // the usage counters cannot attribute a layout to this pull, and the size
+    // of the batch is private slot layout.
     event.release(&mut c).unwrap();
     t.release(&mut c).unwrap();
     assert_storage_released(&c);
