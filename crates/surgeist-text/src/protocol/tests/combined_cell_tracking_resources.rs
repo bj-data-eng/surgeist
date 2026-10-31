@@ -5,6 +5,8 @@
 mod allocated;
 #[path = "combined_cell_allocated_word.rs"]
 mod allocated_word;
+#[path = "combined_cell_tracking_diagnostic.rs"]
+mod diagnostic;
 
 use super::*;
 use crate::engine::{
@@ -27,24 +29,6 @@ fn mixed() -> Mixed {
 }
 
 fn mixed_with_cell(text: &str, inner: Range, inner_word_spacing: f64, source_id: u64) -> Mixed {
-    assert!(text.is_ascii());
-    let count = text.encode_utf16().count();
-    assert!(inner.start < inner.end && inner.end <= count);
-    assert!(text[inner.start..inner.end].starts_with('A'));
-    assert!(text[inner.start..inner.end].ends_with('A'));
-    let parent_bytes = parent_font();
-    let body_bytes = composition_font();
-    // The same glyph ID36 has different genuine horizontal advances in these
-    // distinct retained families: outside B1000 versus hwid's real B500.
-    assert_eq!(
-        sfnt::u16_at(sfnt::table(&parent_bytes, *b"hmtx"), 36 * 4),
-        1000
-    );
-    assert_eq!(
-        sfnt::u16_at(sfnt::table(&body_bytes, *b"hmtx"), 36 * 4),
-        500
-    );
-    glyph_frame_font_premises(&body_bytes);
     let outside = Style {
         font: Font::new().family("Ahem"),
         size: 10.0,
@@ -65,6 +49,43 @@ fn mixed_with_cell(text: &str, inner: Range, inner_word_spacing: f64, source_id:
         word_spacing: inner_word_spacing,
         ..outside.clone()
     };
+    prepare_mixed(
+        text,
+        inner,
+        source_id,
+        parent_font(),
+        composition_font(),
+        outside,
+        inside,
+    )
+    .unwrap()
+}
+
+fn prepare_mixed(
+    text: &str,
+    inner: Range,
+    source_id: u64,
+    parent_bytes: Vec<u8>,
+    body_bytes: Vec<u8>,
+    outside: Style,
+    inside: Style,
+) -> crate::Result<Mixed> {
+    assert!(text.is_ascii());
+    let count = text.encode_utf16().count();
+    assert!(inner.start < inner.end && inner.end <= count);
+    assert!(text[inner.start..inner.end].starts_with('A'));
+    assert!(text[inner.start..inner.end].ends_with('A'));
+    // The same glyph ID36 has different genuine horizontal advances in these
+    // distinct retained families: outside B1000 versus hwid's real B500.
+    assert_eq!(
+        sfnt::u16_at(sfnt::table(&parent_bytes, *b"hmtx"), 36 * 4),
+        1000
+    );
+    assert_eq!(
+        sfnt::u16_at(sfnt::table(&body_bytes, *b"hmtx"), 36 * 4),
+        500
+    );
+    glyph_frame_font_premises(&body_bytes);
     let mut source = Source::identified(text, Id::from_u64(source_id), 1);
     source.span(inner, inside.clone());
     let mut events = vec![
@@ -205,19 +226,17 @@ fn mixed_with_cell(text: &str, inner: Range, inner_word_spacing: f64, source_id:
         .unwrap()
         .to_owned();
     assert!(!parent.face().is_same_face(&body.face()));
-    let prepared = system
-        .prepare(
-            &analyzed,
-            PreparationOptions::default().with_orientation(LineOrientation::Vertical),
-        )
-        .unwrap();
+    let prepared = system.prepare(
+        &analyzed,
+        PreparationOptions::default().with_orientation(LineOrientation::Vertical),
+    )?;
     assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
-    Mixed {
+    Ok(Mixed {
         prepared,
         processed,
         parent,
         body,
-    }
+    })
 }
 
 fn request(prepared: &PreparedText) -> LineSelectionRequest {

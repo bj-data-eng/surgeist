@@ -1224,12 +1224,12 @@ pub(crate) fn admit_selected_resources(
 pub(crate) fn select(
     prepared: &PreparedData,
     presentation: &crate::protocol::prepared::SelectedPresentation,
-    shaped: &super::layout::data::ShapedData,
+    basis: &super::SelectedShape,
     request: &crate::LineSelectionRequest,
-    characters: &super::spacing::character::Graph,
-    order: &Vec<usize>,
+    spacing_slots: &Vec<crate::protocol::selection::SpacingSlotData>,
     plan: SelectionPlan,
 ) -> Result<SelectedScopes> {
+    let shaped = &basis.shaped;
     let Some(_retention) = prepared.scope_alignment.retention else {
         return Ok(SelectedScopes::default());
     };
@@ -1692,9 +1692,9 @@ pub(crate) fn select(
     result.retention = Some(census::retained_selected(
         prepared,
         &result,
-        shaped,
-        characters,
-        order,
+        basis,
+        request.context.spacing,
+        spacing_slots,
         &mut budget,
     )?);
     result.usage = Some(budget.usage());

@@ -194,21 +194,38 @@ impl LexicalDeletion {
         let LexicalState::Executed { records, .. } = state else {
             unreachable!("a lexical deletion is issued only by executed processing")
         };
-        let source = self.source;
-        let cause = self.cause;
         let first = self.first;
+        let deletion = *self;
         records[self.first..self.end]
             .iter()
             .enumerate()
             .filter_map(move |(offset, record)| {
-                matches!(record.kind,
-                LexicalRecordKind::Character {
-                    source: original,
-                    disposition: LexicalDisposition::Deleted { cause: actual, .. },
-                    ..
-                } if actual == cause && original.start < source.end && source.start < original.end)
-                .then_some((first + offset, record))
+                deletion.matches(record).then_some((first + offset, record))
             })
+    }
+
+    fn matches(&self, record: &LexicalRecord) -> bool {
+        matches!(record.kind,
+            LexicalRecordKind::Character {
+                source: original,
+                disposition: LexicalDisposition::Deleted { cause: actual, .. },
+                ..
+            } if actual == self.cause && original.start < self.source.end
+                && self.source.start < original.end)
+    }
+
+    pub(crate) fn occurrence_cursor<'a>(
+        &self,
+        state: &'a LexicalState,
+    ) -> LexicalOccurrenceCursor<'a> {
+        let LexicalState::Executed { records, .. } = state else {
+            unreachable!("a lexical deletion is issued only by executed processing")
+        };
+        LexicalOccurrenceCursor {
+            deletion: *self,
+            records: &records[self.first..self.end],
+            next: 0,
+        }
     }
 
     /// Reconstitutes the existing event fragment from its actual occurrence
@@ -230,5 +247,29 @@ impl LexicalDeletion {
             first.start,
             occurrences.last().map_or(first.end, |last| last.end),
         )
+    }
+}
+
+/// Borrowed filtered traversal whose caller admits every underlying inspection.
+pub(crate) struct LexicalOccurrenceCursor<'a> {
+    deletion: LexicalDeletion,
+    records: &'a [LexicalRecord],
+    next: usize,
+}
+impl<'a> LexicalOccurrenceCursor<'a> {
+    pub(crate) fn next(
+        &mut self,
+        mut inspect: impl FnMut() -> crate::Result<()>,
+    ) -> crate::Result<Option<(usize, &'a LexicalRecord)>> {
+        while self.next < self.records.len() {
+            inspect()?;
+            let index = self.next;
+            self.next += 1;
+            let record = &self.records[index];
+            if self.deletion.matches(record) {
+                return Ok(Some((self.deletion.first + index, record)));
+            }
+        }
+        Ok(None)
     }
 }

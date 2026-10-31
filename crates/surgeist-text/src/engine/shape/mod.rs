@@ -829,16 +829,6 @@ pub(crate) fn finalize(
     use crate::protocol::prepared::PresentationUnitKind;
     let prepared = &selected.prepared;
     let presentation = &selected.presentation;
-    if spacing != crate::SpacingPolicy::None
-        && presentation
-            .units
-            .iter()
-            .any(|unit| matches!(unit.kind, PresentationUnitKind::Cell { .. }))
-    {
-        return Err(crate::transform::combined::refused(
-            crate::TextCombineError::UnsupportedCellPreparation,
-        ));
-    }
     let mut scope_plan =
         super::scope_alignment::selection_plan(prepared, presentation, allowance, scope_input)?;
     let mut scope_budget = scope_plan.budget.take();
@@ -850,16 +840,31 @@ pub(crate) fn finalize(
         spacing == crate::SpacingPolicy::InterCharacter,
         &mut scope_budget,
     )?;
-    let separator_feedback = match spacing {
-        crate::SpacingPolicy::None | crate::SpacingPolicy::InterCharacter => false,
-        crate::SpacingPolicy::Spaces => presentation.units.iter().any(|unit| unit.eligible_space),
-        crate::SpacingPolicy::InterWord => !super::spacing::candidates(
-            &presentation.projection,
-            &presentation.analysis,
-            &selected.boundaries.presentation,
-        )?
-        .is_empty(),
+    let mut native_spacing = None;
+    let spacing_ledger = if character_input.has_cells() && spacing != crate::SpacingPolicy::None {
+        &mut scope_budget
+    } else {
+        &mut native_spacing
     };
+    let mut separator_feedback = false;
+    match spacing {
+        crate::SpacingPolicy::None | crate::SpacingPolicy::InterCharacter => (),
+        crate::SpacingPolicy::Spaces => {
+            for unit in &presentation.units {
+                super::scope_alignment::accounting::work(spacing_ledger, 1)?;
+                separator_feedback |= unit.eligible_space;
+            }
+        }
+        crate::SpacingPolicy::InterWord => super::spacing::visit_outer_candidates(
+            presentation,
+            &selected.boundaries.presentation,
+            spacing_ledger,
+            |_, _| {
+                separator_feedback = true;
+                Ok(())
+            },
+        )?,
+    }
     let input = ShapingInput {
         formatting_breaks: &scope_plan.breaks,
         scope_custody: scope_plan.custody(prepared),
@@ -1176,10 +1181,12 @@ pub(crate) fn finalize(
     }
     retain_external_invocations(&mut output);
     cells.retain(prepared, presentation, &mut output, &mut scope_budget)?;
+    let funded_word_receipts = spacing != crate::SpacingPolicy::None && !output.cells.is_empty();
     super::spacing::authored_selected(
         selected,
         &mut output,
         separator_feedback,
+        funded_word_receipts,
         &mut scope_budget,
     )?;
     // Each real atom receives one extracted cluster; ligature components lend

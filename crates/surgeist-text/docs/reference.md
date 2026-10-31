@@ -674,8 +674,15 @@ intervals determine fitting and compression; the selected payload retains its
 independent half-space offsets and original provider advances. Intrinsically
 zero-width separators receive no word-spacing term.
 
-Allocated spacing (`SpacingPolicy` other than `None`) and interior endpoint or
-directional controls still return
+Outer `Spaces`, `InterWord` and `InterCharacter` allocations use actual exterior
+slots. A cell remains one opaque endpoint, including glyph-free input; its inner
+SPACE never becomes an outer separator target. Slot pieces retain actual original,
+removed and generated correspondence. Allocation changes outer flow and interaction
+endpoints while preserving the fixed square and chosen inner packet. A policy with
+no exterior targets succeeds with an empty complete allocation. The selected allocation
+payload participates in the existing scope allowance and shared-product census.
+
+Interior endpoint or directional controls still return
 `TextCombineError::UnsupportedCellPreparation`. An in-cell TAB with deferred CSS
 tab stops is also unsupported; source processing retains genuine forced-break
 removal and glyph-free input provenance. A cell without a raw logical participant

@@ -2,6 +2,9 @@
 //! horizontal Cell's already executed inner word spacing.
 
 use super::*;
+
+#[path = "combined_cell_allocated_word_resources.rs"]
+mod resources;
 use icu_properties::{CodePointMapData, props::VerticalOrientation};
 use surgeist_shaper::{
     Direction, Feature, FontRef as ShaperFontRef, ShaperData, ShapingStatus, Tag, UnicodeBuffer,
@@ -217,8 +220,21 @@ fn raw(mixed: &Mixed, line: &FinalizedLine) -> Vec<(bool, Range, u32, f32, f32, 
         .collect()
 }
 
-fn flow(mixed: &Mixed, line: &FinalizedLine, space: SpaceMetrics, amounts: [f64; 2]) {
+fn flow(
+    mixed: &Mixed,
+    line: &FinalizedLine,
+    space: SpaceMetrics,
+    policy: SpacingPolicy,
+    amounts: [f64; 2],
+) {
     let [first, second] = amounts;
+    // Native Spaces extends allocation after the SPACE. InterWord also
+    // shifts that glyph by half; this policy input is independent of output.
+    let halves = if policy == SpacingPolicy::InterWord {
+        [first / 2.0, second / 2.0]
+    } else {
+        [0.0, 0.0]
+    };
     let intrinsic = f64::from(space.advance);
     // B/SP/Cell/SP/B have intrinsic10/S/10/S/10. Actual outer LS4/4/2/4/4
     // contributes boundary means4/3/3/4. Allocations belong only to the SPACEs.
@@ -282,13 +298,8 @@ fn flow(mixed: &Mixed, line: &FinalizedLine, space: SpaceMetrics, amounts: [f64;
         outside,
         [
             (Range::new(0, 1), 36, 0.0, 10.0),
-            (Range::new(1, 2), 3, 14.0 + first / 2.0, space.advance),
-            (
-                Range::new(5, 6),
-                3,
-                second_space + second / 2.0,
-                space.advance
-            ),
+            (Range::new(1, 2), 3, 14.0 + halves[0], space.advance),
+            (Range::new(5, 6), 3, second_space + halves[1], space.advance),
             (Range::new(6, 7), 36, last, 10.0),
         ]
     );
@@ -339,7 +350,7 @@ fn exercise(policy: SpacingPolicy) {
         .unwrap()
         .finalize(allocations())
         .unwrap();
-    flow(&mixed, &none, space, [0.0, 0.0]);
+    flow(&mixed, &none, space, SpacingPolicy::None, [0.0, 0.0]);
     let original = raw(&mixed, &none);
     let mut value = request(&mixed.prepared);
     value.context.spacing = policy;
@@ -349,7 +360,7 @@ fn exercise(policy: SpacingPolicy) {
         .expect("genuine exterior separator demand must admit a retained Cell");
     targets(&mixed, &selected);
     let natural = selected.finalize(allocations()).unwrap();
-    flow(&mixed, &natural, space, [0.0, 0.0]);
+    flow(&mixed, &natural, space, policy, [0.0, 0.0]);
     assert_eq!(raw(&mixed, &natural), original);
     let expanded = selected
         .finalize(LineAllocations {
@@ -357,7 +368,7 @@ fn exercise(policy: SpacingPolicy) {
             scopes: ScopeAllocations::None,
         })
         .unwrap();
-    flow(&mixed, &expanded, space, [1.0, 3.0]);
+    flow(&mixed, &expanded, space, policy, [1.0, 3.0]);
     assert_eq!(
         expanded.feedback().advance,
         natural.feedback().advance + 4.0
@@ -378,12 +389,12 @@ fn exercise(policy: SpacingPolicy) {
         .with_spacing(complete(&selected, [2.0, 0.5]))
         .unwrap();
     assert_eq!(replay.selected_line(), selected);
-    flow(&mixed, &replay, space, [2.0, 0.5]);
+    flow(&mixed, &replay, space, policy, [2.0, 0.5]);
     assert_eq!(raw(&mixed, &replay), original);
     let restored = replay.with_spacing(SpacingAllocations::None).unwrap();
-    flow(&mixed, &restored, space, [0.0, 0.0]);
+    flow(&mixed, &restored, space, policy, [0.0, 0.0]);
     assert_eq!(raw(&mixed, &restored), original);
-    flow(&mixed, &expanded, space, [1.0, 3.0]);
+    flow(&mixed, &expanded, space, policy, [1.0, 3.0]);
 }
 
 #[test]

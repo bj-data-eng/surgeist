@@ -196,10 +196,10 @@ fn shared_word_geometry_keeps_its_diagnostic_outside_the_payload_allowance() {
         &members,
         4.0,
         SpacingStage::Preparation,
-        |ledger| {
+        || {
             let mut pieces = Vec::new();
             for atom in candidate.atoms.clone() {
-                original_pieces(&prepared.inner.analyzed, atom, &mut pieces, ledger)?;
+                original_pieces(&prepared.inner.analyzed, atom, &mut pieces, &mut None)?;
             }
             Ok(pieces)
         },

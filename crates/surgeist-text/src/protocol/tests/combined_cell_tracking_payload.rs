@@ -9,6 +9,9 @@ use super::*;
 #[path = "combined_cell_observation_mixed.rs"]
 mod observation_mixed;
 
+#[path = "combined_cell_allocated_source.rs"]
+mod allocated_source;
+
 struct Fixture {
     processed: Arc<ProcessedSource>,
     analyzed: AnalyzedSource,
@@ -26,9 +29,27 @@ fn public_packet(
     glyph: u32,
     advance: i32,
 ) {
+    public_packet_with_outcome(
+        bytes,
+        text,
+        request,
+        glyph,
+        advance,
+        surgeist_shaper::WidthInputOutcome::Covered,
+    );
+}
+
+fn public_packet_with_outcome(
+    bytes: &[u8],
+    text: &str,
+    request: Option<([u8; 4], surgeist_shaper::WidthFeature)>,
+    glyph: u32,
+    advance: i32,
+    outcome: surgeist_shaper::WidthInputOutcome,
+) {
     use surgeist_shaper::{
         Direction, Feature, FontRef, ShaperData, ShapingStatus, Tag, UnicodeBuffer,
-        WidthInputOutcome, WidthObservationCoverage, script,
+        WidthObservationCoverage, script,
     };
     let font = FontRef::new(bytes).unwrap();
     let data = ShaperData::new(&font);
@@ -77,10 +98,7 @@ fn public_packet(
         assert_eq!(receipt.input_len(), text.len());
         assert_eq!(receipt.coverage(), WidthObservationCoverage::Complete);
         for index in 0..text.len() {
-            assert_eq!(
-                receipt.input(index).unwrap().outcome(),
-                WidthInputOutcome::Covered
-            );
+            assert_eq!(receipt.input(index).unwrap().outcome(), outcome);
         }
     }
 }
@@ -93,7 +111,48 @@ fn fixture(
     size: f32,
 ) -> (System, Fixture) {
     assert!(inner.chars().all(|character| character == 'A'));
+    fixture_with_processing(
+        inner,
+        tracking,
+        leading_b,
+        trailing_b,
+        size,
+        WhiteSpace::Preserve,
+        false,
+    )
+}
+
+fn fixture_with_processing(
+    inner: &str,
+    tracking: f64,
+    leading_b: bool,
+    trailing_b: bool,
+    size: f32,
+    white_space: WhiteSpace,
+    uppercase: bool,
+) -> (System, Fixture) {
+    assert!(
+        inner
+            .chars()
+            .all(|character| matches!(character, 'A' | ' ' | 'ß'))
+    );
     assert!(!inner.is_empty());
+    // This deliberately small fixture admits plain edge SPACE plus uniform
+    // visible A, or the stable Unicode uppercase expansion ß -> SS. It does
+    // not assert generic scalar counts for arbitrary EGCs or fonts.
+    let transformed = if uppercase {
+        inner.to_uppercase()
+    } else {
+        inner.to_owned()
+    };
+    let used = transformed.trim_matches(' ');
+    assert!(!used.is_empty());
+    assert!(used.chars().all(|ch| ch == 'A') || used.chars().all(|ch| ch == 'S'));
+    assert!(matches!(
+        white_space,
+        WhiteSpace::Preserve | WhiteSpace::Collapse
+    ));
+    assert!(white_space == WhiteSpace::Collapse || !inner.contains(' '));
     let parent = parent_font();
     let body = composition_font();
     glyph_frame_font_premises(&parent);
@@ -101,7 +160,18 @@ fn fixture(
     // Qualify these actual native-table font bytes through the public provider,
     // independently of Text's candidate choice and of every tracking result.
     public_packet(&parent, "B", None, 36, 1000);
-    public_packet(&body, inner, None, 35, 1000);
+    use skrifa::MetadataProvider;
+    let parsed = skrifa::FontRef::new(&body).unwrap();
+    let scalar = used.chars().next().unwrap();
+    let glyph = parsed.charmap().map(scalar).unwrap().to_u32();
+    assert_eq!(
+        sfnt::u16_at(
+            sfnt::table(&body, *b"hmtx"),
+            usize::try_from(glyph).unwrap() * 4
+        ),
+        1000
+    );
+    public_packet(&body, used, None, glyph, 1000);
     for (tag, feature, glyph, advance) in [
         (*b"hwid", surgeist_shaper::WidthFeature::HalfWidth, 36, 500),
         (*b"twid", surgeist_shaper::WidthFeature::ThirdWidth, 58, 400),
@@ -112,7 +182,21 @@ fn fixture(
             300,
         ),
     ] {
-        public_packet(&body, inner, Some((tag, feature)), glyph, advance);
+        if scalar == 'A' {
+            public_packet(&body, used, Some((tag, feature)), glyph, advance);
+        } else {
+            // The maintained derivative edits width substitutions only for A.
+            // Qualify actual S/SS NoAction on each exact executed width plan.
+            let source_glyph = parsed.charmap().map('S').unwrap().to_u32();
+            public_packet_with_outcome(
+                &body,
+                used,
+                Some((tag, feature)),
+                source_glyph,
+                1000,
+                surgeist_shaper::WidthInputOutcome::NoAction,
+            );
+        }
     }
     let outside = Style {
         font: Font::new().family("Ahem"),
@@ -130,6 +214,12 @@ fn fixture(
         font: Font::new().family(crate::shaping_test_fonts::COMBINED_WIDTH_FAMILY),
         text_combine_upright: TextCombineUpright::All,
         letter_spacing: tracking,
+        white_space,
+        text_transform: if uppercase {
+            TextTransform::Set(TextTransformSet::none().with_case(CaseTransform::Uppercase))
+        } else {
+            TextTransform::none()
+        },
         ..outside.clone()
     };
     let text = format!(
@@ -139,20 +229,21 @@ fn fixture(
         if trailing_b { "B" } else { "" }
     );
     let start = usize::from(leading_b);
-    let range = Range::new(start, start + inner.len());
+    let range = Range::new(start, start + inner.encode_utf16().count());
+    let text_len = text.encode_utf16().count();
     let mut source = Source::identified(text.as_str(), Id::from_u64(784_944), 1);
     if leading_b {
         source.span(Range::new(0, range.start), outside.clone());
     }
     source.span(range, inside.clone());
     if trailing_b {
-        source.span(Range::new(range.end, text.len()), outside.clone());
+        source.span(Range::new(range.end, text_len), outside.clone());
     }
     let mut events = vec![
         SourceProcessingEvent::EnterScope(0),
         SourceProcessingEvent::EnterParagraph(0),
     ];
-    for index in 0..text.len() {
+    for index in 0..text_len {
         if index > 0 {
             events.push(SourceProcessingEvent::Connection(index - 1));
         }
@@ -176,7 +267,7 @@ fn fixture(
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
-            origins: (0..text.len())
+            origins: (0..text_len)
                 .map(|index| ParagraphOrigin {
                     text_node: None,
                     source: source.clone(),
@@ -185,14 +276,14 @@ fn fixture(
                     kind: ParagraphOriginKind::Authored,
                 })
                 .collect(),
-            connections: (0..text.len() - 1)
+            connections: (0..text_len - 1)
                 .map(|index| SourceProcessingConnection {
                     before_origin: index,
                     after_origin: index + 1,
                     kind: ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
-            boundary_policies: (0..text.len() - 1)
+            boundary_policies: (0..text_len - 1)
                 .map(|index| ParagraphBoundaryPolicy {
                     definition: ParagraphBoundaryDefinition::Connection(index),
                     preceding_wrap: Wrap::Word,
@@ -235,7 +326,21 @@ fn fixture(
         .unwrap(),
     );
     assert_eq!(processed.source(), &source);
-    assert_eq!(processed.processed_text(), &Text::from(text.as_str()));
+    let mut phase_one_inner = String::new();
+    let mut previous_space = false;
+    for ch in inner.chars() {
+        if white_space != WhiteSpace::Collapse || ch != ' ' || !previous_space {
+            phase_one_inner.push(ch);
+        }
+        previous_space = ch == ' ';
+    }
+    let phase_one = format!(
+        "{}{}{}",
+        if leading_b { "B" } else { "" },
+        phase_one_inner,
+        if trailing_b { "B" } else { "" }
+    );
+    assert_eq!(processed.processed_text(), &Text::from(phase_one.as_str()));
     let domain = AnalyzedDomain::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
         AnalysisTypography::Mixed,
@@ -254,15 +359,25 @@ fn fixture(
     let cell = analyzed.combined_cells().next().unwrap();
     assert_eq!(cell.scope(), processed.captured_scope(1).unwrap());
     assert_eq!(cell.mode(), TextCombineUpright::All);
-    assert_eq!(cell.selection_unit_count(), inner.len());
-    assert_eq!(cell.used_unit_count(), inner.len());
+    assert_eq!(cell.selection_unit_count(), transformed.chars().count());
+    assert_eq!(cell.used_unit_count(), used.chars().count());
     assert_eq!(
         cell.used_code_points().collect::<Vec<_>>(),
-        vec![0x41; inner.len()]
+        used.chars().map(u32::from).collect::<Vec<_>>()
     );
     let pieces = cell.source_pieces().collect::<Vec<_>>();
-    assert_eq!(pieces.len(), inner.len());
-    for (piece, index) in pieces.iter().zip(range.start..range.end) {
+    let ancestry = inner
+        .chars()
+        .enumerate()
+        .flat_map(|(index, ch)| {
+            std::iter::repeat_n(
+                (range.start + index, ch != ' '),
+                if uppercase && ch == 'ß' { 2 } else { 1 },
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(pieces.len(), ancestry.len());
+    for (piece, (index, retained)) in pieces.iter().zip(ancestry) {
         assert_eq!(piece.source(), processed.source());
         assert_eq!(piece.local(), Range::new(index, index + 1));
         assert_eq!(piece.aggregate(), Range::new(index, index + 1));
@@ -271,7 +386,8 @@ fn fixture(
             processed.captured_origin(index).unwrap()
         );
         assert_eq!(piece.paragraph(), processed.captured_paragraph(0).unwrap());
-        assert!(piece.is_used());
+        assert_eq!(piece.is_used(), retained);
+        assert_eq!(piece.has_presentation_emission(), retained);
     }
     let scope = processed.captured_scope(1).unwrap();
     assert_eq!(scope.style().unwrap().letter_spacing, tracking);

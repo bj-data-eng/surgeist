@@ -12,13 +12,6 @@ use icu_properties::{
 
 const THREE: [Range; 3] = [Range::new(0, 1), Range::new(1, 2), Range::new(2, 3)];
 
-fn words(values: &[u16]) -> Vec<u8> {
-    values
-        .iter()
-        .flat_map(|value| value.to_be_bytes())
-        .collect()
-}
-
 fn source_piece(range: Range) -> crate::SpacingPiece {
     crate::SpacingPiece::Source {
         origin: 0,
@@ -68,15 +61,7 @@ fn try_prepare(bytes: &[u8], source: &Source, style: Style) -> crate::Result<Pre
 /// between two Latin EGCs, rather than a mark inside one EGC or joining context
 /// outside an invocation. C is outside the lookup's coverage.
 fn cross_unit_cursive_font() -> Vec<u8> {
-    let mut gpos = words(&[1, 0, 10, 30, 44, 1]);
-    gpos.extend(*b"DFLT");
-    gpos.extend(words(&[8, 4, 0, 0, 0xffff, 1, 0, 1]));
-    gpos.extend(*b"curs");
-    gpos.extend(words(&[8, 0, 1, 0, 1, 4, 3, 0, 1, 8]));
-    gpos.extend(words(&[
-        1, 14, 2, 0, 22, 28, 0, 1, 2, 35, 36, 1, 300, 500, 1, 100, 200,
-    ]));
-    let bytes = sfnt::replace_tables(AHEM, vec![(*b"GPOS", gpos)]);
+    let bytes = crate::shaping_test_fonts::cross_unit_cursive_ahem();
     font_premises(&bytes, false);
     let font = skrifa::FontRef::new(&bytes).unwrap();
     assert_eq!(font.charmap().map('C'), Some(GlyphId::new(37)));

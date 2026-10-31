@@ -1,5 +1,6 @@
 //! Canonical preparation tables; handles borrow these actual issued rows.
 
+pub(crate) mod cell_sources;
 pub(crate) mod cells;
 mod fragments;
 pub(crate) mod presentation;

@@ -139,11 +139,18 @@ pub(crate) fn retained_prepared(
 fn visit_selected_own_allocations(
     prepared: &PreparedData,
     scopes: &SelectedScopes,
-    shaped: &crate::engine::layout::data::ShapedData,
-    characters: &crate::engine::spacing::character::Graph,
-    order: &Vec<usize>,
+    basis: &crate::engine::SelectedShape,
+    policy: crate::SpacingPolicy,
+    slots: &Vec<crate::protocol::selection::SpacingSlotData>,
     visit: &mut AllocationVisitor<'_>,
 ) -> Result<()> {
+    let shaped = &basis.shaped;
+    let characters = &basis.characters;
+    let order = &basis.order;
+    if crate::protocol::selection::spacing::funded(shaped, policy) {
+        crate::protocol::selection::spacing::visit_allocations(slots, visit)?;
+        crate::protocol::selection::spacing::visit_word_allocations(shaped, visit)?;
+    }
     preparation::visit_prepared_allocations(
         &prepared.scope_alignment,
         &prepared.analyzed,
@@ -227,9 +234,9 @@ fn visit_finalized_own_allocations(
     visit_selected_own_allocations(
         &selected.prepared,
         &selected.scopes,
-        &selected.basis.shaped,
-        &selected.basis.characters,
-        &selected.basis.order,
+        &selected.basis,
+        selected.request.context.spacing,
+        &selected.spacing_slots,
         visit,
     )?;
     frame.inner.visit_scope_allocations(visit)
@@ -240,12 +247,12 @@ fn visit_finalized_own_allocations(
 fn visit_selected_allocations(
     prepared: &PreparedData,
     scopes: &SelectedScopes,
-    shaped: &crate::engine::layout::data::ShapedData,
-    characters: &crate::engine::spacing::character::Graph,
-    order: &Vec<usize>,
+    basis: &crate::engine::SelectedShape,
+    policy: crate::SpacingPolicy,
+    slots: &Vec<crate::protocol::selection::SpacingSlotData>,
     visit: &mut AllocationVisitor<'_>,
 ) -> Result<()> {
-    visit_selected_own_allocations(prepared, scopes, shaped, characters, order, visit)?;
+    visit_selected_own_allocations(prepared, scopes, basis, policy, slots, visit)?;
     for frame in &scopes.proof_frames {
         visit_finalized_own_allocations(frame, visit)?;
     }
@@ -284,20 +291,15 @@ pub(crate) fn proof_frames_contain_resource(
 pub(crate) fn retained_selected(
     prepared: &PreparedData,
     scopes: &SelectedScopes,
-    shaped: &crate::engine::layout::data::ShapedData,
-    characters: &crate::engine::spacing::character::Graph,
-    order: &Vec<usize>,
+    basis: &crate::engine::SelectedShape,
+    policy: crate::SpacingPolicy,
+    slots: &Vec<crate::protocol::selection::SpacingSlotData>,
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<crate::ScopeAlignmentRetention> {
     let mut set = AllocationSet::new();
-    visit_selected_allocations(
-        prepared,
-        scopes,
-        shaped,
-        characters,
-        order,
-        &mut |allocation| set.observe(allocation, budget).map(|_| ()),
-    )?;
+    visit_selected_allocations(prepared, scopes, basis, policy, slots, &mut |allocation| {
+        set.observe(allocation, budget).map(|_| ())
+    })?;
     set.finish(budget)
 }
 
@@ -310,9 +312,9 @@ pub(crate) fn retained_finalized(
     visit_selected_allocations(
         &selected.prepared,
         &selected.scopes,
-        &selected.basis.shaped,
-        &selected.basis.characters,
-        &selected.basis.order,
+        &selected.basis,
+        selected.request.context.spacing,
+        &selected.spacing_slots,
         &mut |allocation| set.observe(allocation, budget).map(|_| ()),
     )?;
     data.visit_scope_allocations(&mut |allocation| set.observe(allocation, budget).map(|_| ()))?;
@@ -429,9 +431,9 @@ impl Root<'_> {
             Self::Selected(value) => visit_selected_own_allocations(
                 &value.prepared,
                 &value.scopes,
-                &value.basis.shaped,
-                &value.basis.characters,
-                &value.basis.order,
+                &value.basis,
+                value.request.context.spacing,
+                &value.spacing_slots,
                 visit,
             ),
             Self::Finalized(value) => visit_finalized_own_allocations(value, visit),

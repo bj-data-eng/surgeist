@@ -63,6 +63,8 @@ pub(crate) fn authored_original(
         .into_iter()
         .flat_map(|output| output.bindings.iter())
         .peekable();
+    // Ordinary preparation retains the existing Native word-receipt owner.
+    let mut native = None;
     apply(
         AuthoredInput {
             projection: &analyzed.projection,
@@ -82,7 +84,7 @@ pub(crate) fn authored_original(
             }
             Ok(pieces)
         },
-        |atoms| {
+        |atoms, _| {
             while let Some(cell) = cells.peek() {
                 account::work(ledger, 1)?;
                 if cell.atoms.end > atoms.start {
@@ -94,6 +96,7 @@ pub(crate) fn authored_original(
                 .peek()
                 .is_some_and(|cell| cell.atoms.start < atoms.end))
         },
+        &mut native,
     )
 }
 
@@ -101,9 +104,25 @@ pub(crate) fn authored_selected(
     input: PresentationInput<'_>,
     shaped: &mut ShapedData,
     feedback: bool,
+    funded: bool,
     ledger: &mut Ledger,
 ) -> Result<()> {
     let has_cells = !shaped.cells.is_empty();
+    if funded && ledger.is_none() {
+        return Err(crate::engine::scope_alignment::refusal(
+            crate::ScopeAlignmentError::LimitsRequired,
+        ));
+    }
+    let mut native = None;
+    // None/no-Cell receipts retain Native allocation ownership. Only actual
+    // Cell source-incidence inspections use the scope ledger.
+    let mut inspection = None;
+    let ledger = if funded {
+        ledger
+    } else {
+        inspection = Some(ledger);
+        &mut native
+    };
     let mut units = input.presentation.units.iter().peekable();
     apply(
         AuthoredInput {
@@ -117,29 +136,70 @@ pub(crate) fn authored_selected(
             stage: SpacingStage::SelectedShaping,
             feedback,
         },
-        |atoms| {
-            Ok(slot_pieces(input.prepared, input.presentation, atoms)
-                .into_iter()
-                .map(|piece| piece.owner)
-                .collect())
-        },
-        |atoms| {
+        |atoms| slot_owners(input.prepared, input.presentation, atoms, &mut None),
+        |atoms, ledger| {
             if !has_cells {
                 return Ok(false);
             }
-            while let Some(unit) = units.peek() {
-                account::work(ledger, 1)?;
-                if unit.atoms.end > atoms.start {
-                    break;
-                }
-                units.next();
+            let inspections = match inspection.as_deref_mut() {
+                Some(active) => active,
+                None => ledger,
+            };
+            outside_cell(&mut units, atoms, inspections).map(|outside| !outside)
+        },
+        ledger,
+    )
+}
+
+fn outside_cell<'a>(
+    units: &mut std::iter::Peekable<
+        std::slice::Iter<'a, crate::protocol::prepared::PresentationUnit>,
+    >,
+    atoms: &AtomRange<usize>,
+    ledger: &mut Ledger,
+) -> Result<bool> {
+    while let Some(unit) = units.peek() {
+        account::work(ledger, 1)?;
+        if unit.atoms.end > atoms.start {
+            break;
+        }
+        units.next();
+    }
+    let remaining = units.clone();
+    for unit in remaining {
+        account::work(ledger, 1)?;
+        if unit.atoms.start >= atoms.end {
+            break;
+        }
+        if matches!(unit.kind, PresentationUnitKind::Cell { .. }) {
+            if atoms.start < unit.atoms.start || atoms.end > unit.atoms.end {
+                return Err(crate::transform::combined::refused(
+                    crate::TextCombineError::UnsupportedCellPreparation,
+                ));
             }
-            // A Cell is one outer unit; its retained inner execution is never
-            // rebuilt into outer authored/feedback word slots.
-            Ok(units.peek().is_some_and(|unit| {
-                unit.atoms.start < atoms.end
-                    && matches!(unit.kind, PresentationUnitKind::Cell { .. })
-            }))
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+pub(crate) fn visit_outer_candidates(
+    presentation: &crate::protocol::prepared::SelectedPresentation,
+    additional: &BTreeSet<usize>,
+    ledger: &mut Ledger,
+    mut emit: impl FnMut(SeparatorCandidate, &mut Ledger) -> Result<()>,
+) -> Result<()> {
+    let mut units = presentation.units.iter().peekable();
+    visit_candidates(
+        &presentation.projection,
+        &presentation.analysis,
+        additional,
+        ledger,
+        |candidate, ledger| {
+            if outside_cell(&mut units, &candidate.atoms, ledger)? {
+                emit(candidate, ledger)?;
+            }
+            Ok(())
         },
     )
 }
@@ -149,26 +209,37 @@ pub(crate) fn slot_pieces(
     prepared: &super::PreparedData,
     presentation: &crate::protocol::prepared::SelectedPresentation,
     atoms: AtomRange<usize>,
-) -> Vec<crate::protocol::selection::SpacingSlotPieceData> {
+    ledger: &mut Ledger,
+) -> Result<Vec<crate::protocol::selection::SpacingSlotPieceData>> {
     let mut output = Vec::new();
+    visit_slot_pieces(prepared, presentation, atoms, ledger, |piece, ledger| {
+        account::push(ledger, &mut output, piece)
+    })?;
+    Ok(output)
+}
+
+pub(crate) fn visit_slot_pieces(
+    prepared: &super::PreparedData,
+    presentation: &crate::protocol::prepared::SelectedPresentation,
+    atoms: AtomRange<usize>,
+    ledger: &mut Ledger,
+    mut emit: impl FnMut(crate::protocol::selection::SpacingSlotPieceData, &mut Ledger) -> Result<()>,
+) -> Result<()> {
     for atom in atoms {
+        account::work(ledger, 1)?;
         let mut owners = Vec::new();
         if let Some(original) = presentation.originals[atom] {
-            original_pieces(&prepared.analyzed, original, &mut owners, &mut None)
-                .expect("Native source-piece collection has no scope admission");
+            original_pieces(&prepared.analyzed, original, &mut owners, ledger)?;
         } else {
-            let index = presentation
-                .units
-                .partition_point(|unit| unit.atoms.end <= atom);
+            let index =
+                operations::partition_point(&presentation.units, ledger.as_mut(), |unit| {
+                    unit.atoms.end <= atom
+                })?;
             let unit = &presentation.units[index];
-            assert!(
-                unit.atoms.contains(&atom),
-                "selected atom has its actual owner"
-            );
-            match unit.kind {
+            let owner = match unit.kind {
                 PresentationUnitKind::Replacement { alternative, local } => {
                     let range = presentation.projection.atoms[atom].presentation;
-                    owners.push(SpacingPiece::Alternative {
+                    SpacingPiece::Alternative {
                         alternative,
                         local: Range::new(
                             local.start + range.start - unit.presentation.start,
@@ -176,59 +247,42 @@ pub(crate) fn slot_pieces(
                         ),
                         insertion_anchor: prepared.tables.alternatives[alternative]
                             .insertion_anchor,
-                    });
+                    }
                 }
-                PresentationUnitKind::GeneratedSeparator { owner } => {
-                    use crate::transform::relation::GeneratedSeparatorOwner;
-                    owners.push(match owner {
-                        GeneratedSeparatorOwner::Control(occurrence) => {
-                            SpacingPiece::Control { occurrence }
-                        }
-                        GeneratedSeparatorOwner::Virtual(occurrence) => {
-                            SpacingPiece::VirtualSeparator { occurrence }
-                        }
-                    });
-                }
-                _ => unreachable!("inserted scalar has an actual inserted owner"),
-            }
+                PresentationUnitKind::GeneratedSeparator { owner } => match owner {
+                    crate::transform::relation::GeneratedSeparatorOwner::Control(occurrence) => {
+                        SpacingPiece::Control { occurrence }
+                    }
+                    crate::transform::relation::GeneratedSeparatorOwner::Virtual(occurrence) => {
+                        SpacingPiece::VirtualSeparator { occurrence }
+                    }
+                },
+                _ => return Err(invalid_word_execution()),
+            };
+            account::push(ledger, &mut owners, owner)?;
         }
         let range = presentation.projection.atoms[atom].presentation;
-        for owner in owners {
-            output.push(crate::protocol::selection::SpacingSlotPieceData {
-                owner,
-                presentation: crate::PresentationRange {
-                    start: range.start,
-                    end: range.end,
+        for owner in &owners {
+            emit(
+                crate::protocol::selection::SpacingSlotPieceData {
+                    owner: *owner,
+                    presentation: crate::PresentationRange {
+                        start: range.start,
+                        end: range.end,
+                    },
                 },
-            });
+                ledger,
+            )?;
         }
+        account::drop_vec(ledger, owners)?;
     }
-    output
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct SeparatorCandidate {
     pub(crate) atoms: AtomRange<usize>,
     pub(crate) base: usize,
-}
-
-pub(crate) fn candidates(
-    projection: &SourceProjection,
-    analysis: &Analysis,
-    additional: &BTreeSet<usize>,
-) -> Result<Vec<SeparatorCandidate>> {
-    let mut result = Vec::new();
-    visit_candidates(
-        projection,
-        analysis,
-        additional,
-        &mut None,
-        |candidate, _| {
-            result.push(candidate);
-            Ok(())
-        },
-    )?;
-    Ok(result)
 }
 
 /// One canonical grapheme/barrier walk for Native and funded Cell inventory.
@@ -386,47 +440,65 @@ fn apply(
     input: AuthoredInput<'_>,
     shaped: &mut ShapedData,
     demand: Demand,
-    content: impl Fn(AtomRange<usize>) -> Result<Vec<SpacingPiece>>,
-    mut excluded: impl FnMut(&AtomRange<usize>) -> Result<bool>,
+    mut content: impl FnMut(AtomRange<usize>) -> Result<Vec<SpacingPiece>>,
+    mut excluded: impl FnMut(&AtomRange<usize>, &mut Ledger) -> Result<bool>,
+    ledger: &mut Ledger,
 ) -> Result<()> {
+    if ledger.is_some() {
+        account::header::<Vec<WordSpacingUnit>>(ledger)?;
+    }
+    if !demand.feedback {
+        account::work(ledger, input.analysis.infos.len())?;
+    }
     if !demand.feedback && !authored_demand(input.analysis, input.styles) {
         return Ok(());
     }
-    // This is the established Native allocation owner. Cell packet scratch has
-    // its own funded execution below; it does not adopt this ordinary arena.
-    let mut clusters = vec![None; input.projection.atoms.len()];
+    // Native callers retain their established ownership. The Cell+allocated
+    // caller supplies its actual feature ledger for this whole mixed arena.
+    let mut clusters = account::filled(ledger, input.projection.atoms.len(), None)?;
     for (index, cluster) in shaped.clusters.iter().enumerate() {
         for atom in cluster.atoms.clone() {
+            account::work(ledger, 1)?;
             clusters[atom] = Some(index);
         }
     }
-    for candidate in candidates(input.projection, input.analysis, input.additional)? {
-        if excluded(&candidate.atoms)? {
-            continue;
-        }
-        let authored = input.styles[input.analysis.infos[candidate.base].1]
-            .style
-            .word_spacing;
-        if authored == 0.0 && !demand.feedback {
-            continue;
-        }
-        let members: Vec<_> = candidate
-            .atoms
-            .clone()
-            .filter_map(|atom| clusters[atom])
-            .collect();
-        let unit = authored_unit_accounted(
-            shaped,
-            &candidate,
-            &members,
-            authored,
-            demand.stage,
-            |_| content(candidate.atoms.clone()),
-            &mut None,
-        )?;
-        shaped.word_spacing.push(unit);
-    }
-    Ok(())
+    visit_candidates(
+        input.projection,
+        input.analysis,
+        input.additional,
+        ledger,
+        |candidate, ledger| {
+            if excluded(&candidate.atoms, ledger)? {
+                return Ok(());
+            }
+            let authored = input.styles[input.analysis.infos[candidate.base].1]
+                .style
+                .word_spacing;
+            if authored == 0.0 && !demand.feedback {
+                return Ok(());
+            }
+            let mut members = Vec::new();
+            for atom in candidate.atoms.clone() {
+                account::work(ledger, 1)?;
+                if let Some(cluster) = clusters[atom] {
+                    account::push(ledger, &mut members, cluster)?;
+                }
+            }
+            let unit = authored_unit_accounted(
+                shaped,
+                &candidate,
+                &members,
+                authored,
+                demand.stage,
+                || content(candidate.atoms.clone()),
+                ledger,
+            )?;
+            account::drop_vec(ledger, members)?;
+            account::push(ledger, &mut shaped.word_spacing, unit)?;
+            Ok(())
+        },
+    )?;
+    account::drop_vec(ledger, clusters)
 }
 
 fn authored_unit_accounted(
@@ -435,7 +507,7 @@ fn authored_unit_accounted(
     members: &[usize],
     mut authored: f64,
     stage: SpacingStage,
-    content: impl FnOnce(&mut Ledger) -> Result<Vec<SpacingPiece>>,
+    content: impl FnOnce() -> Result<Vec<SpacingPiece>>,
     ledger: &mut Ledger,
 ) -> Result<WordSpacingUnit> {
     let (geometry, shared) = geometry_accounted(shaped, members, candidate.atoms.clone(), ledger)?;
@@ -446,24 +518,8 @@ fn authored_unit_accounted(
     };
     if let Some(provider_atoms) = &shared {
         if authored != 0.0 {
-            // Admit the actual error-owner array before the existing typed
-            // diagnostic constructs its one provider interval.
-            let pieces = content(ledger)?;
-            if let Some(budget) = ledger {
-                let bytes = pieces
-                    .len()
-                    .checked_mul(std::mem::size_of::<SpacingPiece>())
-                    .and_then(|n| n.checked_add(std::mem::size_of::<AtomRange<usize>>()))
-                    .ok_or_else(|| {
-                        super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
-                            kind: crate::ScopeAlignmentLimitKind::PayloadBytes,
-                        })
-                    })?;
-                // into_boxed_slice may coexist with the funded source Vec.
-                budget.retain_bytes(bytes)?;
-                budget.add_records(1)?;
-                budget.work(pieces.len().saturating_add(1))?;
-            }
+            // Failure diagnostics retain their existing Native payload owner.
+            let pieces = content()?;
             return Err(unsupported(
                 stage,
                 SpacingOperation::AuthoredWord,
@@ -718,4 +774,17 @@ pub(crate) fn hypothetical_space(advance: f64, letter: f64, word: f64) -> Result
         with_letter,
         if advance == 0.0 { 0.0 } else { word },
     )
+}
+
+pub(crate) fn slot_owners(
+    prepared: &super::PreparedData,
+    presentation: &crate::protocol::prepared::SelectedPresentation,
+    atoms: AtomRange<usize>,
+    ledger: &mut Ledger,
+) -> Result<Vec<SpacingPiece>> {
+    let mut pieces = Vec::new();
+    visit_slot_pieces(prepared, presentation, atoms, ledger, |piece, ledger| {
+        account::push(ledger, &mut pieces, piece.owner)
+    })?;
+    Ok(pieces)
 }

@@ -3189,6 +3189,12 @@ fn character_slots(
             Some(Owner::Cluster(i)) => (i, responses[i].0, responses[i].1),
             Some(owner @ (Owner::Atomic(_) | Owner::Cell(_))) => {
                 let mut traversal = account::clone_vec(ledger, order)?;
+                let scans = traversal.len().checked_mul(3).ok_or_else(|| {
+                    super::super::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+                        kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+                    })
+                })?;
+                account::work(ledger, scans)?;
                 if selected.presentation.analysis.base_level & 1 != 0 {
                     traversal.reverse();
                 }

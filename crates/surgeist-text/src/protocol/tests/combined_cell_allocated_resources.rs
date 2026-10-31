@@ -1,6 +1,6 @@
-//! Aggregate allocation/census/refusal qualification over actual exterior Cell
-//! slots. The storage inventory is independent capacity/sizeof evidence; public
-//! census totals are NOT claimed to prove individual visitor witnesses.
+//! Exact owner-visitor attribution and aggregate allowance/census qualification
+//! over real exterior Cell slots. Expected sizes come independently from actual
+//! capacities and Rust types; public census remains an aggregate observation.
 
 use super::*;
 use crate::engine::scope_alignment::census::{AllocationIdentity, AllocationWitness};
@@ -9,16 +9,30 @@ use std::{
     sync::Arc,
 };
 
+struct ExpectedAllocation {
+    identity: AllocationIdentity,
+    records: usize,
+    bytes: usize,
+}
+
 #[derive(Default)]
 struct Inventory {
     records: usize,
     bytes: usize,
     identities: Vec<AllocationIdentity>,
+    allocations: Vec<ExpectedAllocation>,
 }
 impl Inventory {
     fn backing<T>(&mut self, values: &Vec<T>) {
-        self.records += values.len();
-        self.bytes += values.capacity() * size_of::<T>();
+        let records = values.len();
+        let bytes = values.capacity() * size_of::<T>();
+        self.records += records;
+        self.bytes += bytes;
+        self.allocations.push(ExpectedAllocation {
+            identity: AllocationWitness::buffer(values, 0).unwrap().identity(),
+            records,
+            bytes,
+        });
         if values.capacity() > 0 && size_of::<T>() > 0 {
             // Identity only: expected records/bytes are the real Vec operands.
             let identity = AllocationWitness::buffer(values, 0).unwrap().identity();
@@ -40,6 +54,11 @@ fn slot_inventory(selected: &SelectedLine) -> Inventory {
         bytes: size_of_val(rows),
         ..Inventory::default()
     };
+    result.allocations.push(ExpectedAllocation {
+        identity: AllocationWitness::object(rows, 0).identity(),
+        records: 0,
+        bytes: size_of_val(rows),
+    });
     result.backing(rows);
     for row in rows {
         assert_eq!(row.participants.len(), 2);
@@ -57,6 +76,17 @@ fn slot_inventory(selected: &SelectedLine) -> Inventory {
     }
     assert_eq!(result.records, 14); // 2 slots +4 union +4 source pieces +4 side memberships.
     assert!(result.bytes > size_of_val(rows));
+    let mut seen = vec![0; result.allocations.len()];
+    crate::protocol::selection::spacing::visit_allocations(rows, &mut |actual| {
+        let index = result.allocations.iter().position(|expected| expected.identity == actual.identity())
+            .expect("the owner visitor emits exactly the real slot field/backings, with no extra embedded header");
+        let expected = &result.allocations[index];
+        seen[index] += 1;
+        assert_eq!(actual.records(), expected.records);
+        assert_eq!(actual.payload_bytes(), expected.bytes);
+        Ok(())
+    }).unwrap();
+    assert!(seen.iter().all(|&count| count == 1));
     result
 }
 
