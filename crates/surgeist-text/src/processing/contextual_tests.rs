@@ -7,6 +7,7 @@ mod continuity;
 mod domain_analysis;
 mod domain_cell_bidi;
 mod domain_cell_forces;
+mod domain_cell_oof_whitespace;
 mod domain_cell_outer_levels;
 mod domain_combination;
 mod domain_digit_eligibility;

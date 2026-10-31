@@ -616,6 +616,15 @@ their facts. `Source::boxes` remains the atomic inventory. Inline, block,
 atomic-block and out-of-flow-block roles are explicit. Lexical scopes can remain
 open while a block inside an inline ends and resumes a paragraph.
 
+Combination preserves genuine box boundaries, including empty Inline boxes.
+Inline-only lookaround can reject partial candidates on their sides; it does
+not permit crossing the box. Out-of-flow atomics also fence combination, with
+independently eligible runs on each side and the actual atomic occurrence
+remaining exterior. Their generic casing and whitespace continuity is unchanged.
+A canonical EGC straddling a box cannot be split into partly combined units.
+Native out-of-flow static sites use neighboring Cells' executed outer flow
+edges, including outer tracking; inner glyph origins do not supply those sites.
+
 Full effective paragraph styles, delimiter policy, direction, strut and
 `WhiteSpaceTrim` facts are captured before trimming and the shared Phase I pass.
 `IncompleteExterior` refuses when required surrounding context is absent. Genuine

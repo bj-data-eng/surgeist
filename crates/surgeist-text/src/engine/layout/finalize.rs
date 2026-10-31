@@ -2025,10 +2025,15 @@ fn install_out_of_flow(
     let units = &selected.presentation.units;
     let mut slots = account::filled(ledger, units.len(), None)?;
     for (index, unit) in units.iter().enumerate() {
-        let first = 0;
+        if matches!(unit.kind, PresentationUnitKind::Cell { .. }) {
+            continue;
+        }
         let mut first_cluster = None;
         let mut last_cluster = None;
-        for cluster in &data.clusters[first..] {
+        for cluster in &data.clusters {
+            if cluster.frame != FinalizedRunFrame::Line {
+                continue;
+            }
             if cluster.presentation.end > unit.presentation.start
                 && cluster.presentation.start < unit.presentation.end
                 && !cluster.presentation.is_empty()
@@ -2061,6 +2066,17 @@ fn install_out_of_flow(
                     },
             ));
         }
+    }
+    // Inner clusters use intrinsic coordinates. An exterior static site instead
+    // consumes the actual Cell's executed outer flow endpoints, including its
+    // following tracking/allocation, in the selected line's resolved direction.
+    for cell in &data.cells {
+        account::work(ledger, 1)?;
+        slots[cell.unit] = Some(if cell.level & 1 == 0 {
+            (cell.inline.start, cell.flow_end)
+        } else {
+            (cell.flow_end, cell.inline.start)
+        });
     }
     for anchor in &data.anchors {
         slots[anchor.unit] = Some(if anchor.level & 1 == 0 {
