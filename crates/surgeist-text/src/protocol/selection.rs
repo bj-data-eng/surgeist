@@ -184,19 +184,22 @@ fn select_with_policy(
         crate::engine::scope_alignment::PlanInput::Selection(&request),
     )?;
     crate::engine::layout::qualify_selected_paint(input, &shaped, &request.participants)?;
-    let characters = crate::engine::spacing::character::build(
-        &presentation.projection,
-        &presentation.analysis,
-        &prepared.inner.styles,
-        prepared.inner.analyzed.processed.source().boxes(),
-        Some(&presentation),
+    let character_input = crate::engine::spacing::character::Input::selected(
+        &prepared.inner,
+        &presentation,
+        &mut scope_plan.budget,
+    )?;
+    let mut characters = crate::engine::spacing::character::build(
+        character_input,
         request.context.spacing == SpacingPolicy::InterCharacter,
         Some(&shaped.character_exclusions),
+        &mut scope_plan.budget,
     )?;
     crate::engine::spacing::character::admit(
         input,
         &characters,
         request.context.spacing == SpacingPolicy::InterCharacter,
+        &mut scope_plan.budget,
     )?;
     let order = super::prepared::presentation::order_presentation(
         &prepared.inner,
@@ -322,11 +325,19 @@ fn select_with_policy(
             });
         }
     }
+    characters.retain(&mut scope_plan.budget)?;
+    if !shaped.cells.is_empty() {
+        // The returned ordering backing is already funded. Its Vec header
+        // becomes persistent only in this actual SelectedShape publication.
+        crate::engine::scope_alignment::accounting::header::<Vec<usize>>(&mut scope_plan.budget)?;
+    }
     let scopes = crate::engine::scope_alignment::select(
         &prepared.inner,
         &presentation,
         &shaped,
         &request,
+        &characters,
+        &order,
         scope_plan,
     )?;
     Ok(SelectedLine {

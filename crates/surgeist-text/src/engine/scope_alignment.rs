@@ -1226,6 +1226,8 @@ pub(crate) fn select(
     presentation: &crate::protocol::prepared::SelectedPresentation,
     shaped: &super::layout::data::ShapedData,
     request: &crate::LineSelectionRequest,
+    characters: &super::spacing::character::Graph,
+    order: &Vec<usize>,
     plan: SelectionPlan,
 ) -> Result<SelectedScopes> {
     let Some(_retention) = prepared.scope_alignment.retention else {
@@ -1691,6 +1693,8 @@ pub(crate) fn select(
         prepared,
         &result,
         shaped,
+        characters,
+        order,
         &mut budget,
     )?);
     result.usage = Some(budget.usage());

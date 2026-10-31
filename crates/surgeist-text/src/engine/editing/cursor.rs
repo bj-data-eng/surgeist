@@ -548,12 +548,16 @@ fn cursor_at_inline(layout: &PlacedLayout, line_index: usize, x: f64) -> Option<
     while visual < data.visual_order.len() {
         if let FinalizedVisualItem::Cell(index) = data.visual_order[visual] {
             let cell = &data.cells[index];
-            if x <= cell.inline.end || visual + 1 == data.visual_order.len() {
-                return Some(super::position::cell_cursor(
-                    line,
-                    index,
-                    x > cell.inline.start + (cell.inline.end - cell.inline.start) * 0.5,
-                ));
+            if x <= cell.inline.start.max(cell.flow_end) || visual + 1 == data.visual_order.len() {
+                // Halve the retained endpoints before adding: signed tracking
+                // may reverse the flow interval without changing its square.
+                let midpoint = cell.inline.start * 0.5 + cell.flow_end * 0.5;
+                let end_side = if cell.flow_end >= cell.inline.start {
+                    x > midpoint
+                } else {
+                    x < midpoint
+                };
+                return Some(super::position::cell_cursor(line, index, end_side));
             }
             visual += 1;
             continue;

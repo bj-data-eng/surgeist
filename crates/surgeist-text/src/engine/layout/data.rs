@@ -208,7 +208,10 @@ pub(crate) struct PreparedCell {
     pub(crate) binding: usize,
     pub(crate) metrics: usize,
     pub(crate) level: u8,
+    /// Intrinsic one-em square; outer tracking never changes its geometry.
     pub(crate) extent: f64,
+    /// Current outer flow contribution, including only this operation's gaps.
+    pub(crate) advance: f64,
     pub(crate) before: f64,
     pub(crate) after: f64,
     pub(crate) payload: CellPayload,
@@ -238,6 +241,7 @@ pub(crate) struct ShapedData {
     /// Invocation-qualified provider observations, before component apportioning.
     pub(crate) provider_groups: Vec<ProviderGroup>,
     pub(crate) character_gaps: Vec<super::super::spacing::character::Gap>,
+    pub(crate) character_gap_ownership: super::super::spacing::character::GapArenaOwnership,
     pub(crate) character_invocations: Vec<super::super::spacing::character::Invocation>,
     /// The same immutable upfront requirement used by this actual operation.
     pub(crate) character_requirements:
@@ -267,18 +271,8 @@ impl<T> OrdinalMap<T> {
     pub(crate) fn contains_key(&self, key: &usize) -> bool {
         self.get(key).is_some()
     }
-    pub(crate) fn is_empty(&self) -> bool {
-        self.rows.is_empty()
-    }
     pub(crate) fn iter(&self) -> impl Iterator<Item = (&usize, &T)> {
         self.rows.iter().map(|(key, value)| (key, value))
-    }
-    pub(crate) fn range(&self, range: IndexRange<usize>) -> impl Iterator<Item = (&usize, &T)> {
-        let first = self.rows.partition_point(|row| row.0 < range.start);
-        let last = self.rows.partition_point(|row| row.0 < range.end);
-        self.rows[first..last]
-            .iter()
-            .map(|(key, value)| (key, value))
     }
     pub(crate) fn get(&self, key: &usize) -> Option<&T> {
         self.rows
@@ -376,7 +370,10 @@ pub(crate) struct FinalizedCell {
     pub(crate) cell: usize,
     pub(crate) binding: usize,
     pub(crate) reference: f64,
+    /// Fixed intrinsic square interval in the native line frame.
     pub(crate) inline: IndexRange<f64>,
+    /// Executed outer flow endpoint, distinct from the square's trailing edge.
+    pub(crate) flow_end: f64,
     pub(crate) under: IndexRange<f64>,
     pub(crate) scope_displacement: crate::BaselineShift,
     pub(crate) level: u8,
@@ -394,11 +391,12 @@ pub(crate) struct FinalizedGlyph {
     pub(crate) word_half: f64,
 }
 
-/// Pre-half unit origin retained even when its actual glyph inventory is empty.
+/// Executed local endpoint pair, retained even without a glyph inventory.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct WordSpacingAnchor {
-    pub(crate) base: crate::Point,
-    pub(crate) half: f64,
+pub(crate) struct SpacingDisplacement {
+    pub(crate) before: crate::Point,
+    pub(crate) after: crate::Point,
+    pub(crate) amount: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -508,8 +506,8 @@ pub(crate) struct FinalizedLineData {
     pub(crate) clusters: Vec<FinalizedCluster>,
     /// Paint-order canonical local glyphs, with original associations.
     pub(crate) glyphs: Vec<FinalizedGlyph>,
-    pub(crate) word_anchors: Vec<WordSpacingAnchor>,
-    pub(crate) character_anchors: Vec<WordSpacingAnchor>,
+    pub(crate) word_anchors: Vec<SpacingDisplacement>,
+    pub(crate) character_anchors: Vec<SpacingDisplacement>,
     pub(crate) boxes: Vec<FinalizedBox>,
     pub(crate) cells: Vec<FinalizedCell>,
     pub(crate) visual_order: Vec<FinalizedVisualItem>,

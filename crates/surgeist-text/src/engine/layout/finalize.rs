@@ -69,23 +69,41 @@ pub(super) fn shape_and_collapse(
         .composed_order(&ordered)
         .ok_or_else(|| invalid("flow character order"))?;
     super::super::spacing::visual_authored(&mut shaped, &order, &dispositions)?;
+    let character_input = super::super::spacing::character::Input::selected(
+        input.prepared,
+        input.presentation,
+        &mut scope_plan.budget,
+    )?;
     let graph = super::super::spacing::character::build(
-        &input.presentation.projection,
-        &input.presentation.analysis,
-        &input.prepared.styles,
-        input.prepared.analyzed.processed.source().boxes(),
-        Some(input.presentation),
+        character_input,
         false,
         Some(&shaped.character_exclusions),
+        &mut scope_plan.budget,
     )?;
-    super::super::spacing::character::apply_selected(
+    // Ordinary flow observation keeps its existing Native tracking owner;
+    // an unrelated scope ledger does not adopt its character scratch.
+    let mut native_character_budget = None;
+    let application_budget = if shaped.cells.is_empty() {
+        &mut native_character_budget
+    } else {
+        &mut scope_plan.budget
+    };
+    super::super::spacing::character::apply_selected_accounted(
         input,
         &graph,
         &mut shaped,
         &ordered,
         &dispositions,
         None,
+        application_budget,
     )?;
+    graph.drop_scratch(&mut scope_plan.budget)?;
+    if shaped.cells.is_empty() {
+        // Native ordering was deliberately not admitted by this scope ledger.
+        drop(ordered);
+    } else {
+        account::drop_vec(&mut scope_plan.budget, ordered)?;
+    }
     Ok((shaped, mapping, dispositions))
 }
 
@@ -328,7 +346,8 @@ fn execute(
                 edge,
                 &shaped,
                 &dispositions,
-            );
+                &mut ledger,
+            )?;
             row.disposition = if discarded {
                 SpacingSlotDisposition::DiscardedAtLineEdge
             } else {
@@ -509,6 +528,8 @@ fn execute(
         &mut ledger,
     )?;
     let mut internal_edges = account::filled(&mut ledger, groups.len(), 0.0)?;
+    let cell_gap_indices =
+        super::super::spacing::character::cell_gap_indices(&shaped, &mut ledger)?;
     for (ordinal, _) in order.iter() {
         account::work(&mut ledger, 1)?;
         let level = levels[ordinal];
@@ -518,7 +539,14 @@ fn execute(
                     &selected,
                     &shaped,
                     &scopes,
-                    cell,
+                    CellFlow {
+                        index: cell,
+                        gap: cell_gap_indices
+                            .get(cell)
+                            .copied()
+                            .flatten()
+                            .map(|index| &shaped.character_gaps[index]),
+                    },
                     Point::new(pen, metrics.baseline),
                     &mut data,
                     &mut ledger,
@@ -661,17 +689,10 @@ fn execute(
                     account::push(
                         &mut ledger,
                         &mut data.character_anchors,
-                        WordSpacingAnchor {
-                            base: Point::new(
-                                add(
-                                    "atomic pre-gap endpoint",
-                                    TextNumericPhase::Finalization,
-                                    pen,
-                                    flow.advance,
-                                )?,
-                                baseline,
-                            ),
-                            half: gap,
+                        SpacingDisplacement {
+                            before: Point::new(before, baseline),
+                            after: Point::new(after, baseline),
+                            amount: gap,
                         },
                     )?;
                 }
@@ -756,7 +777,7 @@ fn execute(
                     dispositions[cluster_index] == SpacingSlotDisposition::DiscardedAtLineEdge;
                 let word_half = word_halves[cluster_index].half;
                 if !discarded && word_halves[cluster_index].unit_start && word_half != 0.0 {
-                    add(
+                    let after = add(
                         "word spacing unit half",
                         TextNumericPhase::Finalization,
                         cluster_x,
@@ -765,14 +786,20 @@ fn execute(
                     account::push(
                         &mut ledger,
                         &mut data.word_anchors,
-                        WordSpacingAnchor {
-                            base: Point::new(
+                        SpacingDisplacement {
+                            before: Point::new(
                                 cluster_x,
                                 data.clusters[cluster_index]
                                     .reference
                                     .unwrap_or(metrics.baseline),
                             ),
-                            half: word_half,
+                            after: Point::new(
+                                after,
+                                data.clusters[cluster_index]
+                                    .reference
+                                    .unwrap_or(metrics.baseline),
+                            ),
+                            amount: word_half,
                         },
                     )?;
                 }
@@ -947,7 +974,7 @@ fn execute(
                     let before = add("character pre-gap endpoint", TextNumericPhase::Finalization, pen, gap.base)?;
                     let after = add("character cell endpoint", TextNumericPhase::Finalization, pen, output.advance)?;
                     if before == after { return Err(super::super::text_numeric_error("character boundary displacement", TextNumericPhase::Finalization, TextNumericError::NonZeroLost, gap.amount)); }
-                    account::push(&mut ledger,&mut data.character_anchors,WordSpacingAnchor { base: Point::new(before, output.reference.unwrap_or(metrics.baseline)), half: gap.amount })?;
+                    account::push(&mut ledger,&mut data.character_anchors,SpacingDisplacement { before: Point::new(before, output.reference.unwrap_or(metrics.baseline)), after: Point::new(after, output.reference.unwrap_or(metrics.baseline)), amount: gap.amount })?;
                 }
                 pen = add(
                     "line logical advance",
@@ -958,6 +985,7 @@ fn execute(
             }
         }
     }
+    account::drop_vec(&mut ledger, cell_gap_indices)?;
     // Zero-glyph controls and actual empty lines still retain a real font/style
     // row, rather than publishing a fabricated source space or fallback range.
     if let Some(run) = metric_only_run(
@@ -1365,15 +1393,22 @@ fn cell_for_cluster(
     Ok(None)
 }
 
+/// A genuine selected Cell paired with its canonical exterior gap receipt.
+struct CellFlow<'a> {
+    index: usize,
+    gap: Option<&'a super::super::spacing::character::Gap>,
+}
+
 fn append_cell(
     selected: &SelectedData,
     shaped: &ShapedData,
     scopes: &super::super::scope_alignment::FrameAllocations,
-    cell_index: usize,
+    flow: CellFlow<'_>,
     origin: Point,
     data: &mut FinalizedLineData,
     ledger: &mut Ledger,
 ) -> Result<f64> {
+    let cell_index = flow.index;
     let cell = &shaped.cells[cell_index];
     let mut unit = None;
     for (index, candidate) in selected.presentation.units.iter().enumerate() {
@@ -1403,6 +1438,39 @@ fn append_cell(
         origin.x,
         cell.extent,
     )?;
+    let flow_end = add(
+        "cell flow end",
+        TextNumericPhase::Finalization,
+        origin.x,
+        cell.advance,
+    )?;
+    if let Some(gap) = flow.gap
+        && gap.amount != 0.0
+    {
+        let before = add(
+            "cell pre-gap endpoint",
+            TextNumericPhase::Finalization,
+            origin.x,
+            gap.base,
+        )?;
+        if before == flow_end {
+            return Err(super::super::text_numeric_error(
+                "cell boundary displacement",
+                TextNumericPhase::Finalization,
+                TextNumericError::NonZeroLost,
+                gap.amount,
+            ));
+        }
+        account::push(
+            ledger,
+            &mut data.character_anchors,
+            SpacingDisplacement {
+                before: Point::new(before, reference),
+                after: Point::new(flow_end, reference),
+                amount: gap.amount,
+            },
+        )?;
+    }
     let top = add(
         "cell square over edge",
         TextNumericPhase::Finalization,
@@ -1429,6 +1497,7 @@ fn append_cell(
             binding: cell.binding,
             reference,
             inline: origin.x..end,
+            flow_end,
             under: top..bottom,
             scope_displacement: shift,
             level: selected.presentation.units[unit].line_level,
@@ -1441,7 +1510,7 @@ fn append_cell(
         FinalizedVisualItem::Cell(index),
     )?;
     let CellPayload::Shaped { positions, .. } = &cell.payload else {
-        return Ok(end);
+        return Ok(flow_end);
     };
     let mut last_run: Option<usize> = None;
     for position in positions {
@@ -1541,7 +1610,7 @@ fn append_cell(
             )?;
         }
     }
-    Ok(end)
+    Ok(flow_end)
 }
 
 struct SharedEndpointGeometry {
@@ -2184,7 +2253,7 @@ fn line_metrics(
                     "line cell advance",
                     TextNumericPhase::Finalization,
                     result.advance,
-                    cell.extent,
+                    cell.advance,
                 )?;
                 result.line_height = result.line_height.max(cell.extent);
                 have_cluster_height = true;
@@ -2947,6 +3016,7 @@ fn character_slots(
     use super::super::spacing::character::{self, Owner};
     use crate::{SpacingBoundaryGeometry as Geometry, SpacingSlotGeometry};
     let mut rows = Vec::new();
+    let owners = selected.basis.characters.owners(shaped, order, ledger)?;
     for (slot, (target, &amount)) in selected.spacing_slots.iter().zip(amounts).enumerate() {
         let crate::protocol::selection::SpacingTargetData::Boundary { edge, .. } = target.target
         else {
@@ -2966,10 +3036,11 @@ fn character_slots(
             ));
         }
         let boundary = &selected.basis.characters.boundaries[edge];
-        let geometry = selected
-            .basis
-            .characters
-            .geometry(edge, &shaped.character_invocations);
+        let geometry =
+            selected
+                .basis
+                .characters
+                .geometry(edge, &shaped.character_invocations, ledger)?;
         let geometry = if geometry == Geometry::Independent
             && !character::qualified(&selected.basis.characters, edge)
         {
@@ -2977,8 +3048,13 @@ fn character_slots(
         } else {
             geometry
         };
-        let discarded =
-            character::discarded(&selected.basis.characters, edge, shaped, dispositions);
+        let discarded = character::discarded(
+            &selected.basis.characters,
+            edge,
+            shaped,
+            dispositions,
+            ledger,
+        )?;
         let protected = matches!(
             geometry,
             Geometry::ProtectedRequired | Geometry::ProtectedCursive
@@ -2988,18 +3064,24 @@ fn character_slots(
                 slot,
             }));
         }
-        let owner = selected
-            .basis
-            .characters
-            .owner(shaped, boundary.before, order);
+        let owner = owners[boundary.before];
         let (cluster, response, rank) = match owner {
             Some(Owner::Cluster(i)) => (i, responses[i].0, responses[i].1),
-            Some(Owner::Atomic(occurrence)) => {
+            Some(owner @ (Owner::Atomic(_) | Owner::Cell(_))) => {
                 let mut traversal = account::clone_vec(ledger, order)?;
                 if selected.presentation.analysis.base_level & 1 != 0 {
                     traversal.reverse();
                 }
-                let rank=traversal.iter().position(|&i| matches!(shaped.items[i],ShapedItem::InlineBox {occurrence:actual,..} if actual==occurrence)).unwrap_or(0);
+                let rank = traversal
+                    .iter()
+                    .position(|&i| match (owner, shaped.items[i]) {
+                        (Owner::Atomic(expected), ShapedItem::InlineBox { occurrence, .. }) => {
+                            occurrence == expected
+                        }
+                        (Owner::Cell(expected), ShapedItem::Cell(cell)) => cell == expected,
+                        _ => false,
+                    })
+                    .unwrap_or(0);
                 let downstream_tab=traversal.iter().skip(rank+1).any(|&i| matches!(shaped.items[i],ShapedItem::TextCluster(c) if matches!(shaped.clusters[c].content,ClusterContent::CssTab(_)) && responses[c].0!=crate::SpacingStretchability::Excluded));
                 account::drop_vec(ledger, traversal)?;
                 (
@@ -3044,6 +3126,7 @@ fn character_slots(
             },
         )?;
     }
+    account::drop_vec(ledger, owners)?;
     Ok(rows)
 }
 
@@ -3297,7 +3380,7 @@ fn resolve_tabs(
     }
     for &ordinal in &ordinals {
         let advance = match shaped.items[ordinal] {
-            ShapedItem::Cell(cell) => shaped.cells[cell].extent,
+            ShapedItem::Cell(cell) => shaped.cells[cell].advance,
             ShapedItem::Anchor { unit } => {
                 crate::protocol::boundary::advance(selected.presentation_input(), unit)
             }

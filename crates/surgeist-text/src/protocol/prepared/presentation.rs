@@ -995,21 +995,45 @@ fn reset_originals(
     }
 }
 
-fn reorder(levels: impl IntoIterator<Item = u8>) -> crate::Result<Vec<usize>> {
-    let participants = levels
-        .into_iter()
-        .map(|level| {
-            crate::BidiLevel::try_new(level)
-                .map(|level| crate::SuppliedInlineParticipant::Boundary { level })
-                .map_err(|_| composition_error())
-        })
-        .collect::<crate::Result<Vec<_>>>()?;
-    let mut output = vec![0; participants.len()];
+fn reorder(
+    levels: impl IntoIterator<Item = u8>,
+    ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
+) -> crate::Result<Vec<usize>> {
+    use crate::engine::scope_alignment::accounting as account;
+    let mut participants = Vec::new();
+    let mut min_odd: Option<u8> = None;
+    let mut maximum = 0;
+    for value in levels {
+        account::work(ledger, 1)?;
+        let level = crate::BidiLevel::try_new(value).map_err(|_| composition_error())?;
+        maximum = maximum.max(value);
+        if value & 1 != 0 {
+            min_odd = Some(min_odd.map_or(value, |n| n.min(value)));
+        }
+        account::push(
+            ledger,
+            &mut participants,
+            crate::SuppliedInlineParticipant::Boundary { level },
+        )?;
+    }
+    let mut output = account::filled(ledger, participants.len(), 0)?;
+    let passes = min_odd.map_or(0, |n| usize::from(maximum - n) + 1);
+    let work = participants
+        .len()
+        .checked_mul(passes * 4 + 3)
+        .ok_or_else(|| {
+            crate::engine::scope_alignment::refusal(crate::ScopeAlignmentError::Overflow {
+                kind: crate::ScopeAlignmentLimitKind::StructuralWork,
+            })
+        })?;
+    account::work(ledger, work)?;
     crate::SuppliedLine::new(&participants)
         .reorder_into(&mut output)
         .map_err(|_| composition_error())?;
+    account::drop_vec(ledger, participants)?;
     Ok(output)
 }
+
 fn composition_error() -> crate::Error {
     crate::hyphenation::error(crate::HyphenationError::UnsupportedIndicationComposition)
 }
@@ -1024,70 +1048,96 @@ pub(crate) fn unit_order(
     units: &[PresentationUnit],
     domains: &[IndicationDomain],
     boxes: &[crate::InlineBox],
+    ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
 ) -> crate::Result<Vec<usize>> {
+    use crate::engine::scope_alignment::accounting as account;
     let mut slots = Vec::new();
     let mut levels = Vec::new();
     let mut unit = 0;
     while unit < units.len() {
+        account::work(ledger, 1)?;
         if is_out_of_flow(&units[unit], boxes) {
             unit += 1;
             continue;
         }
-        if let Some((d, domain)) = domains
-            .iter()
-            .enumerate()
-            .find(|(_, d)| d.units.start == unit)
-        {
-            slots.push((true, d));
-            levels.push(domain.outer);
+        let mut found = None;
+        for (d, domain) in domains.iter().enumerate() {
+            account::work(ledger, 1)?;
+            if domain.units.start == unit {
+                found = Some((d, domain));
+                break;
+            }
+        }
+        if let Some((d, domain)) = found {
+            account::push(ledger, &mut slots, (true, d))?;
+            account::push(ledger, &mut levels, domain.outer)?;
             unit = domain.units.end;
         } else {
-            slots.push((false, unit));
-            levels.push(units[unit].line_level);
+            account::push(ledger, &mut slots, (false, unit))?;
+            account::push(ledger, &mut levels, units[unit].line_level)?;
             unit += 1;
         }
     }
-    let mut output = Vec::with_capacity(units.len());
-    for i in reorder(levels)? {
+    let order = reorder(levels.iter().copied(), ledger)?;
+    let mut output = Vec::new();
+    for &i in &order {
+        account::work(ledger, 1)?;
         let (local, index) = slots[i];
         if local {
             let domain = &domains[index];
-            for j in reorder(units[domain.units.clone()].iter().map(|u| u.line_level))? {
-                output.push(domain.units.start + j);
+            let inner = reorder(
+                units[domain.units.clone()].iter().map(|u| u.line_level),
+                ledger,
+            )?;
+            for &j in &inner {
+                account::push(ledger, &mut output, domain.units.start + j)?;
             }
+            account::drop_vec(ledger, inner)?;
         } else {
-            output.push(index);
+            account::push(ledger, &mut output, index)?;
         }
     }
-    let originals: Vec<_> = units
-        .iter()
-        .enumerate()
-        .filter(|(_, u)| {
-            !matches!(u.kind, PresentationUnitKind::Replacement { .. }) && !is_out_of_flow(u, boxes)
-        })
-        .map(|(i, _)| i)
-        .collect();
-    let expected: Vec<_> = reorder(originals.iter().map(|&i| units[i].line_level))?
-        .into_iter()
-        .map(|i| originals[i])
-        .collect();
-    let actual: Vec<_> = output
-        .iter()
-        .copied()
-        .filter(|&i| !matches!(units[i].kind, PresentationUnitKind::Replacement { .. }))
-        .collect();
-    if actual != expected {
+    let mut originals = Vec::new();
+    for (i, u) in units.iter().enumerate() {
+        account::work(ledger, 1)?;
+        if !matches!(u.kind, PresentationUnitKind::Replacement { .. }) && !is_out_of_flow(u, boxes)
+        {
+            account::push(ledger, &mut originals, i)?;
+        }
+    }
+    let expected = reorder(originals.iter().map(|&i| units[i].line_level), ledger)?;
+    let mut actual = Vec::new();
+    for &i in &output {
+        account::work(ledger, 1)?;
+        if !matches!(units[i].kind, PresentationUnitKind::Replacement { .. }) {
+            account::push(ledger, &mut actual, i)?;
+        }
+    }
+    if actual.len() != expected.len() {
         return Err(composition_error());
     }
+    for (&a, &e) in actual.iter().zip(&expected) {
+        account::work(ledger, 1)?;
+        if a != originals[e] {
+            return Err(composition_error());
+        }
+    }
+    account::drop_vec(ledger, actual)?;
+    account::drop_vec(ledger, expected)?;
+    account::drop_vec(ledger, originals)?;
+    account::drop_vec(ledger, order)?;
+    account::drop_vec(ledger, levels)?;
+    account::drop_vec(ledger, slots)?;
     Ok(output)
 }
+
 fn prove_graphemes(
     units: &[PresentationUnit],
     domains: &[IndicationDomain],
     analysis: &Analysis,
     boxes: &[crate::InlineBox],
 ) -> crate::Result<()> {
-    let order = unit_order(units, domains, boxes)?;
+    let order = unit_order(units, domains, boxes, &mut None)?;
     let mut rank = vec![0; units.len()];
     for (r, &u) in order.iter().enumerate() {
         rank[u] = r;
@@ -1119,43 +1169,66 @@ pub(crate) fn order_presentation(
     ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
 ) -> crate::Result<Vec<usize>> {
     use crate::engine::layout::data::ShapedItem;
+    use crate::engine::scope_alignment::accounting as account;
+    // These are actual retained selected Cells, including NoProviderInput.
+    // An unrelated scoped operation must not fund or retire native ordering.
+    let mut native = None;
+    let ledger = if shaped.cells.is_empty() {
+        &mut native
+    } else {
+        if ledger.is_none() {
+            return Err(crate::engine::scope_alignment::refusal(
+                crate::ScopeAlignmentError::LimitsRequired,
+            ));
+        }
+        ledger
+    };
     let boxes = prepared.analyzed.processed.source().boxes();
-    let mut by_unit = vec![Vec::new(); presentation.units.len()];
+    let mut by_unit = account::filled(ledger, presentation.units.len(), Vec::new())?;
     for (item, value) in shaped.items.iter().enumerate() {
+        account::work(ledger, 1)?;
         let unit = match *value {
-            ShapedItem::Cell(cell) => {
+            ShapedItem::Anchor { unit, .. } => Some(unit),
+            _ => {
                 let mut found = None;
                 for (index, unit) in presentation.units.iter().enumerate() {
-                    crate::engine::scope_alignment::accounting::work(ledger, 1)?;
-                    if matches!(unit.kind, PresentationUnitKind::Cell { cell: original }
-                        if prepared.shaped.cells[original].binding == shaped.cells[cell].binding)
-                    {
-                        found = Some(index);
-                        break;
-                    }
+                    account::work(ledger, 1)?;
+                    let matches = match *value {
+                        ShapedItem::Cell(cell) => matches!(unit.kind, PresentationUnitKind::Cell { cell: original }
+                            if prepared.shaped.cells[original].binding == shaped.cells[cell].binding),
+                        ShapedItem::InlineBox { occurrence, .. } => unit.kind == PresentationUnitKind::Atomic { occurrence },
+                        ShapedItem::TextCluster(i) => unit.atoms.contains(&shaped.clusters[i].atoms.start),
+                        ShapedItem::Anchor { .. } => unreachable!("anchor handled by its actual unit"),
+                    };
+                    if matches { found = Some(index); break; }
                 }
                 found
             }
-            ShapedItem::Anchor { unit, .. } => Some(unit),
-            ShapedItem::InlineBox { occurrence, .. } => presentation
-                .units
-                .iter()
-                .position(|u| u.kind == PresentationUnitKind::Atomic { occurrence }),
-            ShapedItem::TextCluster(i) => presentation
-                .units
-                .iter()
-                .position(|u| u.atoms.contains(&shaped.clusters[i].atoms.start)),
-        }
-        .ok_or_else(composition_error)?;
-        by_unit[unit].push(item);
+        }.ok_or_else(composition_error)?;
+        account::push(ledger, &mut by_unit[unit], item)?;
     }
-    let mut output = Vec::with_capacity(shaped.items.len());
-    for unit in unit_order(&presentation.units, &presentation.domains, boxes)? {
+    let mut output = Vec::new();
+    account::reserve_vec(ledger, &mut output, shaped.items.len())?;
+    let order = unit_order(&presentation.units, &presentation.domains, boxes, ledger)?;
+    for &unit in &order {
+        account::work(ledger, 1)?;
         let members = &by_unit[unit];
-        for i in reorder(members.iter().map(|_| presentation.units[unit].line_level))? {
-            output.push(members[i]);
+        let inner = reorder(
+            members.iter().map(|_| presentation.units[unit].line_level),
+            ledger,
+        )?;
+        for &i in &inner {
+            account::work(ledger, 1)?;
+            account::push(ledger, &mut output, members[i])?;
         }
+        account::drop_vec(ledger, inner)?;
     }
+    account::drop_vec(ledger, order)?;
+    for members in &mut by_unit {
+        account::work(ledger, 1)?;
+        account::drop_vec(ledger, std::mem::take(members))?;
+    }
+    account::drop_vec(ledger, by_unit)?;
     if output.len() != shaped.items.len() {
         return Err(composition_error());
     }
@@ -1164,32 +1237,86 @@ pub(crate) fn order_presentation(
     if presentation.domains.is_empty() {
         return Ok(output);
     }
-    let body: Vec<_> = output
-        .iter()
-        .copied()
-        .filter(|&i| !matches!(shaped.items[i], ShapedItem::Anchor { .. }))
-        .collect();
+    let mut body = Vec::new();
+    for &i in &output {
+        account::work(ledger, 1)?;
+        if !matches!(shaped.items[i], ShapedItem::Anchor { .. }) {
+            account::push(ledger, &mut body, i)?;
+        }
+    }
     for (run_index, run) in shaped.runs.iter().enumerate() {
-        let mut expected:Vec<_>=shaped.items.iter().enumerate().filter(|(_,i)|matches!(**i,ShapedItem::TextCluster(c) if shaped.clusters[c].content.font_run()==Some(run_index))).map(|(i,_)|i).collect();
+        account::work(ledger, 1)?;
+        let mut expected = Vec::new();
+        for (i, item) in shaped.items.iter().enumerate() {
+            account::work(ledger, 1)?;
+            if matches!(*item, ShapedItem::TextCluster(c) if shaped.clusters[c].content.font_run() == Some(run_index))
+            {
+                account::push(ledger, &mut expected, i)?;
+            }
+        }
         if run.level & 1 != 0 {
+            account::work(ledger, expected.len() / 2 * 2)?;
             expected.reverse();
         }
-        let positions: Vec<_> = body
-            .iter()
-            .enumerate()
-            .filter(|(_, i)| expected.contains(i))
-            .map(|(p, _)| p)
-            .collect();
-        let actual: Vec<_> = positions.iter().map(|&p| body[p]).collect();
-        if actual != expected || positions.windows(2).any(|p| p[1] != p[0] + 1) {
+        let mut positions = Vec::new();
+        for (position, item) in body.iter().enumerate() {
+            account::work(ledger, 1)?;
+            let mut member = false;
+            for candidate in &expected {
+                account::work(ledger, 1)?;
+                if candidate == item {
+                    member = true;
+                    break;
+                }
+            }
+            if member {
+                account::push(ledger, &mut positions, position)?;
+            }
+        }
+        let mut actual = Vec::new();
+        for &position in &positions {
+            account::work(ledger, 1)?;
+            account::push(ledger, &mut actual, body[position])?;
+        }
+        if actual.len() != expected.len() {
             return Err(composition_error());
         }
+        for (actual, expected) in actual.iter().zip(&expected) {
+            account::work(ledger, 1)?;
+            if actual != expected {
+                return Err(composition_error());
+            }
+        }
+        for pair in positions.windows(2) {
+            account::work(ledger, 1)?;
+            if pair[1] != pair[0] + 1 {
+                return Err(composition_error());
+            }
+        }
+        account::drop_vec(ledger, actual)?;
+        account::drop_vec(ledger, positions)?;
+        account::drop_vec(ledger, expected)?;
     }
     for cluster in &shaped.clusters {
-        let positions:Vec<_>=body.iter().enumerate().filter(|(_,i)|matches!(shaped.items[**i],ShapedItem::TextCluster(c) if shaped.clusters[c].atoms.start<cluster.provider_group.end&&shaped.clusters[c].atoms.end>cluster.provider_group.start)).map(|(p,_)|p).collect();
-        if positions.windows(2).any(|p| p[1] != p[0] + 1) {
-            return Err(composition_error());
+        account::work(ledger, 1)?;
+        let mut positions = Vec::new();
+        for (position, &item) in body.iter().enumerate() {
+            account::work(ledger, 1)?;
+            if matches!(shaped.items[item], ShapedItem::TextCluster(c)
+                if shaped.clusters[c].atoms.start < cluster.provider_group.end
+                && shaped.clusters[c].atoms.end > cluster.provider_group.start)
+            {
+                account::push(ledger, &mut positions, position)?;
+            }
         }
+        for pair in positions.windows(2) {
+            account::work(ledger, 1)?;
+            if pair[1] != pair[0] + 1 {
+                return Err(composition_error());
+            }
+        }
+        account::drop_vec(ledger, positions)?;
     }
+    account::drop_vec(ledger, body)?;
     Ok(output)
 }

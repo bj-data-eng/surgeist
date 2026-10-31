@@ -394,6 +394,24 @@ fn selected_retention_contains_whole_mixed_arenas_coordinates_and_unique_resourc
     own.backing(&scopes.proof_frames);
     own.owned(&shaped.scope_glyph_custody);
     own.owned(&shaped.scope_relations);
+    // The actual Cell-active ordering result remains with this selected owner.
+    own.owned(&data.basis.order);
+    // Selection owns its own upfront Cell plan; the prepared plan remains a
+    // separate live allocation in the retained ancestor. This zero-tracking
+    // fixture has no coverage backing, but both plan headers are real custody.
+    let requirements = shaped.character_requirements.as_ref().unwrap();
+    assert!(!Arc::ptr_eq(
+        requirements,
+        prepared
+            .inner
+            .shaped
+            .character_requirements
+            .as_ref()
+            .unwrap(),
+    ));
+    assert!(requirements.coverage.is_empty());
+    own.bytes += size_of_val(requirements.as_ref());
+    own.backing(&requirements.coverage);
     own.owned(&shaped.cells);
     for cell in &shaped.cells {
         if let CellPayload::Shaped { positions, .. } = &cell.payload {

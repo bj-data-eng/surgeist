@@ -140,6 +140,8 @@ fn visit_selected_own_allocations(
     prepared: &PreparedData,
     scopes: &SelectedScopes,
     shaped: &crate::engine::layout::data::ShapedData,
+    characters: &crate::engine::spacing::character::Graph,
+    order: &Vec<usize>,
     visit: &mut AllocationVisitor<'_>,
 ) -> Result<()> {
     preparation::visit_prepared_allocations(
@@ -195,7 +197,14 @@ fn visit_selected_own_allocations(
         shaped.scope_relations.len(),
     )?)?;
     preparation::visit_cell_allocations(shaped, visit)?;
+    crate::engine::spacing::character::visit_shaped_allocations(shaped, visit)?;
+    characters.visit_allocations(visit)?;
     if !shaped.cells.is_empty() {
+        // This is the actual retained selected result, even when zero tracking
+        // leaves no retained character Graph. Its header is embedded in the
+        // selected heap owner, not in a temporary ordering call's stack frame.
+        visit(AllocationWitness::object(order, 0))?;
+        visit(AllocationWitness::buffer(order, order.len())?)?;
         accounting::visit_cell_arenas(shaped, visit)?;
     }
     if shaped.cell_arenas == crate::engine::layout::data::CellArenaOwnership::Owned {
@@ -219,6 +228,8 @@ fn visit_finalized_own_allocations(
         &selected.prepared,
         &selected.scopes,
         &selected.basis.shaped,
+        &selected.basis.characters,
+        &selected.basis.order,
         visit,
     )?;
     frame.inner.visit_scope_allocations(visit)
@@ -230,9 +241,11 @@ fn visit_selected_allocations(
     prepared: &PreparedData,
     scopes: &SelectedScopes,
     shaped: &crate::engine::layout::data::ShapedData,
+    characters: &crate::engine::spacing::character::Graph,
+    order: &Vec<usize>,
     visit: &mut AllocationVisitor<'_>,
 ) -> Result<()> {
-    visit_selected_own_allocations(prepared, scopes, shaped, visit)?;
+    visit_selected_own_allocations(prepared, scopes, shaped, characters, order, visit)?;
     for frame in &scopes.proof_frames {
         visit_finalized_own_allocations(frame, visit)?;
     }
@@ -272,12 +285,19 @@ pub(crate) fn retained_selected(
     prepared: &PreparedData,
     scopes: &SelectedScopes,
     shaped: &crate::engine::layout::data::ShapedData,
+    characters: &crate::engine::spacing::character::Graph,
+    order: &Vec<usize>,
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<crate::ScopeAlignmentRetention> {
     let mut set = AllocationSet::new();
-    visit_selected_allocations(prepared, scopes, shaped, &mut |allocation| {
-        set.observe(allocation, budget).map(|_| ())
-    })?;
+    visit_selected_allocations(
+        prepared,
+        scopes,
+        shaped,
+        characters,
+        order,
+        &mut |allocation| set.observe(allocation, budget).map(|_| ()),
+    )?;
     set.finish(budget)
 }
 
@@ -291,6 +311,8 @@ pub(crate) fn retained_finalized(
         &selected.prepared,
         &selected.scopes,
         &selected.basis.shaped,
+        &selected.basis.characters,
+        &selected.basis.order,
         &mut |allocation| set.observe(allocation, budget).map(|_| ()),
     )?;
     data.visit_scope_allocations(&mut |allocation| set.observe(allocation, budget).map(|_| ()))?;
@@ -408,6 +430,8 @@ impl Root<'_> {
                 &value.prepared,
                 &value.scopes,
                 &value.basis.shaped,
+                &value.basis.characters,
+                &value.basis.order,
                 visit,
             ),
             Self::Finalized(value) => visit_finalized_own_allocations(value, visit),

@@ -650,6 +650,7 @@ pub(crate) fn visit_prepared_allocations(
         .expect("active capture")
         .capture;
     capture.visit_scope_alignment_allocations(visit)?;
+    crate::engine::spacing::character::visit_shaped_allocations(shaped, visit)?;
     visit(AllocationWitness::object(data, 0))?;
     visit(AllocationWitness::buffer(
         &data.metrics,

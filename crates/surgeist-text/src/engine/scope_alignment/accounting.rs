@@ -286,6 +286,7 @@ fn clone_cell(ledger: &mut Ledger, row: &PreparedCell) -> Result<PreparedCell> {
         metrics: row.metrics,
         level: row.level,
         extent: row.extent,
+        advance: row.advance,
         before: row.before,
         after: row.after,
         payload,
@@ -351,6 +352,11 @@ pub(crate) fn clone_shaped(ledger: &mut Ledger, source: &ShapedData) -> Result<S
         push(ledger, &mut cells, row)?;
     }
     Ok(ShapedData {
+        character_gap_ownership: if ledger.is_some() {
+            crate::engine::spacing::character::GapArenaOwnership::Funded
+        } else {
+            crate::engine::spacing::character::GapArenaOwnership::Native
+        },
         cell_arenas: source.cell_arenas,
         scope_glyph_custody: clone_vec(ledger, &source.scope_glyph_custody)?,
         scope_relations: clone_vec(ledger, &source.scope_relations)?,

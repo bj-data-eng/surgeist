@@ -54,7 +54,8 @@ fn every_final_material_endpoint_was_covered(selected: &SelectedLine) {
         }
         let movement = basis
             .characters
-            .movement_geometry(edge, &basis.shaped.character_invocations);
+            .movement_geometry(edge, &basis.shaped.character_invocations, &mut None)
+            .unwrap();
         if matches!(
             movement,
             crate::SpacingBoundaryGeometry::ProtectedRequired

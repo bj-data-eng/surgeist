@@ -843,13 +843,12 @@ pub(crate) fn finalize(
         super::scope_alignment::selection_plan(prepared, presentation, allowance, scope_input)?;
     let mut scope_budget = scope_plan.budget.take();
     let mut cells = cell::SelectedCells::new(prepared, presentation, &mut scope_budget)?;
+    let character_input =
+        super::spacing::character::Input::selected(prepared, presentation, &mut scope_budget)?;
     let characters = super::spacing::character::plan(
-        &presentation.projection,
-        &presentation.analysis,
-        &prepared.styles,
-        prepared.analyzed.processed.source().boxes(),
-        Some(presentation),
+        character_input,
         spacing == crate::SpacingPolicy::InterCharacter,
+        &mut scope_budget,
     )?;
     let separator_feedback = match spacing {
         crate::SpacingPolicy::None | crate::SpacingPolicy::InterCharacter => false,
@@ -1859,20 +1858,38 @@ fn append_request(
             .filter_map(|unit| unit.upright())
             .any(|unit| unit.isolate() && unit.atoms.contains(&request.atoms.start));
     let mut features = provider_features(style, native_isolated, request.role());
+    let mut funded_features = false;
     if let Some(graph) = request.input.characters {
-        for range in graph.masks(request.atoms.clone()) {
+        let masks = graph.masks(request.atoms.clone(), scope_budget)?;
+        if graph.funded() && !masks.is_empty() {
+            if let Some(budget) = scope_budget.as_mut() {
+                budget.work(features.len())?;
+                budget.add_records(features.len())?;
+                budget.retain_bytes(super::scope_alignment::accounting::bytes(&features)?)?;
+            }
+            funded_features = true;
+        }
+        for range in &masks {
             for tag in [b"liga", b"clig", b"dlig", b"hlig"] {
                 u32::try_from(range.start)
                     .and_then(|_| u32::try_from(range.end))
                     .map_err(|_| {
                         Error::new(ErrorCode::SourceLengthOverflow, "optional feature range")
                     })?;
-                features.push(surgeist_shaper::Feature::optional_default(
+                let feature = surgeist_shaper::Feature::optional_default(
                     surgeist_shaper::Tag::new(tag),
                     0,
                     range.clone(),
-                ));
+                );
+                if funded_features {
+                    super::scope_alignment::accounting::push(scope_budget, &mut features, feature)?;
+                } else {
+                    features.push(feature);
+                }
             }
+        }
+        if graph.funded() {
+            super::scope_alignment::accounting::drop_vec(scope_budget, masks)?;
         }
     }
     let mut plan_key = key;
@@ -2002,7 +2019,7 @@ fn append_request(
     }
     if request.upright() {
         let shaped = vertical::shape(&request, &shaper, plan, buffer, &features);
-        return match shaped {
+        let result = match shaped {
             Ok(glyph_buffer) => {
                 let result = extract_vertical_run(
                     &request,
@@ -2021,6 +2038,10 @@ fn append_request(
                 Err(error)
             }
         };
+        if funded_features {
+            super::scope_alignment::accounting::drop_vec(scope_budget, features)?;
+        }
+        return result;
     }
     #[cfg(test)]
     observe_provider_call();
@@ -2039,6 +2060,9 @@ fn append_request(
         scope_budget,
     );
     scratch.buffer = Some(glyph_buffer.clear());
+    if funded_features {
+        super::scope_alignment::accounting::drop_vec(scope_budget, features)?;
+    }
     result
 }
 

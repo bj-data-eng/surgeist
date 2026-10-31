@@ -61,7 +61,7 @@ fn positions(
     let mut pen = 0.0;
     for (ordinal, _) in order.iter() {
         let advance = match shaped.items[ordinal] {
-            ShapedItem::Cell(cell) => shaped.cells[cell].extent,
+            ShapedItem::Cell(cell) => shaped.cells[cell].advance,
             ShapedItem::TextCluster(i) => {
                 let advance = if shaped.clusters[i].whitespace == Whitespace::Newline {
                     0.0
@@ -558,7 +558,7 @@ fn measure(
                 if baseline.raw_advance.is_some() {
                     0.0
                 } else {
-                    shaped.cells[cell].extent
+                    shaped.cells[cell].advance
                 }
             }
             ShapedItem::TextCluster(i) if shaped.clusters[i].whitespace != Whitespace::Newline => {
@@ -640,7 +640,7 @@ fn measure(
                         extent,
                     )?,
                 );
-                extent
+                shaped.cells[cell].advance
             }
             ShapedItem::TextCluster(i) => {
                 if shaped.clusters[i].whitespace != Whitespace::Newline

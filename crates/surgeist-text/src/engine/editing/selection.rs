@@ -173,8 +173,8 @@ pub(super) fn with_membership(
                     let cell = &data.cells[index];
                     (
                         selected(line_index, *item),
-                        cell.inline.start,
-                        cell.inline.end,
+                        cell.inline.start.min(cell.flow_end),
+                        cell.inline.start.max(cell.flow_end),
                         Some(cell.reference),
                         Some((cell.under.start, cell.under.end - cell.under.start)),
                     )

@@ -291,7 +291,7 @@ impl PreparedCellView<'_> {
         }
     }
 
-    /// Outer inline advance and square extent, independently of inner glyphs.
+    /// Intrinsic one-em square extent, independently of inner glyphs and outer tracking.
     #[must_use]
     pub fn extent(&self) -> f64 {
         self.shaped().extent

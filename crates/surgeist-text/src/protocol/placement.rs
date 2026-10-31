@@ -525,12 +525,9 @@ pub(crate) fn place_request(
             .iter()
             .chain(&placed.finalized.data.character_anchors)
         {
-            let before = crate::layout::line_point(&placed, unit.base);
-            let after = crate::layout::line_point(
-                &placed,
-                crate::Point::new(unit.base.x + unit.half, unit.base.y),
-            );
-            qualify_spacing_displacement(&placed, before, after, unit.half)?;
+            let before = crate::layout::line_point(&placed, unit.before);
+            let after = crate::layout::line_point(&placed, unit.after);
+            qualify_spacing_displacement(&placed, before, after, unit.amount)?;
         }
         let metric_rect = crate::layout::line_rect(
             &placed,

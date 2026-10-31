@@ -397,7 +397,7 @@ fn local_x(line: &PlacedLine, target: Target) -> f64 {
         Target::Cell { cell, right } => {
             let cell = &line.finalized.data.cells[cell];
             if right {
-                cell.inline.end
+                cell.flow_end
             } else {
                 cell.inline.start
             }

@@ -536,7 +536,12 @@ fn scaled(value: f32, scale: f32, positive: bool, field: &'static str) -> Result
     Ok(result)
 }
 
-fn scaled_logical(value: f64, scale: f32, positive: bool, field: &'static str) -> Result<f64> {
+pub(in crate::engine) fn scaled_logical(
+    value: f64,
+    scale: f32,
+    positive: bool,
+    field: &'static str,
+) -> Result<f64> {
     let result = value * f64::from(scale);
     let category = if !result.is_finite() {
         Some(TextNumericError::NonFinite)

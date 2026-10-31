@@ -168,11 +168,9 @@ impl Inputs {
                 {
                     return Err(unsupported());
                 }
-                // The bounded normal capability does not publish a stale
-                // width while the outer separator graph is not cell-aware.
-                if styles[analyzed.analysis.infos[atom].1].style.word_spacing != 0.0
-                    || styles[analyzed.analysis.infos[atom].1].style.letter_spacing != 0.0
-                {
+                // Inner word-spacing geometry is not lowered before width
+                // choice; character tracking belongs to the outer Cell node.
+                if styles[analyzed.analysis.infos[atom].1].style.word_spacing != 0.0 {
                     return Err(unsupported());
                 }
                 atom_cells[atom] = Some(cell);
@@ -322,6 +320,7 @@ impl Inputs {
                     metrics: row.metrics,
                     level: row.level,
                     extent: row.extent,
+                    advance: row.extent,
                     before: row.before,
                     after: row.after,
                     payload,
@@ -598,6 +597,9 @@ impl SelectedCells {
                     metrics: original.metrics,
                     level: unit.level,
                     extent: original.extent,
+                    // Selection re-evaluates its own exterior boundaries. The
+                    // prepared gap buffer is not copied with this fixed payload.
+                    advance: original.extent,
                     before: original.before,
                     after: original.after,
                     payload,

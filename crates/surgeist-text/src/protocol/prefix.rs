@@ -387,7 +387,7 @@ impl PrefixData {
             account::push(ledger, &mut result.retained_prefix, next)?;
             account::push(ledger, &mut item_units, unit)?;
             let value = match *item {
-                ShapedItem::Cell(cell) => shaped.cells[cell].extent,
+                ShapedItem::Cell(cell) => shaped.cells[cell].advance,
                 ShapedItem::TextCluster(index)
                     if shaped.clusters[index].whitespace != Whitespace::Newline =>
                 {

@@ -449,12 +449,9 @@ pub(crate) fn prepare(
     )?;
     let font_catalogue = catalogue.identity().clone();
     let characters = spacing::character::plan(
-        &analyzed.projection,
-        &analyzed.analysis,
-        &styles,
-        analyzed.processed.source().boxes(),
-        None,
+        spacing::character::Input::original(&analyzed, &styles, options.scale()),
         false,
+        &mut scope_budget,
     )?;
     let mut shaped = shape::prepare(
         catalogue,
@@ -486,15 +483,13 @@ pub(crate) fn prepare(
     shaped.character_requirements = Some(characters);
     spacing::authored_original(&analyzed, &styles, &mut shaped)?;
     let characters = spacing::character::build(
-        &analyzed.projection,
-        &analyzed.analysis,
-        &styles,
-        analyzed.processed.source().boxes(),
-        None,
+        spacing::character::Input::original(&analyzed, &styles, options.scale()),
         false,
         Some(&shaped.character_exclusions),
+        &mut scope_budget,
     )?;
-    spacing::character::original(&analyzed, &characters, &mut shaped)?;
+    spacing::character::original(&analyzed, &characters, &mut shaped, &mut scope_budget)?;
+    characters.drop_scratch(&mut scope_budget)?;
     let metrics_index = default_style_index.or_else(|| {
         (profile == PreparationProfile::Standalone
             && analyzed.projection.atoms.is_empty()

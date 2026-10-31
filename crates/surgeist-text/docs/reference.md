@@ -640,7 +640,7 @@ Vertical composition with horizontal scalar payloads, or source-proved absence
 of provider input.
 It demands the genuine text-containing Inline or same-domain inherited
 RootInline font reference and captured limits, including for glyph-free cells.
-The cell's outer advance is one em; its inner runs retain their actual horizontal
+The cell's intrinsic square is one em; its inner runs retain their actual horizontal
 advances. A fitting normal composition retains its executed glyphs. Otherwise,
 bounded `hwid`, `twid` and `qwid` trials reuse its actual font instances and
 respect authored feature settings. Genuine source-attached mark-only descendants
@@ -654,8 +654,15 @@ observations return `TextCombineError::UnqualifiedWidthObservation`. Finalizatio
 and spacing replay retain the selected payload and frame. Private inner script
 context does not seed the ordinary text stream around the cell.
 
-Nonzero inner word or letter spacing and interior endpoint or directional
-controls still return
+Outer authored character tracking treats the whole cell, including a glyph-free
+cell, as one unit under the [native tracking policy](#character-tracking-and-native-intercharacter).
+Boundary gaps change flow and interaction endpoints while the square and inner
+glyph frame retain their intrinsic geometry. Inner letter spacing is suppressed
+before width selection; authored font settings remain effective. A lone cell has
+no outside tracking at line edges.
+
+Nonzero inner word spacing, allocated spacing (`SpacingPolicy` other than `None`),
+and interior endpoint or directional controls still return
 `TextCombineError::UnsupportedCellPreparation`. An in-cell TAB with deferred CSS
 tab stops is also unsupported; source processing retains genuine forced-break
 removal and glyph-free input provenance. A cell without a raw logical participant

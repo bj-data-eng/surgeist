@@ -557,3 +557,12 @@ fn authored_zero_for_every_width_tag_retains_compressed_normal_payload() {
 
 #[path = "combined_cell_width_normal_di.rs"]
 mod normal_di;
+
+#[path = "combined_cell_tracking_payload.rs"]
+mod tracking_payload;
+
+#[path = "combined_cell_tracking_resources.rs"]
+mod tracking_resources;
+
+#[path = "combined_cell_native_admission.rs"]
+mod native_admission;
