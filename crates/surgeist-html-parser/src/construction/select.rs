@@ -839,12 +839,12 @@ fn retained_select_metadata(
     c: &mut ParseControl,
     node: usize,
 ) -> Result<(usize, SelectMetadata), SessionError> {
-    for (slot, payload) in payloads.values.iter().enumerate() {
+    if let Some(slot) = payloads.joined(c, node, Join::SelectFamily)? {
         c.charge(WorkCategory::RecordVisit, 1)?;
         if let RetainedPayload::SelectFamily {
             node: Some(owner),
             state,
-        } = payload
+        } = &payloads.values[slot]
             && *owner == node
         {
             c.charge(

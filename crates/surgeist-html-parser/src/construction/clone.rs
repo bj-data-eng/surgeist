@@ -496,6 +496,7 @@ impl SessionStorage {
             unreachable!()
         };
         *element = Some(node.index);
+        self.payloads.join_row(container);
         self.bind_clone_metadata(c, node.index, bindings)?;
         self.initial_associated_state(c, node.index)?;
         if base::is_base(
@@ -638,14 +639,16 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<usize, SessionError> {
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element: Some(owner), .. })) if *owner == node)
-            {
-                return Ok(slot);
-            }
+        let Some(slot) = self.payloads.joined(c, node, Join::Attributes)? else {
+            return Err(SessionError::AttributeStorageUnavailable);
+        };
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        if matches!(&self.payloads.values[slot], RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element: Some(owner), .. })) if *owner == node)
+        {
+            Ok(slot)
+        } else {
+            Err(SessionError::AttributeStorageUnavailable)
         }
-        Err(SessionError::AttributeStorageUnavailable)
     }
 
     fn retain_clone_metadata(
@@ -653,10 +656,8 @@ impl SessionStorage {
         c: &mut ParseControl,
         payload: RetainedPayload,
     ) -> Result<usize, SessionError> {
-        self.prepare_payload_slot_owned(c)?;
-        let slot = self.payloads.values.len();
-        self.payloads.values.push(payload);
-        Ok(slot)
+        self.prepare_payload_slot_for(c, row_list(&payload))?;
+        Ok(self.payloads.push_row(payload))
     }
     fn prepare_clone_metadata(
         &mut self,
@@ -908,9 +909,10 @@ impl SessionStorage {
                 | RetainedPayload::SvgScript { node: bound, .. } => *bound = Some(node),
                 _ => return Err(SessionError::WrongToken),
             }
+            self.payloads.join_row(slot);
         }
         if let Some(slot) = bindings.textarea {
-            self.payloads.append_fields[node].textarea = Some(slot);
+            self.payloads.node_joins[node].textarea = Some(slot);
         }
         Ok(())
     }
@@ -1053,7 +1055,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<(usize, usize, InputState), SessionError> {
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Input)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Input {
                 node: Some(owner),
@@ -1061,7 +1063,7 @@ impl SessionStorage {
                 complete: true,
                 state,
                 ..
-            } = payload
+            } = &self.payloads.values[slot]
                 && *owner == node
             {
                 c.charge(
@@ -1143,7 +1145,7 @@ impl SessionStorage {
             c.charge(WorkCategory::RecordVisit, 2)?;
             let slot = self
                 .payloads
-                .append_fields
+                .node_joins
                 .get(node)
                 .ok_or(SessionError::ForeignNode)?
                 .text

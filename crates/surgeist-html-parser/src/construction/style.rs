@@ -24,7 +24,7 @@ impl SessionStorage {
         let cause = self.associated_cause(c)?;
         self.prepare_payload_slot_owned(c)?;
         payload_write::<StyleMetadata>(c, 1)?;
-        self.payloads.values.push(RetainedPayload::Style {
+        self.payloads.push_row(RetainedPayload::Style {
             node,
             state: StyleMetadata {
                 state: surgeist_html::HtmlStyleState::fresh(),
@@ -50,13 +50,10 @@ impl SessionStorage {
         if !self.html_local(c, node, "style")? {
             return Ok(None);
         }
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Style {node:n, ..} if *n == node) {
-                return Ok(Some(slot));
-            }
-        }
-        Err(SessionError::WrongToken)
+        self.payloads
+            .joined(c, node, Join::Style)?
+            .map(Some)
+            .ok_or(SessionError::WrongToken)
     }
     /// Called only by the sealed original create-element-for-token operation.
     /// Template contents have another current owner; their creating parser is

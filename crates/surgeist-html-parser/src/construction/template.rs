@@ -282,9 +282,9 @@ impl SessionStorage {
         ) {
             return Err(SessionError::NotDocument);
         }
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
+        if let Some(slot) = self.payloads.joined(c, document, Join::Document)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Document { node: Some(node), .. } if *node == document)
+            if matches!(&self.payloads.values[slot], RetainedPayload::Document { node: Some(node), .. } if *node == document)
             {
                 return Ok(slot);
             }
@@ -297,12 +297,12 @@ impl SessionStorage {
         node: usize,
     ) -> Result<DocumentRef, SessionError> {
         c.require_identity(&self.control)?;
-        for payload in &self.payloads.values {
+        if let Some(slot) = self.payloads.joined(c, node, Join::NodeDocument)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::NodeDocument {
                 node: Some(bound),
                 document,
-            } = payload
+            } = &self.payloads.values[slot]
                 && *bound == node
             {
                 self.validate_document_ref(c, document)?;
@@ -318,7 +318,7 @@ impl SessionStorage {
         document: DocumentRef,
     ) -> Result<(), SessionError> {
         self.validate_document_ref(c, &document)?;
-        for slot in 0..self.payloads.values.len() {
+        if let Some(slot) = self.payloads.joined(c, node, Join::NodeDocument)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if matches!(self.payloads.values[slot],RetainedPayload::NodeDocument{node:Some(bound),..} if bound==node)
             {
@@ -351,12 +351,12 @@ impl SessionStorage {
         if !Self::html_local_in(c, storage, node, "template")? {
             return Err(SessionError::WrongToken);
         }
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Template)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Template {
                 node: Some(bound),
                 state,
-            } = payload
+            } = &self.payloads.values[slot]
                 && *bound == node
             {
                 c.charge(WorkCategory::RecordVisit, 2)?;
@@ -413,7 +413,7 @@ impl SessionStorage {
                 // installed. No fallible alias/binding gap follows allocation.
                 self.prepare_payload_slot_owned(c)?;
                 let fact = self.payloads.values.len();
-                self.payloads.values.push(RetainedPayload::Document {
+                self.payloads.push_row(RetainedPayload::Document {
                     node: None,
                     state: DocumentState::InertTemplate,
                     class,
@@ -422,7 +422,7 @@ impl SessionStorage {
                 });
                 self.prepare_payload_slot_owned(c)?;
                 let binding = self.payloads.values.len();
-                self.payloads.values.push(RetainedPayload::NodeDocument {
+                self.payloads.push_row(RetainedPayload::NodeDocument {
                     node: None,
                     document: DocumentRef::Owned(self.construction.storage().len()),
                 });
@@ -440,12 +440,14 @@ impl SessionStorage {
                     unreachable!()
                 };
                 *bound = Some(node.index);
+                self.payloads.join_row(fact);
                 let RetainedPayload::NodeDocument { node: bound, .. } =
                     &mut self.payloads.values[binding]
                 else {
                     unreachable!()
                 };
                 *bound = Some(node.index);
+                self.payloads.join_row(binding);
                 let RetainedPayload::Document { state, .. } = &mut self.payloads.values[slot]
                 else {
                     unreachable!()
@@ -492,7 +494,7 @@ impl SessionStorage {
             }
             self.prepare_payload_slot_owned(c)?;
             let facts = self.payloads.values.len();
-            self.payloads.values.push(RetainedPayload::Template {
+            self.payloads.push_row(RetainedPayload::Template {
                 node: None,
                 state: TemplateMetadata::fresh(
                     self.construction.storage().len() + 1,
@@ -549,14 +551,14 @@ impl SessionStorage {
         };
         self.prepare_payload_slot_owned(c)?;
         let binding = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::NodeDocument {
+        self.payloads.push_row(RetainedPayload::NodeDocument {
             node: None,
             document,
         });
         let contents_binding = if let Some(document) = contents_document {
             self.prepare_payload_slot_owned(c)?;
             let slot = self.payloads.values.len();
-            self.payloads.values.push(RetainedPayload::NodeDocument {
+            self.payloads.push_row(RetainedPayload::NodeDocument {
                 node: None,
                 document,
             });
@@ -567,7 +569,7 @@ impl SessionStorage {
         let facts = if template {
             self.prepare_payload_slot_owned(c)?;
             let slot = self.payloads.values.len();
-            self.payloads.values.push(RetainedPayload::Template {
+            self.payloads.push_row(RetainedPayload::Template {
                 node: None,
                 state: TemplateMetadata::fresh(
                     self.construction.storage().len() + 1,
@@ -648,6 +650,7 @@ impl SessionStorage {
                 unreachable!()
             };
             *bound = Some(node.index);
+            self.payloads.join_row(slot);
         }
         if let Some(binding) = binding {
             let RetainedPayload::NodeDocument { node: bound, .. } =
@@ -656,6 +659,7 @@ impl SessionStorage {
                 unreachable!()
             };
             *bound = Some(node.index);
+            self.payloads.join_row(binding);
         }
         if let Some(slot) = contents_binding {
             let RetainedPayload::NodeDocument { node: bound, .. } = &mut self.payloads.values[slot]
@@ -663,6 +667,7 @@ impl SessionStorage {
                 unreachable!()
             };
             *bound = Some(node.index + 1);
+            self.payloads.join_row(slot);
         }
         if let Some(slot) = facts {
             let RetainedPayload::Template { node: bound, state } = &mut self.payloads.values[slot]
@@ -671,6 +676,7 @@ impl SessionStorage {
             };
             *bound = Some(node.index);
             state.contents = node.index + 1;
+            self.payloads.join_row(slot);
         }
         Ok(node)
     }

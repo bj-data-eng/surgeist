@@ -64,7 +64,7 @@ impl SessionStorage {
         drop(value);
         self.prepare_payload_slot_owned(c)?;
         payload_write::<DialogMetadata>(c, 1)?;
-        self.payloads.values.push(RetainedPayload::Dialog {
+        self.payloads.push_row(RetainedPayload::Dialog {
             node,
             state: DialogMetadata {
                 value: raw,
@@ -97,13 +97,10 @@ impl SessionStorage {
         if !self.html_local(c, node, "dialog")? {
             return Ok(None);
         }
-        for (slot, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Dialog { node: bound, .. } if *bound == node) {
-                return Ok(Some(slot));
-            }
-        }
-        Err(SessionError::WrongToken)
+        self.payloads
+            .joined(c, node, Join::Dialog)?
+            .map(Some)
+            .ok_or(SessionError::WrongToken)
     }
     fn dialog_missing(
         &mut self,

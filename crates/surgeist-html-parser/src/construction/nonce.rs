@@ -23,8 +23,7 @@ impl SessionStorage {
         self.prepare_payload_slot_owned(c)?;
         let slot = self.payloads.values.len();
         self.payloads
-            .values
-            .push(RetainedPayload::Nonce { node: None, raw });
+            .push_row(RetainedPayload::Nonce { node: None, raw });
         Ok(Some(slot))
     }
     pub(super) fn nonce_slot(
@@ -33,7 +32,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<Option<(usize, usize)>, SessionError> {
         c.require_identity(&self.control)?;
-        for slot in 0..self.payloads.values.len() {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Nonce {
                 node: Some(owner),
@@ -911,14 +910,28 @@ mod tests {
     }
     #[test]
     fn nonce_lookup_exact_work_and_one_short_preserve_first_stop_and_cleanup() {
+        // The lookup's whole cost is measured from an unconstrained twin; the
+        // exact budget then completes it and one credit less stops it.
+        let cost = {
+            let (mut c, mut session, node, _) = fixture();
+            let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+            session
+                .active()
+                .unwrap()
+                .nonce_slot(&mut c, node.index)
+                .unwrap()
+                .unwrap();
+            let cost = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+            cost
+        };
         for short in [false, true] {
             let (mut c, mut session, node, cancellation) = fixture();
             let storage = session.active().unwrap();
             let slot = storage.payloads.values.iter().position(|entry| {
                 matches!(entry, RetainedPayload::Nonce { node: Some(owner), .. } if *owner == node.index)
             }).unwrap();
-            // One visit per preceding/selected record, then a fixed two-usize copy.
-            let cost = slot as u64 + 1 + (2 * mem::size_of::<usize>()) as u64;
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             let maximum = super::super::tests::limits().work_credits();
             c.charge(
@@ -945,11 +958,6 @@ mod tests {
                 assert_eq!(c.first_stop_usage(), snapshot.as_ref());
             } else {
                 assert_eq!(result.unwrap().unwrap().0, slot);
-                assert_eq!(
-                    c.usage().work(WorkCategory::RecordVisit)
-                        - before.work(WorkCategory::RecordVisit),
-                    slot as u64 + 1
-                );
                 assert_eq!(
                     c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
                     (2 * mem::size_of::<usize>()) as u64

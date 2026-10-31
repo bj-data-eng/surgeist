@@ -347,7 +347,7 @@ impl SessionStorage {
                     origins: merged_group,
                     location: StringLocation::Text(index),
                 };
-                self.payloads.append_fields[index].text = Some(slot);
+                self.payloads.node_joins[index].text = Some(slot);
                 if children_changed {
                     self.effects.form = Some(FormEffects {
                         root: parent,

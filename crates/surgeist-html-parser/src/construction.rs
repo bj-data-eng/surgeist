@@ -31,6 +31,7 @@ use crate::parser::{
     tokenizer::token::{Doctype, Tag, TagKind, Text, TextOrigin, TokenKind},
 };
 use crate::{Attribute, HtmlParseResource, HtmlTextareaFlags, HtmlTextareaRawValueAction};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::{mem, sync::Weak};
 use surgeist_html::bounded;
@@ -367,17 +368,78 @@ struct FrozenStorage {
 struct PayloadStorage {
     values: Vec<RetainedPayload>,
     allocation: VectorCapacity<RetainedPayload>,
-    append_fields: Vec<AppendFields>,
-    append_fields_allocation: VectorCapacity<AppendFields>,
+    node_joins: Vec<NodeJoins>,
+    node_joins_allocation: VectorCapacity<NodeJoins>,
+    /// Every row of a kind that is also searched across all nodes, in registry
+    /// order. A scan of these lists visits only rows of that kind.
+    kind_slots: [KindSlots; KIND_LISTS],
     preexisting_units: usize,
     preexisting_attributes: usize,
 }
-/// Derived joins into the actual payload registry. Dense record positions are
-/// append-only; a join never substitutes for the row's location or ticket.
+/// Derived joins into the actual payload registry, one cell per record
+/// position. Dense record positions are append-only; a join never substitutes
+/// for the row's location or ticket. `text` and `textarea` are rewritten as
+/// their rows are merged or reset; `rows` names the first registry row of each
+/// node-keyed metadata kind bound to the record, so a lookup visits one cell and
+/// one row instead of scanning the registry.
 #[derive(Clone, Copy, Default)]
-struct AppendFields {
+struct NodeJoins {
     text: Option<usize>,
     textarea: Option<usize>,
+    rows: [Option<NonZeroUsize>; JOIN_COUNT],
+}
+/// Node-keyed registry row kinds with a join in [`NodeJoins`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Join {
+    Attributes,
+    NodeDocument,
+    Document,
+    Template,
+    FormAssociation,
+    Script,
+    Image,
+    Hyperlink,
+    Style,
+    Dialog,
+    Nonce,
+    Input,
+    SelectFamily,
+    Base,
+    BaseDocument,
+    LookupRegistry,
+    /// The latest style occurrence naming the record as its subject.
+    StyleOccurrence,
+}
+const JOIN_COUNT: usize = Join::StyleOccurrence as usize + 1;
+impl NodeJoins {
+    fn get(&self, join: Join) -> Option<usize> {
+        self.rows[join as usize].map(|slot| slot.get() - 1)
+    }
+    /// Names the latest registry row, the one a back-to-front scan finds.
+    fn set_latest(&mut self, join: Join, slot: usize) {
+        self.rows[join as usize] =
+            Some(NonZeroUsize::new(slot + 1).expect("slot plus one is nonzero"));
+    }
+    /// Keeps the earliest registry row, the one a front-to-back scan finds.
+    fn set_first(&mut self, join: Join, slot: usize) {
+        let cell = &mut self.rows[join as usize];
+        let slot = NonZeroUsize::new(slot + 1).expect("slot plus one is nonzero");
+        if cell.is_none_or(|current| slot < current) {
+            *cell = Some(slot);
+        }
+    }
+}
+/// Registry-wide kind lists with their own admitted backing.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum KindList {
+    FormAssociation,
+    Base,
+    AssociationDocument,
+}
+const KIND_LISTS: usize = KindList::AssociationDocument as usize + 1;
+struct KindSlots {
+    slots: Vec<usize>,
+    allocation: VectorCapacity<usize>,
 }
 enum RetainedPayload {
     CspState(Option<Box<csp::State>>),
@@ -578,7 +640,8 @@ enum FormEffectPass {
     Local,
     Intrinsic,
     Global {
-        next_slot: usize,
+        /// Position in the registry's list of form association rows.
+        next_form: usize,
         tree: Option<usize>,
     },
 }
@@ -688,7 +751,138 @@ struct ReleasedStorage {
     payloads: PayloadStorage,
 }
 
+/// The join a registry row provides, when it is bound to a record.
+fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
+    Some(match row {
+        RetainedPayload::Attributes(Some(
+            AttributeStorage::Frozen {
+                element: Some(node),
+                ..
+            }
+            | AttributeStorage::Removing {
+                element: Some(node),
+                ..
+            },
+        )) => (Join::Attributes, *node),
+        RetainedPayload::NodeDocument {
+            node: Some(node), ..
+        } => (Join::NodeDocument, *node),
+        RetainedPayload::Document {
+            node: Some(node), ..
+        } => (Join::Document, *node),
+        RetainedPayload::Template {
+            node: Some(node), ..
+        } => (Join::Template, *node),
+        RetainedPayload::FormAssociation {
+            node: Some(node), ..
+        } => (Join::FormAssociation, *node),
+        RetainedPayload::Script {
+            node: Some(node), ..
+        } => (Join::Script, *node),
+        RetainedPayload::Image { node, .. } => (Join::Image, *node),
+        RetainedPayload::Hyperlink { node, .. } => (Join::Hyperlink, *node),
+        RetainedPayload::Style { node, .. } => (Join::Style, *node),
+        RetainedPayload::Dialog { node, .. } => (Join::Dialog, *node),
+        RetainedPayload::Nonce {
+            node: Some(node), ..
+        } => (Join::Nonce, *node),
+        RetainedPayload::Input {
+            node: Some(node), ..
+        } => (Join::Input, *node),
+        RetainedPayload::SelectFamily {
+            node: Some(node), ..
+        } => (Join::SelectFamily, *node),
+        RetainedPayload::Base {
+            node: Some(node), ..
+        } => (Join::Base, *node),
+        RetainedPayload::BaseDocument { node, .. } => (Join::BaseDocument, *node),
+        RetainedPayload::LookupRegistry {
+            node: Some(node), ..
+        } => (Join::LookupRegistry, *node),
+        _ => return None,
+    })
+}
+/// The registry-wide list a row belongs to, whatever its binding.
+fn row_list(row: &RetainedPayload) -> Option<KindList> {
+    match row {
+        RetainedPayload::FormAssociation { .. } => Some(KindList::FormAssociation),
+        RetainedPayload::Base { .. } => Some(KindList::Base),
+        RetainedPayload::AssociationDocument(_) => Some(KindList::AssociationDocument),
+        _ => None,
+    }
+}
+
 impl PayloadStorage {
+    /// The first registry row of `join` bound to `node`: one join cell, however
+    /// many other rows the registry retains. The caller checks the row it gets.
+    fn joined(
+        &self,
+        control: &mut ParseControl,
+        node: usize,
+        join: Join,
+    ) -> Result<Option<usize>, SessionError> {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        Ok(self.node_joins.get(node).and_then(|cell| cell.get(join)))
+    }
+    /// Registers the row at `slot` under the record it is bound to. Binding a
+    /// row and joining it are one infallible step at every binding site.
+    fn join_row(&mut self, slot: usize) {
+        if let Some((join, node)) = row_join(&self.values[slot]) {
+            self.node_joins
+                .get_mut(node)
+                .expect("a bound row names a retained record")
+                .set_first(join, slot);
+        }
+    }
+    /// Appends a row whose slot was admitted by `prepare_payload_slot*`. A row
+    /// already bound to a record is joined; rows of a registry-wide kind enter
+    /// that kind's list, whose slot was admitted with the row.
+    fn push_row(&mut self, row: RetainedPayload) -> usize {
+        let slot = self.values.len();
+        let list = row_list(&row);
+        self.values.push(row);
+        if let Some(list) = list {
+            let slots = &mut self.kind_slots[list as usize].slots;
+            assert!(slots.len() < slots.capacity(), "kind list slot admitted");
+            slots.push(slot);
+        }
+        self.join_row(slot);
+        slot
+    }
+    /// Every join must name exactly what a front-to-back scan of the registry
+    /// finds, and every list exactly the rows of its kind.
+    #[cfg(test)]
+    fn assert_joins_match_registry(&self) {
+        let mut expected: Vec<NodeJoins> = vec![NodeJoins::default(); self.node_joins.len()];
+        let mut lists: [Vec<usize>; KIND_LISTS] = Default::default();
+        for (slot, row) in self.values.iter().enumerate() {
+            if let Some((join, node)) = row_join(row) {
+                let cell = &mut expected[node];
+                assert!(
+                    cell.get(join).is_none(),
+                    "two {join:?} rows are bound to record {node}"
+                );
+                cell.set_first(join, slot);
+            }
+            if let Some(list) = row_list(row) {
+                lists[list as usize].push(slot);
+            }
+            if let Some(subject) = pending_association::style_occurrence_subject(row) {
+                expected[subject].set_latest(Join::StyleOccurrence, slot);
+            }
+        }
+        for (node, (cell, joined)) in expected.iter().zip(&self.node_joins).enumerate() {
+            assert!(
+                cell.rows == joined.rows,
+                "joins of record {node} differ from the registry: {:?} against {:?}",
+                cell.rows,
+                joined.rows
+            );
+        }
+        for (list, kind) in lists.iter().zip(&self.kind_slots) {
+            assert!(list == &kind.slots, "a kind list differs from the registry");
+        }
+    }
     /// Cleanup is a bounded ownership walk over admitted entries, permitted
     /// after a terminal stop. No parser work is resumed and no work refunded.
     /// Each live location is checked against its actual immutable record.
@@ -816,23 +1010,37 @@ impl PayloadStorage {
     }
 
     fn release(self, control: &mut ParseControl, owner: &ControlIdentity) {
+        #[cfg(test)]
+        self.assert_joins_match_registry();
         let Self {
             mut values,
             allocation,
-            append_fields,
-            append_fields_allocation,
+            node_joins,
+            node_joins_allocation,
+            kind_slots,
             ..
         } = self;
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
-        let append_entries = append_fields.len() as u64;
-        release_vector(control, append_fields, append_fields_allocation)
-            .expect("actual append-field index capacity");
+        let join_entries = node_joins.len() as u64;
+        release_vector(control, node_joins, node_joins_allocation)
+            .expect("actual node join index capacity");
         release_logical(
             control,
             owner,
             HtmlParseResource::AuxiliaryEntries,
-            append_entries,
+            join_entries,
         );
+        for list in kind_slots {
+            let list_entries = list.slots.len() as u64;
+            release_vector(control, list.slots, list.allocation)
+                .expect("actual kind list index capacity");
+            release_logical(
+                control,
+                owner,
+                HtmlParseResource::AuxiliaryEntries,
+                list_entries,
+            );
+        }
         let entries = values.len() as u64;
         // Attribute containers own references to registered string backings.
         // Dispose containers first; reverse-pop then retains the real Vec until
@@ -1178,7 +1386,7 @@ impl SessionStorage {
                 return Err(stop.into());
             }
         };
-        let (append_fields, append_fields_allocation) = match control.new_vector() {
+        let (node_joins, node_joins_allocation) = match control.new_vector() {
             Ok(value) => value,
             Err(stop) => {
                 release_vector(control, values, allocation)?;
@@ -1186,6 +1394,22 @@ impl SessionStorage {
                 return Err(stop.into());
             }
         };
+        let mut made: [Option<KindSlots>; KIND_LISTS] = std::array::from_fn(|_| None);
+        for cell in &mut made {
+            match control.new_vector() {
+                Ok((slots, allocation)) => *cell = Some(KindSlots { slots, allocation }),
+                Err(stop) => {
+                    for list in made.into_iter().flatten() {
+                        release_vector(control, list.slots, list.allocation)?;
+                    }
+                    release_vector(control, node_joins, node_joins_allocation)?;
+                    release_vector(control, values, allocation)?;
+                    construction.retire(control)?;
+                    return Err(stop.into());
+                }
+            }
+        }
+        let kind_slots = made.map(|list| list.expect("one list per kind"));
         let mut session = Self {
             csp_slot: None,
             #[cfg(test)]
@@ -1216,8 +1440,9 @@ impl SessionStorage {
             payloads: PayloadStorage {
                 values,
                 allocation,
-                append_fields,
-                append_fields_allocation,
+                node_joins,
+                node_joins_allocation,
+                kind_slots,
                 preexisting_units: 0,
                 preexisting_attributes: 0,
             },
@@ -1243,7 +1468,7 @@ impl SessionStorage {
         ) {
             let facts = (|| {
                 session.prepare_payload_slot_owned(control)?;
-                session.payloads.values.push(RetainedPayload::Document {
+                session.payloads.push_row(RetainedPayload::Document {
                     node: Some(0),
                     state: template::DocumentState::Ordinary { inert: None },
                     class: crate::HtmlDocumentClass::Html,
@@ -1251,7 +1476,7 @@ impl SessionStorage {
                     interaction: dialog::InteractionHistory::new(),
                 });
                 session.prepare_payload_slot_owned(control)?;
-                session.payloads.values.push(RetainedPayload::NodeDocument {
+                session.payloads.push_row(RetainedPayload::NodeDocument {
                     node: Some(0),
                     document: DocumentRef::Owned(0),
                 });
@@ -1411,7 +1636,7 @@ impl SessionStorage {
         let count = 1 + usize::from(template);
         let cause_slots = self.prepare_node_causes(control, count)?;
         // Each record retains its original child-ticket slot and one derived
-        // append-field cell; payload metadata rows remain separately admitted.
+        // node-join cell; payload metadata rows remain separately admitted.
         let requests = [
             (HtmlParseResource::ManagedNodes, count as u64),
             (HtmlParseResource::ManagedEdges, u64::from(template)),
@@ -1436,14 +1661,14 @@ impl SessionStorage {
         }
         let index = self.construction.len();
         control.reserve_vector_geometric(
-            &mut self.payloads.append_fields,
-            &mut self.payloads.append_fields_allocation,
+            &mut self.payloads.node_joins,
+            &mut self.payloads.node_joins_allocation,
             count,
         )?;
-        control.admit_atomic_layout(mem::size_of::<AppendFields>())?;
+        control.admit_atomic_layout(mem::size_of::<NodeJoins>())?;
         control.charge(
             WorkCategory::CopyByte,
-            (count * mem::size_of::<AppendFields>()) as u64,
+            (count * mem::size_of::<NodeJoins>()) as u64,
         )?;
         control.charge(WorkCategory::RecordWrite, (2 * count) as u64)?;
         control.charge(WorkCategory::CopyByte, mem::size_of::<ParserNode>() as u64)?;
@@ -1463,13 +1688,14 @@ impl SessionStorage {
             index: position,
         };
         for _ in 0..count {
-            self.payloads.append_fields.push(AppendFields::default());
+            self.payloads.node_joins.push(NodeJoins::default());
         }
         if let Some(slot) = nonce_slot {
             let RetainedPayload::Nonce { node, .. } = &mut self.payloads.values[slot] else {
                 unreachable!()
             };
             *node = Some(index);
+            self.payloads.join_row(slot);
         }
         for (offset, slot) in cause_slots.into_iter().enumerate().take(count) {
             if let Some(slot) = slot {
@@ -1494,19 +1720,38 @@ impl SessionStorage {
         &mut self,
         control: &mut ParseControl,
     ) -> Result<(), SessionError> {
+        self.prepare_payload_slot_for(control, None)
+    }
+    /// Admits one registry row and, for a registry-wide kind, the entry of its
+    /// list; `push_row` makes both appends infallible.
+    fn prepare_payload_slot_for(
+        &mut self,
+        control: &mut ParseControl,
+        list: Option<KindList>,
+    ) -> Result<(), SessionError> {
         control.require_identity(&self.control)?;
         control.reserve_vector_geometric(
             &mut self.payloads.values,
             &mut self.payloads.allocation,
             1,
         )?;
+        if let Some(list) = list {
+            let KindSlots { slots, allocation } = &mut self.payloads.kind_slots[list as usize];
+            control.reserve_vector_geometric(slots, allocation, 1)?;
+            control.admit_atomic_layout(mem::size_of::<usize>())?;
+            control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+            control.charge(WorkCategory::RecordWrite, 1)?;
+        }
         control.admit_atomic_layout(mem::size_of::<RetainedPayload>())?;
         control.charge(
             WorkCategory::CopyByte,
             mem::size_of::<RetainedPayload>() as u64,
         )?;
         control.charge(WorkCategory::RecordWrite, 1)?;
-        control.acquire(HtmlParseResource::AuxiliaryEntries, 1)?;
+        control.acquire(
+            HtmlParseResource::AuxiliaryEntries,
+            1 + u64::from(list.is_some()),
+        )?;
         Ok(())
     }
     fn register_raw(
@@ -1614,12 +1859,14 @@ impl SessionStorage {
                         unreachable!()
                     };
                     *bound = Some(node.index);
+                    self.payloads.join_row(input);
                     let RetainedPayload::FormAssociation { node: bound, .. } =
                         &mut self.payloads.values[association]
                     else {
                         unreachable!()
                     };
                     *bound = Some(node.index);
+                    self.payloads.join_row(association);
                 }
                 OrderedCreation::Select {
                     metadata: Some(slot),
@@ -1631,19 +1878,11 @@ impl SessionStorage {
                         unreachable!()
                     };
                     *bound = Some(node.index);
+                    self.payloads.join_row(slot);
                 }
                 OrderedCreation::Select { metadata: None } => {}
             }
-            let mut container = None;
-            for index in 0..self.payloads.values.len() {
-                control.charge(WorkCategory::RecordVisit, 1)?;
-                if matches!(&self.payloads.values[index], RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element: Some(owner), .. })) if *owner == node.index)
-                {
-                    container = Some(index);
-                    break;
-                }
-            }
-            let container = container.ok_or(SessionError::AttributeStorageUnavailable)?;
+            let container = self.element_attribute_container(control, node.index)?;
             let (values, allocation) = control.new_vector()?;
             if let Err(error) = self.prepare_payload_slot(control) {
                 release_vector(control, values, allocation)?;
@@ -2921,6 +3160,7 @@ impl SessionStorage {
                 unreachable!()
             };
             *element = Some(node.index);
+            self.payloads.join_row(container);
             self.initial_nonce_attributes(control, node.index)?;
             self.initial_associated_state(control, node.index)?;
             self.initial_meta_attributes(control, node.index)?;
@@ -3152,7 +3392,7 @@ impl SessionStorage {
         };
         *current = location;
         if let StringLocation::Text(node) = location {
-            self.payloads.append_fields[node].text = Some(index);
+            self.payloads.node_joins[node].text = Some(index);
         }
     }
     /// Same parser-owned HTML root, real slots and original lexical origins.
@@ -3203,16 +3443,7 @@ impl SessionStorage {
         {
             return Err(SessionError::WrongToken);
         }
-        let mut container = None;
-        for index in 0..self.payloads.values.len() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(&self.payloads.values[index], RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element: Some(owner), .. })) if *owner == target)
-            {
-                container = Some(index);
-                break;
-            }
-        }
-        let container = container.ok_or(SessionError::AttributeStorageUnavailable)?;
+        let container = self.element_attribute_container(control, target)?;
         self.payloads.check_aliases(
             ConstructionView::Active(self.construction.storage()),
             control,
@@ -3600,8 +3831,13 @@ impl SessionStorage {
         if attribute.value().is_empty() {
             return Ok(None);
         }
-        for index in 0..self.payloads.values.len() {
+        for position in 0..self.payloads.kind_slots[KindList::FormAssociation as usize]
+            .slots
+            .len()
+        {
             control.charge(WorkCategory::RecordVisit, 1)?;
+            let index =
+                self.payloads.kind_slots[KindList::FormAssociation as usize].slots[position];
             if let RetainedPayload::FormAssociation {
                 node: Some(node),
                 state,
@@ -3981,8 +4217,14 @@ impl SessionStorage {
         };
         let mut local = adoption;
         let mut listed_explicit = false;
-        for slot in 0..self.payloads.values.len() {
+        // Only a Base or form association row can make the subtree local, and
+        // either one makes it so; the visit order has no other effect.
+        for position in 0..self.payloads.kind_slots[KindList::Base as usize]
+            .slots
+            .len()
+        {
             control.charge(WorkCategory::RecordVisit, 1)?;
+            let slot = self.payloads.kind_slots[KindList::Base as usize].slots[position];
             if let RetainedPayload::Base {
                 node: Some(node), ..
             } = &self.payloads.values[slot]
@@ -3991,18 +4233,29 @@ impl SessionStorage {
                 local = true;
                 break;
             }
-            if let RetainedPayload::FormAssociation {
-                node: Some(node),
-                state,
-            } = &self.payloads.values[slot]
+        }
+        if !local {
+            for position in 0..self.payloads.kind_slots[KindList::FormAssociation as usize]
+                .slots
+                .len()
             {
-                control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
-                if self.ordinary_descendant(control, *node, root)? {
-                    local = true;
-                    break;
-                }
-                if state.kind.listed() && self.form_attribute(control, *node, "form")?.is_some() {
-                    listed_explicit = true;
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                let slot =
+                    self.payloads.kind_slots[KindList::FormAssociation as usize].slots[position];
+                if let RetainedPayload::FormAssociation {
+                    node: Some(node),
+                    state,
+                } = &self.payloads.values[slot]
+                {
+                    control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+                    if self.ordinary_descendant(control, *node, root)? {
+                        local = true;
+                        break;
+                    }
+                    if state.kind.listed() && self.form_attribute(control, *node, "form")?.is_some()
+                    {
+                        listed_explicit = true;
+                    }
                 }
             }
         }
@@ -4535,7 +4788,7 @@ impl SessionStorage {
                         };
                     if id_event {
                         effects.pass = FormEffectPass::Global {
-                            next_slot: 0,
+                            next_form: 0,
                             tree: if effects.stage == FormEffectStage::IdChange {
                                 Some(self.ordinary_root(control, node, None)?)
                             } else {
@@ -4588,8 +4841,12 @@ impl SessionStorage {
                     }
                     return Ok(());
                 }
-                FormEffectPass::Global { next_slot, tree } => {
-                    if next_slot < self.payloads.values.len() {
+                FormEffectPass::Global { next_form, tree } => {
+                    let next_slot = self.payloads.kind_slots[KindList::FormAssociation as usize]
+                        .slots
+                        .get(next_form)
+                        .copied();
+                    if let Some(next_slot) = next_slot {
                         control.charge(WorkCategory::RecordVisit, 1)?;
                         if let RetainedPayload::FormAssociation {
                             node: Some(candidate),
@@ -4626,7 +4883,7 @@ impl SessionStorage {
                             }
                         }
                         effects.pass = FormEffectPass::Global {
-                            next_slot: next_slot + 1,
+                            next_form: next_form + 1,
                             tree,
                         };
                     } else {
@@ -5549,7 +5806,7 @@ impl ParserArenaSession {
         storage.prepare_payload_slot(control)?;
         let script = storage.payloads.values.len();
         payload_write::<Option<usize>>(control, 1)?;
-        storage.payloads.values.push(RetainedPayload::Script {
+        storage.payloads.push_row(RetainedPayload::Script {
             node: None,
             metadata: ScriptMetadata {
                 parser_document: Some(DocumentRef::Owned(0)),
@@ -5581,6 +5838,7 @@ impl ParserArenaSession {
             unreachable!()
         };
         *bound = Some(node.index);
+        self.active_mut()?.payloads.join_row(script);
         Ok(node)
     }
     #[cfg(test)]
@@ -5971,8 +6229,7 @@ impl ParserArenaSession {
             let slot = storage.payloads.values.len();
             storage
                 .payloads
-                .values
-                .push(RetainedPayload::SelectFamily { node: None, state });
+                .push_row(RetainedPayload::SelectFamily { node: None, state });
             Some(slot)
         } else {
             None
@@ -6013,7 +6270,7 @@ impl ParserArenaSession {
             let raw = storage.register_raw(control, empty)?;
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::Input {
+            storage.payloads.push_row(RetainedPayload::Input {
                 node: None,
                 raw,
                 complete: false,
@@ -6057,28 +6314,26 @@ impl ParserArenaSession {
             || input_slot.is_some()
             || kind == Some(HtmlNativeFormAssociationKind::Select);
         let slot = if let Some(kind) = kind {
-            storage.prepare_payload_slot(control)?;
+            storage.require(control)?;
+            storage.prepare_payload_slot_for(control, Some(KindList::FormAssociation))?;
             let slot = storage.payloads.values.len();
-            storage
-                .payloads
-                .values
-                .push(RetainedPayload::FormAssociation {
-                    node: None,
-                    state: FormAssociationState {
-                        kind,
-                        owner: if reset_before_association {
-                            None
-                        } else {
-                            owner
-                        },
-                        parser_inserted: !reset_before_association && owner.is_some(),
-                        evidence: if !reset_before_association && owner.is_some() {
-                            FormAssociationEvidence::ParserAssociated
-                        } else {
-                            FormAssociationEvidence::Created
-                        },
+            storage.payloads.push_row(RetainedPayload::FormAssociation {
+                node: None,
+                state: FormAssociationState {
+                    kind,
+                    owner: if reset_before_association {
+                        None
+                    } else {
+                        owner
                     },
-                });
+                    parser_inserted: !reset_before_association && owner.is_some(),
+                    evidence: if !reset_before_association && owner.is_some() {
+                        FormAssociationEvidence::ParserAssociated
+                    } else {
+                        FormAssociationEvidence::Created
+                    },
+                },
+            });
             Some(slot)
         } else {
             None
@@ -6158,7 +6413,7 @@ impl ParserArenaSession {
                 };
                 *bound = Some(node.index);
                 state.flags.reset();
-                storage.payloads.append_fields[node.index].textarea = Some(textarea);
+                storage.payloads.node_joins[node.index].textarea = Some(textarea);
                 #[cfg(test)]
                 if let Some(cancellation) = storage.cancel_after_textarea_reset.take() {
                     cancellation.cancel();
@@ -6201,6 +6456,7 @@ impl ParserArenaSession {
                     return Err(SessionError::FormAssociationMetadataUnavailable);
                 };
                 *bound = Some(node.index);
+                storage.payloads.join_row(slot);
                 if reset_before_association {
                     payload_write::<FormAssociationState>(control, 1)?;
                     let RetainedPayload::FormAssociation { state, .. } =
@@ -9304,7 +9560,7 @@ fn find_textarea_state(
 ) -> Result<Option<(usize, TextareaState)>, SessionError> {
     control.charge(WorkCategory::RecordVisit, 1)?;
     let fields = payloads
-        .append_fields
+        .node_joins
         .get(node)
         .ok_or(SessionError::ForeignNode)?;
     let Some(slot) = fields.textarea else {
@@ -9367,7 +9623,7 @@ fn find_form_association_state(
     control: &mut ParseControl,
     node: usize,
 ) -> Result<Option<(usize, FormAssociationState)>, SessionError> {
-    for slot in 0..payloads.values.len() {
+    if let Some(slot) = payloads.joined(control, node, Join::FormAssociation)? {
         control.charge(WorkCategory::RecordVisit, 1)?;
         if let RetainedPayload::FormAssociation { node: owner, state } = &payloads.values[slot]
             && *owner == Some(node)
@@ -9402,7 +9658,7 @@ fn script_metadata(
     control: &mut ParseControl,
     node: usize,
 ) -> Result<(usize, ScriptMetadata), SessionError> {
-    for position in 0..payloads.values.len() {
+    if let Some(position) = payloads.joined(control, node, Join::Script)? {
         control.charge(WorkCategory::RecordVisit, 1)?;
         if let RetainedPayload::Script {
             node: owner,
@@ -10491,14 +10747,29 @@ mod tests {
     #[test]
     fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded() {
         // Registry slots: initial raw/textarea/form3, name/namespace/attrs3,
-        // actual native A1 and first children-change raw1 plus two retired static postconnection list slots plus four real document facts and the textarea empty backing/nonce facts =17, including the creation row. Three actual nodes
-        // add three native tickets and three append-index entries. The finite cap28
-        // admits initial lexical/topology staging, then five reset slots;
+        // actual native A1 and first children-change raw1 plus two retired static postconnection list slots plus four real document facts and the textarea empty backing/nonce facts =17, including the creation row.
+        // The finite auxiliary cap admits the initial lexical/topology staging,
+        // measured from an unconstrained run, then exactly five reset slots;
         // the next reset retains the current raw and latches the slot cap.
         let source = crate::HtmlSource::utf8("<textarea>A");
+        let staged = {
+            let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, limits());
+            let mut text = next_text(&mut tokenizer, &mut c);
+            session
+                .insert_text(&mut c, &node, None, &mut text, None)
+                .unwrap();
+            tokenizer.release(&mut c).unwrap();
+            let staged = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current;
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            staged
+        };
         let caps = limits()
             .into_builder()
-            .auxiliary_entries(28)
+            .auxiliary_entries(staged + 5)
             .finish()
             .unwrap();
         let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, caps);
@@ -10512,7 +10783,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            23
+            staged
         );
         let old = Arc::downgrade(
             session
@@ -10531,7 +10802,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            28
+            staged + 5
         );
         assert_eq!(
             c.usage()
@@ -10578,17 +10849,16 @@ mod tests {
     #[test]
     fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        // Document/html/body own three new index entries before subject creation.
-        for cap in [24, 25, 26, 27] {
+        // One creation attempt under an auxiliary cap. Returns whether it
+        // succeeded, whether the lexical tag was taken, the entries held before
+        // the attempt and, for a success, the entries it needed.
+        let attempt = |cap: Option<u64>| {
             let source = crate::HtmlSource::utf8("<textarea>");
-            let mut c = ParseControl::new(
-                limits()
-                    .into_builder()
-                    .auxiliary_entries(cap)
-                    .finish()
-                    .unwrap(),
-                HtmlParseCancellation::new(),
-            );
+            let mut builder = limits().into_builder();
+            if let Some(cap) = cap {
+                builder = builder.auxiliary_entries(cap);
+            }
+            let mut c = ParseControl::new(builder.finish().unwrap(), HtmlParseCancellation::new());
             c.admit_source(&source).unwrap();
             let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
             let mut session =
@@ -10605,12 +10875,10 @@ mod tests {
             let backing = Arc::as_ptr(tag.name.value.text().shared_code_units());
             let mut input = Some(tag);
             session.allocate_implicit_body(&mut c, None).unwrap();
-            assert_eq!(
-                c.usage()
-                    .resource(HtmlParseResource::AuxiliaryEntries)
-                    .current,
-                22
-            );
+            let held = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current;
             let result = session.allocate_html_tag_for_creation(
                 &mut c,
                 &mut input,
@@ -10618,8 +10886,8 @@ mod tests {
                 None,
                 crate::construction::CreationContext::Ordinary,
             );
-            assert!(matches!(result, Err(SessionError::Stop(_))));
-            if cap < 27 {
+            let taken = input.is_none();
+            if !taken {
                 assert_eq!(
                     Arc::as_ptr(
                         input
@@ -10630,18 +10898,61 @@ mod tests {
                             .text()
                             .shared_code_units()
                     ),
-                    backing
+                    backing,
+                    "a tag refused before the take keeps its own name backing"
                 );
-            } else {
-                assert!(input.is_none());
             }
+            let stop = c.stop();
+            let needed = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current;
             if let Some(tag) = input.take() {
                 release_token_kind(&mut Some(TokenKind::Tag(tag)), &mut c).unwrap();
             }
             tokenizer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
             storage_zero(&c);
+            (result.map(|_| ()), stop, taken, held, needed)
+        };
+        let (created, stop, _, held, needed) = attempt(None);
+        created.unwrap();
+        assert_eq!(stop, None);
+        // Every cap that admits the document, html and body but not the whole
+        // creation latches the first auxiliary refusal. A cap too small for the
+        // raw and metadata slots refuses before the tag is taken, a later cap
+        // after; the refusal point never moves back as the cap rises.
+        let mut taken_before = false;
+        let mut refused_before_take = 0;
+        for cap in held..needed {
+            let (result, stop, taken, _, _) = attempt(Some(cap));
+            assert_eq!(result, Err(SessionError::Stop(stop.unwrap())));
+            assert!(
+                matches!(
+                    stop,
+                    Some(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::AuxiliaryEntries,
+                        limit,
+                        ..
+                    }) if limit == cap
+                ),
+                "cap {cap}: {stop:?}"
+            );
+            assert!(
+                taken || !taken_before,
+                "cap {cap} refused earlier than a smaller cap"
+            );
+            taken_before |= taken;
+            refused_before_take += usize::from(!taken);
         }
+        assert!(
+            refused_before_take > 0,
+            "the raw and metadata slots are admitted before the lexical take"
+        );
+        let (created, stop, _, _, exact) = attempt(Some(needed));
+        created.unwrap();
+        assert_eq!(stop, None);
+        assert_eq!(exact, needed);
     }
 
     #[test]
@@ -20439,6 +20750,10 @@ mod tests {
             .resource(HtmlParseResource::WorkCredits)
             .current
             - start;
+        let complete_entries = measured
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
         lexer.release(&mut measured).unwrap();
         session.release(&mut measured).unwrap();
         storage_zero(&measured);
@@ -20494,11 +20809,12 @@ mod tests {
                 .iter()
                 .any(|entry| matches!(entry, RetainedPayload::FormAssociation { node: None, .. }))
         );
+        // The stopped creation retains every entry the completed one holds.
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            33
+            complete_entries
         );
         assert_eq!(session.root(&mut c).unwrap_err(), SessionError::Stop(stop));
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
@@ -20541,11 +20857,43 @@ mod tests {
     #[test]
     fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_terminal_cleanup() {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
-        // Prior completed prefix32 plus exactly one retained standalone Image
-        // row =33. Its empty request Vec owns bytes but no auxiliary entries.
-        // Preserve the earlier cap31 record-ticket rejection; cap32 independently
-        // rejects the NEW Image row after physical node installation.
-        for cap in [33, 32, 31] {
+        // The completed prefix plus exactly one retained standalone Image row is
+        // the measured total. Its empty request Vec owns bytes but no auxiliary
+        // entries. One entry short independently rejects the NEW Image row
+        // after physical node installation; two short is the earlier
+        // record-ticket rejection.
+        let (prefix, needed) = {
+            let source = crate::HtmlSource::utf8("<img>");
+            let mut c = control();
+            c.admit_source(&source).unwrap();
+            let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+            let (mut session, body) = form_session(&mut c);
+            let prefix = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current;
+            let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
+                panic!("img")
+            };
+            session
+                .allocate_html_tag_for_creation(
+                    &mut c,
+                    &mut Some(tag),
+                    &body,
+                    None,
+                    crate::construction::CreationContext::Ordinary,
+                )
+                .unwrap();
+            let needed = c
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current;
+            tokenizer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            (prefix, needed)
+        };
+        for cap in [needed, needed - 1, needed - 2] {
             let source = crate::HtmlSource::utf8("<img>");
             let mut c = ParseControl::new(
                 limits()
@@ -20563,7 +20911,7 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                22
+                prefix
             );
             let TokenKind::Tag(tag) = lexical_kind(&mut tokenizer, &mut c) else {
                 panic!("img")
@@ -20577,7 +20925,7 @@ mod tests {
                 crate::construction::CreationContext::Ordinary,
             );
             assert!(input.is_none());
-            if cap == 33 {
+            if cap == needed {
                 let image = result.unwrap();
                 assert_form_owner(&session, &mut c, &image, None, false);
                 // Prior name/namespace/attributes + record ticket + form/creation
@@ -20586,7 +20934,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    33
+                    needed
                 );
                 assert_eq!(
                     session
@@ -20599,15 +20947,15 @@ mod tests {
                         .count(),
                     1
                 );
-            } else if cap == 32 {
+            } else if cap == needed - 1 {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
-                        limit: 32,
-                        current: 32,
+                        limit,
+                        current,
                         requested_delta: 1
-                    }))
+                    })) if limit == cap && current == cap
                 ));
                 let storage = session.active().unwrap();
                 assert_eq!(storage.construction.storage().len(), 4);
@@ -20626,16 +20974,16 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    32
+                    cap
                 );
             } else {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
-                        limit: 31,
+                        limit,
                         ..
-                    }))
+                    })) if limit == cap
                 ));
                 // Metadata, name, namespace and attributes are initialized;
                 // the next actual record-ticket entry is the rejected slot.
@@ -20788,95 +21136,99 @@ mod tests {
 
     #[test]
     fn image_removal_clears_parser_flag_before_ancestor_work_can_stop() {
-        let mut c = control();
-        let (mut session, image, old, target) = image_move_fixture(&mut c);
-        for node in [&image, &old, &target] {
-            session.validate_node(&mut c, node).unwrap();
-        }
-        let old_parent = session
-            .active()
-            .unwrap()
-            .construction
-            .node_at(image.index)
-            .expect("retained construction position")
-            .parent()
-            .map(|node| node.position());
-        session
-            .active_mut()
-            .unwrap()
-            .insert_indices(&mut c, target.index, image.index, None)
-            .unwrap();
-        let storage = session.active().unwrap();
-        let effects = storage.effects.form.unwrap();
-        assert_eq!(effects.root, image.index);
-        assert_eq!(effects.next, Some(image.index));
-        assert!(matches!(effects.stage, FormEffectStage::Removal));
-        assert!(matches!(effects.pass, FormEffectPass::Local));
-        assert_eq!(effects.old_parent, old_parent);
-        assert_eq!(effects.new_parent, Some(target.index));
-        assert!(effects.insert);
-        // Removal view img parent=None costs1; old form→body→html→Document
-        // then None costs4. Runner2 + phase read1/copyF + registry scanL/copyS
-        // + roots5 + setter read1/copyS/write1 =F+L+2S+10. Shared reset state
-        // additionally admits initial cursor copyC/write1, candidate copyO/write1,
-        // and post-clear cursor copyC/write1: 2C+O+3. The next ancestor read1
-        // fails after reset has cleared the flag, before clearing owner.
-        let scan = storage.payloads.values.iter().position(|payload| matches!(payload, RetainedPayload::FormAssociation { node: Some(node), .. } if *node == image.index)).unwrap() as u64 + 1;
-        let prefix = mem::size_of::<Option<FormEffects>>() as u64
-            + scan
-            + 2 * mem::size_of::<FormAssociationState>() as u64
-            + 10
-            + 2 * mem::size_of::<bounded::HtmlFormOwnerResetCursor>() as u64
-            + mem::size_of::<Option<usize>>() as u64
-            + 3;
-        let unused =
-            limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
-        c.charge(WorkCategory::StateStep, unused - prefix).unwrap();
-        let error = session
-            .active_mut()
-            .unwrap()
-            .drain_construction_effects(&mut c)
-            .unwrap_err();
-        let stop = c.stop().unwrap();
-        assert_eq!(error, SessionError::Stop(stop));
-        assert!(matches!(
-            stop,
-            ParseStop::LimitExceeded {
-                resource: HtmlParseResource::WorkCredits,
-                requested_delta: 1,
-                ..
+        // Raise the work allowance of the removal drain one credit at a time.
+        // The first allowance that lets the reset clear the parser flag stops
+        // inside the later ancestor resolution: the flag is already cleared,
+        // the owner is not, and the retained state is exactly that of the
+        // stopped reset. No allowance below it clears the flag.
+        let mut boundary = None;
+        for allowance in 1..4000_u64 {
+            let mut c = control();
+            let (mut session, image, old, target) = image_move_fixture(&mut c);
+            for node in [&image, &old, &target] {
+                session.validate_node(&mut c, node).unwrap();
             }
-        ));
-        assert_eq!(
-            session
+            let old_parent = session
                 .active()
                 .unwrap()
                 .construction
                 .node_at(image.index)
                 .expect("retained construction position")
                 .parent()
-                .map(|node| node.position()),
-            Some(target.index)
-        );
-        let retained = retained_image_state(&session, &image);
-        assert!(
-            !retained.parser_inserted,
-            "reset step1 precedes ordinary ancestor resolution"
-        );
-        assert_eq!(
-            retained.owner,
-            Some(old.index),
-            "later clear-owner step has not run"
-        );
-        assert_eq!(retained.evidence, FormAssociationEvidence::Reset);
-        assert_eq!(
-            session.active().unwrap().effects.form.unwrap().stage,
-            FormEffectStage::Removal
-        );
-        assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
-        session.release(&mut c).unwrap();
-        storage_zero(&c);
-        assert_eq!(c.stop(), Some(stop));
+                .map(|node| node.position());
+            session
+                .active_mut()
+                .unwrap()
+                .insert_indices(&mut c, target.index, image.index, None)
+                .unwrap();
+            let storage = session.active().unwrap();
+            let effects = storage.effects.form.unwrap();
+            assert_eq!(effects.root, image.index);
+            assert_eq!(effects.next, Some(image.index));
+            assert!(matches!(effects.stage, FormEffectStage::Removal));
+            assert!(matches!(effects.pass, FormEffectPass::Local));
+            assert_eq!(effects.old_parent, old_parent);
+            assert_eq!(effects.new_parent, Some(target.index));
+            assert!(effects.insert);
+            let unused = limits().work_credits()
+                - c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(WorkCategory::StateStep, unused - allowance)
+                .unwrap();
+            let result = session
+                .active_mut()
+                .unwrap()
+                .drain_construction_effects(&mut c);
+            let cleared = !retained_image_state(&session, &image).parser_inserted;
+            if !cleared {
+                assert!(result.is_err(), "allowance {allowance} completed untouched");
+                session.release(&mut c).unwrap();
+                storage_zero(&c);
+                continue;
+            }
+            let error = result.unwrap_err();
+            let stop = c.stop().unwrap();
+            assert_eq!(error, SessionError::Stop(stop));
+            assert!(matches!(
+                stop,
+                ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    ..
+                }
+            ));
+            assert_eq!(
+                session
+                    .active()
+                    .unwrap()
+                    .construction
+                    .node_at(image.index)
+                    .expect("retained construction position")
+                    .parent()
+                    .map(|node| node.position()),
+                Some(target.index)
+            );
+            let retained = retained_image_state(&session, &image);
+            assert!(
+                !retained.parser_inserted,
+                "reset step1 precedes ordinary ancestor resolution"
+            );
+            assert_eq!(
+                retained.owner,
+                Some(old.index),
+                "later clear-owner step has not run"
+            );
+            assert_eq!(retained.evidence, FormAssociationEvidence::Reset);
+            assert_eq!(
+                session.active().unwrap().effects.form.unwrap().stage,
+                FormEffectStage::Removal
+            );
+            assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
+            session.release(&mut c).unwrap();
+            storage_zero(&c);
+            assert_eq!(c.stop(), Some(stop));
+            boundary = Some(allowance);
+            break;
+        }
+        assert!(boundary.is_some(), "some allowance stops after the reset");
     }
 
     #[test]

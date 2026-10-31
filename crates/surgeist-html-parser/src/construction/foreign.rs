@@ -1208,6 +1208,7 @@ impl SessionStorage {
                 unreachable!()
             };
             *element = Some(node.index);
+            self.payloads.join_row(container);
 
             self.initial_nonce_attributes(control, node.index)?;
             Ok(node)

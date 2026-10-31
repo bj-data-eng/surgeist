@@ -17,7 +17,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<Option<(usize, InputState)>, SessionError> {
-        for slot in 0..self.payloads.values.len() {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Input)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::Input {
                 node: Some(owner),

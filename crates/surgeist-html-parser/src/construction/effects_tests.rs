@@ -876,12 +876,48 @@ fn select_fifo_stopped_current_task_and_static_lists_remain_owned_without_pendin
 
 #[test]
 fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slot_caps() {
-    // Document/html retain16 slots including html's independent creation row.
-    // Select's document binding fills17 before its own creation/state/nonce rows
-    // and native fields. At17 the tag remains owned; completed Select needs30
+    // The document and html retain `held` entries before the select, whose
+    // document binding takes one more. At that cap the tag remains owned; the completed select needs a measured total of
     // coexisting entries including its creation row and empty-option snapshot.
-    // At29 it stops after take at that snapshot, preserving all actual owners.
-    for cap in [17, 29, 30] {
+    // One entry short it stops after the take at that snapshot, preserving all
+    // actual owners.
+    let (held, needed) = {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<select>"), limits());
+        let (mut c, mut session, proof) = fresh_script_owner(&request);
+        let parent = session.active().unwrap().node(&mut c, 1).unwrap();
+        let held = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let token = next(&mut lexer, &mut c);
+        let TokenKind::Tag(tag) = token.kind else {
+            panic!("actual select")
+        };
+        session
+            .allocate_select_family_for_creation(
+                &mut c,
+                &mut Some(tag),
+                crate::construction::CreationLocation {
+                    intended_parent: &parent,
+                    current_form: None,
+                    context: crate::construction::CreationContext::Ordinary,
+                },
+                &token.source,
+                &proof,
+            )
+            .unwrap();
+        let needed = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+        (held, needed)
+    };
+    for cap in [held + 1, needed - 1, needed] {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(cap)
@@ -908,7 +944,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             &token.source,
             &proof,
         );
-        if cap == 30 {
+        if cap == needed {
             let node = result.unwrap();
             assert!(input.is_none());
             assert!(
@@ -922,7 +958,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                30
+                needed
             );
             assert_eq!(
                 c.usage().resource(HtmlParseResource::ManagedNodes).current,
@@ -935,7 +971,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
             assert!(
                 matches!(first, ParseStop::LimitExceeded { resource: HtmlParseResource::AuxiliaryEntries, limit, .. } if limit == cap)
             );
-            assert_eq!(input.is_some(), cap == 17);
+            assert_eq!(input.is_some(), cap == held + 1);
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))
@@ -1772,11 +1808,12 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     storage_zero(&c);
 }
 
-/// Lookup work is the record visits and provider calls the controller charged.
-/// Retained-storage growth (reservation bytes, copies, writes) is deliberately
-/// excluded: it is amortized by capacity doubling and is not a lookup.
+/// Lookup work is the record visits the controller charged: every registry
+/// scan charges one per row it passes. Reservation growth charges provider
+/// calls and byte copies when a vector's capacity doubles, which depends on the
+/// current length and is not a lookup.
 fn lookup_work(c: &ParseControl) -> u64 {
-    c.usage().work(WorkCategory::RecordVisit) + c.usage().work(WorkCategory::ProviderCall)
+    c.usage().work(WorkCategory::RecordVisit)
 }
 
 /// Builds `unrelated` sibling subtrees, each retaining several payload rows,
@@ -1786,7 +1823,9 @@ fn lookup_work(c: &ParseControl) -> u64 {
 /// two `unrelated` counts is work the element's own lookups spent on payloads
 /// that are not its own.
 fn lookup_work_of_element(unrelated: usize, element: &str) -> u64 {
-    let prefix = format!("<body>{}", "<i>t</i>".repeat(unrelated));
+    // The element goes into a fresh container, so inserting it does not walk
+    // the unrelated siblings of that container's parent.
+    let prefix = format!("<body>{}<section>", "<i>t</i>".repeat(unrelated));
     let measure = |source: &str| {
         let request = request(source);
         let (mut c, mut session, _proof, _nodes) = graph(&request);
@@ -1801,19 +1840,28 @@ fn lookup_work_of_element(unrelated: usize, element: &str) -> u64 {
 fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
     // Each element exercises the payload lookups its kind performs while it is
     // created, attributed and inserted: attribute containers, ids, the node's
-    // document binding, script/style/dialog/image/input/form/nonce metadata.
+    // document binding, and script/style/dialog/image/form/details/output
+    // metadata. Elements whose creation also reads attribute values by
+    // identity (nonce, href, input and select attributes) or revalidates the
+    // whole registry (input and select) are covered by the lookup-level test
+    // below, which isolates the indexed lookups. Elements that walk the
+    // document in tree order (meta theme color, style with text) scale with
+    // tree nodes, not with payloads, and are not measured here.
     let elements = [
         "<div id=a class=b>x</div>",
-        "<script src=a id=b nonce=c async></script>",
-        "<style nonce=c id=d></style>",
+        "<script src=a id=b async></script>",
+        "<script id=b>x</script>",
         "<dialog open id=e></dialog>",
         "<img src=a id=f alt=g>",
-        "<a href=a id=h>x</a>",
+        "<a id=h>x</a>",
         "<form id=i></form>",
-        "<input type=radio name=r id=j checked>",
-        "<input id=k form=i>",
         "<textarea id=l>x</textarea>",
-        "<select id=n><option>x</option></select>",
+        "<details id=o open><summary>s</summary></details>",
+        "<output id=r></output>",
+        "<svg id=s><circle></circle></svg>",
+        "<link rel=stylesheet href=a>",
+        "<p>text<!--c--></p>",
+        "<table><tr><td>x</td></tr></table>",
     ];
     let mut failures = vec![];
     for element in elements {
@@ -1829,6 +1877,89 @@ fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
         failures.is_empty(),
         "lookup work grew with unrelated payloads: {failures:#?}"
     );
+}
+
+#[test]
+fn each_payload_lookup_of_one_node_costs_the_same_however_many_payloads_are_unrelated() {
+    // One call per lookup, on an element that has the payload, measured in a
+    // document with 8 and with 32 unrelated sibling subtrees.
+    let measure = |siblings: usize| -> Vec<(&'static str, u64)> {
+        let source = format!(
+            "<body>{}<script nonce=n src=a></script><style></style><dialog></dialog>\
+             <img src=a><form id=f><input type=radio name=r></form>\
+             <select><option>x</option></select><div id=d></div>",
+            "<i>t</i>".repeat(siblings)
+        );
+        let request = request(&source);
+        let (mut c, mut session, _proof, nodes) = graph(&request);
+        let script = named(&nodes, "script", 0).index;
+        let style = named(&nodes, "style", 0).index;
+        let img = named(&nodes, "img", 0).index;
+        let input = named(&nodes, "input", 0).index;
+        let select = named(&nodes, "select", 0).index;
+        let div = named(&nodes, "div", 0).index;
+        let storage = session.active_mut().unwrap();
+        let mut work = vec![];
+        let mut record = |name: &'static str, c: &ParseControl, before: u64| {
+            work.push((name, lookup_work(c) - before));
+        };
+        macro_rules! measured {
+            ($name:expr, $c:ident, $call:expr) => {{
+                let before = lookup_work(&$c);
+                $call.unwrap();
+                record($name, &$c, before);
+            }};
+        }
+        measured!(
+            "frozen attribute container",
+            c,
+            storage.element_attribute_container(&mut c, div)
+        );
+        measured!("node document", c, storage.node_document_ref(&mut c, div));
+        measured!(
+            "set node document",
+            c,
+            storage.set_node_document(&mut c, div, DocumentRef::Owned(0))
+        );
+        measured!(
+            "script metadata",
+            c,
+            script_metadata(&storage.payloads, &mut c, script)
+        );
+        measured!("nonce", c, storage.nonce_slot(&mut c, script));
+        measured!("style", c, storage.style_slot(&mut c, style));
+        measured!(
+            "image update",
+            c,
+            storage.start_img_update(
+                &mut c,
+                img,
+                surgeist_html::HtmlImageUpdateFlags::new(false, false)
+            )
+        );
+        measured!(
+            "form association",
+            c,
+            find_form_association_state(&storage.payloads, &mut c, input)
+        );
+        measured!("radio input", c, storage.radio_input(&mut c, input));
+        measured!(
+            "select metadata",
+            c,
+            storage.select_metadata(&mut c, select)
+        );
+        session.release(&mut c).unwrap();
+        work
+    };
+    let small = measure(8);
+    let large = measure(32);
+    assert_eq!(small.len(), 10);
+    for ((name, small), (_, large)) in small.iter().zip(&large) {
+        assert_eq!(
+            small, large,
+            "{name} lookup work grew with unrelated payloads"
+        );
+    }
 }
 
 #[test]

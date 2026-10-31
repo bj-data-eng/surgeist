@@ -275,7 +275,7 @@ impl SessionStorage {
             payload_write::<crate::HtmlParseBaseFacts>(c, 1)?;
             let facts = facts.clone();
             self.prepare_payload_slot_owned(c)?;
-            self.payloads.values.push(RetainedPayload::BaseDocument {
+            self.payloads.push_row(RetainedPayload::BaseDocument {
                 node,
                 facts,
                 first: None,
@@ -325,7 +325,7 @@ impl SessionStorage {
             let document = self.node_document_ref(c, node)?;
             let cause = self.associated_cause(c)?;
             self.prepare_payload_slot_owned(c)?;
-            self.payloads.values.push(RetainedPayload::Hyperlink {
+            self.payloads.push_row(RetainedPayload::Hyperlink {
                 node,
                 state: HyperlinkMetadata {
                     document,
@@ -345,7 +345,7 @@ impl SessionStorage {
             usage.add(mem::size_of::<Vec<u16>>(), 0, 0, c)?;
             payload_write::<ImageMetadata>(c, 1)?;
             usage.acquire(c)?;
-            self.payloads.values.push(RetainedPayload::Image {
+            self.payloads.push_row(RetainedPayload::Image {
                 node,
                 state: ImageMetadata {
                     fresh: HtmlImgFreshState::fresh(),
@@ -522,13 +522,13 @@ impl SessionStorage {
             return Ok(Err(HyperlinkUnavailable::PolicyHistory));
         }
         let mut environment = None;
-        for payload in &self.payloads.values {
+        if let Some(slot) = self.payloads.joined(c, document, Join::BaseDocument)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::BaseDocument { node, facts, first } = payload
+            if let RetainedPayload::BaseDocument { node, facts, first } =
+                &self.payloads.values[slot]
                 && *node == document
             {
                 environment = Some((facts, first));
-                break;
             }
         }
         let Some((facts, first)) = environment else {
@@ -542,19 +542,18 @@ impl SessionStorage {
             )));
         };
         let mut frozen = None;
-        if let Some(first) = first {
-            for payload in &self.payloads.values {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                if let RetainedPayload::Base {
-                    node: Some(node),
-                    frozen: base::BaseValue::Frozen(value),
-                    ..
-                } = payload
-                    && node == first
-                {
-                    frozen = Some(&value.value);
-                    break;
-                }
+        if let Some(first) = first
+            && let Some(slot) = self.payloads.joined(c, *first, Join::Base)?
+        {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            if let RetainedPayload::Base {
+                node: Some(node),
+                frozen: base::BaseValue::Frozen(value),
+                ..
+            } = &self.payloads.values[slot]
+                && node == first
+            {
+                frozen = Some(&value.value);
             }
         }
         let selection = if first.is_some() {
@@ -644,15 +643,10 @@ impl SessionStorage {
         node: usize,
         raw: Option<usize>,
     ) -> Result<(), SessionError> {
-        let mut slot = None;
-        for (index, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Hyperlink { node: n, .. } if *n == node) {
-                slot = Some(index);
-                break;
-            }
-        }
-        let slot = slot.ok_or(SessionError::WrongToken)?;
+        let slot = self
+            .payloads
+            .joined(c, node, Join::Hyperlink)?
+            .ok_or(SessionError::WrongToken)?;
         let mut cursor = HtmlHyperlinkSetUrlCursor::new();
         let mut result = None;
         loop {
@@ -752,15 +746,7 @@ impl SessionStorage {
         node: usize,
         flags: HtmlImageUpdateFlags,
     ) -> Result<(), SessionError> {
-        let mut slot = None;
-        for (index, payload) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(payload, RetainedPayload::Image { node: n, .. } if *n == node) {
-                slot = Some(index);
-                break;
-            }
-        }
-        let Some(slot) = slot else {
+        let Some(slot) = self.payloads.joined(c, node, Join::Image)? else {
             return Ok(());
         };
         let activity = self.image_document_activity(c, node)?;
