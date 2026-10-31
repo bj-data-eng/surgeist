@@ -1865,9 +1865,9 @@ fn completed_native_units_are_exact_and_admitted_before_each_read() {
             let NativeKind::Text(text) = view.kind(&text_node).unwrap() else {
                 panic!("text")
             };
-            // HTML 877d: in body U+0000 is ignored, input preprocessing
-            // normalizes CR LF to one LF, and surrogate code units pass
-            // through unpaired.
+            // HTML 877d: in body U+0000 is ignored, so the high and low
+            // surrogate units become adjacent, and input preprocessing
+            // normalizes CR LF to one LF.
             assert_eq!(units(&mut view, text), vec![0xd800, 0xdc00, 10]);
             let used = view
                 .usage()
@@ -3093,7 +3093,9 @@ fn completed_release_one_short_preflight_retains_owner_then_terminal_cleanup_is_
     };
     let preflight = search(&|spare| first_release(spare).1);
     let needed = search(&|spare| first_release(spare).0);
-    assert!(0 < preflight && preflight <= needed);
+    // The preflight is only the first admission of a release that goes on
+    // to release the owner's parts, so completing needs strictly more.
+    assert!(0 < preflight && preflight < needed);
 
     // Exactly the needed work releases the owner and consumes it.
     let exact_request = request();

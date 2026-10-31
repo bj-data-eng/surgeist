@@ -762,7 +762,7 @@ mod tests {
     }
 
     #[test]
-    fn mathml_text_group_retains_exact_header_unit_and_refusal_costs() {
+    fn mathml_text_group_membership_succeeds_at_measured_budget_and_refuses_one_short() {
         let name = QualifiedName::new(Namespace::mathml(), Some("p".into()), "mtext");
         // HTML 877d: a MathML mtext element is a MathML text integration
         // point. The work a successful classification needs is measured from

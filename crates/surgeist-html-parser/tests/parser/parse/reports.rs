@@ -405,8 +405,8 @@ fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
     // The short initialization prefix, both stage boundaries, the middle of
     // publication and its final writes, without every intermediate prefix.
     let cuts = (0..2048)
-        .chain(construction - 2..construction + 2)
-        .chain(transfer - 2..transfer + 2)
+        .chain(construction.saturating_sub(2)..construction + 2)
+        .chain(transfer.saturating_sub(2)..transfer + 2)
         .chain([transfer + (total - transfer) / 2])
         .chain(total - 32..total);
     for work in cuts {
