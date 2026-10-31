@@ -23,6 +23,27 @@ preference mapping and callback publication without a display.
 See [host observations](explanation.md#host-observations-and-consumer-inputs) for
 the supported values, sampling opportunities and unavailable observations.
 
+## Reproduce original-unit word navigation
+
+Run the real AccessKit consumer-tree regression without a display:
+
+```sh
+cargo test --offline --locked -j 1 -p surgeist-window --features accessibility --test accesskit_word_navigation
+```
+
+The fixtures preserve original text, selectable units and exact logical positions
+through true end. They cover ordinary runs and 262-unit ASCII/UTF8 runs, including
+word starts at 5 and the maximum encoded start 255. Every position checks word
+classification and forward/backward navigation against independent boundaries.
+Physical Cell caret policy does not participate.
+
+The locked consumer 0.36.0 currently fails these checks by narrowing the query
+index to `u8`. The [three-search candidate](../tests/fixtures/accesskit-consumer-wide-indices.patch)
+widens stored starts to `usize`; it is an unapplied proposal, not a runtime fix.
+See [issue #1613](https://github.com/bj-data-eng/surgeist/issues/1613) for execution
+and native integration qualification. The consumer-only candidate preserves the
+AccessKit core 0.24.1 protocol shared with Text.
+
 These procedures assume you have completed [getting started](getting-started.md).
 The linked source owns the exact API contract.
 
