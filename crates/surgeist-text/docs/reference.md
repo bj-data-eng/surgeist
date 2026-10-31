@@ -685,8 +685,10 @@ endpoints while preserving the fixed square and chosen inner packet. A policy wi
 no exterior targets succeeds with an empty complete allocation. The selected allocation
 payload participates in the existing scope allowance and shared-product census.
 
-Interior endpoint or directional controls still return
-`TextCombineError::UnsupportedCellPreparation`. An in-cell TAB with deferred CSS
+Source-resolved inner directional controls retain their effect in the used bidi
+levels without becoming provider scalars or additional outer units. Interior
+inline-boundary controls still return `TextCombineError::UnsupportedCellPreparation`.
+An in-cell TAB with deferred CSS
 tab stops is also unsupported; source processing retains genuine forced-break
 removal and glyph-free input provenance. A cell without a raw logical participant
 retains its actual relation-event interval for direction queries. Its whole
