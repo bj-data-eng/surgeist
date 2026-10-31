@@ -7,6 +7,12 @@
 
 use crate::css::support::property_expectations::{self, CatalogExpectation};
 
+/// The colour whose `1e308` literal needs the most actions of the corpus. The
+/// fixed colour action ceiling of the corpus is derived from its requirement,
+/// so that it is refused with an action limit under the fixed limits and
+/// reaches its numerical outcome under the large allowance.
+pub const NUMERICAL_OVERFLOW_INPUT: &str = "color-mix(in srgb, lab(0 1e308 0), red)";
+
 /// One observation request.
 pub struct Case {
     pub id: String,
@@ -42,7 +48,7 @@ pub fn all() -> Vec<Case> {
             format!("color.numerical-mix-overflow.absent.{suffix}"),
             front,
             "absent",
-            "color-mix(in srgb, lab(0 1e308 0), red)",
+            NUMERICAL_OVERFLOW_INPUT,
         ));
     }
     cases.extend(COLOR_LIMIT_INPUTS.iter().map(|(slug, input)| {
@@ -320,11 +326,7 @@ const COLOR_INPUTS: &[(&str, &str, &str)] = &[
         "absent",
         "lab(50 calc(infinity) 0)",
     ),
-    (
-        "numerical-mix-overflow",
-        "absent",
-        "color-mix(in srgb, lab(0 1e308 0), red)",
-    ),
+    ("numerical-mix-overflow", "absent", NUMERICAL_OVERFLOW_INPUT),
 ];
 
 /// `(front, argument, slug, input)`; the case id is `front.{front}.{slug}`.

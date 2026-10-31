@@ -21,7 +21,13 @@ pub enum CssColorKernel {
     Grammar,
     /// Transfer a fixed checked descriptor between stages.
     Transition,
-    /// Select a decimal search boundary or update fixed search registers.
+    /// Select a decimal search boundary or update fixed search registers. This
+    /// includes the `Normalize` step: it strips the accumulator's trailing
+    /// zeros, tries the exact fast path (one IEEE multiply or divide) and
+    /// computes the bounded binary64 estimate of the encoding. The cost is
+    /// constant because the accumulator holds at most 19 digits, the fast path
+    /// is one operation, and the estimate takes at most 16 chunked
+    /// multiplications or divisions.
     DecimalSearch,
     /// Initialize one boundary digit or transition its fixed multiplication state.
     DecimalDigit,
