@@ -1590,6 +1590,12 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     // is checked at each reachable stop instead of at offsets computed from
     // the frame's layout. The identity clone is a provider call: whether a
     // stop came before or after its admission is read from that count.
+    //
+    // The frame adopts the context element (position 1), whose document
+    // binding starts as something other than the captured document. The
+    // step binds the element (`set_node_document`, effects.rs AdoptSubtree)
+    // before it advances the frame, so the binding is the observable effect.
+    const ELEMENT: usize = 1;
     let start = |c: &mut ParseControl,
                  owner: &mut ParserArenaSession,
                  document: &crate::HtmlCaptureDocumentId| {
@@ -1599,15 +1605,35 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
             .start_effect(
                 c,
                 EffectFrame::AdoptSubtree {
-                    root: 0,
-                    next: None,
+                    root: ELEMENT,
+                    next: Some(ELEMENT),
                     document: DocumentRef::Captured(document.clone()),
                 },
             )
             .unwrap();
     };
-    let needed = {
+    // The element's retained document binding, read without charging work so
+    // it can be observed after a stop.
+    let binding = |owner: &ParserArenaSession| {
+        owner
+            .active()
+            .unwrap()
+            .payloads
+            .values
+            .iter()
+            .find_map(|payload| match payload {
+                RetainedPayload::NodeDocument {
+                    node: Some(bound),
+                    document,
+                } if *bound == ELEMENT => Some(document.clone()),
+                _ => None,
+            })
+            .expect("the element has a document binding")
+    };
+    let (needed, initial) = {
         let (mut c, mut owner, document) = captured_effect_owner();
+        let initial = binding(&owner);
+        assert_ne!(initial, DocumentRef::Captured(document.clone()));
         start(&mut c, &mut owner, &document);
         let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
         let storage = owner.active_mut().unwrap();
@@ -1615,17 +1641,22 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
         assert!(storage.effects.current.is_none());
         let needed = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
         assert!(c.usage().work(WorkCategory::ProviderCall) > 0);
+        // The completed drain adopted the element into the captured document.
+        assert_eq!(binding(&owner), DocumentRef::Captured(document));
         owner.release(&mut c).unwrap();
         storage_zero(&c);
-        needed
+        (needed, initial)
     };
     assert!(needed > 2);
     #[derive(Debug, Eq, PartialEq)]
     enum Stopped {
-        /// The current frame is still owned with its captured identity.
+        /// The frame is still on the element and has not cloned its identity.
         BeforeClone,
+        /// The identity clone was admitted; the frame is still on the element.
         AfterClone,
-        /// The frame was fully applied; only later bookkeeping was refused.
+        /// The element is adopted and the frame advanced past it.
+        Advanced,
+        /// The frame is finished and cleared.
         Applied,
     }
     let mut observed = Vec::new();
@@ -1650,19 +1681,40 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
         ));
         // Nothing is ever half-transferred.
         assert!(storage.effects.transfer.is_none(), "remaining {remaining}");
+        let captured = DocumentRef::Captured(document.clone());
+        let bound = binding(&owner);
+        let storage = owner.active().unwrap();
         let stopped = match storage.effects.current.as_ref() {
             Some(EffectFrame::AdoptSubtree {
-                next: None,
+                next: Some(ELEMENT),
                 document: DocumentRef::Captured(id),
                 ..
             }) if id == &document => {
+                // Adopting the element may or may not have happened yet, but
+                // the binding is always one of the two whole values.
+                assert!(
+                    bound == initial || bound == captured,
+                    "remaining {remaining}"
+                );
                 if c.usage().work(WorkCategory::ProviderCall) == providers {
+                    assert_eq!(bound, initial, "remaining {remaining}");
                     Stopped::BeforeClone
                 } else {
                     Stopped::AfterClone
                 }
             }
-            None => Stopped::Applied,
+            Some(EffectFrame::AdoptSubtree {
+                next: None,
+                document: DocumentRef::Captured(id),
+                ..
+            }) if id == &document => {
+                assert_eq!(bound, captured, "remaining {remaining}");
+                Stopped::Advanced
+            }
+            None => {
+                assert_eq!(bound, captured, "remaining {remaining}");
+                Stopped::Applied
+            }
             Some(_) => panic!("remaining {remaining}: the current frame changed"),
         };
         observed.push(stopped);
@@ -1673,16 +1725,19 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     // Stops advance through the drain in order and reach every stage: a
     // larger budget never stops earlier.
     assert_eq!(observed.first(), Some(&Stopped::BeforeClone));
-    assert!(observed.contains(&Stopped::AfterClone));
+    for stage in [Stopped::AfterClone, Stopped::Advanced, Stopped::Applied] {
+        assert!(observed.contains(&stage), "{stage:?}");
+    }
     assert_eq!(observed.last(), Some(&Stopped::Applied));
     let rank = |stopped: &Stopped| match stopped {
         Stopped::BeforeClone => 0,
         Stopped::AfterClone => 1,
-        Stopped::Applied => 2,
+        Stopped::Advanced => 2,
+        Stopped::Applied => 3,
     };
     assert!(observed.windows(2).all(|w| rank(&w[0]) <= rank(&w[1])));
 
-    // The exact budget completes and leaves no current frame.
+    // The exact budget completes, adopts the element and clears the frame.
     let (mut c, mut owner, document) = captured_effect_owner();
     start(&mut c, &mut owner, &document);
     let spare =
@@ -1692,12 +1747,69 @@ fn captured_current_frame_survives_stops_before_and_after_identity_clone_admissi
     storage.drain_construction_effects(&mut c).unwrap();
     assert!(storage.effects.current.is_none());
     assert_eq!(c.stop(), None);
-    // The exact budget leaves nothing for release; a refused release latches
-    // the stop, after which cleanup is free.
-    if owner.release(&mut c).is_err() {
-        owner.release(&mut c).unwrap();
-    }
+    assert_eq!(binding(&owner), DocumentRef::Captured(document));
+    // Release is itself charged work in the running state (the pops in
+    // construction.rs release_token_attributes), so with no spare the first
+    // release is refused with a work stop. That latches the stop, after which
+    // terminal cleanup charges nothing (cleanup_owner and cleanup_release in
+    // construction.rs and parser/control.rs) and the retry succeeds.
+    let refused = owner.release(&mut c).unwrap_err();
+    assert!(matches!(
+        refused,
+        SessionError::Stop(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::WorkCredits,
+            ..
+        })
+    ));
+    assert_eq!(
+        c.stop(),
+        Some(match refused {
+            SessionError::Stop(stop) => stop,
+            _ => unreachable!(),
+        })
+    );
+    owner.release(&mut c).unwrap();
     storage_zero(&c);
+}
+
+#[test]
+fn adopting_one_node_does_not_grow_faster_than_the_payloads_it_scans() {
+    // Adopting a leaf looks up and rewrites its document binding by scanning
+    // the retained payloads (node_document_ref and set_node_document in
+    // template.rs charge one record visit per payload), so the cost may grow
+    // with the number of unrelated elements already retained, but not faster
+    // than that. The work is measured for three document sizes and its
+    // growth must not be super-linear.
+    let needed = |siblings: usize| {
+        let source = format!("<body>{}<b>x</b>", "<i>t</i>".repeat(siblings));
+        let request = request(&source);
+        let (mut c, mut session, _proof, nodes) = graph(&request);
+        let leaf = named(&nodes, "b", 0);
+        let storage = session.active_mut().unwrap();
+        storage
+            .start_effect(
+                &mut c,
+                EffectFrame::AdoptSubtree {
+                    root: leaf.index,
+                    next: Some(leaf.index),
+                    document: DocumentRef::Owned(0),
+                },
+            )
+            .unwrap();
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        storage.drain_construction_effects(&mut c).unwrap();
+        assert!(storage.effects.current.is_none());
+        let needed = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
+        if session.release(&mut c).is_err() {
+            session.release(&mut c).unwrap();
+        }
+        needed
+    };
+    let (small, medium, large) = (needed(8), needed(16), needed(32));
+    assert!(small <= medium && medium <= large);
+    // Doubling the input twice, the second increase is at most twice the
+    // first (linear), never more.
+    assert!(large - medium <= 2 * (medium - small));
 }
 
 #[test]
