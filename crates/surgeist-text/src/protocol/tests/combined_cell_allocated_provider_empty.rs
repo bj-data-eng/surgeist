@@ -4,6 +4,9 @@
 
 use super::*;
 
+#[path = "combined_cell_allocated_resources.rs"]
+mod resources;
+
 fn request(prepared: &PreparedText) -> LineSelectionRequest {
     let mut segments = prepared.source_segments();
     let segment = segments.next().unwrap();
