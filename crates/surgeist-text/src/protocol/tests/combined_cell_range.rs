@@ -347,3 +347,12 @@ fn full_original_aa_range_retains_two_distinct_inner_units_and_complete_source_c
     assert!(units[1].same_unit(&second.units().next().unwrap()));
     assert_eq!(rectangles(&full), [FIRST, SECOND]);
 }
+
+#[path = "combined_cell_range_geometry.rs"]
+mod geometry;
+
+#[path = "combined_cell_range_baseline.rs"]
+mod baseline;
+
+#[path = "combined_cell_range_source.rs"]
+mod source;

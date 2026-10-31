@@ -298,7 +298,9 @@ fn real_uniform_runs_report_outline_basis_and_physical_source_geometry() {
                 .collect::<Vec<_>>(),
             [Range::new(0, 1)]
         );
-        let piece = unit.pieces().next().unwrap();
+        let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+            panic!("ordinary Range fixture must retain Line geometry");
+        };
         assert_eq!(piece.rect(), cell);
         assert_eq!(piece.advance_edges(), (20.0, 20.0 + f64::from(raw.2)));
         assert_eq!(piece.baseline(), 100.0);

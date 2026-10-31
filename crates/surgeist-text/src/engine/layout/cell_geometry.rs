@@ -92,6 +92,17 @@ impl Arithmetic {
             );
         }
     }
+    fn layout_transform(&mut self, transform: super::CellTransform) {
+        self.finite("cell tab scale", transform.x_scale);
+        self.finite("cell tab offset", transform.x_offset);
+        if transform.x_scale <= 0.0 {
+            self.reject(
+                "cell tab scale",
+                TextNumericError::PositiveLost,
+                transform.x_scale,
+            );
+        }
+    }
     fn span(&mut self, field: &'static str, first: Point, last: Point, extent: f64) {
         if extent != 0.0 && first == last {
             self.reject(field, TextNumericError::PositiveLost, extent.abs());
@@ -148,13 +159,8 @@ fn square_point(
         ),
     }
 }
-fn metric_points(
-    cluster: &FinalizedCluster,
-    metrics: RunMetrics,
-    math: &mut Arithmetic,
-) -> [Point; 4] {
-    let x = cluster.x;
-    let end = math.add("cell cluster allocation end", x, cluster.advance);
+fn metric_points(edges: (f64, f64), metrics: RunMetrics, math: &mut Arithmetic) -> [Point; 4] {
+    let (x, end) = edges;
     let top = -metrics.ascent;
     let bottom = metrics.descent;
     math.finite("cell cluster ascent", top);
@@ -188,7 +194,34 @@ fn metric_rect(
         .content
         .font_run()
         .expect("published inner cluster has retained font metrics");
-    let points = metric_points(cluster, data.font_runs[run].metrics, math);
+    let end = math.add("cell cluster allocation end", cluster.x, cluster.advance);
+    font_metric_rect(
+        cell,
+        data.font_runs[run].metrics,
+        (cluster.x, end),
+        cluster.advance,
+        orientation,
+        placed,
+        math,
+    )
+}
+
+// Both callers qualify the genuine retained frame before entering this mapper.
+// The original whole-cluster advance stays independent of its rounded end;
+// directed Range edges instead supply their own actual coordinate difference.
+fn font_metric_rect(
+    cell: &FinalizedCell,
+    metrics: RunMetrics,
+    edges: (f64, f64),
+    advance: f64,
+    orientation: LineOrientation,
+    placed: Option<&PlacedLine>,
+    math: &mut Arithmetic,
+) -> Rect {
+    let frame = cell
+        .frame
+        .expect("font metric geometry has an executed Cell frame");
+    let points = metric_points(edges, metrics, math);
     let points = if let Some(line) = placed {
         // Use the real placed horizontal frame; no inverse/forward anchor roundtrip.
         let glyph_frame = crate::layout::cell_glyph_frame(line, cell, Point::new(0.0, 0.0));
@@ -213,14 +246,10 @@ fn metric_rect(
             )
         })
     };
-    let horizontal = math.mul(
-        "cell cluster metric advance scale",
-        frame.x_scale,
-        cluster.advance,
-    );
+    let horizontal = math.mul("cell cluster metric advance scale", frame.x_scale, advance);
     let vertical = math.finite(
         "cell cluster font metric span",
-        data.font_runs[run].metrics.ascent + data.font_runs[run].metrics.descent,
+        metrics.ascent + metrics.descent,
     );
     math.span(
         "cell cluster horizontal metric span",
@@ -235,6 +264,36 @@ fn metric_rect(
         vertical,
     );
     metric_hull(points, math)
+}
+/// Map genuine directed inner-horizontal metric edges through an actual placed
+/// Cell. These are metric coordinates; only their complete mapped spans are
+/// required displacements. No provider cluster or new baseline is constructed.
+pub(crate) fn placed_metric_rect(
+    line: &PlacedLine,
+    cell: &FinalizedCell,
+    edges: (f64, f64),
+    metrics: RunMetrics,
+    phase: TextNumericPhase,
+) -> Result<Rect> {
+    let frame = cell
+        .frame
+        .ok_or_else(|| invalid("Cell font metric geometry has no executed frame"))?;
+    let mut math = Arithmetic::checked(phase);
+    math.frame(frame);
+    math.finite("cell metric directed start", edges.0);
+    math.finite("cell metric directed end", edges.1);
+    let advance = math.finite("cell metric directed advance", edges.1 - edges.0);
+    let rect = font_metric_rect(
+        cell,
+        metrics,
+        edges,
+        advance,
+        line.orientation,
+        Some(line),
+        &mut math,
+    );
+    math.finish()?;
+    Ok(rect)
 }
 pub(crate) fn placed_cluster_rect(line: &PlacedLine, cluster: &FinalizedCluster) -> Rect {
     match cluster.frame {
@@ -399,6 +458,30 @@ fn layout_point(
         )
     }
 }
+/// Map an actual retained native-layout point without borrowing a provider
+/// baseline. The square already contains its enclosing scope displacement.
+pub(crate) fn placed_layout_point(
+    line: &PlacedLine,
+    cell: &FinalizedCell,
+    point: Point,
+    phase: TextNumericPhase,
+) -> Result<Point> {
+    let transform = cell
+        .transform
+        .ok_or_else(|| invalid("Cell layout point has no executed transform"))?;
+    let mut math = Arithmetic::checked(phase);
+    math.layout_transform(transform);
+    let point = layout_point(
+        cell,
+        transform,
+        point,
+        line.orientation,
+        Some(line),
+        &mut math,
+    );
+    math.finish()?;
+    Ok(point)
+}
 fn tab_cluster_rect(
     cell: &FinalizedCell,
     cluster: &FinalizedCluster,
@@ -437,15 +520,7 @@ pub(crate) fn qualify_tabs(
         .transform
         .ok_or_else(|| invalid("Cell TAB spans lost their layout"))?;
     let mut math = Arithmetic::checked(phase);
-    math.finite("cell tab scale", transform.x_scale);
-    math.finite("cell tab offset", transform.x_offset);
-    if transform.x_scale <= 0.0 {
-        math.reject(
-            "cell tab scale",
-            TextNumericError::PositiveLost,
-            transform.x_scale,
-        );
-    }
+    math.layout_transform(transform);
     for span in &cell.tabs {
         let before = layout_point(
             cell,

@@ -133,7 +133,9 @@ fn check(case: Case) {
     );
     assert_eq!(unit.fragments().count(), 1);
     assert_eq!(unit.pieces().len(), 1);
-    let piece = unit.pieces().next().unwrap();
+    let crate::SourceRangeGeometry::Line(piece) = unit.pieces().next().unwrap() else {
+        panic!("ordinary Range fixture must retain Line geometry");
+    };
     assert_eq!(piece.cluster_indices().collect::<Vec<_>>(), [0]);
     assert_eq!((piece.font_ascent(), piece.font_descent()), (8.0, 2.0));
     let instance = piece.effective_instance();

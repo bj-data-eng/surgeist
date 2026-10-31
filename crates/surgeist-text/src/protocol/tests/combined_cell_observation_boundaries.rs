@@ -1,4 +1,4 @@
-//! Native Cells must not claim unsupported Range or placed-AX observations.
+//! Native Cells expose genuine inner Range geometry; placed AX remains separate.
 //! Their intrinsic horizontal payload is distinct from the executed outer square;
 //! global placement bounds still describe that actual one-em square.
 
@@ -122,7 +122,7 @@ fn placed_cell(prepared: &PreparedText, line: FinalizedLine, font: &[u8], scale:
 }
 
 #[test]
-fn visible_native_cell_range_observation_refuses_instead_of_claiming_removed_source() {
+fn visible_native_cell_range_retains_its_own_horizontal_font_geometry() {
     let (processed, _analyzed, prepared, line, font) = prepared_cell("A");
     let capture_origin = processed.captured_origin(0).unwrap();
     let origin = prepared
@@ -134,22 +134,47 @@ fn visible_native_cell_range_observation_refuses_instead_of_claiming_removed_sou
     assert_eq!(origin.view().local_range(), Range::new(0, 1));
     let layout = placed_cell(&prepared, line, &font, 1.0);
     assert_eq!(layout.source(), processed.source());
-    let error = layout.source_range_fragments(&origin, Range::new(0, 1))
-        .expect_err("visible provider-backed Cell source cannot masquerade as an empty removed-source observation");
-    assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+    let range = layout
+        .source_range_fragments(&origin, Range::new(0, 1))
+        .unwrap();
+    assert_eq!(range.origin(), &origin);
+    assert_eq!(range.local_range(), Range::new(0, 1));
+    let units = range.units().collect::<Vec<_>>();
+    let [unit] = units.as_slice() else {
+        panic!("one actual A EGC");
+    };
+    let cell = unit.cell_unit().unwrap();
+    assert_eq!((cell.line_index(), cell.cell_index()), (0, 0));
     assert_eq!(
-        error.detail(),
-        Some(&ErrorDetail::SourceRangeFragments {
-            reason: SourceRangeFragmentError::UnsupportedCell { line: 0, cell: 0 },
-        })
+        cell.kind(),
+        SourceRangeCellUnitKind::Semantic { ordinal: 0 }
     );
-    assert!(
-        matches!(
-            error.detail(),
-            Some(ErrorDetail::SourceRangeFragments { .. })
-        ),
-        "the Range observation must own its Cell capability refusal: {error:?}"
+    assert_eq!(
+        cell.source_cell().scope(),
+        processed.captured_scope(1).unwrap()
     );
+    for intersections in [
+        unit.selected_intersections().collect::<Vec<_>>(),
+        unit.expanded_intersections().collect::<Vec<_>>(),
+    ] {
+        let [piece] = intersections.as_slice() else {
+            panic!("A retains its actual original");
+        };
+        assert_eq!(piece.origin(), origin);
+        assert_eq!(piece.local_range(), Range::new(0, 1));
+        assert_eq!(piece.aggregate_range(), Range::new(0, 1));
+    }
+    let pieces = unit.pieces().collect::<Vec<_>>();
+    let [SourceRangeGeometry::CellFont(piece)] = pieces.as_slice() else {
+        panic!("visible A is not removed-source metadata");
+    };
+    assert!(piece.cell_unit().same_unit(&cell));
+    assert_eq!(piece.rect(), Rect::new(95.0, 20.0, 10.0, 10.0));
+    assert_eq!(piece.inner_advance_edges(), (0.0, 10.0));
+    assert_eq!((piece.font_ascent(), piece.font_descent()), (8.0, 2.0));
+    assert_eq!(piece.effective_instance().face().bytes(), font.as_slice());
+    assert_eq!(piece.metric_frame().origin(), Point::new(95.0, 28.0));
+    assert_eq!(piece.metric_frame().x_scale(), 1.0);
 }
 
 #[test]

@@ -100,10 +100,37 @@ impl<'a> AnalyzedCombinedCell<'a> {
     /// Query-local original custody, including selected parts removed by inner
     /// edges or emitted as semantic zero SPACE. Neither hulls nor paint prove it.
     pub(crate) fn intersects_original_range(&self, origin: FlowOriginKey, local: Range) -> bool {
-        self.source_pieces().any(|part| {
-            part.piece.origin == origin
-                && part.piece.local.start.max(local.start) < part.piece.local.end.min(local.end)
-        })
+        match self.intersects_original_range_with(origin, local, || {
+            Ok::<(), std::convert::Infallible>(())
+        }) {
+            Ok(intersects) => intersects,
+            Err(never) => match never {},
+        }
+    }
+
+    /// Inspect each actual group part and original piece before reading it.
+    /// Generated parts still incur their part visit; a matching piece stops the
+    /// borrowed scan immediately, without inspecting any later occurrence.
+    pub(crate) fn intersects_original_range_with<E>(
+        &self,
+        origin: FlowOriginKey,
+        local: Range,
+        mut inspect: impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<bool, E> {
+        let plan = &self.output.plan;
+        for part in plan.groups[self.group()].parts.clone() {
+            inspect()?;
+            let part = &plan.parts[part];
+            for piece in &part.pieces {
+                inspect()?;
+                if piece.origin == origin
+                    && piece.local.start.max(local.start) < piece.local.end.min(local.end)
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
     }
 
     /// Exact original pieces, retaining repeated expansion ancestry. Generated

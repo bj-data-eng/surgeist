@@ -1,4 +1,4 @@
-//! Capability guards follow actual Cell-owned original pieces and finalized
+//! Range units follow actual Cell-owned original pieces and finalized
 //! Cell ordinals, including partial queries and provider-empty owned source.
 
 use super::*;
@@ -185,19 +185,6 @@ fn exact_origin(prepared: &PreparedText, processed: &ProcessedSource) -> Prepare
         .handle()
 }
 
-fn cell_refusal(error: Error) {
-    assert_eq!(error.code, ErrorCode::UnsupportedFeature);
-    assert!(
-        matches!(
-            error.detail(),
-            Some(ErrorDetail::SourceRangeFragments {
-                reason: SourceRangeFragmentError::UnsupportedCell { line: 0, cell: 0 },
-            })
-        ),
-        "actual line0/cell0 must own the precise Range refusal: {error:?}"
-    );
-}
-
 fn ordinary(layout: &Layout, origin: &PreparedOrigin, range: Range) {
     let result = layout
         .source_range_fragments(origin, range)
@@ -282,21 +269,78 @@ fn one_real_root_original_distinguishes_ordinary_partial_and_crossing_cell_queri
     assert_eq!(layout.source(), processed.source());
     ordinary(&layout, &origin, Range::new(0, 1));
     ordinary(&layout, &origin, Range::new(3, 4));
-    cell_refusal(
-        layout
-            .source_range_fragments(&origin, Range::new(1, 2))
-            .unwrap_err(),
+    // Normal two10px digits have W20 and complete negative width actions;
+    // compression .5 preserves two separate source EGCs inside the E10 square.
+    let partial = layout
+        .source_range_fragments(&origin, Range::new(1, 2))
+        .unwrap();
+    assert_eq!(partial.origin(), &origin);
+    assert_eq!(partial.local_range(), Range::new(1, 2));
+    let units = partial.units().collect::<Vec<_>>();
+    let [unit] = units.as_slice() else {
+        panic!("digit1 is one semantic EGC");
+    };
+    let cell = unit.cell_unit().unwrap();
+    assert_eq!((cell.line_index(), cell.cell_index()), (0, 0));
+    assert_eq!(
+        cell.kind(),
+        SourceRangeCellUnitKind::Semantic { ordinal: 0 }
     );
-    cell_refusal(
-        layout
-            .source_range_fragments(&origin, Range::new(0, 2))
-            .unwrap_err(),
+    assert_eq!(
+        cell.source_cell().scope(),
+        processed.captured_scope(0).unwrap()
+    );
+    for intersections in [
+        unit.selected_intersections().collect::<Vec<_>>(),
+        unit.expanded_intersections().collect::<Vec<_>>(),
+    ] {
+        let [piece] = intersections.as_slice() else {
+            panic!("one genuine digit original contribution");
+        };
+        assert_eq!(piece.origin(), origin);
+        assert_eq!(piece.local_range(), Range::new(1, 2));
+        assert_eq!(piece.aggregate_range(), Range::new(1, 2));
+    }
+    let pieces = unit.pieces().collect::<Vec<_>>();
+    let [SourceRangeGeometry::CellFont(piece)] = pieces.as_slice() else {
+        panic!("digit1 keeps horizontal font geometry");
+    };
+    assert!(piece.cell_unit().same_unit(&cell));
+    assert_eq!(piece.inner_advance_edges(), (0.0, 10.0));
+    assert_eq!((piece.font_ascent(), piece.font_descent()), (8.0, 2.0));
+    assert_eq!(piece.effective_instance().face().bytes(), font.as_slice());
+    assert_eq!(piece.metric_frame().x_scale(), 0.5);
+    assert_eq!(piece.rect(), Rect::new(95.0, 30.0, 5.0, 10.0));
+    let crossing = layout
+        .source_range_fragments(&origin, Range::new(0, 2))
+        .unwrap();
+    assert_eq!(crossing.origin(), &origin);
+    assert_eq!(crossing.local_range(), Range::new(0, 2));
+    let crossed = crossing.units().collect::<Vec<_>>();
+    assert_eq!(crossed.len(), 2);
+    assert!(crossed[0].cell_unit().is_none());
+    assert!(crossed[0].pieces().len() > 0);
+    assert!(
+        crossed[0]
+            .pieces()
+            .all(|piece| matches!(piece, SourceRangeGeometry::Line(_)))
+    );
+    assert!(crossed[1].same_unit(unit));
+    assert_eq!(
+        crossed
+            .iter()
+            .flat_map(|u| u
+                .selected_intersections()
+                .map(|i| i.local_range())
+                .collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        [Range::new(0, 1), Range::new(1, 2)]
     );
     ordinary(&layout, &origin, Range::new(0, 1));
 }
 
 #[test]
-fn provider_empty_cell_still_refuses_its_authentic_owned_original_range() {
+fn provider_empty_cell_keeps_its_authentic_owned_range_without_fabricated_geometry() {
     let font = qualified_font();
     let (processed, analyzed) = captured(" ", WhiteSpace::Collapse, 0.0);
     source_custody(&processed, &analyzed, &[], 0.0);
@@ -349,11 +393,48 @@ fn provider_empty_cell_still_refuses_its_authentic_owned_original_range() {
     );
     drop(system);
     let layout = placed_vertical_cell(&prepared, line);
-    cell_refusal(
-        layout
-            .source_range_fragments(&origin, Range::new(0, 1))
-            .unwrap_err(),
+    let range = layout
+        .source_range_fragments(&origin, Range::new(0, 1))
+        .unwrap();
+    assert_eq!(range.origin(), &origin);
+    assert_eq!(range.local_range(), Range::new(0, 1));
+    let units = range.units().collect::<Vec<_>>();
+    let [unit] = units.as_slice() else {
+        panic!("one source-proved removed SPACE");
+    };
+    let cell = unit.cell_unit().unwrap();
+    assert_eq!((cell.line_index(), cell.cell_index()), (0, 0));
+    assert!(matches!(
+        cell.kind(),
+        SourceRangeCellUnitKind::Removed { .. }
+    ));
+    assert_eq!(
+        cell.source_cell().scope(),
+        processed.captured_scope(1).unwrap()
     );
+    assert_eq!(
+        (
+            unit.presentation_range().start(),
+            unit.presentation_range().end()
+        ),
+        (0, 0)
+    );
+    assert_eq!(unit.pieces().len(), 0); // The real one-em box does not invent a font rectangle.
+    for intersections in [
+        unit.selected_intersections().collect::<Vec<_>>(),
+        unit.expanded_intersections().collect::<Vec<_>>(),
+    ] {
+        let [actual] = intersections.as_slice() else {
+            panic!("one original SPACE contribution");
+        };
+        assert_eq!(actual.origin(), origin);
+        assert_eq!(actual.local_range(), Range::new(0, 1));
+        assert_eq!(actual.aggregate_range(), Range::new(0, 1));
+        assert_eq!(
+            actual.origin().view().capture_position(),
+            Some(processed.captured_origin(0).unwrap())
+        );
+    }
     #[cfg(feature = "text-accessibility")]
     {
         use accesskit::NodeId;

@@ -274,7 +274,7 @@ fn native_control_with_orientation(
     );
 }
 
-fn captured(
+pub(super) fn captured(
     text: &str,
     white_space: WhiteSpace,
     word_spacing: f64,

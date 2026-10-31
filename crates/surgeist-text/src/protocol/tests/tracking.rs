@@ -315,7 +315,7 @@ mod atomic_boundaries;
 mod authored;
 mod cursive_boundaries;
 mod external_context;
-mod fixtures;
+pub(super) mod fixtures;
 mod inter_character;
 mod profile_boundaries;
 

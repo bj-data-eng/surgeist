@@ -222,6 +222,14 @@ fn place(prepared: PreparedText, x: f64, y: f64) -> Layout {
     })
     .unwrap()
 }
+fn line_piece<'a>(piece: SourceRangeGeometry<'a>) -> SourceRangePiece<'a> {
+    match piece {
+        SourceRangeGeometry::Line(piece) => piece,
+        SourceRangeGeometry::CellFont(_) | SourceRangeGeometry::CellTab(_) => {
+            panic!("ordinary Range fixture must retain Line geometry")
+        }
+    }
+}
 fn rectangles(result: &SourceRangeFragments<'_>) -> Vec<Rect> {
     result
         .units()
@@ -262,6 +270,7 @@ fn actual_zero_formatting_units_use_own_font_metrics_and_distinct_placement_iden
     assert_eq!(
         first
             .pieces()
+            .map(line_piece)
             .next()
             .unwrap()
             .effective_instance()
@@ -388,6 +397,7 @@ fn surrogate_halves_and_cross_font_grapheme_parts_expand_without_borrowing_neigh
     assert_eq!(partial.units().count(), 1);
     assert_eq!(
         unit.pieces()
+            .map(line_piece)
             .map(|p| p.effective_instance().font_size())
             .collect::<Vec<_>>(),
         [10.0, 20.0]
@@ -690,7 +700,7 @@ fn own_formatting_font_survives_catalogue_replacement_and_system_drop() {
     drop(fonts);
     let l = place(p, 0.0, 30.0);
     let q = l.source_range_fragments(&o, Range::new(1, 2)).unwrap();
-    let piece = q.units().next().unwrap().pieces().next().unwrap();
+    let piece = line_piece(q.units().next().unwrap().pieces().next().unwrap());
     assert_eq!(piece.effective_instance().font_size(), 20.0);
     assert_eq!(piece.effective_instance().face().catalogue_identity(), &old);
     near(piece.rect().origin.y, 14.0);

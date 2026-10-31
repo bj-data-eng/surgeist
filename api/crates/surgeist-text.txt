@@ -1166,10 +1166,23 @@ pub surgeist_text::SourceProcessingScope::OutOfFlowBlock::writing_axis: core::op
 pub enum surgeist_text::SourceProcessingTopology
 pub surgeist_text::SourceProcessingTopology::Complete
 pub surgeist_text::SourceProcessingTopology::Unknown
+pub enum surgeist_text::SourceRangeCellUnitKind
+pub surgeist_text::SourceRangeCellUnitKind::Removed
+pub surgeist_text::SourceRangeCellUnitKind::Removed::ordinal: usize
+pub surgeist_text::SourceRangeCellUnitKind::Semantic
+pub surgeist_text::SourceRangeCellUnitKind::Semantic::ordinal: usize
 pub enum surgeist_text::SourceRangeFragmentError
+pub surgeist_text::SourceRangeFragmentError::AmbiguousCellUnit
+pub surgeist_text::SourceRangeFragmentError::AmbiguousCellUnit::cell: usize
+pub surgeist_text::SourceRangeFragmentError::AmbiguousCellUnit::line: usize
+pub surgeist_text::SourceRangeFragmentError::AmbiguousCellUnit::selection_unit: usize
 pub surgeist_text::SourceRangeFragmentError::AmbiguousOriginalMapping
 pub surgeist_text::SourceRangeFragmentError::AmbiguousOriginalMapping::aggregate: surgeist_text::Range
 pub surgeist_text::SourceRangeFragmentError::EmptyRange
+pub surgeist_text::SourceRangeFragmentError::MissingCellReference
+pub surgeist_text::SourceRangeFragmentError::MissingCellReference::cell: usize
+pub surgeist_text::SourceRangeFragmentError::MissingCellReference::line: usize
+pub surgeist_text::SourceRangeFragmentError::MissingCellReference::unit: usize
 pub surgeist_text::SourceRangeFragmentError::MissingFontMetrics
 pub surgeist_text::SourceRangeFragmentError::MissingFontMetrics::line: usize
 pub surgeist_text::SourceRangeFragmentError::MissingFontMetrics::unit: usize
@@ -1184,12 +1197,19 @@ pub surgeist_text::SourceRangeFragmentError::OutsideOrigin::local: surgeist_text
 pub surgeist_text::SourceRangeFragmentError::OutsideOrigin::origin: usize
 pub surgeist_text::SourceRangeFragmentError::OutsidePlacement
 pub surgeist_text::SourceRangeFragmentError::OutsidePlacement::aggregate: surgeist_text::Range
-pub surgeist_text::SourceRangeFragmentError::UnsupportedCell
-pub surgeist_text::SourceRangeFragmentError::UnsupportedCell::cell: usize
-pub surgeist_text::SourceRangeFragmentError::UnsupportedCell::line: usize
+pub surgeist_text::SourceRangeFragmentError::UnsupportedCellPartition
+pub surgeist_text::SourceRangeFragmentError::UnsupportedCellPartition::cell: usize
+pub surgeist_text::SourceRangeFragmentError::UnsupportedCellPartition::line: usize
+pub surgeist_text::SourceRangeFragmentError::UnsupportedCellPartition::unit: usize
 pub surgeist_text::SourceRangeFragmentError::UnsupportedPartition
 pub surgeist_text::SourceRangeFragmentError::UnsupportedPartition::line: usize
 pub surgeist_text::SourceRangeFragmentError::UnsupportedPartition::unit: usize
+pub enum surgeist_text::SourceRangeGeometry<'a>
+pub surgeist_text::SourceRangeGeometry::CellFont(surgeist_text::SourceRangeCellFontPiece<'a>)
+pub surgeist_text::SourceRangeGeometry::CellTab(surgeist_text::SourceRangeCellTabPiece<'a>)
+pub surgeist_text::SourceRangeGeometry::Line(surgeist_text::SourceRangePiece<'a>)
+impl surgeist_text::SourceRangeGeometry<'_>
+pub fn surgeist_text::SourceRangeGeometry<'_>::rect(&self) -> surgeist_text::Rect
 pub enum surgeist_text::SourceWritingAxis
 pub surgeist_text::SourceWritingAxis::Horizontal
 pub surgeist_text::SourceWritingAxis::Vertical
@@ -3436,11 +3456,52 @@ pub const fn surgeist_text::SourceRange::end(self) -> surgeist_text::SourcePosit
 pub const fn surgeist_text::SourceRange::range(self) -> surgeist_text::Range
 pub const fn surgeist_text::SourceRange::start(self) -> surgeist_text::SourcePosition
 pub fn surgeist_text::SourceRange::try_new(text: &surgeist_text::Text, start: usize, end: usize) -> surgeist_text::Result<Self>
+pub struct surgeist_text::SourceRangeCellFontPiece<'a>
+impl<'a> surgeist_text::SourceRangeCellFontPiece<'a>
+pub fn surgeist_text::SourceRangeCellFontPiece<'a>::cell_unit(&self) -> surgeist_text::SourceRangeCellUnit<'a>
+pub fn surgeist_text::SourceRangeCellFontPiece<'a>::effective_instance(&self) -> surgeist_text::EffectiveFontInstance<'a>
+pub fn surgeist_text::SourceRangeCellFontPiece<'a>::font_ascent(&self) -> f64
+pub fn surgeist_text::SourceRangeCellFontPiece<'a>::font_descent(&self) -> f64
+pub fn surgeist_text::SourceRangeCellFontPiece<'a>::inner_advance_edges(&self) -> (f64, f64)
+pub fn surgeist_text::SourceRangeCellFontPiece<'a>::inner_cluster_indices(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = usize>
+pub fn surgeist_text::SourceRangeCellFontPiece<'a>::metric_frame(&self) -> surgeist_text::SourceRangeCellMetricFrame
+pub fn surgeist_text::SourceRangeCellFontPiece<'a>::rect(&self) -> surgeist_text::Rect
+pub struct surgeist_text::SourceRangeCellLayoutFrame
+impl surgeist_text::SourceRangeCellLayoutFrame
+pub fn surgeist_text::SourceRangeCellLayoutFrame::em_band_extent(&self) -> f64
+pub fn surgeist_text::SourceRangeCellLayoutFrame::origin(&self) -> surgeist_text::Point
+pub fn surgeist_text::SourceRangeCellLayoutFrame::x_scale(&self) -> f64
+pub struct surgeist_text::SourceRangeCellMetricFrame
+impl surgeist_text::SourceRangeCellMetricFrame
+pub fn surgeist_text::SourceRangeCellMetricFrame::origin(&self) -> surgeist_text::Point
+pub fn surgeist_text::SourceRangeCellMetricFrame::x_scale(&self) -> f64
+pub struct surgeist_text::SourceRangeCellTabPiece<'a>
+impl<'a> surgeist_text::SourceRangeCellTabPiece<'a>
+pub fn surgeist_text::SourceRangeCellTabPiece<'a>::advance(&self) -> f64
+pub fn surgeist_text::SourceRangeCellTabPiece<'a>::cell_unit(&self) -> surgeist_text::SourceRangeCellUnit<'a>
+pub fn surgeist_text::SourceRangeCellTabPiece<'a>::container_metrics(&self) -> surgeist_text::PreparedScopeMetrics<'a>
+pub fn surgeist_text::SourceRangeCellTabPiece<'a>::inner_advance_edges(&self) -> (f64, f64)
+pub fn surgeist_text::SourceRangeCellTabPiece<'a>::layout_frame(&self) -> surgeist_text::SourceRangeCellLayoutFrame
+pub fn surgeist_text::SourceRangeCellTabPiece<'a>::rect(&self) -> surgeist_text::Rect
+pub fn surgeist_text::SourceRangeCellTabPiece<'a>::span_index(&self) -> usize
+pub struct surgeist_text::SourceRangeCellUnit<'a>
+impl<'a> surgeist_text::SourceRangeCellUnit<'a>
+pub fn surgeist_text::SourceRangeCellUnit<'a>::cell_index(&self) -> usize
+pub fn surgeist_text::SourceRangeCellUnit<'a>::expanded_intersections(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'a>> + 'a
+pub fn surgeist_text::SourceRangeCellUnit<'a>::kind(&self) -> surgeist_text::SourceRangeCellUnitKind
+pub fn surgeist_text::SourceRangeCellUnit<'a>::line_index(&self) -> usize
+pub fn surgeist_text::SourceRangeCellUnit<'a>::presentation_range(&self) -> surgeist_text::PresentationRange
+pub fn surgeist_text::SourceRangeCellUnit<'a>::same_unit(&self, other: &Self) -> bool
+pub fn surgeist_text::SourceRangeCellUnit<'a>::selected_intersections(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'a>> + 'a
+pub fn surgeist_text::SourceRangeCellUnit<'a>::source_cell(&self) -> surgeist_text::AnalyzedCombinedCell<'a>
+impl core::fmt::Debug for surgeist_text::SourceRangeCellUnit<'_>
+pub fn surgeist_text::SourceRangeCellUnit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::SourceRangeFragments<'a>
 impl surgeist_text::SourceRangeFragments<'_>
 pub fn surgeist_text::SourceRangeFragments<'_>::layout(&self) -> &surgeist_text::Layout
 pub fn surgeist_text::SourceRangeFragments<'_>::local_range(&self) -> surgeist_text::Range
 pub fn surgeist_text::SourceRangeFragments<'_>::origin(&self) -> &surgeist_text::PreparedOrigin
+pub fn surgeist_text::SourceRangeFragments<'_>::scope_alignment_usage(&self) -> core::option::Option<surgeist_text::ScopeAlignmentUsage>
 pub fn surgeist_text::SourceRangeFragments<'_>::units(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SourceRangeUnit<'_>>
 pub struct surgeist_text::SourceRangePiece<'a>
 impl<'a> surgeist_text::SourceRangePiece<'a>
@@ -3454,6 +3515,7 @@ pub fn surgeist_text::SourceRangePiece<'a>::rect(&self) -> surgeist_text::Rect
 pub struct surgeist_text::SourceRangeUnit<'a>
 impl<'a> surgeist_text::SourceRangeUnit<'a>
 pub fn surgeist_text::SourceRangeUnit<'a>::alternatives(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedAlternative> + '_
+pub fn surgeist_text::SourceRangeUnit<'a>::cell_unit(&self) -> core::option::Option<surgeist_text::SourceRangeCellUnit<'a>>
 pub fn surgeist_text::SourceRangeUnit<'a>::controls(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedControl> + '_
 pub fn surgeist_text::SourceRangeUnit<'a>::defining_sources(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'a>> + '_
 pub fn surgeist_text::SourceRangeUnit<'a>::expanded_intersections(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'_>>
@@ -3461,7 +3523,7 @@ pub fn surgeist_text::SourceRangeUnit<'a>::finalized_line(&self) -> surgeist_tex
 pub fn surgeist_text::SourceRangeUnit<'a>::fragments(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedFragment> + '_
 pub fn surgeist_text::SourceRangeUnit<'a>::hyphenation_cuts(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedHyphenationCut> + '_
 pub fn surgeist_text::SourceRangeUnit<'a>::line_index(&self) -> usize
-pub fn surgeist_text::SourceRangeUnit<'a>::pieces(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SourceRangePiece<'a>> + 'a
+pub fn surgeist_text::SourceRangeUnit<'a>::pieces(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SourceRangeGeometry<'a>> + 'a + use<'a>
 pub fn surgeist_text::SourceRangeUnit<'a>::presentation_range(&self) -> surgeist_text::PresentationRange
 pub fn surgeist_text::SourceRangeUnit<'a>::same_unit(&self, other: &Self) -> bool
 pub fn surgeist_text::SourceRangeUnit<'a>::selected_intersections(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedOriginIntersectionView<'_>>

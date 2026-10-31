@@ -365,7 +365,15 @@ fn allocated_zero_retains_natural_eligibility_and_real_source_geometry_both_dire
             .unwrap();
         let units: Vec<_> = fragments.units().collect();
         assert_eq!(units.len(), 1);
-        let pieces: Vec<_> = units[0].pieces().collect();
+        let pieces: Vec<_> = units[0]
+            .pieces()
+            .map(|piece| {
+                let crate::SourceRangeGeometry::Line(piece) = piece else {
+                    panic!("ordinary Range fixture must retain Line geometry");
+                };
+                piece
+            })
+            .collect();
         assert_eq!(pieces.len(), 1);
         assert_eq!(pieces[0].advance_edges(), (point, point));
         assert_eq!(pieces[0].effective_instance().font_size(), 10.0);
@@ -755,7 +763,12 @@ fn selected_replacement_space_and_css_tab_keep_alternative_custody_and_geometry(
         assert_eq!(
             units[0]
                 .pieces()
-                .map(|p| p.advance_edges())
+                .map(|p| {
+                    let crate::SourceRangeGeometry::Line(p) = p else {
+                        panic!("ordinary Range fixture must retain Line geometry");
+                    };
+                    p.advance_edges()
+                })
                 .collect::<Vec<_>>(),
             [(20.0, 20.0 + advance)]
         );
