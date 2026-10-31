@@ -11,11 +11,21 @@ use crate::{
     PreparedAlternative, PreparedControl, PreparedOrigin, PreparedVirtualSeparator,
     PresentationRange, Range, Rect, Result, SpacingSlotDisposition, TextNumericPhase,
 };
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-    sync::Arc,
+mod cell_views;
+mod cells;
+mod indexes;
+mod metric_geometry;
+use crate::engine::scope_alignment::accounting::{self as account, Ledger};
+use crate::processing::contextual::alignment::operations;
+use cell_views::{CellFontPiece, CellTabPiece};
+pub use cell_views::{
+    SourceRangeCellFontPiece, SourceRangeCellLayoutFrame, SourceRangeCellMetricFrame,
+    SourceRangeCellTabPiece, SourceRangeCellUnit, SourceRangeCellUnitKind, SourceRangeGeometry,
 };
+use indexes::LineIndexes;
+use metric_geometry::{GeometryCache, MetricUnits, range_geometry};
+
+use std::{fmt, sync::Arc};
 
 /// A valid source request cannot invent a placed unit or an actual font lender.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,24 +53,36 @@ pub enum SourceRangeFragmentError {
         line: usize,
         unit: usize,
     },
-    /// Exact original custody intersects a placed Cell whose range geometry is
-    /// not supported by this observer.
-    UnsupportedCell {
-        /// Actual placed-line ordinal in this Layout.
-        line: usize,
-        /// Actual finalized Cell ordinal within that line.
-        cell: usize,
-    },
     MissingFontMetrics {
         line: usize,
         unit: usize,
+    },
+    /// The actual retained font/native-layout reference for this inner EGC is missing.
+    MissingCellReference {
+        line: usize,
+        cell: usize,
+        unit: usize,
+    },
+    /// Actual provider members cannot be partitioned into this semantic EGC.
+    UnsupportedCellPartition {
+        line: usize,
+        cell: usize,
+        unit: usize,
+    },
+    /// A real pre-used source unit has no unique retained inner-unit closure.
+    AmbiguousCellUnit {
+        line: usize,
+        cell: usize,
+        selection_unit: usize,
     },
 }
 fn failure(reason: SourceRangeFragmentError) -> Error {
     let code = match reason {
         SourceRangeFragmentError::MissingFontMetrics { .. }
         | SourceRangeFragmentError::UnsupportedPartition { .. }
-        | SourceRangeFragmentError::UnsupportedCell { .. } => ErrorCode::UnsupportedFeature,
+        | SourceRangeFragmentError::MissingCellReference { .. }
+        | SourceRangeFragmentError::UnsupportedCellPartition { .. }
+        | SourceRangeFragmentError::AmbiguousCellUnit { .. } => ErrorCode::UnsupportedFeature,
         SourceRangeFragmentError::MissingOriginalMapping { .. }
         | SourceRangeFragmentError::AmbiguousOriginalMapping { .. }
         | SourceRangeFragmentError::MissingUnitGeometry { .. } => ErrorCode::LayoutFailed,
@@ -81,21 +103,37 @@ pub struct SourceRangeFragments<'a> {
     origin: PreparedOrigin,
     local: Range,
     units: Vec<Unit<'a>>,
+    usage: Option<crate::ScopeAlignmentUsage>,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UnitIdentity {
+    Line(usize),
+    Cell {
+        cell: usize,
+        kind: SourceRangeCellUnitKind,
+    },
 }
 #[derive(Debug)]
 struct Unit<'a> {
     line: usize,
-    group: usize,
+    identity: UnitIdentity,
+    order: (usize, usize),
     selected: Vec<OriginIntersection>,
     expanded: Vec<OriginIntersection>,
     fragments: Vec<usize>,
-    pieces: Vec<Piece<'a>>,
+    pieces: Vec<GeometryPiece<'a>>,
     alternatives: Vec<usize>,
     controls: Vec<usize>,
     virtuals: Vec<usize>,
     defining: Vec<OriginIntersection>,
     attributed_cuts: Vec<usize>,
     presentation: Range,
+}
+#[derive(Debug)]
+enum GeometryPiece<'a> {
+    Line(Piece<'a>),
+    CellFont(CellFontPiece<'a>),
+    CellTab(CellTabPiece),
 }
 #[derive(Debug)]
 struct Piece<'a> {
@@ -117,6 +155,10 @@ impl SourceRangeFragments<'_> {
     }
     pub fn layout(&self) -> &Layout {
         self.layout
+    }
+    /// Actual operation-local accounting when a Cell activates the query ledger.
+    pub fn scope_alignment_usage(&self) -> Option<crate::ScopeAlignmentUsage> {
+        self.usage
     }
     pub fn units(&self) -> impl ExactSizeIterator<Item = SourceRangeUnit<'_>> {
         self.units.iter().map(|unit| SourceRangeUnit {
@@ -143,7 +185,7 @@ impl<'a> SourceRangeUnit<'a> {
     pub fn same_unit(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.layout.inner, &other.layout.inner)
             && self.unit.line == other.unit.line
-            && self.unit.group == other.unit.group
+            && self.unit.identity == other.unit.identity
     }
     pub fn line_index(&self) -> usize {
         self.unit.line
@@ -240,13 +282,36 @@ impl<'a> SourceRangeUnit<'a> {
             index,
         })
     }
-    /// Real font pieces retain actual edges, or explicitly partitioned provider
-    /// advance shares, without merging distinct effective fonts.
-    pub fn pieces(&self) -> impl ExactSizeIterator<Item = SourceRangePiece<'a>> + 'a {
-        self.unit
-            .pieces
-            .iter()
-            .map(|piece| SourceRangePiece { piece })
+    /// The authentic inner Cell unit, when this is a Cell observation.
+    pub fn cell_unit(&self) -> Option<SourceRangeCellUnit<'a>> {
+        match self.unit.identity {
+            UnitIdentity::Line(_) => None,
+            UnitIdentity::Cell { cell, kind } => Some(SourceRangeCellUnit {
+                layout: self.layout,
+                unit: self.unit,
+                cell,
+                kind,
+            }),
+        }
+    }
+    /// Actual geometry retains its ordinary, inner-font or native-layout frame.
+    pub fn pieces(&self) -> impl ExactSizeIterator<Item = SourceRangeGeometry<'a>> + 'a + use<'a> {
+        let cell = self.cell_unit();
+        self.unit.pieces.iter().map(move |piece| match piece {
+            GeometryPiece::Line(piece) => SourceRangeGeometry::Line(SourceRangePiece { piece }),
+            GeometryPiece::CellFont(piece) => {
+                SourceRangeGeometry::CellFont(SourceRangeCellFontPiece {
+                    unit: cell.expect("Cell font pieces retain their authentic unit"),
+                    piece,
+                })
+            }
+            GeometryPiece::CellTab(piece) => {
+                SourceRangeGeometry::CellTab(SourceRangeCellTabPiece {
+                    unit: cell.expect("Cell TAB pieces retain their authentic unit"),
+                    piece,
+                })
+            }
+        })
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -285,15 +350,118 @@ fn overlap(a: Range, b: Range) -> Option<Range> {
 fn add(field: &'static str, base: f64, delta: f64) -> Result<f64> {
     crate::engine::layout::add(field, TextNumericPhase::SourceRangeFragments, base, delta)
 }
-fn intersections(layout: &Layout, range: Range) -> Vec<OriginIntersection> {
+fn source_intersection(
+    layout: &Layout,
+    origin: usize,
+    aggregate: Range,
+    ledger: &mut Ledger,
+) -> Result<OriginIntersection> {
+    account::work(ledger, 1)?;
+    let analyzed = &layout.inner.prepared.analyzed;
+    let row = &analyzed.paragraph.origins[origin];
+    if aggregate.start < row.aggregate.start || aggregate.end > row.aggregate.end {
+        return Err(failure(SourceRangeFragmentError::MissingOriginalMapping {
+            aggregate,
+        }));
+    }
+    let local = Range::new(
+        row.local.start + aggregate.start - row.aggregate.start,
+        row.local.start + aggregate.end - row.aggregate.start,
+    );
+    let start =
+        analyzed
+            .processed
+            .project_with(aggregate.start, crate::Affinity::Before, || {
+                account::work(ledger, 1)
+            })?;
+    let end = analyzed
+        .processed
+        .project_with(aggregate.end, crate::Affinity::After, || {
+            account::work(ledger, 1)
+        })?;
+    Ok(OriginIntersection {
+        origin,
+        aggregate,
+        local,
+        processed: Range::new(start, end),
+    })
+}
+fn visit_intersections(
+    layout: &Layout,
+    range: Range,
+    ledger: &mut Ledger,
+    mut emit: impl FnMut(OriginIntersection, &mut Ledger) -> Result<()>,
+) -> Result<()> {
+    use crate::protocol::paragraph::OriginVisit;
     layout
         .inner
         .prepared
         .analyzed
         .paragraph
-        .origin_intersections(&layout.inner.prepared.analyzed.processed, range)
-        .filter(|i| !i.aggregate.is_empty())
-        .collect()
+        .visit_origin_indices(range, |visit| match visit {
+            OriginVisit::Inspect => account::work(ledger, 1),
+            OriginVisit::Intersection { origin, aggregate } => {
+                if !aggregate.is_empty() {
+                    let piece = source_intersection(layout, origin, aggregate, ledger)?;
+                    emit(piece, ledger)?;
+                }
+                Ok(())
+            }
+        })
+}
+fn append_intersections(
+    layout: &Layout,
+    range: Range,
+    owner: Option<usize>,
+    result: &mut Vec<OriginIntersection>,
+    ledger: &mut Ledger,
+) -> Result<()> {
+    visit_intersections(layout, range, ledger, |piece, ledger| {
+        if owner.is_none_or(|owner| piece.origin == owner) {
+            account::push(ledger, result, piece)?;
+        }
+        Ok(())
+    })
+}
+fn first_seen(rows: &mut Vec<(u8, usize)>, key: (u8, usize), ledger: &mut Ledger) -> Result<bool> {
+    match operations::binary_search_by(rows, ledger.as_mut(), |row| row.cmp(&key))? {
+        Ok(_) => Ok(false),
+        Err(at) => {
+            let moves = rows.len() - at;
+            account::work(ledger, moves)?;
+            account::push(ledger, rows, key)?;
+            rows[at..].rotate_right(1);
+            Ok(true)
+        }
+    }
+}
+fn dedup_sorted<T: PartialEq>(rows: &mut Vec<T>, ledger: &mut Ledger) -> Result<()> {
+    account::work(ledger, rows.len())?;
+    account::work(ledger, rows.len())?;
+    rows.dedup();
+    Ok(())
+}
+fn association_key(
+    piece: &OriginIntersection,
+) -> (usize, usize, usize, usize, usize, usize, usize) {
+    (
+        piece.origin,
+        piece.aggregate.start,
+        piece.aggregate.end,
+        piece.local.start,
+        piece.local.end,
+        piece.processed.start,
+        piece.processed.end,
+    )
+}
+fn unique_associations(rows: &mut Vec<OriginIntersection>, ledger: &mut Ledger) -> Result<()> {
+    operations::order_by(rows, ledger.as_mut(), |a, b| {
+        association_key(a).cmp(&association_key(b))
+    })?;
+    account::work(ledger, rows.len())?;
+    account::work(ledger, rows.len())?;
+    rows.dedup_by_key(|row| association_key(row));
+    Ok(())
 }
 // Geometry is operation-specific: EGC membership is retained by selected
 // analysis; provider membership only lends the actual finalized advance.
@@ -302,150 +470,13 @@ struct MetricPiece {
     start: f64,
     end: f64,
 }
-fn range_geometry(
-    line: &crate::engine::FinalizedLine,
-    line_index: usize,
-    group: usize,
-    providers: &[std::ops::Range<usize>],
-    cached: &mut BTreeMap<usize, Vec<(f64, f64)>>,
-) -> Result<Vec<MetricPiece>> {
-    let graphemes = &line.selected.presentation.analysis.graphemes;
-    let clusters = &line.data.clusters;
-    let unsupported = || {
-        failure(SourceRangeFragmentError::UnsupportedPartition {
-            line: line_index,
-            unit: group,
-        })
-    };
-    let mut result = Vec::new();
-    for indices in providers {
-        let first = indices.start;
-        let index = indices.end;
-        let provider = &clusters[first].provider_atoms;
-        if let Some(edges) = cached.get(&first) {
-            let begin = graphemes.partition_point(|g| g.end <= provider.start);
-            let (start, end) = edges[group - begin];
-            result.push(MetricPiece {
-                clusters: indices.clone(),
-                start,
-                end,
-            });
-            continue;
-        }
-        let begin = graphemes.partition_point(|g| g.end <= provider.start);
-        let end = graphemes.partition_point(|g| g.start < provider.end);
-        if end <= begin {
-            return Err(unsupported());
-        }
-        if end - begin == 1 {
-            for (offset, cluster) in clusters[first..index].iter().enumerate() {
-                if cluster.disposition != SpacingSlotDisposition::DiscardedAtLineEdge {
-                    result.push(MetricPiece {
-                        clusters: first + offset..first + offset + 1,
-                        start: cluster.x,
-                        end: add("source range local advance end", cluster.x, cluster.advance)?,
-                    });
-                }
-            }
-            continue;
-        }
-        // Equal shares are Surgeist's explicit metric policy for an ordinary
-        // monotone horizontal provider group spanning complete EGCs. They are
-        // neither independent letter measurements nor font ligature carets.
-        if graphemes[begin].start != provider.start
-            || graphemes[end - 1].end != provider.end
-            || clusters[first..index].iter().any(|c| {
-                c.level != clusters[first].level
-                    || c.advance < 0.0
-                    || c.disposition == SpacingSlotDisposition::DiscardedAtLineEdge
-            })
-        {
-            return Err(unsupported());
-        }
-        let rtl = !clusters[first].level.is_multiple_of(2);
-        let mut previous = None;
-        for cluster in &clusters[first..index] {
-            let edge = add("source range provider edge", cluster.x, cluster.advance)?;
-            if previous.is_some_and(|(x, right)| if rtl { edge > x } else { cluster.x < right }) {
-                return Err(unsupported());
-            }
-            previous = Some((cluster.x, edge));
-        }
-        let count = end - begin;
-        let ordinal = group - begin;
-        let raw = clusters[first..index]
-            .iter()
-            .try_fold(0.0, |base, cluster| {
-                add("source range shaped advance", base, cluster.shaped_advance)
-            })?;
-        let share = raw / count as f64;
-        let mut adjustments = vec![0.0; count];
-        for cluster in &clusters[first..index] {
-            let egc = graphemes.partition_point(|g| {
-                line.selected.presentation.projection.atoms[g.end - 1]
-                    .presentation
-                    .end
-                    <= cluster.presentation.start
-            });
-            if egc < begin || egc >= end {
-                return Err(unsupported());
-            }
-            for value in cluster.logical_adjustments {
-                adjustments[egc - begin] = add(
-                    "source range owned adjustment",
-                    adjustments[egc - begin],
-                    value,
-                )?;
-            }
-        }
-        let right = add(
-            "source range provider right",
-            clusters[first].x,
-            clusters[first].advance,
-        )?;
-        let mut offset = 0.0;
-        let mut edges = Vec::with_capacity(count);
-        for (relative, adjustment) in adjustments.into_iter().enumerate() {
-            let raw_part = if relative + 1 == count {
-                raw - share * relative as f64
-            } else {
-                share
-            };
-            let width = add("source range adjusted share", raw_part, adjustment)?;
-            if width < 0.0 {
-                return Err(unsupported());
-            }
-            let pair = if rtl {
-                let end = add("source range logical share end", right, -offset)?;
-                (add("source range logical share start", end, -width)?, end)
-            } else {
-                let start = add(
-                    "source range logical share start",
-                    clusters[first].x,
-                    offset,
-                )?;
-                (start, add("source range logical share end", start, width)?)
-            };
-            edges.push(pair);
-            offset = add("source range preceding shares", offset, width)?;
-        }
-        let (start, end) = edges[ordinal];
-        cached.insert(first, edges);
-        result.push(MetricPiece {
-            clusters: first..index,
-            start,
-            end,
-        });
-    }
-    Ok(result)
-}
 impl Layout {
     /// Observe a nonempty original-local interval of this exact issued origin.
     /// This neither chooses a line nor resolves fonts. Partial grapheme units expand;
     /// removed custody and source-less occurrences do not acquire rectangles.
-    /// A request intersecting an actual placed Cell's original pieces returns
-    /// [`SourceRangeFragmentError::UnsupportedCell`]; disjoint ordinary ranges
-    /// in the same placement remain available.
+    /// Cell requests close over actual retained inner semantic EGCs, with
+    /// distinct font-metric and native-layout geometry. Removed-only custody
+    /// retains source metadata without lending a neighboring rectangle.
     pub fn source_range_fragments(
         &self,
         origin: &PreparedOrigin,
@@ -494,24 +525,32 @@ impl Layout {
         }
         // Only actual placed Cells participate. Original-local pieces retain
         // removed/zero custody; equal hulls, resources or glyph ranges do not.
-        for (line, placed) in self.inner.lines.iter().enumerate() {
+        let mut active = false;
+        'admission: for placed in &self.inner.lines {
             for (cell, _) in placed.finalized.data.cells.iter().enumerate() {
                 if placed
                     .finalized
                     .source_cell(cell)
                     .intersects_original_range(origin_key, local)
                 {
-                    return Err(failure(SourceRangeFragmentError::UnsupportedCell {
-                        line,
-                        cell,
-                    }));
+                    active = true;
+                    break 'admission;
                 }
             }
         }
+        let mut ledger: Ledger = if active {
+            Some(crate::engine::scope_alignment::census::begin_range(
+                &self.inner,
+            )?)
+        } else {
+            None
+        };
         // Custody is checked independently of eligibility. Removed units retain
         // their original intervals, while alternatives/control anchors own none.
         for receipt in &self.inner.receipts {
+            account::work(&mut ledger, 1)?;
             for unit in &receipt.selected.presentation.units {
+                account::work(&mut ledger, 1)?;
                 if matches!(unit.kind, PresentationUnitKind::Text)
                     && unit.atoms.is_empty()
                     && let Some(aggregate) = overlap(unit.source, aggregate)
@@ -526,10 +565,12 @@ impl Layout {
         // emissions on different lines. Deduplicate only that authenticated row,
         // not arbitrary coincident original intervals from different owners.
         let map = &analyzed.transform;
-        let mut seen = BTreeSet::new();
+        let mut seen = Vec::new();
         let mut custody = Vec::new();
         for receipt in &self.inner.receipts {
+            account::work(&mut ledger, 1)?;
             for event in &receipt.selected.presentation.selected_relation.events {
+                account::work(&mut ledger, 1)?;
                 let SelectedRelationEvent::Base { event } = *event else {
                     continue;
                 };
@@ -541,33 +582,39 @@ impl Layout {
                     _ => None,
                 };
                 if let Some(row) = row {
-                    if seen.insert((0, row)) {
-                        custody.extend(
-                            map.original_pieces(row)
-                                .iter()
-                                .filter(|piece| piece.origin == origin_key)
-                                .filter_map(|piece| overlap(piece.aggregate, aggregate)),
-                        );
+                    if first_seen(&mut seen, (0, row), &mut ledger)? {
+                        for piece in map.original_pieces(row) {
+                            account::work(&mut ledger, 1)?;
+                            if piece.origin == origin_key
+                                && let Some(range) = overlap(piece.aggregate, aggregate)
+                            {
+                                account::push(&mut ledger, &mut custody, range)?;
+                            }
+                        }
                     }
                 } else if let crate::transform::relation::RelationEvent::PhaseIDeleted {
                     source,
                     ..
                 } = map.events()[event]
-                    && seen.insert((1, event))
+                    && first_seen(&mut seen, (1, event), &mut ledger)?
                 {
-                    custody.extend(
-                        analyzed
-                            .paragraph
-                            .origin_intersections(&analyzed.processed, source)
-                            .filter(|piece| piece.origin == origin.index)
-                            .filter_map(|piece| overlap(piece.aggregate, aggregate)),
-                    );
+                    visit_intersections(self, source, &mut ledger, |piece, ledger| {
+                        if piece.origin == origin.index
+                            && let Some(range) = overlap(piece.aggregate, aggregate)
+                        {
+                            account::push(ledger, &mut custody, range)?;
+                        }
+                        Ok(())
+                    })?;
                 }
             }
         }
-        custody.sort_unstable_by_key(|range| (range.start, range.end));
+        operations::order_by(&mut custody, ledger.as_mut(), |a, b| {
+            (a.start, a.end).cmp(&(b.start, b.end))
+        })?;
         let mut at = aggregate.start;
-        for range in custody {
+        for range in &custody {
+            account::work(&mut ledger, 1)?;
             if range.start > at {
                 return Err(failure(SourceRangeFragmentError::MissingOriginalMapping {
                     aggregate: Range::new(at, range.start),
@@ -575,7 +622,7 @@ impl Layout {
             }
             if range.start < at {
                 return Err(failure(
-                    SourceRangeFragmentError::AmbiguousOriginalMapping { aggregate: range },
+                    SourceRangeFragmentError::AmbiguousOriginalMapping { aggregate: *range },
                 ));
             }
             at = range.end;
@@ -585,72 +632,63 @@ impl Layout {
                 aggregate: Range::new(at, aggregate.end),
             }));
         }
+        account::drop_vec(&mut ledger, custody)?;
+        account::drop_vec(&mut ledger, seen)?;
         let mut units = Vec::new();
         for (line_index, placed) in self.inner.lines.iter().enumerate() {
+            account::work(&mut ledger, 1)?;
             let line = &placed.finalized;
             let presentation = &line.selected.presentation;
-            let mut atom_units = vec![0; presentation.projection.atoms.len()];
+            let mut atom_units =
+                account::filled(&mut ledger, presentation.projection.atoms.len(), 0usize)?;
             for (index, unit) in presentation.units.iter().enumerate() {
+                account::work(&mut ledger, 1)?;
                 for atom in unit.atoms.clone() {
+                    account::work(&mut ledger, 1)?;
                     atom_units[atom] = index;
                 }
             }
-            let mut origin_fragments: BTreeMap<usize, Vec<(Range, usize)>> = BTreeMap::new();
-            let mut alternatives: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-            let mut control_fragments: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-            let mut virtual_fragments: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-            for (index, fragment) in line.data.fragments.iter().enumerate() {
-                match fragment.association.owner {
-                    FragmentOwner::Origin(origin) => {
-                        if let Some(source) = fragment.association.source
-                            && !source.aggregate.is_empty()
-                        {
-                            origin_fragments
-                                .entry(origin)
-                                .or_default()
-                                .push((source.aggregate, index));
-                        }
-                    }
-                    FragmentOwner::Alternative(alternative) => {
-                        alternatives.entry(alternative).or_default().push(index)
-                    }
-                    FragmentOwner::Control(control) => {
-                        control_fragments.entry(control).or_default().push(index);
-                    }
-                    FragmentOwner::VirtualSeparator(owner) => {
-                        virtual_fragments.entry(owner).or_default().push(index);
-                    }
-                }
-            }
-            for rows in origin_fragments.values_mut() {
-                rows.sort_unstable_by_key(|row| (row.0.start, row.0.end));
-            }
-            let mut providers = vec![Vec::new(); presentation.analysis.graphemes.len()];
+            let indexes = LineIndexes::new(line, &mut ledger)?;
+            let mut providers = account::filled(
+                &mut ledger,
+                presentation.analysis.graphemes.len(),
+                Vec::new(),
+            )?;
             let mut index = 0;
             while index < line.data.clusters.len() {
+                account::work(&mut ledger, 1)?;
                 let first = index;
                 let cluster = &line.data.clusters[first];
                 index += 1;
+                if cluster.frame != crate::engine::layout::data::FinalizedRunFrame::Line {
+                    continue;
+                }
                 while index < line.data.clusters.len()
                     && line.data.clusters[index].provider_atoms == cluster.provider_atoms
                     && line.data.clusters[index].content == cluster.content
+                    && line.data.clusters[index].frame == cluster.frame
                 {
+                    account::work(&mut ledger, 1)?;
                     index += 1;
                 }
-                let start = presentation
-                    .analysis
-                    .graphemes
-                    .partition_point(|g| g.end <= cluster.provider_atoms.start);
-                let end = presentation
-                    .analysis
-                    .graphemes
-                    .partition_point(|g| g.start < cluster.provider_atoms.end);
+                let start = operations::partition_point(
+                    &presentation.analysis.graphemes,
+                    ledger.as_mut(),
+                    |g| g.end <= cluster.provider_atoms.start,
+                )?;
+                let end = operations::partition_point(
+                    &presentation.analysis.graphemes,
+                    ledger.as_mut(),
+                    |g| g.start < cluster.provider_atoms.end,
+                )?;
                 for rows in &mut providers[start..end] {
-                    rows.push(first..index);
+                    account::work(&mut ledger, 1)?;
+                    account::push(&mut ledger, rows, first..index)?;
                 }
             }
-            let mut cached = BTreeMap::new();
+            let mut cached = GeometryCache::default();
             for (group, atoms) in presentation.analysis.graphemes.iter().enumerate() {
+                account::work(&mut ledger, 1)?;
                 let extent = Range::new(
                     presentation.projection.atoms[atoms.start]
                         .presentation
@@ -659,32 +697,48 @@ impl Layout {
                         .presentation
                         .end,
                 );
-                let begin = line
-                    .data
-                    .clusters
-                    .partition_point(|c| c.presentation.end <= extent.start);
-                let end = line
-                    .data
-                    .clusters
-                    .partition_point(|c| c.presentation.start < extent.end);
+                let begin =
+                    operations::partition_point(&line.data.clusters, ledger.as_mut(), |c| {
+                        c.presentation.end <= extent.start
+                    })?;
+                let end = operations::partition_point(&line.data.clusters, ledger.as_mut(), |c| {
+                    c.presentation.start < extent.end
+                })?;
                 let own_clusters = &line.data.clusters[begin..end];
                 let mut expanded = Vec::new();
                 let mut selected = Vec::new();
-                let mut group_units: Vec<_> = atom_units[atoms.clone()].to_vec();
-                group_units.dedup();
+                let mut group_units = account::clone_vec(&mut ledger, &atom_units[atoms.clone()])?;
+                dedup_sorted(&mut group_units, &mut ledger)?;
+                let mut cell_owned = false;
+                for &unit in &group_units {
+                    account::work(&mut ledger, 1)?;
+                    cell_owned |= matches!(
+                        presentation.units[unit].kind,
+                        PresentationUnitKind::Cell { .. }
+                    );
+                }
+                if cell_owned {
+                    account::drop_vec(&mut ledger, group_units)?;
+                    continue;
+                }
                 for &unit_index in &group_units {
+                    account::work(&mut ledger, 1)?;
                     let unit = &presentation.units[unit_index];
                     if !matches!(unit.kind, PresentationUnitKind::Text) {
                         continue;
                     }
-                    let has_geometry = own_clusters
-                        .iter()
-                        .any(|cluster| overlap(cluster.presentation, unit.presentation).is_some());
-                    let retained = own_clusters.iter().any(|cluster| {
-                        overlap(cluster.presentation, extent).is_some()
+                    let mut has_geometry = false;
+                    let mut retained = false;
+                    for cluster in own_clusters {
+                        account::work(&mut ledger, 1)?;
+                        has_geometry |= overlap(cluster.presentation, unit.presentation).is_some();
+                        retained |= overlap(cluster.presentation, extent).is_some()
                             && overlap(cluster.presentation, unit.presentation).is_some()
-                            && cluster.disposition != SpacingSlotDisposition::DiscardedAtLineEdge
-                    });
+                            && cluster.disposition != SpacingSlotDisposition::DiscardedAtLineEdge;
+                        if has_geometry && retained {
+                            break;
+                        }
+                    }
                     if !has_geometry && overlap(unit.source, aggregate).is_some() {
                         return Err(failure(SourceRangeFragmentError::MissingUnitGeometry {
                             line: line_index,
@@ -694,112 +748,134 @@ impl Layout {
                     if !retained {
                         continue;
                     }
-                    expanded.extend(intersections(self, unit.source));
+                    append_intersections(self, unit.source, None, &mut expanded, &mut ledger)?;
                     if let Some(range) = overlap(unit.source, aggregate) {
-                        selected.extend(
-                            intersections(self, range)
-                                .into_iter()
-                                .filter(|i| i.origin == origin.index),
-                        );
+                        append_intersections(
+                            self,
+                            range,
+                            Some(origin.index),
+                            &mut selected,
+                            &mut ledger,
+                        )?;
                     }
                 }
                 let mut control_owners = Vec::new();
                 let mut virtual_owners = Vec::new();
+                let mut alternative_owners = Vec::new();
                 for &unit in &group_units {
-                    if let PresentationUnitKind::GeneratedSeparator {
-                        owner: crate::transform::relation::GeneratedSeparatorOwner::Control(control),
-                    } = presentation.units[unit].kind
-                        && !control_owners.contains(&control)
-                    {
-                        control_owners.push(control);
-                    }
-                    if let PresentationUnitKind::GeneratedSeparator {
-                        owner: crate::transform::relation::GeneratedSeparatorOwner::Virtual(index),
-                    } = presentation.units[unit].kind
-                        && !virtual_owners.contains(&index)
-                    {
-                        virtual_owners.push(index);
+                    account::work(&mut ledger, 1)?;
+                    match presentation.units[unit].kind {
+                        PresentationUnitKind::GeneratedSeparator {
+                            owner:
+                                crate::transform::relation::GeneratedSeparatorOwner::Control(control),
+                        } => account::push(&mut ledger, &mut control_owners, control)?,
+                        PresentationUnitKind::GeneratedSeparator {
+                            owner:
+                                crate::transform::relation::GeneratedSeparatorOwner::Virtual(index),
+                        } => account::push(&mut ledger, &mut virtual_owners, index)?,
+                        PresentationUnitKind::Replacement { alternative, .. } => {
+                            account::push(&mut ledger, &mut alternative_owners, alternative)?;
+                        }
+                        _ => (),
                     }
                 }
-                let mut alternative_owners = group_units
-                    .iter()
-                    .filter_map(|&i| match presentation.units[i].kind {
-                        PresentationUnitKind::Replacement { alternative, .. } => Some(alternative),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                alternative_owners.sort_unstable();
-                alternative_owners.dedup();
-                let defining = alternative_owners
-                    .iter()
-                    .filter_map(|&index| {
-                        match self.inner.prepared.tables.alternatives[index].definition {
-                            AlternativeDefinition::Source {
-                                origin: owner,
-                                source,
-                            } => intersections(self, source)
-                                .into_iter()
-                                .find(|piece| piece.origin == owner),
-                            _ => None,
+                for rows in [
+                    &mut control_owners,
+                    &mut virtual_owners,
+                    &mut alternative_owners,
+                ] {
+                    operations::order_by(rows, ledger.as_mut(), Ord::cmp)?;
+                    dedup_sorted(rows, &mut ledger)?;
+                }
+                let mut defining = Vec::new();
+                let mut attributed_cuts = Vec::new();
+                for &index in &alternative_owners {
+                    account::work(&mut ledger, 1)?;
+                    match self.inner.prepared.tables.alternatives[index].definition {
+                        AlternativeDefinition::Source {
+                            origin: owner,
+                            source,
+                        } => {
+                            let mut actual = None;
+                            visit_intersections(self, source, &mut ledger, |piece, _| {
+                                if actual.is_none() && piece.origin == owner {
+                                    actual = Some(piece);
+                                }
+                                Ok(())
+                            })?;
+                            if let Some(piece) = actual {
+                                account::push(&mut ledger, &mut defining, piece)?;
+                            }
                         }
-                    })
-                    .collect::<Vec<_>>();
+                        AlternativeDefinition::Automatic { cut, .. } => {
+                            account::push(&mut ledger, &mut attributed_cuts, cut)?;
+                        }
+                        _ => (),
+                    }
+                }
                 for definition in &defining {
+                    account::work(&mut ledger, 1)?;
                     if definition.origin == origin.index
                         && let Some(source) = overlap(definition.aggregate, aggregate)
                     {
-                        selected.extend(
-                            intersections(self, source)
-                                .into_iter()
-                                .filter(|piece| piece.origin == origin.index),
-                        );
+                        append_intersections(
+                            self,
+                            source,
+                            Some(origin.index),
+                            &mut selected,
+                            &mut ledger,
+                        )?;
                     }
                 }
-                let attributed_cuts = alternative_owners
-                    .iter()
-                    .filter_map(|&index| {
-                        match self.inner.prepared.tables.alternatives[index].definition {
-                            AlternativeDefinition::Automatic { cut, .. } => Some(cut),
-                            _ => None,
-                        }
-                    })
-                    .collect::<Vec<_>>();
                 for &cut in &attributed_cuts {
+                    account::work(&mut ledger, 1)?;
                     let row = &self.inner.prepared.tables.hyphenation_cuts[cut];
                     let atoms = row.preceding.clone().ok_or_else(|| {
                         crate::hyphenation::error(crate::HyphenationError::InvalidResourceMapping)
                     })?;
                     for atom in atoms {
+                        account::work(&mut ledger, 1)?;
                         let source = self.inner.prepared.analyzed.projection.atoms[atom].source;
                         if let Some(range) = overlap(source, aggregate) {
-                            selected.extend(
-                                intersections(self, range)
-                                    .into_iter()
-                                    .filter(|piece| piece.origin == origin.index),
-                            );
+                            append_intersections(
+                                self,
+                                range,
+                                Some(origin.index),
+                                &mut selected,
+                                &mut ledger,
+                            )?;
                         }
                     }
                 }
-                // One authentic source association may be reached both through
-                // the selected original row and automatic attribution in a shared
-                // EGC. Deduplicate that SAME occurrence/correspondence, never
-                // Range units, glyphs or geometry at equal numeric positions.
-                let mut associations = std::collections::HashSet::new();
-                selected.retain(|piece| {
-                    associations.insert((
-                        piece.origin,
-                        piece.aggregate,
-                        piece.local,
-                        piece.processed,
-                    ))
-                });
+                unique_associations(&mut selected, &mut ledger)?;
                 if selected.is_empty() {
+                    account::drop_vec(&mut ledger, selected)?;
+                    account::drop_vec(&mut ledger, expanded)?;
+                    account::drop_vec(&mut ledger, group_units)?;
+                    account::drop_vec(&mut ledger, control_owners)?;
+                    account::drop_vec(&mut ledger, virtual_owners)?;
+                    account::drop_vec(&mut ledger, alternative_owners)?;
+                    account::drop_vec(&mut ledger, defining)?;
+                    account::drop_vec(&mut ledger, attributed_cuts)?;
                     continue;
                 }
-                let geometry =
-                    range_geometry(line, line_index, group, &providers[group], &mut cached)?;
+                let geometry = range_geometry(
+                    &line.data.clusters,
+                    MetricUnits::Line(presentation),
+                    group,
+                    &providers[group],
+                    &mut cached,
+                    &mut ledger,
+                    || {
+                        failure(SourceRangeFragmentError::UnsupportedPartition {
+                            line: line_index,
+                            unit: group,
+                        })
+                    },
+                )?;
                 let mut pieces = Vec::new();
                 for metric in &geometry {
+                    account::work(&mut ledger, 1)?;
                     let cluster = &line.data.clusters[metric.clusters.start];
                     let font = cluster
                         .content
@@ -811,6 +887,7 @@ impl Layout {
                                 unit: group,
                             })
                         })?;
+                    account::work(&mut ledger, font.coords.len())?;
                     let instance = EffectiveFontInstance::qualify_synthesized(
                         font.font.face(),
                         font.font_size,
@@ -894,16 +971,20 @@ impl Layout {
                             height,
                         ));
                     }
-                    pieces.push(Piece {
-                        clusters: metric.clusters.clone(),
-                        start,
-                        end,
-                        bounds,
-                        instance,
-                        ascent: font.metrics.ascent,
-                        descent: font.metrics.descent,
-                        baseline,
-                    });
+                    account::push(
+                        &mut ledger,
+                        &mut pieces,
+                        GeometryPiece::Line(Piece {
+                            clusters: metric.clusters.clone(),
+                            start,
+                            end,
+                            bounds,
+                            instance,
+                            ascent: font.metrics.ascent,
+                            descent: font.metrics.descent,
+                            baseline,
+                        }),
+                    )?;
                 }
                 if pieces.is_empty() {
                     return Err(failure(SourceRangeFragmentError::MissingFontMetrics {
@@ -913,60 +994,100 @@ impl Layout {
                 }
                 let mut fragments = Vec::new();
                 for piece in &expanded {
-                    if let Some(rows) = origin_fragments.get(&piece.origin) {
-                        let first = rows.partition_point(|row| row.0.end <= piece.aggregate.start);
-                        fragments.extend(
-                            rows[first..]
-                                .iter()
-                                .take_while(|row| row.0.start < piece.aggregate.end)
-                                .map(|row| row.1),
-                        );
-                    }
+                    account::work(&mut ledger, 1)?;
+                    indexes.append_original(
+                        piece.origin,
+                        piece.aggregate,
+                        &mut fragments,
+                        &mut ledger,
+                    )?;
                 }
-                for &index in &group_units {
-                    if let PresentationUnitKind::Replacement { alternative, .. } =
-                        presentation.units[index].kind
-                        && let Some(rows) = alternatives.get(&alternative)
-                    {
-                        fragments.extend(rows);
-                    }
+                for &alternative in &alternative_owners {
+                    account::work(&mut ledger, 1)?;
+                    indexes.append_owner(
+                        FragmentOwner::Alternative(alternative),
+                        &mut fragments,
+                        &mut ledger,
+                    )?;
                 }
-                for control in &control_owners {
-                    if let Some(rows) = control_fragments.get(control) {
-                        fragments.extend(rows);
-                    }
+                for &control in &control_owners {
+                    account::work(&mut ledger, 1)?;
+                    indexes.append_owner(
+                        FragmentOwner::Control(control),
+                        &mut fragments,
+                        &mut ledger,
+                    )?;
                 }
-                for owner in &virtual_owners {
-                    if let Some(rows) = virtual_fragments.get(owner) {
-                        fragments.extend(rows);
-                    }
+                for &owner in &virtual_owners {
+                    account::work(&mut ledger, 1)?;
+                    indexes.append_owner(
+                        FragmentOwner::VirtualSeparator(owner),
+                        &mut fragments,
+                        &mut ledger,
+                    )?;
                 }
-                fragments.sort_unstable();
-                fragments.dedup();
-                units.push(Unit {
-                    line: line_index,
-                    group,
-                    selected,
-                    expanded,
-                    fragments,
-                    pieces,
-                    controls: control_owners
-                        .into_iter()
-                        .map(|occurrence| self.inner.prepared.tables.control_rows[occurrence])
-                        .collect(),
-                    virtuals: virtual_owners,
-                    alternatives: alternative_owners,
-                    defining,
-                    attributed_cuts,
-                    presentation: extent,
-                });
+                operations::order_by(&mut fragments, ledger.as_mut(), Ord::cmp)?;
+                dedup_sorted(&mut fragments, &mut ledger)?;
+                let controls = account::collect(
+                    &mut ledger,
+                    control_owners
+                        .iter()
+                        .map(|&occurrence| self.inner.prepared.tables.control_rows[occurrence]),
+                )?;
+                account::push(
+                    &mut ledger,
+                    &mut units,
+                    Unit {
+                        line: line_index,
+                        identity: UnitIdentity::Line(group),
+                        order: (group_units[0], group),
+                        selected,
+                        expanded,
+                        fragments,
+                        pieces,
+                        controls,
+                        virtuals: virtual_owners,
+                        alternatives: alternative_owners,
+                        defining,
+                        attributed_cuts,
+                        presentation: extent,
+                    },
+                )?;
+                account::drop_vec(&mut ledger, geometry)?;
+                account::drop_vec(&mut ledger, group_units)?;
+                account::drop_vec(&mut ledger, control_owners)?;
             }
+            account::drop_vec(&mut ledger, atom_units)?;
+            for rows in providers.iter_mut() {
+                account::drop_vec(&mut ledger, std::mem::take(rows))?;
+            }
+            account::drop_vec(&mut ledger, providers)?;
+            cached.drop_scratch(&mut ledger)?;
+            if active {
+                cells::append(
+                    self,
+                    line_index,
+                    cells::Query {
+                        origin,
+                        key: origin_key,
+                        local,
+                    },
+                    &indexes,
+                    &mut units,
+                    &mut ledger,
+                )?;
+            }
+            indexes.drop_scratch(&mut ledger)?;
         }
+        operations::order_by(&mut units, ledger.as_mut(), |a, b| {
+            (a.line, a.order).cmp(&(b.line, b.order))
+        })?;
         Ok(SourceRangeFragments {
             layout: self,
             origin: origin.clone(),
             local,
             units,
+            usage: ledger.as_ref().map(|budget| budget.usage()),
         })
     }
 }

@@ -2081,11 +2081,11 @@ actual placed result. Its ordered observations retain selected source
 intersections, expanded typographic-unit coverage where applicable, finalized
 line/fragment and placement identities, advance edges and associated font-metric
 extent. Native `Layout::source_range_fragments` implements this observation
-boundary for admitted Horizontal and clockwise Sideways placements; the complete
-web consumer remains separate. Piece rectangles use the actual physical placed
-basis. Directed advance edges are physical inline coordinates; the baseline is
-the physical cross coordinate. Font ascent/descent retain their unrotated
-before/after distances, interpreted through the query's actual Layout orientation.
+boundary for admitted Native placements; the complete web consumer remains
+separate. Piece rectangles use the actual physical placed basis. Ordinary line
+pieces expose directed advance edges in physical inline coordinates and a
+baseline in the physical cross coordinate. Ordinary font ascent/descent retain their unrotated before/after distances,
+interpreted through the query's actual Layout orientation.
 Generic source slots and caret affinities are distinct.
 The selected evidence is the [current CSSOM View §9 capture](../references/cssom-view-range--editor-capture-20261022.md),
 checked with the [bounded CSSWG and browser-test audit](../references/range-geometry-csswg-tests--20261022.md).
@@ -2099,6 +2099,18 @@ They are distinct from float-prefix units: an optional Latin `AA` ligature can
 share one provider cluster while containing two Range units; a base and combining
 mark remain one grapheme-based unit. Partial selection expands the actual Range
 unit, not every provider cluster touching it.
+
+A combined Cell retains its actual post-edge semantic EGC partition for Range,
+rather than becoming one opaque unit or a one-em rectangle. Partial original
+selection closes only its actual EGC; selected source endpoints remain exact and
+expanded coverage retains all original members. Removed-only selection units
+retain metadata and no geometry. Font-backed pieces use actual retained
+horizontal metrics through the executed compression, centering and once-applied
+scope/placement frame. Their common metric reference differs from the
+font-design paint origin by the retained font baseline offset; do not apply that
+offset twice. Native CSS TAB pieces instead consume their executed spans and
+real container-referenced em band, without a body font or glyph baseline. Ordinary
+line, Cell font and Cell native-layout geometry remain explicit variants.
 
 Preserve authentic per-unit advance positions and allocated adjustments first.
 For an admitted monotonic horizontal shaped cluster containing multiple complete

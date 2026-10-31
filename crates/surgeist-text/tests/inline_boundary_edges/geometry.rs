@@ -254,7 +254,12 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
             .units()
             .flat_map(|unit| unit
                 .pieces()
-                .map(|piece| piece.advance_edges())
+                .map(|piece| {
+                    let t::SourceRangeGeometry::Line(piece) = piece else {
+                        panic!("ordinary Range fixture must retain Line geometry");
+                    };
+                    piece.advance_edges()
+                })
                 .collect::<Vec<_>>())
             .collect::<Vec<_>>(),
         [(10.0, 20.0)]
