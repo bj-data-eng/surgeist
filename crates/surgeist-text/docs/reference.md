@@ -731,9 +731,9 @@ Cell font metrics use their common horizontal metric reference; native TABs
 retain a separate layout/em-band reference without borrowing a body font.
 Removed-only Cell units preserve source metadata with no rectangle. See the
 [Range query guide](composed-lines.md) for source closure, identity and accounting.
-Placed
-`accessibility_update` returns `ErrorDetail::UnsupportedAccessibilityCell` without
-replacing the prior binding; source-only analyzed accessibility remains available.
+Placed `accessibility_update` enriches original selectable units with their actual
+Cell contributions; [logical Cell accessibility](#native-cell-accessibility)
+retains its own source and word membership independently of Range closure.
 
 `combined_cells()` borrows completed source-cell facts, including separate
 selection and used unit counts, inner direction and exact original-resource
@@ -1485,14 +1485,41 @@ The [owned AccessKit projection](../src/accessibility.rs) retains the exact anal
 identity and source maps. Source-only updates need no point and omit font, glyph,
 line and all geometry fields. Placed updates enrich the same semantic projection
 from actual finalized rows, and replacement clears obsolete optional fields. Updates are fallible and publish complete state only.
-Host values and character lengths use UTF-8 bytes; an indivisible unit longer
-than 255 bytes is unsupported. Mixed-style units preserve all source/geometry
+Host values and character lengths use UTF-8 bytes; an original selectable unit
+longer than 255 bytes is unsupported. A carrier may contain more than 255 units
+or total bytes when its individual lengths and word starts are representable.
+Mixed-style units preserve all source/geometry
 and publish only uniform node metadata. Optional one-dimensional geometry is
 omitted when it cannot truthfully describe the fragments. Retained child focus
 is valid on repeat updates; parent/child collisions and ID exhaustion refuse.
 Queries require the exact analyzed or placed binding that produced the state; a
 foreign identity or wrong phase returns `AccessibilityBindingMismatch`. Original
 ill-formed UTF-16 cannot form a host string and refuses before state publication.
+
+### Native Cell accessibility
+
+Source-only and placed updates retain the same original host-grapheme characters
+and UTF-8 values. `AA` keeps two characters; `ß` transformed to `SS` keeps one
+original `ß`. The actual Cell source closure forms one word-navigation span.
+A newline-bearing Cell may share one TextRun carrier while `character_lengths`
+preserves every original character. Genuine source holes or shared ancestry that
+prevent a truthful mapping return `UnsupportedAccessibilityCellMapping` atomically.
+For example, Lithuanian uppercase `i\u{0307}` leaves one original grapheme but
+the Cell owns only the emitted `I` ancestor; the partial ownership refuses.
+
+Cell source positions and partial or reversed logical selections use original
+host stops. Ordinary placed endpoints keep their existing glyph/ligature closure;
+mixed selections compose those owners per endpoint. Physical Cell carets, hits
+and movement retain their two exterior edges.
+
+Bounds use each original's actual finalized contributions through the horizontal
+Cell frame, compression, scope displacement and placement once. Removed or
+provider-empty originals add no bounds; genuine native TABs retain their own
+executed band, including actual zero width. Aggregate carrier bounds union only
+real contributions. Cell TextRuns omit both optional character-position and
+character-width arrays, and publish font/direction metadata only when truthful
+for the complete carrier. Source-only updates remain independent of fonts and
+placement; failed updates preserve the prior binding and node-ID space.
 
 ### Native wbr separators
 

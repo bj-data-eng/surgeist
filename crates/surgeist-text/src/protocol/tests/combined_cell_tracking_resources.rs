@@ -17,8 +17,8 @@ use crate::engine::{
 use crate::processing::contextual::alignment::ScopeAlignmentBudget;
 use std::mem::{size_of, size_of_val};
 
-struct Mixed {
-    prepared: PreparedText,
+pub(super) struct Mixed {
+    pub(super) prepared: PreparedText,
     processed: Arc<ProcessedSource>,
     parent: FontData,
     body: FontData,
@@ -61,7 +61,7 @@ fn mixed_with_cell(text: &str, inner: Range, inner_word_spacing: f64, source_id:
     .unwrap()
 }
 
-fn prepare_mixed(
+pub(super) fn prepare_mixed(
     text: &str,
     inner: Range,
     source_id: u64,

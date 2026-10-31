@@ -1,4 +1,8 @@
 //! Exact original-source selection and semantic Cell closure.
+#[cfg(feature = "text-accessibility")]
+#[path = "combined_cell_ax_source.rs"]
+mod accessibility;
+
 use super::*;
 use crate::protocol::tests::combined_cells::inner_tabs as tabs;
 use crate::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};

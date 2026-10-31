@@ -348,6 +348,24 @@ Source-only accessibility takes no placement point. It reports source values, un
 
 Accessibility state binds to the exact analyzed allocation and an explicit source-only or placed phase; placed state additionally binds to the exact placement identity. Source-only reads require the source-only binding, and layout reads require the matching placed binding. Updates may coherently replace or enrich the binding, rebuilding optional fields so previous geometry cannot survive a source-only replacement. Preserve checked node-ID issuance, source affinity, focus rules and atomic failure. Verify selectable fontless graphemes, explicit layout refusal, ordinary registered-font enrichment, mismatched analysis/placement rejection, absent fabricated geometry and preservation of the previous accessibility state after failure.
 
+Combined Cells preserve that original host-grapheme selectable partition and
+original UTF-8 value in both accessibility phases. Their exact original source
+closure is one word-navigation span. Carrier grouping may change while retaining
+each original character length. Logical Cell positions and partial or reversed
+selections use original source stops; ordinary placed endpoints retain their
+existing glyph/ligature closure. Mixed selections compose the actual endpoint
+owners. Physical Cell carets, hits and movement remain opaque exterior edges.
+
+Cell bounds join each original unit's real finalized contributions through the
+executed horizontal frame, compression and once-applied scope/placement. Removed
+or provider-empty originals retain semantics without donated bounds. Genuine
+native TABs use their executed nonprovider reference, including real zero width.
+Omit both optional Cell character-position and character-width arrays and any
+font/direction metadata lacking one truthful value. Range EGC closure is not
+accessibility membership authority. Refuse genuinely unrepresentable source/word
+joins atomically, preserving the previous binding and node-ID space. See the
+[Native Cell accessibility reference](../crates/surgeist-text/docs/reference.md#native-cell-accessibility).
+
 ### Native word-break policies
 
 `WordBreak::BreakWord` retains its declared value and the separately declared

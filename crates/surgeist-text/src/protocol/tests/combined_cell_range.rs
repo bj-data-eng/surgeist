@@ -215,7 +215,7 @@ fn ordinary_control(bytes: &[u8]) {
     }
 }
 
-fn fixture() -> (Layout, PreparedOrigin) {
+pub(super) fn fixture() -> (Layout, PreparedOrigin) {
     let (mut system, processed, analyzed, bytes) = source_with_font_features("AA", &OFF);
     provider_premises(&bytes);
     ordinary_control(&bytes);

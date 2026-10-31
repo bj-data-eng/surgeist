@@ -15,11 +15,11 @@ mod allocated_source;
 #[path = "combined_cell_sideways_tracking.rs"]
 mod sideways;
 
-struct Fixture {
-    processed: Arc<ProcessedSource>,
-    analyzed: AnalyzedSource,
+pub(super) struct Fixture {
+    pub(super) processed: Arc<ProcessedSource>,
+    pub(super) analyzed: AnalyzedSource,
     parent: FontData,
-    body: FontData,
+    pub(super) body: FontData,
     inner: Range,
     leading_b: bool,
     trailing_b: bool,
@@ -125,7 +125,7 @@ fn fixture(
     )
 }
 
-fn fixture_with_processing(
+pub(super) fn fixture_with_processing(
     inner: &str,
     tracking: f64,
     leading_b: bool,

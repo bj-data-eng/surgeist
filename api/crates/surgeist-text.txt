@@ -276,9 +276,9 @@ pub surgeist_text::ErrorDetail::TextCombine
 pub surgeist_text::ErrorDetail::TextCombine::reason: surgeist_text::TextCombineError
 pub surgeist_text::ErrorDetail::TextTransform
 pub surgeist_text::ErrorDetail::TextTransform::reason: surgeist_text::TextTransformError
-pub surgeist_text::ErrorDetail::UnsupportedAccessibilityCell
-pub surgeist_text::ErrorDetail::UnsupportedAccessibilityCell::cell: usize
-pub surgeist_text::ErrorDetail::UnsupportedAccessibilityCell::line: usize
+pub surgeist_text::ErrorDetail::UnsupportedAccessibilityCellMapping
+pub surgeist_text::ErrorDetail::UnsupportedAccessibilityCellMapping::cell: usize
+pub surgeist_text::ErrorDetail::UnsupportedAccessibilityCellMapping::range: surgeist_text::Range
 pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit
 pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit::bytes: usize
 pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit::range: surgeist_text::Range

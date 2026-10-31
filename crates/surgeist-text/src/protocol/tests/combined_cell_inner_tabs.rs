@@ -28,7 +28,7 @@ fn glyph_id(bytes: &[u8], ch: char) -> u32 {
         .to_u32()
 }
 
-fn qualified_font() -> Vec<u8> {
+pub(super) fn qualified_font() -> Vec<u8> {
     let bytes = parent_font();
     glyph_frame_font_premises(&bytes);
     let face = skrifa::FontRef::new(&bytes).unwrap();
@@ -687,13 +687,17 @@ fn observe(
         let before = capture.analyzed.access_position(&state, start).unwrap();
         assert!(before.is_some());
         let error = layout
-            .accessibility_update(&mut state, parent, parent, Point::new(0.0, 0.0))
+            .accessibility_update(&mut state, parent, parent, Point::new(f64::INFINITY, 0.0))
             .unwrap_err();
-        assert_eq!(error.code, ErrorCode::UnsupportedFeature);
-        assert_eq!(
+        assert_eq!(error.code, ErrorCode::InvalidTextNumeric);
+        assert!(matches!(
             error.detail(),
-            Some(&ErrorDetail::UnsupportedAccessibilityCell { line: 0, cell: 0 })
-        );
+            Some(ErrorDetail::InvalidTextNumeric {
+                phase: TextNumericPhase::Accessibility,
+                category: TextNumericError::NonFinite,
+                ..
+            })
+        ));
         assert_eq!(
             capture.analyzed.access_position(&state, start).unwrap(),
             before
@@ -1058,4 +1062,4 @@ mod ranges;
 mod range_budgets;
 
 #[path = "combined_cell_range_providers.rs"]
-mod provider_ranges;
+pub(super) mod provider_ranges;
