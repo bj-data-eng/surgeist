@@ -1840,16 +1840,20 @@ fn lookup_work_of_element(unrelated: usize, element: &str) -> u64 {
 fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
     // Each element exercises the payload lookups its kind performs while it is
     // created, attributed and inserted: attribute containers, ids, the node's
-    // document binding, and script/style/dialog/image/form/details/output
-    // metadata. Elements whose creation also reads attribute values by
-    // identity (nonce, href, input and select attributes) or revalidates the
-    // whole registry (input and select) are covered by the lookup-level test
-    // below, which isolates the indexed lookups. Elements that walk the
-    // document in tree order (meta theme color, style with text) scale with
-    // tree nodes, not with payloads, and are not measured here.
+    // document binding, attribute values read by identity (nonce, href), and
+    // script/style/dialog/image/form/details/output metadata. Input and select
+    // creation is not measured here: it runs the full-registry alias check
+    // (`check_aliases`, construction.rs, input/select creation and the
+    // named-attribute merge), which protects the registry's integrity
+    // guarantee and is deliberately linear; the indexed lookups they use are
+    // covered by the lookup-level test below. Elements that walk the document
+    // in tree order (meta theme color, style with text) scale with tree nodes,
+    // not with payloads, and are not measured here.
     let elements = [
         "<div id=a class=b>x</div>",
         "<script src=a id=b async></script>",
+        "<script src=a id=b nonce=c async></script>",
+        "<a id=h href=a>x</a>",
         "<script id=b>x</script>",
         "<dialog open id=e></dialog>",
         "<img src=a id=f alt=g>",
