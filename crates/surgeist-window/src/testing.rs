@@ -832,8 +832,13 @@ impl Host {
             return Ok(());
         };
         let existing = self.state_mut(id)?.metrics().clone();
-        let metrics = Metrics::from_physical_size(id, size, existing.scale_factor())?
-            .with_outer_geometry(existing.outer_position(), existing.outer_size())?;
+        let metrics = Metrics::from_physical_size(id, size, existing.scale_factor())?;
+        let outer_size = if metrics.physical_size() == existing.physical_size() {
+            existing.outer_size()
+        } else {
+            None
+        };
+        let metrics = metrics.with_outer_geometry(existing.outer_position(), outer_size)?;
         self.apply_patch(WindowStatePatch::metrics(metrics, MetricsEvent::Resized))
     }
 
