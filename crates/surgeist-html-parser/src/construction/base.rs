@@ -93,7 +93,7 @@ impl ParserArenaSession {
             self.active()?
                 .construction
                 .node_at(index)
-                .expect("retained construction position"),
+                .ok_or(SessionError::ForeignNode)?,
         ) {
             return Ok(());
         }
@@ -126,7 +126,7 @@ impl SessionStorage {
         if !is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or(SessionError::ForeignNode)?,
         ) {
             return Ok(());
         }
@@ -178,7 +178,7 @@ impl SessionStorage {
             if is_base(
                 self.construction
                     .node_at(node)
-                    .expect("retained construction position"),
+                    .ok_or(SessionError::ForeignNode)?,
             ) && self.form_attribute(c, node, "href")?.is_some()
             {
                 return Ok(Some(node));
@@ -217,7 +217,7 @@ impl SessionStorage {
         if !is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or(SessionError::ForeignNode)?,
         ) {
             return Ok(());
         }
@@ -428,7 +428,7 @@ impl SessionStorage {
                 if !is_base(
                     self.construction
                         .node_at(node)
-                        .expect("retained construction position"),
+                        .ok_or(SessionError::ForeignNode)?,
                 ) || frozen.response == Response::Pending
                 {
                     return Err(c

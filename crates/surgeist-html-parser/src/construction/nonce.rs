@@ -73,7 +73,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Ok(());
@@ -98,7 +98,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -154,7 +154,7 @@ impl SessionStorage {
             if matches!(
                 self.construction
                     .node_at(root)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Document(_)
             ) {
@@ -164,7 +164,7 @@ impl SessionStorage {
             if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(root)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .fragment_owner()
             {
                 c.charge(WorkCategory::ProviderCall, 1)?;
@@ -302,7 +302,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Ok(());
@@ -341,7 +341,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             unreachable!()
@@ -400,7 +400,7 @@ impl SessionStorage {
         if let Some(shadow) = self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .shadow_root()
         {
             c.charge(WorkCategory::ProviderCall, 1)?;
@@ -415,7 +415,7 @@ impl SessionStorage {
         if let Some(child) = self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .child_at(0)
         {
             return Ok(Some(child.position()));
@@ -429,7 +429,7 @@ impl SessionStorage {
             if let Some(parent) = self
                 .construction
                 .node_at(cursor)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .parent()
                 .map(|node| node.position())
             {
@@ -437,16 +437,16 @@ impl SessionStorage {
                 for index in 0..self
                     .construction
                     .node_at(parent)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_count()
                 {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     let child = self
                         .construction
                         .node_at(parent)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .child_at(index)
-                        .expect("retained child ordinal")
+                        .ok_or(SessionError::WrongSibling)?
                         .position();
                     if found {
                         return Ok(Some(child));
@@ -460,7 +460,7 @@ impl SessionStorage {
             } else if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(cursor)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .fragment_owner()
             {
                 c.charge(WorkCategory::ProviderCall, 1)?;
@@ -475,7 +475,7 @@ impl SessionStorage {
                 if let Some(child) = self
                     .construction
                     .node_at(cursor)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_at(0)
                 {
                     return Ok(Some(child.position()));
@@ -543,7 +543,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::WrongToken);

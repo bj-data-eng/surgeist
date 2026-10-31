@@ -30,16 +30,16 @@ impl SessionStorage {
             for ordinal in 0..self
                 .construction
                 .node_at(root)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_count()
             {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let child = self
                     .construction
                     .node_at(root)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_at(ordinal)
-                    .expect("retained child ordinal")
+                    .ok_or(SessionError::WrongSibling)?
                     .position();
                 pending.try_push(c, child)?;
             }
@@ -49,7 +49,7 @@ impl SessionStorage {
                 let record = self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position");
+                    .ok_or(SessionError::ForeignNode)?;
                 if let Some(shadow) = record.shadow_root() {
                     c.charge(WorkCategory::ProviderCall, 1)?;
                     let shadow_contents = self
@@ -69,7 +69,7 @@ impl SessionStorage {
                     if self
                         .construction
                         .node_at(shadow_contents)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .shadow_properties()
                         .expect("actual shadow role")
                         .clonable()
@@ -79,16 +79,16 @@ impl SessionStorage {
                         for ordinal in 0..self
                             .construction
                             .node_at(shadow_contents)
-                            .expect("retained construction position")
+                            .ok_or(SessionError::ForeignNode)?
                             .child_count()
                         {
                             c.charge(WorkCategory::RecordVisit, 1)?;
                             let child = self
                                 .construction
                                 .node_at(shadow_contents)
-                                .expect("retained construction position")
+                                .ok_or(SessionError::ForeignNode)?
                                 .child_at(ordinal)
-                                .expect("retained child ordinal")
+                                .ok_or(SessionError::WrongSibling)?
                                 .position();
                             pending.try_push(c, child)?;
                         }
@@ -181,7 +181,7 @@ impl SessionStorage {
                 if let Some(contents) = self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .template_contents()
                     .map(|node| node.position())
                 {
@@ -190,16 +190,16 @@ impl SessionStorage {
                     for ordinal in 0..self
                         .construction
                         .node_at(contents)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .child_count()
                     {
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         let child = self
                             .construction
                             .node_at(contents)
-                            .expect("retained construction position")
+                            .ok_or(SessionError::ForeignNode)?
                             .child_at(ordinal)
-                            .expect("retained child ordinal")
+                            .ok_or(SessionError::WrongSibling)?
                             .position();
                         pending.try_push(c, child)?;
                     }
@@ -207,16 +207,16 @@ impl SessionStorage {
                 for ordinal in 0..self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_count()
                 {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     let child = self
                         .construction
                         .node_at(node)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .child_at(ordinal)
-                        .expect("retained child ordinal")
+                        .ok_or(SessionError::WrongSibling)?
                         .position();
                     pending.try_push(c, child)?;
                 }
@@ -238,7 +238,7 @@ impl SessionStorage {
         if self
             .construction
             .node_at(source)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .template_contents()
             .is_some()
         {
@@ -282,7 +282,7 @@ impl SessionStorage {
         match &self
             .construction
             .node_at(source)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         {
             HtmlNodeKind::Element(_) => self.clone_element(c, source, document),
@@ -290,7 +290,7 @@ impl SessionStorage {
                 let text = matches!(
                     self.construction
                         .node_at(source)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .kind(),
                     HtmlNodeKind::Text(_)
                 );
@@ -388,7 +388,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(original) = &self
             .construction
             .node_at(source)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             unreachable!()
@@ -420,11 +420,13 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let AttributeStorage::Building {
+        let taken = storage.take();
+        let Some(AttributeStorage::Building {
             values, allocation, ..
-        } = storage.take().expect("owned empty clone attributes")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(SessionError::WrongToken);
         };
         let (backing, shared) = match c.share_owned(values) {
             Ok(value) => value,
@@ -503,7 +505,7 @@ impl SessionStorage {
         if base::is_base(
             self.construction
                 .node_at(source)
-                .expect("retained construction position"),
+                .ok_or(SessionError::ForeignNode)?,
         ) {
             let slot = self.base_slot(c, source)?;
             c.charge(
@@ -522,7 +524,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(original) = &self
             .construction
             .node_at(source)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             unreachable!()
@@ -544,7 +546,7 @@ impl SessionStorage {
             let HtmlNodeKind::Element(original) = &self
                 .construction
                 .node_at(source)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             else {
                 unreachable!()
@@ -684,7 +686,7 @@ impl SessionStorage {
             let HtmlNodeKind::Element(element) = &self
                 .construction
                 .node_at(source)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             else {
                 return Err(SessionError::WrongToken);
@@ -963,7 +965,7 @@ impl SessionStorage {
             let HtmlNodeKind::Element(element) = &self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             else {
                 unreachable!()

@@ -64,7 +64,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -132,7 +132,7 @@ impl SessionStorage {
             && self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_count()
                 == 0
         {
@@ -231,7 +231,8 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let AttributeStorage::Removing {
+        let taken = storage.take();
+        let Some(AttributeStorage::Removing {
             values,
             mut allocation,
             mut shared,
@@ -240,9 +241,10 @@ impl SessionStorage {
             mut shifted,
             mut popped,
             rebound,
-        } = storage.take().expect("real removal")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(SessionError::WrongToken);
         };
         drop(values);
         let result = (|| {

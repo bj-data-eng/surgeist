@@ -81,7 +81,7 @@ impl SessionStorage {
         let HtmlNodeKind::ProcessingInstruction(pi) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -98,7 +98,7 @@ impl SessionStorage {
                         let HtmlNodeKind::ProcessingInstruction(pi) = &self
                             .construction
                             .node_at(node)
-                            .expect("retained construction position")
+                            .ok_or(SessionError::ForeignNode)?
                             .kind()
                         else {
                             return Err(SessionError::WrongToken);

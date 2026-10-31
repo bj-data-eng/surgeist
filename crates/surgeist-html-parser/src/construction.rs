@@ -452,6 +452,7 @@ impl NodeJoins {
 /// sum cannot overflow; the checked sum still fails typed, never wrapping or
 /// naming another row, if that bound were ever broken.
 fn joined_cell(slot: usize) -> Result<NonZeroUsize, SessionError> {
+    const { assert!(mem::size_of::<RetainedPayload>() > 1) };
     NonZeroUsize::MIN
         .checked_add(slot)
         .ok_or(SessionError::WrongToken)
@@ -1136,22 +1137,28 @@ impl PayloadStorage {
         // and cleanup continues so every other owner is still released; the first
         // refusal is returned once the walk is complete.
         let mut refused = release_vector(control, node_joins, node_joins_allocation).err();
-        release_logical(
-            control,
-            owner,
-            HtmlParseResource::AuxiliaryEntries,
-            join_entries,
+        keep_first(
+            &mut refused,
+            release_logical(
+                control,
+                owner,
+                HtmlParseResource::AuxiliaryEntries,
+                join_entries,
+            ),
         );
         for list in kind_slots {
             let list_entries = list.slots.len() as u64;
             if let Err(error) = release_vector(control, list.slots, list.allocation) {
                 refused.get_or_insert(error);
             }
-            release_logical(
-                control,
-                owner,
-                HtmlParseResource::AuxiliaryEntries,
-                list_entries,
+            keep_first(
+                &mut refused,
+                release_logical(
+                    control,
+                    owner,
+                    HtmlParseResource::AuxiliaryEntries,
+                    list_entries,
+                ),
             );
         }
         let entries = values.len() as u64;
@@ -1162,21 +1169,33 @@ impl PayloadStorage {
             if let RetainedPayload::PiAttributes { values, .. } = payload {
                 // PI maps own the second references to registered backings.
                 // Remove those references before string-ticket disposal.
-                while let Some(pair) = if control.stop().is_some() {
-                    values.cleanup_pop(control)
-                } else {
-                    values.try_pop(control)
-                }
-                .unwrap_or_else(|_| {
-                    values
-                        .cleanup_pop(control)
-                        .expect("terminal PI pair disposal")
-                }) {
-                    drop(pair);
+                loop {
+                    let popped = if control.stop().is_some() {
+                        values.cleanup_pop(control)
+                    } else {
+                        values.try_pop(control)
+                    };
+                    let popped = match popped {
+                        Ok(popped) => popped,
+                        Err(_) => match values.cleanup_pop(control) {
+                            Ok(popped) => popped,
+                            Err(stop) => {
+                                refused.get_or_insert(SessionError::Stop(stop));
+                                break;
+                            }
+                        },
+                    };
+                    match popped {
+                        Some(pair) => drop(pair),
+                        None => break,
+                    }
                 }
             }
             if let RetainedPayload::Attributes(storage) = payload {
-                let storage = storage.take().expect("retained attribute phase");
+                let Some(storage) = storage.take() else {
+                    refused.get_or_insert(SessionError::Consumed);
+                    continue;
+                };
                 let count = match &storage {
                     AttributeStorage::Building { values, .. }
                     | AttributeStorage::Transferring { values, .. } => values.len(),
@@ -1190,8 +1209,9 @@ impl PayloadStorage {
                     | AttributeStorage::Transferring {
                         values, allocation, ..
                     } => {
-                        release_vector(control, values, allocation)
-                            .expect("actual attribute vector ticket");
+                        if let Err(error) = release_vector(control, values, allocation) {
+                            refused.get_or_insert(error);
+                        }
                     }
                     AttributeStorage::Frozen {
                         values,
@@ -1210,18 +1230,26 @@ impl PayloadStorage {
                             continue;
                         }
                         let backing = values.into_shared_attributes();
-                        let vector = control.release_shared(backing, shared).unwrap_or_else(|_| {
-                            panic!("prechecked attribute backing has no external aliases")
-                        });
-                        release_vector(control, vector, allocation)
-                            .expect("actual attribute vector ticket");
+                        match control.release_shared(backing, shared) {
+                            Ok(vector) => {
+                                if let Err(error) = release_vector(control, vector, allocation) {
+                                    refused.get_or_insert(error);
+                                }
+                            }
+                            Err(_) => {
+                                refused.get_or_insert(SessionError::AliasedPayload);
+                            }
+                        }
                     }
                 }
-                release_logical(
-                    control,
-                    owner,
-                    HtmlParseResource::ManagedAttributes,
-                    count as u64,
+                keep_first(
+                    &mut refused,
+                    release_logical(
+                        control,
+                        owner,
+                        HtmlParseResource::ManagedAttributes,
+                        count as u64,
+                    ),
                 );
             }
         }
@@ -1258,25 +1286,25 @@ impl PayloadStorage {
                 continue;
             }
             if let RetainedPayload::PiAttributes { values, .. } = payload {
-                values
-                    .release(control)
-                    .expect("actual PI map vector ownership");
+                keep_first(&mut refused, values.release(control));
                 continue;
             }
             if let RetainedPayload::WorkList(Some(list)) = payload {
-                list.release(control)
-                    .expect("actual retained work-list ticket");
+                keep_first(&mut refused, list.release(control));
                 continue;
             }
             if let RetainedPayload::InputSource {
                 value_attribute, ..
             } = &payload
             {
-                release_logical(
-                    control,
-                    owner,
-                    HtmlParseResource::SourceMapEntries,
-                    1 + u64::from(value_attribute.is_some()),
+                keep_first(
+                    &mut refused,
+                    release_logical(
+                        control,
+                        owner,
+                        HtmlParseResource::SourceMapEntries,
+                        1 + u64::from(value_attribute.is_some()),
+                    ),
                 );
             }
             if let RetainedPayload::String {
@@ -1287,15 +1315,16 @@ impl PayloadStorage {
             } = payload
             {
                 drop(value);
-                control
-                    .release_document_string(allocation)
-                    .expect("actual managed string ticket");
+                keep_first(&mut refused, control.release_document_string(allocation));
                 drop(origins);
             }
         }
         csp_storage.release(control);
-        release_vector(control, values, allocation).expect("actual payload registry capacity");
-        release_logical(control, owner, HtmlParseResource::AuxiliaryEntries, entries);
+        keep_first(&mut refused, release_vector(control, values, allocation));
+        keep_first(
+            &mut refused,
+            release_logical(control, owner, HtmlParseResource::AuxiliaryEntries, entries),
+        );
         refused.map_or(Ok(()), Err)
     }
 }
@@ -1475,18 +1504,25 @@ fn cleanup_charge(
     Ok(())
 }
 
+/// Records the first refusal of a cleanup step; cleanup continues so every
+/// other owner is still released.
+fn keep_first<E: Into<SessionError>>(refused: &mut Option<SessionError>, result: Result<(), E>) {
+    if let Err(error) = result {
+        refused.get_or_insert(error.into());
+    }
+}
 fn release_logical(
     control: &mut ParseControl,
     owner: &ControlIdentity,
     resource: HtmlParseResource,
     units: u64,
-) {
+) -> Result<(), SessionError> {
     if control.stop().is_none() && control.release(resource, units).is_ok() {
-        return;
+        return Ok(());
     }
     control
         .cleanup_release(owner, resource, units)
-        .expect("exact admitted logical ownership");
+        .map_err(SessionError::Stop)
 }
 
 impl SessionStorage {
@@ -1607,7 +1643,7 @@ impl SessionStorage {
             session
                 .construction
                 .node_at(0)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind(),
             HtmlNodeKind::Document(_)
         ) {
@@ -1752,7 +1788,7 @@ impl SessionStorage {
         let document = matches!(
             self.construction
                 .node_at(0)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind(),
             HtmlNodeKind::Document(_)
         )
@@ -2344,7 +2380,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             unreachable!()
@@ -2396,7 +2432,7 @@ impl SessionStorage {
             let HtmlNodeKind::Element(element) = &self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             else {
                 unreachable!()
@@ -2429,7 +2465,7 @@ impl SessionStorage {
             let attribute = match &self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             {
                 HtmlNodeKind::Element(element) => &element.attributes().as_slice()[position],
@@ -2450,7 +2486,7 @@ impl SessionStorage {
             let attribute = match &self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             {
                 HtmlNodeKind::Element(element) => &element.attributes().as_slice()[position],
@@ -2506,7 +2542,7 @@ impl SessionStorage {
                     let HtmlNodeKind::Element(element) = &self
                         .construction
                         .node_at(node)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .kind()
                     else {
                         unreachable!()
@@ -2560,7 +2596,7 @@ impl SessionStorage {
                     let HtmlNodeKind::Element(element) = &self
                         .construction
                         .node_at(node)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .kind()
                     else {
                         unreachable!()
@@ -2663,7 +2699,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -2710,7 +2746,7 @@ impl SessionStorage {
             let HtmlNodeKind::Element(element) = &self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             else {
                 unreachable!()
@@ -2780,7 +2816,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             unreachable!()
@@ -2902,22 +2938,22 @@ impl SessionStorage {
             for position in 0..self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_count()
             {
                 control.charge(WorkCategory::RecordVisit, 2)?;
                 let child = self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_at(position)
-                    .expect("retained child ordinal")
+                    .ok_or(SessionError::WrongSibling)?
                     .position();
                 if Some(child) != detached
                     && let HtmlNodeKind::Text(value) = &self
                         .construction
                         .node_at(child)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .kind()
                 {
                     raw.extend_units(value.code_units(), control)?;
@@ -3136,7 +3172,7 @@ impl SessionStorage {
             let document = matches!(
                 self.construction
                     .node_at(0)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Document(_)
             )
@@ -3269,14 +3305,16 @@ impl SessionStorage {
             else {
                 return Err(SessionError::WrongToken);
             };
-            let AttributeStorage::Building {
+            let taken = storage.take();
+            let Some(AttributeStorage::Building {
                 values,
                 allocation,
                 original_len,
                 reversed_pairs,
-            } = storage.take().expect("attribute builder phase")
+            }) = taken
             else {
-                unreachable!()
+                *storage = taken;
+                return Err(SessionError::WrongToken);
             };
             let (backing, shared) = match control.share_owned(values) {
                 Ok(value) => value,
@@ -3384,7 +3422,7 @@ impl SessionStorage {
             if self
                 .construction
                 .node_at(before)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .parent()
                 .map(|node| node.position())
                 != Some(parent_index)
@@ -3399,7 +3437,7 @@ impl SessionStorage {
             || matches!(
                 self.construction
                     .node_at(parent_index)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Document(_)
             )
@@ -3411,16 +3449,16 @@ impl SessionStorage {
         for position in 0..self
             .construction
             .node_at(parent_index)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .child_count()
         {
             control.charge(WorkCategory::RecordVisit, 1)?;
             let child = self
                 .construction
                 .node_at(parent_index)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_at(position)
-                .expect("retained child ordinal")
+                .ok_or(SessionError::WrongSibling)?
                 .position();
             if Some(child) == before_index {
                 break;
@@ -3453,7 +3491,7 @@ impl SessionStorage {
                     if matches!(
                         self.construction
                             .node_at(0)
-                            .expect("retained construction position")
+                            .ok_or(SessionError::ForeignNode)?
                             .kind(),
                         HtmlNodeKind::Fragment
                     ) =>
@@ -3624,7 +3662,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(target)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -3795,7 +3833,7 @@ impl SessionStorage {
             let old_len = match &self
                 .construction
                 .node_at(target)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             {
                 HtmlNodeKind::Element(v) => v.attributes().len(),
@@ -3846,11 +3884,13 @@ impl SessionStorage {
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(stage) else {
             return Err(SessionError::WrongToken);
         };
-        let AttributeStorage::Transferring {
+        let taken = storage.take();
+        let Some(AttributeStorage::Transferring {
             values, allocation, ..
-        } = storage.take().expect("retained transfer phase")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(SessionError::WrongToken);
         };
         *storage = Some(AttributeStorage::Building {
             values,
@@ -3870,7 +3910,7 @@ impl SessionStorage {
         if base::is_base(
             self.construction
                 .node_at(target)
-                .expect("retained construction position"),
+                .ok_or(SessionError::ForeignNode)?,
         ) {
             // Only an actual appended no-namespace href changes the pinned
             // first-Base href trigger. Other fields share this merge owner.
@@ -3880,7 +3920,7 @@ impl SessionStorage {
                 let HtmlNodeKind::Element(element) = &self
                     .construction
                     .node_at(target)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind()
                 else {
                     unreachable!()
@@ -3909,14 +3949,16 @@ impl SessionStorage {
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(stage) else {
             return Err(SessionError::WrongToken);
         };
-        let AttributeStorage::Building {
+        let taken = storage.take();
+        let Some(AttributeStorage::Building {
             values,
             allocation,
             original_len,
             reversed_pairs,
-        } = storage.take().expect("real staged attributes")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(SessionError::WrongToken);
         };
         assert_eq!(
             reversed_pairs, 0,
@@ -4101,14 +4143,16 @@ impl SessionStorage {
         let RetainedPayload::Attributes(storage) = &mut earlier[container] else {
             unreachable!()
         };
-        let AttributeStorage::Frozen {
+        let taken = storage.take();
+        let Some(AttributeStorage::Frozen {
             values,
             mut allocation,
             mut shared,
             element,
-        } = storage.take().expect("real attribute phase")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(SessionError::WrongToken);
         };
         drop(values);
         let was_named = self.construction.has_attribute_edit();
@@ -4226,7 +4270,7 @@ impl SessionStorage {
         control.charge(WorkCategory::RecordVisit, 1)?;
         self.construction
             .node_at(index)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .template_contents()
             .map(|contents| self.node(control, contents.position()))
             .transpose()
@@ -4393,7 +4437,7 @@ impl SessionStorage {
         let old_parent = self
             .construction
             .node_at(root)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .parent()
             .map(|node| node.position());
         let mut children_changed = false;
@@ -4610,7 +4654,7 @@ impl SessionStorage {
             if matches!(
                 self.construction
                     .node_at(root)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Document(_)
             ) {
@@ -4620,7 +4664,7 @@ impl SessionStorage {
             if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(root)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .fragment_owner()
             {
                 control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
@@ -5194,7 +5238,7 @@ impl SessionStorage {
         let old_parent = self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .parent()
             .map(|node| node.position());
         let mut form_effects =
@@ -5336,7 +5380,7 @@ impl SessionStorage {
         if self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .parent()
             .is_none()
         {
@@ -5389,7 +5433,7 @@ impl SessionStorage {
                     let HtmlNodeKind::Element(element) = &self
                         .construction
                         .node_at(index)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .kind()
                     else {
                         return Err(SessionError::ScriptMetadataUnavailable);
@@ -5407,16 +5451,16 @@ impl SessionStorage {
                     let children = self
                         .construction
                         .node_at(index)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .child_count();
                     for position in 0..children {
                         control.charge(WorkCategory::RecordVisit, 3)?;
                         let child = self
                             .construction
                             .node_at(index)
-                            .expect("retained construction position")
+                            .ok_or(SessionError::ForeignNode)?
                             .child_at(position)
-                            .expect("retained child ordinal")
+                            .ok_or(SessionError::WrongSibling)?
                             .position();
                         let record = self
                             .construction
@@ -5436,7 +5480,7 @@ impl SessionStorage {
                     if !matches!(
                         self.construction
                             .node_at(index)
-                            .expect("retained construction position")
+                            .ok_or(SessionError::ForeignNode)?
                             .kind(),
                         HtmlNodeKind::Element(_)
                     ) {
@@ -5448,7 +5492,7 @@ impl SessionStorage {
                     let HtmlNodeKind::Element(element) = &self
                         .construction
                         .node_at(index)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .kind()
                     else {
                         return Err(SessionError::ScriptMetadataUnavailable);
@@ -5488,7 +5532,7 @@ impl SessionStorage {
                     let HtmlNodeKind::Element(element) = &self
                         .construction
                         .node_at(index)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .kind()
                     else {
                         return Err(SessionError::ScriptMetadataUnavailable);
@@ -5559,7 +5603,7 @@ impl SessionStorage {
             if !matches!(
                 self.construction
                     .node_at(output)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Fragment
             ) {
@@ -5607,28 +5651,31 @@ impl SessionStorage {
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
         } = self;
+        // Every owner is released even after a refusal; the first one is
+        // returned at the end.
+        let mut refused = None;
         if let Some(failed) = failed_text_append {
             failed.release(control);
         }
         if let Some(fragment) = fragment {
-            fragment
-                .release(control, &owner)
-                .expect("actual context effects owner");
+            keep_first(&mut refused, fragment.release(control, &owner));
         }
         if let Some(evidence) = evidence {
-            evidence.release(control).expect("actual diagnostic owner");
+            keep_first(&mut refused, evidence.release(control));
         }
-        effects
-            .release(control)
-            .expect("actual construction effect owners");
-        release_parts(
-            control,
-            &owner,
-            ReleasedStorage {
-                construction,
-                payloads,
-            },
-        )
+        keep_first(&mut refused, effects.release(control));
+        keep_first(
+            &mut refused,
+            release_parts(
+                control,
+                &owner,
+                ReleasedStorage {
+                    construction,
+                    payloads,
+                },
+            ),
+        );
+        refused.map_or(Ok(()), Err)
     }
 }
 
@@ -5880,7 +5927,7 @@ impl ParserArenaSession {
             if storage
                 .construction
                 .node_at(source)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_count()
                 == 0
             {
@@ -5891,9 +5938,9 @@ impl ParserArenaSession {
             let index = storage
                 .construction
                 .node_at(source)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_at(0)
-                .expect("retained child ordinal")
+                .ok_or(SessionError::WrongSibling)?
                 .position();
             let child = storage.node(control, index)?;
             self.insert(control, to, &child, None, capability)?;
@@ -5914,7 +5961,7 @@ impl ParserArenaSession {
             storage
                 .construction
                 .node_at(0)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind(),
             HtmlNodeKind::Document(_)
         ) {
@@ -5947,7 +5994,7 @@ impl ParserArenaSession {
                 storage
                     .construction
                     .node_at(0)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Document(_)
             )
@@ -6489,7 +6536,9 @@ impl ParserArenaSession {
             let entries = 1 + u64::from(value_attribute.is_some());
             control.acquire(HtmlParseResource::SourceMapEntries, entries)?;
             if let Err(error) = storage.prepare_payload_slot(control) {
-                release_logical(
+                // The slot refusal is the error reported; a refused logical
+                // release has latched its own stop in the controller.
+                let _ = release_logical(
                     control,
                     &storage.control,
                     HtmlParseResource::SourceMapEntries,
@@ -6596,7 +6645,7 @@ impl ParserArenaSession {
                 if storage
                     .construction
                     .node_at(node.index)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_count()
                     != 0
                 {
@@ -6628,7 +6677,7 @@ impl ParserArenaSession {
                 if storage
                     .construction
                     .node_at(node.index)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_count()
                     != 0
                 {
@@ -7344,7 +7393,7 @@ impl ParserArenaSession {
             storage
                 .construction
                 .node_at(0)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind(),
             HtmlNodeKind::Document(_)
         ) {
@@ -7353,22 +7402,22 @@ impl ParserArenaSession {
         for position in 0..storage
             .construction
             .node_at(0)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .child_count()
         {
             control.charge(WorkCategory::RecordVisit, 2)?;
             let child = storage
                 .construction
                 .node_at(0)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_at(position)
-                .expect("retained child ordinal")
+                .ok_or(SessionError::WrongSibling)?
                 .position();
             if matches!(
                 storage
                     .construction
                     .node_at(child)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Doctype(_) | HtmlNodeKind::Element(_)
             ) {
@@ -7387,7 +7436,7 @@ impl ParserArenaSession {
         let HtmlNodeKind::Document(mode) = &storage
             .construction
             .node_at(0)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::NotDocument);
@@ -7467,7 +7516,7 @@ impl ParserArenaSession {
             storage
                 .construction
                 .node_at(0)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind(),
             HtmlNodeKind::Fragment
         ) {
@@ -7503,7 +7552,7 @@ impl ParserArenaSession {
         storage
             .construction
             .node_at(index)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .parent()
             .map(|node| storage.node(control, node.position()))
             .transpose()
@@ -7520,7 +7569,7 @@ impl ParserArenaSession {
             match &storage
                 .construction
                 .node_at(index)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             {
                 HtmlNodeKind::Element(value) => Some(value.name()),
@@ -7588,14 +7637,14 @@ impl ParserArenaSession {
             storage
                 .construction
                 .node_at(target)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind(),
             HtmlNodeKind::Document(_)
         ) {
             for position in 0..storage
                 .construction
                 .node_at(target)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_count()
             {
                 // One actual child-index read and one referenced kind read.
@@ -7603,9 +7652,9 @@ impl ParserArenaSession {
                 let child = storage
                     .construction
                     .node_at(target)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_at(position)
-                    .expect("retained child ordinal")
+                    .ok_or(SessionError::WrongSibling)?
                     .position();
                 let record = storage
                     .construction
@@ -8285,11 +8334,17 @@ fn release_parts(
         construction,
         payloads,
     } = parts;
-    let usage = construction
-        .retire(control)
-        .expect("same construction bank tickets and controller");
+    let mut refused = None;
+    let usage = match construction.retire(control) {
+        Ok(usage) => Some(usage),
+        Err(error) => {
+            refused = Some(error);
+            None
+        }
+    };
+    let (edges, nodes) = usage.map_or((0, 0), |usage| (usage.edges() as u64, usage.nodes() as u64));
     for (resource, units) in [
-        (HtmlParseResource::ManagedEdges, usage.edges() as u64),
+        (HtmlParseResource::ManagedEdges, edges),
         (
             HtmlParseResource::ManagedAttributes,
             payloads.preexisting_attributes as u64,
@@ -8298,16 +8353,18 @@ fn release_parts(
             HtmlParseResource::ManagedUtf16Units,
             payloads.preexisting_units as u64,
         ),
-        (HtmlParseResource::AuxiliaryEntries, usage.nodes() as u64),
+        (HtmlParseResource::AuxiliaryEntries, nodes),
     ] {
         if control.stop().is_none() && control.release(resource, units).is_ok() {
             continue;
         }
-        control
-            .cleanup_release(owner, resource, units)
-            .expect("private session's admitted logical storage has not been released elsewhere");
+        keep_first(
+            &mut refused,
+            control.cleanup_release(owner, resource, units),
+        );
     }
-    payloads.release(control, owner)
+    keep_first(&mut refused, payloads.release(control, owner));
+    refused.map_or(Ok(()), Err)
 }
 
 fn cleanup_owner(control: &mut ParseControl, owner: &ControlIdentity) -> Result<(), SessionError> {
@@ -9671,7 +9728,7 @@ fn next_ordinary_view_node(
         control.charge(WorkCategory::RecordVisit, 1)?;
         let child = record
             .child_at(position)
-            .expect("retained child ordinal")
+            .ok_or(SessionError::WrongSibling)?
             .position();
         if detached != Some(child) || root == child {
             return Ok(Some(child));
@@ -9700,7 +9757,7 @@ fn next_ordinary_view_after_subtree(
             control.charge(WorkCategory::RecordVisit, 1)?;
             let child = children
                 .child_at(position)
-                .expect("retained child ordinal")
+                .ok_or(SessionError::WrongSibling)?
                 .position();
             if found && (detached != Some(child) || root == child) {
                 return Ok(Some(child));

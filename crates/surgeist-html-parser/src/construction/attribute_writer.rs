@@ -16,14 +16,16 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let AttributeStorage::Frozen {
+        let taken = backing.take();
+        let Some(AttributeStorage::Frozen {
             values,
             mut allocation,
             mut shared,
             element,
-        } = backing.take().expect("actual attribute bank")
+        }) = taken
         else {
-            unreachable!()
+            *backing = taken;
+            return Err(SessionError::WrongToken);
         };
         drop(values);
         let result = (|| {

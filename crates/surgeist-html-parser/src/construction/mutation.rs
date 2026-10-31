@@ -170,7 +170,7 @@ impl SessionStorage {
                 let HtmlNodeKind::Element(element) = &self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind()
                 else {
                     unreachable!()
@@ -297,7 +297,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(record) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             unreachable!()
@@ -406,7 +406,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -438,14 +438,16 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let AttributeStorage::Frozen {
+        let taken = storage.take();
+        let Some(AttributeStorage::Frozen {
             values,
             allocation,
             shared,
             element,
-        } = storage.take().expect("qualified real attributes")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(SessionError::WrongToken);
         };
         let len = values.len();
         *storage = Some(AttributeStorage::Removing {
@@ -522,15 +524,17 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let AttributeStorage::Removing {
+        let taken = storage.take();
+        let Some(AttributeStorage::Removing {
             values,
             allocation,
             shared,
             element,
             ..
-        } = storage.take().expect("retained removal")
+        }) = taken
         else {
-            unreachable!()
+            *storage = taken;
+            return Err(SessionError::WrongToken);
         };
         *storage = Some(AttributeStorage::Frozen {
             values,
@@ -556,7 +560,7 @@ impl SessionStorage {
         if base::is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or(SessionError::ForeignNode)?,
         ) && local == "href"
         {
             self.base_change(c, node, None, true)?;
@@ -655,7 +659,7 @@ impl ParserArenaSession {
         let HtmlNodeKind::Element(element) = &storage
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             unreachable!()

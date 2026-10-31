@@ -179,7 +179,7 @@ impl SessionStorage {
                 if self
                     .construction
                     .node_at(target)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_count()
                     == 0
                 {
@@ -200,9 +200,9 @@ impl SessionStorage {
                 let child = self
                     .construction
                     .node_at(target)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_at(0)
-                    .expect("retained child ordinal")
+                    .ok_or(SessionError::WrongSibling)?
                     .position();
                 self.remove_index(c, child)
             }
@@ -237,7 +237,7 @@ impl SessionStorage {
                     == self
                         .construction
                         .node_at(option)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .child_count()
                 {
                     return self.write_current_effect(c, None);
@@ -246,9 +246,9 @@ impl SessionStorage {
                 let child = self
                     .construction
                     .node_at(option)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_at(cursor)
-                    .expect("retained child ordinal")
+                    .ok_or(SessionError::WrongSibling)?
                     .position();
                 let document = self.node_document_ref(c, child)?;
                 let child_document = document.try_clone(c)?;
@@ -511,7 +511,7 @@ impl SessionStorage {
         if self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .child_count()
             != 0
         {
@@ -529,7 +529,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::WrongToken);

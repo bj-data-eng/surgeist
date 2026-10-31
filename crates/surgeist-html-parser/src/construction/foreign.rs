@@ -166,7 +166,7 @@ impl ParserArenaSession {
             match &storage
                 .construction
                 .node_at(index)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind()
             {
                 HtmlNodeKind::Element(value) => Some(value.attributes()),

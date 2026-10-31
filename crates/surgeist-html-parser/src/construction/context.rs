@@ -344,7 +344,7 @@ impl ParserArenaSession {
                 storage
                     .construction
                     .node_at(0)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Document(_)
             )
@@ -492,7 +492,7 @@ impl ParserArenaSession {
                 storage
                     .construction
                     .node_at(output)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Fragment
             )
@@ -709,7 +709,7 @@ impl SessionStorage {
         if matches!(
             self.construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind(),
             HtmlNodeKind::Fragment
         ) {
@@ -881,13 +881,13 @@ impl SessionStorage {
         let shadow = if matches!(
             self.construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .kind(),
             HtmlNodeKind::Fragment
         ) && matches!(
             self.construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .fragment_owner(),
             Some(HtmlFragmentOwner::ShadowHost(_))
         ) {
@@ -899,7 +899,7 @@ impl SessionStorage {
             && !matches!(
                 self.construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::Element(_)
             )
@@ -948,7 +948,7 @@ impl SessionStorage {
                     && !matches!(
                         self.construction
                             .node_at(parent)
-                            .expect("retained construction position")
+                            .ok_or(SessionError::ForeignNode)?
                             .kind(),
                         HtmlNodeKind::Fragment
                     ) =>
@@ -1095,7 +1095,7 @@ impl FragmentContextStorage {
         c: &mut ParseControl,
         owner: &ControlIdentity,
     ) -> Result<(), ParseStop> {
-        release_logical(
+        let logical = release_logical(
             c,
             owner,
             HtmlParseResource::SourceMapEntries,
@@ -1103,9 +1103,15 @@ impl FragmentContextStorage {
         );
         // Public handles exist only after successful report publication. This
         // original cleanup owner retires its actual identity ticket on failure.
-        c.release_zero_sized_shared(self.origin.0, self.origin_allocation)
-            .unwrap_or_else(|_| panic!("original fragment origin owner/ticket"));
-        self.effects.release(c)
+        let origin = c
+            .release_zero_sized_shared(self.origin.0, self.origin_allocation)
+            .map_err(|error| error.into_parts().0);
+        let effects = self.effects.release(c);
+        if let Err(SessionError::Stop(stop)) = logical {
+            return Err(stop);
+        }
+        origin?;
+        effects
     }
 }
 impl ParserArenaSession {
@@ -1136,7 +1142,7 @@ impl ParserArenaSession {
         let HtmlNodeKind::Element(element) = &storage
             .construction
             .node_at(template)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             unreachable!()
@@ -1192,7 +1198,7 @@ impl ParserArenaSession {
                 let HtmlNodeKind::Element(element) = &storage
                     .construction
                     .node_at(host)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind()
                 else {
                     return Ok(false);
@@ -1202,7 +1208,7 @@ impl ParserArenaSession {
                     || storage
                         .construction
                         .node_at(host)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .shadow_root()
                         .is_some()
                 {
@@ -1349,7 +1355,9 @@ impl ParserArenaSession {
             source: source.clone(),
         };
         if let Err((stop, _)) = fragment.effects.try_push_recover(c, effect) {
-            release_logical(c, &storage.control, HtmlParseResource::SourceMapEntries, 1);
+            // The push refusal is the error reported; a refused release latched
+            // its own stop.
+            let _ = release_logical(c, &storage.control, HtmlParseResource::SourceMapEntries, 1);
             return Err(stop.into());
         }
         fragment.source_entries += 1;
@@ -1776,7 +1784,7 @@ impl SessionStorage {
         let Some(shadow) = self
             .construction
             .node_at(source)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .shadow_root()
         else {
             return Ok(None);

@@ -395,7 +395,7 @@ impl SessionStorage {
                 if let Some(shadow) = self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .shadow_root()
                 {
                     c.charge(WorkCategory::ProviderCall, 1)?;
@@ -420,7 +420,7 @@ impl SessionStorage {
                 if self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .template_contents()
                     .is_some()
                 {
@@ -455,7 +455,7 @@ impl SessionStorage {
                 if self
                     .construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .parent()
                     .map(|node| node.position())
                     .is_some()
@@ -483,7 +483,7 @@ impl SessionStorage {
                     == self
                         .construction
                         .node_at(source)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .child_count()
                 {
                     self.write_current_effect(c, None)?;
@@ -504,9 +504,9 @@ impl SessionStorage {
                 let child = self
                     .construction
                     .node_at(source)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_at(cursor)
-                    .expect("retained child ordinal")
+                    .ok_or(SessionError::WrongSibling)?
                     .position();
                 let child_document = document.try_clone(c)?;
                 let copied = self.clone_node(c, child, child_document)?;
@@ -535,7 +535,7 @@ impl SessionStorage {
                 if self
                     .construction
                     .node_at(child)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .template_contents()
                     .is_some()
                 {
@@ -883,7 +883,7 @@ impl SessionStorage {
         if base::is_base(
             self.construction
                 .node_at(node)
-                .expect("retained construction position"),
+                .ok_or(SessionError::ForeignNode)?,
         ) {
             self.base_change(c, node, detached, false)?;
         }

@@ -61,7 +61,7 @@ impl SessionStorage {
             && self
                 .construction
                 .node_at(node)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_count()
                 == 0
         {

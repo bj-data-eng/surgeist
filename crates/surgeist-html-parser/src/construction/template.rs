@@ -78,7 +78,7 @@ impl SessionStorage {
                     if matches!(
                         self.construction
                             .node_at(node)
-                            .expect("retained construction position")
+                            .ok_or(SessionError::ForeignNode)?
                             .kind(),
                         HtmlNodeKind::Document(_)
                     ) && DocumentRef::Owned(node) != *document
@@ -137,7 +137,7 @@ impl SessionStorage {
         match self
             .construction
             .node_at(0)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         {
             HtmlNodeKind::Document(_) => {
@@ -158,7 +158,7 @@ impl SessionStorage {
         match &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         {
             HtmlNodeKind::ProcessingInstruction(pi) => exact_ascii(c, Some(pi.target()), target),
@@ -174,7 +174,7 @@ impl SessionStorage {
         let Some(parent) = self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .parent()
             .map(|node| node.position())
         else {
@@ -183,23 +183,23 @@ impl SessionStorage {
         for position in 0..self
             .construction
             .node_at(parent)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .child_count()
         {
             c.charge(WorkCategory::RecordVisit, 1)?;
             let child = self
                 .construction
                 .node_at(parent)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_at(position)
-                .expect("retained child ordinal")
+                .ok_or(SessionError::WrongSibling)?
                 .position();
             if child == node {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 return Ok(self
                     .construction
                     .node_at(parent)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_at(position + 1)
                     .map(|node| node.position()));
             }
@@ -222,7 +222,7 @@ impl SessionStorage {
             if matches!(
                 self.construction
                     .node_at(node)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .kind(),
                 HtmlNodeKind::ProcessingInstruction(_)
             ) && let Some(value) = self.pi_attribute(c, node, "name")?
@@ -359,9 +359,7 @@ impl SessionStorage {
                 && *bound == node
             {
                 c.charge(WorkCategory::RecordVisit, 2)?;
-                let view = storage
-                    .node_at(node)
-                    .expect("retained construction position");
+                let view = storage.node_at(node).ok_or(SessionError::ForeignNode)?;
                 if view.template_contents().map(|node| node.position()) != Some(state.contents)
                     || (view.template_contents_kind()
                         == Some(HtmlTemplateContentsKind::ShadowReference)
@@ -762,31 +760,31 @@ impl ParserArenaSession {
         for ordinal in 0..storage
             .construction
             .node_at(document)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .child_count()
         {
             c.charge(WorkCategory::RecordVisit, 1)?;
             let child = storage
                 .construction
                 .node_at(document)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .child_at(ordinal)
-                .expect("retained child ordinal")
+                .ok_or(SessionError::WrongSibling)?
                 .position();
             if storage.html_local(c, child, "html")? {
                 for ordinal in 0..storage
                     .construction
                     .node_at(child)
-                    .expect("retained construction position")
+                    .ok_or(SessionError::ForeignNode)?
                     .child_count()
                 {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     let candidate = storage
                         .construction
                         .node_at(child)
-                        .expect("retained construction position")
+                        .ok_or(SessionError::ForeignNode)?
                         .child_at(ordinal)
-                        .expect("retained child ordinal")
+                        .ok_or(SessionError::WrongSibling)?
                         .position();
                     if storage.html_local(c, candidate, "body")?
                         || storage.html_local(c, candidate, "frameset")?
@@ -825,7 +823,7 @@ impl ParserArenaSession {
         state.target = storage
             .construction
             .node_at(start)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .parent()
             .map(|node| node.position());
         state.start = Some(start);
@@ -886,7 +884,7 @@ impl ParserArenaSession {
             if storage
                 .construction
                 .node_at(marker)
-                .expect("retained construction position")
+                .ok_or(SessionError::ForeignNode)?
                 .parent()
                 .map(|node| node.position())
                 .is_some()
