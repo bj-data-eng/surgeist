@@ -324,7 +324,9 @@ impl<'a> HtmlAreaProcessedPolygon<'a> {
     }
     pub fn vertices(&self) -> impl ExactSizeIterator<Item = HtmlAreaProcessedPoint> + 'a {
         self.coordinates
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| HtmlAreaProcessedPoint {
                 x: pair[0],
                 y: pair[1],
