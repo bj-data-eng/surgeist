@@ -79,7 +79,7 @@ impl ParserArenaSession {
             node: 0,
             facts: facts.clone(),
             first: None,
-        });
+        })?;
         Ok(())
     }
     pub(super) fn qualify_base_response(
@@ -134,7 +134,7 @@ impl SessionStorage {
             node: Some(node),
             domain,
             frozen: BaseValue::Unfrozen,
-        });
+        })?;
         Ok(())
     }
     pub(super) fn base_slot(
@@ -144,7 +144,7 @@ impl SessionStorage {
     ) -> Result<usize, SessionError> {
         if let Some(slot) = self.payloads.joined(c, node, Join::Base)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(&self.payloads.values[slot], RetainedPayload::Base { node: Some(bound), .. } if *bound == node)
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::Base { node: Some(bound), .. }) if *bound == node)
             {
                 return Ok(slot);
             }
@@ -158,7 +158,7 @@ impl SessionStorage {
     ) -> Result<Option<usize>, SessionError> {
         if let Some(slot) = self.payloads.joined(c, document, Join::BaseDocument)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(&self.payloads.values[slot], RetainedPayload::BaseDocument { node, .. } if *node == document)
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::BaseDocument { node, .. }) if *node == document)
             {
                 return Ok(Some(slot));
             }

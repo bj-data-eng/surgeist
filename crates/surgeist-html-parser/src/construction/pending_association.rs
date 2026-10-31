@@ -144,14 +144,9 @@ impl SessionStorage {
         c: &mut ParseControl,
         document: &DocumentRef,
     ) -> Result<usize, SessionError> {
-        for position in 0..self.payloads.kind_slots[KindList::AssociationDocument as usize]
-            .slots
-            .len()
-        {
+        for &slot in self.payloads.kind_list(KindList::AssociationDocument) {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let slot =
-                self.payloads.kind_slots[KindList::AssociationDocument as usize].slots[position];
-            if matches!(&self.payloads.values[slot], RetainedPayload::AssociationDocument(value) if &value.document == document)
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::AssociationDocument(value)) if &value.document == document)
             {
                 return Ok(slot);
             }
@@ -168,7 +163,7 @@ impl SessionStorage {
                 last: None,
                 missing: None,
                 missing_at: None,
-            }));
+            }))?;
         Ok(slot)
     }
     /// A reference never adds a strong alias to mutable/reclaimable backing.
@@ -242,10 +237,10 @@ impl SessionStorage {
         let mut state = None;
         if let Some(slot) = self.payloads.joined(c, node, Join::Style)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Style {
+            if let Some(RetainedPayload::Style {
                 node: owner,
                 state: value,
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
                 state = Some((
@@ -285,10 +280,10 @@ impl SessionStorage {
             // Internal nonce is separate from the potentially hidden authored attribute.
             if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if let RetainedPayload::Nonce {
+                if let Some(RetainedPayload::Nonce {
                     node: Some(owner),
                     raw,
-                } = &self.payloads.values[slot]
+                }) = self.payloads.values.get(slot)
                     && *owner == node
                 {
                     let raw = *raw;
@@ -501,8 +496,8 @@ impl SessionStorage {
                 context.policy_missing = self.meta_policy_missing(c, *document)?.is_some();
                 if let Some(slot) = self.payloads.joined(c, *document, Join::BaseDocument)? {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    if let RetainedPayload::BaseDocument { node, first, .. } =
-                        &self.payloads.values[slot]
+                    if let Some(RetainedPayload::BaseDocument { node, first, .. }) =
+                        self.payloads.values.get(slot)
                         && node == document
                     {
                         context.base_document = Some(slot);
@@ -592,7 +587,7 @@ impl SessionStorage {
             let root = self.ordinary_root(c, node, detached)?;
             let prior_style = self.payloads.joined(c, node, Join::StyleOccurrence)?;
             let cause = self.associated_cause(c)?;
-            let prior_sheet = prior_style.is_some_and(|slot| matches!(&self.payloads.values[slot], RetainedPayload::AssociationOccurrence(values) if values.as_slice()[0].may_have_sheet));
+            let prior_sheet = prior_style.is_some_and(|slot| matches!(self.payloads.values.get(slot), Some(RetainedPayload::AssociationOccurrence(values)) if values.as_slice().first().is_some_and(|first| first.may_have_sheet)));
             let RetainedPayload::AssociationDocument(summary) =
                 &self.payloads.values[document_slot]
             else {
@@ -693,8 +688,8 @@ impl SessionStorage {
                 self.payloads
                     .values
                     .push(RetainedPayload::AssociationOccurrence(values));
-                if styled {
-                    self.payloads.node_joins[node].set_latest(Join::StyleOccurrence, slot);
+                if styled && let Some(cell) = self.payloads.node_joins.get_mut(node) {
+                    cell.set_latest(Join::StyleOccurrence, slot);
                 }
                 let RetainedPayload::AssociationDocument(summary) =
                     &mut self.payloads.values[document_slot]

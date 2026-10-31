@@ -23,7 +23,7 @@ impl SessionStorage {
         self.prepare_payload_slot_owned(c)?;
         let slot = self.payloads.values.len();
         self.payloads
-            .push_row(RetainedPayload::Nonce { node: None, raw });
+            .push_row(RetainedPayload::Nonce { node: None, raw })?;
         Ok(Some(slot))
     }
     pub(super) fn nonce_slot(
@@ -34,10 +34,10 @@ impl SessionStorage {
         c.require_identity(&self.control)?;
         if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Nonce {
+            if let Some(RetainedPayload::Nonce {
                 node: Some(owner),
                 raw,
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
                 c.charge(WorkCategory::CopyByte, (2 * mem::size_of::<usize>()) as u64)?;

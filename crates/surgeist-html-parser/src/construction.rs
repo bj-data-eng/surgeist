@@ -381,12 +381,18 @@ struct PayloadStorage {
 /// for the row's location or ticket. `text` and `textarea` are rewritten as
 /// their rows are merged or reset; `rows` names the first registry row of each
 /// node-keyed metadata kind bound to the record, so a lookup visits one cell and
-/// one row instead of scanning the registry.
+/// one row instead of scanning the registry. A join is written only for a row
+/// that exists, and registry rows are appended but never removed or reordered
+/// while the registry is live; rows of a joined kind are never replaced, so a
+/// join always names a row of its kind (the callers still check what they get).
 #[derive(Clone, Copy, Default)]
 struct NodeJoins {
     text: Option<usize>,
     textarea: Option<usize>,
     rows: [Option<NonZeroUsize>; JOIN_COUNT],
+    /// Registry slot plus one of the name of the record's last attribute as
+    /// registered at creation; see `PayloadStorage::attribute_value_candidate`.
+    attribute_strings: Option<NonZeroUsize>,
 }
 /// Node-keyed registry row kinds with a join in [`NodeJoins`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -413,21 +419,33 @@ enum Join {
 const JOIN_COUNT: usize = Join::StyleOccurrence as usize + 1;
 impl NodeJoins {
     fn get(&self, join: Join) -> Option<usize> {
-        self.rows[join as usize].map(|slot| slot.get() - 1)
+        self.rows
+            .get(join as usize)
+            .copied()
+            .flatten()
+            .map(|slot| slot.get().saturating_sub(1))
     }
     /// Names the latest registry row, the one a back-to-front scan finds.
     fn set_latest(&mut self, join: Join, slot: usize) {
-        self.rows[join as usize] =
-            Some(NonZeroUsize::new(slot + 1).expect("slot plus one is nonzero"));
+        if let Some(cell) = self.rows.get_mut(join as usize) {
+            *cell = Some(joined_cell(slot));
+        }
     }
     /// Keeps the earliest registry row, the one a front-to-back scan finds.
     fn set_first(&mut self, join: Join, slot: usize) {
-        let cell = &mut self.rows[join as usize];
-        let slot = NonZeroUsize::new(slot + 1).expect("slot plus one is nonzero");
-        if cell.is_none_or(|current| slot < current) {
-            *cell = Some(slot);
+        if let Some(cell) = self.rows.get_mut(join as usize) {
+            let slot = joined_cell(slot);
+            if cell.is_none_or(|current| slot < current) {
+                *cell = Some(slot);
+            }
         }
     }
+}
+/// Slot plus one as a nonzero cell. A registry slot is a vector index, so the
+/// sum cannot overflow; saturation keeps the conversion total, and a cell that
+/// names no matching row is rejected by the caller's row check.
+fn joined_cell(slot: usize) -> NonZeroUsize {
+    NonZeroUsize::new(slot.saturating_add(1)).unwrap_or(NonZeroUsize::MAX)
 }
 /// Registry-wide kind lists with their own admitted backing.
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -825,29 +843,98 @@ impl PayloadStorage {
         Ok(self.node_joins.get(node).and_then(|cell| cell.get(join)))
     }
     /// Registers the row at `slot` under the record it is bound to. Binding a
-    /// row and joining it are one infallible step at every binding site.
+    /// row and joining it are one infallible step at every binding site; the
+    /// test-build check at release compares every join with the registry.
     fn join_row(&mut self, slot: usize) {
-        if let Some((join, node)) = row_join(&self.values[slot]) {
-            self.node_joins
-                .get_mut(node)
-                .expect("a bound row names a retained record")
-                .set_first(join, slot);
+        let Some((join, node)) = self.values.get(slot).and_then(row_join) else {
+            return;
+        };
+        if let Some(cell) = self.node_joins.get_mut(node) {
+            cell.set_first(join, slot);
         }
+    }
+    /// The registry row now holding a record's merged text.
+    fn join_text(&mut self, node: usize, slot: usize) {
+        if let Some(cell) = self.node_joins.get_mut(node) {
+            cell.text = Some(slot);
+        }
+    }
+    /// The registry row holding a record's textarea state.
+    fn join_textarea(&mut self, node: usize, slot: usize) {
+        if let Some(cell) = self.node_joins.get_mut(node) {
+            cell.textarea = Some(slot);
+        }
+    }
+    /// The registry slots of one registry-wide kind, in registry order.
+    fn kind_list(&self, list: KindList) -> &[usize] {
+        self.kind_slots
+            .get(list as usize)
+            .map_or(&[], |kind| kind.slots.as_slice())
     }
     /// Appends a row whose slot was admitted by `prepare_payload_slot*`. A row
     /// already bound to a record is joined; rows of a registry-wide kind enter
-    /// that kind's list, whose slot was admitted with the row.
-    fn push_row(&mut self, row: RetainedPayload) -> usize {
-        let slot = self.values.len();
+    /// that kind's list, whose slot was admitted with the row. A list slot that
+    /// was not admitted refuses the row before anything is appended.
+    fn push_row(&mut self, row: RetainedPayload) -> Result<usize, SessionError> {
         let list = row_list(&row);
+        if let Some(list) = list
+            && self
+                .kind_slots
+                .get(list as usize)
+                .is_none_or(|kind| kind.slots.len() >= kind.slots.capacity())
+        {
+            return Err(SessionError::WrongToken);
+        }
+        let slot = self.values.len();
         self.values.push(row);
-        if let Some(list) = list {
-            let slots = &mut self.kind_slots[list as usize].slots;
-            assert!(slots.len() < slots.capacity(), "kind list slot admitted");
-            slots.push(slot);
+        if let Some(kind) = list.and_then(|list| self.kind_slots.get_mut(list as usize)) {
+            kind.slots.push(slot);
         }
         self.join_row(slot);
-        slot
+        Ok(slot)
+    }
+    /// Records where creation registered the record's attribute strings: the
+    /// name of its last attribute, followed by that attribute's value, then the
+    /// previous attribute's name and value, and so on.
+    fn record_attribute_strings(&mut self, node: usize, last_name_slot: usize) {
+        if let Some(cell) = self.node_joins.get_mut(node) {
+            cell.attribute_strings = Some(joined_cell(last_name_slot));
+        }
+    }
+    /// An attribute edit makes the creation-time layout unreliable.
+    fn forget_attribute_strings(&mut self, node: usize) {
+        if let Some(cell) = self.node_joins.get_mut(node) {
+            cell.attribute_strings = None;
+        }
+    }
+    /// The slot where `position`'s value row sits if the record's attributes
+    /// are as creation registered them. Only a candidate: the caller verifies
+    /// the row's identity before use.
+    fn attribute_value_candidate(
+        &self,
+        node: usize,
+        attribute_count: usize,
+        position: usize,
+    ) -> Option<usize> {
+        let last_name = self
+            .node_joins
+            .get(node)?
+            .attribute_strings?
+            .get()
+            .checked_sub(1)?;
+        let from_last = attribute_count.checked_sub(1)?.checked_sub(position)?;
+        last_name
+            .checked_add(from_last.checked_mul(2)?)?
+            .checked_add(1)
+    }
+    /// The first registry string row sharing `value`'s backing: what the
+    /// fallback scan finds. Test builds compare every verified hint with it.
+    #[cfg(test)]
+    fn first_string_sharing(&self, value: &DocumentString) -> Option<usize> {
+        self.values.iter().position(|row| {
+            matches!(row, RetainedPayload::String { value: stored, .. }
+                if Arc::ptr_eq(value.shared_code_units(), stored.shared_code_units()))
+        })
     }
     /// Every join must name exactly what a front-to-back scan of the registry
     /// finds, and every list exactly the rows of its kind.
@@ -1022,8 +1109,8 @@ impl PayloadStorage {
         } = self;
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
         let join_entries = node_joins.len() as u64;
-        release_vector(control, node_joins, node_joins_allocation)
-            .expect("actual node join index capacity");
+        // A refused release has already latched its stop in the controller.
+        let _ = release_vector(control, node_joins, node_joins_allocation);
         release_logical(
             control,
             owner,
@@ -1032,8 +1119,7 @@ impl PayloadStorage {
         );
         for list in kind_slots {
             let list_entries = list.slots.len() as u64;
-            release_vector(control, list.slots, list.allocation)
-                .expect("actual kind list index capacity");
+            let _ = release_vector(control, list.slots, list.allocation);
             release_logical(
                 control,
                 owner,
@@ -1394,22 +1480,51 @@ impl SessionStorage {
                 return Err(stop.into());
             }
         };
-        let mut made: [Option<KindSlots>; KIND_LISTS] = std::array::from_fn(|_| None);
-        for cell in &mut made {
-            match control.new_vector() {
-                Ok((slots, allocation)) => *cell = Some(KindSlots { slots, allocation }),
-                Err(stop) => {
-                    for list in made.into_iter().flatten() {
-                        release_vector(control, list.slots, list.allocation)?;
-                    }
-                    release_vector(control, node_joins, node_joins_allocation)?;
-                    release_vector(control, values, allocation)?;
-                    construction.retire(control)?;
-                    return Err(stop.into());
-                }
+        let (forms, forms_allocation) = match control.new_vector() {
+            Ok(value) => value,
+            Err(stop) => {
+                release_vector(control, node_joins, node_joins_allocation)?;
+                release_vector(control, values, allocation)?;
+                construction.retire(control)?;
+                return Err(stop.into());
             }
-        }
-        let kind_slots = made.map(|list| list.expect("one list per kind"));
+        };
+        let (bases, bases_allocation) = match control.new_vector() {
+            Ok(value) => value,
+            Err(stop) => {
+                release_vector(control, forms, forms_allocation)?;
+                release_vector(control, node_joins, node_joins_allocation)?;
+                release_vector(control, values, allocation)?;
+                construction.retire(control)?;
+                return Err(stop.into());
+            }
+        };
+        let (documents, documents_allocation) = match control.new_vector() {
+            Ok(value) => value,
+            Err(stop) => {
+                release_vector(control, bases, bases_allocation)?;
+                release_vector(control, forms, forms_allocation)?;
+                release_vector(control, node_joins, node_joins_allocation)?;
+                release_vector(control, values, allocation)?;
+                construction.retire(control)?;
+                return Err(stop.into());
+            }
+        };
+        // Indexed by `KindList`.
+        let kind_slots = [
+            KindSlots {
+                slots: forms,
+                allocation: forms_allocation,
+            },
+            KindSlots {
+                slots: bases,
+                allocation: bases_allocation,
+            },
+            KindSlots {
+                slots: documents,
+                allocation: documents_allocation,
+            },
+        ];
         let mut session = Self {
             csp_slot: None,
             #[cfg(test)]
@@ -1474,12 +1589,12 @@ impl SessionStorage {
                     class: crate::HtmlDocumentClass::Html,
                     meta: meta::MetaHistory::offline(),
                     interaction: dialog::InteractionHistory::new(),
-                });
+                })?;
                 session.prepare_payload_slot_owned(control)?;
                 session.payloads.push_row(RetainedPayload::NodeDocument {
                     node: Some(0),
                     document: DocumentRef::Owned(0),
-                });
+                })?;
                 Ok::<_, SessionError>(())
             })();
             if let Err(error) = facts {
@@ -1668,7 +1783,7 @@ impl SessionStorage {
         control.admit_atomic_layout(mem::size_of::<NodeJoins>())?;
         control.charge(
             WorkCategory::CopyByte,
-            (count * mem::size_of::<NodeJoins>()) as u64,
+            count.saturating_mul(mem::size_of::<NodeJoins>()) as u64,
         )?;
         control.charge(WorkCategory::RecordWrite, (2 * count) as u64)?;
         control.charge(WorkCategory::CopyByte, mem::size_of::<ParserNode>() as u64)?;
@@ -1723,7 +1838,7 @@ impl SessionStorage {
         self.prepare_payload_slot_for(control, None)
     }
     /// Admits one registry row and, for a registry-wide kind, the entry of its
-    /// list; `push_row` makes both appends infallible.
+    /// list; `push_row` then appends both.
     fn prepare_payload_slot_for(
         &mut self,
         control: &mut ParseControl,
@@ -1736,7 +1851,11 @@ impl SessionStorage {
             1,
         )?;
         if let Some(list) = list {
-            let KindSlots { slots, allocation } = &mut self.payloads.kind_slots[list as usize];
+            let Some(KindSlots { slots, allocation }) =
+                self.payloads.kind_slots.get_mut(list as usize)
+            else {
+                return Err(SessionError::WrongToken);
+            };
             control.reserve_vector_geometric(slots, allocation, 1)?;
             control.admit_atomic_layout(mem::size_of::<usize>())?;
             control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
@@ -2072,12 +2191,41 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .expect("retained construction position")
+            .ok_or(SessionError::ForeignNode)?
             .kind()
         else {
             return Err(SessionError::WrongToken);
         };
-        let value = element.attributes().as_slice()[position].value();
+        let attributes = element.attributes().as_slice();
+        let value = attributes
+            .get(position)
+            .ok_or(SessionError::AttributeStorageUnavailable)?
+            .value();
+        // Valid-or-fallback hint: creation registered this element's attribute
+        // names and values as adjacent registry rows, last attribute first. The
+        // candidate row is used only after its identity matches the attribute
+        // value; any mismatch, or a hint cleared by an attribute edit, falls
+        // back to the scan below, which returns the same row.
+        if let Some(candidate) =
+            self.payloads
+                .attribute_value_candidate(node, attributes.len(), position)
+        {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::String { value: stored, .. }) =
+                self.payloads.values.get(candidate)
+            {
+                control.charge(WorkCategory::ProviderCall, 1)?;
+                if Arc::ptr_eq(value.shared_code_units(), stored.shared_code_units()) {
+                    #[cfg(test)]
+                    assert_eq!(
+                        self.payloads.first_string_sharing(value),
+                        Some(candidate),
+                        "a verified hint names the row a scan finds"
+                    );
+                    return Ok(candidate);
+                }
+            }
+        }
         for (slot, payload) in self.payloads.values.iter().enumerate() {
             control.charge(WorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::String {
@@ -3032,6 +3180,8 @@ impl SessionStorage {
                     reversed_pairs: 0,
                 },
             )));
+            // Names and values register as adjacent rows, last attribute first.
+            let mut last_name_slot = None;
             while let Some(attribute) = attributes.try_pop(control)? {
                 let attribute_name = self.register_text(control, attribute.name);
                 let (local, local_ticket) = match attribute_name {
@@ -3041,6 +3191,7 @@ impl SessionStorage {
                         return Err(error);
                     }
                 };
+                last_name_slot.get_or_insert(local_ticket);
                 let (value, value_ticket) = self.register_text(control, attribute.value)?;
                 control.charge(WorkCategory::RecordVisit, 2)?;
                 units = units
@@ -3161,6 +3312,9 @@ impl SessionStorage {
             };
             *element = Some(node.index);
             self.payloads.join_row(container);
+            if let Some(slot) = last_name_slot {
+                self.payloads.record_attribute_strings(node.index, slot);
+            }
             self.initial_nonce_attributes(control, node.index)?;
             self.initial_associated_state(control, node.index)?;
             self.initial_meta_attributes(control, node.index)?;
@@ -3392,7 +3546,7 @@ impl SessionStorage {
         };
         *current = location;
         if let StringLocation::Text(node) = location {
-            self.payloads.node_joins[node].text = Some(index);
+            self.payloads.join_text(node, index);
         }
     }
     /// Same parser-owned HTML root, real slots and original lexical origins.
@@ -3475,7 +3629,7 @@ impl SessionStorage {
             check_text_source(control, &a.value)?;
             control.require_source_range(&a.source)?;
         }
-        self.construction.begin_attributes(
+        self.begin_attribute_edit(
             control,
             target,
             HtmlConstructionAttributeEditMode::NamedMerge {
@@ -3639,6 +3793,9 @@ impl SessionStorage {
                 self.drain_form_effects(control)?;
             }
         }
+        // Deliberately a whole-registry walk: the staged strings sit at arbitrary
+        // slots (write-back and clone stage rows registered earlier), so a bound
+        // list would need its own admitted, nested-stage-aware storage.
         for index in 0..self.payloads.values.len() {
             self.rebind_attribute_location(control, index, stage, container, start)?;
         }
@@ -3831,17 +3988,12 @@ impl SessionStorage {
         if attribute.value().is_empty() {
             return Ok(None);
         }
-        for position in 0..self.payloads.kind_slots[KindList::FormAssociation as usize]
-            .slots
-            .len()
-        {
+        for &index in self.payloads.kind_list(KindList::FormAssociation) {
             control.charge(WorkCategory::RecordVisit, 1)?;
-            let index =
-                self.payloads.kind_slots[KindList::FormAssociation as usize].slots[position];
-            if let RetainedPayload::FormAssociation {
+            if let Some(RetainedPayload::FormAssociation {
                 node: Some(node),
                 state,
-            } = &self.payloads.values[index]
+            }) = self.payloads.values.get(index)
                 && state.kind.listed()
                 && self.form_attribute(control, *node, "form")?.is_some()
             {
@@ -3860,6 +4012,17 @@ impl SessionStorage {
         Ok(None)
     }
 
+    /// Every attribute edit begins here, so the creation-time registry hint for
+    /// the record's attribute strings is dropped before the first change.
+    fn begin_attribute_edit(
+        &mut self,
+        control: &mut ParseControl,
+        target: usize,
+        mode: HtmlConstructionAttributeEditMode,
+    ) -> Result<(), SessionError> {
+        self.payloads.forget_attribute_strings(target);
+        self.construction.begin_attributes(control, target, mode)
+    }
     /// Removes/restores only the registry's known strong owner. Both restoration
     /// paths are admitted before removal; no new wrapper allocation is needed.
     fn edit_attributes(
@@ -3871,6 +4034,7 @@ impl SessionStorage {
         count: usize,
         append: bool,
     ) -> Result<(), SessionError> {
+        self.payloads.forget_attribute_strings(target);
         let form_effects = if append {
             self.prepare_id_attribute_effects(control, target, stage)?
         } else {
@@ -4219,15 +4383,11 @@ impl SessionStorage {
         let mut listed_explicit = false;
         // Only a Base or form association row can make the subtree local, and
         // either one makes it so; the visit order has no other effect.
-        for position in 0..self.payloads.kind_slots[KindList::Base as usize]
-            .slots
-            .len()
-        {
+        for &slot in self.payloads.kind_list(KindList::Base) {
             control.charge(WorkCategory::RecordVisit, 1)?;
-            let slot = self.payloads.kind_slots[KindList::Base as usize].slots[position];
-            if let RetainedPayload::Base {
+            if let Some(RetainedPayload::Base {
                 node: Some(node), ..
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && self.ordinary_descendant(control, *node, root)?
             {
                 local = true;
@@ -4235,17 +4395,12 @@ impl SessionStorage {
             }
         }
         if !local {
-            for position in 0..self.payloads.kind_slots[KindList::FormAssociation as usize]
-                .slots
-                .len()
-            {
+            for &slot in self.payloads.kind_list(KindList::FormAssociation) {
                 control.charge(WorkCategory::RecordVisit, 1)?;
-                let slot =
-                    self.payloads.kind_slots[KindList::FormAssociation as usize].slots[position];
-                if let RetainedPayload::FormAssociation {
+                if let Some(RetainedPayload::FormAssociation {
                     node: Some(node),
                     state,
-                } = &self.payloads.values[slot]
+                }) = self.payloads.values.get(slot)
                 {
                     control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
                     if self.ordinary_descendant(control, *node, root)? {
@@ -4842,8 +4997,9 @@ impl SessionStorage {
                     return Ok(());
                 }
                 FormEffectPass::Global { next_form, tree } => {
-                    let next_slot = self.payloads.kind_slots[KindList::FormAssociation as usize]
-                        .slots
+                    let next_slot = self
+                        .payloads
+                        .kind_list(KindList::FormAssociation)
                         .get(next_form)
                         .copied();
                     if let Some(next_slot) = next_slot {
@@ -4883,7 +5039,7 @@ impl SessionStorage {
                             }
                         }
                         effects.pass = FormEffectPass::Global {
-                            next_form: next_form + 1,
+                            next_form: next_form.saturating_add(1),
                             tree,
                         };
                     } else {
@@ -5823,7 +5979,7 @@ impl ParserArenaSession {
                 result: HtmlScriptResult::Uninitialized,
                 steps_when_result_ready: None,
             },
-        });
+        })?;
         let node = self.allocate_for_creation(
             control,
             input,
@@ -6229,7 +6385,7 @@ impl ParserArenaSession {
             let slot = storage.payloads.values.len();
             storage
                 .payloads
-                .push_row(RetainedPayload::SelectFamily { node: None, state });
+                .push_row(RetainedPayload::SelectFamily { node: None, state })?;
             Some(slot)
         } else {
             None
@@ -6282,7 +6438,7 @@ impl ParserArenaSession {
                     email_value_count: None,
                     image: input_image::ImageState::NeverEntered,
                 },
-            });
+            })?;
             Some(slot)
         } else {
             None
@@ -6317,23 +6473,25 @@ impl ParserArenaSession {
             storage.require(control)?;
             storage.prepare_payload_slot_for(control, Some(KindList::FormAssociation))?;
             let slot = storage.payloads.values.len();
-            storage.payloads.push_row(RetainedPayload::FormAssociation {
-                node: None,
-                state: FormAssociationState {
-                    kind,
-                    owner: if reset_before_association {
-                        None
-                    } else {
-                        owner
+            storage
+                .payloads
+                .push_row(RetainedPayload::FormAssociation {
+                    node: None,
+                    state: FormAssociationState {
+                        kind,
+                        owner: if reset_before_association {
+                            None
+                        } else {
+                            owner
+                        },
+                        parser_inserted: !reset_before_association && owner.is_some(),
+                        evidence: if !reset_before_association && owner.is_some() {
+                            FormAssociationEvidence::ParserAssociated
+                        } else {
+                            FormAssociationEvidence::Created
+                        },
                     },
-                    parser_inserted: !reset_before_association && owner.is_some(),
-                    evidence: if !reset_before_association && owner.is_some() {
-                        FormAssociationEvidence::ParserAssociated
-                    } else {
-                        FormAssociationEvidence::Created
-                    },
-                },
-            });
+                })?;
             Some(slot)
         } else {
             None
@@ -6413,7 +6571,7 @@ impl ParserArenaSession {
                 };
                 *bound = Some(node.index);
                 state.flags.reset();
-                storage.payloads.node_joins[node.index].textarea = Some(textarea);
+                storage.payloads.join_textarea(node.index, textarea);
                 #[cfg(test)]
                 if let Some(cancellation) = storage.cancel_after_textarea_reset.take() {
                     cancellation.cancel();
@@ -9625,7 +9783,8 @@ fn find_form_association_state(
 ) -> Result<Option<(usize, FormAssociationState)>, SessionError> {
     if let Some(slot) = payloads.joined(control, node, Join::FormAssociation)? {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::FormAssociation { node: owner, state } = &payloads.values[slot]
+        if let Some(RetainedPayload::FormAssociation { node: owner, state }) =
+            payloads.values.get(slot)
             && *owner == Some(node)
         {
             control.charge(
@@ -9660,10 +9819,10 @@ fn script_metadata(
 ) -> Result<(usize, ScriptMetadata), SessionError> {
     if let Some(position) = payloads.joined(control, node, Join::Script)? {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::Script {
+        if let Some(RetainedPayload::Script {
             node: owner,
             metadata,
-        } = &payloads.values[position]
+        }) = payloads.values.get(position)
             && *owner == Some(node)
         {
             control.charge(

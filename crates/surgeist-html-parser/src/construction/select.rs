@@ -841,10 +841,10 @@ fn retained_select_metadata(
 ) -> Result<(usize, SelectMetadata), SessionError> {
     if let Some(slot) = payloads.joined(c, node, Join::SelectFamily)? {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::SelectFamily {
+        if let Some(RetainedPayload::SelectFamily {
             node: Some(owner),
             state,
-        } = &payloads.values[slot]
+        }) = payloads.values.get(slot)
             && *owner == node
         {
             c.charge(

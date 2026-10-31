@@ -284,7 +284,7 @@ impl SessionStorage {
         }
         if let Some(slot) = self.payloads.joined(c, document, Join::Document)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(&self.payloads.values[slot], RetainedPayload::Document { node: Some(node), .. } if *node == document)
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::Document { node: Some(node), .. }) if *node == document)
             {
                 return Ok(slot);
             }
@@ -299,10 +299,10 @@ impl SessionStorage {
         c.require_identity(&self.control)?;
         if let Some(slot) = self.payloads.joined(c, node, Join::NodeDocument)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::NodeDocument {
+            if let Some(RetainedPayload::NodeDocument {
                 node: Some(bound),
                 document,
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 self.validate_document_ref(c, document)?;
@@ -320,17 +320,16 @@ impl SessionStorage {
         self.validate_document_ref(c, &document)?;
         if let Some(slot) = self.payloads.joined(c, node, Join::NodeDocument)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(self.payloads.values[slot],RetainedPayload::NodeDocument{node:Some(bound),..} if bound==node)
+            if matches!(self.payloads.values.get(slot), Some(RetainedPayload::NodeDocument{node:Some(bound),..}) if *bound==node)
             {
                 payload_write::<DocumentRef>(c, 1)?;
-                let RetainedPayload::NodeDocument {
+                if let Some(RetainedPayload::NodeDocument {
                     document: target, ..
-                } = &mut self.payloads.values[slot]
-                else {
-                    unreachable!()
-                };
-                *target = document;
-                return Ok(());
+                }) = self.payloads.values.get_mut(slot)
+                {
+                    *target = document;
+                    return Ok(());
+                }
             }
         }
         Err(SessionError::NodeDocumentUnavailable)
@@ -353,10 +352,10 @@ impl SessionStorage {
         }
         if let Some(slot) = self.payloads.joined(c, node, Join::Template)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Template {
+            if let Some(RetainedPayload::Template {
                 node: Some(bound),
                 state,
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 c.charge(WorkCategory::RecordVisit, 2)?;
@@ -419,13 +418,13 @@ impl SessionStorage {
                     class,
                     meta: meta::MetaHistory::offline(),
                     interaction: dialog::InteractionHistory::new(),
-                });
+                })?;
                 self.prepare_payload_slot_owned(c)?;
                 let binding = self.payloads.values.len();
                 self.payloads.push_row(RetainedPayload::NodeDocument {
                     node: None,
                     document: DocumentRef::Owned(self.construction.storage().len()),
-                });
+                })?;
                 payload_write::<[Option<usize>; 2]>(c, 2)?;
                 payload_write::<DocumentState>(c, 1)?;
                 let node = self.allocate_native(
@@ -500,7 +499,7 @@ impl SessionStorage {
                     self.construction.storage().len() + 1,
                     HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
                 ),
-            });
+            })?;
             return Ok(Some(PreparedDocuments {
                 binding: None,
                 contents_binding: None,
@@ -554,14 +553,14 @@ impl SessionStorage {
         self.payloads.push_row(RetainedPayload::NodeDocument {
             node: None,
             document,
-        });
+        })?;
         let contents_binding = if let Some(document) = contents_document {
             self.prepare_payload_slot_owned(c)?;
             let slot = self.payloads.values.len();
             self.payloads.push_row(RetainedPayload::NodeDocument {
                 node: None,
                 document,
-            });
+            })?;
             Some(slot)
         } else {
             None
@@ -575,7 +574,7 @@ impl SessionStorage {
                     self.construction.storage().len() + 1,
                     HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
                 ),
-            });
+            })?;
             Some(slot)
         } else {
             None

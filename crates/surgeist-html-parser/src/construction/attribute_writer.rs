@@ -10,11 +10,7 @@ impl SessionStorage {
         incoming: &mut Option<Attribute>,
         retire_slots: &[Option<usize>],
     ) -> Result<Attribute, SessionError> {
-        self.construction.begin_attributes(
-            control,
-            node,
-            HtmlConstructionAttributeEditMode::Slots,
-        )?;
+        self.begin_attribute_edit(control, node, HtmlConstructionAttributeEditMode::Slots)?;
         let mut group = self.construction.take_attribute_edit();
         let RetainedPayload::Attributes(backing) = &mut self.payloads.values[container] else {
             unreachable!()

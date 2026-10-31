@@ -643,7 +643,7 @@ impl SessionStorage {
             return Err(SessionError::AttributeStorageUnavailable);
         };
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if matches!(&self.payloads.values[slot], RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element: Some(owner), .. })) if *owner == node)
+        if matches!(self.payloads.values.get(slot), Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element: Some(owner), .. }))) if *owner == node)
         {
             Ok(slot)
         } else {
@@ -657,7 +657,7 @@ impl SessionStorage {
         payload: RetainedPayload,
     ) -> Result<usize, SessionError> {
         self.prepare_payload_slot_for(c, row_list(&payload))?;
-        Ok(self.payloads.push_row(payload))
+        self.payloads.push_row(payload)
     }
     fn prepare_clone_metadata(
         &mut self,
@@ -912,7 +912,7 @@ impl SessionStorage {
             self.payloads.join_row(slot);
         }
         if let Some(slot) = bindings.textarea {
-            self.payloads.node_joins[node].textarea = Some(slot);
+            self.payloads.join_textarea(node, slot);
         }
         Ok(())
     }
@@ -1057,13 +1057,13 @@ impl SessionStorage {
     ) -> Result<(usize, usize, InputState), SessionError> {
         if let Some(slot) = self.payloads.joined(c, node, Join::Input)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Input {
+            if let Some(RetainedPayload::Input {
                 node: Some(owner),
                 raw,
                 complete: true,
                 state,
                 ..
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
                 c.charge(
@@ -1165,6 +1165,8 @@ impl SessionStorage {
             c.require_document_string(allocation, value)?;
             return Ok(slot);
         }
+        // Deliberately a registry scan: it runs per attribute on clone paths only,
+        // not per parsed element, and string rows have no location index.
         for (slot, payload) in self.payloads.values.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::String {

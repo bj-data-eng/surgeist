@@ -218,6 +218,7 @@ impl SessionStorage {
         container: usize,
         position: Option<usize>,
     ) -> Result<(), SessionError> {
+        self.payloads.forget_attribute_strings(node);
         c.charge(WorkCategory::ProviderCall, 2)?;
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         c.charge(

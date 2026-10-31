@@ -252,13 +252,13 @@ impl SessionStorage {
             class,
             meta: meta::MetaHistory::offline(),
             interaction: dialog::InteractionHistory::new(),
-        });
+        })?;
         self.prepare_payload_slot_owned(c)?;
         let binding = self.payloads.values.len();
         self.payloads.push_row(RetainedPayload::NodeDocument {
             node: None,
             document: DocumentRef::Owned(self.construction.storage().len()),
-        });
+        })?;
         payload_write::<Option<usize>>(c, 3)?;
         let node = self.allocate_native(
             c,
@@ -407,7 +407,7 @@ impl ParserArenaSession {
                 state: crate::HtmlCustomElementState::Uncustomized,
                 saved_is: None,
             }),
-        });
+        })?;
         let document = self.root(c)?;
         self.insert(c, &document, &root, None, None)?;
         let storage = self.active_mut()?;
@@ -692,11 +692,11 @@ impl SessionStorage {
         c.require_identity(&self.control)?;
         if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::LookupRegistry {
+            if let Some(RetainedPayload::LookupRegistry {
                 node: Some(bound),
                 registry,
                 ..
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 return registry.try_clone(c);
@@ -727,11 +727,11 @@ impl SessionStorage {
         c.require_identity(&self.control)?;
         if let Some(slot) = self.payloads.joined(c, node, Join::LookupRegistry)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::LookupRegistry {
+            if let Some(RetainedPayload::LookupRegistry {
                 node: Some(bound),
                 creation: Some(state),
                 ..
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 c.charge(
@@ -857,7 +857,7 @@ impl SessionStorage {
                 state,
                 saved_is,
             }),
-        });
+        })?;
         prepared
             .as_mut()
             .ok_or(SessionError::NodeDocumentUnavailable)?
@@ -1373,7 +1373,7 @@ impl ParserArenaSession {
                 node: Some(root.index),
                 registry,
                 creation: None,
-            });
+            })?;
             let local_host = match &storage
                 .fragment
                 .as_ref()
@@ -1851,7 +1851,7 @@ impl SessionStorage {
             node: None,
             registry,
             creation: None,
-        });
+        })?;
         payload_write::<Option<usize>>(c, 2)?;
         let document = document.try_clone(c)?;
         let root = self.allocate_shadow_contents(c, properties, document)?;

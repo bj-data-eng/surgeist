@@ -70,7 +70,7 @@ impl SessionStorage {
                 value: raw,
                 first: None,
             },
-        });
+        })?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = self
             .construction

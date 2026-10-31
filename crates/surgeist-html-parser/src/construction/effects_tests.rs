@@ -2049,3 +2049,91 @@ fn captured_parent_and_child_transfer_remain_owned_when_parent_clone_or_push_sto
         assert_eq!(c.stop(), Some(first));
     }
 }
+
+#[test]
+fn attribute_value_lookup_uses_the_creation_hint_then_falls_back_after_edits() {
+    use super::super::mutation::ManagedFamily;
+    let request = request("<body><i>a</i><i>b</i><dialog open id=e class=k data-x=y>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let dialog = named(&nodes, "dialog", 0);
+    // The row a front-to-back scan finds for each current attribute value,
+    // computed independently of the lookup under test.
+    let expected = |session: &ParserArenaSession| -> Vec<usize> {
+        let storage = session.active().unwrap();
+        let HtmlNodeKind::Element(element) =
+            storage.construction.node_at(dialog.index).unwrap().kind()
+        else {
+            panic!("dialog element")
+        };
+        element
+            .attributes()
+            .as_slice()
+            .iter()
+            .map(|attribute| {
+                storage
+                    .payloads
+                    .values
+                    .iter()
+                    .position(|row| {
+                        matches!(row, RetainedPayload::String { value, .. }
+                            if Arc::ptr_eq(value.shared_code_units(), attribute.value().shared_code_units()))
+                    })
+                    .unwrap()
+            })
+            .collect()
+    };
+    let lookups = |session: &ParserArenaSession, c: &mut ParseControl, count: usize| {
+        let storage = session.active().unwrap();
+        (0..count)
+            .map(|position| {
+                let before = lookup_work(c);
+                let slot = storage
+                    .attribute_value_slot(c, dialog.index, position)
+                    .unwrap();
+                (slot, lookup_work(c) - before)
+            })
+            .collect::<Vec<_>>()
+    };
+    // As created: the hint is present and every lookup is a bounded hit.
+    assert!(
+        session.active().unwrap().payloads.node_joins[dialog.index]
+            .attribute_strings
+            .is_some()
+    );
+    let found = lookups(&session, &mut c, 4);
+    assert_eq!(
+        found.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+        expected(&session)
+    );
+    assert!(found.iter().all(|(_, work)| *work <= 4), "{found:?}");
+    // A real attribute removal shifts the later attributes and drops the hint;
+    // the fallback scan still finds each remaining value's row.
+    session
+        .remove_managed_attribute(&mut c, &dialog, "open", ManagedFamily::Dialog)
+        .unwrap();
+    assert!(
+        session.active().unwrap().payloads.node_joins[dialog.index]
+            .attribute_strings
+            .is_none()
+    );
+    let after = lookups(&session, &mut c, 3);
+    assert_eq!(
+        after.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+        expected(&session)
+    );
+    // Restoring the stale creation hint by hand cannot make a lookup return a
+    // row whose identity differs: every candidate is verified before use.
+    let stale = found[0].0 - 1;
+    session
+        .active_mut()
+        .unwrap()
+        .payloads
+        .record_attribute_strings(dialog.index, stale);
+    let verified = lookups(&session, &mut c, 3);
+    assert_eq!(
+        verified.iter().map(|(slot, _)| *slot).collect::<Vec<_>>(),
+        expected(&session)
+    );
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

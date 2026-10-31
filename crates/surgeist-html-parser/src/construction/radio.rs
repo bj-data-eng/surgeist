@@ -19,11 +19,11 @@ impl SessionStorage {
     ) -> Result<Option<(usize, InputState)>, SessionError> {
         if let Some(slot) = self.payloads.joined(c, node, Join::Input)? {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Input {
+            if let Some(RetainedPayload::Input {
                 node: Some(owner),
                 state,
                 ..
-            } = &self.payloads.values[slot]
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
                 c.charge(WorkCategory::CopyByte, mem::size_of::<InputState>() as u64)?;

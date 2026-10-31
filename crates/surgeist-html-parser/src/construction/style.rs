@@ -31,7 +31,7 @@ impl SessionStorage {
                 parser_document: None,
                 cause,
             },
-        });
+        })?;
         self.record_association(
             c,
             node,
