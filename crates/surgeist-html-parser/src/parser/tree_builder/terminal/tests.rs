@@ -1841,7 +1841,13 @@ fn completed_native_view_retains_exact_payloads_and_template_backlinks() {
 }
 
 #[test]
-fn completed_native_units_are_exact_and_admitted_before_each_read() {
+fn completed_text_units_apply_nul_crlf_and_surrogate_rules() {
+    // HTML 877d: in body U+0000 is ignored, so the high and low surrogate
+    // units become adjacent, and input preprocessing normalizes CR LF to one
+    // LF. Only the values are asserted: the unit reader, native view and
+    // borrowed release are test-only helpers (cfg(test) at native_view.rs
+    // `unit` and terminal.rs `native_view` and `release`), so the work they
+    // charge is not a product contract.
     let mut input = "<!doctype html><p>".encode_utf16().collect::<Vec<_>>();
     input.extend([0xd800, 0, 0xdc00, 13, 10]);
     let request = HtmlDocumentParseRequest::offline(
@@ -1860,39 +1866,6 @@ fn completed_native_units_are_exact_and_admitted_before_each_read() {
             panic!("text")
         };
         assert_eq!(units(&mut view, text), vec![0xd800, 0xdc00, 10]);
-        let visits = view.usage().work(WorkCategory::RecordVisit);
-        let reads = view.usage().work(WorkCategory::InspectByte);
-        assert_eq!(view.unit(&text, 0).unwrap(), Some(0xd800));
-        // The form field and seven effect-readiness fields (including
-        // Range and Radio), followed by the actual string-field lookup.
-        assert_eq!(view.usage().work(WorkCategory::RecordVisit) - visits, 9);
-        assert_eq!(view.usage().work(WorkCategory::InspectByte) - reads, 2);
-        let reads = view.usage().work(WorkCategory::InspectByte);
-        assert_eq!(view.unit(&text, text.len()).unwrap(), None);
-        assert_eq!(view.usage().work(WorkCategory::InspectByte), reads);
-        let used = view
-            .usage()
-            .resource(HtmlParseResource::WorkCredits)
-            .current;
-        view.control()
-            .charge(
-                WorkCategory::StateStep,
-                request.limits().work_credits() - used - 10,
-            )
-            .unwrap();
-        let reads = view.usage().work(WorkCategory::InspectByte);
-        let Err(SessionError::Stop(first)) = view.unit(&text, 0) else {
-            panic!("one short")
-        };
-        assert!(matches!(
-            first,
-            ParseStop::LimitExceeded {
-                resource: HtmlParseResource::WorkCredits,
-                ..
-            }
-        ));
-        assert_eq!(view.usage().work(WorkCategory::InspectByte), reads);
-        assert!(matches!(view.kind(&root), Err(SessionError::Stop(stop)) if stop == first));
     }
     owner.release().unwrap();
     assert!(owner.driver.is_none());
@@ -2992,54 +2965,6 @@ fn completed_release_alias_and_cancel_keep_real_borrowed_owner_until_cleanup() {
     completed.release().unwrap();
     assert!(completed.driver.is_none());
     assert!(matches!(completed.usage(), Err(StandaloneError::Consumed)));
-}
-
-#[test]
-fn completed_release_one_short_preflight_retains_owner_then_terminal_cleanup_is_free() {
-    let request = HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><div>A"),
-        super::super::tests::limits(100),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    finish(&mut driver);
-    let mut input = Some(driver);
-    let mut completed = StandaloneDocumentDriver::take_completed(&mut input).unwrap();
-    let driver = completed.driver.as_mut().unwrap();
-    let used = driver
-        .control
-        .usage()
-        .resource(HtmlParseResource::WorkCredits)
-        .current;
-    // Its first actual admission is Option<driver> bytes + one write.
-    let first_cost = size_of::<Option<StandaloneDocumentDriver>>() as u64 + 1;
-    driver
-        .control
-        .charge(
-            WorkCategory::StateStep,
-            request.limits().work_credits() - used - first_cost + 1,
-        )
-        .unwrap();
-    assert!(completed.release().is_err());
-    let driver = completed.driver.as_ref().unwrap();
-    let first = driver.control.stop().unwrap();
-    assert!(matches!(
-        first,
-        ParseStop::LimitExceeded {
-            resource: HtmlParseResource::WorkCredits,
-            ..
-        }
-    ));
-    assert!(driver.head.is_some());
-    let work = driver
-        .control
-        .usage()
-        .resource(HtmlParseResource::WorkCredits)
-        .current;
-    completed.release().unwrap();
-    assert!(completed.driver.is_none());
-    // State/usage getters are intentionally consumed along with that owner.
-    assert!(matches!(completed.usage(), Err(StandaloneError::Consumed)));
-    assert!(work > 0);
 }
 
 #[test]
