@@ -190,6 +190,61 @@ mod tests {
         }
     }
     #[test]
+    fn literal_scratch_records_are_always_algorithm_bank_records() {
+        // `ComponentSyntax::written` relies on this instead of minting a second
+        // record to read its bank: decimal digits and scaled digits, in the
+        // plain, searched and gradian-rescaled paths, are algorithm-bank data.
+        for input in [
+            "1e100",
+            "2.2250738585072014e-308",
+            "1.9e308grad",
+            "-1e999grad",
+            "1e999",
+        ] {
+            let mut owner = CssColorOperationOwner::new();
+            let mut lexer =
+                LexicalOperation::start(&mut owner, InputKind::Utf8, input.len()).unwrap();
+            let mut slots = lexical(&mut lexer, input.as_bytes());
+            let table = lexer.finish().unwrap();
+            let token = token(&table, &slots);
+            let mut cursor =
+                LiteralConversion::start(&table, token, &slots[token.index], table.length())
+                    .unwrap();
+            let mut written = 0;
+            loop {
+                match cursor.action() {
+                    LiteralAction::ReadSource { index }
+                    | LiteralAction::ReadScaled { index }
+                    | LiteralAction::ReadScratch { index }
+                    | LiteralAction::ReadHeader { index } => {
+                        cursor.read(index, &slots[index]).unwrap()
+                    }
+                    LiteralAction::Append { index } | LiteralAction::Replace { index } => {
+                        let record = cursor.record(index).unwrap();
+                        assert_eq!(
+                            record.bank(),
+                            crate::color::controlled::CssColorBank::Algorithm,
+                            "{input}"
+                        );
+                        if index == slots.len() {
+                            slots.push(record);
+                        } else {
+                            slots[index] = record;
+                        }
+                        cursor.written(index, &slots[index]).unwrap();
+                        written += 1;
+                    }
+                    LiteralAction::Compute => cursor.compute().unwrap(),
+                    LiteralAction::Done(_) => break,
+                    LiteralAction::Stopped => panic!("stop"),
+                }
+            }
+            if input != "1e999" {
+                assert!(written > 0, "{input} writes scratch");
+            }
+        }
+    }
+    #[test]
     fn actual_foreign_header_and_unit_failure_preserve_pending_source() {
         let mut owner = CssColorOperationOwner::new();
         let mut other = CssColorOperationOwner::new();
