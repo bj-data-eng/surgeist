@@ -45,48 +45,18 @@ pub(crate) fn visit_selected_origin_intersections(
                 let binding = &output.bindings[selected.prepared.shaped.cells[cell].binding];
                 let group = &output.plan.groups[binding.group];
                 for part in &output.plan.parts[group.parts.clone()] {
-                    for piece in &part.pieces {
-                        let origin = paragraph
-                            .origin_map
-                            .view_origin(piece.origin)
-                            .expect("cell pieces belong to their admitted complete output")
-                            .get();
-                        append!(FragmentAssociation {
-                            owner: FragmentOwner::Origin(origin),
-                            source: Some(crate::protocol::paragraph::OriginIntersection {
-                                origin,
-                                aggregate: piece.aggregate,
-                                local: piece.local,
-                                processed: part.processed,
-                            }),
-                        });
-                    }
-                }
-                use crate::transform::relation::{ComponentOwner, RelationEvent};
-                for event in &analyzed.transform.events()[binding.events.clone()] {
-                    let component_owner = |owner| match owner {
-                        ComponentOwner::Wbr(control) => Some(FragmentOwner::Control(control)),
-                        ComponentOwner::Virtual(index) => {
-                            Some(FragmentOwner::VirtualSeparator(index))
-                        }
-                        ComponentOwner::Original(_) => None,
-                    };
-                    let owner = match *event {
-                        RelationEvent::Text { atom } => {
-                            component_owner(analyzed.transform.component_for_atom(atom).owner)
-                        }
-                        RelationEvent::GeneratedSuppression { component, .. } => {
-                            component_owner(analyzed.transform.components[component].owner)
-                        }
-                        RelationEvent::Anchor { order } => match paragraph.anchor_order[order].item
-                        {
-                            crate::protocol::paragraph::SemanticAnchorItem::Control(control) => {
-                                Some(FragmentOwner::Control(control))
-                            }
-                            _ => None,
+                    super::cell_sources::visit_original_part(
+                        &selected.prepared,
+                        part,
+                        &mut None,
+                        |association, _| {
+                            append!(association);
+                            Ok(())
                         },
-                        _ => None,
-                    };
+                    )?;
+                }
+                for event in &analyzed.transform.events()[binding.events.clone()] {
+                    let owner = super::cell_sources::generated_owner(&selected.prepared, event);
                     if let Some(owner) = owner
                         && last_owner != Some(owner)
                     {

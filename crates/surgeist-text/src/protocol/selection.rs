@@ -1,4 +1,5 @@
 //! Admission of a complete request against one immutable preparation.
+pub(crate) mod spacing;
 
 use std::sync::Arc;
 
@@ -207,137 +208,33 @@ fn select_with_policy(
         &shaped,
         &mut scope_plan.budget,
     )?;
-    let targets = match request.context.spacing {
-        SpacingPolicy::None | SpacingPolicy::InterCharacter => Vec::new(),
-        SpacingPolicy::Spaces => presentation
-            .units
-            .iter()
-            .filter(|unit| unit.eligible_space)
-            .map(|unit| crate::engine::spacing::SeparatorCandidate {
-                atoms: unit.atoms.clone(),
-                base: unit.atoms.start,
-            })
-            .collect(),
-        SpacingPolicy::InterWord => crate::engine::spacing::candidates(
-            &presentation.projection,
-            &presentation.analysis,
-            &boundaries.presentation,
-        )?,
-    };
-    let mut participant_at = vec![None; presentation.projection.atoms.len()];
-    for unit in &presentation.units {
-        for atom in unit.atoms.clone() {
-            participant_at[atom] = unit.participant;
-        }
-    }
-    let mut spacing_slots: Vec<_> = targets
-        .into_iter()
-        .map(|candidate| {
-            let atoms = candidate.atoms;
-            let mut participants = Vec::new();
-            for atom in atoms.clone() {
-                if let Some(index) = participant_at[atom]
-                    && participants.last() != Some(&index)
-                {
-                    participants.push(index);
-                }
-            }
-            let pieces =
-                crate::engine::spacing::slot_pieces(&prepared.inner, &presentation, atoms.clone());
-            SpacingSlotData {
-                target: SpacingTargetData::Separator {
-                    atoms,
-                    base: candidate.base,
-                    unit: SpacingUnitData {
-                        participants: participants.clone(),
-                        pieces: 0..pieces.len(),
-                        left: prepared.inner.styles[presentation.analysis.infos[candidate.base].1]
-                            .style
-                            .letter_spacing,
-                        right: prepared.inner.styles[presentation.analysis.infos[candidate.base].1]
-                            .style
-                            .letter_spacing,
-                    },
-                },
-                participants,
-                pieces,
-            }
-        })
-        .collect();
-    if request.context.spacing == SpacingPolicy::InterCharacter {
-        for (edge, boundary) in characters.boundaries.iter().enumerate() {
-            let mut pieces = Vec::new();
-            let mut participants = Vec::new();
-            let mut units = Vec::new();
-            for index in [boundary.before, boundary.after] {
-                let unit = &characters.units[index];
-                let start = pieces.len();
-                let mut own = Vec::new();
-                for atoms in &unit.atoms {
-                    pieces.extend(crate::engine::spacing::slot_pieces(
-                        &prepared.inner,
-                        &presentation,
-                        atoms.clone(),
-                    ));
-                    for atom in atoms.clone() {
-                        if let Some(i) = participant_at[atom]
-                            && !own.contains(&i)
-                        {
-                            own.push(i);
-                        }
-                    }
-                }
-                for &occurrence in &unit.atomics {
-                    let index = presentation.units.iter().position(|u| matches!(u.kind, super::prepared::PresentationUnitKind::Atomic { occurrence: i } if i == occurrence)).expect("selected atomic");
-                    let actual = &presentation.units[index];
-                    pieces.push(SpacingSlotPieceData {
-                        owner: crate::SpacingPiece::Atomic { occurrence },
-                        presentation: PresentationRange {
-                            start: actual.presentation.start,
-                            end: actual.presentation.end,
-                        },
-                    });
-                    if let Some(i) = actual.participant
-                        && !own.contains(&i)
-                    {
-                        own.push(i);
-                    }
-                }
-                for &i in &own {
-                    if !participants.contains(&i) {
-                        participants.push(i);
-                    }
-                }
-                units.push(SpacingUnitData {
-                    participants: own,
-                    pieces: start..pieces.len(),
-                    left: unit.left,
-                    right: unit.right,
-                });
-            }
-            let units: [SpacingUnitData; 2] = units
-                .try_into()
-                .unwrap_or_else(|_| unreachable!("two endpoints"));
-            spacing_slots.push(SpacingSlotData {
-                target: SpacingTargetData::Boundary { edge, units },
-                participants,
-                pieces,
-            });
-        }
-    }
+    let spacing_slots = spacing::build_spacing_slots(
+        &prepared.inner,
+        &presentation,
+        &request,
+        &shaped,
+        &characters,
+        &boundaries.presentation,
+        &mut scope_plan.budget,
+    )?;
     characters.retain(&mut scope_plan.budget)?;
     if !shaped.cells.is_empty() {
         // The returned ordering backing is already funded. Its Vec header
         // becomes persistent only in this actual SelectedShape publication.
         crate::engine::scope_alignment::accounting::header::<Vec<usize>>(&mut scope_plan.budget)?;
     }
+    let basis = crate::engine::SelectedShape {
+        shaped,
+        mapping,
+        characters,
+        order,
+    };
     let scopes = crate::engine::scope_alignment::select(
         &prepared.inner,
         &presentation,
-        &shaped,
+        &basis,
         &request,
-        &characters,
-        &order,
+        &spacing_slots,
         scope_plan,
     )?;
     Ok(SelectedLine {
@@ -348,12 +245,7 @@ fn select_with_policy(
             presentation,
             spacing_slots,
             metric_policy,
-            basis: crate::engine::SelectedShape {
-                shaped,
-                mapping,
-                characters,
-                order,
-            },
+            basis,
             boundaries,
         }),
     })

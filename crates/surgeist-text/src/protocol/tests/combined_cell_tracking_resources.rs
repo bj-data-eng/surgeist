@@ -1,6 +1,13 @@
 //! Named retained-subset qualification of genuine mixed ordinary/Cell tracking.
 //! Private Graph script/region buffers are outside these storage assertions;
 //! their complete inventory remains an owning-source review obligation.
+#[path = "combined_cell_allocated_tracking.rs"]
+mod allocated;
+#[path = "combined_cell_allocated_word.rs"]
+mod allocated_word;
+#[path = "combined_cell_tracking_diagnostic.rs"]
+mod diagnostic;
+
 use super::*;
 use crate::engine::{
     layout::data::ShapedData,
@@ -18,8 +25,56 @@ struct Mixed {
 }
 
 fn mixed() -> Mixed {
-    let parent_bytes = parent_font();
-    let body_bytes = composition_font();
+    mixed_with_cell("BBAAB", Range::new(2, 4), 0.0, 784_972)
+}
+
+fn mixed_with_cell(text: &str, inner: Range, inner_word_spacing: f64, source_id: u64) -> Mixed {
+    let outside = Style {
+        font: Font::new().family("Ahem"),
+        size: 10.0,
+        line_height: LineHeight::Absolute(12.0),
+        white_space: WhiteSpace::Preserve,
+        text_combine_upright: TextCombineUpright::None,
+        text_transform: TextTransform::none(),
+        letter_spacing: 4.0,
+        word_spacing: 0.0,
+        wrap: Wrap::Word,
+        ..Style::default()
+    };
+    let inside = Style {
+        font: Font::new().family(crate::shaping_test_fonts::COMBINED_WIDTH_FAMILY),
+        line_height: LineHeight::Absolute(10.0),
+        text_combine_upright: TextCombineUpright::All,
+        letter_spacing: 2.0,
+        word_spacing: inner_word_spacing,
+        ..outside.clone()
+    };
+    prepare_mixed(
+        text,
+        inner,
+        source_id,
+        parent_font(),
+        composition_font(),
+        outside,
+        inside,
+    )
+    .unwrap()
+}
+
+fn prepare_mixed(
+    text: &str,
+    inner: Range,
+    source_id: u64,
+    parent_bytes: Vec<u8>,
+    body_bytes: Vec<u8>,
+    outside: Style,
+    inside: Style,
+) -> crate::Result<Mixed> {
+    assert!(text.is_ascii());
+    let count = text.encode_utf16().count();
+    assert!(inner.start < inner.end && inner.end <= count);
+    assert!(text[inner.start..inner.end].starts_with('A'));
+    assert!(text[inner.start..inner.end].ends_with('A'));
     // The same glyph ID36 has different genuine horizontal advances in these
     // distinct retained families: outside B1000 versus hwid's real B500.
     assert_eq!(
@@ -31,42 +86,24 @@ fn mixed() -> Mixed {
         500
     );
     glyph_frame_font_premises(&body_bytes);
-    let outside = Style {
-        font: Font::new().family("Ahem"),
-        size: 10.0,
-        line_height: LineHeight::Absolute(12.0),
-        white_space: WhiteSpace::Preserve,
-        text_combine_upright: TextCombineUpright::None,
-        text_transform: TextTransform::none(),
-        letter_spacing: 4.0,
-        wrap: Wrap::Word,
-        ..Style::default()
-    };
-    let inside = Style {
-        font: Font::new().family(crate::shaping_test_fonts::COMBINED_WIDTH_FAMILY),
-        line_height: LineHeight::Absolute(10.0),
-        text_combine_upright: TextCombineUpright::All,
-        letter_spacing: 2.0,
-        ..outside.clone()
-    };
-    let mut source = Source::identified("BBAAB", Id::from_u64(784_972), 1);
-    source.span(Range::new(2, 4), inside.clone());
+    let mut source = Source::identified(text, Id::from_u64(source_id), 1);
+    source.span(inner, inside.clone());
     let mut events = vec![
         SourceProcessingEvent::EnterScope(0),
         SourceProcessingEvent::EnterParagraph(0),
     ];
-    for index in 0..5 {
+    for index in 0..count {
         if index > 0 {
             events.push(SourceProcessingEvent::Connection(index - 1));
         }
-        if index == 2 {
+        if index == inner.start {
             events.push(SourceProcessingEvent::EnterScope(1));
         }
         events.push(SourceProcessingEvent::Origin {
             origin: index,
             affinity: Affinity::After,
         });
-        if index == 3 {
+        if index + 1 == inner.end {
             events.push(SourceProcessingEvent::ExitScope(1));
         }
     }
@@ -79,7 +116,7 @@ fn mixed() -> Mixed {
             source: source.clone(),
             segment_breaks: DocumentSegmentBreaks::LineFeedDefault,
             envelope: SourceProcessingEnvelope::Complete,
-            origins: (0..5)
+            origins: (0..count)
                 .map(|index| ParagraphOrigin {
                     source: source.clone(),
                     text_node: None,
@@ -88,14 +125,14 @@ fn mixed() -> Mixed {
                     kind: ParagraphOriginKind::Authored,
                 })
                 .collect(),
-            connections: (0..4)
+            connections: (0..count - 1)
                 .map(|index| SourceProcessingConnection {
                     before_origin: index,
                     after_origin: index + 1,
                     kind: ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
-            boundary_policies: (0..4)
+            boundary_policies: (0..count - 1)
                 .map(|index| ParagraphBoundaryPolicy {
                     definition: ParagraphBoundaryDefinition::Connection(index),
                     preceding_wrap: Wrap::Word,
@@ -149,10 +186,16 @@ fn mixed() -> Mixed {
     let cell = cells.next().unwrap();
     assert!(cells.next().is_none());
     assert_eq!(cell.scope(), processed.captured_scope(1).unwrap());
-    assert_eq!(cell.used_code_points().collect::<Vec<_>>(), [0x41, 0x41]);
+    assert_eq!(
+        cell.used_code_points().collect::<Vec<_>>(),
+        source.text().code_units()[inner.start..inner.end]
+            .iter()
+            .map(|&unit| u32::from(unit))
+            .collect::<Vec<_>>()
+    );
     let pieces = cell.source_pieces().collect::<Vec<_>>();
-    assert_eq!(pieces.len(), 2);
-    for (piece, index) in pieces.iter().zip(2..4) {
+    assert_eq!(pieces.len(), inner.end - inner.start);
+    for (piece, index) in pieces.iter().zip(inner.start..inner.end) {
         assert_eq!(piece.source(), &source);
         assert_eq!(
             (piece.local(), piece.aggregate()),
@@ -183,19 +226,17 @@ fn mixed() -> Mixed {
         .unwrap()
         .to_owned();
     assert!(!parent.face().is_same_face(&body.face()));
-    let prepared = system
-        .prepare(
-            &analyzed,
-            PreparationOptions::default().with_orientation(LineOrientation::Vertical),
-        )
-        .unwrap();
+    let prepared = system.prepare(
+        &analyzed,
+        PreparationOptions::default().with_orientation(LineOrientation::Vertical),
+    )?;
     assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
-    Mixed {
+    Ok(Mixed {
         prepared,
         processed,
         parent,
         body,
-    }
+    })
 }
 
 fn request(prepared: &PreparedText) -> LineSelectionRequest {

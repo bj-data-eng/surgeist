@@ -37,6 +37,20 @@ fn words(values: &[u16]) -> Vec<u8> {
         .collect()
 }
 
+/// Real DFLT/curs GPOS3 over unchanged licensed Ahem glyphs and metrics.
+/// A exits at(300,500), B enters at(100,200); C is outside coverage.
+pub(crate) fn cross_unit_cursive_ahem() -> Vec<u8> {
+    let mut gpos = words(&[1, 0, 10, 30, 44, 1]);
+    gpos.extend(*b"DFLT");
+    gpos.extend(words(&[8, 4, 0, 0, 0xffff, 1, 0, 1]));
+    gpos.extend(*b"curs");
+    gpos.extend(words(&[8, 0, 1, 0, 1, 4, 3, 0, 1, 8]));
+    gpos.extend(words(&[
+        1, 14, 2, 0, 22, 28, 0, 1, 2, 35, 36, 1, 300, 500, 1, 100, 200,
+    ]));
+    replace_tables(AHEM, vec![(*b"GPOS", gpos)])
+}
+
 fn offset(value: usize) -> u16 {
     u16::try_from(value).expect("small authored OpenType table fits Offset16")
 }

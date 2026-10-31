@@ -36,7 +36,7 @@ enum GraphOwnership {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Subject {
+pub(crate) enum Subject {
     Text,
     Atomics,
     Cell(usize),
@@ -83,6 +83,12 @@ pub(crate) struct Unit {
     barrier: bool,
     native_only: bool,
     level: u8,
+}
+
+impl Unit {
+    pub(crate) fn subject(&self) -> Subject {
+        self.subject
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -261,25 +267,6 @@ impl Graph {
     ) -> Result<Vec<Option<Owner>>> {
         self.index.owners(shaped, order, self.units.len(), ledger)
     }
-    fn crosses(&self, edge: usize, members: &[usize]) -> bool {
-        let side = |component| {
-            self.units
-                .iter()
-                .position(|u| u.atoms.iter().any(|a| a.contains(&component)))
-                .map(|i| i <= self.boundaries[edge].before)
-        };
-        members.iter().any(|&i| side(i) == Some(true))
-            && members.iter().any(|&i| side(i) == Some(false))
-    }
-    fn touches(&self, edge: usize, invocation: &Invocation) -> bool {
-        let boundary = &self.boundaries[edge];
-        [boundary.before, boundary.after].iter().any(|&u| {
-            self.units[u]
-                .atoms
-                .iter()
-                .any(|a| a.start < invocation.atoms.end && a.end > invocation.atoms.start)
-        })
-    }
     pub(crate) fn geometry(
         &self,
         edge: usize,
@@ -377,14 +364,14 @@ struct DiagnosticContext {
     pieces: Vec<crate::SpacingPiece>,
     locale: Option<String>,
 }
+// Failure diagnostics are Native-owned, outside ScopeAlignmentLimits payload.
 fn cell_context(
     analyzed: &crate::engine::AnalyzedData,
     binding: usize,
-    ledger: &mut Ledger,
 ) -> Result<DiagnosticContext> {
     let input = Input::original(analyzed, &[], 1.0);
-    let pieces = input.cell_pieces(binding, ledger)?;
-    let locale = input.cell_locale(binding, ledger)?;
+    let pieces = input.cell_pieces(binding, &mut None)?;
+    let locale = input.cell_locale(binding, &mut None)?;
     Ok(DiagnosticContext { pieces, locale })
 }
 
@@ -394,7 +381,6 @@ pub(crate) fn failure(
     edge: usize,
     operation: crate::SpacingOperation,
     invocations: &[Invocation],
-    ledger: &mut Ledger,
 ) -> crate::Error {
     diagnostic(
         graph,
@@ -402,32 +388,7 @@ pub(crate) fn failure(
         invocations,
         crate::SpacingStage::SelectedShaping,
         operation,
-        |unit| {
-            if let Subject::Cell(binding) = unit.subject {
-                return cell_context(&input.prepared.analyzed, binding, ledger);
-            }
-            let mut pieces = Vec::new();
-            for atoms in &unit.atoms {
-                pieces.extend(
-                    super::slot_pieces(input.prepared, input.presentation, atoms.clone())
-                        .into_iter()
-                        .map(|p| p.owner),
-                );
-            }
-            pieces.extend(
-                unit.atomics
-                    .iter()
-                    .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
-            );
-            let locale = unit.base.and_then(|base| {
-                input.prepared.styles[input.presentation.analysis.infos[base].1]
-                    .style
-                    .locale
-                    .as_ref()
-                    .map(|l| l.as_str().to_owned())
-            });
-            Ok(DiagnosticContext { pieces, locale })
-        },
+        |unit| DiagnosticSource::Selected(input).context(unit),
     )
 }
 
@@ -439,77 +400,81 @@ fn diagnostic(
     operation: crate::SpacingOperation,
     mut context: impl FnMut(&Unit) -> Result<DiagnosticContext>,
 ) -> crate::Error {
-    let boundary = &graph.boundaries[edge];
-    let mut pieces = Vec::new();
-    let mut contexts = Vec::new();
-    for index in [boundary.before, boundary.after] {
-        let unit = &graph.units[index];
-        let own = match context(unit) {
-            Ok(value) => value,
-            Err(error) => return error,
-        };
-        pieces.extend(own.pieces.iter().copied());
-        contexts.push(unit_context(unit, own.pieces, own.locale));
-    }
-    let mut constraints: Vec<_> = invocations
-        .iter()
-        .flat_map(|i| &i.constraints)
-        .filter(|c| graph.crosses(edge, &c.components))
-        .map(|c| crate::SpacingConstraint {
-            kind: c.kind.clone(),
-            run: c.run,
-            components: c.components.iter().map(|&a| a..a + 1).collect(),
-            provenance: c.provenance.clone().into_boxed_slice(),
-        })
-        .collect();
-    for invocation in invocations.iter().filter(|i| graph.touches(edge, i)) {
-        if let Some(path) = invocation.path {
-            constraints.push(crate::SpacingConstraint {
-                kind: crate::SpacingConstraintKind::UnqualifiedProviderPath(path),
-                run: invocation.run,
-                components: vec![invocation.atoms.clone()].into_boxed_slice(),
-                provenance: Box::new([]),
-            });
+    let build = (|| -> Result<crate::Error> {
+        let boundary = &graph.boundaries[edge];
+        let mut pieces = Vec::new();
+        let mut contexts = Vec::new();
+        let mut providers = Vec::new();
+        for index in [boundary.before, boundary.after] {
+            let unit = &graph.units[index];
+            let own = context(unit)?;
+            pieces.extend(own.pieces.iter().copied());
+            contexts.push(unit_context(unit, own.pieces, own.locale));
+            providers.extend(unit.atoms.iter().cloned());
         }
+        let mut constraints = Vec::new();
+        let mut incomplete = false;
+        let mut optional = false;
+        let mut external = false;
+        for invocation in invocations {
+            incomplete |=
+                !invocation.complete && graph.touches_accounted(edge, invocation, &mut None)?;
+            for relation in &invocation.constraints {
+                if graph.crosses_accounted(edge, &relation.components, &mut None)? {
+                    optional |= !relation.required
+                        && relation.kind == crate::SpacingConstraintKind::Ligature;
+                    external |= matches!(
+                        relation.kind,
+                        crate::SpacingConstraintKind::ExternalJoiningContext { .. }
+                    );
+                    constraints.push(crate::SpacingConstraint {
+                        kind: relation.kind.clone(),
+                        run: relation.run,
+                        components: relation.components.iter().map(|&a| a..a + 1).collect(),
+                        provenance: relation.provenance.clone().into_boxed_slice(),
+                    });
+                }
+            }
+        }
+        // Preserve canonical relation-first diagnostic ordering.
+        for invocation in invocations {
+            if graph.touches_accounted(edge, invocation, &mut None)?
+                && let Some(path) = invocation.path
+            {
+                constraints.push(crate::SpacingConstraint {
+                    kind: crate::SpacingConstraintKind::UnqualifiedProviderPath(path),
+                    run: invocation.run,
+                    components: vec![invocation.atoms.clone()].into_boxed_slice(),
+                    provenance: Box::new([]),
+                });
+            }
+        }
+        let reason = if !qualified(graph, edge) {
+            SpacingFailureReason::UnqualifiedWritingSystem
+        } else if incomplete || external {
+            SpacingFailureReason::UnqualifiedProviderPath
+        } else if optional {
+            SpacingFailureReason::PreservedOptionalLigature
+        } else {
+            SpacingFailureReason::CrossUnitConstraint
+        };
+        Ok(crate::Error::new(
+            crate::ErrorCode::LayoutFailed,
+            "material character spacing cannot preserve this boundary",
+        )
+        .with_detail(crate::ErrorDetail::UnsupportedSpacing {
+            stage,
+            operation,
+            pieces: pieces.into_boxed_slice(),
+            provider_atoms: providers.into_boxed_slice(),
+            reason,
+            contexts: contexts.into_boxed_slice(),
+            constraints: constraints.into_boxed_slice(),
+        }))
+    })();
+    match build {
+        Ok(error) | Err(error) => error,
     }
-    let reason = if !qualified(graph, edge) {
-        SpacingFailureReason::UnqualifiedWritingSystem
-    } else if invocations
-        .iter()
-        .any(|i| !i.complete && graph.touches(edge, i))
-        || constraints.iter().any(|c| {
-            matches!(
-                c.kind,
-                crate::SpacingConstraintKind::ExternalJoiningContext { .. }
-            )
-        })
-    {
-        SpacingFailureReason::UnqualifiedProviderPath
-    } else if invocations.iter().flat_map(|i| &i.constraints).any(|c| {
-        graph.crosses(edge, &c.components)
-            && !c.required
-            && c.kind == crate::SpacingConstraintKind::Ligature
-    }) {
-        SpacingFailureReason::PreservedOptionalLigature
-    } else {
-        SpacingFailureReason::CrossUnitConstraint
-    };
-    crate::Error::new(
-        crate::ErrorCode::LayoutFailed,
-        "material character spacing cannot preserve this boundary",
-    )
-    .with_detail(crate::ErrorDetail::UnsupportedSpacing {
-        stage,
-        operation,
-        pieces: pieces.into_boxed_slice(),
-        provider_atoms: [boundary.before, boundary.after]
-            .into_iter()
-            .flat_map(|u| graph.units[u].atoms.clone())
-            .collect(),
-        reason,
-        contexts: contexts.into_boxed_slice(),
-        constraints: constraints.into_boxed_slice(),
-    })
 }
 
 pub(crate) fn qualified(graph: &Graph, edge: usize) -> bool {
@@ -537,7 +502,7 @@ pub(crate) fn original(
     let mut regions = graph.find_regions_accounted(&members, ledger)?;
     for region in &regions {
         if graph.region_material(region, ledger)? {
-            return Err(original_region_error(analyzed, graph, region, ledger));
+            return Err(original_region_error(analyzed, graph, region));
         }
     }
     for (i, unit) in graph.units.iter().enumerate() {
@@ -581,7 +546,7 @@ pub(crate) fn original(
                 crate::SpacingOperation::AuthoredTracking,
                 |unit| {
                     if let Subject::Cell(binding) = unit.subject {
-                        return cell_context(analyzed, binding, ledger);
+                        return cell_context(analyzed, binding);
                     }
                     let mut pieces = Vec::new();
                     for atoms in &unit.atoms {
@@ -609,7 +574,7 @@ pub(crate) fn original(
             for region in &regions {
                 account::work(ledger, 1)?;
                 if splits_region(&members, region, owner, shaped, ledger)? {
-                    return Err(original_region_error(analyzed, graph, region, ledger));
+                    return Err(original_region_error(analyzed, graph, region));
                 }
             }
             apply_gap_accounted(
@@ -742,7 +707,6 @@ pub(crate) fn apply_selected_accounted(
                 region,
                 crate::SpacingStage::SelectedShaping,
                 crate::SpacingOperation::AuthoredTracking,
-                ledger,
             ));
         }
     }
@@ -823,7 +787,6 @@ pub(crate) fn apply_selected_accounted(
                     crate::SpacingOperation::AuthoredTracking
                 },
                 &shaped.character_invocations,
-                ledger,
             ));
         }
         if let Some(owner) = owners[boundary.before] {
@@ -841,7 +804,6 @@ pub(crate) fn apply_selected_accounted(
                             } else {
                                 crate::SpacingOperation::InterCharacterAllocation
                             },
-                            ledger,
                         ));
                     }
                 }
@@ -1106,52 +1068,55 @@ impl<'a> DiagnosticSource<'a> {
             Self::Selected(i) => &i.prepared.analyzed,
         }
     }
-    fn pieces(self, member: &Member, ledger: &mut Ledger) -> Result<Vec<crate::SpacingPiece>> {
+    fn pieces(self, member: &Member) -> Result<Vec<crate::SpacingPiece>> {
         match member {
             Member::Cell(binding) => {
-                Input::original(self.analyzed(), &[], 1.0).cell_pieces(*binding, ledger)
+                Input::original(self.analyzed(), &[], 1.0).cell_pieces(*binding, &mut None)
             }
             Member::Atomic(occurrence) => Ok(vec![crate::SpacingPiece::Atomic {
                 occurrence: *occurrence,
             }]),
-            Member::Text(atoms) => Ok(match self {
-                Self::Original(a) => {
+            Member::Text(atoms) => match self {
+                Self::Original(analyzed) => {
                     let mut pieces = Vec::new();
                     for atom in atoms.clone() {
-                        super::original_pieces(a, atom, &mut pieces, &mut None)
-                            .expect("Native source-piece collection has no scope admission");
+                        super::original_pieces(analyzed, atom, &mut pieces, &mut None)?;
                     }
-                    pieces
+                    Ok(pieces)
                 }
-                Self::Selected(i) => super::slot_pieces(i.prepared, i.presentation, atoms.clone())
-                    .into_iter()
-                    .map(|p| p.owner)
-                    .collect(),
-            }),
+                Self::Selected(input) => {
+                    super::slot_owners(input.prepared, input.presentation, atoms.clone(), &mut None)
+                }
+            },
         }
     }
-    fn context(self, unit: &Unit, ledger: &mut Ledger) -> Result<DiagnosticContext> {
+    fn context(self, unit: &Unit) -> Result<DiagnosticContext> {
         if let Subject::Cell(binding) = unit.subject {
-            return cell_context(self.analyzed(), binding, ledger);
+            return cell_context(self.analyzed(), binding);
         }
         let mut pieces = Vec::new();
         for atoms in &unit.atoms {
-            pieces.extend(self.pieces(&Member::Text(atoms.clone()), ledger)?);
+            pieces.extend(self.pieces(&Member::Text(atoms.clone()))?);
         }
-        for &atomic in &unit.atomics {
-            pieces.extend(self.pieces(&Member::Atomic(atomic), ledger)?);
-        }
-        let locale = unit.base.and_then(|base| match self {
-            Self::Original(a) => a.styles[a.analysis.infos[base].1]
-                .style
-                .locale_tag()
-                .map(str::to_owned),
-            Self::Selected(i) => i.prepared.styles[i.presentation.analysis.infos[base].1]
-                .style
-                .locale
-                .as_ref()
-                .map(|l| l.as_str().to_owned()),
-        });
+        pieces.extend(
+            unit.atomics
+                .iter()
+                .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
+        );
+        let locale = unit
+            .base
+            .and_then(|base| match self {
+                Self::Original(analyzed) => analyzed.styles[analyzed.analysis.infos[base].1]
+                    .style
+                    .locale_tag(),
+                Self::Selected(input) => input.prepared.styles
+                    [input.presentation.analysis.infos[base].1]
+                    .style
+                    .locale
+                    .as_ref()
+                    .map(|locale| locale.as_str()),
+            })
+            .map(str::to_owned);
         Ok(DiagnosticContext { pieces, locale })
     }
 }
@@ -1161,47 +1126,39 @@ fn region_diagnostic(
     region: &Region,
     stage: crate::SpacingStage,
     operation: crate::SpacingOperation,
-    ledger: &mut Ledger,
 ) -> crate::Error {
-    let mut contexts = Vec::new();
-    for &i in &region.units {
-        let unit = &graph.units[i];
-        let c = match source.context(unit, ledger) {
-            Ok(c) => c,
-            Err(e) => return e,
-        };
-        contexts.push(unit_context(unit, c.pieces, c.locale));
-    }
-    let mut pieces = Vec::new();
-    for member in &region.members {
-        match source.pieces(member, ledger) {
-            Ok(own) => pieces.extend(own),
-            Err(e) => return e,
+    let build = (|| -> Result<crate::Error> {
+        let mut contexts = Vec::new();
+        for &i in &region.units {
+            let unit = &graph.units[i];
+            let own = source.context(unit)?;
+            contexts.push(unit_context(unit, own.pieces, own.locale));
         }
+        let mut pieces = Vec::new();
+        let mut providers = Vec::new();
+        for member in &region.members {
+            pieces.extend(source.pieces(member)?);
+            if let Member::Text(atoms) = member {
+                providers.push(atoms.clone());
+            }
+        }
+        Ok(crate::Error::new(
+            crate::ErrorCode::LayoutFailed,
+            "interleaved text and atomic topology is not qualified for material spacing",
+        )
+        .with_detail(crate::ErrorDetail::UnsupportedSpacing {
+            stage,
+            operation,
+            reason: SpacingFailureReason::InterleavedUnit,
+            pieces: pieces.into_boxed_slice(),
+            provider_atoms: providers.into_boxed_slice(),
+            contexts: contexts.into_boxed_slice(),
+            constraints: Box::new([]),
+        }))
+    })();
+    match build {
+        Ok(error) | Err(error) => error,
     }
-    crate::Error::new(
-        crate::ErrorCode::LayoutFailed,
-        "interleaved text and atomic topology is not qualified for material spacing",
-    )
-    .with_detail(crate::ErrorDetail::UnsupportedSpacing {
-        stage,
-        operation,
-        reason: SpacingFailureReason::InterleavedUnit,
-        pieces: pieces.into_boxed_slice(),
-        provider_atoms: region
-            .members
-            .iter()
-            .filter_map(|m| {
-                if let Member::Text(a) = m {
-                    Some(a.clone())
-                } else {
-                    None
-                }
-            })
-            .collect(),
-        contexts: contexts.into_boxed_slice(),
-        constraints: Box::new([]),
-    })
 }
 fn region_error(
     input: PresentationInput<'_>,
@@ -1209,7 +1166,6 @@ fn region_error(
     region: &Region,
     stage: crate::SpacingStage,
     operation: crate::SpacingOperation,
-    ledger: &mut Ledger,
 ) -> crate::Error {
     region_diagnostic(
         DiagnosticSource::Selected(input),
@@ -1217,14 +1173,12 @@ fn region_error(
         region,
         stage,
         operation,
-        ledger,
     )
 }
 fn original_region_error(
     analyzed: &crate::engine::AnalyzedData,
     graph: &Graph,
     region: &Region,
-    ledger: &mut Ledger,
 ) -> crate::Error {
     region_diagnostic(
         DiagnosticSource::Original(analyzed),
@@ -1232,7 +1186,6 @@ fn original_region_error(
         region,
         crate::SpacingStage::Preparation,
         crate::SpacingOperation::AuthoredTracking,
-        ledger,
     )
 }
 
@@ -1262,7 +1215,6 @@ pub(crate) fn admit(
                 } else {
                     crate::SpacingOperation::AuthoredTracking
                 },
-                ledger,
             ));
         }
     }
@@ -1321,27 +1273,11 @@ fn unit_error(
     stage: crate::SpacingStage,
     operation: crate::SpacingOperation,
 ) -> crate::Error {
-    let pieces: Vec<_> = unit
-        .atoms
-        .iter()
-        .flat_map(|a| {
-            super::slot_pieces(input.prepared, input.presentation, a.clone())
-                .into_iter()
-                .map(|p| p.owner)
-        })
-        .chain(
-            unit.atomics
-                .iter()
-                .map(|&occurrence| crate::SpacingPiece::Atomic { occurrence }),
-        )
-        .collect();
-    let locale = unit.base.and_then(|b| {
-        input.prepared.styles[input.presentation.analysis.infos[b].1]
-            .style
-            .locale
-            .as_ref()
-            .map(|l| l.as_str().to_owned())
-    });
+    let own = match DiagnosticSource::Selected(input).context(unit) {
+        Ok(own) => own,
+        Err(error) => return error,
+    };
+    let context = unit_context(unit, own.pieces.clone(), own.locale);
     crate::Error::new(
         crate::ErrorCode::LayoutFailed,
         "character-unit topology is not qualified for this spacing operation",
@@ -1350,12 +1286,13 @@ fn unit_error(
         stage,
         operation,
         reason: SpacingFailureReason::UnqualifiedWritingSystem,
-        contexts: vec![unit_context(unit, pieces.clone(), locale)].into_boxed_slice(),
-        pieces: pieces.into_boxed_slice(),
+        contexts: vec![context].into_boxed_slice(),
+        pieces: own.pieces.into_boxed_slice(),
         provider_atoms: unit.atoms.clone().into_boxed_slice(),
         constraints: Box::new([]),
     })
 }
+
 fn original_unit_error(analyzed: &super::super::AnalyzedData, unit: &Unit) -> crate::Error {
     let mut pieces = Vec::new();
     for atoms in &unit.atoms {

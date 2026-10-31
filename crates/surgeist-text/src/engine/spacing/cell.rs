@@ -141,7 +141,7 @@ impl CellWordExecution {
                 &members,
                 authored,
                 SpacingStage::Preparation,
-                |ledger| pieces(analyzed, candidate.atoms.clone(), ledger),
+                || pieces(analyzed, candidate.atoms.clone()),
                 ledger,
             )?;
             account::drop_vec(ledger, members)?;
@@ -200,14 +200,10 @@ impl CellWordExecution {
     }
 }
 
-fn pieces(
-    analyzed: &AnalyzedData,
-    atoms: AtomRange<usize>,
-    ledger: &mut Ledger,
-) -> Result<Vec<SpacingPiece>> {
+fn pieces(analyzed: &AnalyzedData, atoms: AtomRange<usize>) -> Result<Vec<SpacingPiece>> {
     let mut result = Vec::new();
     for atom in atoms {
-        original_pieces(analyzed, atom, &mut result, ledger)?;
+        original_pieces(analyzed, atom, &mut result, &mut None)?;
     }
     Ok(result)
 }
