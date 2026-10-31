@@ -4,6 +4,9 @@ use super::*;
 use crate::test_support::inline_endpoint::Fixture;
 use surgeist_text as text;
 
+#[path = "inline_boundary_edges/whitespace.rs"]
+mod whitespace;
+
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {

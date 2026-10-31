@@ -17,10 +17,14 @@ pub surgeist_text::AnalysisTypography::HorizontalComposition
 pub surgeist_text::AnalysisTypography::Mixed
 pub surgeist_text::AnalysisTypography::Upright
 pub surgeist_text::AnalysisTypography::Upright::computed_direction: surgeist_text::ParagraphBaseDirection
+pub enum surgeist_text::AtomicFitAllocation
+pub surgeist_text::AtomicFitAllocation::CssMarginBox(surgeist_text::CssMarginBoxFit)
+pub surgeist_text::AtomicFitAllocation::NativeOccupied
 pub enum surgeist_text::AtomicLineAllocation
 pub surgeist_text::AtomicLineAllocation::InFlow
 pub surgeist_text::AtomicLineAllocation::InFlow::alignment: surgeist_text::LineBoxAlignment
 pub surgeist_text::AtomicLineAllocation::InFlow::box_geometry: surgeist_text::AtomicBoxAllocation
+pub surgeist_text::AtomicLineAllocation::InFlow::fit: surgeist_text::AtomicFitAllocation
 pub surgeist_text::AtomicLineAllocation::InFlow::flow: surgeist_text::AtomicFlowAllocation
 pub surgeist_text::AtomicLineAllocation::OutOfFlow
 pub enum surgeist_text::BaselineShiftFact
@@ -610,6 +614,9 @@ pub surgeist_text::LineOutlineInk::Empty
 pub enum surgeist_text::LineStart
 pub surgeist_text::LineStart::Continuation
 pub surgeist_text::LineStart::Paragraph
+pub enum surgeist_text::MarginEdgeFitAuthority
+pub surgeist_text::MarginEdgeFitAuthority::CssComposed
+pub surgeist_text::MarginEdgeFitAuthority::NativeOnly
 pub enum surgeist_text::Movement
 pub surgeist_text::Movement::DocumentEnd
 pub surgeist_text::Movement::DocumentStart
@@ -1932,6 +1939,14 @@ pub struct surgeist_text::ControlStrut
 pub surgeist_text::ControlStrut::alignment: surgeist_text::LineBoxAlignment
 pub surgeist_text::ControlStrut::baseline: f64
 pub surgeist_text::ControlStrut::line_extent: f64
+pub struct surgeist_text::CssMarginBoxFit
+impl surgeist_text::CssMarginBoxFit
+pub const fn surgeist_text::CssMarginBoxFit::advance(self) -> f64
+pub const fn surgeist_text::CssMarginBoxFit::border_inline_size(self) -> f64
+pub const fn surgeist_text::CssMarginBoxFit::margin_end(self) -> f64
+pub const fn surgeist_text::CssMarginBoxFit::margin_start(self) -> f64
+pub fn surgeist_text::CssMarginBoxFit::occupied_inline_bounds(self) -> (f64, f64)
+pub fn surgeist_text::CssMarginBoxFit::try_new(margin_start: f64, border_inline_size: f64, margin_end: f64) -> surgeist_text::Result<Self>
 pub struct surgeist_text::Cursor
 impl surgeist_text::Cursor
 pub const fn surgeist_text::Cursor::affinity(self) -> surgeist_text::Affinity
@@ -2453,6 +2468,9 @@ impl surgeist_text::LineMeasurements
 pub const fn surgeist_text::LineMeasurements::alignment(&self) -> surgeist_text::InlineMeasure
 pub const fn surgeist_text::LineMeasurements::fit(&self) -> surgeist_text::InlineMeasure
 pub const fn surgeist_text::LineMeasurements::formatted_line_usage(&self) -> surgeist_text::FormattedLineUsage
+pub const fn surgeist_text::LineMeasurements::margin_edge_fit(&self) -> surgeist_text::MarginEdgeFit
+pub const fn surgeist_text::LineMeasurements::margin_edge_max_content_contribution(&self) -> surgeist_text::MarginEdgeFit
+pub const fn surgeist_text::LineMeasurements::margin_edge_min_content_contribution(&self) -> surgeist_text::MarginEdgeFit
 pub const fn surgeist_text::LineMeasurements::max_content_contribution(&self) -> surgeist_text::InlineMeasure
 pub const fn surgeist_text::LineMeasurements::min_content_contribution(&self) -> surgeist_text::InlineMeasure
 pub struct surgeist_text::LineMetricFact
@@ -2482,6 +2500,14 @@ pub surgeist_text::LineSelectionRequest::termination: surgeist_text::PreparedTer
 pub struct surgeist_text::LineStrut
 pub surgeist_text::LineStrut::baseline: f64
 pub surgeist_text::LineStrut::line_extent: f64
+pub struct surgeist_text::MarginEdgeFit
+impl surgeist_text::MarginEdgeFit
+pub const fn surgeist_text::MarginEdgeFit::advance(self) -> f64
+pub const fn surgeist_text::MarginEdgeFit::authority(self) -> surgeist_text::MarginEdgeFitAuthority
+pub const fn surgeist_text::MarginEdgeFit::constraint_end(self) -> f64
+pub const fn surgeist_text::MarginEdgeFit::constraint_start(self) -> f64
+pub const fn surgeist_text::MarginEdgeFit::native_occupied_bounds(self) -> core::option::Option<(f64, f64)>
+pub const fn surgeist_text::MarginEdgeFit::required_inline_size(self) -> f64
 pub struct surgeist_text::Mark
 impl surgeist_text::Mark
 pub const fn surgeist_text::Mark::is_empty(self) -> bool

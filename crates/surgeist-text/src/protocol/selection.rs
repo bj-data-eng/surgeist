@@ -912,7 +912,10 @@ fn validate_context(
 
 fn validate_atomic(allocation: &AtomicAllocation) -> Result<()> {
     let super::AtomicLineAllocation::InFlow {
-        flow, box_geometry, ..
+        flow,
+        fit,
+        box_geometry,
+        ..
     } = allocation.allocation
     else {
         return Ok(());
@@ -948,6 +951,13 @@ fn validate_atomic(allocation: &AtomicAllocation) -> Result<()> {
                 occurrence: allocation.occurrence.index,
             }));
         }
+    }
+    if let super::AtomicFitAllocation::CssMarginBox(css) = fit
+        && !css.matches(flow, box_geometry)
+    {
+        return Err(protocol_error(ProtocolError::InvalidAtomicGeometry {
+            occurrence: allocation.occurrence.index,
+        }));
     }
     Ok(())
 }
@@ -1099,6 +1109,7 @@ pub(crate) fn standalone_atomics(
                 },
                 allocation: if in_flow {
                     super::AtomicLineAllocation::InFlow {
+                        fit: crate::AtomicFitAllocation::NativeOccupied,
                         flow: AtomicFlowAllocation {
                             advance: size.width,
                             before_baseline: size.height,

@@ -357,6 +357,7 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
             atomics: vec![t::AtomicAllocation {
                 occurrence: atomic.clone(),
                 allocation: t::AtomicLineAllocation::InFlow {
+                    fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
                     flow: t::AtomicFlowAllocation {
                         advance: 14.0,
                         before_baseline: 4.0,

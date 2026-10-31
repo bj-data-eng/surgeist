@@ -750,6 +750,7 @@ fn parent_allocation(parent: &Captured, case: Case) -> t::AtomicAllocation {
     t::AtomicAllocation {
         occurrence: parent.prepared.atomic_views().next().unwrap().handle(),
         allocation: t::AtomicLineAllocation::InFlow {
+            fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
             flow: t::AtomicFlowAllocation {
                 advance: if cw { 14.0 } else { 6.0 },
                 before_baseline: before,

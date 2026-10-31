@@ -169,6 +169,7 @@ fn allocated(
             r.atomics = vec![AtomicAllocation {
                 occurrence: p.atomic_views().next().unwrap().handle(),
                 allocation: AtomicLineAllocation::InFlow {
+                    fit: crate::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 6.0,
                         before_baseline: 6.0,

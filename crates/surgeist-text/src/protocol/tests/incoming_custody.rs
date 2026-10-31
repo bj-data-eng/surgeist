@@ -396,6 +396,7 @@ fn with_atomic(p: &PreparedText, mut request: LineSelectionRequest) -> LineSelec
     request.atomics = vec![AtomicAllocation {
         occurrence,
         allocation: AtomicLineAllocation::InFlow {
+            fit: crate::AtomicFitAllocation::NativeOccupied,
             flow: AtomicFlowAllocation {
                 advance: size.width,
                 before_baseline: before,

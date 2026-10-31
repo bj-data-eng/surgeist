@@ -682,6 +682,7 @@ fn edge_request(prepared: &PreparedText) -> LineSelectionRequest {
                 AtomicLineAllocation::OutOfFlow
             } else {
                 AtomicLineAllocation::InFlow {
+                    fit: crate::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 4.0,
                         before_baseline: 3.0,

@@ -224,6 +224,7 @@ fn allocation(parent: &Captured, kind: t::InlineBoxKind) -> t::AtomicAllocation 
         allocation: match kind {
             t::InlineBoxKind::OutOfFlow => t::AtomicLineAllocation::OutOfFlow,
             t::InlineBoxKind::InFlow => t::AtomicLineAllocation::InFlow {
+                fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
                 alignment: t::LineBoxAlignment::Baseline,
                 // A Horizontal child exports no physical-x baseline. Physical
                 // synthesis uses its left/line-under edge: over6, under0.

@@ -78,6 +78,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
             allocation: match atomic.original_box().kind() {
                 InlineBoxKind::OutOfFlow => AtomicLineAllocation::OutOfFlow,
                 InlineBoxKind::InFlow => AtomicLineAllocation::InFlow {
+                    fit: crate::AtomicFitAllocation::NativeOccupied,
                     flow: AtomicFlowAllocation {
                         advance: 5.0,
                         before_baseline: 8.0,

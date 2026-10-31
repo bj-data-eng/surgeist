@@ -1193,6 +1193,7 @@ fn edges<S: LayoutScalar>() {
                     flow,
                     box_geometry,
                     alignment: actual_alignment,
+                    ..
                 } = slot.allocation
                 else {
                     panic!("actual in-flow atomic")
