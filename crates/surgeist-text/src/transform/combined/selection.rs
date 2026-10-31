@@ -499,16 +499,25 @@ pub(super) fn select(
             context::push(&mut fences, cut)?;
         }
     }
-    for &order in &capture.flow_orders[domain] {
-        if let SourceProcessingEvent::EnterScope(scope) | SourceProcessingEvent::ExitScope(scope) =
-            capture.events[order].event
-        {
-            if capture.scopes[scope].definition.is_none() {
-                context::push(&mut boxes, ends[order])?;
-                context::push(&mut box_orders, order)?;
-            } else if capture.scopes[scope].domain != domain {
-                context::push(&mut fences, ends[order])?;
+    let flow = capture.canonical_flow()?;
+    for &order in flow.event_orders(domain) {
+        match capture.events[order].event {
+            SourceProcessingEvent::EnterScope(scope) | SourceProcessingEvent::ExitScope(scope) => {
+                if capture.scopes[scope].definition.is_none() {
+                    context::push(&mut boxes, ends[order])?;
+                    context::push(&mut box_orders, order)?;
+                } else if capture.scopes[scope].domain != domain {
+                    context::push(&mut fences, ends[order])?;
+                }
             }
+            SourceProcessingEvent::Atomic { .. } => {
+                // Every actual box interrupts combination. OOF transparency
+                // in generic text processing does not erase this box, but it
+                // must not manufacture a new EGC boundary either.
+                context::push(&mut fences, ends[order])?;
+                context::push(&mut box_orders, order)?;
+            }
+            _ => (),
         }
     }
     fences.sort_unstable();

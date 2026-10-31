@@ -181,8 +181,8 @@ fn retained_force(output: &AnalyzedSource, processed: &ProcessedSource, force: F
 }
 
 fn qualify(force: Force) {
-    // None is an ordinary positive control for the SAME genuine force;
-    // suppressing an accepted cell must not globally neutralize source forces.
+    // None is an ordinary positive control for the same genuine force. Only
+    // uninterrupted text can combine; an empty Inline remains a box boundary.
     for mode in [TextCombineUpright::None, TextCombineUpright::All] {
         let processed = capture(mode, force);
         let domain = AnalyzedDomain::from_processed_paragraph(
@@ -214,7 +214,7 @@ fn qualify(force: Force) {
         assert!(owner.joint_flow().is_none());
         let force_position = retained_force(output, &processed, force);
         let end = output.inner.logical.events.len();
-        if mode == TextCombineUpright::None {
+        if mode == TextCombineUpright::None || matches!(force, Force::ComputedScopeSide) {
             assert_eq!(output.combined_cells().len(), 0);
             assert!(
                 output
@@ -301,7 +301,7 @@ fn a_real_forced_break_inside_an_accepted_all_cell_keeps_custody_without_outer_f
 }
 
 #[test]
-fn a_computed_empty_inline_side_inside_an_accepted_all_cell_keeps_its_cause_without_outer_force() {
+fn an_empty_inline_box_keeps_its_computed_force_outside_combination() {
     qualify(Force::ComputedScopeSide);
 }
 

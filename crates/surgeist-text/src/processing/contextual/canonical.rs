@@ -190,6 +190,12 @@ impl CanonicalFlow {
         self.orders[domain].len()
     }
 
+    /// Canonical domain events, including inline boxes and child-block fences.
+    /// Unlike public flow participation, these retain empty Inline events.
+    pub(crate) fn event_orders(&self, domain: usize) -> &[usize] {
+        &self.orders[domain]
+    }
+
     pub(crate) fn edges(&self, paragraph: usize) -> &[usize] {
         &self.edges[paragraph]
     }
