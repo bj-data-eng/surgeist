@@ -1286,6 +1286,139 @@ mod tests {
         assert_eq!(recovered.data().code_units(), [97, 63]);
     }
 
+    /// Native admission checks the usage the committed append stores.
+    ///
+    /// Expected values are counted by hand from the documented UTF-16 unit
+    /// rule (names, URIs, prefixes, values, and textual slots). Admission is
+    /// observed through its limit errors at the real append boundary: a limit
+    /// equal to the committed value admits, and one below it reports that same
+    /// committed value as the attempted usage.
+    #[test]
+    fn native_admission_checks_exactly_the_usage_the_append_commits() {
+        let attribute = |namespace: &str, prefix: Option<&str>, local: &str, value: &str| {
+            crate::Attribute::new(
+                QualifiedName::new(
+                    Namespace::from_uri(namespace),
+                    prefix.map(DocumentString::from),
+                    local,
+                ),
+                value,
+            )
+        };
+        let element = |attributes: Vec<crate::Attribute>| {
+            HtmlNodeKind::Element(HtmlElement::new(
+                QualifiedName::new(Namespace::from_uri("urn:x"), Some("p".into()), "tag"),
+                OrderedAttributes::new(attributes).unwrap(),
+            ))
+        };
+        let cases: Vec<(&str, HtmlNodeKind, usize, usize)> = vec![
+            (
+                "text with an isolated surrogate pair and a null",
+                HtmlNodeKind::Text(DocumentString::from_utf16(vec![0xD83D, 0xDE00, 0])),
+                0,
+                3,
+            ),
+            (
+                "comment",
+                HtmlNodeKind::Comment(DocumentString::from("xyz")),
+                0,
+                3,
+            ),
+            (
+                "processing instruction",
+                HtmlNodeKind::ProcessingInstruction(HtmlProcessingInstruction {
+                    target: DocumentString::from("xy"),
+                    data: DocumentString::from("abc"),
+                }),
+                0,
+                5,
+            ),
+            (
+                "doctype with both identifiers",
+                HtmlNodeKind::Doctype(HtmlDoctype::new("h", Some("ab".into()), Some("xyz".into()))),
+                0,
+                6,
+            ),
+            (
+                "doctype with only a present empty public identifier",
+                HtmlNodeKind::Doctype(HtmlDoctype::new(
+                    "html",
+                    Some(DocumentString::default()),
+                    None,
+                )),
+                0,
+                4,
+            ),
+            // URI 5 + prefix 1 + local 3.
+            ("element without attributes", element(Vec::new()), 0, 9),
+            (
+                "element with qualified and unqualified attributes",
+                element(vec![
+                    // Attribute: URI 5 + prefix 1 + local 1 + value 3.
+                    attribute("urn:a", Some("q"), "k", "val"),
+                    // Attribute: local 2 + empty value.
+                    attribute("", None, "k2", ""),
+                ]),
+                2,
+                9 + 10 + 2,
+            ),
+        ];
+        for (label, kind, attributes, units) in cases {
+            let append = |limits: HtmlConstructionLimits| {
+                let mut builder = Builder::new(limits, HtmlNodeKind::Fragment).unwrap();
+                let root = builder.handle(0);
+                let result = builder.append(&root, kind.clone());
+                (result.map(|_| ()), builder.storage().usage())
+            };
+            let roomy = HtmlConstructionLimits::new(8, 8, 8, 1_000, 8);
+            let (result, committed) = append(roomy);
+            result.unwrap();
+            assert_eq!(
+                (committed.attributes(), committed.utf16_units()),
+                (attributes, units),
+                "{label}: committed usage"
+            );
+            let exact = HtmlConstructionLimits::new(8, 8, attributes, units, 8);
+            let (result, admitted) = append(exact);
+            assert_eq!(result, Ok(()), "{label}: exact limits admit");
+            assert_eq!(admitted, committed, "{label}: exact limits commit");
+            let tight_units = HtmlConstructionLimits::new(8, 8, 8, units - 1, 8);
+            let (result, unchanged) = append(tight_units);
+            assert_eq!(
+                result,
+                Err(HtmlConstructionError::LimitExceeded {
+                    resource: HtmlConstructionResource::Utf16Units,
+                    limit: units - 1,
+                    attempted: units,
+                }),
+                "{label}: units checked"
+            );
+            assert_eq!(
+                unchanged.utf16_units(),
+                0,
+                "{label}: rejection commits nothing"
+            );
+            if attributes > 0 {
+                let tight = HtmlConstructionLimits::new(8, 8, attributes - 1, 1_000, 8);
+                let (result, unchanged) = append(tight);
+                assert_eq!(
+                    result,
+                    Err(HtmlConstructionError::LimitExceeded {
+                        resource: HtmlConstructionResource::Attributes,
+                        limit: attributes - 1,
+                        attempted: attributes,
+                    }),
+                    "{label}: attributes checked"
+                );
+                assert_eq!(
+                    unchanged.attributes(),
+                    0,
+                    "{label}: rejection commits nothing"
+                );
+            }
+        }
+    }
+
     #[test]
     fn conversion_from_exact_pi_records_uses_the_same_typed_authoring_checks() {
         for (target, data, error) in [
