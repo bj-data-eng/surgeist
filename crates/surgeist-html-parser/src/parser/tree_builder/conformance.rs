@@ -6672,8 +6672,7 @@ mod comment_diagnostic_corpus {
 
         /// Asserts the tree the public fragment request returns, not the
         /// internal observation driver's view, against a hand-written
-        /// corpus-dump expectation. A decoded fixture's `expected` omits the
-        /// final line feed that each rendered record line carries.
+        /// corpus-dump expectation.
         fn assert_public_fragment_tree(context: &str, input: &str, utf16: bool, expected: &str) {
             let report = html_context_request(context, input, utf16)
                 .parse()
@@ -6683,7 +6682,7 @@ mod comment_diagnostic_corpus {
                 .unwrap_or_else(|| panic!("{input:?} utf16={utf16}: no public fragment"));
             assert_eq!(
                 super::super::corpus_replay::render_fragment(fragment),
-                format!("{expected}\n"),
+                super::super::corpus_replay::expected_dump(expected),
                 "{input:?} utf16={utf16}"
             );
         }

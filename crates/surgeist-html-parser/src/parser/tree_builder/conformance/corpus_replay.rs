@@ -369,6 +369,18 @@ pub(super) fn render_fragment(fragment: &HtmlFragment) -> String {
     render(fragment)
 }
 
+/// The `render` output for a decoded fixture's expected tree. `render` ends
+/// every record line with a line feed and emits nothing for an empty tree,
+/// while `decode` strips the separator after the last record and permits an
+/// empty fragment expectation. Both public-tree comparisons use this one rule.
+pub(super) fn expected_dump(expected: &str) -> String {
+    if expected.is_empty() {
+        String::new()
+    } else {
+        format!("{expected}\n")
+    }
+}
+
 fn actual_document(input: &str, utf16: bool) -> String {
     match document_request(input, utf16).parse() {
         Ok(report) => report.document().map_or("(no document)".to_owned(), render),
@@ -423,7 +435,7 @@ fn replay_case(file: &str, fixture: &Fixture<'_>) -> Option<Vec<String>> {
                     false,
                 )?;
                 let actual = actual_fragment(context, fixture.input, utf16);
-                if actual != format!("{}\n", fixture.expected) {
+                if actual != expected_dump(fixture.expected) {
                     return Err(format!("public fragment tree differs:\n{actual}"));
                 }
                 Ok(())
@@ -625,4 +637,21 @@ fn mode_omitted_document_still_rejects_a_changed_tree() {
     };
     *text = units("a");
     check(&document_request(fixtures[0].input, true), &expected).unwrap();
+}
+
+#[test]
+fn empty_fragment_renders_equal_to_an_empty_expectation() {
+    // HTML877d fragment parsing: empty input in a div context leaves the root
+    // without children, so the tree is empty and its dump is empty.
+    let raw = "#data\n\n#errors\n#document-fragment\ndiv\n#document\n";
+    let fixture = decode(raw).unwrap().into_iter().next().unwrap();
+    assert_eq!((fixture.input, fixture.expected), ("", ""));
+    for utf16 in [false, true] {
+        assert_eq!(
+            actual_fragment("div", fixture.input, utf16),
+            expected_dump(fixture.expected),
+            "utf16={utf16}"
+        );
+    }
+    assert_eq!(expected_dump("| <head>"), "| <head>\n");
 }
