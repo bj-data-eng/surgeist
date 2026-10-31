@@ -2,6 +2,8 @@
 
 mod cell;
 pub(crate) mod character;
+#[cfg(test)]
+mod tests;
 use super::scope_alignment::accounting::{self as account, Ledger};
 use crate::processing::contextual::alignment::operations;
 pub(crate) use cell::{CellWordExecution, CellWordPlan};
