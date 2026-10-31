@@ -11,6 +11,9 @@ mod variants;
 #[path = "combined_cell_word_spacing_collapsed.rs"]
 mod collapsed;
 
+#[path = "combined_cell_observation_boundaries.rs"]
+mod observation_boundaries;
+
 use super::*;
 use skrifa::{GlyphId, MetadataProvider};
 use surgeist_shaper::{

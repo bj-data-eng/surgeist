@@ -6,6 +6,9 @@ mod numeric;
 
 use super::*;
 
+#[path = "combined_cell_observation_mixed.rs"]
+mod observation_mixed;
+
 struct Fixture {
     processed: Arc<ProcessedSource>,
     analyzed: AnalyzedSource,
