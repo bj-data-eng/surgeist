@@ -2,10 +2,12 @@
 
 ## Dependencies
 
-This notice covers the nine direct dependencies pinned in [Cargo.toml](Cargo.toml),
+This notice covers the nine direct production dependencies and the
+`accesskit_consumer` development dependency pinned in [Cargo.toml](Cargo.toml),
 including the optional `accessibility` feature and dependency material for all
-declared platforms. These dependencies are not vendored in this source
-repository. This inventory does not cover the transitive dependencies or other
+declared platforms. The maintained consumer is bundled under
+[vendor/accesskit-consumer](../../vendor/accesskit-consumer); the other direct
+dependencies are not vendored here. This inventory does not cover other transitive dependencies or
 material incorporated into a particular application binary. The project's own
 license is in [LICENSE](LICENSE).
 
@@ -19,6 +21,18 @@ This product depends on accesskit, distributed by The AccessKit contributors:
 * License: [MIT](licenses/accesskit/LICENSE-MIT) OR [Apache-2.0](licenses/accesskit/LICENSE-APACHE)
 * Additional material: [Chromium BSD license](licenses/accesskit/LICENSE.chromium), [copyright and derivation notices](licenses/accesskit/NOTICE.md), and [upstream authors](licenses/accesskit/AUTHORS)
 * Homepage: [AccessKit](https://github.com/AccessKit/accesskit)
+
+### accesskit_consumer 0.36.0
+
+The native accessibility platform adapters use the workspace-selected
+maintained consumer. A direct development dependency tests original-unit word
+navigation against that same consumer. Its source, legal material and local
+correction are retained in the [maintained copy](../../vendor/accesskit-consumer/UPSTREAM.md).
+
+* License: [MIT](licenses/accesskit/LICENSE-MIT) OR [Apache-2.0](licenses/accesskit/LICENSE-APACHE)
+* Additional material: [copyright and derivation notices](licenses/accesskit/NOTICE.md), [upstream authors](licenses/accesskit/AUTHORS)
+* Homepage: [AccessKit](https://github.com/AccessKit/accesskit)
+* Legal source: [exact package revision](https://github.com/AccessKit/accesskit/tree/f40dfc01a0c0e76de535969f82fb35e19513737d)
 
 ### accesskit_winit 0.33.0
 

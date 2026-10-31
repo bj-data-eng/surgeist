@@ -23,6 +23,47 @@ preference mapping and callback publication without a display.
 See [host observations](explanation.md#host-observations-and-consumer-inputs) for
 the supported values, sampling opportunities and unavailable observations.
 
+## Reproduce original-unit word navigation
+
+Run the real AccessKit consumer-tree regression without a display:
+
+```sh
+cargo test --offline --locked -j 1 -p surgeist-window --features accessibility --test accesskit_word_navigation
+```
+
+Check the maintained consumer's own unit tests with:
+
+```sh
+cargo test --offline --locked -j 1 -p accesskit_consumer --lib
+```
+
+The fixtures preserve original text, selectable units and exact logical positions
+through true end. They cover ordinary runs and 262-unit ASCII/UTF8 runs, including
+word starts at 5 and the maximum encoded start 255. Every position checks word
+classification and forward/backward navigation against independent boundaries.
+Physical Cell caret policy does not participate.
+
+The workspace selects the maintained consumer 0.36.0 through its root Cargo
+patch. Three word searches widen stored starts to `usize`, preserving original
+indices above 255. See [consumer provenance](../../../vendor/accesskit-consumer/UPSTREAM.md)
+and [issue #1613](https://github.com/bj-data-eng/surgeist/issues/1613) for the
+source correction and native integration qualification. Core 0.24.1 remains
+shared with Text.
+
+When consuming Window from another application workspace, select the maintained
+consumer in that application's root manifest:
+
+```toml
+[patch.crates-io]
+accesskit_consumer = { path = "/path/to/surgeist/vendor/accesskit-consumer" }
+```
+
+[Cargo reads patch settings at the workspace root](https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html#the-patch-section).
+Verify that the resolved native adapters use this copy; a dependency manifest
+does not propagate the override into a downstream workspace. The consumer-tree
+regression is display-free. Native UIA and AT-SPI client interaction remains a
+separate platform qualification.
+
 These procedures assume you have completed [getting started](getting-started.md).
 The linked source owns the exact API contract.
 
