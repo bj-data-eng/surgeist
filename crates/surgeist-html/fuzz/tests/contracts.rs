@@ -396,7 +396,9 @@ fn seed_files_decode_to_the_documented_layout_and_independent_literal_success() 
             let payload = &b[README_HEADER_LEN..];
             if utf16 {
                 let units: Vec<u16> = payload
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|p| u16::from_le_bytes([p[0], p[1]]))
                     .collect();
                 assert_eq!(payload.len() % 2, 0, "{name}/{id} whole units");
