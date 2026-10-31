@@ -138,10 +138,24 @@ An unavailable observation is distinct from a known absent device or a known
 `no-preference` value. The winit adapter supplies monitor and client geometry,
 display scale and the system theme where its platform API supports them. It does
 not infer primary pointer capabilities from the most recent input event or guess
-reduced-motion, contrast, navigation, work-area or output-blending facts. Those
-remain unavailable until a host supplies them. CSS matching, document activity,
+navigation, reduced-data, work-area or output-blending facts. Those remain
+unavailable until a host supplies them. CSS matching, document activity,
 origin preference overlays and coherent downstream publication remain with
 their consuming owners.
+
+On macOS, the native adapter samples AppKit's reduced-motion,
+reduced-transparency and increased-contrast flags. A true reduction flag maps to
+`Reduce`, and false maps to `NoPreference`. Increased contrast maps to `More`
+when true and `NoPreference` when false; this flag does not detect `Less` or
+`Custom`. These are explicit host-policy mappings of observed settings. Other
+platforms retain unavailable values for these observations.
+
+The complete preference baseline is sampled at resume, native/user events,
+command application and idle opportunities. Changed facts commit before their
+callbacks, including accessibility changes with an unchanged system color
+scheme. Application theme and origin overrides remain separate. The adapter
+installs no preference notification observer or wakeup, so an external setting
+change does not promise to wake an otherwise idle loop.
 
 ## Native geometry admission
 
