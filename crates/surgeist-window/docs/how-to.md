@@ -1,6 +1,6 @@
 # How-to
 
-## Verify native accessibility preferences
+## Verify native preferences and monitor facts
 
 In a macOS WindowServer session, explicitly run the native preference probe:
 
@@ -8,9 +8,15 @@ In a macOS WindowServer session, explicitly run the native preference probe:
 SURGEIST_RUN_NATIVE_PREFERENCES_PROBE=1 cargo test --offline --locked -j 1 -p surgeist-window --test native_preferences_native
 ```
 
-The probe opens an invisible native window, captures its public preference
-baseline in `Ready`, exits the event loop, and compares the capture with actual
-AppKit observations. It reads settings without changing them. Normal headless
+The probe opens an invisible native window, captures its public environment in
+`Ready`, exits the event loop, and compares the capture with actual AppKit
+observations. It reads settings and screen geometry without changing them.
+The work-area comparison requires a single checked SDK screen because the public
+snapshot exposes no native monitor ID; otherwise the probe reports ambiguity
+and skips that comparison instead of guessing. The diagnostic includes the SDK
+color-space name, sample bits and component count. Exact-ID selection, conversion
+boundaries, grayscale and callback refresh behavior have owning-module tests.
+Normal headless
 checks print an explicit skip for this probe; the ordinary library tests cover
 preference mapping and callback publication without a display.
 

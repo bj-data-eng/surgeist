@@ -6,7 +6,7 @@ use super::{
     capability::CapabilityProvider,
     command::Action,
     descriptor::WindowSnapshotSeed,
-    environment_native::CaptureProfile,
+    environment_native::{CaptureProfile, CaptureScope},
     event::EventKind,
     lease::{LeaseWeak, ReleaseNotifier},
     loop_::PreparedLoop,
@@ -1374,6 +1374,7 @@ impl<H: Handler> WinitRunner<H> {
                             state.metrics(),
                             preferences.clone(),
                             profile,
+                            CaptureScope::Enriched,
                         )?;
                         let state = state.with_environment(environment);
                         let window_id = window.id();
@@ -2646,7 +2647,7 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
             return;
         }
 
-        match self.refresh_environment_baselines(crate::native_preferences::capture(
+        match self.refresh_native_environments(crate::native_preferences::capture(
             event_loop.system_theme().map(Into::into),
         )) {
             Ok(callbacks) => {
@@ -2880,9 +2881,65 @@ impl<H: Handler> WinitRunner<H> {
                 metrics,
                 self.baseline_preferences.clone(),
                 self.capture_profile,
+                CaptureScope::Basic,
             )
         })??;
+        let environment =
+            crate::environment_native::preserve_independent(environment, window.environment());
         Ok(transition.with_environment(environment))
+    }
+
+    fn refresh_native_environments(
+        &mut self,
+        preferences: UserPreferences,
+    ) -> Result<Vec<BackendCallback>> {
+        let mut observations = Vec::new();
+        for id in self.windows.values().copied() {
+            let Some(window) = self.registry.get(id) else {
+                continue;
+            };
+            let Some(handle) = window.instance.handle.as_ref() else {
+                continue;
+            };
+            let metrics = window.metrics();
+            let environment = handle.with_winit(|native| {
+                crate::environment_native::observe_environment(
+                    native,
+                    &metrics,
+                    preferences.clone(),
+                    self.capture_profile,
+                    CaptureScope::Enriched,
+                )
+            })??;
+            observations.push((id, environment));
+        }
+        self.apply_environment_observations(preferences, observations)
+    }
+
+    fn apply_environment_observations(
+        &mut self,
+        preferences: UserPreferences,
+        observations: Vec<(Id, HostEnvironment)>,
+    ) -> Result<Vec<BackendCallback>> {
+        self.baseline_preferences = preferences;
+        let mut callbacks = Vec::new();
+        for (id, observed) in observations {
+            let Some(window) = self.registry.get(id) else {
+                continue;
+            };
+            let environment =
+                crate::environment_native::preserve_independent(observed, window.environment());
+            if &environment == window.environment() {
+                continue;
+            }
+            if let Some(event) = self.apply_native_transition_state(
+                id,
+                NativeEventTransition::environment_changed(id, environment),
+            )? {
+                callbacks.push(BackendCallback::Event(event));
+            }
+        }
+        Ok(callbacks)
     }
 
     fn refresh_environment_baselines(
@@ -3965,6 +4022,259 @@ mod tests {
             reduced_both
         );
         assert_eq!(runner.handler.observations.len(), 5);
+    }
+
+    #[derive(Default)]
+    struct EnvironmentObserver {
+        order: Vec<&'static str>,
+        snapshots: Vec<(HostEnvironment, f64, Size)>,
+    }
+    impl Handler for EnvironmentObserver {
+        fn event(&mut self, event: &mut Event<'_>) -> Result<()> {
+            if let EventKind::EnvironmentChanged { environment, .. } = event.event() {
+                let state = event.state().unwrap();
+                assert_eq!(state.environment(), environment);
+                self.order.push("environment");
+                self.snapshots.push((
+                    state.environment().clone(),
+                    state.metrics().scale_factor(),
+                    state.metrics().logical_size(),
+                ));
+            }
+            Ok(())
+        }
+        fn draw(&mut self, frame: &mut Frame<'_>) -> Result<()> {
+            self.order.push("draw");
+            self.snapshots.push((
+                frame.state().environment().clone(),
+                frame.metrics().scale_factor(),
+                frame.size(),
+            ));
+            Ok(())
+        }
+    }
+
+    fn observed_environment(
+        area: Rect,
+        available: Rect,
+        preferences: UserPreferences,
+        scale: f64,
+        viewport: Size,
+    ) -> HostEnvironment {
+        HostEnvironment {
+            native_scale: Some(ScaleFactor::new(scale).unwrap()),
+            page_zoom: Some(ScaleFactor::ONE),
+            screen: Some(
+                ScreenMetrics::new(
+                    area,
+                    Some(available),
+                    ScreenAreaSource::OutputDevice,
+                    Some(24),
+                    Some(8),
+                )
+                .unwrap(),
+            ),
+            viewport: Some(
+                ViewportMetrics::new(viewport, ViewportSizes::fixed(viewport).unwrap()).unwrap(),
+            ),
+            preferences,
+            ..HostEnvironment::default()
+        }
+    }
+
+    #[test]
+    fn idle_monitor_refresh_combines_output_and_preferences_preserves_independent_facts_and_suppresses_equal()
+     {
+        let id = Id::from_u64(1);
+        let area = Rect {
+            origin: Point::default(),
+            size: Size {
+                width: 1470.0,
+                height: 956.0,
+            },
+        };
+        let preferences = UserPreferences {
+            color_scheme: Some(Theme::Dark),
+            ..UserPreferences::default()
+        };
+        let mut environment = observed_environment(
+            area,
+            Rect {
+                origin: Point { x: 0.0, y: 33.0 },
+                size: Size {
+                    width: 1470.0,
+                    height: 833.0,
+                },
+            },
+            preferences.clone(),
+            1.0,
+            Size {
+                width: 640.0,
+                height: 480.0,
+            },
+        );
+        environment.navigation = Some(NavigationControls::Back);
+        environment.display_mode = Some(DisplayMode::Standalone);
+        let fine = PointerCapability {
+            accuracy: PointerAccuracy::Fine,
+            hover: true,
+        };
+        environment.input = Some(InputCapabilities::new(fine, [fine]).unwrap());
+        let mut window_loop = Loop::new(EnvironmentObserver::default());
+        window_loop
+            .registry
+            .insert(Instance::new(
+                state(id).with_environment(environment.clone()),
+            ))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+        let changed_preferences = UserPreferences {
+            reduced_motion: Some(ReductionPreference::Reduce),
+            ..preferences.clone()
+        };
+        for (index, preferences) in [preferences, changed_preferences].into_iter().enumerate() {
+            let available = Rect {
+                origin: Point { x: 0.0, y: 33.0 },
+                size: Size {
+                    width: 1470.0,
+                    height: 850.0 + index as f64 * 10.0,
+                },
+            };
+            let observed = observed_environment(
+                area,
+                available,
+                preferences.clone(),
+                1.0,
+                Size {
+                    width: 640.0,
+                    height: 480.0,
+                },
+            );
+            let callbacks = runner
+                .apply_environment_observations(preferences.clone(), vec![(id, observed.clone())])
+                .unwrap();
+            assert_eq!(
+                callbacks.len(),
+                1,
+                "one combined publication per window per idle sample"
+            );
+            assert_eq!(
+                runner.handler.order.len(),
+                index * 2,
+                "refresh never invokes a callback"
+            );
+            for callback in callbacks {
+                runner.enqueue_callback(callback);
+            }
+            runner.enqueue_callback(BackendCallback::Frame(id));
+            runner.drain_pump_for_test();
+            let expected = HostEnvironment {
+                navigation: environment.navigation,
+                display_mode: environment.display_mode,
+                input: environment.input.clone(),
+                ..observed.clone()
+            };
+            assert_eq!(
+                runner.handler.snapshots.last(),
+                Some(&(
+                    expected.clone(),
+                    1.0,
+                    Size {
+                        width: 640.0,
+                        height: 480.0
+                    }
+                ))
+            );
+            assert_eq!(expected.screen.unwrap().available_area(), Some(available));
+            assert_eq!(runner.baseline_preferences, preferences);
+            assert!(
+                runner
+                    .apply_environment_observations(preferences, vec![(id, observed)])
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        assert_eq!(
+            runner.handler.order,
+            ["environment", "draw", "environment", "draw"]
+        );
+    }
+
+    #[test]
+    fn idle_monitor_refresh_after_move_and_scale_uses_committed_metric_basis() {
+        let id = Id::from_u64(1);
+        let mut window_loop = Loop::new(EnvironmentObserver::default());
+        window_loop
+            .registry
+            .insert(Instance::new(state(id).with_environment(HostEnvironment {
+                native_scale: Some(ScaleFactor::ONE),
+                ..HostEnvironment::default()
+            })))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+        let moved = runner
+            .moved_transition(id, PhysicalPoint { x: 200, y: 100 })
+            .unwrap();
+        runner.apply_native_transition_patch_state(moved).unwrap();
+        assert_eq!(
+            runner.registry.get(id).unwrap().environment().native_scale,
+            None
+        );
+        let scaled = runner.scale_factor_transition(id, 2.0).unwrap();
+        runner.apply_native_transition_patch_state(scaled).unwrap();
+        let metrics = runner.registry.get(id).unwrap().metrics();
+        assert_eq!(metrics.scale_factor(), 2.0);
+        assert_eq!(
+            metrics.logical_size(),
+            Size {
+                width: 320.0,
+                height: 240.0
+            }
+        );
+        let preferences = UserPreferences::default();
+        let observed = observed_environment(
+            Rect {
+                origin: Point::default(),
+                size: Size {
+                    width: 735.0,
+                    height: 478.0,
+                },
+            },
+            Rect {
+                origin: Point { x: 0.0, y: 16.5 },
+                size: Size {
+                    width: 735.0,
+                    height: 416.5,
+                },
+            },
+            preferences.clone(),
+            2.0,
+            Size {
+                width: 320.0,
+                height: 240.0,
+            },
+        );
+        let callbacks = runner
+            .apply_environment_observations(preferences, vec![(id, observed.clone())])
+            .unwrap();
+        assert_eq!(callbacks.len(), 1);
+        for callback in callbacks {
+            runner.enqueue_callback(callback);
+        }
+        runner.drain_pump_for_test();
+        assert_eq!(
+            runner.handler.snapshots,
+            [(
+                observed,
+                2.0,
+                Size {
+                    width: 320.0,
+                    height: 240.0
+                }
+            )]
+        );
     }
 
     fn state(id: Id) -> WindowSnapshot {
