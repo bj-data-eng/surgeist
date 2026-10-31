@@ -222,7 +222,12 @@ impl<'a> HtmlSemanticSession<'a> {
         };
         let size_is_one = match projected_size {
             Some(value) => value == 1,
-            None => self.attribute(element, "multiple")?.is_none(),
+            // Failed or absent size falls back to the HTML-owned default,
+            // which depends only on whether multiple is present.
+            None => {
+                let multiple = self.attribute(element, "multiple")?.is_some();
+                select_display_size_default(multiple) == 1
+            }
         };
         self.charge(1)?;
         if !size_is_one {

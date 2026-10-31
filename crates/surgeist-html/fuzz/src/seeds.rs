@@ -1,7 +1,7 @@
 //! Independent source literals; no expected output is sampled from parsing.
 use crate::{UnicodeSource, error};
 use surgeist_fuzz::Result;
-const TEXT: [&str; 8] = [
+const TEXT: [&str; 9] = [
     "<p ID=x id=y>A&amp;B\r\nC</p>",
     "",
     "<p>A\0B</p>",
@@ -10,12 +10,13 @@ const TEXT: [&str; 8] = [
     "<?target data?><p>P</p>",
     "<p>A<p>B",
     "<table>X<tr><td>T</td></tr></table>",
+    "<?target data><p>P</p>",
 ];
 const SURROGATE: [u16; 13] = [0xfeff, 60, 112, 62, 65, 0xd800, 13, 10, 66, 60, 47, 112, 62];
 pub(crate) fn source(id: u8) -> Result<UnicodeSource> {
     match id {
         1 => Ok(UnicodeSource::Utf16(SURROGATE.to_vec())),
-        0 | 2..=7 => Ok(UnicodeSource::Utf8(TEXT[usize::from(id)].into())),
+        0 | 2..=8 => Ok(UnicodeSource::Utf8(TEXT[usize::from(id)].into())),
         _ => Err(error("unknown literal")),
     }
 }
