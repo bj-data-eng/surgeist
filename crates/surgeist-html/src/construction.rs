@@ -967,7 +967,7 @@ impl Builder {
             .depth(parent_position)?
             .checked_add(1 + usize::from(template))
             .ok_or(HtmlConstructionError::RepresentationExhausted)?;
-        let (attributes, units) = content_usage(&kind)?;
+        let (attributes, units) = bounded::created_usage(&kind)?;
         self.admit(
             1 + usize::from(template),
             1 + usize::from(template),
@@ -1070,47 +1070,6 @@ impl Builder {
             }
         }
     }
-}
-
-fn content_usage(kind: &HtmlNodeKind) -> Result<(usize, usize), HtmlConstructionError> {
-    let add = |left: usize, right| {
-        left.checked_add(right)
-            .ok_or(HtmlConstructionError::RepresentationExhausted)
-    };
-    let name_units = |name: &QualifiedName| -> Result<usize, HtmlConstructionError> {
-        add(
-            add(
-                name.local_name().len(),
-                name.prefix().map_or(0, DocumentString::len),
-            )?,
-            name.namespace().uri().map_or(0, DocumentString::len),
-        )
-    };
-    Ok(match kind {
-        HtmlNodeKind::Element(element) => {
-            let mut units = name_units(&element.name)?;
-            for attribute in element.attributes.iter() {
-                units = add(
-                    add(units, name_units(attribute.name())?)?,
-                    attribute.value().len(),
-                )?;
-            }
-            (element.attributes.len(), units)
-        }
-        HtmlNodeKind::Text(value) | HtmlNodeKind::Comment(value) => (0, value.len()),
-        HtmlNodeKind::ProcessingInstruction(pi) => (0, add(pi.target.len(), pi.data.len())?),
-        HtmlNodeKind::Doctype(doctype) => (
-            0,
-            add(
-                add(
-                    doctype.name.len(),
-                    doctype.public_id.as_ref().map_or(0, DocumentString::len),
-                )?,
-                doctype.system_id.as_ref().map_or(0, DocumentString::len),
-            )?,
-        ),
-        HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment => (0, 0),
-    })
 }
 
 /// A bounded append-only native document authoring session.
