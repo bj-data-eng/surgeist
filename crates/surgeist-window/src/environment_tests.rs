@@ -353,3 +353,148 @@ fn resize_callback_observes_exact_metrics_basis_and_committed_environment() {
     assert_eq!(runner.handler().observations, [(size, 3.0, size, 3.0)]);
     assert!(runner.result().is_none());
 }
+
+fn snapshot_with_observed_outer_extent(id: Id) -> WindowSnapshot {
+    let metrics = Metrics::from_physical_size(
+        id,
+        PhysicalSize {
+            width: 400,
+            height: 300,
+        },
+        1.0,
+    )
+    .unwrap()
+    .with_outer_geometry(Some(Point { x: 20.0, y: 40.0 }), Some(extent(416.0, 338.0)))
+    .unwrap();
+    WindowSnapshot::new("captured", metrics)
+}
+
+fn clamp_after_size_change(snapshot: &WindowSnapshot) -> NativeGeometryOutcome {
+    NativeGeometryRequest::resize_to(1000, 800)
+        .resolve_against(
+            snapshot,
+            NativeGeometryBasis::new(Point::default(), 1.0).unwrap(),
+            NativeGeometryAuthorization::clamp_to(Rect {
+                origin: Point::default(),
+                size: extent(1000.0, 800.0),
+            })
+            .unwrap(),
+        )
+        .unwrap()
+}
+
+fn runner_size_command_outcome(
+    command: impl FnOnce(Id) -> Command,
+    expected_size: Size,
+) -> NativeGeometryOutcome {
+    #[derive(Default)]
+    struct Observer {
+        snapshot: Option<WindowSnapshot>,
+    }
+    impl Handler for Observer {
+        fn resize(&mut self, window: &mut Resize<'_>) -> Result<()> {
+            self.snapshot = Some(window.state().clone());
+            Ok(())
+        }
+    }
+    let mut runner = testing::Runner::new(Observer::default());
+    runner.startup(vec![open("observed").into()]).unwrap();
+    runner.resume();
+    let id = runner.host().window_id("observed").unwrap();
+    runner.transition(NativeEventTransition::resized(
+        snapshot_with_observed_outer_extent(id).metrics().clone(),
+    ));
+    runner.dispatch(command(id));
+    assert!(runner.result().is_none());
+    let snapshot = runner.handler().snapshot.as_ref().unwrap();
+    assert_eq!(snapshot.metrics().logical_size(), expected_size);
+    assert_eq!(
+        snapshot.metrics().outer_position(),
+        Some(Point { x: 20.0, y: 40.0 })
+    );
+    clamp_after_size_change(snapshot)
+}
+
+#[test]
+fn deterministic_size_command_invalidates_unobserved_outer_extent() {
+    let outcome = runner_size_command_outcome(
+        |id| Command::SetInnerSize {
+            id,
+            size: extent(800.0, 600.0),
+        },
+        extent(800.0, 600.0),
+    );
+    assert_eq!(
+        outcome.disposition(),
+        NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+    );
+}
+
+#[test]
+fn deterministic_minimum_bounds_invalidate_unobserved_outer_extent() {
+    let outcome = runner_size_command_outcome(
+        |id| Command::SetMinInnerSize {
+            id,
+            size: Some(extent(800.0, 600.0)),
+        },
+        extent(800.0, 600.0),
+    );
+    assert_eq!(
+        outcome.disposition(),
+        NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+    );
+}
+
+#[test]
+fn deterministic_maximum_bounds_invalidate_unobserved_outer_extent() {
+    let outcome = runner_size_command_outcome(
+        |id| Command::SetMaxInnerSize {
+            id,
+            size: Some(extent(200.0, 150.0)),
+        },
+        extent(200.0, 150.0),
+    );
+    assert_eq!(
+        outcome.disposition(),
+        NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+    );
+}
+
+#[test]
+fn projected_size_change_invalidates_unobserved_outer_extent() {
+    let mut snapshot = snapshot_with_observed_outer_extent(Id::from_u64(1));
+    crate::planning::set_snapshot_size(&mut snapshot, extent(800.0, 600.0)).unwrap();
+    assert_eq!(
+        clamp_after_size_change(&snapshot).disposition(),
+        NativeGeometryDisposition::NoAction(NativeGeometryNoAction::UnavailableGeometry)
+    );
+}
+
+#[test]
+fn unchanged_deterministic_size_preserves_observed_outer_extent() {
+    let outcome = runner_size_command_outcome(
+        |id| Command::SetInnerSize {
+            id,
+            size: extent(400.0, 300.0),
+        },
+        extent(400.0, 300.0),
+    );
+    let Some(Command::SetInnerSize { size, .. }) = outcome.command() else {
+        panic!("known decoration extent permits clamping");
+    };
+    assert_eq!(*size, extent(984.0, 762.0));
+}
+
+#[test]
+fn unchanged_projected_size_preserves_observed_outer_extent() {
+    let mut snapshot = snapshot_with_observed_outer_extent(Id::from_u64(1));
+    crate::planning::set_snapshot_size(&mut snapshot, extent(400.0, 300.0)).unwrap();
+    let outcome = clamp_after_size_change(&snapshot);
+    assert_eq!(
+        outcome.command(),
+        Some(&Command::SetInnerSize {
+            id: snapshot.id(),
+            size: extent(984.0, 762.0)
+        })
+    );
+}
