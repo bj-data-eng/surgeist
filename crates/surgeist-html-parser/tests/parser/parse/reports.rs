@@ -402,12 +402,16 @@ fn selected_ordinary_work_cuts_retain_first_stop_and_cleanup_evidence() {
     let transfer = first_reaching(ReachedStage::Transfer);
     assert!(0 < construction && construction < transfer && transfer < total);
 
-    // The short initialization prefix, both stage boundaries, the middle of
-    // publication and its final writes, without every intermediate prefix.
+    // The short initialization prefix, both stage boundaries, 32 evenly
+    // spaced cuts across initialization's remainder, construction and
+    // publication, and the final writes, without every intermediate prefix.
+    let spaced = |from: u64, to: u64| (0..32).map(move |i| from + (to - from) * i / 32);
     let cuts = (0..2048)
         .chain(construction.saturating_sub(2)..construction + 2)
         .chain(transfer.saturating_sub(2)..transfer + 2)
-        .chain([transfer + (total - transfer) / 2])
+        .chain(spaced(2048, construction))
+        .chain(spaced(construction, transfer))
+        .chain(spaced(transfer, total))
         .chain(total - 32..total);
     for work in cuts {
         let failure = cut(work);
