@@ -115,3 +115,19 @@ fn reservation_work_added_by_each_doubling_of_one_elements_attributes_is_near_do
         &[("reservation work", |work| work.reserved)],
     );
 }
+
+#[test]
+fn reservation_work_added_by_each_doubling_of_one_selects_options_is_near_double() {
+    // The selectedness algorithm walks every option on each insertion, so total
+    // work is not linear; the list it collects must still grow geometrically.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |options| {
+            format!(
+                "<!doctype html><select>{}</select>",
+                "<option>x</option>".repeat(options)
+            )
+        },
+        &[("reservation work", |work| work.reserved)],
+    );
+}
