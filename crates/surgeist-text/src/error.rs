@@ -432,6 +432,14 @@ pub enum ErrorDetail {
         range: super::Range,
         bytes: usize,
     },
+    /// Placed accessibility geometry for an actual Cell is not supported.
+    /// Source-only analyzed accessibility remains independently available.
+    UnsupportedAccessibilityCell {
+        /// Actual placed-line ordinal in the requested Layout.
+        line: usize,
+        /// Actual finalized Cell ordinal within that placed line.
+        cell: usize,
+    },
     AccessibilityBindingMismatch,
     AccessibilityIdentityConflict {
         id: u64,

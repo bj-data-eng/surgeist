@@ -7,6 +7,9 @@ use super::*;
 #[path = "combined_cell_observation_geometry.rs"]
 mod geometry;
 
+#[path = "combined_cell_observation_guard_cases.rs"]
+mod guard_cases;
+
 fn prepared_cell(
     text: &str,
 ) -> (
@@ -125,6 +128,12 @@ fn visible_native_cell_range_observation_refuses_instead_of_claiming_removed_sou
     let error = layout.source_range_fragments(&origin, Range::new(0, 1))
         .expect_err("visible provider-backed Cell source cannot masquerade as an empty removed-source observation");
     assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+    assert_eq!(
+        error.detail(),
+        Some(&ErrorDetail::SourceRangeFragments {
+            reason: SourceRangeFragmentError::UnsupportedCell { line: 0, cell: 0 },
+        })
+    );
     assert!(
         matches!(
             error.detail(),
@@ -178,6 +187,10 @@ fn placed_cell_ax_refusal_preserves_the_successful_source_only_binding() {
         .accessibility_update(&mut state, parent, focus, Point::new(0.0, 0.0))
         .expect_err("unimplemented placed Cell AX cannot publish legacy inner-cluster geometry");
     assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+    assert_eq!(
+        error.detail(),
+        Some(&ErrorDetail::UnsupportedAccessibilityCell { line: 0, cell: 0 })
+    );
     assert!(
         error.detail().is_some(),
         "placed Cell AX refusal must retain a typed diagnostic"

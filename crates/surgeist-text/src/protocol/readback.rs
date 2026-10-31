@@ -1660,15 +1660,7 @@ impl FinalizedCellView<'_> {
 
     #[must_use]
     pub fn source_cell(&self) -> crate::AnalyzedCombinedCell<'_> {
-        let analyzed = &self.line.inner.selected.prepared.analyzed;
-        crate::AnalyzedCombinedCell {
-            core: &analyzed.core,
-            output: analyzed
-                .combination
-                .as_deref()
-                .expect("finalized cells retain their completed source operation"),
-            index: self.data().binding,
-        }
+        self.line.inner.source_cell(self.index)
     }
 
     /// `(inline,line-under)` square after its one enclosing scope displacement.

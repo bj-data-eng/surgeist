@@ -1,6 +1,7 @@
 //! Borrowed completed source-cell observations. These confer neither font nor
 //! placement authority and remain available when cell preparation is unsupported.
 use crate::engine::AnalyzedCore;
+use crate::protocol::paragraph::FlowOriginKey;
 use crate::transform::{combined::CombinedOutput, relation::OriginalPiece};
 use crate::{
     CapturedEventPosition, CapturedParagraph, CapturedScope, CompleteTextNodeContribution,
@@ -96,6 +97,15 @@ impl<'a> AnalyzedCombinedCell<'a> {
             .iter()
             .map(|&level| crate::BidiLevel::try_new(level).expect("resolved source level"))
     }
+    /// Query-local original custody, including selected parts removed by inner
+    /// edges or emitted as semantic zero SPACE. Neither hulls nor paint prove it.
+    pub(crate) fn intersects_original_range(&self, origin: FlowOriginKey, local: Range) -> bool {
+        self.source_pieces().any(|part| {
+            part.piece.origin == origin
+                && part.piece.local.start.max(local.start) < part.piece.local.end.min(local.end)
+        })
+    }
+
     /// Exact original pieces, retaining repeated expansion ancestry. Generated
     /// separators have no invented authored piece. Suppressed source parts are
     /// retained and identify their final used disposition independently.

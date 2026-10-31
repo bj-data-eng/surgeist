@@ -676,6 +676,12 @@ retains its actual relation-event interval for direction queries. Its whole
 occurrence can supply an eligible strong bidi contribution when a raw empty point cannot;
 the complete body context still determines isolate eligibility.
 
+`source_range_fragments` returns `SourceRangeFragmentError::UnsupportedCell` when
+the requested original range intersects an actual placed Cell's source pieces.
+Disjoint ordinary ranges remain observable in the same layout. Placed
+`accessibility_update` returns `ErrorDetail::UnsupportedAccessibilityCell` without
+replacing the prior binding; source-only analyzed accessibility remains available.
+
 `combined_cells()` borrows completed source-cell facts, including separate
 selection and used unit counts, inner direction and exact original-resource
 pieces. These are semantic observations, not glyph counts or font metrics.

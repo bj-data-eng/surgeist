@@ -276,6 +276,9 @@ pub surgeist_text::ErrorDetail::TextCombine
 pub surgeist_text::ErrorDetail::TextCombine::reason: surgeist_text::TextCombineError
 pub surgeist_text::ErrorDetail::TextTransform
 pub surgeist_text::ErrorDetail::TextTransform::reason: surgeist_text::TextTransformError
+pub surgeist_text::ErrorDetail::UnsupportedAccessibilityCell
+pub surgeist_text::ErrorDetail::UnsupportedAccessibilityCell::cell: usize
+pub surgeist_text::ErrorDetail::UnsupportedAccessibilityCell::line: usize
 pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit
 pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit::bytes: usize
 pub surgeist_text::ErrorDetail::UnsupportedAccessibilityUnit::range: surgeist_text::Range
@@ -1181,6 +1184,9 @@ pub surgeist_text::SourceRangeFragmentError::OutsideOrigin::local: surgeist_text
 pub surgeist_text::SourceRangeFragmentError::OutsideOrigin::origin: usize
 pub surgeist_text::SourceRangeFragmentError::OutsidePlacement
 pub surgeist_text::SourceRangeFragmentError::OutsidePlacement::aggregate: surgeist_text::Range
+pub surgeist_text::SourceRangeFragmentError::UnsupportedCell
+pub surgeist_text::SourceRangeFragmentError::UnsupportedCell::cell: usize
+pub surgeist_text::SourceRangeFragmentError::UnsupportedCell::line: usize
 pub surgeist_text::SourceRangeFragmentError::UnsupportedPartition
 pub surgeist_text::SourceRangeFragmentError::UnsupportedPartition::line: usize
 pub surgeist_text::SourceRangeFragmentError::UnsupportedPartition::unit: usize

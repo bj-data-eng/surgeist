@@ -118,6 +118,22 @@ pub(crate) struct FinalizedLine {
     pub(crate) data: layout::data::FinalizedLineData,
 }
 
+impl FinalizedLine {
+    /// Borrow the actual completed source binding of this finalized Cell row.
+    /// The caller supplies an admitted view index or an actual row enumeration.
+    pub(crate) fn source_cell(&self, cell: usize) -> crate::AnalyzedCombinedCell<'_> {
+        let analyzed = &self.selected.prepared.analyzed;
+        crate::AnalyzedCombinedCell {
+            core: &analyzed.core,
+            output: analyzed
+                .combination
+                .as_deref()
+                .expect("finalized cells retain their completed source operation"),
+            index: self.data.cells[cell].binding,
+        }
+    }
+}
+
 /// Actual selected provider output before any allocation-dependent operation.
 pub(crate) struct SelectedShape {
     pub(crate) mapping: Arc<SelectedMapping>,

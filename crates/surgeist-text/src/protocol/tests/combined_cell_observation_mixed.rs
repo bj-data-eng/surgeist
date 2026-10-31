@@ -130,6 +130,12 @@ fn cell_range_refusal_does_not_disable_ordinary_source_in_the_same_layout() {
         .source_range_fragments(&inside, Range::new(1, 2))
         .expect_err("the actual A Cell occurrence has an explicit unsupported Range boundary");
     assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+    assert_eq!(
+        error.detail(),
+        Some(&ErrorDetail::SourceRangeFragments {
+            reason: SourceRangeFragmentError::UnsupportedCell { line: 0, cell: 0 },
+        })
+    );
     assert!(
         matches!(
             error.detail(),

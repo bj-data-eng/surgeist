@@ -417,6 +417,18 @@ fn update(
     parent: NodeId,
     focus: NodeId,
 ) -> Result<TreeUpdate> {
+    // This request observes the complete placement. Refuse before constructing
+    // nodes or touching prior IDs/bindings; analyzed-source projection is separate.
+    if let Projection::Placed(layout, _) = projection {
+        for (line, placed) in layout.inner.lines.iter().enumerate() {
+            if let Some((cell, _)) = placed.finalized.data.cells.iter().enumerate().next() {
+                return Err(ax_error(ErrorDetail::UnsupportedAccessibilityCell {
+                    line,
+                    cell,
+                }));
+            }
+        }
+    }
     let analyzed = projection.analyzed();
     let host_text = original_host_text(analyzed)?;
     let locales = LocaleIndex::new(&analyzed.styles);
@@ -765,6 +777,8 @@ fn update(
 
 impl Layout {
     /// Builds a complete host update and atomically replaces its source bindings.
+    /// Placed Cells return [`ErrorDetail::UnsupportedAccessibilityCell`] without
+    /// changing the previous binding. Analyzed-source projection is independent.
     pub fn accessibility_update(
         &self,
         state: &mut Accessibility,
