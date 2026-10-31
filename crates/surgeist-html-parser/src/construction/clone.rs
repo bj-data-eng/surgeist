@@ -671,7 +671,9 @@ impl SessionStorage {
         payload: RetainedPayload,
     ) -> Result<usize, SessionError> {
         self.prepare_payload_slot_for(c, row_list(&payload))?;
-        self.payloads.push_row(payload)
+        self.payloads
+            .push_row(payload)
+            .map_err(|_| latch_registry_row(c))
     }
     fn prepare_clone_metadata(
         &mut self,
