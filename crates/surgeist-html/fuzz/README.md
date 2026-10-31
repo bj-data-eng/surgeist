@@ -62,11 +62,11 @@ first entropy byte is a multiple of four, the literal ID is that byte divided by
 four, modulo nine (bytes 0, 4, ..., 32 select IDs 0..8 and byte 36 wraps to 0).
 Generator revision 2 introduced literal 8 into this mapping; revision 1 used
 modulo eight. The codec stays at revision 1: it still decodes every revision-1
-case identically and only additionally accepts literal ID 8.
-Other entropy maps to exact little-endian UTF16 pairs (odd final high byte zero), or
-to valid UTF8 by explicitly mapping bytes to Unicode U+0000..U+00FF. This is
-Unicode generation, not decoding malformed byte transports. Overlarge generated
-source is a separate GenerationRejected outcome before source allocation; each
+case identically and only additionally accepts literal ID 8. Other entropy maps
+to exact little-endian UTF16 pairs (odd final high byte zero), or to valid UTF8
+by explicitly mapping bytes to Unicode U+0000..U+00FF. This is Unicode
+generation, not decoding malformed byte transports. Overlarge generated source
+is a separate GenerationRejected outcome before source allocation; each
 descriptor permits at most 64 such rejections in its nonvacuous assessment.
 Checked canonical input can contain any valid UTF8 scalar or any UTF16 unit,
 including isolated surrogates. No lossy UTF8 conversion occurs.
@@ -75,13 +75,14 @@ including isolated surrogates. No lossy UTF8 conversion occurs.
 
 Literal seeds independently cover duplicate attribute first occurrence/order,
 references, CRLF, literal BOM, isolated surrogate input, NUL recovery, qualified
-SVG attributes, template association, HTML 877d processing instructions ending in `?>` and in `>`,
-malformed paragraph recovery and foster parenting. Expected native values and
-selected exact source/diagnostic intervals are handwritten from the pinned HTML
-contract and existing public source-qualified examples, not sampled parser
-output. Each target has nine canonical `.case` files in its seed directory.
-The descriptor records both directories for provider hashing; select the matching
-target directory for replay/check. No fabricated defect regression is bundled.
+SVG attributes, template association, HTML 877d processing instructions ending
+in `?>` and in `>`, malformed paragraph recovery and foster parenting. Expected
+native values and selected exact source/diagnostic intervals are handwritten
+from the pinned HTML contract and existing public source-qualified examples, not
+sampled parser output. Each target has nine canonical `.case` files in its seed
+directory. The descriptor records both directories for provider hashing; select
+the matching target directory for replay/check. No fabricated defect regression
+is bundled.
 
 General success checks source identity/units and limits; bounded native parent,
 sibling and template/shadow ownership; typed diagnostic chronology/ranges; native
