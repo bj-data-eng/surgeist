@@ -4,7 +4,7 @@
 [MIT License](LICENSE). This notice records attribution for the repository source
 checkout: facade production path dependencies in [Cargo.toml](Cargo.toml),
 the `surgeist-test` support crate, the shared `surgeist-generator` corpus tooling,
-the `surgeist-fuzz` verification framework,
+the `surgeist-fuzz` verification framework, the maintained AccessKit consumer,
 and the two direct dependencies of the
 [API generator](https://github.com/bj-data-eng/surgeist/blob/0b0c6338c20f77f9dfe743c47914afaf6b98792d/api/generator/Cargo.toml).
 Crates under `crates/` are source owned in this repository. The
@@ -54,6 +54,18 @@ converted documents, and the [conversion report](references/CONVERSION-REPORT.md
 records changes and limitations. The originals remain authoritative.
 
 ## Dependencies
+
+### AccessKit consumer 0.36.0 maintained source
+
+This checkout includes the maintained AccessKit consumer, distributed by The
+AccessKit contributors. The workspace selects this copy for native accessibility
+adapters. It retains the core 0.24 protocol and corrects word searches over
+original character positions beyond 255.
+
+* License: [MIT](vendor/accesskit-consumer/LICENSE-MIT) OR [Apache-2.0](vendor/accesskit-consumer/LICENSE-APACHE)
+* Additional material: [Chromium BSD license](vendor/accesskit-consumer/LICENSE.chromium), [notices](vendor/accesskit-consumer/NOTICE.md), and [authors](vendor/accesskit-consumer/AUTHORS)
+* Homepage: [AccessKit](https://github.com/AccessKit/accesskit)
+* Exact source and local modifications: [consumer provenance](vendor/accesskit-consumer/UPSTREAM.md)
 
 ### Ahem
 
