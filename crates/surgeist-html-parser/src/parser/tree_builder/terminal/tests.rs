@@ -1939,6 +1939,56 @@ fn completed_native_units_are_exact_and_admitted_before_each_read() {
 }
 
 #[test]
+fn completed_native_unit_read_costs_the_same_for_any_index_text_and_document_size() {
+    // NativeView::unit (construction/native_view.rs) charges one record
+    // visit and, for an in-range index, the bytes of one unit; it neither
+    // loops nor consults any other node or string, so its cost is the same
+    // for every index, any text length and any amount of unrelated document.
+    let cost = |siblings: usize, text_units: usize, last: bool| {
+        let source = format!(
+            "<!doctype html><body><p>{}</p>{}",
+            "a".repeat(text_units),
+            "<i>t</i>".repeat(siblings)
+        );
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(source.as_str()),
+            super::super::tests::limits(100),
+        );
+        let mut owner = completed(&request);
+        let cost = {
+            let mut view = owner.native_view().unwrap();
+            let root = view.root().unwrap();
+            let html = child_named(&mut view, &root, "html");
+            let body = child_named(&mut view, &html, "body");
+            let p = child_named(&mut view, &body, "p");
+            let text_node = view.child_at(&p, 0).unwrap().unwrap();
+            let NativeKind::Text(text) = view.kind(&text_node).unwrap() else {
+                panic!("text")
+            };
+            assert_eq!(text.len(), text_units);
+            let before = view
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current;
+            let index = if last { text_units - 1 } else { 0 };
+            assert_eq!(view.unit(&text, index).unwrap(), Some(u16::from(b'a')));
+            view.usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current
+                - before
+        };
+        owner.release().unwrap();
+        cost
+    };
+    let baseline = cost(0, 1, false);
+    assert!(baseline > 0);
+    assert_eq!(cost(0, 1, true), baseline);
+    assert_eq!(cost(0, 500, false), baseline);
+    assert_eq!(cost(0, 500, true), baseline);
+    assert_eq!(cost(100, 500, true), baseline);
+}
+
+#[test]
 fn completed_native_view_rejects_foreign_nodes_and_cancel_without_mutation() {
     let request = HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<!doctype html><p>A"),
@@ -3068,13 +3118,24 @@ fn completed_release_one_short_preflight_retains_owner_then_terminal_cleanup_is_
     }
     // Boundaries are found from observed outcomes by bisection, never
     // computed from the size of the driver being moved. `released` is a
-    // release that finished; `started` is one that got past its preflight
-    // admission and began releasing the owner's parts.
+    // release that finished; `started` is one that charged any work, which is
+    // to say it got past its preflight admission.
     let first_release = |spare: u64| {
         let request = request();
         let mut completed = completed_with_spare(&request, spare);
+        let work = |completed: &CompletedStandaloneDocument<'_>| {
+            completed
+                .driver
+                .as_ref()
+                .unwrap()
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current
+        };
+        let before = work(&completed);
         let released = completed.release().is_ok();
-        let started = released || completed.driver.as_ref().unwrap().head.is_none();
+        let started = released || work(&completed) > before;
         (released, started)
     };
     let search = |reached: &dyn Fn(u64) -> bool| {
@@ -3097,6 +3158,50 @@ fn completed_release_one_short_preflight_retains_owner_then_terminal_cleanup_is_
     // to release the owner's parts, so completing needs strictly more.
     assert!(0 < preflight && preflight < needed);
 
+    // The preflight does not depend on the document being released, and the
+    // total grows no faster than the document: releasing walks the retained
+    // records once each, so doubling the document twice must not more than
+    // double the second increase over the first.
+    let bounds = |paragraphs: usize| {
+        let source = format!("<!doctype html>{}", "<p>a</p>".repeat(paragraphs));
+        let make = || {
+            HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8(source.as_str()),
+                super::super::tests::limits(100),
+            )
+        };
+        let first_release = |spare: u64| {
+            let request = make();
+            let mut completed = completed_with_spare(&request, spare);
+            let work = |completed: &CompletedStandaloneDocument<'_>| {
+                completed
+                    .driver
+                    .as_ref()
+                    .unwrap()
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::WorkCredits)
+                    .current
+            };
+            let before = work(&completed);
+            let released = completed.release().is_ok();
+            let started = released || work(&completed) > before;
+            (released, started)
+        };
+        (
+            search(&|spare| first_release(spare).1),
+            search(&|spare| first_release(spare).0),
+        )
+    };
+    let (small_preflight, small) = bounds(4);
+    let (medium_preflight, medium) = bounds(8);
+    let (large_preflight, large) = bounds(16);
+    assert_eq!(small_preflight, preflight);
+    assert_eq!(medium_preflight, preflight);
+    assert_eq!(large_preflight, preflight);
+    assert!(small <= medium && medium <= large);
+    assert!(large - medium <= 2 * (medium - small));
+
     // Exactly the needed work releases the owner and consumes it.
     let exact_request = request();
     let mut exact = completed_with_spare(&exact_request, needed);
@@ -3110,6 +3215,14 @@ fn completed_release_one_short_preflight_retains_owner_then_terminal_cleanup_is_
     for spare in [0, preflight - 1, preflight, needed - 1] {
         let short_request = request();
         let mut completed = completed_with_spare(&short_request, spare);
+        let before = completed
+            .driver
+            .as_ref()
+            .unwrap()
+            .control
+            .usage()
+            .resource(HtmlParseResource::WorkCredits)
+            .current;
         assert!(completed.release().is_err(), "spare {spare}");
         let driver = completed.driver.as_ref().unwrap();
         let first = driver.control.stop().unwrap();
@@ -3123,12 +3236,18 @@ fn completed_release_one_short_preflight_retains_owner_then_terminal_cleanup_is_
             ),
             "spare {spare}"
         );
-        assert_eq!(driver.head.is_some(), spare < preflight, "spare {spare}");
         let work = driver
             .control
             .usage()
             .resource(HtmlParseResource::WorkCredits)
             .current;
+        if spare < preflight {
+            // The refused preflight charged nothing and released nothing.
+            assert_eq!(work, before, "spare {spare}");
+            assert!(driver.head.is_some(), "spare {spare}");
+        } else {
+            assert!(work > before, "spare {spare}");
+        }
         completed.release().unwrap();
         assert!(completed.driver.is_none(), "spare {spare}");
         // State/usage getters are intentionally consumed along with that owner.

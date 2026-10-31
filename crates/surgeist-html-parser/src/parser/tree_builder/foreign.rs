@@ -820,6 +820,38 @@ mod tests {
             .unwrap()
         );
 
+        // The work depends only on the namespace URI and the local name's
+        // length and bytes, not on unrelated parts of the name. namespace()
+        // reads only the URI and local_in() only the local name
+        // (tag_sets.rs:50-76), and a local name whose length differs from a
+        // choice is refused before any unit is inspected (tag_sets.rs:36-39).
+        // So the prefix never changes the cost, and neither does the length of
+        // a MathML local name that is not the length of any listed name.
+        let measured_cost = |name: &QualifiedName| {
+            let mut measured = control(1_000_000, HtmlParseCancellation::new());
+            mathml_text_point(name, &mut measured).unwrap();
+            measured
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current
+        };
+        for prefix in [None, Some("p".repeat(1_000))] {
+            let prefixed = QualifiedName::new(
+                Namespace::mathml(),
+                prefix.as_deref().map(Into::into),
+                "mtext",
+            );
+            assert_eq!(measured_cost(&prefixed), required);
+        }
+        let unlisted = |length: usize| {
+            measured_cost(&QualifiedName::new(
+                Namespace::mathml(),
+                None,
+                "x".repeat(length),
+            ))
+        };
+        assert_eq!(unlisted(100), unlisted(10_000));
+
         let cancellation = HtmlParseCancellation::new();
         let mut cancelled = control(required, cancellation.clone());
         cancellation.cancel();
