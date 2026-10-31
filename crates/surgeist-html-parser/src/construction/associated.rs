@@ -275,11 +275,13 @@ impl SessionStorage {
             payload_write::<crate::HtmlParseBaseFacts>(c, 1)?;
             let facts = facts.clone();
             self.prepare_payload_slot_owned(c)?;
-            self.payloads.push_row(RetainedPayload::BaseDocument {
-                node,
-                facts,
-                first: None,
-            })?;
+            self.payloads
+                .push_row(RetainedPayload::BaseDocument {
+                    node,
+                    facts,
+                    first: None,
+                })
+                .map_err(|_| latch_registry_row(c))?;
         }
         Ok(())
     }
@@ -325,16 +327,18 @@ impl SessionStorage {
             let document = self.node_document_ref(c, node)?;
             let cause = self.associated_cause(c)?;
             self.prepare_payload_slot_owned(c)?;
-            self.payloads.push_row(RetainedPayload::Hyperlink {
-                node,
-                state: HyperlinkMetadata {
-                    document,
-                    raw: None,
-                    value: HyperlinkValue::Absent,
-                    cause,
-                    usage: AssociatedStorageUsage::default(),
-                },
-            })?;
+            self.payloads
+                .push_row(RetainedPayload::Hyperlink {
+                    node,
+                    state: HyperlinkMetadata {
+                        document,
+                        raw: None,
+                        value: HyperlinkValue::Absent,
+                        cause,
+                        usage: AssociatedStorageUsage::default(),
+                    },
+                })
+                .map_err(|_| latch_registry_row(c))?;
             self.set_hyperlink(c, node, None)?;
         } else if tag == Some(KnownHtmlElement::Img) {
             self.prepare_payload_slot_owned(c)?;
@@ -345,17 +349,19 @@ impl SessionStorage {
             usage.add(mem::size_of::<Vec<u16>>(), 0, 0, c)?;
             payload_write::<ImageMetadata>(c, 1)?;
             usage.acquire(c)?;
-            self.payloads.push_row(RetainedPayload::Image {
-                node,
-                state: ImageMetadata {
-                    fresh: HtmlImgFreshState::fresh(),
-                    dimension_source: node,
-                    latest: 0,
-                    waiting: None,
-                    cause: None,
-                    usage,
-                },
-            })?;
+            self.payloads
+                .push_row(RetainedPayload::Image {
+                    node,
+                    state: ImageMetadata {
+                        fresh: HtmlImgFreshState::fresh(),
+                        dimension_source: node,
+                        latest: 0,
+                        waiting: None,
+                        cause: None,
+                        usage,
+                    },
+                })
+                .map_err(|_| latch_registry_row(c))?;
             self.start_img_update(c, node, HtmlImageUpdateFlags::new(false, false))?;
         } else {
             return Ok(());

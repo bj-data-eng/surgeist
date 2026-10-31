@@ -23,7 +23,8 @@ impl SessionStorage {
         self.prepare_payload_slot_owned(c)?;
         let slot = self.payloads.values.len();
         self.payloads
-            .push_row(RetainedPayload::Nonce { node: None, raw })?;
+            .push_row(RetainedPayload::Nonce { node: None, raw })
+            .map_err(|_| latch_registry_row(c))?;
         Ok(Some(slot))
     }
     pub(super) fn nonce_slot(

@@ -133,7 +133,8 @@ impl SessionStorage {
     ) -> Result<Option<usize>, SessionError> {
         let slot = self.document_slot(c, document)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        self.meta_history(slot)?
+        self.meta_history(slot)
+            .map_err(|_| latch_registry_row(c))?
             .gap(MetaDomain::Csp)
             .ok_or_else(|| latch_registry_row(c))
     }
@@ -148,7 +149,8 @@ impl SessionStorage {
         let domain = kind.domain();
         c.charge(WorkCategory::RecordVisit, 1)?;
         if self
-            .meta_history(slot)?
+            .meta_history(slot)
+            .map_err(|_| latch_registry_row(c))?
             .gap(domain)
             .ok_or_else(|| latch_registry_row(c))?
             .is_some()
@@ -156,7 +158,11 @@ impl SessionStorage {
             return Ok(());
         }
         let cause = self.associated_cause(c)?;
-        let first = self.meta_history(slot)?.first.is_none();
+        let first = self
+            .meta_history(slot)
+            .map_err(|_| latch_registry_row(c))?
+            .first
+            .is_none();
         payload_write::<Option<usize>>(c, 1)?;
         if first {
             payload_write::<Option<MetaDomain>>(c, 1)?;
@@ -169,7 +175,9 @@ impl SessionStorage {
             kind,
             cause,
         });
-        let meta = self.meta_history_mut(slot)?;
+        let meta = self
+            .meta_history_mut(slot)
+            .map_err(|_| latch_registry_row(c))?;
         let cell = meta
             .gaps
             .get_mut(domain.index())
@@ -275,7 +283,11 @@ impl SessionStorage {
                 drop(handle);
                 let slot = self.document_slot(c, document)?;
                 payload_write::<Option<usize>>(c, 1)?;
-                let old = self.meta_history_mut(slot)?.language.replace(value);
+                let old = self
+                    .meta_history_mut(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .language
+                    .replace(value);
                 #[cfg(test)]
                 after_commit(CancelPoint::Language);
                 if let Some(old) = old {
@@ -286,11 +298,15 @@ impl SessionStorage {
                 let slot = self.document_slot(c, document)?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if self
-                    .meta_history(slot)?
+                    .meta_history(slot)
+                    .map_err(|_| latch_registry_row(c))?
                     .gap(MetaDomain::Refresh)
                     .ok_or_else(|| latch_registry_row(c))?
                     .is_some()
-                    || self.meta_history(slot)?.refresh
+                    || self
+                        .meta_history(slot)
+                        .map_err(|_| latch_registry_row(c))?
+                        .refresh
                 {
                     return Ok(());
                 }
@@ -312,7 +328,9 @@ impl SessionStorage {
                     Ok(false) => (),
                     Ok(true) => {
                         payload_write::<bool>(c, 1)?;
-                        self.meta_history_mut(slot)?.refresh = true;
+                        self.meta_history_mut(slot)
+                            .map_err(|_| latch_registry_row(c))?
+                            .refresh = true;
                     }
                     Err(missing) => {
                         self.meta_missing(c, document, node, MetaMissingKind::RefreshUrl(missing))?
@@ -412,7 +430,9 @@ impl SessionStorage {
         {
             let slot = self.document_slot(c, document)?;
             payload_write::<HtmlReferrerPolicy>(c, 1)?;
-            self.meta_history_mut(slot)?.referrer = policy;
+            self.meta_history_mut(slot)
+                .map_err(|_| latch_registry_row(c))?
+                .referrer = policy;
         }
         Ok(())
     }
@@ -431,7 +451,8 @@ impl SessionStorage {
         ] {
             if !enabled
                 || self
-                    .meta_history(slot)?
+                    .meta_history(slot)
+                    .map_err(|_| latch_registry_row(c))?
                     .gap(domain)
                     .ok_or_else(|| latch_registry_row(c))?
                     .is_some()
@@ -504,11 +525,18 @@ impl SessionStorage {
             }
             if domain == MetaDomain::ThemeColor {
                 payload_write::<Option<surgeist_color::Color>>(c, 1)?;
-                self.meta_history_mut(slot)?.theme = selected_theme;
+                self.meta_history_mut(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .theme = selected_theme;
                 // This original constructor has no associated UI recipients.
                 // Selection above still performed all reached CSS work.
                 #[cfg(test)]
-                if self.meta_history(slot)?.theme.is_some() {
+                if self
+                    .meta_history(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .theme
+                    .is_some()
+                {
                     after_commit(CancelPoint::Theme);
                 }
             } else {
@@ -521,10 +549,20 @@ impl SessionStorage {
                     }
                     return Err(stop);
                 }
-                let old =
-                    std::mem::replace(&mut self.meta_history_mut(slot)?.scheme, selected_scheme);
+                let old = std::mem::replace(
+                    &mut self
+                        .meta_history_mut(slot)
+                        .map_err(|_| latch_registry_row(c))?
+                        .scheme,
+                    selected_scheme,
+                );
                 #[cfg(test)]
-                if self.meta_history(slot)?.scheme.is_some() {
+                if self
+                    .meta_history(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .scheme
+                    .is_some()
+                {
                     after_commit(CancelPoint::Scheme);
                 }
                 if let Some(old) = old {

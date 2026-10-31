@@ -1686,18 +1686,24 @@ impl SessionStorage {
         ) {
             let facts = (|| {
                 session.prepare_payload_slot_owned(control)?;
-                session.payloads.push_row(RetainedPayload::Document {
-                    node: Some(0),
-                    state: template::DocumentState::Ordinary { inert: None },
-                    class: crate::HtmlDocumentClass::Html,
-                    meta: meta::MetaHistory::offline(),
-                    interaction: dialog::InteractionHistory::new(),
-                })?;
+                session
+                    .payloads
+                    .push_row(RetainedPayload::Document {
+                        node: Some(0),
+                        state: template::DocumentState::Ordinary { inert: None },
+                        class: crate::HtmlDocumentClass::Html,
+                        meta: meta::MetaHistory::offline(),
+                        interaction: dialog::InteractionHistory::new(),
+                    })
+                    .map_err(|_| latch_registry_row(control))?;
                 session.prepare_payload_slot_owned(control)?;
-                session.payloads.push_row(RetainedPayload::NodeDocument {
-                    node: Some(0),
-                    document: DocumentRef::Owned(0),
-                })?;
+                session
+                    .payloads
+                    .push_row(RetainedPayload::NodeDocument {
+                        node: Some(0),
+                        document: DocumentRef::Owned(0),
+                    })
+                    .map_err(|_| latch_registry_row(control))?;
                 Ok::<_, SessionError>(())
             })();
             if let Err(error) = facts {
@@ -1914,7 +1920,9 @@ impl SessionStorage {
                 return Err(latch_registry_row(control));
             };
             *node = Some(index);
-            self.payloads.join_row(slot)?;
+            self.payloads
+                .join_row(slot)
+                .map_err(|_| latch_registry_row(control))?;
         }
         for (offset, slot) in cause_slots.into_iter().enumerate().take(count) {
             if let Some(slot) = slot {
@@ -2082,14 +2090,18 @@ impl SessionStorage {
                         return Err(latch_registry_row(control));
                     };
                     *bound = Some(node.index);
-                    self.payloads.join_row(input)?;
+                    self.payloads
+                        .join_row(input)
+                        .map_err(|_| latch_registry_row(control))?;
                     let Some(RetainedPayload::FormAssociation { node: bound, .. }) =
                         self.payloads.values.get_mut(association)
                     else {
                         return Err(latch_registry_row(control));
                     };
                     *bound = Some(node.index);
-                    self.payloads.join_row(association)?;
+                    self.payloads
+                        .join_row(association)
+                        .map_err(|_| latch_registry_row(control))?;
                 }
                 OrderedCreation::Select {
                     metadata: Some(slot),
@@ -2101,7 +2113,9 @@ impl SessionStorage {
                         return Err(latch_registry_row(control));
                     };
                     *bound = Some(node.index);
-                    self.payloads.join_row(slot)?;
+                    self.payloads
+                        .join_row(slot)
+                        .map_err(|_| latch_registry_row(control))?;
                 }
                 OrderedCreation::Select { metadata: None } => {}
             }
@@ -2152,11 +2166,13 @@ impl SessionStorage {
                 self.bind_string(
                     local_ticket,
                     StringLocation::AttributeName(stage, remaining),
-                )?;
+                )
+                .map_err(|_| latch_registry_row(control))?;
                 self.bind_string(
                     value_ticket,
                     StringLocation::AttributeValue(stage, remaining),
-                )?;
+                )
+                .map_err(|_| latch_registry_row(control))?;
             }
             self.edit_attributes(control, node.index, container, stage, count, false)?;
             self.begin_attribute_transfer(control, stage, container, 0)?;
@@ -2813,11 +2829,13 @@ impl SessionStorage {
             );
             match result {
                 Ok(old) => {
-                    self.bind_string(old_slot, StringLocation::Detached)?;
+                    self.bind_string(old_slot, StringLocation::Detached)
+                        .map_err(|_| latch_registry_row(control))?;
                     self.bind_string(
                         new_slot,
                         StringLocation::AttributeValue(container, position),
-                    )?;
+                    )
+                    .map_err(|_| latch_registry_row(control))?;
                     let Some(RetainedPayload::Input { state, .. }) =
                         self.payloads.values.get_mut(slot)
                     else {
@@ -3330,11 +3348,13 @@ impl SessionStorage {
                 self.bind_string(
                     local_ticket,
                     StringLocation::AttributeName(container, position),
-                )?;
+                )
+                .map_err(|_| latch_registry_row(control))?;
                 self.bind_string(
                     value_ticket,
                     StringLocation::AttributeValue(container, position),
-                )?;
+                )
+                .map_err(|_| latch_registry_row(control))?;
             }
             self.reverse_attributes(control, container)?;
             let Some(RetainedPayload::Attributes(storage)) =
@@ -3419,8 +3439,10 @@ impl SessionStorage {
                 0,
                 prepared,
             )?;
-            self.bind_string(name_ticket, StringLocation::ElementName(node.index))?;
-            self.bind_string(namespace_ticket, StringLocation::Namespace(node.index))?;
+            self.bind_string(name_ticket, StringLocation::ElementName(node.index))
+                .map_err(|_| latch_registry_row(control))?;
+            self.bind_string(namespace_ticket, StringLocation::Namespace(node.index))
+                .map_err(|_| latch_registry_row(control))?;
             let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
                 element, ..
             }))) = self.payloads.values.get_mut(container)
@@ -3428,9 +3450,13 @@ impl SessionStorage {
                 return Err(latch_registry_row(control));
             };
             *element = Some(node.index);
-            self.payloads.join_row(container)?;
+            self.payloads
+                .join_row(container)
+                .map_err(|_| latch_registry_row(control))?;
             if let Some(slot) = last_name_slot {
-                self.payloads.record_attribute_strings(node.index, slot)?;
+                self.payloads
+                    .record_attribute_strings(node.index, slot)
+                    .map_err(|_| latch_registry_row(control))?;
             }
             self.initial_nonce_attributes(control, node.index)?;
             self.initial_associated_state(control, node.index)?;
@@ -3570,7 +3596,8 @@ impl SessionStorage {
                 0,
                 prepared,
             )?;
-            self.bind_string(ticket, StringLocation::Text(node.index))?;
+            self.bind_string(ticket, StringLocation::Text(node.index))
+                .map_err(|_| latch_registry_row(control))?;
             self.insert(control, parent, &node, before, InsertionCause::NonParser)?;
             Ok(Some(TextInsertion {
                 _node: node,
@@ -3856,11 +3883,13 @@ impl SessionStorage {
                     value,
                 ));
                 remaining -= 1;
-                self.bind_string(name_ticket, StringLocation::AttributeName(stage, remaining))?;
+                self.bind_string(name_ticket, StringLocation::AttributeName(stage, remaining))
+                    .map_err(|_| latch_registry_row(control))?;
                 self.bind_string(
                     value_ticket,
                     StringLocation::AttributeValue(stage, remaining),
-                )?;
+                )
+                .map_err(|_| latch_registry_row(control))?;
             }
             if count == 0 {
                 self.construction.finish_attributes(control)?;
@@ -6103,24 +6132,27 @@ impl ParserArenaSession {
         storage.prepare_payload_slot(control)?;
         let script = storage.payloads.values.len();
         payload_write::<Option<usize>>(control, 1)?;
-        storage.payloads.push_row(RetainedPayload::Script {
-            node: None,
-            metadata: ScriptMetadata {
-                parser_document: Some(DocumentRef::Owned(0)),
-                preparation_document: None,
-                flags: {
-                    let mut flags = HtmlScriptFlags::fresh();
-                    flags.mark_parser_inserted();
-                    if inert {
-                        flags.mark_already_started();
-                    }
-                    flags
+        storage
+            .payloads
+            .push_row(RetainedPayload::Script {
+                node: None,
+                metadata: ScriptMetadata {
+                    parser_document: Some(DocumentRef::Owned(0)),
+                    preparation_document: None,
+                    flags: {
+                        let mut flags = HtmlScriptFlags::fresh();
+                        flags.mark_parser_inserted();
+                        if inert {
+                            flags.mark_already_started();
+                        }
+                        flags
+                    },
+                    script_type: None,
+                    result: HtmlScriptResult::Uninitialized,
+                    steps_when_result_ready: None,
                 },
-                script_type: None,
-                result: HtmlScriptResult::Uninitialized,
-                steps_when_result_ready: None,
-            },
-        })?;
+            })
+            .map_err(|_| latch_registry_row(control))?;
         let node = self.allocate_for_creation(
             control,
             input,
@@ -6135,7 +6167,10 @@ impl ParserArenaSession {
             return Err(latch_registry_row(control));
         };
         *bound = Some(node.index);
-        self.active_mut()?.payloads.join_row(script)?;
+        self.active_mut()?
+            .payloads
+            .join_row(script)
+            .map_err(|_| latch_registry_row(control))?;
         Ok(node)
     }
     #[cfg(test)]
@@ -6526,7 +6561,8 @@ impl ParserArenaSession {
             let slot = storage.payloads.values.len();
             storage
                 .payloads
-                .push_row(RetainedPayload::SelectFamily { node: None, state })?;
+                .push_row(RetainedPayload::SelectFamily { node: None, state })
+                .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
             None
@@ -6567,19 +6603,22 @@ impl ParserArenaSession {
             let raw = storage.register_raw(control, empty)?;
             storage.prepare_payload_slot(control)?;
             let slot = storage.payloads.values.len();
-            storage.payloads.push_row(RetainedPayload::Input {
-                node: None,
-                raw,
-                complete: false,
-                state: InputState {
-                    flags: crate::HtmlInputFlags::fresh(),
-                    cursor: 0,
-                    selected_files_empty: true,
-                    value_rewritten_during_creation: false,
-                    email_value_count: None,
-                    image: input_image::ImageState::NeverEntered,
-                },
-            })?;
+            storage
+                .payloads
+                .push_row(RetainedPayload::Input {
+                    node: None,
+                    raw,
+                    complete: false,
+                    state: InputState {
+                        flags: crate::HtmlInputFlags::fresh(),
+                        cursor: 0,
+                        selected_files_empty: true,
+                        value_rewritten_during_creation: false,
+                        email_value_count: None,
+                        image: input_image::ImageState::NeverEntered,
+                    },
+                })
+                .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
             None
@@ -6634,7 +6673,8 @@ impl ParserArenaSession {
                             FormAssociationEvidence::Created
                         },
                     },
-                })?;
+                })
+                .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
             None
@@ -6715,7 +6755,10 @@ impl ParserArenaSession {
                 };
                 *bound = Some(node.index);
                 state.flags.reset();
-                storage.payloads.join_textarea(node.index, textarea)?;
+                storage
+                    .payloads
+                    .join_textarea(node.index, textarea)
+                    .map_err(|_| latch_registry_row(control))?;
                 #[cfg(test)]
                 if let Some(cancellation) = storage.cancel_after_textarea_reset.take() {
                     cancellation.cancel();
@@ -6758,7 +6801,10 @@ impl ParserArenaSession {
                     return Err(SessionError::FormAssociationMetadataUnavailable);
                 };
                 *bound = Some(node.index);
-                storage.payloads.join_row(slot)?;
+                storage
+                    .payloads
+                    .join_row(slot)
+                    .map_err(|_| latch_registry_row(control))?;
                 if reset_before_association {
                     payload_write::<FormAssociationState>(control, 1)?;
                     let Some(RetainedPayload::FormAssociation { state, .. }) =
@@ -7314,7 +7360,9 @@ impl ParserArenaSession {
             0,
             prepared,
         )?;
-        storage.bind_string(ticket, StringLocation::Comment(node.index))?;
+        storage
+            .bind_string(ticket, StringLocation::Comment(node.index))
+            .map_err(|_| latch_registry_row(control))?;
         Ok(node)
     }
     pub(crate) fn allocate_processing_instruction(
@@ -7353,14 +7401,18 @@ impl ParserArenaSession {
             0,
             prepared,
         )?;
-        storage.bind_string(
-            target_ticket,
-            StringLocation::ProcessingInstructionTarget(node.index),
-        )?;
-        storage.bind_string(
-            data_ticket,
-            StringLocation::ProcessingInstructionData(node.index),
-        )?;
+        storage
+            .bind_string(
+                target_ticket,
+                StringLocation::ProcessingInstructionTarget(node.index),
+            )
+            .map_err(|_| latch_registry_row(control))?;
+        storage
+            .bind_string(
+                data_ticket,
+                StringLocation::ProcessingInstructionData(node.index),
+            )
+            .map_err(|_| latch_registry_row(control))?;
         storage.bind_pi_map(map, node.index);
         storage.parse_pi_map(control, node.index, map)?;
         Ok(node)
@@ -7424,9 +7476,15 @@ impl ParserArenaSession {
                 0,
                 0,
             )?;
-            storage.bind_string(a, StringLocation::DoctypeName(node.index))?;
-            storage.bind_string(b, StringLocation::DoctypePublic(node.index))?;
-            storage.bind_string(d, StringLocation::DoctypeSystem(node.index))?;
+            storage
+                .bind_string(a, StringLocation::DoctypeName(node.index))
+                .map_err(|_| latch_registry_row(control))?;
+            storage
+                .bind_string(b, StringLocation::DoctypePublic(node.index))
+                .map_err(|_| latch_registry_row(control))?;
+            storage
+                .bind_string(d, StringLocation::DoctypeSystem(node.index))
+                .map_err(|_| latch_registry_row(control))?;
             Ok(node)
         })();
         for text in incoming.into_iter().flatten() {

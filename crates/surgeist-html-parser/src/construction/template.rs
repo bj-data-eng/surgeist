@@ -411,19 +411,23 @@ impl SessionStorage {
                 // installed. No fallible alias/binding gap follows allocation.
                 self.prepare_payload_slot_owned(c)?;
                 let fact = self.payloads.values.len();
-                self.payloads.push_row(RetainedPayload::Document {
-                    node: None,
-                    state: DocumentState::InertTemplate,
-                    class,
-                    meta: meta::MetaHistory::offline(),
-                    interaction: dialog::InteractionHistory::new(),
-                })?;
+                self.payloads
+                    .push_row(RetainedPayload::Document {
+                        node: None,
+                        state: DocumentState::InertTemplate,
+                        class,
+                        meta: meta::MetaHistory::offline(),
+                        interaction: dialog::InteractionHistory::new(),
+                    })
+                    .map_err(|_| latch_registry_row(c))?;
                 self.prepare_payload_slot_owned(c)?;
                 let binding = self.payloads.values.len();
-                self.payloads.push_row(RetainedPayload::NodeDocument {
-                    node: None,
-                    document: DocumentRef::Owned(self.construction.storage().len()),
-                })?;
+                self.payloads
+                    .push_row(RetainedPayload::NodeDocument {
+                        node: None,
+                        document: DocumentRef::Owned(self.construction.storage().len()),
+                    })
+                    .map_err(|_| latch_registry_row(c))?;
                 payload_write::<[Option<usize>; 2]>(c, 2)?;
                 payload_write::<DocumentState>(c, 1)?;
                 let node = self.allocate_native(
@@ -439,14 +443,18 @@ impl SessionStorage {
                     return Err(latch_registry_row(c));
                 };
                 *bound = Some(node.index);
-                self.payloads.join_row(fact)?;
+                self.payloads
+                    .join_row(fact)
+                    .map_err(|_| latch_registry_row(c))?;
                 let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
                     self.payloads.values.get_mut(binding)
                 else {
                     return Err(latch_registry_row(c));
                 };
                 *bound = Some(node.index);
-                self.payloads.join_row(binding)?;
+                self.payloads
+                    .join_row(binding)
+                    .map_err(|_| latch_registry_row(c))?;
                 let Some(RetainedPayload::Document { state, .. }) =
                     self.payloads.values.get_mut(slot)
                 else {
@@ -494,13 +502,15 @@ impl SessionStorage {
             }
             self.prepare_payload_slot_owned(c)?;
             let facts = self.payloads.values.len();
-            self.payloads.push_row(RetainedPayload::Template {
-                node: None,
-                state: TemplateMetadata::fresh(
-                    self.construction.storage().len() + 1,
-                    HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
-                ),
-            })?;
+            self.payloads
+                .push_row(RetainedPayload::Template {
+                    node: None,
+                    state: TemplateMetadata::fresh(
+                        self.construction.storage().len() + 1,
+                        HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
+                    ),
+                })
+                .map_err(|_| latch_registry_row(c))?;
             return Ok(Some(PreparedDocuments {
                 binding: None,
                 contents_binding: None,
@@ -551,17 +561,21 @@ impl SessionStorage {
         };
         self.prepare_payload_slot_owned(c)?;
         let binding = self.payloads.values.len();
-        self.payloads.push_row(RetainedPayload::NodeDocument {
-            node: None,
-            document,
-        })?;
+        self.payloads
+            .push_row(RetainedPayload::NodeDocument {
+                node: None,
+                document,
+            })
+            .map_err(|_| latch_registry_row(c))?;
         let contents_binding = if let Some(document) = contents_document {
             self.prepare_payload_slot_owned(c)?;
             let slot = self.payloads.values.len();
-            self.payloads.push_row(RetainedPayload::NodeDocument {
-                node: None,
-                document,
-            })?;
+            self.payloads
+                .push_row(RetainedPayload::NodeDocument {
+                    node: None,
+                    document,
+                })
+                .map_err(|_| latch_registry_row(c))?;
             Some(slot)
         } else {
             None
@@ -569,13 +583,15 @@ impl SessionStorage {
         let facts = if template {
             self.prepare_payload_slot_owned(c)?;
             let slot = self.payloads.values.len();
-            self.payloads.push_row(RetainedPayload::Template {
-                node: None,
-                state: TemplateMetadata::fresh(
-                    self.construction.storage().len() + 1,
-                    HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
-                ),
-            })?;
+            self.payloads
+                .push_row(RetainedPayload::Template {
+                    node: None,
+                    state: TemplateMetadata::fresh(
+                        self.construction.storage().len() + 1,
+                        HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
+                    ),
+                })
+                .map_err(|_| latch_registry_row(c))?;
             Some(slot)
         } else {
             None
@@ -650,7 +666,9 @@ impl SessionStorage {
                 return Err(latch_registry_row(c));
             };
             *bound = Some(node.index);
-            self.payloads.join_row(slot)?;
+            self.payloads
+                .join_row(slot)
+                .map_err(|_| latch_registry_row(c))?;
         }
         if let Some(binding) = binding {
             let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
@@ -659,7 +677,9 @@ impl SessionStorage {
                 return Err(latch_registry_row(c));
             };
             *bound = Some(node.index);
-            self.payloads.join_row(binding)?;
+            self.payloads
+                .join_row(binding)
+                .map_err(|_| latch_registry_row(c))?;
         }
         if let Some(slot) = contents_binding {
             let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
@@ -668,7 +688,9 @@ impl SessionStorage {
                 return Err(latch_registry_row(c));
             };
             *bound = Some(node.index + 1);
-            self.payloads.join_row(slot)?;
+            self.payloads
+                .join_row(slot)
+                .map_err(|_| latch_registry_row(c))?;
         }
         if let Some(slot) = facts {
             let Some(RetainedPayload::Template { node: bound, state }) =
@@ -678,7 +700,9 @@ impl SessionStorage {
             };
             *bound = Some(node.index);
             state.contents = node.index + 1;
-            self.payloads.join_row(slot)?;
+            self.payloads
+                .join_row(slot)
+                .map_err(|_| latch_registry_row(c))?;
         }
         Ok(node)
     }

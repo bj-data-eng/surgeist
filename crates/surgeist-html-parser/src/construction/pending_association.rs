@@ -163,7 +163,8 @@ impl SessionStorage {
                 last: None,
                 missing: None,
                 missing_at: None,
-            }))?;
+            }))
+            .map_err(|_| latch_registry_row(c))?;
         Ok(slot)
     }
     /// A reference never adds a strong alias to mutable/reclaimable backing.

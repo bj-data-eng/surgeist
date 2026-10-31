@@ -104,7 +104,7 @@ fn next(
 
 /// The actual fresh-driver issuance is reused, then its same controller and
 /// arena consume real lexical records. The Vec is test observation/setup only.
-fn graph<'a>(
+pub(in crate::construction) fn graph<'a>(
     request: &'a crate::HtmlDocumentParseRequest,
 ) -> (
     ParseControl,
@@ -247,7 +247,11 @@ fn graph<'a>(
     lexer.release(&mut c).unwrap();
     (c, session, proof, nodes)
 }
-fn named(nodes: &[(String, ParserNode)], name: &str, occurrence: usize) -> ParserNode {
+pub(in crate::construction) fn named(
+    nodes: &[(String, ParserNode)],
+    name: &str,
+    occurrence: usize,
+) -> ParserNode {
     nodes
         .iter()
         .filter(|(local, _)| local == name)
@@ -268,7 +272,7 @@ fn children(session: &ParserArenaSession, node: &ParserNode) -> Vec<usize> {
         .collect::<Vec<_>>()
         .clone()
 }
-fn request(source: &str) -> crate::HtmlDocumentParseRequest {
+pub(in crate::construction) fn request(source: &str) -> crate::HtmlDocumentParseRequest {
     crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source), limits())
 }
 fn update(session: &mut ParserArenaSession, c: &mut ParseControl, option: &ParserNode) {

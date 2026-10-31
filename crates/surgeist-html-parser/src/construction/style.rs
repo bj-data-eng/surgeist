@@ -24,14 +24,16 @@ impl SessionStorage {
         let cause = self.associated_cause(c)?;
         self.prepare_payload_slot_owned(c)?;
         payload_write::<StyleMetadata>(c, 1)?;
-        self.payloads.push_row(RetainedPayload::Style {
-            node,
-            state: StyleMetadata {
-                state: surgeist_html::HtmlStyleState::fresh(),
-                parser_document: None,
-                cause,
-            },
-        })?;
+        self.payloads
+            .push_row(RetainedPayload::Style {
+                node,
+                state: StyleMetadata {
+                    state: surgeist_html::HtmlStyleState::fresh(),
+                    parser_document: None,
+                    cause,
+                },
+            })
+            .map_err(|_| latch_registry_row(c))?;
         self.record_association(
             c,
             node,

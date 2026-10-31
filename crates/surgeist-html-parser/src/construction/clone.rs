@@ -327,7 +327,8 @@ impl SessionStorage {
                     } else {
                         StringLocation::Comment(node.index)
                     },
-                )?;
+                )
+                .map_err(|_| latch_registry_row(c))?;
                 payload_write::<usize>(c, 1)?;
 
                 Ok(node.index)
@@ -355,11 +356,13 @@ impl SessionStorage {
                 self.bind_string(
                     target_slot,
                     StringLocation::ProcessingInstructionTarget(node.index),
-                )?;
+                )
+                .map_err(|_| latch_registry_row(c))?;
                 self.bind_string(
                     data_slot,
                     StringLocation::ProcessingInstructionData(node.index),
-                )?;
+                )
+                .map_err(|_| latch_registry_row(c))?;
                 payload_write::<usize>(c, 1)?;
 
                 self.bind_pi_map(map, node.index);
@@ -489,9 +492,11 @@ impl SessionStorage {
             0,
             prepared,
         )?;
-        self.bind_string(name_slot, StringLocation::ElementName(node.index))?;
+        self.bind_string(name_slot, StringLocation::ElementName(node.index))
+            .map_err(|_| latch_registry_row(c))?;
         if let Some(slot) = namespace_slot {
-            self.bind_string(slot, StringLocation::Namespace(node.index))?;
+            self.bind_string(slot, StringLocation::Namespace(node.index))
+                .map_err(|_| latch_registry_row(c))?;
         }
         let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. }))) =
             self.payloads.values.get_mut(container)
@@ -499,7 +504,9 @@ impl SessionStorage {
             return Err(latch_registry_row(c));
         };
         *element = Some(node.index);
-        self.payloads.join_row(container)?;
+        self.payloads
+            .join_row(container)
+            .map_err(|_| latch_registry_row(c))?;
         self.bind_clone_metadata(c, node.index, bindings)?;
         self.initial_associated_state(c, node.index)?;
         if base::is_base(
@@ -610,13 +617,17 @@ impl SessionStorage {
                 QualifiedName::new(namespace, prefix, name),
                 value,
             ));
-            self.bind_string(name_slot, StringLocation::AttributeName(stage, 0))?;
-            self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0))?;
+            self.bind_string(name_slot, StringLocation::AttributeName(stage, 0))
+                .map_err(|_| latch_registry_row(c))?;
+            self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0))
+                .map_err(|_| latch_registry_row(c))?;
             if let Some(slot) = namespace_slot {
-                self.bind_string(slot, StringLocation::AttributeNamespace(stage, 0))?;
+                self.bind_string(slot, StringLocation::AttributeNamespace(stage, 0))
+                    .map_err(|_| latch_registry_row(c))?;
             }
             if let Some(slot) = prefix_slot {
-                self.bind_string(slot, StringLocation::AttributePrefix(stage, 0))?;
+                self.bind_string(slot, StringLocation::AttributePrefix(stage, 0))
+                    .map_err(|_| latch_registry_row(c))?;
             }
             self.edit_attributes(c, node.index, container, stage, 1, false)?;
             self.begin_attribute_transfer(c, stage, container, position)?;
@@ -915,10 +926,14 @@ impl SessionStorage {
                 ) => *bound = Some(node),
                 _ => return Err(SessionError::WrongToken),
             }
-            self.payloads.join_row(slot)?;
+            self.payloads
+                .join_row(slot)
+                .map_err(|_| latch_registry_row(c))?;
         }
         if let Some(slot) = bindings.textarea {
-            self.payloads.join_textarea(node, slot)?;
+            self.payloads
+                .join_textarea(node, slot)
+                .map_err(|_| latch_registry_row(c))?;
         }
         Ok(())
     }
@@ -1233,5 +1248,45 @@ fn same_location(a: StringLocation, b: StringLocation) -> bool {
             a == b && x == y
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::construction::effects::tests::{graph, named, request};
+
+    #[test]
+    fn a_clone_binding_to_a_missing_record_latches_the_registry_invariant() {
+        let request = request("<body><script></script>");
+        let (mut c, mut session, _proof, nodes) = graph(&request);
+        let script = named(&nodes, "script", 0).index;
+        let storage = session.active_mut().unwrap();
+        let slot = storage.payloads.node_joins[script]
+            .get(Join::Script)
+            .unwrap();
+        // A record past the retained ones: binding the row names no join cell,
+        // so the controller-less `join_row` refuses and this caller, which has
+        // the controller, must record the refusal as the first stop.
+        let missing = storage.payloads.node_joins.len();
+        let bindings = CloneBindings {
+            script: Some(slot),
+            ..CloneBindings::default()
+        };
+        let failure = storage.bind_clone_metadata(&mut c, missing, bindings);
+        let invariant =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(failure.err(), Some(SessionError::Stop(invariant)));
+        // The same stop the public failure path would report: `session_reason`
+        // maps `SessionError::Stop(stop)` to `HtmlParseFailureReason::Stop(stop)`.
+        assert_eq!(c.stop(), Some(invariant));
+        // Put the row back on its record so the release check holds.
+        let Some(RetainedPayload::Script { node, .. }) = storage.payloads.values.get_mut(slot)
+        else {
+            panic!("script row")
+        };
+        *node = Some(script);
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
     }
 }

@@ -290,8 +290,10 @@ impl SessionStorage {
             return Err(latch_registry_row(c));
         };
         values.push(incoming);
-        self.bind_string(name_slot, StringLocation::AttributeName(stage, 0))?;
-        self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0))?;
+        self.bind_string(name_slot, StringLocation::AttributeName(stage, 0))
+            .map_err(|_| latch_registry_row(c))?;
+        self.bind_string(value_slot, StringLocation::AttributeValue(stage, 0))
+            .map_err(|_| latch_registry_row(c))?;
         self.edit_attributes(c, node, container, stage, 1, false)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(record) = &self
@@ -373,16 +375,19 @@ impl SessionStorage {
                 &old_slots,
             )?;
             for slot in old_slots.into_iter().flatten() {
-                self.bind_string(slot, StringLocation::Detached)?;
+                self.bind_string(slot, StringLocation::Detached)
+                    .map_err(|_| latch_registry_row(c))?;
             }
             self.bind_string(
                 name_slot,
                 StringLocation::AttributeName(container, position),
-            )?;
+            )
+            .map_err(|_| latch_registry_row(c))?;
             self.bind_string(
                 value_slot,
                 StringLocation::AttributeValue(container, position),
-            )?;
+            )
+            .map_err(|_| latch_registry_row(c))?;
 
             drop(old);
             Ok::<_, SessionError>(())

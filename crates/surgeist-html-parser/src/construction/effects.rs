@@ -976,4 +976,4 @@ impl ParserArenaSession {
 
 #[cfg(test)]
 #[path = "effects_tests.rs"]
-mod tests;
+pub(in crate::construction) mod tests;
