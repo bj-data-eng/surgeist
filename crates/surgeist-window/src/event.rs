@@ -1,7 +1,7 @@
 #[cfg(feature = "accessibility")]
 use super::AccessibilityEvent;
-use super::{Id, Metrics, PhysicalPoint, Point, Rect, Theme, WindowSnapshot};
-use std::{path::PathBuf, time::Instant};
+use super::{Id, Instant, Metrics, PhysicalPoint, Point, Rect, Theme, WindowSnapshot};
+use std::path::PathBuf;
 
 /// Native window event payload emitted by this crate.
 ///

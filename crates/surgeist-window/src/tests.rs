@@ -14,7 +14,7 @@ use crate::descriptor::WindowSnapshotSeed;
 use crate::loop_::PreparedLoop;
 use crate::planning::{ResolvedImePurpose, take_planned_command, take_planned_ime_request};
 use crate::registry::ProxyQueue;
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc, time::Instant};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 fn conservative_capabilities() -> HostCapabilities {
     testing::Host::new().capabilities().clone()
@@ -2358,6 +2358,47 @@ fn draw_scheduler_coalesces_and_chooses_earliest_deadline() {
 
     assert_eq!(scheduler.next_deadline(), None);
     assert_eq!(scheduler.take_ready(Instant::now()), vec![id]);
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[test]
+fn platform_instant_preserves_native_proxy_deadlines_and_receipt_identity() {
+    #[derive(Default)]
+    struct NativeReceipts {
+        // Deliberately use std here to verify the native public type identity.
+        timestamp: Option<std::time::Instant>,
+    }
+    impl Handler for NativeReceipts {
+        fn input(&mut self, input: &mut Input<'_>) -> Result<()> {
+            if let InputEvent::Magnification(event) = input.event() {
+                self.timestamp = event.timestamp;
+            }
+            Ok(())
+        }
+    }
+
+    let mut runner = testing::Runner::new(NativeReceipts::default());
+    runner.startup(vec![open("native-clock").into()]).unwrap();
+    runner.resume();
+    let id = runner.host().window_id("native-clock").unwrap();
+    let now = std::time::Instant::now();
+    assert_eq!(runner.take_ready_draws_for_test(now), [id]);
+    let deadline = now + std::time::Duration::from_millis(20);
+    runner.proxy().at(id, deadline).unwrap();
+    runner.flush_proxy();
+    assert!(runner.take_ready_draws_for_test(now).is_empty());
+    assert_eq!(runner.take_ready_draws_for_test(deadline), [id]);
+    assert!(runner.take_ready_draws_for_test(deadline).is_empty());
+
+    runner.transition(NativeEventTransition::magnification(MagnificationEvent {
+        id,
+        gesture: MagnificationGesture::Smart,
+        position: None,
+        modifiers: ModifierState::default(),
+        timestamp: Some(now),
+    }));
+    assert_eq!(runner.handler().timestamp, Some(now));
+    assert!(runner.result().is_none());
 }
 
 #[test]

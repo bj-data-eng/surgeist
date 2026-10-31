@@ -28,7 +28,7 @@ use super::{
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 #[cfg(all(test, feature = "accessibility"))]

@@ -1,8 +1,7 @@
 use super::{
-    Controls, Cursor, CursorGrab, Fullscreen, Id, ImeRequest, Level, Point, Size, Theme,
+    Controls, Cursor, CursorGrab, Fullscreen, Id, ImeRequest, Instant, Level, Point, Size, Theme,
     WindowRequest,
 };
-use std::time::Instant;
 
 /// Handler result telling the event loop how to continue.
 #[derive(Clone, Debug, PartialEq)]
