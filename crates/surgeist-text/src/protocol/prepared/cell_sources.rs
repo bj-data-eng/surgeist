@@ -1,4 +1,4 @@
-//! Selected-local source correspondence for an actual opaque Cell endpoint.
+//! Selected-local source correspondence for one actual selected Cell.
 use super::{PresentationUnitKind, SelectedPresentation, SelectedRelationEvent};
 use crate::engine::{
     PreparedData,
@@ -73,16 +73,69 @@ pub(crate) fn generated_owner(
     }
 }
 
+/// Actual source kind retained by the authenticated selected occurrence.
 #[derive(Clone, Copy, PartialEq)]
-enum Owner {
+pub(crate) enum CellPartSource {
     Original,
     Generated(GeneratedSeparatorOwner),
 }
+
+/// A canonical Cell part and its genuine selected-local occurrence. The event
+/// indexes SelectedRelation.events; presentation is its real interval or cut.
+#[derive(Clone, Copy)]
+pub(crate) struct CellPartOccurrence<'a> {
+    index: usize,
+    part: &'a Part,
+    event: usize,
+    presentation: PresentationRange,
+    source: CellPartSource,
+}
+impl<'a> CellPartOccurrence<'a> {
+    /// Canonical index in CombinedPlan.parts, not a group-local or provider index.
+    pub(crate) fn part_index(&self) -> usize {
+        self.index
+    }
+    pub(crate) fn part(&self) -> &'a Part {
+        self.part
+    }
+    pub(crate) fn event(&self) -> usize {
+        self.event
+    }
+    pub(crate) fn presentation(&self) -> PresentationRange {
+        self.presentation
+    }
+    pub(crate) fn source(&self) -> CellPartSource {
+        self.source
+    }
+}
+
+/// A genuine selected control anchor not already represented by a Cell part.
+#[derive(Clone, Copy)]
+pub(crate) struct CellControlOccurrence {
+    control: usize,
+    presentation: PresentationRange,
+}
+impl CellControlOccurrence {
+    pub(crate) fn control(&self) -> usize {
+        self.control
+    }
+    pub(crate) fn presentation(&self) -> PresentationRange {
+        self.presentation
+    }
+}
+
+/// Borrowed correspondence observations; neither alternative fabricates a part,
+/// original piece, selected event, presentation extent or geometry capability.
+pub(crate) enum CellSourceVisit<'a> {
+    Part(CellPartOccurrence<'a>),
+    Control(CellControlOccurrence),
+}
+
 #[derive(Clone, Copy)]
 struct Occurrence {
     event: usize,
     presentation: Range,
-    owner: Owner,
+    owner: CellPartSource,
 }
 
 pub(crate) struct CellCorrespondence<'a> {
@@ -167,12 +220,12 @@ impl<'a> CellCorrespondence<'a> {
                         .selection_part
                         .ok_or_else(invalid)?;
                     let owner = match map.component_for_atom(original).owner {
-                        ComponentOwner::Original(_) => Owner::Original,
+                        ComponentOwner::Original(_) => CellPartSource::Original,
                         ComponentOwner::Wbr(i) => {
-                            Owner::Generated(GeneratedSeparatorOwner::Control(i))
+                            CellPartSource::Generated(GeneratedSeparatorOwner::Control(i))
                         }
                         ComponentOwner::Virtual(i) => {
-                            Owner::Generated(GeneratedSeparatorOwner::Virtual(i))
+                            CellPartSource::Generated(GeneratedSeparatorOwner::Virtual(i))
                         }
                     };
                     result.record(part, index, range, owner, ledger)?;
@@ -181,7 +234,7 @@ impl<'a> CellCorrespondence<'a> {
                     selection_part: Some(part),
                     ..
                 } => {
-                    result.record(part, index, range, Owner::Original, ledger)?;
+                    result.record(part, index, range, CellPartSource::Original, ledger)?;
                 }
                 RelationEvent::GeneratedSuppression {
                     component,
@@ -189,10 +242,10 @@ impl<'a> CellCorrespondence<'a> {
                 } => {
                     let owner = match map.components[component].owner {
                         ComponentOwner::Wbr(i) => {
-                            Owner::Generated(GeneratedSeparatorOwner::Control(i))
+                            CellPartSource::Generated(GeneratedSeparatorOwner::Control(i))
                         }
                         ComponentOwner::Virtual(i) => {
-                            Owner::Generated(GeneratedSeparatorOwner::Virtual(i))
+                            CellPartSource::Generated(GeneratedSeparatorOwner::Virtual(i))
                         }
                         ComponentOwner::Original(_) => return Err(invalid()),
                     };
@@ -203,7 +256,7 @@ impl<'a> CellCorrespondence<'a> {
                         lexical.occurrence_cursor(&prepared.analyzed.processed.lexical);
                     while let Some((record, _)) = cursor.next(|| account::work(ledger, 1))? {
                         if let Some(part) = output.plan.lexical_parts[record] {
-                            result.record(part, index, range, Owner::Original, ledger)?;
+                            result.record(part, index, range, CellPartSource::Original, ledger)?;
                         }
                     }
                 }
@@ -226,7 +279,7 @@ impl<'a> CellCorrespondence<'a> {
         part: usize,
         event: usize,
         presentation: Range,
-        owner: Owner,
+        owner: CellPartSource,
         ledger: &mut Ledger,
     ) -> Result<()> {
         account::work(ledger, 1)?;
@@ -261,10 +314,20 @@ impl<'a> CellCorrespondence<'a> {
         });
         Ok(())
     }
-    pub(crate) fn visit_slot_pieces(
+    pub(crate) fn binding(&self) -> &'a CellBinding {
+        self.binding
+    }
+    pub(crate) fn group(&self) -> &'a FixedGroup {
+        self.group
+    }
+
+    /// Visit the already authenticated correspondence in selected event order.
+    /// Visible emissions take precedence over earlier lexical-zero receipts;
+    /// removed/retained-zero parts keep their actual selected cuts.
+    pub(crate) fn visit_sources(
         &self,
         ledger: &mut Ledger,
-        mut emit: impl FnMut(SpacingSlotPieceData, &mut Ledger) -> Result<()>,
+        mut emit: impl FnMut(CellSourceVisit<'a>, &mut Ledger) -> Result<()>,
     ) -> Result<()> {
         let row = &self.presentation.units[self.unit];
         let output = self
@@ -295,7 +358,7 @@ impl<'a> CellCorrespondence<'a> {
             match map.events()[event] {
                 RelationEvent::Text { atom } => {
                     if let Some(part) = map.emission_for_atom(atom).selection_part {
-                        self.emit_part(part, index, ledger, &mut emit)?;
+                        self.emit_part_source(part, index, ledger, &mut emit)?;
                     }
                 }
                 RelationEvent::Removal {
@@ -305,13 +368,13 @@ impl<'a> CellCorrespondence<'a> {
                 | RelationEvent::GeneratedSuppression {
                     selection_part: part,
                     ..
-                } => self.emit_part(part, index, ledger, &mut emit)?,
+                } => self.emit_part_source(part, index, ledger, &mut emit)?,
                 RelationEvent::PhaseIDeleted { lexical, .. } => {
                     let mut cursor =
                         lexical.occurrence_cursor(&self.prepared.analyzed.processed.lexical);
                     while let Some((record, _)) = cursor.next(|| account::work(ledger, 1))? {
                         if let Some(part) = output.plan.lexical_parts[record] {
-                            self.emit_part(part, index, ledger, &mut emit)?;
+                            self.emit_part_source(part, index, ledger, &mut emit)?;
                         }
                     }
                 }
@@ -324,20 +387,20 @@ impl<'a> CellCorrespondence<'a> {
                             account::work(ledger, 1)?;
                             represented |= occurrence.is_some_and(|value| {
                                 value.owner
-                                    == Owner::Generated(GeneratedSeparatorOwner::Control(control))
+                                    == CellPartSource::Generated(GeneratedSeparatorOwner::Control(
+                                        control,
+                                    ))
                             });
                         }
                         if !represented {
                             emit(
-                                SpacingSlotPieceData {
-                                    owner: SpacingPiece::Control {
-                                        occurrence: control,
-                                    },
+                                CellSourceVisit::Control(CellControlOccurrence {
+                                    control,
                                     presentation: PresentationRange {
                                         start: cut,
                                         end: cut,
                                     },
-                                },
+                                }),
                                 ledger,
                             )?;
                         }
@@ -348,12 +411,12 @@ impl<'a> CellCorrespondence<'a> {
         }
         Ok(())
     }
-    fn emit_part(
+    fn emit_part_source(
         &self,
         part: usize,
         event: usize,
         ledger: &mut Ledger,
-        emit: &mut impl FnMut(SpacingSlotPieceData, &mut Ledger) -> Result<()>,
+        emit: &mut impl FnMut(CellSourceVisit<'a>, &mut Ledger) -> Result<()>,
     ) -> Result<()> {
         account::work(ledger, 1)?;
         if !self.group.parts.contains(&part) {
@@ -364,57 +427,86 @@ impl<'a> CellCorrespondence<'a> {
         if value.event != event {
             return Ok(());
         }
-        let range = PresentationRange {
-            start: value.presentation.start,
-            end: value.presentation.end,
-        };
-        match value.owner {
-            Owner::Original => {
-                let output = self
-                    .prepared
-                    .analyzed
-                    .combination
-                    .as_deref()
-                    .ok_or_else(|| self.invalid())?;
-                visit_original_part(
-                    self.prepared,
-                    &output.plan.parts[part],
-                    ledger,
-                    |association, ledger| {
-                        let source = association.source.ok_or_else(|| self.invalid())?;
+        let output = self
+            .prepared
+            .analyzed
+            .combination
+            .as_deref()
+            .ok_or_else(|| self.invalid())?;
+        emit(
+            CellSourceVisit::Part(CellPartOccurrence {
+                index: part,
+                part: &output.plan.parts[part],
+                event: value.event,
+                presentation: PresentationRange {
+                    start: value.presentation.start,
+                    end: value.presentation.end,
+                },
+                source: value.owner,
+            }),
+            ledger,
+        )
+    }
+
+    /// Spacing is a consumer of the same source-kind-aware correspondence used
+    /// by other projections; its DTO never becomes another source mapping.
+    pub(crate) fn visit_slot_pieces(
+        &self,
+        ledger: &mut Ledger,
+        mut emit: impl FnMut(SpacingSlotPieceData, &mut Ledger) -> Result<()>,
+    ) -> Result<()> {
+        self.visit_sources(ledger, |source, ledger| match source {
+            CellSourceVisit::Part(part) => {
+                let range = part.presentation();
+                match part.source() {
+                    CellPartSource::Original => visit_original_part(
+                        self.prepared,
+                        part.part(),
+                        ledger,
+                        |association, ledger| {
+                            let source = association.source.ok_or_else(|| self.invalid())?;
+                            emit(
+                                SpacingSlotPieceData {
+                                    owner: SpacingPiece::Source {
+                                        origin: source.origin,
+                                        local: source.local,
+                                        aggregate: source.aggregate,
+                                    },
+                                    presentation: range,
+                                },
+                                ledger,
+                            )
+                        },
+                    ),
+                    CellPartSource::Generated(owner) => {
+                        let owner = match owner {
+                            GeneratedSeparatorOwner::Control(occurrence) => {
+                                SpacingPiece::Control { occurrence }
+                            }
+                            GeneratedSeparatorOwner::Virtual(occurrence) => {
+                                SpacingPiece::VirtualSeparator { occurrence }
+                            }
+                        };
                         emit(
                             SpacingSlotPieceData {
-                                owner: SpacingPiece::Source {
-                                    origin: source.origin,
-                                    local: source.local,
-                                    aggregate: source.aggregate,
-                                },
+                                owner,
                                 presentation: range,
                             },
                             ledger,
                         )
-                    },
-                )?;
-            }
-            Owner::Generated(owner) => {
-                let owner = match owner {
-                    GeneratedSeparatorOwner::Control(occurrence) => {
-                        SpacingPiece::Control { occurrence }
                     }
-                    GeneratedSeparatorOwner::Virtual(occurrence) => {
-                        SpacingPiece::VirtualSeparator { occurrence }
-                    }
-                };
-                emit(
-                    SpacingSlotPieceData {
-                        owner,
-                        presentation: range,
-                    },
-                    ledger,
-                )?;
+                }
             }
-        }
-        Ok(())
+            CellSourceVisit::Control(control) => emit(
+                SpacingSlotPieceData {
+                    owner: SpacingPiece::Control {
+                        occurrence: control.control(),
+                    },
+                    presentation: control.presentation(),
+                },
+                ledger,
+            ),
+        })
     }
     pub(crate) fn drop(self, ledger: &mut Ledger) -> Result<()> {
         account::drop_vec(ledger, self.occurrences)

@@ -261,16 +261,65 @@ fn interaction(
         piece.origin().view().capture_position(),
         Some(processed.captured_origin(0).unwrap())
     );
-    let range_error = layout
+    let range = layout
         .source_range_fragments(piece.origin(), Range::new(0, 1))
-        .unwrap_err();
-    assert_eq!(range_error.code, ErrorCode::UnsupportedFeature);
-    assert!(matches!(
-        range_error.detail(),
-        Some(ErrorDetail::SourceRangeFragments {
-            reason: SourceRangeFragmentError::UnsupportedCell { line: 0, cell: 0 }
-        })
-    ));
+        .unwrap();
+    assert_eq!(range.origin(), piece.origin());
+    assert_eq!(range.local_range(), Range::new(0, 1));
+    let units = range.units().collect::<Vec<_>>();
+    let [unit] = units.as_slice() else {
+        panic!("one source unit, including a removed-only SPACE");
+    };
+    let cell_unit = unit.cell_unit().unwrap();
+    assert_eq!((cell_unit.line_index(), cell_unit.cell_index()), (0, 0));
+    if empty {
+        assert!(matches!(
+            cell_unit.kind(),
+            SourceRangeCellUnitKind::Removed { .. }
+        ));
+        assert_eq!(unit.pieces().len(), 0);
+        assert_eq!(
+            (
+                unit.presentation_range().start(),
+                unit.presentation_range().end()
+            ),
+            (0, 0)
+        );
+    } else {
+        assert_eq!(
+            cell_unit.kind(),
+            SourceRangeCellUnitKind::Semantic { ordinal: 0 }
+        );
+        let geometry = unit.pieces().collect::<Vec<_>>();
+        let [SourceRangeGeometry::CellFont(font)] = geometry.as_slice() else {
+            panic!("A uses its actual unrotated horizontal font");
+        };
+        assert!(font.cell_unit().same_unit(&cell_unit));
+        assert_eq!(font.rect(), square); // hhea8/2, raw A10, E10: the font box fits exactly.
+        assert_eq!(font.inner_advance_edges(), (0.0, 10.0));
+        assert_eq!((font.font_ascent(), font.font_descent()), (8.0, 2.0));
+        assert_eq!(font.effective_instance().font_size(), 10.0);
+        assert_eq!(
+            font.metric_frame().origin(),
+            Point::new(square.origin.x, square.origin.y + 8.0)
+        );
+        assert_eq!(font.metric_frame().x_scale(), 1.0);
+    }
+    for intersections in [
+        unit.selected_intersections().collect::<Vec<_>>(),
+        unit.expanded_intersections().collect::<Vec<_>>(),
+    ] {
+        let [actual] = intersections.as_slice() else {
+            panic!("one genuine original contribution");
+        };
+        assert_eq!(actual.origin(), piece.origin().clone());
+        assert_eq!(actual.local_range(), Range::new(0, 1));
+        assert_eq!(actual.aggregate_range(), Range::new(0, 1));
+        assert_eq!(
+            actual.origin().view().capture_position(),
+            Some(processed.captured_origin(0).unwrap())
+        );
+    }
 }
 
 fn cell_case(
@@ -664,3 +713,6 @@ fn rtl_sideways_cells_keep_their_upright_l_role_and_explicit_horizontal_inner_di
         );
     }
 }
+
+#[path = "combined_cell_range_frames.rs"]
+mod range_frames;

@@ -182,16 +182,52 @@ fn allocated_character_gaps_keep_provider_empty_cell_square_and_authentic_endpoi
     // square12..22 with flow end25, then B25..35. The square stays E10.
     tracked_cell_line(&prepared, &line, &processed, &font, 35.0, 12.0, 25.0);
     let layout = placed_vertical_cell(&prepared, line.clone());
-    let error = layout
+    let range = layout
         .source_range_fragments(&origins[1], Range::new(1, 2))
-        .unwrap_err();
-    assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+        .unwrap();
+    assert_eq!(range.origin(), &origins[1]);
+    assert_eq!(range.local_range(), Range::new(1, 2));
+    let units = range.units().collect::<Vec<_>>();
+    let [unit] = units.as_slice() else {
+        panic!("one genuine removed SPACE unit");
+    };
+    let cell_unit = unit.cell_unit().unwrap();
+    assert_eq!((cell_unit.line_index(), cell_unit.cell_index()), (0, 0));
     assert!(matches!(
-        error.detail(),
-        Some(ErrorDetail::SourceRangeFragments {
-            reason: SourceRangeFragmentError::UnsupportedCell { line: 0, cell: 0 },
-        })
+        cell_unit.kind(),
+        SourceRangeCellUnitKind::Removed { .. }
     ));
+    assert_eq!(
+        cell_unit.source_cell().scope(),
+        processed.captured_scope(1).unwrap()
+    );
+    assert_eq!(
+        (
+            unit.presentation_range().start(),
+            unit.presentation_range().end()
+        ),
+        (1, 1)
+    );
+    for intersections in [
+        unit.selected_intersections().collect::<Vec<_>>(),
+        unit.expanded_intersections().collect::<Vec<_>>(),
+    ] {
+        let [piece] = intersections.as_slice() else {
+            panic!("one actual SPACE original");
+        };
+        assert_eq!(piece.origin(), origins[1]);
+        assert_eq!(piece.local_range(), Range::new(1, 2));
+        assert_eq!(piece.aggregate_range(), Range::new(1, 2));
+        assert_eq!(
+            piece.origin().view().capture_position(),
+            Some(processed.captured_origin(1).unwrap())
+        );
+    }
+    assert_eq!(unit.pieces().len(), 0); // E10 outer square is not removed-source geometry.
+    let again = layout
+        .source_range_fragments(&origins[1], Range::new(1, 2))
+        .unwrap();
+    assert!(unit.same_unit(&again.units().next().unwrap()));
     drop(system);
     let replay_amounts = selected
         .spacing_slots()

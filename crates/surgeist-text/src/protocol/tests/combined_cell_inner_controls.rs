@@ -602,16 +602,49 @@ fn qualify(kind: InputKind) {
                 origin.view().capture_position(),
                 Some(processed.captured_origin(0).unwrap())
             );
-            let error = layout
+            let range = layout
                 .source_range_fragments(&origin, Range::new(0, 1))
-                .unwrap_err();
-            assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+                .unwrap();
+            assert_eq!(range.origin(), &origin);
+            assert_eq!(range.local_range(), Range::new(0, 1));
+            let units = range.units().collect::<Vec<_>>();
+            let [unit] = units.as_slice() else {
+                panic!("A is one semantic EGC");
+            };
+            let cell_unit = unit.cell_unit().unwrap();
+            assert_eq!((cell_unit.line_index(), cell_unit.cell_index()), (0, 0));
             assert_eq!(
-                error.detail(),
-                Some(&ErrorDetail::SourceRangeFragments {
-                    reason: SourceRangeFragmentError::UnsupportedCell { line: 0, cell: 0 }
-                })
+                cell_unit.kind(),
+                SourceRangeCellUnitKind::Semantic { ordinal: 0 }
             );
+            assert_eq!(
+                cell_unit.source_cell().scope(),
+                processed.captured_scope(0).unwrap()
+            );
+            for intersections in [
+                unit.selected_intersections().collect::<Vec<_>>(),
+                unit.expanded_intersections().collect::<Vec<_>>(),
+            ] {
+                let [piece] = intersections.as_slice() else {
+                    panic!("A keeps its original contribution");
+                };
+                assert_eq!(piece.origin(), origin);
+                assert_eq!(piece.local_range(), Range::new(0, 1));
+                assert_eq!(piece.aggregate_range(), Range::new(0, 1));
+            }
+            let pieces = unit.pieces().collect::<Vec<_>>();
+            let [SourceRangeGeometry::CellFont(piece)] = pieces.as_slice() else {
+                panic!("A has genuine horizontal font geometry");
+            };
+            assert!(piece.cell_unit().same_unit(&cell_unit));
+            assert_eq!(piece.inner_advance_edges(), (0.0, 10.0));
+            assert_eq!((piece.font_ascent(), piece.font_descent()), (8.0, 2.0));
+            assert_eq!(piece.effective_instance().face().bytes(), bytes.as_slice());
+            close(piece.metric_frame().x_scale(), 1.0 / 3.0);
+            close(piece.rect().origin.x, square.origin.x);
+            assert_eq!(piece.rect().origin.y, square.origin.y);
+            close(piece.rect().size.width, 10.0 / 3.0);
+            assert_eq!(piece.rect().size.height, 10.0);
             #[cfg(feature = "text-accessibility")]
             {
                 use accesskit::NodeId;

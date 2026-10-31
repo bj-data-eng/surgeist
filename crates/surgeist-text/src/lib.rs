@@ -192,7 +192,10 @@ mod mixed_test_fonts;
 
 mod range_fragments;
 pub use range_fragments::{
-    SourceRangeFragmentError, SourceRangeFragments, SourceRangePiece, SourceRangeUnit,
+    SourceRangeCellFontPiece, SourceRangeCellLayoutFrame, SourceRangeCellMetricFrame,
+    SourceRangeCellTabPiece, SourceRangeCellUnit, SourceRangeCellUnitKind,
+    SourceRangeFragmentError, SourceRangeFragments, SourceRangeGeometry, SourceRangePiece,
+    SourceRangeUnit,
 };
 
 pub use hyphenation::{

@@ -35,7 +35,7 @@ pub(super) fn abc_premises() {
 /// Actual GSUB type4 fi ligation under the requested real OpenType feature.
 /// The existing builder's ccmp tag is replaced in its feature record, not used
 /// as evidence for optional or required feature semantics.
-pub(super) fn ligature_font(tag: [u8; 4]) -> Vec<u8> {
+pub(in crate::protocol::tests) fn ligature_font(tag: [u8; 4]) -> Vec<u8> {
     assert!([*b"liga", *b"clig", *b"rlig"].contains(&tag));
     let base = crate::shaping_test_fonts::range_ligature_ahem(
         &[35, 36],

@@ -1,4 +1,4 @@
-//! Range capability refusal follows the requested authentic Cell occurrence,
+//! Range geometry follows the requested authentic Cell occurrence,
 //! while ordinary source in the very same placed layout stays observable.
 
 use super::*;
@@ -48,6 +48,9 @@ fn ordinary(layout: &Layout, origin: &PreparedOrigin, fixture: &Fixture) {
             selected.push((intersection.local_range(), intersection.aggregate_range()));
         }
         for piece in unit.pieces() {
+            let crate::SourceRangeGeometry::Line(piece) = piece else {
+                panic!("ordinary Range fixture must retain Line geometry");
+            };
             let instance = piece.effective_instance();
             assert!(instance.face().is_same_face(&fixture.parent.face()));
             assert_eq!(instance.font_size(), 10.0);
@@ -60,7 +63,7 @@ fn ordinary(layout: &Layout, origin: &PreparedOrigin, fixture: &Fixture) {
 }
 
 #[test]
-fn cell_range_refusal_does_not_disable_ordinary_source_in_the_same_layout() {
+fn cell_and_ordinary_range_geometry_keep_distinct_frames_in_the_same_layout() {
     // This genuine fixture emits one leading B and one trailing B: BAB,
     // inner1..2. It creates a separate real origin for each source scalar,
     // with genuine Continuous connections and Inline enter/exit around A only.
@@ -126,23 +129,51 @@ fn cell_range_refusal_does_not_disable_ordinary_source_in_the_same_layout() {
     let layout = placed_vertical_cell(&prepared, line);
     assert_eq!(layout.source(), fixture.processed.source());
     ordinary(&layout, &before, &fixture);
-    let error = layout
+    let range = layout
         .source_range_fragments(&inside, Range::new(1, 2))
-        .expect_err("the actual A Cell occurrence has an explicit unsupported Range boundary");
-    assert_eq!(error.code, ErrorCode::UnsupportedFeature);
+        .unwrap();
+    assert_eq!(range.origin(), &inside);
+    assert_eq!(range.local_range(), Range::new(1, 2));
+    let units = range.units().collect::<Vec<_>>();
+    let [unit] = units.as_slice() else {
+        panic!("one actual A EGC alongside ordinary B text");
+    };
+    let cell_unit = unit.cell_unit().unwrap();
+    assert_eq!((cell_unit.line_index(), cell_unit.cell_index()), (0, 0));
     assert_eq!(
-        error.detail(),
-        Some(&ErrorDetail::SourceRangeFragments {
-            reason: SourceRangeFragmentError::UnsupportedCell { line: 0, cell: 0 },
-        })
+        cell_unit.kind(),
+        SourceRangeCellUnitKind::Semantic { ordinal: 0 }
     );
+    assert_eq!(
+        cell_unit.source_cell().scope(),
+        fixture.processed.captured_scope(1).unwrap()
+    );
+    for intersections in [
+        unit.selected_intersections().collect::<Vec<_>>(),
+        unit.expanded_intersections().collect::<Vec<_>>(),
+    ] {
+        let [piece] = intersections.as_slice() else {
+            panic!("one source-owned A contribution");
+        };
+        assert_eq!(piece.origin(), inside);
+        assert_eq!(piece.local_range(), Range::new(1, 2));
+        assert_eq!(piece.aggregate_range(), Range::new(1, 2));
+    }
+    let pieces = unit.pieces().collect::<Vec<_>>();
+    let [SourceRangeGeometry::CellFont(piece)] = pieces.as_slice() else {
+        panic!("A retains its own Cell font frame");
+    };
+    assert!(piece.cell_unit().same_unit(&cell_unit));
     assert!(
-        matches!(
-            error.detail(),
-            Some(ErrorDetail::SourceRangeFragments { .. })
-        ),
-        "Cell refusal belongs to the requested Range operation: {error:?}"
+        piece
+            .effective_instance()
+            .face()
+            .is_same_face(&fixture.body.face())
     );
+    assert_eq!(piece.effective_instance().font_size(), 10.0);
+    assert_eq!((piece.font_ascent(), piece.font_descent()), (8.0, 2.0));
+    assert_eq!(piece.inner_advance_edges(), (0.0, 10.0));
+    assert_eq!(piece.rect(), Rect::new(95.0, 30.0, 10.0, 10.0));
     ordinary(&layout, &after, &fixture);
     ordinary(&layout, &before, &fixture);
 }
