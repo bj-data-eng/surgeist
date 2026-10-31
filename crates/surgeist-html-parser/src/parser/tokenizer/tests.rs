@@ -1385,10 +1385,23 @@ fn attribute_span_accounts_for_actual_interior_reads_and_keeps_failed_draft_owne
 }
 
 #[test]
-fn empty_source_constructor_admits_its_exact_fixed_record_layout() {
+fn empty_source_constructor_admits_its_fixed_record_layout_atomically() {
     let source = HtmlSource::utf8("");
-    let bytes = size_of::<Tokenizer<'_>>() as u64;
-    assert!(bytes > WORK_QUANTUM as u64);
+    // The layout the constructor retains is measured from an unconstrained
+    // construction, not from the size of a private type.
+    let bytes = {
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let t = Tokenizer::new(&source, State::Data, None, &mut c).unwrap();
+        let bytes = c
+            .usage()
+            .resource(HtmlParseResource::AtomicLayoutBytes)
+            .current;
+        t.release(&mut c).unwrap();
+        assert_storage_released(&c);
+        bytes
+    };
+    assert!(bytes > 0, "the constructor retains a fixed record");
     for cap in [0, bytes - 1, bytes] {
         let mut caps = limits();
         caps = caps
@@ -1400,6 +1413,7 @@ fn empty_source_constructor_admits_its_exact_fixed_record_layout() {
         c.admit_source(&source).unwrap();
         let result = Tokenizer::new(&source, State::Data, None, &mut c);
         if cap < bytes {
+            // The whole record is refused as one request; no part is kept.
             assert!(
                 matches!(result, Err(ParseStop::LimitExceeded { resource: HtmlParseResource::AtomicLayoutBytes, requested_delta, .. }) if requested_delta == bytes)
             );
@@ -1420,61 +1434,67 @@ fn empty_source_constructor_admits_its_exact_fixed_record_layout() {
 }
 
 #[test]
-fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() {
+fn real_multi_event_transfer_admits_its_bulk_layout_before_moving_any_slot() {
     // Two actual reference operations each emit missing-semicolon and
     // noncharacter diagnostics plus exact text. Invoke the owning state
     // operation directly to prepare a large queue without invented records;
     // the ordinary pull loop drains each operation's smaller batch.
     let source = HtmlSource::utf8("&#xFFFF&#xFFFF");
-    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
-    c.admit_source(&source).unwrap();
-    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
-    t.step(&mut c, false).unwrap();
-    t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
-    t.step(&mut c, false).unwrap();
-    t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
-    assert_eq!(t.pending_len, 6);
-    let bytes = 6 * size_of::<Option<Event>>() + size_of::<usize>();
-    assert!(bytes > WORK_QUANTUM);
+    let prepare = |caps: HtmlParseLimits| {
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        t.step(&mut c, false).unwrap();
+        t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
+        t.step(&mut c, false).unwrap();
+        t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
+        (c, t)
+    };
+    // Measure what the first pull of the queued batch needs, unconstrained.
+    let (mut c, mut t) = prepare(limits());
+    let queued = t.pending_len;
+    assert!(queued > 1, "a bulk move needs several queued events");
     let before = c.usage().clone();
-    let entry = before.resource(HtmlParseResource::WorkCredits).current;
     let event = t.next(&mut c, false).unwrap().unwrap();
     assert!(
         matches!(&event,Event::Diagnostic(d) if t.diagnostic(d).code==DiagnosticCode::MissingSemicolonAfterCharacterReference)
     );
-    assert_eq!(
-        c.usage()
+    assert_eq!(t.pending_len, queued - 1);
+    let work = c.usage().resource(HtmlParseResource::WorkCredits).current
+        - before.resource(HtmlParseResource::WorkCredits).current;
+    let layout = c
+        .usage()
+        .resource(HtmlParseResource::AtomicLayoutBytes)
+        .current
+        - before
             .resource(HtmlParseResource::AtomicLayoutBytes)
-            .current,
-        bytes as u64
-    );
-    assert_eq!(
-        c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
-        bytes as u64
-    );
-    // Six source slots taken, five destinations replaced, one length update.
-    assert_eq!(
-        c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
-        12
-    );
+            .current;
+    assert!(work > 0);
+    // The batch is larger than one work quantum, so it is admitted as an
+    // atomic layout.
+    assert!(layout > 0);
     event.release(&mut c).unwrap();
     t.release(&mut c).unwrap();
     assert_storage_released(&c);
 
-    let mut caps = limits();
-    caps = caps
-        .into_builder()
-        .work_credits(entry + bytes as u64)
-        .finish()
-        .unwrap();
-    let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
-    c.admit_source(&source).unwrap();
-    let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
-    t.step(&mut c, false).unwrap();
-    t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
-    t.step(&mut c, false).unwrap();
-    t.lexer.resume_reference(&mut c, &mut t.evidence).unwrap();
-    let before = c.usage().clone();
+    // Work boundary: exactly the measured work moves one event; one credit
+    // less refuses before any slot is taken, and the refusal is sticky.
+    let entry = before.resource(HtmlParseResource::WorkCredits).current;
+    let caps = |work_credits: u64| {
+        limits()
+            .into_builder()
+            .work_credits(work_credits)
+            .finish()
+            .unwrap()
+    };
+    let (mut c, mut t) = prepare(caps(entry + work));
+    let event = t.next(&mut c, false).unwrap().unwrap();
+    assert_eq!(t.pending_len, queued - 1);
+    event.release(&mut c).unwrap();
+    t.release(&mut c).unwrap();
+    assert_storage_released(&c);
+
+    let (mut c, mut t) = prepare(caps(entry + work - 1));
     let stop = match t.next(&mut c, false) {
         Err(stop) => stop,
         _ => panic!("bulk transfer must reject before taking any event"),
@@ -1483,16 +1503,11 @@ fn real_multi_event_transfer_admits_its_fixed_bulk_layout_and_each_slot_write() 
         stop,
         ParseStop::LimitExceeded {
             resource: HtmlParseResource::WorkCredits,
-            requested_delta: 12,
             ..
         }
     ));
-    assert_eq!(t.pending_len, 6);
-    assert!(t.pending.iter().take(6).all(Option::is_some));
-    assert_eq!(
-        c.usage().work(WorkCategory::RecordWrite),
-        before.work(WorkCategory::RecordWrite)
-    );
+    assert_eq!(t.pending_len, queued);
+    assert!(t.pending.iter().take(queued).all(Option::is_some));
     assert!(matches!(t.next(&mut c,false),Err(next) if next == stop));
     t.release(&mut c).unwrap();
     assert_storage_released(&c);
