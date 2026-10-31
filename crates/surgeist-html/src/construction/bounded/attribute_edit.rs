@@ -1974,6 +1974,49 @@ mod tests {
         retire(retirement);
     }
 
+    /// Attribute-edit usage counts local name, prefix, namespace URI and value.
+    ///
+    /// Expected totals are counted by hand from the UTF-16 unit rule for
+    /// qualified names: the root element name `root` is 4 units, and each
+    /// attribute adds its URI, prefix, local name and value lengths.
+    #[test]
+    fn qualified_attribute_edits_count_uri_prefix_local_name_and_value_units() {
+        let qualified = |uri: &str, prefix: &str, local: &str, value: &str| {
+            Attribute::new(
+                QualifiedName::new(Namespace::from_uri(uri), Some(prefix.into()), local),
+                value,
+            )
+        };
+        // URI 5 + prefix 1 + local 1 + value 3 = 10.
+        let (storage, target) = make_storage(vec![qualified("urn:a", "p", "k", "val")]);
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+        slot(edit.reserve(1).unwrap());
+        let storage = finish(edit);
+        assert_eq!(storage.usage().utf16_units(), 4 + 10);
+        let target = storage.node_at(0).unwrap().handle();
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+        // URI 6 + prefix 2 + local 2 + value 1 = 11 replaces 10.
+        let mut replacement = Some(qualified("urn:bb", "pq", "kk", "v"));
+        assert!(slot(edit.replace(0, &mut replacement).unwrap()).is_some());
+        assert_eq!(edit.storage_view().usage().utf16_units(), 4 + 11);
+        let storage = finish(edit);
+        let target = storage.node_at(0).unwrap().handle();
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+        // URI 1 + prefix 1 + local 1 + empty value = 3 appended.
+        let mut incoming = vec![qualified("u", "x", "n", "")];
+        slot(edit.append(&mut incoming).unwrap());
+        assert_eq!(edit.storage_view().usage().attributes(), 2);
+        assert_eq!(edit.storage_view().usage().utf16_units(), 4 + 11 + 3);
+        let storage = finish(edit);
+        let target = storage.node_at(0).unwrap().handle();
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+        let popped = slot(edit.pop().unwrap()).unwrap();
+        assert_eq!(popped.name().local_name().to_utf8().unwrap(), "n");
+        assert_eq!(edit.storage_view().usage().attributes(), 1);
+        assert_eq!(edit.storage_view().usage().utf16_units(), 4 + 11);
+        finish(edit);
+    }
+
     #[test]
     fn replacement_swap_and_pop_keep_uniqueness_and_update_real_usage() {
         let (storage, target) = make_storage(vec![attribute("a", "one"), attribute("b", "two")]);
