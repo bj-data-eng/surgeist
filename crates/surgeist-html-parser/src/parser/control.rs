@@ -3160,6 +3160,54 @@ mod tests {
         );
     }
     #[test]
+    fn exact_work_budget_succeeds_and_a_one_short_charge_is_refused_unchanged_and_sticky() {
+        let mut limits = limits();
+        limits = limits.into_builder().work_credits(10).finish().unwrap();
+        for short in [false, true] {
+            let mut control = ParseControl::new(limits, HtmlParseCancellation::new());
+            control.charge(WorkCategory::StateStep, 4).unwrap();
+            let before = control.usage().clone();
+            let request = 6 + u64::from(short);
+            let result = control.charge(WorkCategory::RecordWrite, request);
+            if short {
+                let first = ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::WorkCredits,
+                    limit: 10,
+                    current: 4,
+                    requested_delta: 7,
+                };
+                // The refused charge applies nothing to any counter.
+                assert_eq!(result, Err(first));
+                assert_eq!(control.usage(), &before);
+                assert_eq!(control.stop(), Some(first));
+                assert_eq!(control.first_stop_usage(), Some(&before));
+                // The first stop is sticky: a request that would now fit, and
+                // a different category, report the same stop and change nothing.
+                assert_eq!(control.charge(WorkCategory::StateStep, 1), Err(first));
+                assert_eq!(control.charge(WorkCategory::InputUnitRead, 7), Err(first));
+                assert_eq!(control.usage(), &before);
+                assert_eq!(control.first_stop_usage(), Some(&before));
+            } else {
+                // Spending exactly the cap succeeds and records every credit.
+                assert_eq!(result, Ok(()));
+                let usage = control.usage();
+                assert_eq!(usage.resource(HtmlParseResource::WorkCredits).current, 10);
+                assert_eq!(usage.work(WorkCategory::RecordWrite), 6);
+                assert_eq!(control.stop(), None);
+                // The next credit is the first one over the cap.
+                assert_eq!(
+                    control.charge(WorkCategory::StateStep, 1),
+                    Err(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        limit: 10,
+                        current: 10,
+                        requested_delta: 1,
+                    })
+                );
+            }
+        }
+    }
+    #[test]
     fn arithmetic_overflow_is_terminal_and_atomic() {
         let mut limits = limits();
         limits = limits
