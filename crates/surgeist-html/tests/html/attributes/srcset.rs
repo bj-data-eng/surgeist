@@ -824,9 +824,10 @@ fn present_sizes_are_never_certified_conforming_while_their_grammar_is_unchecked
             );
         }
     }
-    // Without sizes the same contexts remain certifiable by their own rules.
+    // Without sizes a context remains certifiable by its own rules: an img
+    // with no srcset must have src.
     let context = HtmlSrcsetContext::Img {
-        attributes: attributes(&[("src", "a"), ("srcset", "a 1x")]),
+        attributes: attributes(&[("src", "a")]),
     };
     assert_eq!(
         interpreter
