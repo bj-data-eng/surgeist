@@ -93,6 +93,7 @@ fn out_of_flow_capture(
     text: &str,
     mode: TextCombineUpright,
     affinity: Affinity,
+    native_reference: Option<(ScopeFontReference, f64)>,
 ) -> Arc<ProcessedSource> {
     assert_eq!(text.encode_utf16().count(), 2);
     let mut input = super::super::input(text, WhiteSpace::Preserve);
@@ -102,11 +103,18 @@ fn out_of_flow_capture(
         used_direction,
         writing_axis,
         horizontal_inner_direction,
+        font_reference,
         ..
     } = &mut input.scopes[0]
     else {
         unreachable!("genuine root Block");
     };
+    if let Some((reference, tracking)) = native_reference {
+        *font_reference = Some(reference);
+        base_style.letter_spacing = tracking;
+        input.scope_alignment_limits =
+            Some(ScopeAlignmentLimits::new(4096, 4096, 1_000_000, 16_777_216));
+    }
     *topology = SourceProcessingTopology::Complete;
     *used_direction = ParagraphBaseDirection::LeftToRight;
     *writing_axis = Some(SourceWritingAxis::Vertical);
@@ -162,7 +170,7 @@ fn out_of_flow_occurrence_fences_combination_without_becoming_text_or_inline_onl
     // never one A[OOF]B Cell and never an invented provider/object scalar.
     for affinity in [Affinity::Before, Affinity::After] {
         for mode in [TextCombineUpright::None, TextCombineUpright::All] {
-            let processed = out_of_flow_capture("AB", mode, affinity);
+            let processed = out_of_flow_capture("AB", mode, affinity, None);
             let domain = AnalyzedDomain::from_processed_paragraph(
                 processed.paragraphs().next().unwrap(),
                 AnalysisTypography::HorizontalComposition,
@@ -285,7 +293,7 @@ fn an_egc_straddling_out_of_flow_box_is_not_split_into_partially_combined_units(
     // an artificial grapheme cut or select A/mark as two separate Cells.
     for affinity in [Affinity::Before, Affinity::After] {
         for mode in [TextCombineUpright::None, TextCombineUpright::All] {
-            let processed = out_of_flow_capture("A\u{301}", mode, affinity);
+            let processed = out_of_flow_capture("A\u{301}", mode, affinity, None);
             let domain = AnalyzedDomain::from_processed_paragraph(
                 processed.paragraphs().next().unwrap(),
                 AnalysisTypography::HorizontalComposition,
@@ -322,3 +330,6 @@ fn an_egc_straddling_out_of_flow_box_is_not_split_into_partially_combined_units(
         }
     }
 }
+
+#[path = "domain_cell_box_fences_native.rs"]
+mod native;
