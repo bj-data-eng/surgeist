@@ -110,8 +110,8 @@ state only, with no live target or handle. The contract is implemented by
 ## Host observations and consumer inputs
 
 `WindowSnapshot::environment` retains a `HostEnvironment` with the window's
-observed geometry. A native resize, scale or move transition commits its captured
-environment before delivering the corresponding callback. `EnvironmentChanged`
+observed geometry. A native resize, scale or move transition commits its basic
+environment using the event's metrics before delivering the corresponding callback. `EnvironmentChanged`
 reports changes that do not need another event kind. The native adapter observes
 the system theme independently of an application `SetTheme` request, so an
 application override does not become the baseline user preference.
@@ -138,7 +138,7 @@ An unavailable observation is distinct from a known absent device or a known
 `no-preference` value. The winit adapter supplies monitor and client geometry,
 display scale and the system theme where its platform API supports them. It does
 not infer primary pointer capabilities from the most recent input event or guess
-navigation, reduced-data, work-area or output-blending facts. Those remain
+navigation, reduced-data or output-blending facts. Those remain
 unavailable until a host supplies them. CSS matching, document activity,
 origin preference overlays and coherent downstream publication remain with
 their consuming owners.
@@ -156,6 +156,32 @@ callbacks, including accessibility changes with an unchanged system color
 scheme. Application theme and origin overrides remain separate. The adapter
 installs no preference notification observer or wakeup, so an external setting
 change does not promise to wake an otherwise idle loop.
+
+On macOS, creation and safe idle capture also observe the current monitor's
+available work area and WindowServer color-depth estimate. A nonzero winit native
+monitor ID must match exactly one checked `NSNumber` under the SDK's
+`NSScreenNumber` key. Missing, invalid, unmatched or ambiguous identity leaves
+these facts unavailable; the adapter never selects a screen by its name, frame,
+main-screen status or enumeration order.
+
+The work area uses `visibleFrame` relative to that screen's own `frame`. It
+converts the Cocoa bottom-up offset to the captured screen's right/down axes,
+scaled by screen backing scale divided by the committed metrics scale. No
+primary-screen height or additional safe-area subtraction participates.
+The color estimate multiplies positive checked sample bits by color-component
+count, excluding alpha and storage padding. Recognized grayscale retains its
+total estimate without inventing a positive RGB media-feature bound; unknown
+color-space semantics retain the public fallback. This estimate does not certify
+renderer formats, HDR, or the complete media-device capability environment.
+
+Raw native event captures retain the existing basic geometry but defer these
+new monitor facts. At `about_to_wait`, after queued metric transitions have
+committed, the adapter samples preferences once and captures each live window's
+complete native environment. One changed callback per window carries combined
+preference/output changes; equal samples are suppressed. Input, navigation and
+presentation facts supplied independently remain intact. Refresh returns work
+to the existing callback pump and adds no notification subscription, wakeup or
+latency guarantee. See [the monitor observation owner](../src/native_monitor.rs).
 
 ## Native geometry admission
 

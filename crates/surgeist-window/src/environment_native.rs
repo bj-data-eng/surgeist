@@ -11,9 +11,18 @@ pub(crate) enum CaptureProfile {
     BrowserCanvas,
 }
 
+/// Raw events retain the existing base capture; output enrichment needs a safe
+/// committed snapshot at creation or idle.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CaptureScope {
+    Basic,
+    Enriched,
+}
+
 /// Captures the native content host: logical units are CSS pixels at page zoom
 /// one; there is no retractable UA chrome in this adapter. This does not infer
-/// primary input, color depth, work area, blending or browsing presentation.
+/// primary input, blending or browsing presentation. Monitor work area and
+/// WindowServer color estimates are enriched only at creation and safe idle.
 /// The caller supplies the complete native baseline, including the independent
 /// system scheme. Event metrics supply scale/size even if getters lag.
 pub(crate) fn observe_environment(
@@ -21,7 +30,9 @@ pub(crate) fn observe_environment(
     metrics: &crate::Metrics,
     preferences: UserPreferences,
     profile: CaptureProfile,
+    scope: CaptureScope,
 ) -> Result<HostEnvironment> {
+    let monitor = window.current_monitor();
     let native = NativeObservation {
         scale: metrics.scale_factor(),
         content: metrics.physical_size(),
@@ -29,7 +40,7 @@ pub(crate) fn observe_environment(
             .inner_position()
             .ok()
             .map(|p| PhysicalPoint { x: p.x, y: p.y }),
-        screen: window.current_monitor().map(|monitor| {
+        screen: monitor.as_ref().map(|monitor| {
             let origin = monitor.position();
             let size = monitor.size();
             (
@@ -45,7 +56,36 @@ pub(crate) fn observe_environment(
         }),
         preferences,
     };
-    native.into_environment(profile)
+    let mut environment = native.into_environment(profile)?;
+    if scope == CaptureScope::Enriched
+        && profile == CaptureProfile::NativeContent
+        && let (Some(monitor), Some(screen)) = (monitor, environment.screen.as_ref())
+    {
+        let facts = crate::native_monitor::observe(
+            &monitor,
+            screen.area().origin,
+            ScaleFactor::new(metrics.scale_factor())?,
+        );
+        environment.screen = Some(ScreenMetrics::new(
+            screen.area(),
+            facts.available_area,
+            screen.source(),
+            facts.color_depth,
+            facts.color_component_bits,
+        )?);
+    }
+    Ok(environment)
+}
+
+/// This native observer does not produce these independent host facts.
+pub(crate) fn preserve_independent(
+    mut observed: HostEnvironment,
+    previous: &HostEnvironment,
+) -> HostEnvironment {
+    observed.input = previous.input.clone();
+    observed.navigation = previous.navigation;
+    observed.display_mode = previous.display_mode;
+    observed
 }
 
 struct NativeObservation {

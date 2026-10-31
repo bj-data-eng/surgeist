@@ -209,6 +209,7 @@ mod handler;
 mod lease;
 mod loop_;
 mod native_geometry;
+mod native_monitor;
 mod native_preferences;
 mod normalization;
 mod planning;

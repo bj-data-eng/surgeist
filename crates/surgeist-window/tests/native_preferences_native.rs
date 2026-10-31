@@ -169,9 +169,13 @@ fn main() {
     };
     let depth = candidate.depth();
     let bits = NSBitsPerSampleFromDepth(depth);
-    let components = NSColorSpaceFromDepth(depth).map(|space| NSNumberOfColorComponents(&space));
+    let color_space = NSColorSpaceFromDepth(depth);
+    let components = color_space
+        .as_ref()
+        .map(|space| NSNumberOfColorComponents(space));
+    let color_space_name = color_space.map(|space| space.to_string());
     println!(
-        "SDK screen ID={sdk_id}, frame={frame:?}, visible={visible:?}, ratio={ratio}, color bits={bits}, components={components:?}; expected available={expected:?}, captured screen={observed:?}"
+        "SDK screen ID={sdk_id}, frame={frame:?}, visible={visible:?}, ratio={ratio}, color space={color_space_name:?}, bits={bits}, components={components:?}; expected available={expected:?}, captured screen={observed:?}"
     );
     assert_eq!(
         observed.available_area(),
