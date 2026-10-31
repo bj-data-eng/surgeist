@@ -1,5 +1,22 @@
 # How-to
 
+## Verify native accessibility preferences
+
+In a macOS WindowServer session, explicitly run the native preference probe:
+
+```sh
+SURGEIST_RUN_NATIVE_PREFERENCES_PROBE=1 cargo test --offline --locked -j 1 -p surgeist-window --test native_preferences_native
+```
+
+The probe opens an invisible native window, captures its public preference
+baseline in `Ready`, exits the event loop, and compares the capture with actual
+AppKit observations. It reads settings without changing them. Normal headless
+checks print an explicit skip for this probe; the ordinary library tests cover
+preference mapping and callback publication without a display.
+
+See [host observations](explanation.md#host-observations-and-consumer-inputs) for
+the supported values, sampling opportunities and unavailable observations.
+
 These procedures assume you have completed [getting started](getting-started.md).
 The linked source owns the exact API contract.
 

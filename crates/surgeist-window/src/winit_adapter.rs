@@ -645,7 +645,7 @@ pub(crate) struct WinitRunner<H> {
     draw: DrawScheduler,
     capabilities: Option<HostCapabilities>,
     clipboard: Box<dyn Clipboard>,
-    system_theme: Option<Theme>,
+    baseline_preferences: UserPreferences,
     capture_profile: CaptureProfile,
     #[cfg(test)]
     pub(crate) commands: Vec<Command>,
@@ -716,7 +716,7 @@ impl<H> WinitRunner<H> {
             draw: window_loop.draw,
             capabilities: None,
             clipboard: window_loop.clipboard,
-            system_theme: None,
+            baseline_preferences: UserPreferences::default(),
             capture_profile: CaptureProfile::NativeContent,
             #[cfg(test)]
             commands: window_loop.commands,
@@ -1329,7 +1329,9 @@ impl<H: Handler> WinitRunner<H> {
         plan: HostCommandPlan,
         callbacks: &mut Vec<BackendCallback>,
     ) -> Result<()> {
-        self.system_theme = event_loop.system_theme().map(Into::into);
+        callbacks.extend(self.refresh_environment_baselines(
+            crate::native_preferences::capture(event_loop.system_theme().map(Into::into)),
+        )?);
         self.capture_profile = capture_profile_for_target(winit_target(event_loop));
         let resolved = take_resolved_host_command(plan);
         let ime_request = resolved.ime_request;
@@ -1353,6 +1355,7 @@ impl<H: Handler> WinitRunner<H> {
                     .proxy
                     .clone()
                     .expect("native runner proxy is initialized before window creation");
+                let preferences = self.baseline_preferences.clone();
                 let windows = &mut self.windows;
                 #[cfg(feature = "accessibility")]
                 let accessibility = &mut self.accessibility;
@@ -1369,7 +1372,7 @@ impl<H: Handler> WinitRunner<H> {
                         let environment = crate::environment_native::observe_environment(
                             &window,
                             state.metrics(),
-                            event_loop.system_theme().map(Into::into),
+                            preferences.clone(),
                             profile,
                         )?;
                         let state = state.with_environment(environment);
@@ -2241,6 +2244,19 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
         self.capture_profile = capture_profile_for_target(winit_target(event_loop));
         let mut provider = WinitCapabilityProvider { event_loop };
         self.resolve_capabilities_once(&mut provider);
+        let callbacks = match self.refresh_environment_baselines(
+            crate::native_preferences::capture(event_loop.system_theme().map(Into::into)),
+        ) {
+            Ok(callbacks) => callbacks,
+            Err(error) => {
+                self.fail_terminal(error);
+                self.drain_pump(event_loop);
+                return;
+            }
+        };
+        for callback in callbacks {
+            self.enqueue_callback(callback);
+        }
         match self.stage_first_resume() {
             Ok(true) => self.dispatch_callback(event_loop, BackendCallback::Resume),
             Ok(false) => {
@@ -2260,6 +2276,23 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
     }
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
+        let callbacks = match self.refresh_environment_baselines(
+            crate::native_preferences::capture(event_loop.system_theme().map(Into::into)),
+        ) {
+            Ok(callbacks) => callbacks,
+            Err(error) => {
+                self.fail_terminal(error);
+                self.drain_pump(event_loop);
+                return;
+            }
+        };
+        for callback in callbacks {
+            self.enqueue_callback(callback);
+        }
+        self.drain_pump(event_loop);
+        if !self.pump.is_running() {
+            return;
+        }
         match event {
             UserEvent::Action(action) => {
                 self.pump.enqueue_queued_action(action);
@@ -2292,7 +2325,6 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        self.system_theme = event_loop.system_theme().map(Into::into);
         let live_id = self.id_for_winit(window_id);
         let closing_id = self.id_for_closing_winit(window_id);
         if matches!(&event, winit::event::WindowEvent::Destroyed) {
@@ -2305,7 +2337,27 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
             self.drain_pump(event_loop);
             return;
         }
-        let Some(id) = live_id else {
+        if live_id.is_none() {
+            return;
+        }
+        let callbacks = match self.refresh_environment_baselines(
+            crate::native_preferences::capture(event_loop.system_theme().map(Into::into)),
+        ) {
+            Ok(callbacks) => callbacks,
+            Err(error) => {
+                self.fail_terminal(error);
+                self.drain_pump(event_loop);
+                return;
+            }
+        };
+        for callback in callbacks {
+            self.enqueue_callback(callback);
+        }
+        self.drain_pump(event_loop);
+        if !self.pump.is_running() {
+            return;
+        }
+        let Some(id) = self.id_for_winit(window_id) else {
             return;
         };
         #[cfg(feature = "accessibility")]
@@ -2594,10 +2646,15 @@ impl<H: Handler> winit::application::ApplicationHandler<UserEvent> for WinitRunn
             return;
         }
 
-        if let Err(error) =
-            self.refresh_environment_baselines(event_loop.system_theme().map(Into::into))
-        {
-            self.fail_terminal(error);
+        match self.refresh_environment_baselines(crate::native_preferences::capture(
+            event_loop.system_theme().map(Into::into),
+        )) {
+            Ok(callbacks) => {
+                for callback in callbacks {
+                    self.enqueue_callback(callback);
+                }
+            }
+            Err(error) => self.fail_terminal(error),
         }
         self.drain_pump(event_loop);
         if !self.pump.is_running() {
@@ -2821,40 +2878,37 @@ impl<H: Handler> WinitRunner<H> {
             crate::environment_native::observe_environment(
                 native,
                 metrics,
-                self.system_theme,
+                self.baseline_preferences.clone(),
                 self.capture_profile,
             )
         })??;
         Ok(transition.with_environment(environment))
     }
 
-    fn refresh_environment_baselines(&mut self, theme: Option<Theme>) -> Result<()> {
-        self.system_theme = theme;
+    fn refresh_environment_baselines(
+        &mut self,
+        preferences: UserPreferences,
+    ) -> Result<Vec<BackendCallback>> {
+        self.baseline_preferences = preferences.clone();
+        let mut callbacks = Vec::new();
         let ids = self.windows.values().copied().collect::<Vec<_>>();
         for id in ids {
             let Some(window) = self.registry.get(id) else {
                 continue;
             };
-            if window
-                .instance
-                .state()
-                .environment()
-                .preferences
-                .color_scheme
-                == theme
-            {
+            if window.environment().preferences == preferences {
                 continue;
             }
-            let mut environment = window.instance.state().environment().clone();
-            environment.preferences.color_scheme = theme;
+            let mut environment = window.environment().clone();
+            environment.preferences = preferences.clone();
             if let Some(event) = self.apply_native_transition_state(
                 id,
                 NativeEventTransition::environment_changed(id, environment),
             )? {
-                self.enqueue_callback(BackendCallback::Event(event));
+                callbacks.push(BackendCallback::Event(event));
             }
         }
-        Ok(())
+        Ok(callbacks)
     }
 
     fn apply_native_transition_patch_state(
@@ -3755,9 +3809,15 @@ mod tests {
                 theme: Some(Theme::Light),
             })
             .unwrap();
-        runner
-            .refresh_environment_baselines(Some(Theme::Dark))
+        let callbacks = runner
+            .refresh_environment_baselines(UserPreferences {
+                color_scheme: Some(Theme::Dark),
+                ..UserPreferences::default()
+            })
             .unwrap();
+        for callback in callbacks {
+            runner.enqueue_callback(callback);
+        }
         runner.drain_pump_for_test();
         assert_eq!(
             runner.handler.observed,
@@ -3776,11 +3836,135 @@ mod tests {
                 .color_scheme,
             Some(Theme::Dark)
         );
-        runner
-            .refresh_environment_baselines(Some(Theme::Dark))
+        let callbacks = runner
+            .refresh_environment_baselines(UserPreferences {
+                color_scheme: Some(Theme::Dark),
+                ..UserPreferences::default()
+            })
             .unwrap();
+        for callback in callbacks {
+            runner.enqueue_callback(callback);
+        }
         runner.drain_pump_for_test();
         assert_eq!(runner.handler.observed.len(), 1);
+    }
+
+    #[test]
+    fn accessibility_only_baseline_changes_publish_complete_preferences_without_reentrant_callbacks()
+     {
+        #[derive(Default)]
+        struct Observer {
+            observations: Vec<(HostEnvironment, HostEnvironment, Option<Theme>)>,
+        }
+        impl Handler for Observer {
+            fn event(&mut self, event: &mut Event<'_>) -> Result<()> {
+                if let EventKind::EnvironmentChanged { environment, .. } = event.event() {
+                    let state = event.state().unwrap();
+                    self.observations.push((
+                        environment.clone(),
+                        state.environment().clone(),
+                        state.theme(),
+                    ));
+                }
+                Ok(())
+            }
+        }
+        let id = Id::from_u64(1);
+        let initial = UserPreferences {
+            color_scheme: Some(Theme::Dark),
+            ..UserPreferences::default()
+        };
+        let environment = HostEnvironment {
+            native_scale: Some(ScaleFactor::ONE),
+            navigation: Some(NavigationControls::Back),
+            preferences: initial.clone(),
+            ..HostEnvironment::default()
+        };
+        let mut window_loop = Loop::new(Observer::default());
+        window_loop
+            .registry
+            .insert(Instance::new(
+                state(id).with_environment(environment.clone()),
+            ))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+        runner.windows.insert(winit::window::WindowId::dummy(), id);
+        runner
+            .apply_patch(WindowStatePatch::Theme {
+                id,
+                theme: Some(Theme::Light),
+            })
+            .unwrap();
+        let observed = UserPreferences {
+            reduced_motion: Some(ReductionPreference::NoPreference),
+            reduced_transparency: Some(ReductionPreference::NoPreference),
+            contrast: Some(ContrastPreference::NoPreference),
+            ..initial
+        };
+        let reduced_motion = UserPreferences {
+            reduced_motion: Some(ReductionPreference::Reduce),
+            ..observed.clone()
+        };
+        let reduced_both = UserPreferences {
+            reduced_transparency: Some(ReductionPreference::Reduce),
+            ..reduced_motion.clone()
+        };
+        let increased = UserPreferences {
+            contrast: Some(ContrastPreference::More),
+            ..reduced_both.clone()
+        };
+        for (index, preferences) in [
+            observed,
+            reduced_motion,
+            reduced_both.clone(),
+            increased,
+            reduced_both.clone(),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let callbacks = runner
+                .refresh_environment_baselines(preferences.clone())
+                .unwrap();
+            assert_eq!(
+                runner.handler.observations.len(),
+                index,
+                "refresh returns callbacks without invoking the handler"
+            );
+            assert_eq!(
+                runner.registry.get(id).unwrap().environment().preferences,
+                preferences
+            );
+            assert_eq!(callbacks.len(), 1);
+            for callback in callbacks {
+                runner.enqueue_callback(callback);
+            }
+            runner.drain_pump_for_test();
+            let expected = HostEnvironment {
+                preferences: preferences.clone(),
+                ..environment.clone()
+            };
+            assert_eq!(
+                runner.handler.observations.last(),
+                Some(&(expected.clone(), expected, Some(Theme::Light)))
+            );
+            assert_eq!(runner.baseline_preferences, preferences);
+            assert!(
+                runner
+                    .refresh_environment_baselines(preferences)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        runner
+            .apply_patch(WindowStatePatch::Theme { id, theme: None })
+            .unwrap();
+        assert_eq!(
+            runner.registry.get(id).unwrap().environment().preferences,
+            reduced_both
+        );
+        assert_eq!(runner.handler.observations.len(), 5);
     }
 
     fn state(id: Id) -> WindowSnapshot {
