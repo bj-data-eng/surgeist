@@ -423,6 +423,20 @@ fn seed_files_decode_to_the_documented_layout_and_independent_literal_success() 
 }
 
 #[test]
+fn generation_maps_first_entropy_bytes_that_are_multiples_of_four_to_the_documented_literal() {
+    // README "Cases and codec": literal ID = (first byte / 4) modulo nine.
+    for target in targets() {
+        for (first, id) in (0..=9u8).map(|k| (4 * k, k % 9)) {
+            let Generation::Generated(case) = target.generate(&[first, 0xd8, 0, 13]).unwrap()
+            else {
+                panic!("literal entropy {first} was discarded")
+            };
+            assert_eq!(case.lane(), Lane::Literal(id), "first byte {first}");
+        }
+    }
+}
+
+#[test]
 fn processing_instruction_literals_use_each_documented_ending() {
     // HTML 877d 13.1.7: a processing instruction ends with `?>` or `>`.
     for target in targets() {
