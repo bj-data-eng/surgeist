@@ -6,11 +6,11 @@ use surgeist_html_semantics::{
     HtmlCaptureError, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureResource,
     HtmlCaptureSubjectKind, HtmlCapturedCustomElementState, HtmlCapturedDefinitions,
     HtmlCapturedIsValue, HtmlCapturedNodeKind, HtmlCapturedRegistry, HtmlCustomElementDefinition,
-    HtmlCustomElementIsAuthorContext, HtmlCustomElementState, HtmlIsAutonomousRequirement,
-    HtmlIsContextUnavailable, HtmlIsDefinitionRequirement, HtmlScriptingStatus,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticResource,
-    HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticValue,
+    HtmlCustomElementIsAuthorContext, HtmlIsAutonomousRequirement, HtmlIsContextUnavailable,
+    HtmlIsDefinitionRequirement, HtmlScriptingStatus, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult,
+    HtmlSemanticSession, HtmlSemanticValue,
 };
 
 fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
