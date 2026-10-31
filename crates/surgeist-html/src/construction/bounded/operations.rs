@@ -215,9 +215,15 @@ pub enum HtmlConstructionActionDescription<'a> {
         auxiliary_entries_released: usize,
     },
 }
+/// How a reserve action's capacity is selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlConstructionGrowth {
+    /// `perform` reserves exactly the described minimum capacity.
     Exact,
+    /// The described minimum is only the least capacity that suffices. The
+    /// consumer admits and requests its own larger, amortizing capacity with
+    /// `HtmlConstructionAction::perform_with_capacity`; `perform` still reserves
+    /// the minimum.
     Geometric,
 }
 
@@ -262,6 +268,8 @@ enum Phase {
     PrepareRecordsReport,
     PrepareWrapperReport,
     ReserveRecords,
+    PrepareChildrenReport,
+    ReserveChildren,
     InitializeOrder(usize),
     ReserveOrder(usize),
     CopyOrder {
@@ -322,6 +330,10 @@ struct Plan {
     new_children: [Vec<usize>; 2],
     new_children_generations: [u64; 2],
     orders: [Vec<usize>; 2],
+    /// A detached node placed last commits one push onto the parent's actual
+    /// child order, after its capacity admits it; no scratch order exists.
+    append: bool,
+    children_capacity: Option<usize>,
     order_count: usize,
     order_parents: [usize; 2],
     order_required: [usize; 2],
@@ -475,6 +487,13 @@ impl HtmlConstructionOperation {
     fn arena(&self) -> &Arena {
         self.owner.as_ref().expect("pending storage").arena()
     }
+    /// The least child-order capacity that holds the appended child.
+    fn append_required(&self) -> usize {
+        self.arena()
+            .records
+            .get(self.plan.positions[1])
+            .map_or(usize::MAX, |parent| parent.children.len().saturating_add(1))
+    }
     fn command(&self) -> &HtmlConstructionCommand {
         self.command.as_ref().expect("pending command")
     }
@@ -592,6 +611,23 @@ impl<'a> HtmlConstructionAction<'a> {
                     record_visits: 2,
                     provider_calls: 1,
                     copied_bytes: size_of::<HtmlConstructionAllocationSnapshot>(),
+                }
+            }
+            Phase::PrepareChildrenReport => {
+                HtmlConstructionActionDescription::PrepareAllocationReport {
+                    record_visits: 2,
+                    provider_calls: 1,
+                    copied_bytes: size_of::<HtmlConstructionAllocationSnapshot>(),
+                }
+            }
+            Phase::ReserveChildren => {
+                let required = operation.append_required();
+                HtmlConstructionActionDescription::Reserve {
+                    report_provider_calls: 1,
+                    allocation: operation.snapshot.as_ref().expect("issued actual snapshot"),
+                    required_len: required,
+                    minimum_capacity: required,
+                    growth: HtmlConstructionGrowth::Geometric,
                 }
             }
             Phase::InitializeOrder(slot) => {
@@ -721,6 +757,29 @@ impl<'a> HtmlConstructionAction<'a> {
                 inspected_bytes: 0,
             },
         }
+    }
+    /// Performs a reserve whose described growth is `Geometric` with the
+    /// consumer's admitted capacity, which cannot be below the described
+    /// minimum. Any other action, or a smaller capacity, latches
+    /// `CapacityMismatch` before any provider call.
+    pub fn perform_with_capacity(
+        self,
+        capacity: usize,
+    ) -> Result<HtmlConstructionObservation<'a>, HtmlConstructionActionFailure> {
+        let operation = self.operation;
+        if !matches!(operation.phase, Phase::ReserveChildren)
+            || capacity < operation.append_required()
+        {
+            let reason = operation
+                .fail::<()>(HtmlConstructionError::CapacityMismatch)
+                .unwrap_err();
+            return Err(HtmlConstructionActionFailure {
+                reason,
+                allocation: None,
+            });
+        }
+        operation.plan.children_capacity = Some(capacity);
+        Self { operation }.perform()
     }
     pub fn perform(self) -> Result<HtmlConstructionObservation<'a>, HtmlConstructionActionFailure> {
         let operation = self.operation;
@@ -1114,6 +1173,16 @@ impl HtmlConstructionOperation {
             });
         }
         match self.command() {
+            // A detached node with no reference sibling goes last; finding its
+            // place requires no walk over the parent's existing children.
+            Command::Insert { before: None, .. } => {
+                plan.append = true;
+                Ok(Phase::Cycle {
+                    cursor: Some(plan.positions[1]),
+                    target: plan.positions[0],
+                    steps: 0,
+                })
+            }
             Command::Insert { .. } => Ok(Phase::Order {
                 parent: plan.positions[1],
                 offset: 0,
@@ -1216,6 +1285,24 @@ impl HtmlConstructionOperation {
         let mut plan = std::mem::take(&mut self.plan);
         let result = (|| {
             match self.command() {
+                Command::Insert { .. } if plan.append => {
+                    let node = self
+                        .arena()
+                        .records
+                        .get(plan.positions[0])
+                        .ok_or(HtmlConstructionError::UnknownNode)?;
+                    // Usage, the child push, the parent link and the depth cache.
+                    let depth_writes = if plan.fast_depth.is_some() {
+                        1 + usize::from(matches!(
+                            node.template_contents,
+                            Some(TemplateContents::Owned(_))
+                        ))
+                    } else {
+                        1
+                    };
+                    plan.record_writes = add(plan.record_writes, add(2, depth_writes)?)?;
+                    plan.copied_bytes = add(plan.copied_bytes, 2 * size_of::<usize>())?;
+                }
                 Command::Insert { .. } | Command::Detach { .. } => {
                     let target = if matches!(self.command(), Command::Insert { .. }) {
                         plan.positions[1]
@@ -1294,6 +1381,18 @@ impl HtmlConstructionOperation {
                 } else {
                     Phase::References
                 })
+            } else if plan.append {
+                let children = &self
+                    .arena()
+                    .records
+                    .get(plan.positions[1])
+                    .ok_or(HtmlConstructionError::UnknownNode)?
+                    .children;
+                Ok(if children.len() == children.capacity() {
+                    Phase::PrepareChildrenReport
+                } else {
+                    Phase::Commit
+                })
             } else if matches!(
                 self.command(),
                 Command::Insert { .. } | Command::Detach { .. }
@@ -1371,6 +1470,25 @@ impl HtmlConstructionOperation {
                 self.snapshot = Some(snapshot);
                 Ok((Phase::Share, None))
             }
+            Phase::PrepareChildrenReport => {
+                let arena = self.arena();
+                let parent = self.plan.positions[1];
+                let record = arena
+                    .records
+                    .get(parent)
+                    .ok_or((HtmlConstructionError::UnknownNode, None))?;
+                self.snapshot = Some(
+                    HtmlConstructionAllocationSnapshot::vector(
+                        &arena.identity,
+                        AllocationRole::Children(parent),
+                        record.children_generation,
+                        &record.children,
+                    )
+                    .map_err(|error| (error, None))?,
+                );
+                Ok((Phase::ReserveChildren, None))
+            }
+            Phase::ReserveChildren => self.reserve_children(),
             Phase::InitializeOrder(slot) => self.initialize_order(slot),
             Phase::ReserveOrder(slot) => self.reserve_order(slot),
             Phase::ReserveRecords => {
@@ -2052,7 +2170,12 @@ impl HtmlConstructionReadyOperation {
                     arena.records.push(record);
                 }
                 Command::Insert { .. } => {
-                    retired_orders = plan.commit_orders(arena);
+                    if plan.append {
+                        // The admitted spare capacity makes this push infallible.
+                        arena.records[p[1]].children.push(p[0]);
+                    } else {
+                        retired_orders = plan.commit_orders(arena);
+                    }
                     arena.records[p[0]].parent = Some(p[1]);
                 }
                 Command::Detach { .. } => {

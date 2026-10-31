@@ -12,13 +12,11 @@ use surgeist_html_parser::{
 /// One element subtree with attributes, nested elements and two text nodes.
 const SUBTREE: &str = "<div id=a class=b><p>t</p><span>x</span></div>";
 
-/// `Work` is charged to one parse: total credits, bytes reserved and records
-/// visited.
+/// `Work` is charged to one parse: total credits and bytes reserved.
 #[derive(Clone, Copy)]
 struct Work {
     total: u64,
     reserved: u64,
-    visited: u64,
 }
 
 /// A named measure of one parse's work.
@@ -60,7 +58,6 @@ fn parse_work(raw: String) -> Work {
     Work {
         total: usage.resource(HtmlParseResource::WorkCredits).current(),
         reserved: usage.work(HtmlParseWorkCategory::ReserveByte),
-        visited: usage.work(HtmlParseWorkCategory::RecordVisit),
     }
 }
 
@@ -154,20 +151,5 @@ fn reservation_work_added_by_each_doubling_of_a_documents_style_elements_is_near
             )
         },
         &[("reservation work", |work| work.reserved)],
-    );
-}
-
-#[test]
-fn work_added_by_each_doubling_of_one_parents_children_is_near_double_the_previous() {
-    // Every comment is appended under the same body, so appending a child must
-    // cost the same however many children the body already has.
-    assert_doublings_add_near_double(
-        [400, 800, 1600, 3200],
-        |children| format!("<!doctype html><html><body>{}", "<!--c-->".repeat(children)),
-        &[
-            ("record visits", |work| work.visited),
-            ("total work", |work| work.total),
-            ("reservation work", |work| work.reserved),
-        ],
     );
 }

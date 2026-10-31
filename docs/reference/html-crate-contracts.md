@@ -508,6 +508,20 @@ callers use that same operation; parser form/nonce hooks remain parser-owned.
 This follows the [unchanged-order determination in #1174](https://github.com/bj-data-eng/surgeist/issues/1174).
 It does not change Detach or other explicitly specified no-op cases.
 
+A detached node inserted with `before: None` is a plain append. Placing it
+needs no walk over the parent's existing children, and it prepares no pending
+child-order bank: the atomic commit pushes one index onto the parent's actual
+`Children` bank and sets the node's parent. If that bank has no spare capacity,
+a `PrepareAllocationReport` and a `Reserve` action on it (`growth: Geometric`)
+follow depth and edge preflight, where the scratch providers used to; otherwise
+neither is described. Nothing is pushed before the commit, so a refused or
+interrupted reserve leaves the order and every logical fact unchanged, and the
+grown bank, with a fresh allocation incarnation, is retained on abort like the
+record bank. Appending therefore describes work independent of the parent's
+child count, apart from that amortized reserve. Insertion before a sibling,
+insertion of an attached node (a move) and Detach still prepare scratch child
+orders and describe work proportional to the affected parents' child counts.
+
 Template association creation is owned by `Create`; lookup returns its issued
 contents handle. Cloning a template clones its element through `Create` and
 fills that new contents fragment. Moving a whole contents association uses
@@ -697,6 +711,12 @@ metadata remain excluded, matching the existing provider limitation.
 
 A reserve description contains the pre-action snapshot, required initialized
 length, requested minimum capacity and selected exact/geometric growth policy.
+`Exact` means `perform` reserves exactly that minimum. `Geometric` means the
+minimum is only the least capacity that suffices: the consumer admits its own
+amortizing capacity, which cannot be smaller, and requests it with
+`HtmlConstructionAction::perform_with_capacity`; a smaller capacity, or use on
+any other action, latches `CapacityMismatch` before a provider call, and
+`perform` still reserves the minimum.
 The parser computes and admits its current resource/peak/atomic-layout and
 reserve/copy/provider work in the same precedence as `reserve_vector`; it cannot
 substitute an assumed `Record` layout. `perform` calls `try_reserve` on the actual
