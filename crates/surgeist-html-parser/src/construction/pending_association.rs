@@ -174,7 +174,7 @@ impl SessionStorage {
     ) -> Result<OriginGroupRef, SessionError> {
         let Some(RetainedPayload::String { value, origins, .. }) = self.payloads.values.get(slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         if let Some(group) = origins {
             return self
@@ -191,7 +191,7 @@ impl SessionStorage {
         payload_write::<Option<OriginGroupRef>>(c, 1)?;
         let Some(RetainedPayload::String { origins, .. }) = self.payloads.values.get_mut(slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *origins = Some(retained);
         Ok(group)
@@ -446,7 +446,7 @@ impl SessionStorage {
                 let slot = self.document_slot(c, *document)?;
                 let Some(RetainedPayload::Document { class, .. }) = self.payloads.values.get(slot)
                 else {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 };
                 context.class = *class;
                 // First document Element and only its direct body/frameset child.
@@ -512,7 +512,7 @@ impl SessionStorage {
                     let slot = self.base_slot(c, first)?;
                     let Some(RetainedPayload::Base { frozen, .. }) = self.payloads.values.get(slot)
                     else {
-                        return Err(SessionError::WrongToken);
+                        return Err(latch_registry_row(c));
                     };
                     if let base::BaseValue::Frozen(value) = frozen {
                         let Some(facts_slot) = context.base_document else {
@@ -521,7 +521,7 @@ impl SessionStorage {
                         let Some(RetainedPayload::BaseDocument { facts, .. }) =
                             self.payloads.values.get(facts_slot)
                         else {
-                            return Err(SessionError::WrongToken);
+                            return Err(latch_registry_row(c));
                         };
                         let raw = self
                             .form_attribute(c, first, "href")?
@@ -595,7 +595,7 @@ impl SessionStorage {
             let Some(RetainedPayload::AssociationDocument(summary)) =
                 self.payloads.values.get(document_slot)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             let count = summary
                 .count
@@ -696,13 +696,13 @@ impl SessionStorage {
                     self.payloads
                         .node_joins
                         .get_mut(node)
-                        .ok_or(SessionError::ForeignNode)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .set_latest(Join::StyleOccurrence, slot)?;
                 }
                 let Some(RetainedPayload::AssociationDocument(summary)) =
                     self.payloads.values.get_mut(document_slot)
                 else {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 };
                 summary.count = count;
                 summary.obligations = obligations;
@@ -754,7 +754,7 @@ impl SessionStorage {
                 return Ok(());
             };
             let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get(slot) else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             let on_parser_stack = state.state.on_parser_stack();
             let connected = self.shadow_including_connected(c, node, detached)?;
@@ -790,7 +790,7 @@ impl SessionStorage {
             return Ok(());
         };
         let Some(RetainedPayload::Style { state, .. }) = self.payloads.values.get(slot) else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         self.association_style_trigger(
             c,

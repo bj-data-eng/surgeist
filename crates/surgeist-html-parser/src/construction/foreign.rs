@@ -166,7 +166,7 @@ impl ParserArenaSession {
             match &storage
                 .construction
                 .node_at(index)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind()
             {
                 HtmlNodeKind::Element(value) => Some(value.attributes()),

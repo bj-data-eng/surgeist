@@ -58,6 +58,9 @@ pub enum Invariant {
     SharedAllocationAliased,
     PendingFormEffects,
     IncompleteFormAssociationCreation,
+    /// A retained record, child or payload row that internal state names is
+    /// missing, out of range or of another kind.
+    RegistryRow,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

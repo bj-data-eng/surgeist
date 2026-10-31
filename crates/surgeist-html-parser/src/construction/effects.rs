@@ -395,7 +395,7 @@ impl SessionStorage {
                 if let Some(shadow) = self
                     .construction
                     .node_at(node)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .shadow_root()
                 {
                     c.charge(WorkCategory::ProviderCall, 1)?;
@@ -420,7 +420,7 @@ impl SessionStorage {
                 if self
                     .construction
                     .node_at(node)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .template_contents()
                     .is_some()
                 {
@@ -455,7 +455,7 @@ impl SessionStorage {
                 if self
                     .construction
                     .node_at(node)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .parent()
                     .map(|node| node.position())
                     .is_some()
@@ -483,7 +483,7 @@ impl SessionStorage {
                     == self
                         .construction
                         .node_at(source)
-                        .ok_or(SessionError::ForeignNode)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .child_count()
                 {
                     self.write_current_effect(c, None)?;
@@ -504,9 +504,9 @@ impl SessionStorage {
                 let child = self
                     .construction
                     .node_at(source)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(cursor)
-                    .ok_or(SessionError::WrongSibling)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .position();
                 let child_document = document.try_clone(c)?;
                 let copied = self.clone_node(c, child, child_document)?;
@@ -535,7 +535,7 @@ impl SessionStorage {
                 if self
                     .construction
                     .node_at(child)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .template_contents()
                     .is_some()
                 {
@@ -751,7 +751,7 @@ impl SessionStorage {
                 let Some(RetainedPayload::WorkList(Some(list))) =
                     self.payloads.values.get_mut(slot)
                 else {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 };
                 list.try_push_recover(c, node)
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;
@@ -801,7 +801,7 @@ impl SessionStorage {
                 let Some(RetainedPayload::WorkList(Some(list))) =
                     self.payloads.values.get_mut(slot)
                 else {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 };
                 list.try_push_recover(c, node)
                     .map_err(|(stop, _)| SessionError::Stop(stop))?;
@@ -883,7 +883,7 @@ impl SessionStorage {
         if base::is_base(
             self.construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?,
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             self.base_change(c, node, detached, false)?;
         }

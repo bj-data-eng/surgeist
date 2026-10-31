@@ -270,14 +270,14 @@ impl SessionStorage {
         let Some(RetainedPayload::Document { node: bound, .. }) =
             self.payloads.values.get_mut(fact)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *bound = Some(node.index);
         self.payloads.join_row(fact)?;
         let Some(RetainedPayload::NodeDocument { node: bound, .. }) =
             self.payloads.values.get_mut(binding)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *bound = Some(node.index);
         self.payloads.join_row(binding)?;
@@ -344,7 +344,7 @@ impl ParserArenaSession {
                 storage
                     .construction
                     .node_at(0)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Document(_)
             )
@@ -492,7 +492,7 @@ impl ParserArenaSession {
                 storage
                     .construction
                     .node_at(output)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Fragment
             )
@@ -538,7 +538,7 @@ impl ParserArenaSession {
             cause: root_cause, ..
         }) = storage.payloads.values.get_mut(root_slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *root_cause = cause;
         let Some(RetainedPayload::ConstructionCause {
@@ -546,7 +546,7 @@ impl ParserArenaSession {
             ..
         }) = storage.payloads.values.get_mut(output_slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *output_cause = copy;
         Ok(())
@@ -709,7 +709,7 @@ impl SessionStorage {
         if matches!(
             self.construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
             HtmlNodeKind::Fragment
         ) {
@@ -881,13 +881,13 @@ impl SessionStorage {
         let shadow = if matches!(
             self.construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind(),
             HtmlNodeKind::Fragment
         ) && matches!(
             self.construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .fragment_owner(),
             Some(HtmlFragmentOwner::ShadowHost(_))
         ) {
@@ -899,7 +899,7 @@ impl SessionStorage {
             && !matches!(
                 self.construction
                     .node_at(node)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Element(_)
             )
@@ -948,7 +948,7 @@ impl SessionStorage {
                     && !matches!(
                         self.construction
                             .node_at(parent)
-                            .ok_or(SessionError::ForeignNode)?
+                            .ok_or_else(|| latch_registry_row(c))?
                             .kind(),
                         HtmlNodeKind::Fragment
                     ) =>
@@ -977,7 +977,7 @@ impl SessionStorage {
                 let Some(RetainedPayload::LookupRegistry { registry, .. }) =
                     self.payloads.values.get_mut(slot)
                 else {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 };
                 *registry = effective;
                 return Ok(());
@@ -1142,7 +1142,7 @@ impl ParserArenaSession {
         let HtmlNodeKind::Element(element) = &storage
             .construction
             .node_at(template)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()
@@ -1198,7 +1198,7 @@ impl ParserArenaSession {
                 let HtmlNodeKind::Element(element) = &storage
                     .construction
                     .node_at(host)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind()
                 else {
                     return Ok(false);
@@ -1208,7 +1208,7 @@ impl ParserArenaSession {
                     || storage
                         .construction
                         .node_at(host)
-                        .ok_or(SessionError::ForeignNode)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .shadow_root()
                         .is_some()
                 {
@@ -1377,7 +1377,7 @@ impl ParserArenaSession {
             let Some(RetainedPayload::Shadow { root: bound, .. }) =
                 storage.payloads.values.get_mut(shadow_slot)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             *bound = Some(root.index);
             storage.prepare_payload_slot_owned(c)?;
@@ -1458,7 +1458,7 @@ impl ParserArenaSession {
             let Some(RetainedPayload::Template { state, .. }) =
                 storage.payloads.values.get_mut(template_slot)
             else {
-                return Err(SessionError::TemplateMetadataUnavailable);
+                return Err(latch_registry_row(c));
             };
             state.contents = root.index;
             Ok::<(), SessionError>(())
@@ -1784,7 +1784,7 @@ impl SessionStorage {
         let Some(shadow) = self
             .construction
             .node_at(source)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .shadow_root()
         else {
             return Ok(None);
@@ -1869,13 +1869,13 @@ impl SessionStorage {
         let root = self.allocate_shadow_contents(c, properties, document)?;
         let Some(RetainedPayload::Shadow { root: bound, .. }) = self.payloads.values.get_mut(fact)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *bound = Some(root.index);
         let Some(RetainedPayload::LookupRegistry { node: bound, .. }) =
             self.payloads.values.get_mut(lookup)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *bound = Some(root.index);
         self.payloads.join_row(lookup)?;

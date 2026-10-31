@@ -59,7 +59,7 @@ impl SessionStorage {
         payload_write::<usize>(c, 1)?;
         let Some(RetainedPayload::Nonce { raw: stored, .. }) = self.payloads.values.get_mut(slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *stored = raw;
         self.retire_raw_field(c, old)
@@ -73,7 +73,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Ok(());
@@ -98,7 +98,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -154,7 +154,7 @@ impl SessionStorage {
             if matches!(
                 self.construction
                     .node_at(root)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind(),
                 HtmlNodeKind::Document(_)
             ) {
@@ -164,7 +164,7 @@ impl SessionStorage {
             if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(root)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .fragment_owner()
             {
                 c.charge(WorkCategory::ProviderCall, 1)?;
@@ -302,7 +302,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Ok(());
@@ -341,7 +341,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()
@@ -400,7 +400,7 @@ impl SessionStorage {
         if let Some(shadow) = self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .shadow_root()
         {
             c.charge(WorkCategory::ProviderCall, 1)?;
@@ -415,7 +415,7 @@ impl SessionStorage {
         if let Some(child) = self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .child_at(0)
         {
             return Ok(Some(child.position()));
@@ -429,7 +429,7 @@ impl SessionStorage {
             if let Some(parent) = self
                 .construction
                 .node_at(cursor)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .parent()
                 .map(|node| node.position())
             {
@@ -437,16 +437,16 @@ impl SessionStorage {
                 for index in 0..self
                     .construction
                     .node_at(parent)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_count()
                 {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     let child = self
                         .construction
                         .node_at(parent)
-                        .ok_or(SessionError::ForeignNode)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .child_at(index)
-                        .ok_or(SessionError::WrongSibling)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .position();
                     if found {
                         return Ok(Some(child));
@@ -460,7 +460,7 @@ impl SessionStorage {
             } else if let Some(HtmlFragmentOwner::ShadowHost(host)) = &self
                 .construction
                 .node_at(cursor)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .fragment_owner()
             {
                 c.charge(WorkCategory::ProviderCall, 1)?;
@@ -475,7 +475,7 @@ impl SessionStorage {
                 if let Some(child) = self
                     .construction
                     .node_at(cursor)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(0)
                 {
                     return Ok(Some(child.position()));
@@ -543,7 +543,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -630,7 +630,7 @@ impl ParserArenaSession {
             value, allocation, ..
         }) = storage.payloads.values.get(raw)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         c.require_document_string(allocation, value)?;
         Ok(value)

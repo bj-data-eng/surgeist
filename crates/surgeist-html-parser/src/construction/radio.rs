@@ -61,7 +61,7 @@ impl SessionStorage {
             && self
                 .construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .child_count()
                 == 0
         {

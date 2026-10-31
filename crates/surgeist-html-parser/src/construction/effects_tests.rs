@@ -2155,10 +2155,19 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
             img,
             surgeist_html::HtmlImageUpdateFlags::new(false, false)
         ),
-        Err(SessionError::WrongToken)
+        Err(SessionError::Stop(ParseStop::InternalInvariant(
+            crate::parser::control::Invariant::RegistryRow
+        )))
+    );
+    // The invariant is latched as the controller's first stop.
+    assert_eq!(
+        c.stop(),
+        Some(ParseStop::InternalInvariant(
+            crate::parser::control::Invariant::RegistryRow
+        ))
     );
     // A slot whose successor does not exist is refused, never wrapped.
-    assert_eq!(joined_cell(usize::MAX), Err(SessionError::WrongToken));
+    assert_eq!(joined_cell(usize::MAX), Err(SessionError::registry_row()));
     storage.payloads.node_joins[img] = good;
     session.release(&mut c).unwrap();
     storage_zero(&c);

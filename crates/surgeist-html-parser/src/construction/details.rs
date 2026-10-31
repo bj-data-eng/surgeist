@@ -64,7 +64,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -132,7 +132,7 @@ impl SessionStorage {
             && self
                 .construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .child_count()
                 == 0
         {
@@ -229,7 +229,7 @@ impl SessionStorage {
         payload_write::<bool>(c, 1)?;
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let taken = storage.take();
         let Some(AttributeStorage::Removing {
@@ -244,7 +244,7 @@ impl SessionStorage {
         }) = taken
         else {
             *storage = taken;
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         drop(values);
         let result = (|| {

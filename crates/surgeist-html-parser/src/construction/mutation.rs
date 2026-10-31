@@ -170,7 +170,7 @@ impl SessionStorage {
                 let HtmlNodeKind::Element(element) = &self
                     .construction
                     .node_at(node)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .kind()
                 else {
                     unreachable!()
@@ -272,7 +272,7 @@ impl SessionStorage {
                 ..
             }))) = self.payloads.values.get_mut(stage)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             c.reserve_vector(values, allocation, 1)?;
             payload_write::<Attribute>(c, 1)?;
@@ -287,7 +287,7 @@ impl SessionStorage {
         let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building { values, .. }))) =
             self.payloads.values.get_mut(stage)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         values.push(incoming);
         self.bind_string(name_slot, StringLocation::AttributeName(stage, 0))?;
@@ -297,7 +297,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(record) = &self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()
@@ -406,7 +406,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -436,7 +436,7 @@ impl SessionStorage {
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let taken = storage.take();
         let Some(AttributeStorage::Frozen {
@@ -447,7 +447,7 @@ impl SessionStorage {
         }) = taken
         else {
             *storage = taken;
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let len = values.len();
         *storage = Some(AttributeStorage::Removing {
@@ -514,7 +514,7 @@ impl SessionStorage {
                 rebound, ..
             }))) = self.payloads.values.get_mut(container)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             *rebound = slot + 1;
         }
@@ -522,7 +522,7 @@ impl SessionStorage {
         payload_write::<usize>(c, 2)?;
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let taken = storage.take();
         let Some(AttributeStorage::Removing {
@@ -534,7 +534,7 @@ impl SessionStorage {
         }) = taken
         else {
             *storage = taken;
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *storage = Some(AttributeStorage::Frozen {
             values,
@@ -560,7 +560,7 @@ impl SessionStorage {
         if base::is_base(
             self.construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?,
+                .ok_or_else(|| latch_registry_row(c))?,
         ) && local == "href"
         {
             self.base_change(c, node, None, true)?;
@@ -659,7 +659,7 @@ impl ParserArenaSession {
         let HtmlNodeKind::Element(element) = &storage
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()

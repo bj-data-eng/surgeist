@@ -30,16 +30,16 @@ impl SessionStorage {
             for ordinal in 0..self
                 .construction
                 .node_at(root)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .child_count()
             {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 let child = self
                     .construction
                     .node_at(root)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_at(ordinal)
-                    .ok_or(SessionError::WrongSibling)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .position();
                 pending.try_push(c, child)?;
             }
@@ -49,7 +49,7 @@ impl SessionStorage {
                 let record = self
                     .construction
                     .node_at(node)
-                    .ok_or(SessionError::ForeignNode)?;
+                    .ok_or_else(|| latch_registry_row(c))?;
                 if let Some(shadow) = record.shadow_root() {
                     c.charge(WorkCategory::ProviderCall, 1)?;
                     let shadow_contents = self
@@ -69,7 +69,7 @@ impl SessionStorage {
                     if self
                         .construction
                         .node_at(shadow_contents)
-                        .ok_or(SessionError::ForeignNode)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .shadow_properties()
                         .expect("actual shadow role")
                         .clonable()
@@ -79,16 +79,16 @@ impl SessionStorage {
                         for ordinal in 0..self
                             .construction
                             .node_at(shadow_contents)
-                            .ok_or(SessionError::ForeignNode)?
+                            .ok_or_else(|| latch_registry_row(c))?
                             .child_count()
                         {
                             c.charge(WorkCategory::RecordVisit, 1)?;
                             let child = self
                                 .construction
                                 .node_at(shadow_contents)
-                                .ok_or(SessionError::ForeignNode)?
+                                .ok_or_else(|| latch_registry_row(c))?
                                 .child_at(ordinal)
-                                .ok_or(SessionError::WrongSibling)?
+                                .ok_or_else(|| latch_registry_row(c))?
                                 .position();
                             pending.try_push(c, child)?;
                         }
@@ -181,7 +181,7 @@ impl SessionStorage {
                 if let Some(contents) = self
                     .construction
                     .node_at(node)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .template_contents()
                     .map(|node| node.position())
                 {
@@ -190,16 +190,16 @@ impl SessionStorage {
                     for ordinal in 0..self
                         .construction
                         .node_at(contents)
-                        .ok_or(SessionError::ForeignNode)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .child_count()
                     {
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         let child = self
                             .construction
                             .node_at(contents)
-                            .ok_or(SessionError::ForeignNode)?
+                            .ok_or_else(|| latch_registry_row(c))?
                             .child_at(ordinal)
-                            .ok_or(SessionError::WrongSibling)?
+                            .ok_or_else(|| latch_registry_row(c))?
                             .position();
                         pending.try_push(c, child)?;
                     }
@@ -207,16 +207,16 @@ impl SessionStorage {
                 for ordinal in 0..self
                     .construction
                     .node_at(node)
-                    .ok_or(SessionError::ForeignNode)?
+                    .ok_or_else(|| latch_registry_row(c))?
                     .child_count()
                 {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     let child = self
                         .construction
                         .node_at(node)
-                        .ok_or(SessionError::ForeignNode)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .child_at(ordinal)
-                        .ok_or(SessionError::WrongSibling)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .position();
                     pending.try_push(c, child)?;
                 }
@@ -238,7 +238,7 @@ impl SessionStorage {
         if self
             .construction
             .node_at(source)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .template_contents()
             .is_some()
         {
@@ -282,7 +282,7 @@ impl SessionStorage {
         match &self
             .construction
             .node_at(source)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         {
             HtmlNodeKind::Element(_) => self.clone_element(c, source, document),
@@ -290,7 +290,7 @@ impl SessionStorage {
                 let text = matches!(
                     self.construction
                         .node_at(source)
-                        .ok_or(SessionError::ForeignNode)?
+                        .ok_or_else(|| latch_registry_row(c))?
                         .kind(),
                     HtmlNodeKind::Text(_)
                 );
@@ -388,7 +388,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(original) = &self
             .construction
             .node_at(source)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()
@@ -418,7 +418,7 @@ impl SessionStorage {
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let taken = storage.take();
         let Some(AttributeStorage::Building {
@@ -426,7 +426,7 @@ impl SessionStorage {
         }) = taken
         else {
             *storage = taken;
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let (backing, shared) = match c.share_owned(values) {
             Ok(value) => value,
@@ -466,7 +466,7 @@ impl SessionStorage {
         let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen { values, .. }))) =
             self.payloads.values.get(container)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let attributes = values.clone();
         // Native installation and all payload alias locations are one fixed
@@ -496,7 +496,7 @@ impl SessionStorage {
         let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. }))) =
             self.payloads.values.get_mut(container)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *element = Some(node.index);
         self.payloads.join_row(container)?;
@@ -505,7 +505,7 @@ impl SessionStorage {
         if base::is_base(
             self.construction
                 .node_at(source)
-                .ok_or(SessionError::ForeignNode)?,
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             let slot = self.base_slot(c, source)?;
             c.charge(
@@ -513,7 +513,7 @@ impl SessionStorage {
                 mem::size_of::<base::ResponseDomain>() as u64,
             )?;
             let Some(RetainedPayload::Base { domain, .. }) = self.payloads.values.get(slot) else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             let domain = *domain;
             self.register_base(c, node.index, domain)?;
@@ -524,7 +524,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(original) = &self
             .construction
             .node_at(source)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             unreachable!()
@@ -546,7 +546,7 @@ impl SessionStorage {
             let HtmlNodeKind::Element(original) = &self
                 .construction
                 .node_at(source)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind()
             else {
                 unreachable!()
@@ -594,7 +594,7 @@ impl SessionStorage {
                 ..
             }))) = self.payloads.values.get_mut(stage)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             c.reserve_vector(actual, ticket, 1)?;
             payload_write::<Attribute>(c, 1)?;
@@ -686,7 +686,7 @@ impl SessionStorage {
             let HtmlNodeKind::Element(element) = &self
                 .construction
                 .node_at(source)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind()
             else {
                 return Err(SessionError::WrongToken);
@@ -965,7 +965,7 @@ impl SessionStorage {
             let HtmlNodeKind::Element(element) = &self
                 .construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .kind()
             else {
                 unreachable!()
@@ -1015,7 +1015,7 @@ impl SessionStorage {
             let Some(RetainedPayload::Textarea { state: stored, .. }) =
                 self.payloads.values.get_mut(slot)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             *stored = state;
             self.retire_raw_field(c, retired)?;
@@ -1049,7 +1049,7 @@ impl SessionStorage {
             payload_write::<bool>(c, 1)?;
             let Some(RetainedPayload::Input { complete, .. }) = self.payloads.values.get_mut(slot)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             *complete = true;
         }
@@ -1122,7 +1122,7 @@ impl SessionStorage {
             let Some(RetainedPayload::String { value, origins, .. }) =
                 self.payloads.values.get(source)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             buffer.extend_units(value.code_units(), c)?;
             origins

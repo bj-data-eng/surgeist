@@ -19,7 +19,7 @@ impl SessionStorage {
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
-            .ok_or(SessionError::ForeignNode)?
+            .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
             return Err(SessionError::WrongToken);
@@ -80,7 +80,7 @@ impl SessionStorage {
             let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
                 self.payloads.values.get(slot)
             else {
-                return Err(SessionError::CompletionMetadataUnavailable);
+                return Err(latch_registry_row(c));
             };
             let _ = state;
             // Only the admitted fresh offline prologue issues this fact; the

@@ -111,7 +111,7 @@ fn after_commit(point: CancelPoint) {
 impl SessionStorage {
     pub(super) fn meta_history(&self, slot: usize) -> Result<&MetaHistory, SessionError> {
         let Some(RetainedPayload::Document { meta, .. }) = self.payloads.values.get(slot) else {
-            return Err(SessionError::NodeDocumentUnavailable);
+            return Err(SessionError::registry_row());
         };
         Ok(meta)
     }
@@ -121,7 +121,7 @@ impl SessionStorage {
     ) -> Result<&mut MetaHistory, SessionError> {
         let Some(RetainedPayload::Document { meta, .. }) = self.payloads.values.get_mut(slot)
         else {
-            return Err(SessionError::NodeDocumentUnavailable);
+            return Err(SessionError::registry_row());
         };
         Ok(meta)
     }

@@ -93,7 +93,7 @@ impl ParserArenaSession {
             self.active()?
                 .construction
                 .node_at(index)
-                .ok_or(SessionError::ForeignNode)?,
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             return Ok(());
         }
@@ -109,7 +109,7 @@ impl ParserArenaSession {
         payload_write::<ResponseDomain>(c, 1)?;
         let Some(RetainedPayload::Base { domain, .. }) = storage.payloads.values.get_mut(slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *domain = ResponseDomain::ClosedOwned;
         Ok(())
@@ -126,7 +126,7 @@ impl SessionStorage {
         if !is_base(
             self.construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?,
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             return Ok(());
         }
@@ -178,7 +178,7 @@ impl SessionStorage {
             if is_base(
                 self.construction
                     .node_at(node)
-                    .ok_or(SessionError::ForeignNode)?,
+                    .ok_or_else(|| latch_registry_row(c))?,
             ) && self.form_attribute(c, node, "href")?.is_some()
             {
                 return Ok(Some(node));
@@ -217,7 +217,7 @@ impl SessionStorage {
         if !is_base(
             self.construction
                 .node_at(node)
-                .ok_or(SessionError::ForeignNode)?,
+                .ok_or_else(|| latch_registry_row(c))?,
         ) {
             return Ok(());
         }
@@ -238,7 +238,7 @@ impl SessionStorage {
                 let Some(RetainedPayload::BaseDocument { first, .. }) =
                     self.payloads.values.get(slot)
                 else {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 };
                 *first
             } else {
@@ -252,7 +252,7 @@ impl SessionStorage {
                 let Some(RetainedPayload::BaseDocument { first: binding, .. }) =
                     self.payloads.values.get_mut(slot)
                 else {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 };
                 *binding = first;
             }
@@ -265,7 +265,7 @@ impl SessionStorage {
                 payload_write::<BaseValue>(c, 1)?;
                 let Some(RetainedPayload::Base { frozen, .. }) = self.payloads.values.get_mut(slot)
                 else {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 };
                 let previous = match mem::replace(frozen, BaseValue::Unfrozen) {
                     BaseValue::Unfrozen => None,
@@ -286,7 +286,7 @@ impl SessionStorage {
             facts, first: old, ..
         }) = self.payloads.values.get(document_slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         if first == *old && !(href_changed && first == Some(node)) {
             return Ok(());
@@ -296,7 +296,7 @@ impl SessionStorage {
             let Some(RetainedPayload::BaseDocument { first, .. }) =
                 self.payloads.values.get_mut(document_slot)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             *first = None;
             return Ok(());
@@ -355,14 +355,14 @@ impl SessionStorage {
         let Some(RetainedPayload::BaseDocument { first: binding, .. }) =
             self.payloads.values.get_mut(document_slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *binding = Some(first);
         let Some(RetainedPayload::Base {
             frozen: binding, ..
         }) = self.payloads.values.get_mut(chosen_slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         *binding = BaseValue::Frozen(frozen);
         #[cfg(test)]
@@ -387,7 +387,7 @@ impl SessionStorage {
                 ..
             }) = self.payloads.values.get_mut(chosen_slot)
             else {
-                return Err(SessionError::WrongToken);
+                return Err(latch_registry_row(c));
             };
             frozen.response = Response::Finished;
         }
@@ -428,7 +428,7 @@ impl SessionStorage {
                 if !is_base(
                     self.construction
                         .node_at(node)
-                        .ok_or(SessionError::ForeignNode)?,
+                        .ok_or_else(|| latch_registry_row(c))?,
                 ) || frozen.response == Response::Pending
                 {
                     return Err(c
@@ -441,7 +441,7 @@ impl SessionStorage {
                 let Some(RetainedPayload::BaseDocument { facts, .. }) =
                     self.payloads.values.get(slot)
                 else {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 };
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 if !facts.same_owner(&frozen.environment) {

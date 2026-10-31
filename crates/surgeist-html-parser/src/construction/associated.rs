@@ -483,7 +483,7 @@ impl SessionStorage {
         raw: usize,
     ) -> Result<Result<HtmlHyperlinkUrlSnapshot, HyperlinkUnavailable>, SessionError> {
         let Some(RetainedPayload::String { value: raw, .. }) = self.payloads.values.get(raw) else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let context = match self.encoding_url_context(c, node)? {
             Ok(value) => value,
@@ -657,7 +657,7 @@ impl SessionStorage {
                     let Some(RetainedPayload::Hyperlink { state, .. }) =
                         self.payloads.values.get_mut(slot)
                     else {
-                        return Err(SessionError::WrongToken);
+                        return Err(latch_registry_row(c));
                     };
                     let old = mem::replace(&mut state.value, HyperlinkValue::Absent);
                     let old_usage = mem::take(&mut state.usage);
@@ -714,7 +714,7 @@ impl SessionStorage {
         }
         let Some(RetainedPayload::Hyperlink { state, .. }) = self.payloads.values.get_mut(slot)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let old = mem::replace(
             state,
@@ -755,7 +755,7 @@ impl SessionStorage {
         let decision = surgeist_html::image_update_start(activity);
         let cause = self.associated_cause(c)?;
         let Some(RetainedPayload::Image { state, .. }) = self.payloads.values.get(slot) else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         let next = state.latest.checked_add(1).ok_or_else(|| {
             c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
@@ -773,7 +773,7 @@ impl SessionStorage {
             Option<provenance::ConstructionCauseRef>,
         )>(c, 1)?;
         let Some(RetainedPayload::Image { state, .. }) = self.payloads.values.get_mut(slot) else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         state.latest = next;
         state.waiting =

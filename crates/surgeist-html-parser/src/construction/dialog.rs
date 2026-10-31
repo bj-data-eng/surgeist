@@ -118,7 +118,7 @@ impl SessionStorage {
             let Some(RetainedPayload::Document { interaction, .. }) =
                 self.payloads.values.get(owner)
             else {
-                return Err(SessionError::NodeDocumentUnavailable);
+                return Err(latch_registry_row(c));
             };
             interaction.first.is_none()
         } else {
@@ -140,7 +140,7 @@ impl SessionStorage {
         };
         payload_write::<Missing>(c, 1)?;
         let Some(RetainedPayload::Dialog { state, .. }) = self.payloads.values.get_mut(slot) else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         state.first = Some(Missing {
             subject: node,
@@ -170,7 +170,7 @@ impl SessionStorage {
         };
         c.charge(WorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::Dialog { state, .. }) = self.payloads.values.get(slot) else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(c));
         };
         if state.first.is_some() {
             // Structural parsing continues; unknown services cannot be resumed

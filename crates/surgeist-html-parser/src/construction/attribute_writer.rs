@@ -14,7 +14,7 @@ impl SessionStorage {
         let mut group = self.construction.take_attribute_edit();
         let Some(RetainedPayload::Attributes(backing)) = self.payloads.values.get_mut(container)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(control));
         };
         let taken = backing.take();
         let Some(AttributeStorage::Frozen {
@@ -25,7 +25,7 @@ impl SessionStorage {
         }) = taken
         else {
             *backing = taken;
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(control));
         };
         drop(values);
         let result = (|| {
@@ -52,7 +52,7 @@ impl SessionStorage {
         let values = record.attributes().clone();
         let Some(RetainedPayload::Attributes(backing)) = self.payloads.values.get_mut(container)
         else {
-            return Err(SessionError::WrongToken);
+            return Err(latch_registry_row(control));
         };
         *backing = Some(AttributeStorage::Frozen {
             values,
