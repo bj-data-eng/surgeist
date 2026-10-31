@@ -194,7 +194,7 @@ fn compressed_cell_global_bounds_use_the_executed_one_em_square() {
 
 #[cfg(feature = "text-accessibility")]
 #[test]
-fn placed_cell_ax_refusal_preserves_the_successful_source_only_binding() {
+fn cell_ax_coordinate_refusal_preserves_the_successful_source_only_binding() {
     use accesskit::NodeId;
     let (processed, analyzed, prepared, line, font) = prepared_cell("AA");
     let mut state = Accessibility::new(10_000);
@@ -222,13 +222,17 @@ fn placed_cell_ax_refusal_preserves_the_successful_source_only_binding() {
     let layout = placed_cell(&prepared, line, &font, 0.5);
     assert_eq!(layout.source(), processed.source());
     let error = layout
-        .accessibility_update(&mut state, parent, focus, Point::new(0.0, 0.0))
-        .expect_err("unimplemented placed Cell AX cannot publish legacy inner-cluster geometry");
-    assert_eq!(error.code, ErrorCode::UnsupportedFeature);
-    assert_eq!(
+        .accessibility_update(&mut state, parent, focus, Point::new(f64::INFINITY, 0.0))
+        .expect_err("nonfinite host placement cannot publish Cell AX geometry");
+    assert_eq!(error.code, ErrorCode::InvalidTextNumeric);
+    assert!(matches!(
         error.detail(),
-        Some(&ErrorDetail::UnsupportedAccessibilityCell { line: 0, cell: 0 })
-    );
+        Some(ErrorDetail::InvalidTextNumeric {
+            phase: TextNumericPhase::Accessibility,
+            category: TextNumericError::NonFinite,
+            ..
+        })
+    ));
     assert!(
         error.detail().is_some(),
         "placed Cell AX refusal must retain a typed diagnostic"

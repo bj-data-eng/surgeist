@@ -10,7 +10,7 @@ use surgeist_shaper::{
     WidthObservationCoverage, script,
 };
 
-fn qualified_optional_liga() -> Vec<u8> {
+pub(in crate::protocol::tests::combined_cells) fn qualified_optional_liga() -> Vec<u8> {
     // The maintained builder independently checks real DFLT/GSUB4 fi35/36->58,
     // source cmap coverage, licensed Ahem outlines and1000-unit target advance.
     let original = ligature_font(*b"liga");

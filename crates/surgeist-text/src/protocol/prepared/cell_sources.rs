@@ -4,6 +4,7 @@ use crate::engine::{
     PreparedData,
     scope_alignment::accounting::{self as account, Ledger},
 };
+use crate::processing::contextual::alignment::operations;
 use crate::protocol::paragraph::{
     FragmentAssociation, FragmentOwner, OriginIntersection, SemanticAnchorItem,
 };
@@ -146,6 +147,9 @@ pub(crate) struct CellCorrespondence<'a> {
     binding: &'a CellBinding,
     group: &'a FixedGroup,
     occurrences: Vec<Option<Occurrence>>,
+    // Actual generated-control owners represented by these part occurrences.
+    // This transaction-local index avoids rescanning all parts at every Anchor.
+    represented_controls: Vec<usize>,
 }
 impl<'a> CellCorrespondence<'a> {
     fn invalid(&self) -> crate::Error {
@@ -187,6 +191,7 @@ impl<'a> CellCorrespondence<'a> {
             binding,
             group,
             occurrences: account::filled(ledger, group.parts.len(), None)?,
+            represented_controls: Vec::new(),
         };
         let mut atom = row.atoms.start;
         let mut cut = row.presentation.start;
@@ -268,10 +273,20 @@ impl<'a> CellCorrespondence<'a> {
         }
         for occurrence in &result.occurrences {
             account::work(ledger, 1)?;
-            if occurrence.is_none() {
+            let Some(occurrence) = occurrence else {
                 return Err(invalid());
+            };
+            if let CellPartSource::Generated(GeneratedSeparatorOwner::Control(control)) =
+                occurrence.owner
+            {
+                account::push(ledger, &mut result.represented_controls, control)?;
             }
         }
+        operations::order_by(
+            &mut result.represented_controls,
+            ledger.as_mut(),
+            usize::cmp,
+        )?;
         Ok(result)
     }
     fn record(
@@ -382,16 +397,12 @@ impl<'a> CellCorrespondence<'a> {
                     if let Some(FragmentOwner::Control(control)) =
                         generated_owner(self.prepared, &map.events()[event])
                     {
-                        let mut represented = false;
-                        for occurrence in &self.occurrences {
-                            account::work(ledger, 1)?;
-                            represented |= occurrence.is_some_and(|value| {
-                                value.owner
-                                    == CellPartSource::Generated(GeneratedSeparatorOwner::Control(
-                                        control,
-                                    ))
-                            });
-                        }
+                        let represented = operations::binary_search_by(
+                            &self.represented_controls,
+                            ledger.as_mut(),
+                            |owner| owner.cmp(&control),
+                        )?
+                        .is_ok();
                         if !represented {
                             emit(
                                 CellSourceVisit::Control(CellControlOccurrence {
@@ -509,6 +520,7 @@ impl<'a> CellCorrespondence<'a> {
         })
     }
     pub(crate) fn drop(self, ledger: &mut Ledger) -> Result<()> {
+        account::drop_vec(ledger, self.represented_controls)?;
         account::drop_vec(ledger, self.occurrences)
     }
 }

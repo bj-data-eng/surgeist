@@ -4,6 +4,12 @@
 
 use super::*;
 use crate::{Accessibility, Cursor, Selection};
+
+#[path = "combined_cell_ax_ordinary.rs"]
+mod ordinary;
+
+#[path = "combined_cell_ax_contributions.rs"]
+mod contributions;
 use accesskit::{Node, NodeId, Role, TextPosition, TextSelection, TreeUpdate};
 
 // Follow the published logical child inventory, not TreeUpdate.nodes order.
@@ -307,4 +313,147 @@ fn source_only_all_a_space_a_keeps_three_original_units_in_one_cell_word_span() 
         first += node.character_lengths().len();
     }
     assert_eq!(first, 3);
+}
+
+#[test]
+fn cell_ax_phase_identity_and_failed_coordinates_preserve_bindings_and_id_space() {
+    let (_, analyzed, prepared, line, bytes) = super::prepared_cell("AA");
+    let first = super::placed_cell(&prepared, line.clone(), &bytes, 0.5);
+    let second = super::placed_cell(&prepared, line, &bytes, 0.5);
+    assert_eq!(
+        first.analyzed_source().identity(),
+        second.analyzed_source().identity()
+    );
+    let parent = NodeId(1);
+    let cursor = Cursor::new(1, Affinity::After);
+    let mut state = Accessibility::new(90_000);
+    let source = analyzed
+        .accessibility_update(&mut state, parent, parent)
+        .unwrap();
+    let source_ids = carriers(&source, parent)
+        .iter()
+        .map(|(id, _)| *id)
+        .collect::<Vec<_>>();
+    let source_position = analyzed.access_position(&state, cursor).unwrap();
+    assert!(source_position.is_some());
+    assert_eq!(
+        first.access_position(&state, cursor).unwrap_err().detail(),
+        Some(&ErrorDetail::AccessibilityBindingMismatch)
+    );
+
+    // A different analysis forces fresh node issuance. Comparing identical
+    // successful follow-up requests reveals IDs consumed by a failed candidate.
+    let probe = AnalyzedSource::new(
+        Source::new("next"),
+        Style::default(),
+        AnalysisTypography::HorizontalComposition,
+    )
+    .unwrap();
+    for coordinate in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+        let mut candidate = state.clone();
+        let mut expected = state.clone();
+        let error = first
+            .accessibility_update(&mut candidate, parent, parent, Point::new(coordinate, 0.0))
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidTextNumeric);
+        assert!(matches!(
+            error.detail(),
+            Some(ErrorDetail::InvalidTextNumeric {
+                phase: TextNumericPhase::Accessibility,
+                category: TextNumericError::NonFinite,
+                ..
+            })
+        ));
+        assert_eq!(
+            analyzed.access_position(&candidate, cursor).unwrap(),
+            source_position
+        );
+        let actual = probe
+            .accessibility_update(&mut candidate, parent, parent)
+            .unwrap();
+        let expected = probe
+            .accessibility_update(&mut expected, parent, parent)
+            .unwrap();
+        assert_eq!(
+            actual
+                .nodes
+                .iter()
+                .map(|(id, node)| (*id, node.role(), node.value()))
+                .collect::<Vec<_>>(),
+            expected
+                .nodes
+                .iter()
+                .map(|(id, node)| (*id, node.role(), node.value()))
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    let placed = first
+        .accessibility_update(&mut state, parent, parent, Point::new(0.0, 0.0))
+        .unwrap();
+    assert_eq!(
+        carriers(&placed, parent)
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>(),
+        source_ids
+    );
+    assert_eq!(
+        first.access_position(&state, cursor).unwrap(),
+        source_position
+    );
+    assert_eq!(
+        first.clone().access_position(&state, cursor).unwrap(),
+        source_position
+    );
+    assert_eq!(
+        analyzed
+            .access_position(&state, cursor)
+            .unwrap_err()
+            .detail(),
+        Some(&ErrorDetail::AccessibilityBindingMismatch)
+    );
+    assert_eq!(
+        second.access_position(&state, cursor).unwrap_err().detail(),
+        Some(&ErrorDetail::AccessibilityBindingMismatch)
+    );
+    let replacement = second
+        .accessibility_update(&mut state, parent, parent, Point::new(0.0, 0.0))
+        .unwrap();
+    assert_eq!(
+        carriers(&replacement, parent)
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>(),
+        source_ids
+    );
+    assert_eq!(
+        second.access_position(&state, cursor).unwrap(),
+        source_position
+    );
+    assert_eq!(
+        first.access_position(&state, cursor).unwrap_err().detail(),
+        Some(&ErrorDetail::AccessibilityBindingMismatch)
+    );
+    let source_again = analyzed
+        .accessibility_update(&mut state, parent, parent)
+        .unwrap();
+    assert_eq!(
+        carriers(&source_again, parent)
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>(),
+        source_ids
+    );
+    for (_, node) in carriers(&source_again, parent) {
+        assert_eq!(node.bounds(), None);
+        assert_eq!(node.character_positions(), None);
+        assert_eq!(node.character_widths(), None);
+        assert_eq!(node.font_family(), None);
+        assert_eq!(node.font_size(), None);
+    }
+    assert_eq!(
+        analyzed.access_position(&state, cursor).unwrap(),
+        source_position
+    );
 }
