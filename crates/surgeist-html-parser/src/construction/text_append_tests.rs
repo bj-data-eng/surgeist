@@ -21,7 +21,7 @@ fn aggregate(c: &mut ParseControl) -> (ParserArenaSession, ParserNode, ParserNod
 
 fn exact_current_ticket(session: &ParserArenaSession, c: &mut ParseControl, node: &ParserNode) {
     let storage = session.active().unwrap();
-    let slot = storage.payloads.node_joins[node.index].text.unwrap();
+    let slot = storage.payloads.node_joins[node.index].text().unwrap();
     let RetainedPayload::String {
         value,
         allocation,
@@ -416,7 +416,7 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                     "geometric actual capacity relocation bound"
                 );
                 let storage = session.active().unwrap();
-                let slot = storage.payloads.node_joins[node.index].text.unwrap();
+                let slot = storage.payloads.node_joins[node.index].text().unwrap();
                 let RetainedPayload::String {
                     origins: Some(group),
                     ..

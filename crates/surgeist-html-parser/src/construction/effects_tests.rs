@@ -2148,7 +2148,7 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
     let good = storage.payloads.node_joins[img];
     // A join past the registry names no row: the lookup reports a typed error.
     storage.payloads.node_joins[img].rows[Join::Image as usize] =
-        Some(joined_cell(usize::MAX / 2).unwrap());
+        Some(joined_cell(u32::MAX as usize - 1).unwrap());
     assert_eq!(
         storage.start_img_update(
             &mut c,
@@ -2167,6 +2167,10 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
         ))
     );
     // A slot whose successor does not exist is refused, never wrapped.
+    assert_eq!(
+        joined_cell(u32::MAX as usize),
+        Err(SessionError::registry_row())
+    );
     assert_eq!(joined_cell(usize::MAX), Err(SessionError::registry_row()));
     storage.payloads.node_joins[img] = good;
     session.release(&mut c).unwrap();

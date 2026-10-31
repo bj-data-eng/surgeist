@@ -918,7 +918,7 @@ impl SessionStorage {
             self.payloads.join_row(slot)?;
         }
         if let Some(slot) = bindings.textarea {
-            self.payloads.join_textarea(node, slot);
+            self.payloads.join_textarea(node, slot)?;
         }
         Ok(())
     }
@@ -1157,7 +1157,7 @@ impl SessionStorage {
                 .node_joins
                 .get(node)
                 .ok_or(SessionError::ForeignNode)?
-                .text
+                .text()
                 .ok_or(SessionError::WrongToken)?;
             let Some(RetainedPayload::String {
                 location: StringLocation::Text(owner),

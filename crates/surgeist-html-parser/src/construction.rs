@@ -31,7 +31,7 @@ use crate::parser::{
     tokenizer::token::{Doctype, Tag, TagKind, Text, TextOrigin, TokenKind},
 };
 use crate::{Attribute, HtmlParseResource, HtmlTextareaFlags, HtmlTextareaRawValueAction};
-use std::num::NonZeroUsize;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::{mem, sync::Weak};
 use surgeist_html::bounded;
@@ -399,12 +399,12 @@ struct PayloadStorage {
 /// join always names a row of its kind (the callers still check what they get).
 #[derive(Clone, Copy, Default)]
 struct NodeJoins {
-    text: Option<usize>,
-    textarea: Option<usize>,
-    rows: [Option<NonZeroUsize>; JOIN_COUNT],
+    text: Option<NonZeroU32>,
+    textarea: Option<NonZeroU32>,
+    rows: [Option<NonZeroU32>; JOIN_COUNT],
     /// Registry slot plus one of the name of the record's last attribute as
     /// registered at creation; see `PayloadStorage::attribute_value_candidate`.
-    attribute_strings: Option<NonZeroUsize>,
+    attribute_strings: Option<NonZeroU32>,
 }
 /// Node-keyed registry row kinds with a join in [`NodeJoins`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -429,13 +429,24 @@ enum Join {
     StyleOccurrence,
 }
 const JOIN_COUNT: usize = Join::StyleOccurrence as usize + 1;
+/// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
+/// refused as the registry invariant (see `joined_cell`).
+const _: () = assert!(mem::size_of::<NodeJoins>() == 4 * (JOIN_COUNT + 3));
 impl NodeJoins {
     fn get(&self, join: Join) -> Option<usize> {
         self.rows
             .get(join as usize)
             .copied()
             .flatten()
-            .and_then(|slot| slot.get().checked_sub(1))
+            .and_then(cell_slot)
+    }
+    /// The registry row holding the record's merged text.
+    fn text(&self) -> Option<usize> {
+        self.text.and_then(cell_slot)
+    }
+    /// The registry row holding the record's textarea state.
+    fn textarea(&self) -> Option<usize> {
+        self.textarea.and_then(cell_slot)
     }
     /// Names the latest registry row, the one a back-to-front scan finds.
     fn set_latest(&mut self, join: Join, slot: usize) -> Result<(), SessionError> {
@@ -459,15 +470,20 @@ impl NodeJoins {
         Ok(())
     }
 }
-/// Slot plus one as a nonzero cell. A slot is an index into the registry
-/// vector, so it is below `isize::MAX / size_of::<RetainedPayload>()` and the
-/// sum cannot overflow; the checked sum still fails typed, never wrapping or
-/// naming another row, if that bound were ever broken.
-fn joined_cell(slot: usize) -> Result<NonZeroUsize, SessionError> {
-    const { assert!(mem::size_of::<RetainedPayload>() > 1) };
-    NonZeroUsize::MIN
-        .checked_add(slot)
+/// Slot plus one as a nonzero 32-bit cell. A registry of more than `u32::MAX`
+/// rows cannot be joined (it would hold over a terabyte of 320-byte rows), so
+/// a larger slot is refused as the registry invariant, never truncated or
+/// wrapped onto another row.
+fn joined_cell(slot: usize) -> Result<NonZeroU32, SessionError> {
+    u32::try_from(slot)
+        .ok()
+        .and_then(|slot| slot.checked_add(1))
+        .and_then(NonZeroU32::new)
         .ok_or_else(SessionError::registry_row)
+}
+/// The registry slot a cell names.
+fn cell_slot(cell: NonZeroU32) -> Option<usize> {
+    usize::try_from(cell.get().checked_sub(1)?).ok()
 }
 /// Registry-wide kind lists with their own admitted backing.
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -877,16 +893,22 @@ impl PayloadStorage {
             .set_first(join, slot)
     }
     /// The registry row now holding a record's merged text.
-    fn join_text(&mut self, node: usize, slot: usize) {
-        if let Some(cell) = self.node_joins.get_mut(node) {
-            cell.text = Some(slot);
-        }
+    fn join_text(&mut self, node: usize, slot: usize) -> Result<(), SessionError> {
+        let cell = self
+            .node_joins
+            .get_mut(node)
+            .ok_or_else(SessionError::registry_row)?;
+        cell.text = Some(joined_cell(slot)?);
+        Ok(())
     }
     /// The registry row holding a record's textarea state.
-    fn join_textarea(&mut self, node: usize, slot: usize) {
-        if let Some(cell) = self.node_joins.get_mut(node) {
-            cell.textarea = Some(slot);
-        }
+    fn join_textarea(&mut self, node: usize, slot: usize) -> Result<(), SessionError> {
+        let cell = self
+            .node_joins
+            .get_mut(node)
+            .ok_or_else(SessionError::registry_row)?;
+        cell.textarea = Some(joined_cell(slot)?);
+        Ok(())
     }
     /// The registry slots of one registry-wide kind, in registry order.
     fn kind_list(&self, list: KindList) -> &[usize] {
@@ -946,12 +968,7 @@ impl PayloadStorage {
         attribute_count: usize,
         position: usize,
     ) -> Option<usize> {
-        let last_name = self
-            .node_joins
-            .get(node)?
-            .attribute_strings?
-            .get()
-            .checked_sub(1)?;
+        let last_name = cell_slot(self.node_joins.get(node)?.attribute_strings?)?;
         let from_last = attribute_count.checked_sub(1)?.checked_sub(position)?;
         last_name
             .checked_add(from_last.checked_mul(2)?)?
@@ -3638,7 +3655,7 @@ impl SessionStorage {
         };
         *current = location;
         if let StringLocation::Text(node) = location {
-            self.payloads.join_text(node, index);
+            self.payloads.join_text(node, index)?;
         }
         Ok(())
     }
@@ -6690,7 +6707,7 @@ impl ParserArenaSession {
                 };
                 *bound = Some(node.index);
                 state.flags.reset();
-                storage.payloads.join_textarea(node.index, textarea);
+                storage.payloads.join_textarea(node.index, textarea)?;
                 #[cfg(test)]
                 if let Some(cancellation) = storage.cancel_after_textarea_reset.take() {
                     cancellation.cancel();
@@ -9850,7 +9867,7 @@ fn find_textarea_state(
         .node_joins
         .get(node)
         .ok_or(SessionError::ForeignNode)?;
-    let Some(slot) = fields.textarea else {
+    let Some(slot) = fields.textarea() else {
         return Ok(None);
     };
     control.charge(WorkCategory::RecordVisit, 1)?;
