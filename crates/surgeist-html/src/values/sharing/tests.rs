@@ -1070,7 +1070,7 @@ fn mixed_live_outputs_cross_many_turnovers_and_restore_original_candidates() {
     assert_eq!(pool.heap_usage(), baseline);
     drop(pool);
     assert_eq!(outputs.len(), rows.len() * 2);
-    for (row, pair) in outputs.chunks_exact(2).enumerate() {
+    for (row, pair) in outputs.as_chunks::<2>().0.iter().enumerate() {
         assert!(Arc::ptr_eq(
             pair[0].shared_code_units(),
             rows[row].shared_code_units()

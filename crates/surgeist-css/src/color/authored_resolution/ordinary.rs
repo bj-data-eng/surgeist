@@ -25,10 +25,9 @@ use crate::color::{
 /// [`Default`] covers authored colors of up to 1,024 source units: the same record and action
 /// ceilings as [`CssColorOrdinaryLimits`](crate::color::CssColorOrdinaryLimits), and 1,024
 /// path steps, since the component path of a color parsed from source has at most one step per
-/// source unit. As there, the margin holds for the corpus, not for every color of that length. A
-/// caller with longer sources, more extreme numeric literals than the corpus or a tighter work
-/// budget passes explicit limits, raising the record and action ceilings together with
-/// `path_steps`.
+/// source unit. As there, the headroom is measured on the corpus, not guaranteed for every color
+/// of that length. A caller with longer sources or a tighter work budget passes explicit limits,
+/// raising the record and action ceilings together with `path_steps`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssAuthoredColorOrdinaryLimits {
     /// Maximum number of records in the algorithm bank.
@@ -47,8 +46,8 @@ impl Default for CssAuthoredColorOrdinaryLimits {
     /// algorithm records, 3,476 arithmetic records, 3,476 evaluation records, 1,024 path
     /// steps and 2,036,468,185 actions.
     ///
-    /// The record and action ceilings are four times the worst corpus requirement per source
-    /// unit, scaled to 1,024 units. Callers with larger inputs pass explicit limits.
+    /// The record and action ceilings are fixed reference values per source unit, scaled to
+    /// 1,024 units and multiplied by four. Callers with larger inputs pass explicit limits.
     fn default() -> Self {
         Self {
             algorithm_records: DEFAULT_ALGORITHM_RECORDS,

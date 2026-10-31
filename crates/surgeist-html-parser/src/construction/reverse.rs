@@ -2479,7 +2479,7 @@ mod tests {
         evidence.release(&mut c).unwrap();
         crate::parser::tree_builder::tests::assert_released(&c);
         assert_eq!(rows.len(), 2 * DESTINATIONS);
-        for (node, pair) in rows.chunks_exact(2).enumerate() {
+        for (node, pair) in rows.as_chunks::<2>().0.iter().enumerate() {
             assert_eq!(
                 pair,
                 &[
