@@ -64,8 +64,9 @@ pub(super) struct MetaHistory {
 impl MetaHistory {
     /// The first unsatisfied operation recorded for `domain`; the array has one
     /// cell per `MetaDomain`.
-    fn gap(&self, domain: MetaDomain) -> Option<usize> {
-        self.gaps.get(domain.index()).copied().flatten()
+    /// `None` only when `domain` has no cell, which `index` rules out.
+    fn gap(&self, domain: MetaDomain) -> Option<Option<usize>> {
+        self.gaps.get(domain.index()).copied()
     }
     pub(super) fn offline() -> Self {
         Self {
@@ -132,7 +133,9 @@ impl SessionStorage {
     ) -> Result<Option<usize>, SessionError> {
         let slot = self.document_slot(c, document)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        Ok(self.meta_history(slot)?.gap(MetaDomain::Csp))
+        self.meta_history(slot)?
+            .gap(MetaDomain::Csp)
+            .ok_or_else(|| latch_registry_row(c))
     }
     pub(super) fn meta_missing(
         &mut self,
@@ -144,7 +147,12 @@ impl SessionStorage {
         let slot = self.document_slot(c, document)?;
         let domain = kind.domain();
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if self.meta_history(slot)?.gap(domain).is_some() {
+        if self
+            .meta_history(slot)?
+            .gap(domain)
+            .ok_or_else(|| latch_registry_row(c))?
+            .is_some()
+        {
             return Ok(());
         }
         let cause = self.associated_cause(c)?;
@@ -162,9 +170,11 @@ impl SessionStorage {
             cause,
         });
         let meta = self.meta_history_mut(slot)?;
-        if let Some(cell) = meta.gaps.get_mut(domain.index()) {
-            *cell = Some(gap);
-        }
+        let cell = meta
+            .gaps
+            .get_mut(domain.index())
+            .ok_or_else(|| latch_registry_row(c))?;
+        *cell = Some(gap);
         if first {
             meta.first = Some(domain);
         }
@@ -275,7 +285,11 @@ impl SessionStorage {
             Pragma::Refresh if !content.is_empty() => {
                 let slot = self.document_slot(c, document)?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if self.meta_history(slot)?.gap(MetaDomain::Refresh).is_some()
+                if self
+                    .meta_history(slot)?
+                    .gap(MetaDomain::Refresh)
+                    .ok_or_else(|| latch_registry_row(c))?
+                    .is_some()
                     || self.meta_history(slot)?.refresh
                 {
                     return Ok(());
@@ -415,7 +429,13 @@ impl SessionStorage {
             (theme, "theme-color", MetaDomain::ThemeColor),
             (scheme, "color-scheme", MetaDomain::ColorScheme),
         ] {
-            if !enabled || self.meta_history(slot)?.gap(domain).is_some() {
+            if !enabled
+                || self
+                    .meta_history(slot)?
+                    .gap(domain)
+                    .ok_or_else(|| latch_registry_row(c))?
+                    .is_some()
+            {
                 continue;
             }
             let mut selected_theme = None;

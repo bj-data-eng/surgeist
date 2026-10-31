@@ -1235,6 +1235,8 @@ pub struct ContextView<'a> {
 }
 impl<'a> ContextView<'a> {
     /// The exact association applicable at this occurrence, never final policy.
+    /// The policy row was qualified as a CSP policy at publication (`qualify`),
+    /// so `None` here means the occurrence has no association.
     pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
         if self.value.policy_missing {
             return None;
@@ -1343,6 +1345,8 @@ impl<'a> ContextView<'a> {
                 .context,
         })
     }
+    /// The provider row was qualified as base facts of this document at
+    /// publication (`qualify`), so `None` here means the occurrence has none.
     pub fn base_facts(&self) -> Option<&'a crate::HtmlParseBaseFacts> {
         self.value
             .base_document
@@ -1351,6 +1355,8 @@ impl<'a> ContextView<'a> {
                 _ => None,
             })
     }
+    /// The provider row was qualified as this document's captured context at
+    /// publication (`qualify`), so `None` here means the occurrence has none.
     pub fn captured_context(
         &self,
     ) -> Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext> {
@@ -1427,13 +1433,13 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                     .last
                     .is_some_and(|index| index <= slot || index >= storage.payloads.values.len())
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             RetainedPayload::AssociationOccurrence(values) => {
                 values.require_disposal_owner(c)?;
                 if values.len() != 1 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
                 let value = &values.as_slice()[0];
                 if value.context.input_document >= slot
@@ -1442,7 +1448,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                         Some(RetainedPayload::AssociationDocument(summary)) if summary.document == value.document
                     )
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
                 storage.validate_association_document(c, &value.document)?;
                 if let Some(document) = &value.previous_document {
@@ -1451,7 +1457,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 if storage.view.node_at(value.subject).is_none()
                     || storage.view.node_at(value.root).is_none()
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
                 for prior in [value.prior_document, value.prior_style]
                     .into_iter()
@@ -1463,14 +1469,17 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                             Some(RetainedPayload::AssociationOccurrence(_))
                         )
                     {
-                        return Err(SessionError::WrongToken);
+                        return Err(latch_registry_row(c));
                     }
                 }
-                let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
+                let evidence = storage
+                    .evidence
+                    .as_ref()
+                    .ok_or_else(|| latch_registry_row(c))?;
                 if let Some(cause) = &value.cause
                     && evidence.retained_cause(cause).is_none()
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
                 for reference in [
                     value.preferred.as_ref(),
@@ -1489,7 +1498,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                     for node in inputs.order.as_slice() {
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         if storage.view.node_at(*node).is_none() {
-                            return Err(SessionError::WrongToken);
+                            return Err(latch_registry_row(c));
                         }
                     }
                     for reference in inputs
@@ -1508,12 +1517,22 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 if let Some(provider) = value.context.base_document
                     && !matches!((&value.document, storage.payloads.values.get(provider)), (DocumentRef::Owned(document), Some(RetainedPayload::BaseDocument { node, facts, .. })) if node == document && value.context.base_observation.is_none_or(|index| index < facts.observations().len()))
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
+                }
+                // `ContextView::csp_association` reads this row without a controller,
+                // so its kind is established here, at publication.
+                if let Some(policy) = value.context.csp
+                    && !matches!(
+                        storage.payloads.values.get(policy),
+                        Some(RetainedPayload::CspPolicy(_))
+                    )
+                {
+                    return Err(latch_registry_row(c));
                 }
                 if let Some(provider) = value.context.captured
                     && !matches!((&value.document, storage.payloads.values.get(provider)), (DocumentRef::Captured(document), Some(RetainedPayload::AssociationCapturedContext(context))) if context.value.document() == document)
                 {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             _ => {}
