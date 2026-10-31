@@ -107,6 +107,37 @@ state only, with no live target or handle. The contract is implemented by
 [handle access](../src/registry.rs), [lease ownership](../src/lease.rs), and
 [native closing](../src/winit_adapter.rs).
 
+## Native magnification input
+
+Handle `InputEvent::Magnification` in `Handler::input` to receive native
+magnification intent. A `MagnificationGesture::Pinch` retains its native
+`TouchPhase` and raw signed fractional delta: positive means magnifying intent,
+negative means shrinking intent, and either signed zero remains unchanged.
+`MagnificationDelta` admits only finite values. A nonfinite native delta becomes
+`None` while preserving the pinch phase; it never becomes an invented zero or
+scale factor. `MagnificationGesture::Smart` is a distinct request with no
+supplied delta or phase.
+
+The event's optional position is the last observed logical mouse position,
+which can be absent. It is pointer context, not a gesture focal point. Native
+gesture payloads supply no coordinates. The adapter captures current modifiers
+and a monotonic receipt timestamp, preserving the backend's source order,
+including preceding pointer updates.
+
+Receiving this input does not change window metrics, native display scale,
+page zoom, visual viewport scale, host observations, layout or CSS, and emits no
+window command. The consumer chooses whether and how to apply magnification or
+restore an earlier view. This keeps native input separate from the
+[CSS2 magnification guidance](../../../references/css2--ui.html--ff1f72803ea0.md#magnification),
+which defines no authored zoom property.
+
+The pinned winit backend emits pinch and smart-magnification gestures on macOS
+and iOS when the native platform provides them. iOS recognition requires an
+explicit opt-in that this adapter does not enable. Other backends have no
+current producer for this input. The [native adapter](../src/winit_adapter.rs)
+owns lowering; [focused tests](../src/magnification_tests.rs) exercise conversion
+and the shared callback pump without a display or an actual native gesture.
+
 ## Host observations and consumer inputs
 
 `WindowSnapshot::environment` retains a `HostEnvironment` with the window's

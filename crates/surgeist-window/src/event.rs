@@ -157,7 +157,8 @@ impl FileDragEvent {
 /// [`winit::event::WindowEvent::MouseWheel`] to [`Self::Wheel`],
 /// [`winit::event::WindowEvent::KeyboardInput`] to [`Self::Key`], and
 /// [`winit::event::WindowEvent::ModifiersChanged`] to [`Self::Modifiers`]. It
-/// lowers [`winit::event::WindowEvent::Ime`] to [`ImeEvent::Enabled`],
+/// lowers native pinch and smart-magnification gestures to [`Self::Magnification`]
+/// without applying a zoom operation, and [`winit::event::WindowEvent::Ime`] to [`ImeEvent::Enabled`],
 /// [`ImeEvent::Disabled`], [`ImeEvent::Preedit`], or [`ImeEvent::Commit`];
 /// [`ImeEvent::DeleteSurrounding`] and [`Self::StandardKeyBinding`] have no
 /// current `winit` producer. Native platform support determines which of these
@@ -168,6 +169,8 @@ pub enum InputEvent {
     Pointer(PointerEvent),
     /// Pointer-wheel input.
     Wheel(WheelEvent),
+    /// Native pinch or smart-magnification intent, without an applied zoom.
+    Magnification(MagnificationEvent),
     /// Keyboard input with logical and physical identities.
     Key(KeyEvent),
     /// A native modifier-state change.
@@ -192,6 +195,7 @@ impl InputEvent {
         match self {
             Self::Pointer(event) => event.id,
             Self::Wheel(event) => event.id,
+            Self::Magnification(event) => event.id,
             Self::Key(event) => event.id,
             Self::Modifiers { id, .. } => *id,
             Self::Ime(event) => event.id(),
@@ -323,6 +327,70 @@ pub struct WheelEvent {
     pub timestamp: Option<Instant>,
 }
 
+/// A finite native magnification delta, distinct from an applied scale factor.
+///
+/// Positive values express magnifying intent and negative values express
+/// shrinking intent. Fractional values and the sign of zero are preserved;
+/// there is no implicit conversion to a percentage or a scale factor.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MagnificationDelta(f64);
+
+impl MagnificationDelta {
+    /// Retains the exact finite value, or returns `None` for NaN or infinity.
+    #[must_use]
+    pub fn new(value: f64) -> Option<Self> {
+        if value.is_finite() {
+            Some(Self(value))
+        } else {
+            None
+        }
+    }
+
+    /// Returns the native finite delta without normalization or accumulation.
+    #[must_use]
+    pub const fn get(self) -> f64 {
+        self.0
+    }
+}
+
+/// Native magnification intent whose gesture-specific facts remain distinct.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MagnificationGesture {
+    /// A pinch update, preserving phase even when its delta is unavailable.
+    Pinch {
+        /// Exact finite native delta, or `None` when the source is nonfinite.
+        delta: Option<MagnificationDelta>,
+        /// Native sequence phase; no phase is synthesized from the delta.
+        phase: TouchPhase,
+    },
+    /// Native smart-magnification intent, with no supplied delta or phase.
+    ///
+    /// The consumer chooses whether to magnify, restore, or take another action.
+    Smart,
+}
+
+/// Native magnification input for one window, delivered to [`crate::Handler::input`].
+///
+/// This payload is intent only. Delivery does not change native display scale,
+/// page zoom, visual viewport scale, layout, CSS, or window observations. The
+/// consumer owns any application of magnification.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MagnificationEvent {
+    /// Identity of the target window.
+    pub id: Id,
+    /// Native pinch update or distinct smart-magnification intent.
+    pub gesture: MagnificationGesture,
+    /// Last observed logical mouse position, if available.
+    ///
+    /// This is pointer context, not a gesture focal point. The native gesture
+    /// payload carries no position, so an absent observation remains `None`.
+    pub position: Option<Point>,
+    /// Modifier state captured when this input was received.
+    pub modifiers: ModifierState,
+    /// Monotonic receipt timestamp, if the event source recorded one.
+    pub timestamp: Option<Instant>,
+}
+
 /// A wheel delta whose unit is retained from the native source.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum WheelDelta {
@@ -342,16 +410,16 @@ pub enum WheelDelta {
     },
 }
 
-/// Stage of a touch-associated wheel sequence.
+/// Stage of a native touch-associated sequence, including wheel and pinch input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TouchPhase {
-    /// The scroll sequence started.
+    /// The sequence started.
     Started,
-    /// The scroll sequence continued.
+    /// The sequence continued.
     Moved,
-    /// The scroll sequence ended.
+    /// The sequence ended.
     Ended,
-    /// The scroll sequence was cancelled.
+    /// The sequence was cancelled.
     Cancelled,
 }
 
