@@ -131,3 +131,20 @@ fn reservation_work_added_by_each_doubling_of_one_selects_options_is_near_double
         &[("reservation work", |work| work.reserved)],
     );
 }
+
+#[test]
+fn reservation_work_added_by_each_doubling_of_a_documents_style_elements_is_near_double() {
+    // Each style element's association collects every style element of its
+    // tree in order, so total work is not linear; that list must still grow
+    // geometrically.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |styles| {
+            format!(
+                "<!doctype html><head>{}",
+                "<style>a{}</style>".repeat(styles)
+            )
+        },
+        &[("reservation work", |work| work.reserved)],
+    );
+}
