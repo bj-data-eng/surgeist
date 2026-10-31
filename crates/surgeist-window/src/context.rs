@@ -1,8 +1,7 @@
 use super::{
-    Clipboard, Command, Error, ErrorCode, Handle, HostCapabilities, Id, Metrics, Open, Proxy, Ref,
-    Registry, Selector, Target, command::Action,
+    Clipboard, Command, Error, ErrorCode, Handle, HostCapabilities, Id, Instant, Metrics, Open,
+    Proxy, Ref, Registry, Selector, Target, command::Action,
 };
-use std::time::Instant;
 
 /// Callback-local access to the live registry, host services, and queued work.
 ///

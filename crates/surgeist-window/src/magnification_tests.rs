@@ -1,11 +1,10 @@
 use crate::{
-    Access, EventKind, Handler, HostEnvironment, Id, InputEvent, MagnificationDelta,
+    Access, EventKind, Handler, HostEnvironment, Id, InputEvent, Instant, MagnificationDelta,
     MagnificationEvent, MagnificationGesture, Metrics, ModifierState, NativeEventTransition,
     PhysicalPoint, PhysicalSize, Point, Result, ScaleFactor, Size, TouchPhase, ViewportMetrics,
     ViewportSizes, VisualViewportMetrics, WindowSnapshot, open, testing::Runner,
     winit_adapter::magnification_from_winit,
 };
-use std::time::Instant;
 use winit::event::{DeviceId, TouchPhase as NativePhase, WindowEvent};
 
 fn pinch(delta: f64, phase: NativePhase) -> WindowEvent {
