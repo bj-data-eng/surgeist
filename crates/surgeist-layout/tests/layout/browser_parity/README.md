@@ -171,6 +171,16 @@ forced breaks and authored fixed-pixel empty atomics. Uncovered text, unsupporte
 inline box/strut context and unresolved atomic sizing are explicitly refused;
 version-1 numeric records remain historical schema evidence.
 
+Native Range observations query the completed batch's actual placed Text through
+[`source_range_fragments`](../../../../surgeist-text/src/range_fragments.rs),
+using each exact prepared origin's nonempty original-local interval. Source
+coverage and finalized-line ownership are checked before comparing observations.
+Text supplies the font-metric geometry and the distinction between removed source
+and retained zero-width units; the adapter does not reconstruct these from line
+struts or glyph presence. Browser comparison still checks source, line and inline
+position/advance only. Native font-band qualification adds no browser block-axis
+or glyph-ink parity claim.
+
 Inline engine impact measured on 2026-06-17:
 
 - `SURGEIST_PARITY_FILTER=subgrid`: 632 failures, with no unsupported inline,
