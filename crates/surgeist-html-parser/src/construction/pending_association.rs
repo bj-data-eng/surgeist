@@ -694,10 +694,8 @@ impl SessionStorage {
                     .push(RetainedPayload::AssociationOccurrence(values));
                 if styled {
                     self.payloads
-                        .node_joins
-                        .get_mut(node)
-                        .ok_or_else(|| latch_registry_row(c))?
-                        .set_latest(Join::StyleOccurrence, slot)?;
+                        .join_latest(node, Join::StyleOccurrence, slot)
+                        .map_err(|_| latch_registry_row(c))?;
                 }
                 let Some(RetainedPayload::AssociationDocument(summary)) =
                     self.payloads.values.get_mut(document_slot)

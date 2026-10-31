@@ -892,6 +892,14 @@ impl PayloadStorage {
             .ok_or_else(SessionError::registry_row)?
             .set_first(join, slot)
     }
+    /// Names `slot` as the latest row of `join` for `node`; used by the kinds
+    /// whose join follows a back-to-front scan rather than the first row.
+    fn join_latest(&mut self, node: usize, join: Join, slot: usize) -> Result<(), SessionError> {
+        self.node_joins
+            .get_mut(node)
+            .ok_or_else(SessionError::registry_row)?
+            .set_latest(join, slot)
+    }
     /// The registry row now holding a record's merged text.
     fn join_text(&mut self, node: usize, slot: usize) -> Result<(), SessionError> {
         let cell = self
