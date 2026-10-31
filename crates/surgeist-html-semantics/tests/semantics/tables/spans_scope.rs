@@ -212,7 +212,8 @@ fn rowspan_zero_grows_to_the_end_of_its_row_group_and_one_stays_one() {
         let b2 = cell(&mut b, &d, "td", &[]);
         let c3 = cell(&mut b, &d, "td", &[]);
         let d4 = cell(&mut b, &d, "td", &[]);
-        b.establish_children(&r1, &[grower.clone()]).unwrap();
+        b.establish_children(&r1, std::slice::from_ref(&grower))
+            .unwrap();
         b.establish_children(&r2, &[a]).unwrap();
         b.establish_children(&r3, &[b2]).unwrap();
         b.establish_children(&r4, &[c3, d4]).unwrap();
