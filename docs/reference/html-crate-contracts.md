@@ -515,10 +515,12 @@ or aborted operation therefore leaves every order, parent link and logical fact
 unchanged, and no pending child-order bank exists. Planning finds each place by
 walking the order backward from its end, one entry per `Inspect` action: the
 moving node's place in its old parent, then the reference sibling's place in the
-new parent (`before: None` needs no walk). A walk costs the entries behind its
-target, and the commit shifts exactly those entries. Its `Commit` description
-counts the parent link, the removed and inserted entries and every shifted entry
-as `record_writes` of one word each in `copied_bytes`, besides the depth work.
+new parent (`before: None` needs no walk). A walk costs the entries from the end
+of the order back to its target, and the commit shifts the entries behind the
+target: all of them for an insertion, all but the removed entry for a removal.
+Its `Commit` description counts the parent link, the removed and inserted
+entries and every shifted entry as `record_writes` of one word each in
+`copied_bytes`, besides the depth work.
 A change among any number of unrelated leading siblings therefore describes the
 same work as one among none, and appending, which shifts nothing, describes work
 independent of the parent's child count.
