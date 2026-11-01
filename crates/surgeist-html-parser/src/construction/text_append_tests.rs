@@ -723,3 +723,31 @@ fn appending_while_an_attribute_edit_holds_the_storage_reports_the_registry_row(
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+// Characterization: a failure of the pending backing's initialization comes
+// after its ticket is prepared and before any backing exists, so the ticket is
+// the only thing the stopped append holds. The current code already hands it
+// back; this test keeps that arm from regressing.
+#[test]
+fn a_failed_backing_initialization_keeps_the_stop_and_releases_the_prepared_ticket() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    // The first string is shared, so the append needs a new backing.
+    let mut first = Some(owned_text(&mut c, &[65, 66]));
+    session
+        .insert_text(&mut c, &root, None, &mut first, None)
+        .unwrap();
+    let mut next = Some(owned_text(&mut c, &[67]));
+    c.fail_next_text_append_backing();
+    let result = session.insert_text(&mut c, &root, None, &mut next, None);
+    let failed = ParseStop::AllocationFailed {
+        resource: HtmlParseResource::ManagedCapacityBytes,
+        layout_bytes: 0,
+    };
+    assert_eq!(result.err(), Some(SessionError::Stop(failed)));
+    assert_eq!(c.stop(), Some(failed));
+    assert!(session.active_mut().unwrap().failed_text_append.is_none());
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

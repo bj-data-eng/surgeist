@@ -225,6 +225,10 @@ pub(crate) struct ParseControl {
     /// anything, as an impossible precondition would.
     #[cfg(test)]
     text_append_restore_fault: bool,
+    /// Fails the next text-append backing initialization after its pending
+    /// ticket is prepared, as an allocation refusal would.
+    #[cfg(test)]
+    text_append_backing_fault: bool,
 }
 
 /// Fixed-size diagnostic metadata for actual execution between real polls.
@@ -285,6 +289,8 @@ impl ParseControl {
             construction_recovery_fault: false,
             #[cfg(test)]
             text_append_restore_fault: false,
+            #[cfg(test)]
+            text_append_backing_fault: false,
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
@@ -456,6 +462,16 @@ impl ParseControl {
     #[cfg(test)]
     pub(crate) fn take_text_append_restore_fault(&mut self) -> bool {
         std::mem::take(&mut self.text_append_restore_fault)
+    }
+    /// Forces the next text-append backing initialization to fail once its
+    /// pending ticket has been prepared.
+    #[cfg(test)]
+    pub(crate) fn fail_next_text_append_backing(&mut self) {
+        self.text_append_backing_fault = true;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_text_append_backing_fault(&mut self) -> bool {
+        std::mem::take(&mut self.text_append_backing_fault)
     }
     #[cfg(test)]
     pub(crate) fn clear_owned_span_observation(&mut self) {

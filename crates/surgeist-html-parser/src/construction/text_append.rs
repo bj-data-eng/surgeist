@@ -425,6 +425,18 @@ impl SessionStorage {
                     }
                     _ => admit_work(control, description.work(), false)?,
                 }
+                #[cfg(test)]
+                let performed = if matches!(description, Description::InitializeBacking(_))
+                    && control.take_text_append_backing_fault()
+                {
+                    // The backing was never created: the action is dropped
+                    // unperformed and the operation reports the failure.
+                    drop(action);
+                    Err(HtmlConstructionError::AllocationFailed)
+                } else {
+                    action.perform(minimum)
+                };
+                #[cfg(not(test))]
                 let performed = action.perform(minimum);
                 match performed {
                     Ok(observation) => {
