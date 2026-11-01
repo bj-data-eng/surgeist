@@ -107,7 +107,7 @@ These invocations use existing local dependencies without fetching:
 | `cargo check --offline -p surgeist-window` | Default-feature compilation |
 | `cargo test --offline -p surgeist-window` | Default-feature unit tests and rustdoc examples |
 | `cargo test --offline -p surgeist-window --features accessibility` | Unit tests and rustdoc examples with accessibility enabled |
-| `cargo clippy --offline -p surgeist-window --all-targets -- -F unsafe-code -D warnings` | Default-feature Clippy check with unsafe code forbidden and warnings denied |
+| `cargo clippy --offline -p surgeist-window --all-targets --no-deps -- -F unsafe-code -D warnings` | Default-feature Clippy check with unsafe code forbidden and warnings denied |
 | `cargo fmt -p surgeist-window --check` | Rust formatting |
 
 The [getting-started guide](getting-started.md) supplies the focused first-success
