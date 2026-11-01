@@ -2,7 +2,7 @@
 
 use super::ColorEstimate;
 use windows::Devices::Display::Core::{
-    DisplayManager, DisplayManagerOptions, DisplayManagerResult, DisplayPathStatus,
+    DisplayManager, DisplayManagerOptions, DisplayManagerResult, DisplayPathStatus, DisplayState,
     DisplayWireFormatPixelEncoding,
 };
 
@@ -11,36 +11,53 @@ const MAX_INTERFACES: usize = 128;
 const MAX_TARGETS: u32 = 1024;
 
 pub(super) fn observe(device_name: &str) -> Option<ColorEstimate> {
-    use winsafe as w;
-
     if device_name.trim().is_empty() {
         return None;
     }
-    let mut devices = w::EnumDisplayDevices(
-        Some(device_name),
-        Some(w::co::EDD::GET_DEVICE_INTERFACE_NAME),
+    let manager = DisplayManager::Create(DisplayManagerOptions::None).ok()?;
+    // Capture returns only Rust values. Its native snapshot and all query
+    // objects drop on this sampling thread before Close, even on failure.
+    let estimate = capture(
+        || read_state(&manager),
+        || read_interfaces(device_name),
+        query_state,
     );
-    // Own every returned string before any WinRT calls. The iterator's native
-    // buffer is reused, and its terminal FALSE consults the thread's error slot.
-    let interfaces = collect_interfaces(std::iter::from_fn(|| {
-        w::SetLastError(w::co::ERROR::SUCCESS);
-        devices
-            .next()
-            .map(|device| device.map(|device| device.DeviceID()))
-    }))?;
+    if manager.Close().is_err() {
+        return None;
+    }
+    estimate
+}
+
+fn capture<S>(
+    snapshot: impl FnOnce() -> Option<S>,
+    interfaces: impl FnOnce() -> Option<Vec<String>>,
+    query: impl FnOnce(&S, &[String]) -> Option<ColorEstimate>,
+) -> Option<ColorEstimate> {
+    let interfaces = interfaces()?;
     // A cloned GDI output can identify multiple physical monitors. Do not pick
     // one physical target's precision as the logical output's observation.
     if interfaces.len() != 1 {
         return None;
     }
-    let manager = DisplayManager::Create(DisplayManagerOptions::None).ok()?;
-    // Query returns only Rust values; all state/path/target objects are released
-    // on this sampling thread before Close, including every query failure path.
-    let estimate = query(&manager, &interfaces);
-    if manager.Close().is_err() {
-        return None;
-    }
-    estimate
+    let snapshot = snapshot()?;
+    query(&snapshot, &interfaces)
+}
+
+fn read_interfaces(device_name: &str) -> Option<Vec<String>> {
+    use winsafe as w;
+
+    let mut devices = w::EnumDisplayDevices(
+        Some(device_name),
+        Some(w::co::EDD::GET_DEVICE_INTERFACE_NAME),
+    );
+    // Own every returned string before invoking the query callback. The native
+    // buffer is reused, and terminal FALSE consults the thread's error slot.
+    collect_interfaces(std::iter::from_fn(|| {
+        w::SetLastError(w::co::ERROR::SUCCESS);
+        devices
+            .next()
+            .map(|device| device.map(|device| device.DeviceID()))
+    }))
 }
 
 fn collect_interfaces<E>(
@@ -83,14 +100,17 @@ struct StateObservation {
     targets: Vec<TargetObservation>,
 }
 
-fn query(manager: &DisplayManager, interfaces: &[String]) -> Option<ColorEstimate> {
+fn read_state(manager: &DisplayManager) -> Option<DisplayState> {
     let result = manager.TryReadCurrentStateForAllTargets().ok()?;
     if result.ErrorCode().ok()? != DisplayManagerResult::Success
         || result.ExtendedErrorCode().ok()?.is_err()
     {
         return None;
     }
-    let state = result.State().ok()?;
+    result.State().ok()
+}
+
+fn query_state(state: &DisplayState, interfaces: &[String]) -> Option<ColorEstimate> {
     let read_only = state.IsReadOnly().ok()?;
     let stale_before = state.IsStale().ok()?;
     if !read_only || stale_before {
