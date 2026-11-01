@@ -2,8 +2,8 @@
 //! source admission, preprocessing and parsing remain execution operations.
 
 use crate::{
-    HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureFact, HtmlCapturedNodeKind,
-    HtmlFragmentContext, HtmlParseCancellation, HtmlParseLimits, HtmlParserScriptingMode,
+    HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureFact, HtmlCaptureSubjectKind,
+    HtmlCapturedDocument, HtmlCapturedNodeKind, HtmlFragmentContext, HtmlParseCancellation, HtmlParseLimits, HtmlParserScriptingMode,
     HtmlScriptingStatus, HtmlSource,
 };
 use std::{error::Error, fmt};
@@ -67,12 +67,38 @@ fn validate_constructor_base_facts(
     Ok(())
 }
 
+/// The selected document's facts, read once when a request is constructed so
+/// that no later accessor repeats the lookup or can fail.
+fn document_facts<'a>(
+    capture: &'a HtmlCapture,
+    document: &HtmlCaptureDocumentId,
+) -> Result<&'a HtmlCapturedDocument, HtmlCaptureError> {
+    match capture.node(document.subject())?.kind() {
+        HtmlCapturedNodeKind::Document(facts) => Ok(facts),
+        HtmlCapturedNodeKind::Element(_) => Err(not_a_document(HtmlCaptureSubjectKind::Element)),
+        HtmlCapturedNodeKind::Fragment(_) => Err(not_a_document(HtmlCaptureSubjectKind::Fragment)),
+        HtmlCapturedNodeKind::Text(_) => Err(not_a_document(HtmlCaptureSubjectKind::Text)),
+        HtmlCapturedNodeKind::Comment(_) => Err(not_a_document(HtmlCaptureSubjectKind::Comment)),
+        HtmlCapturedNodeKind::ProcessingInstruction(_) => {
+            Err(not_a_document(HtmlCaptureSubjectKind::ProcessingInstruction))
+        }
+        HtmlCapturedNodeKind::Doctype(_) => Err(not_a_document(HtmlCaptureSubjectKind::Doctype)),
+    }
+}
+fn not_a_document(actual: HtmlCaptureSubjectKind) -> HtmlCaptureError {
+    HtmlCaptureError::WrongKind {
+        expected: HtmlCaptureSubjectKind::Document,
+        actual,
+    }
+}
+
 #[derive(Debug)]
 enum DocumentContext {
     Offline,
     Captured {
         capture: HtmlCapture,
         document: HtmlCaptureDocumentId,
+        image_support: crate::HtmlImageSupport,
     },
 }
 
@@ -80,14 +106,7 @@ impl DocumentContext {
     fn image_support(&self) -> crate::HtmlImageSupport {
         match self {
             Self::Offline => crate::HtmlImageSupport::Disabled,
-            Self::Captured { capture, document } => match capture
-                .node(document.subject())
-                .expect("checked request document")
-                .kind()
-            {
-                HtmlCapturedNodeKind::Document(facts) => facts.parser_creation_image_support(),
-                _ => unreachable!("checked request document"),
-            },
+            Self::Captured { image_support, .. } => *image_support,
         }
     }
 }
@@ -183,11 +202,8 @@ impl HtmlDocumentParseRequest {
         document: HtmlCaptureDocumentId,
         limits: HtmlParseLimits,
     ) -> Result<Self, HtmlParseRequestError> {
-        capture.document_id(document.subject())?;
-        let node = capture.node(document.subject())?;
-        let HtmlCapturedNodeKind::Document(facts) = node.kind() else {
-            unreachable!("capture.document_id checked immutable document kind")
-        };
+        let facts = document_facts(&capture, &document)?;
+        let image_support = facts.parser_creation_image_support();
         match facts.scripting() {
             HtmlScriptingStatus::Disabled => {}
             HtmlScriptingStatus::Enabled => {
@@ -208,7 +224,11 @@ impl HtmlDocumentParseRequest {
             source,
             limits,
             cancellation: HtmlParseCancellation::new(),
-            context: DocumentContext::Captured { capture, document },
+            context: DocumentContext::Captured {
+                capture,
+                document,
+                image_support,
+            },
             base_facts: None,
             initial_policy_base: false,
             associated: None,
@@ -372,6 +392,7 @@ pub struct HtmlFragmentParseRequest {
     requested: HtmlParserScriptingMode,
     effective: HtmlParserScriptingMode,
     allow_declarative_shadow_roots: bool,
+    image_support: crate::HtmlImageSupport,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
     #[cfg(test)]
@@ -386,16 +407,7 @@ impl HtmlFragmentParseRequest {
     /// Capture/revision-qualified attestation for this entry Document's parser
     /// creation environment. Target-only image support is insufficient.
     pub fn image_support(&self) -> crate::HtmlImageSupport {
-        match self
-            .context
-            .capture()
-            .node(self.context.target_document().subject())
-            .expect("checked entry document")
-            .kind()
-        {
-            HtmlCapturedNodeKind::Document(facts) => facts.parser_creation_image_support(),
-            _ => unreachable!("checked entry document"),
-        }
+        self.image_support
     }
 
     /// Parse in the actual retained context, returning no partial tree on failure.
@@ -448,6 +460,9 @@ impl HtmlFragmentParseRequest {
         allow_declarative_shadow_roots: bool,
     ) -> Result<Self, HtmlParseRequestError> {
         let effective = context.resolve_scripting_mode(requested)?;
+        let image_support =
+            document_facts(context.capture(), context.target_document())?
+                .parser_creation_image_support();
         Ok(Self {
             source,
             limits,
@@ -456,6 +471,7 @@ impl HtmlFragmentParseRequest {
             requested,
             effective,
             allow_declarative_shadow_roots,
+            image_support,
             base_facts: None,
             associated: None,
             #[cfg(test)]
