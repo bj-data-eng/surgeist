@@ -828,7 +828,7 @@ fn host_command_plan_backend_applicators_accept_only_plans() {
     assert!(!fake.contains("pub fn apply_plan"));
     assert!(fake.contains("pub(crate) fn apply_plan"));
 
-    let native = include_str!("winit_adapter.rs");
+    let native = include_str!("winit_adapter.rs").replace("\r\n", "\n");
     const NATIVE_APPLICATOR_SIGNATURE: &str = "    fn apply_host_command_with_follow_ups(\n        &mut self,\n        event_loop: &winit::event_loop::ActiveEventLoop,\n        plan: HostCommandPlan,\n        callbacks: &mut Vec<BackendCallback>,\n    ) -> Result<()> {";
     let native_start = native
         .find(NATIVE_APPLICATOR_SIGNATURE)
@@ -1046,7 +1046,7 @@ fn ingress_low_level_applicators_cannot_apply_normalized_payloads() {
     assert!(!fake_applicator.contains("Command)"));
     assert!(!fake_applicator.contains("NormalizedCommand"));
 
-    let native = include_str!("winit_adapter.rs");
+    let native = include_str!("winit_adapter.rs").replace("\r\n", "\n");
     const NATIVE_APPLICATOR_SIGNATURE: &str = "    fn apply_host_command_with_follow_ups(\n        &mut self,\n        event_loop: &winit::event_loop::ActiveEventLoop,\n        plan: HostCommandPlan,\n        callbacks: &mut Vec<BackendCallback>,\n    ) -> Result<()> {";
     let native_start = native
         .find(NATIVE_APPLICATOR_SIGNATURE)

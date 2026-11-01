@@ -1,4 +1,4 @@
-//! Explicit main-thread preference and monitor probe; requires a macOS WindowServer session.
+//! Explicit native preference and monitor probe; requires a desktop session.
 //!
 //! Set SURGEIST_RUN_NATIVE_PREFERENCES_PROBE=1 to open an invisible window and
 //! exercise the production event loop. Ordinary headless checks report a skip.
@@ -199,7 +199,76 @@ fn main() {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 fn main() {
-    eprintln!("SKIP native_preferences_native: the AppKit provider is macOS-only");
+    use std::{cell::RefCell, rc::Rc};
+    use surgeist_window::{
+        ContrastPreference, Handler, Ready, ReductionPreference, Result, WindowSnapshot, app, open,
+    };
+    use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
+
+    if std::env::var("SURGEIST_RUN_NATIVE_PREFERENCES_PROBE").as_deref() != Ok("1") {
+        eprintln!(
+            "SKIP native_preferences_native: set SURGEIST_RUN_NATIVE_PREFERENCES_PROBE=1 in a Windows desktop session"
+        );
+        return;
+    }
+
+    struct Probe(Rc<RefCell<Option<WindowSnapshot>>>);
+    impl Handler for Probe {
+        fn ready(&mut self, ready: &mut Ready<'_>) -> Result<()> {
+            self.0.replace(Some(ready.state().clone()));
+            ready.exit();
+            Ok(())
+        }
+    }
+
+    let snapshot = Rc::new(RefCell::new(None));
+    app(Probe(snapshot.clone()))
+        .open(open("native-preferences-probe").visible(false))
+        .run()
+        .expect("the hidden native loop exits cleanly after Ready");
+    let snapshot = snapshot.borrow_mut().take().expect("Ready captured state");
+    let captured = &snapshot.environment().preferences;
+    let ui = UISettings::new().expect("native UI settings");
+    let animations = ui.AnimationsEnabled().expect("animation observation");
+    let transparency = ui
+        .AdvancedEffectsEnabled()
+        .expect("transparency observation");
+    let contrast = AccessibilitySettings::new()
+        .and_then(|settings| settings.HighContrast())
+        .expect("contrast theme observation");
+    println!(
+        "captured={captured:?}; Windows animations={animations}, transparency={transparency}, contrast={contrast}"
+    );
+    assert_eq!(
+        captured.reduced_motion,
+        Some(if animations {
+            ReductionPreference::NoPreference
+        } else {
+            ReductionPreference::Reduce
+        })
+    );
+    assert_eq!(
+        captured.reduced_transparency,
+        Some(if transparency {
+            ReductionPreference::NoPreference
+        } else {
+            ReductionPreference::Reduce
+        })
+    );
+    assert_eq!(
+        captured.contrast,
+        Some(if contrast {
+            ContrastPreference::Custom
+        } else {
+            ContrastPreference::NoPreference
+        })
+    );
+    assert_eq!(captured.reduced_data, None);
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn main() {
+    eprintln!("SKIP native_preferences_native: no native preference provider for this target");
 }
