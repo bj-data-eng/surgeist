@@ -79,7 +79,7 @@ impl<'source> FragmentEntry<'source> {
         session.initialize_standalone_document(c)?;
         session.initialize_parse_evidence(c, request.source())?;
         let bootstrap = session.initialize_fragment(c, request)?;
-        if let Some(inputs) = request.associated_inputs() {
+        if let Some(inputs) = request.shared_associated_inputs() {
             session.install_associated_inputs(c, inputs)?;
             if let Some(facts) = &inputs.parser_document {
                 session.install_document_base_facts(c, facts)?;
@@ -291,7 +291,7 @@ impl FragmentInitializationOwner {
     }
     pub(crate) fn new(request: HtmlFragmentParseRequest) -> Self {
         Self {
-            request: Some(request),
+            request: Some(request.share_associated_inputs()),
             stopped: None,
             begun: false,
         }

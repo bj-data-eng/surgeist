@@ -93,9 +93,7 @@ impl HtmlParseFailure {
 
     fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
         match &self.storage {
-            FailureStorage::OrdinaryInitialization(owner) => {
-                owner.request()?.associated_inputs().map(AsRef::as_ref)
-            }
+            FailureStorage::OrdinaryInitialization(owner) => owner.request()?.associated_inputs(),
             FailureStorage::Ordinary(owner) => owner
                 .original_request()
                 .associated_inputs()
@@ -103,10 +101,9 @@ impl HtmlParseFailure {
             FailureStorage::OrdinaryFrozen(owner) => {
                 owner.request.associated_inputs().map(AsRef::as_ref)
             }
-            FailureStorage::FragmentInitialization(owner) => owner
-                .original_request()?
-                .associated_inputs()
-                .map(AsRef::as_ref),
+            FailureStorage::FragmentInitialization(owner) => {
+                owner.original_request()?.associated_inputs()
+            }
             FailureStorage::Fragment(owner) => owner
                 .original_request()
                 .associated_inputs()

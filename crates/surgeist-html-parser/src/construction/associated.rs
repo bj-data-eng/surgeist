@@ -76,7 +76,7 @@ impl AssociatedStorageUsage {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Inputs {
     pub(crate) template: Option<crate::HtmlParseBaseFacts>,
     pub(crate) parser_document: Option<crate::HtmlParseBaseFacts>,

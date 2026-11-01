@@ -27,6 +27,7 @@ pub(crate) struct OrdinaryInitializationOwner {
 }
 impl OrdinaryInitializationOwner {
     pub(crate) fn new(request: HtmlDocumentParseRequest) -> Self {
+        let request = request.share_associated_inputs();
         let phase = super::entry::EntryRejection::for_request(&request)
             .map_or(InitializationPhase::Fresh, InitializationPhase::Rejected);
         Self {

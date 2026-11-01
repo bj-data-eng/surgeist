@@ -102,6 +102,35 @@ enum DocumentContext {
     },
 }
 
+/// The supplied observation banks. They are edited only while the caller
+/// builds the request, and then shared once with execution, so no edit can
+/// ever need to copy a bank that execution also holds.
+#[derive(Debug, Default)]
+struct InputBank {
+    building: Option<crate::construction::associated::Inputs>,
+    shared: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+}
+impl InputBank {
+    fn edit(&mut self) -> &mut crate::construction::associated::Inputs {
+        self.building.get_or_insert_with(Default::default)
+    }
+    fn share(&mut self) {
+        if let Some(bank) = self.building.take() {
+            self.shared = Some(std::sync::Arc::new(bank));
+        }
+    }
+    fn inputs(&self) -> Option<&crate::construction::associated::Inputs> {
+        self.building.as_ref().or(self.shared.as_deref())
+    }
+    fn shared(&self) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
+        self.shared.as_ref()
+    }
+    fn into_shared(self) -> Option<std::sync::Arc<crate::construction::associated::Inputs>> {
+        self.shared
+            .or_else(|| self.building.map(std::sync::Arc::new))
+    }
+}
+
 impl DocumentContext {
     fn image_support(&self) -> crate::HtmlImageSupport {
         match self {
@@ -121,7 +150,7 @@ pub struct HtmlDocumentParseRequest {
     context: DocumentContext,
     base_facts: Option<crate::HtmlParseBaseFacts>,
     initial_policy_base: bool,
-    associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    associated: InputBank,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
@@ -173,7 +202,7 @@ impl HtmlDocumentParseRequest {
             cancellation: self.cancellation,
             context: self.context,
             base_facts: self.base_facts,
-            associated: self.associated,
+            associated: self.associated.into_shared(),
             #[cfg(test)]
             value_sharing: self.value_sharing,
         }
@@ -188,7 +217,7 @@ impl HtmlDocumentParseRequest {
             context: DocumentContext::Offline,
             base_facts: None,
             initial_policy_base: false,
-            associated: None,
+            associated: InputBank::default(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         }
@@ -231,7 +260,7 @@ impl HtmlDocumentParseRequest {
             },
             base_facts: None,
             initial_policy_base: false,
-            associated: None,
+            associated: InputBank::default(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         })
@@ -274,17 +303,24 @@ impl HtmlDocumentParseRequest {
         Ok(self)
     }
     fn associated_mut(&mut self) -> &mut crate::construction::associated::Inputs {
-        let inputs = self.associated.get_or_insert_with(|| {
-            std::sync::Arc::new(crate::construction::associated::Inputs::default())
-        });
-        // Only execution shares the bank, and it consumes the request first, so
-        // this never copies; if it ever were shared the request still edits its own.
-        std::sync::Arc::make_mut(inputs)
+        self.associated.edit()
     }
-    pub(crate) fn associated_inputs(
+    pub(crate) fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
+        self.associated.inputs()
+    }
+    /// The bank execution shares with the session; present only after
+    /// `share_associated_inputs`, which every parse owner calls on entry.
+    pub(crate) fn shared_associated_inputs(
         &self,
     ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
-        self.associated.as_ref()
+        self.associated.shared()
+    }
+    /// Ends the caller's editing of the supplied banks and shares them with
+    /// execution. No builder is reachable afterwards: builders consume the
+    /// request, and only the parse owners call this.
+    pub(crate) fn share_associated_inputs(mut self) -> Self {
+        self.associated.share();
+        self
     }
     /// Exact supplied source, including its immutable identity and coordinates.
     pub fn source(&self) -> &HtmlSource {
@@ -396,7 +432,7 @@ pub struct HtmlFragmentParseRequest {
     allow_declarative_shadow_roots: bool,
     image_support: crate::HtmlImageSupport,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
-    associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    associated: InputBank,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
@@ -432,7 +468,7 @@ impl HtmlFragmentParseRequest {
             effective: self.effective,
             allow_declarative_shadow_roots: self.allow_declarative_shadow_roots,
             base_facts: self.base_facts,
-            associated: self.associated,
+            associated: self.associated.into_shared(),
             #[cfg(test)]
             value_sharing: self.value_sharing,
         }
@@ -474,7 +510,7 @@ impl HtmlFragmentParseRequest {
             allow_declarative_shadow_roots,
             image_support,
             base_facts: None,
-            associated: None,
+            associated: InputBank::default(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         })
@@ -517,17 +553,24 @@ impl HtmlFragmentParseRequest {
         Ok(self)
     }
     fn associated_mut(&mut self) -> &mut crate::construction::associated::Inputs {
-        let inputs = self.associated.get_or_insert_with(|| {
-            std::sync::Arc::new(crate::construction::associated::Inputs::default())
-        });
-        // Only execution shares the bank, and it consumes the request first, so
-        // this never copies; if it ever were shared the request still edits its own.
-        std::sync::Arc::make_mut(inputs)
+        self.associated.edit()
     }
-    pub(crate) fn associated_inputs(
+    pub(crate) fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
+        self.associated.inputs()
+    }
+    /// The bank execution shares with the session; present only after
+    /// `share_associated_inputs`, which every parse owner calls on entry.
+    pub(crate) fn shared_associated_inputs(
         &self,
     ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
-        self.associated.as_ref()
+        self.associated.shared()
+    }
+    /// Ends the caller's editing of the supplied banks and shares them with
+    /// execution. No builder is reachable afterwards: builders consume the
+    /// request, and only the parse owners call this.
+    pub(crate) fn share_associated_inputs(mut self) -> Self {
+        self.associated.share();
+        self
     }
     pub fn with_base_facts(
         mut self,

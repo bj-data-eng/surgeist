@@ -200,7 +200,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             c,
         )?);
         driver.prologue = Some(prologue::DocumentPrologue::new(driver.source, c)?);
-        if let Some(inputs) = request.associated_inputs() {
+        if let Some(inputs) = request.shared_associated_inputs() {
             driver
                 .prologue
                 .as_mut()
