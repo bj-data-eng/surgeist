@@ -334,11 +334,12 @@ impl SessionStorage {
         let mut text = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let result = (|| {
             let mut attributes = [None, None, None, None, None];
-            for (index, local) in ["type", "media", "title", "blocking", "nonce"]
-                .into_iter()
-                .enumerate()
+            // One slot per name: the array and the names are the same length.
+            for (slot, local) in attributes
+                .iter_mut()
+                .zip(["type", "media", "title", "blocking", "nonce"])
             {
-                attributes[index] = self.association_attribute(c, node, local)?;
+                *slot = self.association_attribute(c, node, local)?;
             }
             // Internal nonce is separate from the potentially hidden authored attribute.
             if let Some(nonce) = self.association_nonce(c, node)? {
@@ -873,12 +874,16 @@ impl SessionStorage {
                 };
                 let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
                 if let Err((stop, value)) = values.try_push_recover(c, value) {
-                    release_inputs(value, c);
+                    // The stop returned is the first; a refusal of the release
+                    // is latched behind it.
+                    let _ = release_inputs(value, c);
                     values.release(c)?;
                     return Err(SessionError::Stop(stop));
                 }
                 if let Err(error) = self.prepare_payload_slot_owned(c) {
-                    release_occurrence(values, c);
+                    // The error returned is the first; a refusal of the release
+                    // is latched behind it.
+                    let _ = release_occurrence(values, c);
                     return Err(error);
                 }
                 let slot = self.payloads.values.len();
@@ -1073,7 +1078,7 @@ impl SessionStorage {
         let extent = extent.saturating_add(c.take_registry_walk_overshoot());
         for index in 0..extent {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let document = match &self.payloads.values[index] {
+            let document = match self.payloads.row(c, index)? {
                 RetainedPayload::Document {
                     node: Some(node), ..
                 } => Some(DocumentRef::Owned(*node)),
@@ -1132,14 +1137,15 @@ impl SessionStorage {
                             Err(SessionError::WrongToken)
                         }
                     }
-                    let (keyword, _) =
-                        bounded::classify_rel(&rel.code_units()[start..end], &mut Meter(c))
-                            .map_err(|error| match error {
-                                bounded::HtmlRelActionError::Admission(error) => error,
-                                bounded::HtmlRelActionError::Protocol(_) => {
-                                    SessionError::WrongToken
-                                }
-                            })?;
+                    let Some(token) = rel.code_units().get(start..end) else {
+                        return Err(latch_registry_row(c));
+                    };
+                    let (keyword, _) = bounded::classify_rel(token, &mut Meter(c)).map_err(
+                        |error| match error {
+                            bounded::HtmlRelActionError::Admission(error) => error,
+                            bounded::HtmlRelActionError::Protocol(_) => SessionError::WrongToken,
+                        },
+                    )?;
                     stylesheet |= keyword == Some(surgeist_html::HtmlRelKeyword::Stylesheet);
                     extension |= keyword.is_none();
                 }
@@ -1161,10 +1167,51 @@ impl SessionStorage {
     }
 }
 
-/// One actual payload slot per step; no hidden next-match traversal.
-pub struct Cursor<'a> {
+/// The report storage the readers answer from, with the one node that every
+/// identity names. Resolved when a cursor is created, so no reader looks it up.
+#[derive(Clone, Copy)]
+struct Anchor<'a> {
     history: &'a FrozenHistory,
     storage: &'a FrozenStorage,
+    first: HtmlNode<'a>,
+}
+/// A Document reference resolved against the report that holds it.
+#[derive(Clone, Copy)]
+enum Resolved<'a> {
+    Owned(HtmlNode<'a>),
+    Captured(crate::HtmlCapturedNode<'a>),
+}
+impl<'a> Resolved<'a> {
+    /// `None` when the report no longer holds the Document.
+    fn new(storage: &'a FrozenStorage, value: &DocumentRef) -> Option<Self> {
+        match value {
+            DocumentRef::Owned(node) => native(storage, *node).map(Self::Owned),
+            DocumentRef::Captured(id) => storage
+                .fragment
+                .as_ref()?
+                .context
+                .capture()
+                .node(id.subject())
+                .ok()
+                .map(Self::Captured),
+        }
+    }
+    fn lend(self) -> report::MetadataDocument<'a> {
+        match self {
+            Self::Owned(node) => report::MetadataDocument::Owned(node),
+            Self::Captured(node) => report::MetadataDocument::Captured(node),
+        }
+    }
+}
+/// One actual payload slot per step; no hidden next-match traversal.
+///
+/// A published report has no controller, so a row whose references the
+/// report no longer holds is not an error to report: the cursor skips it
+/// instead of lending a view that could not answer. Publication qualifies
+/// every row (`qualify`), so no such row is expected. A report whose storage
+/// is gone has no rows.
+pub struct Cursor<'a> {
+    anchor: Option<Anchor<'a>>,
     next: usize,
 }
 pub enum Step<'a> {
@@ -1175,83 +1222,73 @@ pub enum Step<'a> {
 }
 impl<'a> Cursor<'a> {
     pub(crate) fn new(history: &'a FrozenHistory) -> Self {
-        Self {
-            history,
-            storage: history.arena().storage.as_ref().expect("qualified report"),
-            next: 0,
-        }
+        let anchor = history.arena().storage.as_ref().and_then(|storage| {
+            Some(Anchor {
+                history,
+                storage,
+                first: native(storage, 0)?,
+            })
+        });
+        Self { anchor, next: 0 }
     }
     pub fn advance(&mut self) -> Step<'a> {
-        let slot = self.next;
-        let Some(row) = self.storage.payloads.values.get(slot) else {
+        let Some(anchor) = self.anchor else {
             return Step::Complete;
         };
-        self.next += 1;
-        match row {
-            RetainedPayload::AssociationDocument(value) => Step::Document(DocumentView {
-                history: self.history,
-                storage: self.storage,
-                value,
-            }),
-            RetainedPayload::AssociationOccurrence(value) => Step::Occurrence(OccurrenceView {
-                history: self.history,
-                storage: self.storage,
-                slot,
-                value: &value.as_slice()[0],
-            }),
-            _ => Step::Skipped,
-        }
+        let slot = self.next;
+        let Some(row) = anchor.storage.payloads.values.get(slot) else {
+            return Step::Complete;
+        };
+        // `slot` indexes a vector, so it is below the address space.
+        self.next = slot.saturating_add(1);
+        let view = match row {
+            RetainedPayload::AssociationDocument(value) => {
+                DocumentView::new(anchor, value).map(Step::Document)
+            }
+            RetainedPayload::AssociationOccurrence(values) => values
+                .as_slice()
+                .first()
+                .and_then(|value| OccurrenceView::new(anchor, slot, value))
+                .map(Step::Occurrence),
+            _ => None,
+        };
+        view.unwrap_or(Step::Skipped)
     }
 }
-fn native(storage: &FrozenStorage, index: usize) -> HtmlNode<'_> {
-    storage
-        .view
-        .node_at(index)
-        .expect("qualified original subject")
-        .as_node()
+fn native(storage: &FrozenStorage, index: usize) -> Option<HtmlNode<'_>> {
+    storage.view.node_at(index).map(|node| node.as_node())
 }
-fn document<'a>(storage: &'a FrozenStorage, value: &DocumentRef) -> report::MetadataDocument<'a> {
-    match value {
-        DocumentRef::Owned(node) => report::MetadataDocument::Owned(native(storage, *node)),
-        DocumentRef::Captured(id) => report::MetadataDocument::Captured(
-            storage
-                .fragment
-                .as_ref()
-                .expect("qualified capture")
-                .context
-                .capture()
-                .node(id.subject())
-                .expect("qualified Document"),
-        ),
-    }
-}
-fn identity(storage: &FrozenStorage, slot: usize) -> OccurrenceId {
+fn identity(anchor: Anchor<'_>, slot: usize) -> OccurrenceId {
     OccurrenceId {
-        result: native(storage, 0).id(),
+        result: anchor.first.id(),
         slot,
     }
 }
-fn context_epoch(storage: &FrozenStorage, slot: usize) -> ContextEpochId {
+fn context_epoch(anchor: Anchor<'_>, slot: usize) -> ContextEpochId {
     ContextEpochId {
-        result: native(storage, 0).id(),
+        result: anchor.first.id(),
         slot,
     }
 }
-fn group<'a>(history: &'a FrozenHistory, value: &'a OriginGroupRef) -> HistoryGroup<'a> {
-    history
-        .view()
-        .expect("qualified history")
-        .group(value.index)
-        .expect("qualified snapshot group")
+/// `None` when the report's history no longer holds the group.
+fn group<'a>(history: &'a FrozenHistory, value: &'a OriginGroupRef) -> Option<HistoryGroup<'a>> {
+    history.view().ok()?.group(value.index)
 }
 pub struct DocumentView<'a> {
-    history: &'a FrozenHistory,
-    storage: &'a FrozenStorage,
+    anchor: Anchor<'a>,
     value: &'a DocumentCapture,
+    document: Resolved<'a>,
 }
 impl<'a> DocumentView<'a> {
+    fn new(anchor: Anchor<'a>, value: &'a DocumentCapture) -> Option<Self> {
+        Some(Self {
+            anchor,
+            value,
+            document: Resolved::new(anchor.storage, &value.document)?,
+        })
+    }
     pub fn document(&self) -> report::MetadataDocument<'a> {
-        document(self.storage, &self.value.document)
+        self.document.lend()
     }
     pub fn disposition(&self) -> CaptureDisposition {
         self.value.missing.map_or(
@@ -1266,26 +1303,57 @@ impl<'a> DocumentView<'a> {
         self.value.obligations != 0
     }
     pub fn last_occurrence(&self) -> Option<OccurrenceId> {
-        self.value.last.map(|slot| identity(self.storage, slot))
+        self.value.last.map(|slot| identity(self.anchor, slot))
     }
     pub fn first_missing(&self) -> Option<OccurrenceId> {
         self.value
             .missing_at
-            .map(|slot| identity(self.storage, slot))
+            .map(|slot| identity(self.anchor, slot))
     }
     pub fn history(&self) -> crate::construction::read::HtmlParseHistory<'a> {
-        crate::construction::read::HtmlParseHistory::new(self.history)
+        crate::construction::read::HtmlParseHistory::new(self.anchor.history)
     }
 }
 pub struct OccurrenceView<'a> {
-    history: &'a FrozenHistory,
-    storage: &'a FrozenStorage,
+    anchor: Anchor<'a>,
     slot: usize,
     value: &'a Occurrence,
+    subject: HtmlNode<'a>,
+    root: HtmlNode<'a>,
+    document: Resolved<'a>,
+    previous_document: Option<Resolved<'a>>,
+    parser_document: Option<Resolved<'a>>,
 }
 impl<'a> OccurrenceView<'a> {
+    /// `None` when the report no longer holds a node or Document the
+    /// occurrence names.
+    fn new(anchor: Anchor<'a>, slot: usize, value: &'a Occurrence) -> Option<Self> {
+        let storage = anchor.storage;
+        let previous_document = match &value.previous_document {
+            Some(previous) => Some(Resolved::new(storage, previous)?),
+            None => None,
+        };
+        let parser_document = match value
+            .inputs
+            .as_ref()
+            .and_then(|inputs| inputs.parser_document.as_ref())
+        {
+            Some(document) => Some(Resolved::new(storage, document)?),
+            None => None,
+        };
+        Some(Self {
+            anchor,
+            slot,
+            value,
+            subject: native(storage, value.subject)?,
+            root: native(storage, value.root)?,
+            document: Resolved::new(storage, &value.document)?,
+            previous_document,
+            parser_document,
+        })
+    }
     pub fn id(&self) -> OccurrenceId {
-        identity(self.storage, self.slot)
+        identity(self.anchor, self.slot)
     }
     pub fn kind(&self) -> OccurrenceKind {
         self.value.kind
@@ -1294,31 +1362,28 @@ impl<'a> OccurrenceView<'a> {
         self.value.requires_processing
     }
     pub fn subject(&self) -> HtmlNode<'a> {
-        native(self.storage, self.value.subject)
+        self.subject
     }
     pub fn document(&self) -> report::MetadataDocument<'a> {
-        document(self.storage, &self.value.document)
+        self.document.lend()
     }
     pub fn root(&self) -> HtmlNode<'a> {
-        native(self.storage, self.value.root)
+        self.root
     }
     pub fn previous_document(&self) -> Option<report::MetadataDocument<'a>> {
         matches!(self.value.kind, OccurrenceKind::StyleDocumentChanged)
-            .then(|| document(self.storage, &self.value.document))
+            .then(|| self.document.lend())
     }
     /// Adoption is captured before replacing the old Document relation.
     pub fn next_document(&self) -> Option<report::MetadataDocument<'a>> {
-        self.value
-            .previous_document
-            .as_ref()
-            .map(|d| document(self.storage, d))
+        self.previous_document.map(Resolved::lend)
     }
     /// Prior original invocation in this Document. This records causal source
     /// order, not successful sheet addition or asynchronous resource completion.
     pub fn prior_document(&self) -> Option<OccurrenceId> {
         self.value
             .prior_document
-            .map(|slot| identity(self.storage, slot))
+            .map(|slot| identity(self.anchor, slot))
     }
     /// Prior lifecycle invocation for this Style. Consumers preserve the HTML
     /// synchronous prefix and genuine resource dependencies; this edge does not
@@ -1326,43 +1391,40 @@ impl<'a> OccurrenceView<'a> {
     pub fn prior_style(&self) -> Option<OccurrenceId> {
         self.value
             .prior_style
-            .map(|slot| identity(self.storage, slot))
+            .map(|slot| identity(self.anchor, slot))
     }
+    /// `None` when the occurrence has no cause or the report no longer holds it.
     pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
-        self.value.cause.as_ref().map(|cause| {
-            read::HtmlParseCause::qualified(
-                self.history,
-                self.storage
-                    .evidence
-                    .as_ref()
-                    .and_then(|e| e.retained_cause(cause))
-                    .expect("qualified occurrence cause"),
-            )
-        })
+        let cause = self.value.cause.as_ref()?;
+        let retained = self
+            .anchor
+            .storage
+            .evidence
+            .as_ref()?
+            .retained_cause(cause)?;
+        Some(read::HtmlParseCause::qualified(
+            self.anchor.history,
+            retained,
+        ))
     }
+    /// `None` when there is no preferred name or the history no longer holds it.
     pub fn preferred_name(&self) -> Option<HistoryGroup<'a>> {
-        self.value
-            .preferred
-            .as_ref()
-            .map(|value| group(self.history, value))
+        group(self.anchor.history, self.value.preferred.as_ref()?)
     }
+    /// `None` when there is no changed input or the history no longer holds it.
     pub fn base_changed_input(&self) -> Option<HistoryGroup<'a>> {
-        self.value
-            .base_changed_input
-            .as_ref()
-            .map(|value| group(self.history, value))
+        group(self.anchor.history, self.value.base_changed_input.as_ref()?)
     }
     pub fn style(&self) -> Option<StyleInputs<'a>> {
         self.value.inputs.as_ref().map(|value| StyleInputs {
-            history: self.history,
-            storage: self.storage,
+            anchor: self.anchor,
             value,
+            parser_document: self.parser_document,
         })
     }
     pub fn context(&self) -> ContextView<'a> {
         ContextView {
-            history: self.history,
-            storage: self.storage,
+            anchor: self.anchor,
             slot: self.slot,
             document: &self.value.document,
             value: &self.value.context,
@@ -1370,19 +1432,16 @@ impl<'a> OccurrenceView<'a> {
     }
 }
 pub struct StyleInputs<'a> {
-    history: &'a FrozenHistory,
-    storage: &'a FrozenStorage,
+    anchor: Anchor<'a>,
     value: &'a Inputs,
+    parser_document: Option<Resolved<'a>>,
 }
 impl<'a> StyleInputs<'a> {
     pub fn state(&self) -> surgeist_html::HtmlStyleState {
         self.value.state
     }
     pub fn creating_parser_document(&self) -> Option<report::MetadataDocument<'a>> {
-        self.value
-            .parser_document
-            .as_ref()
-            .map(|d| document(self.storage, d))
+        self.parser_document.map(Resolved::lend)
     }
     pub fn connected(&self) -> bool {
         self.value.connected
@@ -1396,49 +1455,44 @@ impl<'a> StyleInputs<'a> {
     pub fn text_len(&self) -> usize {
         self.value.text.len()
     }
+    /// `None` past the text or when the history no longer holds the group.
     pub fn text(&self, index: usize) -> Option<HistoryGroup<'a>> {
-        self.value
-            .text
-            .as_slice()
-            .get(index)
-            .map(|value| group(self.history, value))
+        group(self.anchor.history, self.value.text.as_slice().get(index)?)
     }
     pub fn sheet_order_len(&self) -> usize {
         self.value.order.map_or(0, |order| order.len)
     }
+    /// `None` past the order or when the report no longer holds the entry.
     pub fn sheet_order(&self, index: usize) -> Option<HtmlNode<'a>> {
         let order = self.value.order?;
         if index >= order.len {
             return None;
         }
-        let Some(RetainedPayload::StyleOrder(list)) = self.storage.payloads.values.get(order.slot)
+        let Some(RetainedPayload::StyleOrder(list)) =
+            self.anchor.storage.payloads.values.get(order.slot)
         else {
             return None;
         };
-        list.as_slice()
-            .get(index)
-            .map(|node| native(self.storage, *node))
+        native(self.anchor.storage, *list.as_slice().get(index)?)
     }
     pub fn attribute(
         &self,
         attribute: surgeist_html::KnownHtmlAttribute,
     ) -> Option<HistoryGroup<'a>> {
-        let index = match attribute {
-            surgeist_html::KnownHtmlAttribute::Type => 0,
-            surgeist_html::KnownHtmlAttribute::Media => 1,
-            surgeist_html::KnownHtmlAttribute::Title => 2,
-            surgeist_html::KnownHtmlAttribute::Blocking => 3,
-            surgeist_html::KnownHtmlAttribute::Nonce => 4,
+        let [kind, media, title, blocking, nonce] = &self.value.attributes;
+        let reference = match attribute {
+            surgeist_html::KnownHtmlAttribute::Type => kind,
+            surgeist_html::KnownHtmlAttribute::Media => media,
+            surgeist_html::KnownHtmlAttribute::Title => title,
+            surgeist_html::KnownHtmlAttribute::Blocking => blocking,
+            surgeist_html::KnownHtmlAttribute::Nonce => nonce,
             _ => return None,
         };
-        self.value.attributes[index]
-            .as_ref()
-            .map(|value| group(self.history, value))
+        group(self.anchor.history, reference.as_ref()?)
     }
 }
 pub struct ContextView<'a> {
-    history: &'a FrozenHistory,
-    storage: &'a FrozenStorage,
+    anchor: Anchor<'a>,
     slot: usize,
     document: &'a DocumentRef,
     value: &'a Context,
@@ -1452,13 +1506,14 @@ impl<'a> ContextView<'a> {
             return None;
         }
         let slot = self.value.csp?;
-        let Some(RetainedPayload::CspPolicy(value)) = self.storage.payloads.values.get(slot) else {
+        let Some(RetainedPayload::CspPolicy(value)) = self.anchor.storage.payloads.values.get(slot)
+        else {
             return None;
         };
         value.value.as_ref()
     }
     pub fn epoch(&self) -> ContextEpochId {
-        context_epoch(self.storage, self.slot)
+        context_epoch(self.anchor, self.slot)
     }
     /// Immutable initial Document input lineage for URL, fallback, encoding and
     /// initial policy; other roles retain their original occurrence frontier.
@@ -1472,7 +1527,7 @@ impl<'a> ContextView<'a> {
                 | ContextRole::Encoding
                 | ContextRole::InitialPolicy
         ) {
-            context_epoch(self.storage, self.value.input_document)
+            context_epoch(self.anchor, self.value.input_document)
         } else {
             self.epoch()
         }
@@ -1547,23 +1602,18 @@ impl<'a> ContextView<'a> {
             epoch: self.input_epoch(role),
             role,
             document,
-            context: &self
-                .storage
-                .fragment
-                .as_ref()
-                .expect("qualified original context")
-                .context,
+            context: &self.anchor.storage.fragment.as_ref()?.context,
         })
     }
     /// The provider row was qualified as base facts of this document at
     /// publication (`qualify`), so `None` here means the occurrence has none.
     pub fn base_facts(&self) -> Option<&'a crate::HtmlParseBaseFacts> {
-        self.value
-            .base_document
-            .and_then(|slot| match self.storage.payloads.values.get(slot) {
+        self.value.base_document.and_then(|slot| {
+            match self.anchor.storage.payloads.values.get(slot) {
                 Some(RetainedPayload::BaseDocument { facts, .. }) => Some(facts),
                 _ => None,
-            })
+            }
+        })
     }
     /// The provider row was qualified as this document's captured context at
     /// publication (`qualify`), so `None` here means the occurrence has none.
@@ -1572,19 +1622,18 @@ impl<'a> ContextView<'a> {
     ) -> Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext> {
         self.value
             .captured
-            .and_then(|slot| match self.storage.payloads.values.get(slot) {
+            .and_then(|slot| match self.anchor.storage.payloads.values.get(slot) {
                 Some(RetainedPayload::AssociationCapturedContext(value)) => Some(&value.value),
                 _ => None,
             })
     }
+    /// `None` when there is no first Base or the report no longer holds it.
     pub fn first_base(&self) -> Option<HtmlNode<'a>> {
-        self.value.first_base.map(|node| native(self.storage, node))
+        native(self.anchor.storage, self.value.first_base?)
     }
+    /// `None` when there is no input or the history no longer holds it.
     pub fn base_input(&self) -> Option<HistoryGroup<'a>> {
-        self.value
-            .base_input
-            .as_ref()
-            .map(|value| group(self.history, value))
+        group(self.anchor.history, self.value.base_input.as_ref()?)
     }
     pub fn base_observation(&self) -> Option<usize> {
         self.value.base_observation
@@ -1602,8 +1651,11 @@ impl<'a> ContextView<'a> {
                 .base_observation
                 .ok_or(crate::HtmlBaseMissing::FrozenBase)?;
             let fallback = facts.document().fallback()?;
-            crate::select_frozen_base(fallback, facts.observations()[index].outcome())
-                .map(|(value, _)| value)
+            let observation = facts
+                .observations()
+                .get(index)
+                .ok_or(crate::HtmlBaseMissing::FrozenBase)?;
+            crate::select_frozen_base(fallback, observation.outcome()).map(|(value, _)| value)
         } else {
             surgeist_html_semantics::select_document_base(
                 Some(facts.document()),
@@ -1648,10 +1700,9 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
             }
             RetainedPayload::AssociationOccurrence(values) => {
                 values.require_disposal_owner(c)?;
-                if values.len() != 1 {
+                let [value] = values.as_slice() else {
                     return Err(latch_registry_row(c));
-                }
-                let value = &values.as_slice()[0];
+                };
                 if value.context.input_document >= slot
                     || !matches!(
                         storage.payloads.values.get(value.context.input_document),
@@ -1793,29 +1844,49 @@ impl FrozenStorage {
         }
     }
 }
-pub(super) fn release_occurrence(mut values: OwnedVec<Occurrence>, c: &mut ParseControl) {
-    while let Some(value) = if c.stop().is_some() {
-        values.cleanup_pop(c)
-    } else {
-        values.try_pop(c)
+/// Releases the receiver and what each occurrence holds. A refusal is
+/// remembered and the release goes on, so everything else is still credited;
+/// the first refusal is returned.
+pub(super) fn release_occurrence(
+    mut values: OwnedVec<Occurrence>,
+    c: &mut ParseControl,
+) -> Result<(), ParseStop> {
+    let mut refused = None;
+    loop {
+        let popped = if c.stop().is_some() {
+            values.cleanup_pop(c)
+        } else {
+            match values.try_pop(c) {
+                Ok(popped) => Ok(popped),
+                // The refusal latched a stop, which opens the cleanup pop.
+                Err(stop) => {
+                    refused.get_or_insert(stop);
+                    values.cleanup_pop(c)
+                }
+            }
+        };
+        match popped {
+            Ok(Some(value)) => {
+                if let Err(stop) = release_inputs(value, c) {
+                    refused.get_or_insert(stop);
+                }
+            }
+            Ok(None) => break,
+            Err(stop) => {
+                refused.get_or_insert(stop);
+                break;
+            }
+        }
     }
-    .unwrap_or_else(|_| {
-        values
-            .cleanup_pop(c)
-            .expect("terminal association receiver disposal")
-    }) {
-        release_inputs(value, c);
+    if let Err(stop) = values.release(c) {
+        refused.get_or_insert(stop);
     }
-    values
-        .release(c)
-        .expect("owned association occurrence receiver");
+    refused.map_or(Ok(()), Err)
 }
-fn release_inputs(value: Occurrence, c: &mut ParseControl) {
-    if let Some(inputs) = value.inputs {
-        inputs
-            .text
-            .release(c)
-            .expect("owned association text inputs");
+fn release_inputs(value: Occurrence, c: &mut ParseControl) -> Result<(), ParseStop> {
+    match value.inputs {
+        Some(inputs) => inputs.text.release(c),
+        None => Ok(()),
     }
 }
 pub(super) fn captured_usage(value: &CapturedContext) -> associated::AssociatedStorageUsage {
@@ -2161,7 +2232,10 @@ mod tests {
         values
             .try_push_geometric(&mut owner, forged_occurrence(None))
             .unwrap();
-        release_occurrence(values, &mut foreign);
+        assert_eq!(
+            release_occurrence(values, &mut foreign),
+            Err(foreign_stop())
+        );
         assert_eq!(foreign.stop(), Some(foreign_stop()));
     }
     #[test]
@@ -2185,7 +2259,7 @@ mod tests {
         values
             .try_push_geometric(&mut owner, forged_occurrence(Some(inputs)))
             .unwrap();
-        release_occurrence(values, &mut owner);
+        assert_eq!(release_occurrence(values, &mut owner), Err(foreign_stop()));
         assert_eq!(owner.stop(), Some(foreign_stop()));
         // The receiver itself was released although its inputs were refused.
         assert_eq!(
@@ -2389,17 +2463,11 @@ mod tests {
     #[test]
     fn a_sheet_order_entry_that_is_missing_reads_as_absent() {
         let mut report = styled_report();
-        let storage = frozen(&mut report);
-        let slot = storage
-            .payloads
-            .values
-            .iter()
-            .position(|row| matches!(row, RetainedPayload::StyleOrder(_)))
-            .unwrap();
-        let RetainedPayload::StyleOrder(list) = &mut storage.payloads.values[slot] else {
-            unreachable!()
-        };
-        list.as_mut_slice_for_test()[0] = usize::MAX;
+        for row in frozen(&mut report).payloads.values.iter_mut() {
+            if let RetainedPayload::StyleOrder(list) = row {
+                list.as_mut_slice_for_test()[0] = usize::MAX;
+            }
+        }
         let mut cursor = report.pending_associations();
         let mut checked = false;
         loop {

@@ -22,25 +22,39 @@ use history::FrozenHistory;
 /// Documents and independently created inert owners retain separate identities.
 /// All readers are fixed borrowed observations after bounded qualification.
 pub struct FragmentParserDocument<'a> {
-    storage: &'a FrozenStorage,
     source: &'a crate::HtmlSource,
     fragment: &'a FragmentContextStorage,
+    document: HtmlNode<'a>,
+    mode: HtmlDocumentMode,
+    completion: StandaloneDocumentState,
 }
 impl<'a> FragmentParserDocument<'a> {
+    /// The Document, its mode and its completion are read once, here, so the
+    /// readers cannot fail. `None` when the report holds no fragment context
+    /// or no longer holds the Document or the completion row it was
+    /// qualified against.
     pub(super) fn new(history: &'a FrozenHistory, source: &'a crate::HtmlSource) -> Option<Self> {
         let storage = history.arena().storage.as_ref()?;
+        let fragment = storage.fragment.as_ref()?;
+        let document = storage.view.node_at(0)?.as_node();
+        let HtmlNodeKind::Document(mode) = document.kind() else {
+            return None;
+        };
+        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
+            storage.payloads.values.get(fragment.completion)?
+        else {
+            return None;
+        };
         Some(Self {
-            storage,
             source,
-            fragment: storage.fragment.as_ref()?,
+            fragment,
+            document,
+            mode: *mode,
+            completion: *state,
         })
     }
     pub fn document(&self) -> HtmlNode<'a> {
-        self.storage
-            .view
-            .node_at(0)
-            .expect("qualified parser Document")
-            .as_node()
+        self.document
     }
     pub fn context(&self) -> &'a crate::HtmlFragmentContext {
         &self.fragment.context
@@ -49,18 +63,10 @@ impl<'a> FragmentParserDocument<'a> {
         self.source
     }
     pub fn mode(&self) -> HtmlDocumentMode {
-        let HtmlNodeKind::Document(mode) = self.document().kind() else {
-            unreachable!("qualified parser Document")
-        };
-        *mode
+        self.mode
     }
     pub fn completion(&self) -> StandaloneDocumentState {
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            self.storage.payloads.values[self.fragment.completion]
-        else {
-            unreachable!("qualified original completion slot")
-        };
-        state
+        self.completion
     }
     pub fn origin(&self) -> &'a context::FragmentParserOrigin {
         &self.fragment.origin

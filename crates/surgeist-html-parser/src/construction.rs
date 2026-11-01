@@ -1738,7 +1738,10 @@ impl PayloadStorage {
                 continue;
             }
             if let RetainedPayload::AssociationOccurrence(value) = payload {
-                pending_association::release_occurrence(value, control);
+                keep_first(
+                    &mut refused,
+                    pending_association::release_occurrence(value, control),
+                );
                 continue;
             }
             if let RetainedPayload::PiAttributes { values, .. } = payload {
