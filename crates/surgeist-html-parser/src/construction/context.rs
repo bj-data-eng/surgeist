@@ -299,7 +299,10 @@ impl SessionStorage {
         self.payloads
             .join_row(binding)
             .map_err(|_| latch_registry_row(c))?;
-        let fragment = self.fragment.as_mut().expect("retained context");
+        let fragment = self
+            .fragment
+            .as_mut()
+            .ok_or(SessionError::ContextUnavailable)?;
         let ContextEffect::TemplateCache { inert, .. } = fragment
             .effects
             .get_mut(effect, c)?
