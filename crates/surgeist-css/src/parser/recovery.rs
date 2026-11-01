@@ -581,6 +581,17 @@ impl RecoveryState {
         self.enter(source, opening_offset, enclosing_production)
     }
 
+    /// Enters the component block whose opening token ends at the byte
+    /// `opening_offset`, its last byte.
+    pub(super) fn enter_component_block_at<'i>(
+        &self,
+        source: &str,
+        opening_offset: usize,
+        enclosing_production: &'static str,
+    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
+        self.enter(source, opening_offset, enclosing_production)
+    }
+
     pub(super) fn check_component_values<'i>(
         &self,
         source: &'i str,
@@ -643,15 +654,16 @@ impl RecoveryState {
         Ok(self.component_openings_in(start..end))
     }
 
-    pub(super) fn check_component_contents<'i>(
+    /// Checks the contents of a component block that start at the byte `start`.
+    pub(super) fn check_component_contents_from<'i>(
         &self,
         source: &str,
-        input: &Parser<'i, '_>,
+        start: usize,
         enclosing_production: &'static str,
     ) -> Result<(), ParseError<'i, CssError>> {
         scan_nested_tokens(
             source,
-            input.position().byte_index(),
+            start,
             self.depth.get(),
             enclosing_production,
             ScanBoundary::ComponentContents,
@@ -665,7 +677,21 @@ impl RecoveryState {
         input: &Parser<'i, '_>,
         enclosing_production: &'static str,
     ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
-        let start = input.position().byte_index();
+        self.check_comma_member_components_from(
+            source,
+            input.position().byte_index(),
+            enclosing_production,
+        )
+    }
+
+    /// [`check_comma_member_components`](Self::check_comma_member_components)
+    /// for a member that starts at the byte `start`.
+    pub(super) fn check_comma_member_components_from<'i>(
+        &self,
+        source: &str,
+        start: usize,
+        enclosing_production: &'static str,
+    ) -> Result<Vec<usize>, ParseError<'i, CssError>> {
         let end = scan_nested_tokens(
             source,
             start,

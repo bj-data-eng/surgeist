@@ -522,7 +522,7 @@ fn font_face_rule_parser_rejects_invalid_descriptor_blocks() {
             Rejection::new(
                 CssErrorCode::InvalidDescriptorValue,
                 Some("unicode-range"),
-                Some("-110001"),
+                Some("U+110000-110001"),
             ),
         ),
         (

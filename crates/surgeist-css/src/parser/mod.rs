@@ -36,7 +36,6 @@ pub(crate) mod counter_style;
 pub(crate) mod declaration_block;
 pub(crate) mod declaration_unit;
 pub(crate) mod descriptor_stream;
-pub(crate) mod descriptor_values;
 pub(crate) mod domain_declaration_contents;
 pub(crate) mod effects;
 pub(crate) mod flex;
@@ -830,17 +829,6 @@ pub(crate) fn block_item_diagnostic_from_start(
     crate::diagnostic::CssRecoveryDiagnostic::new(error, span, action)
 }
 
-/// Syntax 3 (2026 CRD) §5.4.10 appends a group only while its input is not
-/// empty: a discarded comma followed by no token ends the list. Whitespace is
-/// a token; a comment is not.
-/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values>
-pub(crate) fn at_final_comma(input: &mut Parser<'_, '_>) -> bool {
-    let state = input.state();
-    let ends = input.next_including_whitespace().is_err();
-    input.reset(&state);
-    ends
-}
-
 /// Whether the token that ends at `position` is a `<{-token>`.
 ///
 /// A `{` byte ends other tokens too: Syntax 3 (2026 CRD) §4.3.7 consumes an
@@ -1153,10 +1141,21 @@ fn parse_namespace_prelude<'i, 't>(
     })
 }
 
+/// The layer names of an `@layer` prelude that the native parser `input` holds,
+/// to the end of its scope.
 fn parse_layer_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
+    snapshot: &crate::source::CssSourceSnapshot,
 ) -> std::result::Result<Vec<CssLayerName>, ParseError<'i, CssError>> {
-    if input.is_exhausted() {
+    descriptor_stream::parse_scope(input, snapshot, read_layer_prelude)
+}
+
+fn read_layer_prelude<'i>(
+    input: &mut syntax_types::Stream<'i>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> descriptor_stream::Value<'i, Vec<CssLayerName>> {
+    use descriptor_stream::fail;
+    if input.only_whitespace_remains() {
         return Ok(Vec::new());
     }
 
@@ -1165,41 +1164,48 @@ fn parse_layer_prelude<'i, 't>(
     combinators::parse_native_comma_list(
         input,
         |input| {
-            let name = parse_layer_name(input)?;
-            if !input.is_exhausted() {
-                return Err(invalid_syntax(input.current_source_location()));
+            let name = read_layer_name(input, numeric)?;
+            if !input.only_whitespace_remains() {
+                return Err(fail(numeric, input.site(), invalid_syntax));
             }
             Ok(name)
         },
         |input, _| {
-            parse_layer_name(input)
+            read_layer_name(input, numeric)
                 .err()
-                .unwrap_or_else(|| invalid_syntax(input.current_source_location()))
+                .unwrap_or_else(|| fail(numeric, input.site(), invalid_syntax))
         },
     )
 }
 
-fn parse_layer_name<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssLayerName, ParseError<'i, CssError>> {
-    let mut locations = vec![input.current_source_location()];
-    let mut components = vec![input.expect_ident_cloned().map_err(basic)?.to_string()];
+/// The layer name of `input`, whose components are the idents joined by `.`
+/// delimiters that no whitespace separates.
+pub(super) fn read_layer_name<'i>(
+    input: &mut syntax_types::Stream<'i>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> descriptor_stream::Value<'i, CssLayerName> {
+    use descriptor_stream::{fail, from_here};
+    let mut locations = vec![input.site()];
+    let mut components = vec![from_here(input, syntax_types::Stream::consume_ident)?.to_string()];
 
     loop {
-        let boundary = input.state();
-        if !matches!(input.next_including_whitespace(), Ok(Token::Delim('.'))) {
-            input.reset(&boundary);
+        let boundary = input.mark();
+        if !matches!(
+            input.consume_token(),
+            Ok(surgeist_css_parser::Token::Delim('.'))
+        ) {
+            input.restore(boundary);
             break;
         }
 
-        let component_location = input.current_source_location();
-        match input.next_including_whitespace().map_err(basic)? {
-            Token::Ident(component) => {
+        let component_location = input.site();
+        match input.consume_token()? {
+            surgeist_css_parser::Token::Ident(component) => {
                 components.push(component.to_string());
                 locations.push(component_location);
             }
             token => {
-                return Err(component_location.new_unexpected_token_error(token.clone()));
+                return Err(component_location.unexpected(token));
             }
         }
     }
@@ -1210,7 +1216,7 @@ fn parse_layer_name<'i, 't>(
         .iter()
         .position(|component| CssLayerName::try_new([component.as_str()]).is_none())
         .map_or(locations[0], |index| locations[index]);
-    CssLayerName::try_new(components).ok_or_else(|| invalid_syntax(responsible))
+    CssLayerName::try_new(components).ok_or_else(|| fail(numeric, responsible, invalid_syntax))
 }
 
 fn parse_scope_prelude<'i, 't>(
@@ -1314,8 +1320,9 @@ fn parse_font_face_prelude<'i, 't>(
 
 fn parse_keyframes_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
+    snapshot: &CssSourceSnapshot,
 ) -> Result<CssKeyframesName, ParseError<'i, CssError>> {
-    let name = parse_keyframes_name(input).map_err(|error| {
+    let name = parse_keyframes_name(input, snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
             "keyframes",
@@ -2393,43 +2400,68 @@ fn parse_custom_media_prelude<'i>(
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
 ) -> Result<CustomMediaPrelude, ParseError<'i, CssError>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let component =
-        crate::component::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
-            .map_err(|e| crate::diagnostic::error::invalid_component_value(location, e))?;
+    descriptor_stream::parse_scope(input, recovery.source_snapshot(), |stream, numeric| {
+        custom_media_prelude(source, stream, numeric, recovery)
+    })
+}
+fn custom_media_prelude<'i>(
+    source: &str,
+    input: &mut syntax_types::Stream<'i>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+    recovery: &RecoveryState,
+) -> descriptor_stream::Value<'i, CustomMediaPrelude> {
+    use descriptor_stream::{
+        byte_offset, consume_remaining, expect_exhausted, from_here, location,
+    };
+    use property_input::StreamExt as _;
+    use syntax_types::{Stream, SyntaxError};
+    let collect = |input: &mut Stream<'i>| {
+        input
+            .collect_component()
+            .map(std::borrow::Cow::into_owned)
+            .map_err(|error| {
+                SyntaxError::custom(
+                    input.site(),
+                    crate::diagnostic::error::invalid_component_value(
+                        location(numeric, input.site()),
+                        error,
+                    ),
+                )
+            })
+    };
+    input.discard_whitespace();
+    let at = input.site();
+    let component = collect(input)?;
     let name =
         crate::query::media::CssCustomMediaName::try_from_component(component).map_err(|_| {
-            with_at_rule_prelude_context(
-                invalid_syntax(location),
-                "custom-media",
-                "ext.rule.custom-media",
-                "an extension name followed by a custom-media body",
+            SyntaxError::custom(
+                at,
+                with_at_rule_prelude_context(
+                    invalid_syntax(location(numeric, at)),
+                    "custom-media",
+                    "ext.rule.custom-media",
+                    "an extension name followed by a custom-media body",
+                ),
             )
         })?;
-    let body_start = input.state();
+    let body_start = input.mark();
     let boolean = input
-        .try_parse(|p| {
-            let name = p.expect_ident_cloned().map_err(basic)?;
-            let boolean = crate::rule::custom_media::boolean_keyword(&name)
-                .ok_or_else(|| invalid_syntax(p.current_source_location()))?;
-            p.expect_exhausted().map_err(basic)?;
-            Ok::<_, ParseError<'i, CssError>>(boolean)
+        .attempt(|p| {
+            let name = from_here(p, Stream::consume_ident)?;
+            let boolean = crate::rule::custom_media::boolean_keyword(name).ok_or_else(|| {
+                SyntaxError::custom(p.site(), invalid_syntax(location(numeric, p.site())))
+            })?;
+            expect_exhausted(p)?;
+            Ok::<_, descriptor_stream::ValueError<'i>>(boolean)
         })
         .ok();
-    input.reset(&body_start);
+    input.restore(body_start);
     let mut diagnostics = Vec::new();
     let mut implicit = Vec::new();
     let (body, body_origin) = if let Some(boolean) = boolean {
-        input.skip_whitespace();
-        let token = crate::component::CssComponentValue::collect_from_parser(
-            input,
-            recovery.source_snapshot(),
-        )
-        .map_err(|e| {
-            crate::diagnostic::error::invalid_component_value(input.current_source_location(), e)
-        })?;
-        while input.next_including_whitespace_and_comments().is_ok() {}
+        input.discard_whitespace();
+        let token = collect(input)?;
+        consume_remaining(input);
         (
             if boolean {
                 crate::query::media::CssCustomMediaBody::True
@@ -2440,8 +2472,7 @@ fn parse_custom_media_prelude<'i>(
         )
     } else {
         let probe = recovery.detached_probe();
-        let parsed =
-            queries::parse_media_query_list_with_closures(source, input, &mut diagnostics, &probe)?;
+        let parsed = queries::media_query_list(source, input, numeric, &mut diagnostics, &probe)?;
         implicit.extend(parsed.implicit_closures);
         implicit.extend(probe.pending_component_closures());
         (
@@ -2449,7 +2480,7 @@ fn parse_custom_media_prelude<'i>(
             crate::component::CssValueOrigin::Programmatic,
         )
     };
-    let end = input.position().byte_index();
+    let end = byte_offset(numeric, input.site());
     let semicolon = if source.as_bytes().get(end) == Some(&b';') {
         crate::component::CssValueOrigin::Parsed(
             CssParsedOrigin::from_range(recovery.source_snapshot(), end..end + 1)

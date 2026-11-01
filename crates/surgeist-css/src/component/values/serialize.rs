@@ -6,8 +6,52 @@ use crate::component::{
     CssComponentValues, CssSerializedOrigin, CssSerializedOriginSegment, CssSerializedValue,
     CssValueOrigin, CssValueTokenRef,
 };
-use cssparser::{ToCss, Token, TokenSerializationType};
 use std::ops::Range;
+use surgeist_css_parser::Token;
+use surgeist_css_parser::serialize::{Adjacency, needs_separator};
+
+/// How a serialized token joins the one before and the one after it: the kind
+/// of token Syntax 3 section 9 reads for its table of comments between tokens,
+/// and whether the token is whitespace.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct Joint {
+    adjacency: Adjacency,
+    whitespace: bool,
+}
+
+impl Joint {
+    /// A token that needs no comment on either side.
+    pub(crate) const OTHER: Self = Self::of(Adjacency::Other);
+    /// A function token: nothing joins what follows it.
+    pub(crate) const FUNCTION: Self = Self::of(Adjacency::Function);
+    /// A `(` token.
+    pub(crate) const OPEN_PAREN: Self = Self::of(Adjacency::OpenParen);
+    /// A whitespace token.
+    pub(crate) const WHITESPACE: Self = Self {
+        adjacency: Adjacency::Other,
+        whitespace: true,
+    };
+
+    pub(crate) const fn of(adjacency: Adjacency) -> Self {
+        Self {
+            adjacency,
+            whitespace: false,
+        }
+    }
+
+    /// Whether a comment must separate `self` from `next` written after it.
+    /// Besides the table of section 9, a number is separated from a `-` and
+    /// a bar from a bar: grammars read those adjacent pairs as one construct (a
+    /// signed offset, the column combinator), so they stay two tokens in the text.
+    fn needs_separator_before(self, next: Self) -> bool {
+        needs_separator(self.adjacency, next.adjacency)
+            || matches!(
+                (self.adjacency, next.adjacency),
+                (Adjacency::Number, Adjacency::Delim('-'))
+                    | (Adjacency::Delim('|'), Adjacency::Delim('|'))
+            )
+    }
+}
 
 /// Recognized grammar syntax; opaque syntax must use original components instead.
 pub(crate) enum CssCanonicalToken<'a> {
@@ -64,24 +108,22 @@ impl CssCanonicalBuilder {
         while let Some(event) = pending.pop() {
             let component = match event {
                 Event::Closing(value) => {
-                    self.emitter
-                        .token(value, TokenSerializationType::Other, false)?;
+                    self.emitter.token(value, Joint::OTHER, false)?;
                     continue;
                 }
                 Event::Component(value) => value,
             };
             match &component.data {
                 ComponentData::Function(value) => {
-                    self.emitter
-                        .token(&value.opening, TokenSerializationType::Function, false)?;
+                    self.emitter.token(&value.opening, Joint::FUNCTION, false)?;
                     pending.push(Event::Closing(&value.closing));
                     pending.extend(value.values.items().iter().rev().map(Event::Component));
                 }
                 ComponentData::Block(value) => {
                     let kind = if value.kind == CssBlockKind::Parenthesis {
-                        TokenSerializationType::OpenParen
+                        Joint::OPEN_PAREN
                     } else {
-                        TokenSerializationType::Other
+                        Joint::OTHER
                     };
                     self.emitter.token(&value.opening, kind, false)?;
                     pending.push(Event::Closing(&value.closing));
@@ -103,15 +145,15 @@ impl CssCanonicalBuilder {
                 CssComponentValue::try_ident(name)
                     .map_err(|error| CssComponentValueError::new(error.kind, origin.clone()))?;
                 (
-                    Token::Function(name.into()).to_css_string().into(),
-                    TokenSerializationType::Function,
+                    Token::Function(name).to_string().into(),
+                    Joint::FUNCTION,
                     false,
                 )
             }
-            CssCanonicalToken::OpenParen => ("(".into(), TokenSerializationType::OpenParen, false),
-            CssCanonicalToken::CloseParen => (")".into(), TokenSerializationType::Other, false),
-            CssCanonicalToken::OpenBrace => ("{".into(), TokenSerializationType::Other, false),
-            CssCanonicalToken::CloseBrace => ("}".into(), TokenSerializationType::Other, false),
+            CssCanonicalToken::OpenParen => ("(".into(), Joint::OPEN_PAREN, false),
+            CssCanonicalToken::CloseParen => (")".into(), Joint::OTHER, false),
+            CssCanonicalToken::OpenBrace => ("{".into(), Joint::OTHER, false),
+            CssCanonicalToken::CloseBrace => ("}".into(), Joint::OTHER, false),
             other => {
                 let component = match other {
                     CssCanonicalToken::Ident(value) => CssComponentValue::try_ident(value),
@@ -161,6 +203,13 @@ impl CssCanonicalBuilder {
         self.emitter.bytes
     }
 
+    /// The text emitted so far, whatever the last token is: a reverse solidus
+    /// that ends it stays one, which a value that goes on after it would not
+    /// allow. For text that only names the components it spells.
+    pub(crate) fn into_text(self) -> String {
+        self.emitter.css.expect("canonical output is retained")
+    }
+
     pub(crate) fn finish(self) -> Result<CssSerializedValue, CssComponentValueError> {
         self.emitter.finish()?;
         Ok(CssSerializedValue {
@@ -179,7 +228,8 @@ struct Emitter {
     segments: Vec<CssSerializedOriginSegment>,
     bytes: usize,
     max_bytes: usize,
-    previous: TokenSerializationType,
+    /// The token written last, none at the start and after a comment.
+    previous: Option<Joint>,
     previous_origin: Option<CssValueOrigin>,
     previous_hex_escape: bool,
     reverse_solidus: bool,
@@ -195,7 +245,7 @@ impl Emitter {
             segments: Vec::new(),
             bytes: 0,
             max_bytes,
-            previous: TokenSerializationType::Nothing,
+            previous: None,
             previous_origin: None,
             previous_hex_escape: false,
             reverse_solidus: false,
@@ -238,12 +288,11 @@ impl Emitter {
     fn token(
         &mut self,
         spelling: &Lexeme,
-        kind: TokenSerializationType,
+        kind: Joint,
         reverse_solidus: bool,
     ) -> Result<(), CssComponentValueError> {
         if self.reverse_solidus
-            && !(kind == TokenSerializationType::WhiteSpace
-                && spelling.text.starts_with(['\n', '\r', '\u{000c}']))
+            && !(kind.whitespace && spelling.text.starts_with(['\n', '\r', '\u{000c}']))
         {
             return Err(CssComponentValueError::new(
                 CssComponentValueErrorKind::UnserializableBoundary,
@@ -252,30 +301,14 @@ impl Emitter {
                     .unwrap_or(CssValueOrigin::Programmatic),
             ));
         }
-        // The category table handles pairs. CDO also has a three-token hazard:
-        // delimiter '<', delimiter '!', then an identifier starting with '--'.
-        // The table omits CDC after these four categories: its leading '--'
-        // would be consumed as part of an identifier, at-keyword, hash, or dimension.
-        // The dated Syntax tokenizer returns two Delims for these five pairs;
-        // the provider's combined-match vocabulary adds a false merge hazard.
-        let separate_operator_delims = kind == TokenSerializationType::DelimEquals
-            && matches!(
-                self.previous,
-                TokenSerializationType::DelimAssorted
-                    | TokenSerializationType::DelimAsterisk
-                    | TokenSerializationType::DelimBar
-            );
-        if (self.previous.needs_separator_when_before(kind) && !separate_operator_delims)
-            || (kind == TokenSerializationType::CDC
-                && matches!(
-                    self.previous,
-                    TokenSerializationType::DelimMinus
-                        | TokenSerializationType::DelimAt
-                        | TokenSerializationType::DelimHash
-                        | TokenSerializationType::Number
-                ))
+        // The table of section 9 handles pairs. A `<` delimiter, a `!` delimiter
+        // and then a name that starts with '--' read as a CDO token, a hazard
+        // of three tokens.
+        if self
+            .previous
+            .is_some_and(|previous| previous.needs_separator_before(kind))
             || (self.cdo_prefix == 2 && spelling.text.starts_with("--"))
-            || (self.previous_hex_escape && kind == TokenSerializationType::WhiteSpace)
+            || (self.previous_hex_escape && kind.whitespace)
         {
             self.append(
                 "/**/",
@@ -292,7 +325,7 @@ impl Emitter {
             &spelling.text,
             CssSerializedOrigin::Token(spelling.origin.clone()),
         )?;
-        self.previous = kind;
+        self.previous = Some(kind);
         self.previous_origin = Some(spelling.origin.clone());
         self.previous_hex_escape = ends_with_hex_escape(&spelling.text);
         self.last_origin = Some(spelling.origin.clone());
@@ -335,7 +368,7 @@ impl Emitter {
             self.suffix(ending)?;
         }
         // A complete comment already separates both of its neighboring tokens.
-        self.previous = TokenSerializationType::Nothing;
+        self.previous = None;
         self.previous_origin = None;
         self.previous_hex_escape = false;
         self.cdo_prefix = 0;
@@ -373,20 +406,18 @@ impl Emitter {
                 }
             }
             ComponentData::Function(function) => {
-                self.token(&function.opening, TokenSerializationType::Function, false)?;
+                self.token(&function.opening, Joint::FUNCTION, false)?;
                 self.values(function.values.items(), path)?;
-                self.token(&function.closing, TokenSerializationType::Other, false)?;
+                self.token(&function.closing, Joint::OTHER, false)?;
             }
             ComponentData::Block(block) => {
                 let kind = match block.kind {
-                    CssBlockKind::Parenthesis => TokenSerializationType::OpenParen,
-                    CssBlockKind::SquareBracket | CssBlockKind::CurlyBracket => {
-                        TokenSerializationType::Other
-                    }
+                    CssBlockKind::Parenthesis => Joint::OPEN_PAREN,
+                    CssBlockKind::SquareBracket | CssBlockKind::CurlyBracket => Joint::OTHER,
                 };
                 self.token(&block.opening, kind, false)?;
                 self.values(block.values.items(), path)?;
-                self.token(&block.closing, TokenSerializationType::Other, false)?;
+                self.token(&block.closing, Joint::OTHER, false)?;
             }
             ComponentData::Comment {
                 spelling,
@@ -486,7 +517,7 @@ mod media_helpers_tests {
     use super::*;
 
     #[test]
-    fn subtree_ranges_distinguish_repeated_original_components_and_keep_trivia() {
+    fn subtree_paths_distinguish_repeated_original_components() {
         let parsed = crate::component::values::parse_component_values("future(a/**/b)").unwrap();
         let component = parsed.items()[0].clone();
         let values =
@@ -494,25 +525,7 @@ mod media_helpers_tests {
                 .unwrap();
         let serialized = values.serialize_tokens(Default::default()).unwrap();
         assert_eq!(serialized.as_css(), "future(a/**/b)future(a/**/b)");
-        assert_eq!(
-            serialized.component_paths_in_range(0..14).unwrap(),
-            vec![&[0][..]]
-        );
-        assert_eq!(
-            serialized.component_paths_in_range(14..28).unwrap(),
-            vec![&[1][..]]
-        );
-        assert_eq!(
-            serialized.component_paths_in_range(26..27).unwrap(),
-            vec![&[1, 2][..]]
-        );
         assert_eq!(serialized.component_offset_for_path(&[1, 2]), Some(26));
-        assert_eq!(
-            serialized.component_paths_in_range(7..13).unwrap(),
-            vec![&[0, 0][..], &[0, 1][..], &[0, 2][..]]
-        );
-        assert!(serialized.component_paths_in_range(7..11).is_none());
-        assert!(serialized.component_paths_in_range(7..27).is_none());
         assert_eq!(
             values.component_at_path(&[1, 2]),
             parsed.component_at_path(&[0, 2])

@@ -3,8 +3,12 @@ use super::block_units::{
     location_at, native_error, offset_of, refused_declaration,
 };
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
-use super::property_input::NativeValueRange;
-use super::syntax_types::{Attached, Stream, SyntaxError};
+use super::descriptor_stream::{
+    Value, ValueError, byte_offset, collect_scope, consume_remaining, expect_exhausted, fail,
+    from_component, from_here, location, parse_scope,
+};
+use super::property_input::StreamExt;
+use super::syntax_types::{Attached, Site, Stream, SyntaxError};
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
     QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser,
@@ -27,6 +31,7 @@ use crate::diagnostic::error::{
     unexpected_syntax_end, unexpected_syntax_token, with_property_context,
 };
 use crate::diagnostic::{CssError, CssFeatureId};
+use crate::numeric::expression::NumericInputContext;
 use crate::property::{CssKnownProperty, CssKnownPropertyValueRef};
 use crate::rule::page::{
     CssMarginBox, CssMarginDeclarationBlock, CssMarginRule, CssPageBody, CssPageDeclaration,
@@ -42,65 +47,91 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("official.selector.logical-page-pseudo"),
 ];
 
+/// The selector list of a `@page` rule that the native parser `input` holds to
+/// its end.
 pub(crate) fn parse_page_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     snapshot: &crate::source::CssSourceSnapshot,
 ) -> Result<CssPageSelectorList, ParseError<'i, CssError>> {
-    let start = input.position().byte_index();
-    let selectors = if input.is_exhausted() {
+    super::descriptor_stream::parse_scope(input, snapshot, |stream, numeric| {
+        page_selector_list(stream, numeric, snapshot)
+    })
+}
+
+fn page_selector_list<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+    snapshot: &crate::source::CssSourceSnapshot,
+) -> Value<'i, CssPageSelectorList> {
+    let start = byte_offset(numeric, input.site());
+    let selectors = if input.only_whitespace_remains() {
         Vec::new()
     } else {
-        input.parse_comma_separated(|input| {
-            input.skip_whitespace();
-            let start = input.position().byte_index();
-            let name = input
-                .try_parse(|input| input.expect_ident_cloned())
-                .ok()
-                .map(|name| {
-                    crate::values::common::CssIdent::try_new(name.to_string())
-                        .expect("decoded parser identifier")
-                });
-            let mut pseudos = Vec::new();
-            while !input.is_exhausted() {
-                let location = input.current_source_location();
-                match input.next_including_whitespace().cloned().map_err(basic)? {
-                    cssparser::Token::WhiteSpace(_) => {
-                        input.skip_whitespace();
-                        input.expect_exhausted().map_err(basic)?;
-                        break;
-                    }
-                    cssparser::Token::Colon => {}
-                    _ => return Err(unexpected_at(location)),
-                }
-                let location = input.current_source_location();
-                let cssparser::Token::Ident(name) =
-                    input.next_including_whitespace().cloned().map_err(basic)?
-                else {
-                    return Err(unexpected_at(location));
-                };
-                let pseudo = match_ignore_ascii_case! { &name,
-                    "left" => CssPagePseudo::Left, "right" => CssPagePseudo::Right,
-                    "first" => CssPagePseudo::First, "blank" => CssPagePseudo::Blank,
-                    "recto" => CssPagePseudo::Recto, "verso" => CssPagePseudo::Verso,
-                    _ => return Err(unexpected_at(location)),
-                };
-                pseudos.push(pseudo);
-            }
-            if name.is_none() && pseudos.is_empty() {
-                return Err(unexpected_at(input.current_source_location()));
-            }
-            let origin = crate::source::CssParsedOrigin::from_range(
-                snapshot,
-                start..input.position().byte_index(),
-            )
-            .expect("genuine Page selector");
-            Ok(CssPageSelector::from_parsed(name, pseudos, origin))
-        })?
+        input.comma_segments(|input| page_selector(input, numeric, snapshot))?
     };
-    let origin =
-        crate::source::CssParsedOrigin::from_range(snapshot, start..input.position().byte_index())
-            .expect("genuine Page selector list");
+    let origin = crate::source::CssParsedOrigin::from_range(
+        snapshot,
+        start..byte_offset(numeric, input.site()),
+    )
+    .expect("genuine Page selector list");
     Ok(CssPageSelectorList::from_parsed(selectors, origin))
+}
+
+fn page_selector<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+    snapshot: &crate::source::CssSourceSnapshot,
+) -> Value<'i, CssPageSelector> {
+    let unexpected = |at: Site<'i>| SyntaxError::custom(at, unexpected_at(location(numeric, at)));
+    // The end of the input is after the comments that end it.
+    let next = |input: &mut Stream<'i>| {
+        input.consume_token().map_err(|error| {
+            if error.is_end_of_stream() {
+                input.end_site().end_of_stream()
+            } else {
+                error.into()
+            }
+        })
+    };
+    input.discard_whitespace();
+    let start = byte_offset(numeric, input.site());
+    let name = input.attempt(Stream::consume_ident).ok().map(|name| {
+        crate::values::common::CssIdent::try_new(name.to_string())
+            .expect("decoded parser identifier")
+    });
+    let mut pseudos = Vec::new();
+    while !input.only_whitespace_remains() {
+        let at = input.site();
+        match next(input)? {
+            Token::Whitespace => {
+                input.discard_whitespace();
+                expect_exhausted(input)?;
+                break;
+            }
+            Token::Colon => {}
+            _ => return Err(unexpected(at)),
+        }
+        let at = input.site();
+        let Token::Ident(name) = next(input)? else {
+            return Err(unexpected(at));
+        };
+        let pseudo = match_ignore_ascii_case! { name,
+            "left" => CssPagePseudo::Left, "right" => CssPagePseudo::Right,
+            "first" => CssPagePseudo::First, "blank" => CssPagePseudo::Blank,
+            "recto" => CssPagePseudo::Recto, "verso" => CssPagePseudo::Verso,
+            _ => return Err(unexpected(at)),
+        };
+        pseudos.push(pseudo);
+    }
+    if name.is_none() && pseudos.is_empty() {
+        return Err(unexpected(input.site()));
+    }
+    let origin = crate::source::CssParsedOrigin::from_range(
+        snapshot,
+        start..byte_offset(numeric, input.site()),
+    )
+    .expect("genuine Page selector");
+    Ok(CssPageSelector::from_parsed(name, pseudos, origin))
 }
 
 pub(crate) fn parse_page_rule<'i, 't>(
@@ -183,14 +214,10 @@ pub(super) fn parse_margin_body<'i>(
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssMarginDeclarationBlock, ParseError<'i, CssError>> {
-    let numeric =
-        crate::numeric::expression::NumericInputContext::parsed(recovery.source_snapshot());
-    let (declarations, mut recovered) = super::property_input::adapt_native(
-        input,
-        &numeric,
-        NativeValueRange::Scope,
-        |contents, _| Ok(drive_margin_body(contents, source, &recovery)),
-    )?;
+    let (declarations, mut recovered) =
+        super::property_input::adapt_native(input, recovery.source_snapshot(), |contents| {
+            Ok(drive_margin_body(contents, source, &recovery))
+        })?;
     diagnostics.append(&mut recovered);
     Ok(declarations)
 }
@@ -991,140 +1018,136 @@ fn nonzero_unitless_page_length(
     }
 }
 
+/// The value of the page descriptor `kind` that the native parser `input` holds,
+/// to the end of its scope.
 pub(super) fn parse_descriptor_value<'i>(
     input: &mut Parser<'i, '_>,
     kind: CssPageDescriptorKind,
     snapshot: &crate::source::CssSourceSnapshot,
 ) -> Result<crate::rule::page::syntax::PageValueData, ParseError<'i, CssError>> {
+    parse_scope(input, snapshot, |value, numeric| {
+        read_descriptor_value(value, kind, numeric)
+    })
+}
+
+fn read_descriptor_value<'i>(
+    input: &mut Stream<'i>,
+    kind: CssPageDescriptorKind,
+    numeric: &NumericInputContext<'_>,
+) -> Value<'i, crate::rule::page::syntax::PageValueData> {
     use crate::rule::page::syntax::PageValueData as V;
-    let start = input.state();
-    let components = crate::component::CssComponentValues::collect_from_parser(input, snapshot)
-        .map_err(|error| {
-            crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                error,
-            )
-        })?;
-    input.reset(&start);
-    let numeric = crate::numeric::expression::NumericInputContext::parsed(snapshot);
-    if super::variables::descriptor_substitution_qualifies(components.items(), &numeric).map_err(
+    let start = input.mark();
+    let first = input.site();
+    let components = collect_scope(input, numeric).map_err(|(error, at)| {
+        SyntaxError::custom(
+            first,
+            crate::diagnostic::error::invalid_component_value(at, error),
+        )
+    })?;
+    input.restore(start);
+    if super::variables::descriptor_substitution_qualifies(components.items(), numeric).map_err(
         |error| {
-            crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                error,
-            )
+            fail(numeric, first, |at| {
+                crate::diagnostic::error::invalid_component_value(at, error)
+            })
         },
     )? {
-        let start = input.position();
-        super::descriptor_values::consume_remaining_components(input)?;
+        consume_remaining(input);
         return Ok(V::Pending(
             crate::declaration::CssSubstitutionDependentValue::new(
-                crate::declaration::CssAuthoredDeclarationValue::new(input.slice_from(start)),
+                crate::declaration::CssAuthoredDeclarationValue::new(
+                    input.authored_text_since(first),
+                ),
             ),
         ));
     }
-    if let Ok(global) = input.try_parse(|input| {
-        let keyword_location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        let global = crate::validation::parse_global_keyword(&ident)
-            .ok_or_else(|| unexpected_at(keyword_location))?;
-        input.expect_exhausted().map_err(basic)?;
-        Ok::<_, ParseError<'i, CssError>>(global)
+    if let Ok(global) = input.attempt(|input| {
+        let keyword_location = input.site();
+        let ident = from_here(input, Stream::consume_ident)?;
+        let global = crate::validation::parse_global_keyword(ident)
+            .ok_or_else(|| fail(numeric, keyword_location, unexpected_at))?;
+        expect_exhausted(input)?;
+        Ok::<_, ValueError<'i>>(global)
     }) {
         return Ok(V::Global(global));
     }
     let value = match kind {
-        CssPageDescriptorKind::Size => V::Size(parse_size(input, &numeric)?),
+        CssPageDescriptorKind::Size => V::Size(parse_size(input, numeric)?),
         CssPageDescriptorKind::PageOrientation => {
-            let location = input.current_source_location();
-            let name = input.expect_ident_cloned().map_err(basic)?;
+            let location = input.site();
+            let name = from_here(input, Stream::consume_ident)?;
             V::PageOrientation(
-                match_ignore_ascii_case! {&name,"upright"=>CssPageOutputOrientation::Upright,"rotate-left"=>CssPageOutputOrientation::RotateLeft,"rotate-right"=>CssPageOutputOrientation::RotateRight,_=>return Err(unexpected_at(location))},
+                match_ignore_ascii_case! {name,"upright"=>CssPageOutputOrientation::Upright,"rotate-left"=>CssPageOutputOrientation::RotateLeft,"rotate-right"=>CssPageOutputOrientation::RotateRight,_=>return Err(fail(numeric, location, unexpected_at))},
             )
         }
         CssPageDescriptorKind::Marks => {
-            let location = input.current_source_location();
-            let name = input.expect_ident_cloned().map_err(basic)?;
+            let location = input.site();
+            let name = from_here(input, Stream::consume_ident)?;
             let (crop, cross) = if name.eq_ignore_ascii_case("none") {
                 (false, false)
             } else {
                 let mut crop = false;
                 let mut cross = false;
-                for name in std::iter::once(name)
-                    .chain(input.try_parse(|input| input.expect_ident_cloned()).ok())
-                {
-                    match_ignore_ascii_case! {&name,"crop"=>{if crop{return Err(unexpected_at(location));}crop=true;},"cross"=>{if cross{return Err(unexpected_at(location));}cross=true;},_=>return Err(unexpected_at(location))}
+                for name in std::iter::once(name).chain(input.attempt(Stream::consume_ident).ok()) {
+                    match_ignore_ascii_case! {name,"crop"=>{if crop{return Err(fail(numeric, location, unexpected_at));}crop=true;},"cross"=>{if cross{return Err(fail(numeric, location, unexpected_at));}cross=true;},_=>return Err(fail(numeric, location, unexpected_at))}
                 }
                 (crop, cross)
             };
             V::Marks(CssPageMarks::new(crop, cross))
         }
-        CssPageDescriptorKind::Bleed => V::Bleed(super::property_input::adapt_native(
-            input,
-            &numeric,
-            NativeValueRange::Component,
-            |input, numeric| {
-                super::side_shapes::parse_auto_or(input, |input| {
-                    super::values::parse_length(input, numeric)
-                })
-            },
-        )?),
+        CssPageDescriptorKind::Bleed => V::Bleed(from_component(numeric, input, |input| {
+            super::side_shapes::parse_auto_or(input, |input| {
+                super::values::parse_length(input, numeric)
+            })
+        })?),
     };
-    input.expect_exhausted().map_err(basic)?;
+    expect_exhausted(input)?;
     Ok(value)
 }
+
 fn parse_size<'i>(
-    input: &mut Parser<'i, '_>,
-    numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> Result<CssPageSizeValue, ParseError<'i, CssError>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("auto"))
-        .is_ok()
-    {
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+) -> Value<'i, CssPageSizeValue> {
+    if input.attempt(|input| input.consume_keyword("auto")).is_ok() {
         return Ok(CssPageSizeValue::Auto);
     }
-    if let Ok(first) = input.try_parse(|input| {
-        super::property_input::adapt_native(
-            input,
-            numeric,
-            NativeValueRange::Component,
-            super::values::parse_nonnegative_length,
-        )
+    if let Ok(first) = input.attempt(|input| {
+        from_component(numeric, input, |input| {
+            super::values::parse_nonnegative_length(input, numeric)
+        })
     }) {
-        let second = if input.is_exhausted() {
+        let second = if input.only_whitespace_remains() {
             None
         } else {
-            Some(super::property_input::adapt_native(
-                input,
-                numeric,
-                NativeValueRange::Component,
-                super::values::parse_nonnegative_length,
-            )?)
+            Some(from_component(numeric, input, |input| {
+                super::values::parse_nonnegative_length(input, numeric)
+            })?)
         };
         return Ok(CssPageSizeValue::Dimensions(first, second));
     }
     let mut size = None;
     let mut orientation = None;
     for _ in 0..2 {
-        if input.is_exhausted() {
+        if input.only_whitespace_remains() {
             break;
         }
-        let location = input.current_source_location();
-        let name = input.expect_ident_cloned().map_err(basic)?;
-        if let Some(value) = match_ignore_ascii_case! {&name,"portrait"=>Some(CssPageOrientation::Portrait),"landscape"=>Some(CssPageOrientation::Landscape),_=>None}
+        let location = input.site();
+        let name = from_here(input, Stream::consume_ident)?;
+        if let Some(value) = match_ignore_ascii_case! {name,"portrait"=>Some(CssPageOrientation::Portrait),"landscape"=>Some(CssPageOrientation::Landscape),_=>None}
         {
             if orientation.replace(value).is_some() {
-                return Err(unexpected_at(location));
+                return Err(fail(numeric, location, unexpected_at));
             }
         } else {
-            let value = match_ignore_ascii_case! {&name,"a5"=>CssPageSize::A5,"a4"=>CssPageSize::A4,"a3"=>CssPageSize::A3,"b5"=>CssPageSize::B5,"b4"=>CssPageSize::B4,"jis-b5"=>CssPageSize::JisB5,"jis-b4"=>CssPageSize::JisB4,"letter"=>CssPageSize::Letter,"legal"=>CssPageSize::Legal,"ledger"=>CssPageSize::Ledger,_=>return Err(unexpected_at(location))};
+            let value = match_ignore_ascii_case! {name,"a5"=>CssPageSize::A5,"a4"=>CssPageSize::A4,"a3"=>CssPageSize::A3,"b5"=>CssPageSize::B5,"b4"=>CssPageSize::B4,"jis-b5"=>CssPageSize::JisB5,"jis-b4"=>CssPageSize::JisB4,"letter"=>CssPageSize::Letter,"legal"=>CssPageSize::Legal,"ledger"=>CssPageSize::Ledger,_=>return Err(fail(numeric, location, unexpected_at))};
             if size.replace(value).is_some() {
-                return Err(unexpected_at(location));
+                return Err(fail(numeric, location, unexpected_at));
             }
         }
     }
     if size.is_none() && orientation.is_none() {
-        return Err(unexpected_at(input.current_source_location()));
+        return Err(fail(numeric, input.site(), unexpected_at));
     }
     Ok(CssPageSizeValue::Named(
         CssPageNamedSize::try_new(size, orientation).expect("parsed nonempty Page size"),

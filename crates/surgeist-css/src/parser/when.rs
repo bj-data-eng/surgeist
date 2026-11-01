@@ -2,6 +2,7 @@
 use super::boolean_condition::{
     BooleanConditionGrammar, ConditionFailure, parse_boolean_condition,
 };
+use super::descriptor_stream::collect_native_scope;
 use super::query_components::ComponentCursor;
 use super::recovery::RecoveryState;
 use crate::CssParserContext;
@@ -45,13 +46,9 @@ pub(super) fn parse_prelude<'i>(
     };
     let start = input.position().byte_index();
     let implicit = recovery.check_specialized_components(source, input, production)?;
-    let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
-        .map_err(|error| {
-            crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                error,
-            )
-        })?;
+    let values = collect_native_scope(input, recovery.source_snapshot())?
+        .values
+        .map_err(|(error, at)| crate::diagnostic::error::invalid_component_value(at, error))?;
     if optional
         && values
             .items()

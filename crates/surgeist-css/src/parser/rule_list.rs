@@ -347,9 +347,12 @@ pub(super) fn parse_at_rule_prelude<'i>(
         },
         "keyframes" => {
             reject_with_style_ancestor(context, input, "keyframes")?;
-            Ok(AtRulePrelude::Keyframes(parse_keyframes_prelude(input)?))
+            Ok(AtRulePrelude::Keyframes(parse_keyframes_prelude(
+                input,
+                recovery.source_snapshot(),
+            )?))
         },
-        "layer" => Ok(AtRulePrelude::Layer(parse_layer_prelude(input).map_err(|error| {
+        "layer" => Ok(AtRulePrelude::Layer(parse_layer_prelude(input, recovery.source_snapshot()).map_err(|error| {
             with_at_rule_prelude_context(
                 error,
                 "layer",

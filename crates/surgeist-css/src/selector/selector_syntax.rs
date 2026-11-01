@@ -1124,11 +1124,14 @@ impl CssLanguageRange {
     /// Serializes the argument token canonically, preserving its token form.
     #[must_use]
     pub fn to_css_string(&self) -> String {
-        let token = match self.kind() {
-            CssLanguageRangeKind::Identifier => cssparser::Token::Ident(self.as_str().into()),
-            CssLanguageRangeKind::String => cssparser::Token::QuotedString(self.as_str().into()),
-        };
-        cssparser::ToCss::to_css_string(&token)
+        match self.kind() {
+            CssLanguageRangeKind::Identifier => {
+                surgeist_css_parser::Token::Ident(self.as_str()).to_string()
+            }
+            CssLanguageRangeKind::String => {
+                surgeist_css_parser::Token::String(self.as_str()).to_string()
+            }
+        }
     }
 }
 
@@ -1265,7 +1268,7 @@ impl CssPartName {
     /// Serializes the identifier canonically, with CSS escapes where needed.
     #[must_use]
     pub fn to_css_string(&self) -> String {
-        cssparser::ToCss::to_css_string(&cssparser::Token::Ident(self.as_str().into()))
+        surgeist_css_parser::Token::Ident(self.as_str()).to_string()
     }
 }
 

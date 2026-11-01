@@ -759,18 +759,10 @@ pub(crate) fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQ
         let working_source = crate::tokenization::prepare(source);
         let mut input = ParserInput::new(&working_source);
         let mut input = Parser::new(&mut input);
-        let result = queries::check_media_member_components(source, &mut input, &state).and_then(
-            |openings| {
-                let query = queries::parse_media_query(
-                    source,
-                    &mut input,
-                    &crate::numeric::expression::NumericInputContext::parsed(
-                        state.source_snapshot(),
-                    ),
-                )?;
-                input.expect_exhausted()?;
+        let result = queries::parse_media_query_fragment(source, &mut input, &state).map(
+            |(query, openings)| {
                 state.retain_component_closures(openings);
-                Ok(query)
+                query
             },
         );
         match result {
@@ -920,7 +912,6 @@ pub(crate) fn parse_font_face_descriptor_value(
                 &mut input,
                 descriptor,
                 state.source_snapshot(),
-                &crate::numeric::expression::NumericInputContext::parsed(state.source_snapshot()),
                 &mut diagnostics,
                 &mut openings,
             )?;

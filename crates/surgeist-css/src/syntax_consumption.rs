@@ -282,6 +282,46 @@ pub(crate) fn source_window_document(
     build_source(text, range.start, original, SyntaxInputLimits::default(), 0)
 }
 
+/// The tree of the window `range` of the text `original` holds, tokenized with
+/// unicode ranges allowed (Syntax 3 section 5.5.11), whose positions are those
+/// of `original`.
+pub(crate) fn unicode_range_document(
+    original: &CssSourceSnapshot,
+    range: Range<usize>,
+) -> Result<Document<'_>, CssComponentValueError> {
+    let text = original
+        .as_str()
+        .get(range.clone())
+        .expect("bounded source range");
+    let limits = SyntaxInputLimits::default();
+    if text.len() > limits.max_known_spelling_bytes {
+        return Err(too_long(text.len()));
+    }
+    let mut document = surgeist_css_parser::unicode_range::consume_value(
+        text,
+        Offset::new(range.start),
+        limits.limits(0),
+    )
+    .map_err(|error| source_failure(&error, text, range.start, original))?;
+    document.attach(Host::source(original).into_attached());
+    Ok(document)
+}
+
+/// The tree of `text`, which no snapshot holds, tokenized with unicode ranges
+/// allowed, whose positions are those of `text`.
+pub(crate) fn unicode_range_text_document(
+    text: &str,
+) -> Result<Document<'_>, CssComponentValueError> {
+    let limits = SyntaxInputLimits::default();
+    if text.len() > limits.max_known_spelling_bytes {
+        return Err(too_long(text.len()));
+    }
+    surgeist_css_parser::unicode_range::consume_value(text, Offset::new(0), limits.limits(0))
+        .map_err(|error| {
+            CssComponentValueError::new(failure_kind(&error), CssValueOrigin::Programmatic)
+        })
+}
+
 /// The tree of the window `range` of the text `original` holds, for a native
 /// callback that hands a ported grammar its whole scope, whose positions are
 /// those of `original`.

@@ -489,13 +489,9 @@ pub(crate) fn collect_container_components<'i>(
 ) -> Result<(CssComponentValues, Vec<usize>), ParseError<'i, CssError>> {
     let implicit =
         recovery.check_specialized_components(source, input, "baseline.rule.container")?;
-    let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
-        .map_err(|error| {
-            crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                error,
-            )
-        })?;
+    let values = super::descriptor_stream::collect_native_scope(input, recovery.source_snapshot())?
+        .values
+        .map_err(|(error, at)| crate::diagnostic::error::invalid_component_value(at, error))?;
     Ok((values, implicit))
 }
 // Parser collection already enforces the stylesheet's complete component limits.

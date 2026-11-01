@@ -34132,7 +34132,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 4,
+            "byte_offset": 7,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34179,7 +34179,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 4,
+            "byte_offset": 7,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34226,7 +34226,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 5,
             "span_start": 0,
             "span_end": 8,
             "multiplicity": 1,
@@ -34367,7 +34367,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 3,
             "span_start": 0,
             "span_end": 7,
             "multiplicity": 1,
@@ -34461,7 +34461,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 8,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34508,7 +34508,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 8,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34555,7 +34555,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 8,
             "span_start": 0,
             "span_end": 9,
             "multiplicity": 1,
@@ -34602,7 +34602,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 1,
+            "byte_offset": 8,
             "span_start": 0,
             "span_end": 10,
             "multiplicity": 1,
@@ -34649,7 +34649,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 8,
+            "byte_offset": 15,
             "span_start": 0,
             "span_end": 16,
             "multiplicity": 1,
@@ -34696,7 +34696,7 @@
           {
             "code": "invalid_descriptor_value",
             "action": "reject_input",
-            "byte_offset": 8,
+            "byte_offset": 15,
             "span_start": 0,
             "span_end": 16,
             "multiplicity": 1,

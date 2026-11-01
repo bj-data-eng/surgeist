@@ -25,4 +25,5 @@ mod selector_query_fragment_contract;
 mod selector_snapshot_named_states;
 mod selector_specified_serialization;
 mod selector_structural_logical_contract;
+mod selector_syntax3_lexing;
 mod selector_universal_namespace;

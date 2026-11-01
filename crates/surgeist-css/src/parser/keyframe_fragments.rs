@@ -19,10 +19,8 @@ pub(crate) fn parse_keyframe_selector_list(
         let result = (|| {
             let openings =
                 state.check_component_values(source, &input, "baseline.keyframes.selector")?;
-            let selectors = keyframes::parse_keyframe_selector_list(
-                &mut input,
-                &crate::numeric::expression::NumericInputContext::parsed(state.source_snapshot()),
-            )?;
+            let selectors =
+                keyframes::parse_keyframe_selector_list(&mut input, state.source_snapshot())?;
             input.expect_exhausted().map_err(basic)?;
             state.retain_component_closures(openings);
             let origin = CssParsedOrigin::from_range(state.source_snapshot(), 0..source.len())

@@ -46,8 +46,17 @@ pub(super) fn parse(
 pub(crate) fn promote_window(
     document: &crate::parser::syntax_types::Document<'_>,
 ) -> Result<CssComponentValues, CssComponentValueError> {
+    promote_run(document, document.list(document.root_list()))
+}
+
+/// The components of the sibling `nodes` of a document of source text, under
+/// the default limits.
+pub(crate) fn promote_run(
+    document: &crate::parser::syntax_types::Document<'_>,
+    nodes: &[surgeist_css_parser::document::NodeId],
+) -> Result<CssComponentValues, CssComponentValueError> {
     let limits = CssComponentValueLimits::default();
-    let values = promote_nodes(document, document.list(document.root_list()), limits)?;
+    let values = promote_nodes(document, nodes, limits)?;
     serialize::validate(&values, limits.max_css_bytes)?;
     Ok(values)
 }
@@ -173,6 +182,14 @@ pub(crate) fn promote_nodes(
                     continue;
                 }
                 if let Some(children) = document.children(id) {
+                    // A group that would open past the depth limit is the failure,
+                    // before the groups inside it are read.
+                    if frames.len() > limits.max_depth as usize {
+                        return Err(CssComponentValueError::new(
+                            CssComponentValueErrorKind::NestingLimit,
+                            document.origin(id),
+                        ));
+                    }
                     work.push(Work::Finish(id));
                     work.extend(
                         document

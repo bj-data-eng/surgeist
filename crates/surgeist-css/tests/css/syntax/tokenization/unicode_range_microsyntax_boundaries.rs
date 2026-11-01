@@ -444,7 +444,8 @@ fn invalid_members_drop_only_their_occurrence_and_keep_original_token_coordinate
         ("u+1,u+g", "g", "g"),
         (r"u+\61", r"\61", r"\61"),
         (r"u+/**/\61", r"\61", r"\61"),
-        ("u+110000", "+110000", "+110000"),
+        // The range token (§4.3.14) is rejected as the one token it is.
+        ("u+110000", "u+110000", "u+110000"),
         ("u+1/**/ -2", "-2", "-2"),
         ("u+1 /**/-2", "-2", "-2"),
     ] {
@@ -532,8 +533,10 @@ fn missing_range_tokens_or_endpoints_name_the_last_authored_token() {
         ("u", Some("u")),
         ("u+", Some("+")),
         ("u+/**/", Some("+")),
-        ("u+ab-", Some("ab-")),
-        ("/*😀*/\r\nu+ab-/**/", Some("ab-")),
+        // §4.3.14 ends the range token at `u+ab`; the hyphen after it is the
+        // token the value cannot continue with.
+        ("u+ab-", Some("-")),
+        ("/*😀*/\r\nu+ab-/**/", Some("-")),
     ] {
         let report = CssAuthoredFontFaceDescriptorValue::parse(
             &CssParser::default(),
