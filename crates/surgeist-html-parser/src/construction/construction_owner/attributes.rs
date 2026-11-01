@@ -15,11 +15,22 @@ impl ConstructionOwner {
             .take()
             .ok_or_else(|| latch_registry_row(control))
     }
+    /// Takes a lent edit back. A live edit already in the slot stays there and
+    /// is never displaced: the registry row is latched, and the edit that has
+    /// no place is ended so its witnesses and plan bank are still credited.
     pub(in crate::construction) fn put_attribute_edit(
         &mut self,
+        control: &mut ParseControl,
         group: HtmlConstructionAttributeEdit,
-    ) {
+    ) -> Result<(), SessionError> {
+        if self.attribute_edit.is_some() {
+            let invariant = latch_registry_row(control);
+            // A refusal of the retirement is secondary to the invariant above.
+            let _ = self.adopt_attribute_completion(control, group.abort());
+            return Err(invariant);
+        }
         self.attribute_edit = Some(group);
+        Ok(())
     }
     pub(in crate::construction) fn has_attribute_edit(&self) -> bool {
         self.attribute_edit.is_some()

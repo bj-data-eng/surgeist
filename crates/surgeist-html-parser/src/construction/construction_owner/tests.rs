@@ -606,12 +606,7 @@ fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row
         .unwrap();
     let occupant = other.take_attribute_edit(&mut control).unwrap();
     owner.attribute_edit = Some(occupant);
-    owner.put_attribute_edit(lent);
-    assert_eq!(
-        control.stop(),
-        Some(registry_row()),
-        "latched as the first stop"
-    );
+    assert_registry_row(owner.put_attribute_edit(&mut control, lent), &control);
     // The occupant was not displaced; giving it back lets both owners finish.
     let occupant = owner.attribute_edit.take().unwrap();
     other.attribute_edit = Some(occupant);
