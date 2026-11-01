@@ -6510,9 +6510,15 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     // Actual Style-pop qualification adds html_local's3 record reads plus the
     // two comparison headers =5 visits, and one28-unit namespace comparison
     // at3 bytes per pair. It mutates no Style row for this p element.
+    // The replacement is also asked whether it is a template, so the kernel
+    // can keep the last template exact: its name read (index10 plus the
+    // record1) and html_named's namespace comparison (two plus the header =3,
+    // inspecting28 units) and local comparison (one, one choice and the
+    // header =3; the length differs from template, so no local units are
+    // read) =17 visits.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        63 + 3 + 2
+        63 + 3 + 2 + 17
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
@@ -6528,7 +6534,7 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     );
     assert_eq!(
         c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte),
-        (4 + 1) * 28 * 3
+        (4 + 1 + 1) * 28 * 3
     );
     assert_eq!(
         c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
@@ -13560,14 +13566,13 @@ fn in_table_form_pointer_copy_fee_covers_the_actual_retained_receiver() {
     // The independent common envelope is real trigger retention, one diagnostic,
     // native form creation/insertion, stack removal and pending-token disposal.
     // Tag comparisons add no CopyByte/RecordWrite. The no-template predicate
-    // additionally clones each actual html/body/table stack handle once.
+    // reads the kernel's tracked last template and clones no stack handle.
     // This envelope does not
     // call table_rules or install a form pointer; the two extra source actions
     // are one ParserNode clone and one actual Option<FormPointer> receiver write.
     let mut common = ready(&request);
     let before = common.control.usage().clone();
     let state = common.head.as_mut().unwrap().state.as_mut().unwrap();
-    let template_scan_nodes = state.before.kernel.stack().unwrap().len();
     state
         .record_trigger(
             ParserRule::Tree(InsertionMode::InTable),
@@ -13611,13 +13616,10 @@ fn in_table_form_pointer_copy_fee_covers_the_actual_retained_receiver() {
     assert_eq!(common_outcome, HeadStep::Consumed);
     assert!(pointer_installed);
     assert_eq!(actual_stack, common_stack);
-    assert_eq!(template_scan_nodes, 3);
     assert_eq!(actual_writes, common_writes + 1);
     assert_eq!(
         actual_copy,
-        common_copy
-            + (size_of::<ParserNode>() * (template_scan_nodes + 1)
-                + size_of::<Option<FormPointer>>()) as u64,
+        common_copy + (size_of::<ParserNode>() + size_of::<Option<FormPointer>>()) as u64,
         "the installed receiver needs its actual compiled byte fee: Option<FormPointer>={}, Option<ParserNode>={} bytes",
         size_of::<Option<FormPointer>>(),
         size_of::<Option<ParserNode>>()

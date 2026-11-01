@@ -139,6 +139,10 @@ pub(crate) struct LocationKernel {
     /// a node at or beyond the bound cannot already be on the stack: pushing it
     /// needs no duplicate scan.
     stack_position_bound: usize,
+    /// Stack index of the topmost HTML `template` element on the stack of open
+    /// elements, if any. Every operation that adds, removes or replaces a stack
+    /// entry keeps it exact, so the last template is read, never searched for.
+    last_template: Option<usize>,
     root_target: Option<ParserNode>,
     foster_parenting: bool,
 }
@@ -184,6 +188,13 @@ impl LocationKernel {
         let removed = self.at(index, c)?;
         self.session
             .qualify_stack_removal(c, &removed, capability)?;
+        let last_template = if self.named(target, "template", c)? {
+            Some(self.last_template.map_or(index, |last| last.max(index)))
+        } else if self.last_template == Some(index) {
+            self.template_at_or_below(index.checked_sub(1), c)?
+        } else {
+            self.last_template
+        };
         let node = copy_node(target, c)?;
         write(size_of::<ParserNode>(), 1, c)?;
         let slot = self
@@ -193,6 +204,7 @@ impl LocationKernel {
             .get_mut(index, c)?
             .ok_or(KernelError::EmptyStack)?;
         *slot = node;
+        self.last_template = last_template;
         self.stack_position_bound = self.stack_position_bound.max(position.saturating_add(1));
         self.session.parser_stack_removed(c, &removed, capability)?;
         Ok(())
@@ -208,6 +220,8 @@ impl LocationKernel {
         if index > self.stack()?.len() {
             return Err(KernelError::EmptyStack);
         }
+        let template = self.named(target, "template", c)?;
+        let before = self.last_template;
         self.push(target, c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         for shift in (index..self.stack()?.len() - 1).rev() {
@@ -220,6 +234,14 @@ impl LocationKernel {
                 return Err(KernelError::EmptyStack);
             }
         }
+        // The target now sits at `index` and every entry from there up moved
+        // one place toward the top.
+        let shifted = before.map(|last| if last >= index { last + 1 } else { last });
+        self.last_template = if template {
+            Some(shifted.map_or(index, |last| last.max(index)))
+        } else {
+            shifted
+        };
         Ok(())
     }
     fn current(&self, c: &mut ParseControl) -> Result<ParserNode, KernelError> {
@@ -314,6 +336,14 @@ impl LocationKernel {
             let node = self.at(index, c)?;
             if self.session.same_node(c, &node, target)? {
                 self.session.qualify_stack_removal(c, &node, capability)?;
+                // The removal moves every entry above `index` one place down.
+                self.last_template = match self.last_template {
+                    Some(last) if last == index => {
+                        self.template_at_or_below(index.checked_sub(1), c)?
+                    }
+                    Some(last) if last > index => Some(last - 1),
+                    other => other,
+                };
                 for shift in index..len - 1 {
                     if !self
                         .open
@@ -352,6 +382,7 @@ impl LocationKernel {
                 .expect("verified session remains owned until commit"),
             open: Some(open),
             stack_position_bound: 0,
+            last_template: None,
             root_target,
             foster_parenting: false,
         })
@@ -413,11 +444,16 @@ impl LocationKernel {
                 }
             }
         }
+        let index = self.stack()?.len();
+        let template = self.named(node, "template", control)?;
         let copied = copy_node(node, control)?;
         self.open
             .as_mut()
             .ok_or(KernelError::Consumed)?
             .try_push(control, copied)?;
+        if template {
+            self.last_template = Some(index);
+        }
         self.stack_position_bound = self.stack_position_bound.max(position.saturating_add(1));
         self.session.parser_stack_added(control, node)?;
         Ok(())
@@ -435,11 +471,21 @@ impl LocationKernel {
             self.session
                 .qualify_stack_removal(control, &current, capability)?;
         }
+        let top = self.stack()?.len().checked_sub(1);
+        let last_template = match top {
+            Some(top) if self.last_template == Some(top) => {
+                self.template_at_or_below(top.checked_sub(1), control)?
+            }
+            _ => self.last_template,
+        };
         let node = self
             .open
             .as_mut()
             .ok_or(KernelError::Consumed)?
             .try_pop(control)?;
+        if node.is_some() {
+            self.last_template = last_template;
+        }
         if let Some(node) = &node {
             self.session
                 .parser_stack_removed(control, node, capability)?;
@@ -507,21 +553,33 @@ impl LocationKernel {
     fn contains_html_template(&self, control: &mut ParseControl) -> Result<bool, KernelError> {
         self.require(control)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
-        for index in (0..self.stack()?.len()).rev() {
+        Ok(self.last_template.is_some())
+    }
+    /// The last template element in the stack of open elements, if any.
+    fn last_template(&self, control: &mut ParseControl) -> Result<Option<ParserNode>, KernelError> {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        self.last_template
+            .map(|index| self.at(index, control))
+            .transpose()
+    }
+    /// Searches down from stack index `from` (inclusive) for the nearest HTML
+    /// template; used only to repair `last_template` after the entry that was
+    /// the last template leaves the stack, so the search covers the entries
+    /// between two templates and no more.
+    fn template_at_or_below(
+        &self,
+        from: Option<usize>,
+        control: &mut ParseControl,
+    ) -> Result<Option<usize>, KernelError> {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let Some(from) = from else {
+            return Ok(None);
+        };
+        for index in (0..=from).rev() {
             control.charge(WorkCategory::StateStep, 1)?;
             let node = self.at(index, control)?;
             if self.named(&node, "template", control)? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
-    fn last_template(&self, control: &mut ParseControl) -> Result<Option<ParserNode>, KernelError> {
-        control.charge(WorkCategory::RecordVisit, 1)?;
-        for index in (0..self.stack()?.len()).rev() {
-            let node = self.at(index, control)?;
-            if self.named(&node, "template", control)? {
-                return Ok(Some(node));
+                return Ok(Some(index));
             }
         }
         Ok(None)
