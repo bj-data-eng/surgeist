@@ -74,6 +74,10 @@ impl ConstructionOwner {
             Ok(())
         })();
         self.attribute_edit = Some(group);
+        #[cfg(test)]
+        if std::mem::take(&mut self.hide_next_attribute_edit) {
+            self.hidden_attribute_edit = self.attribute_edit.take();
+        }
         if result.is_err() {
             self.abort_attributes(control)?;
         }

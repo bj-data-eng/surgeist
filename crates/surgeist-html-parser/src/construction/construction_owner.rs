@@ -17,6 +17,12 @@ pub(super) struct ConstructionOwner {
     children: Vec<Option<ConstructionAllocation>>,
     children_allocation: VectorCapacity<Option<ConstructionAllocation>>,
     wrapper: Option<ConstructionAllocation>,
+    /// Hides the attribute edit the next `begin_attributes` starts, as if its
+    /// custody slot had been emptied behind the owner's back.
+    #[cfg(test)]
+    hide_next_attribute_edit: bool,
+    #[cfg(test)]
+    hidden_attribute_edit: Option<HtmlConstructionAttributeEdit>,
 }
 
 #[derive(Clone, Copy)]
@@ -167,6 +173,10 @@ impl ConstructionOwner {
             children,
             children_allocation,
             wrapper: None,
+            #[cfg(test)]
+            hide_next_attribute_edit: false,
+            #[cfg(test)]
+            hidden_attribute_edit: None,
         })
     }
     pub(super) fn len(&self) -> usize {
@@ -613,6 +623,10 @@ impl ConstructionOwner {
             self.wrapper.take().expect("actual frozen wrapper ticket"),
             receipt,
         )?;
+        #[cfg(test)]
+        if control.take_construction_recovery_fault() {
+            return Err(latch_registry_row(control));
+        }
         Ok(())
     }
     pub(super) fn retire(
@@ -670,6 +684,10 @@ impl ConstructionOwner {
         control
             .release_vector(self.children, self.children_allocation)
             .map_err(|error| SessionError::Stop(error.into_parts().0))?;
+        #[cfg(test)]
+        if control.take_construction_retire_fault() {
+            return Err(latch_registry_row(control));
+        }
         Ok(usage)
     }
 }
@@ -692,5 +710,17 @@ impl<'a> ConstructionView<'a> {
             Self::Active(value) => value.len(),
             Self::Frozen(value) => value.len(),
         }
+    }
+}
+
+#[cfg(test)]
+impl ConstructionOwner {
+    /// Makes the next attribute edit begin with its custody slot emptied; the
+    /// hidden edit is returned by [`Self::restore_hidden_attribute_edit`].
+    pub(super) fn hide_next_attribute_edit(&mut self) {
+        self.hide_next_attribute_edit = true;
+    }
+    pub(super) fn restore_hidden_attribute_edit(&mut self) {
+        self.attribute_edit = self.hidden_attribute_edit.take();
     }
 }

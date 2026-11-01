@@ -213,6 +213,14 @@ pub(crate) struct ParseControl {
     /// Refuses the next `release_shared` as if its payload were aliased.
     #[cfg(test)]
     shared_release_fault: bool,
+    /// Makes the next construction-owner retirement report a refusal after it
+    /// has retired everything the owner holds.
+    #[cfg(test)]
+    construction_retire_fault: bool,
+    /// Makes the next construction-owner recovery report a refusal after it
+    /// has taken the storage back and retired the publication wrapper.
+    #[cfg(test)]
+    construction_recovery_fault: bool,
 }
 
 /// Fixed-size diagnostic metadata for actual execution between real polls.
@@ -267,6 +275,10 @@ impl ParseControl {
             css_scheme_fault: None,
             #[cfg(test)]
             shared_release_fault: false,
+            #[cfg(test)]
+            construction_retire_fault: false,
+            #[cfg(test)]
+            construction_recovery_fault: false,
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
@@ -409,6 +421,26 @@ impl ParseControl {
     #[cfg(test)]
     pub(crate) fn refuse_next_shared_release(&mut self) {
         self.shared_release_fault = true;
+    }
+    /// Forces the next construction-owner retirement to report a refusal once
+    /// its releases are done.
+    #[cfg(test)]
+    pub(crate) fn refuse_next_construction_retire(&mut self) {
+        self.construction_retire_fault = true;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_construction_retire_fault(&mut self) -> bool {
+        std::mem::take(&mut self.construction_retire_fault)
+    }
+    /// Forces the next construction-owner recovery to report a refusal once
+    /// the storage is back and the wrapper is retired.
+    #[cfg(test)]
+    pub(crate) fn refuse_next_construction_recovery(&mut self) {
+        self.construction_recovery_fault = true;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_construction_recovery_fault(&mut self) -> bool {
+        std::mem::take(&mut self.construction_recovery_fault)
     }
     #[cfg(test)]
     pub(crate) fn clear_owned_span_observation(&mut self) {
