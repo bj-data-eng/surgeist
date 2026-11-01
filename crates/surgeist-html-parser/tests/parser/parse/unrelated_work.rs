@@ -77,6 +77,18 @@ fn a_dialog_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
     assert_independent_of_unrelated(SPAN, "<dialog></dialog>");
 }
 
+#[test]
+fn a_style_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
+    assert_independent_of_unrelated(SPAN, "<style>a{}</style>");
+}
+
+#[test]
+fn a_style_adds_the_same_visits_whatever_other_style_elements_precede_it() {
+    // The sheet order the style records names the earlier style elements, but
+    // one more entry is all that a later style adds to it.
+    assert_independent_of_unrelated("<style>b{}</style>", "<style>a{}</style>");
+}
+
 /// The visits the last of `options` copies of `option` adds inside `container`.
 fn visits_added_by_last_option(container: &str, option: &str, options: usize) -> i64 {
     let page = |count: usize| {
