@@ -224,30 +224,33 @@ fn select_with_policy(
         crate::engine::scope_alignment::accounting::header::<Vec<usize>>(&mut scope_plan.budget)?;
     }
     let basis = crate::engine::SelectedShape {
+        inline_boxes: None,
         shaped,
         mapping,
         characters,
         order,
     };
-    let scopes = crate::engine::scope_alignment::select(
-        &prepared.inner,
-        &presentation,
-        &basis,
-        &request,
-        &spacing_slots,
+    let mut data = SelectedData {
+        scopes: crate::engine::scope_alignment::SelectedScopes::default(),
+        prepared: Arc::clone(&prepared.inner),
+        request,
+        presentation,
+        spacing_slots,
+        metric_policy,
+        basis,
+        boundaries,
+    };
+    super::inline_box::fragments::project(&mut data, &mut scope_plan.budget)?;
+    data.scopes = crate::engine::scope_alignment::select(
+        &data.prepared,
+        &data.presentation,
+        &data.basis,
+        &data.request,
+        &data.spacing_slots,
         scope_plan,
     )?;
     Ok(SelectedLine {
-        inner: Arc::new(SelectedData {
-            scopes,
-            prepared: Arc::clone(&prepared.inner),
-            request,
-            presentation,
-            spacing_slots,
-            metric_policy,
-            basis,
-            boundaries,
-        }),
+        inner: Arc::new(data),
     })
 }
 
@@ -400,6 +403,9 @@ pub(crate) fn admit_range<'a>(
     &'a super::prepared::BoundaryData,
     &'a super::prepared::BoundaryData,
 )> {
+    if let Some(family) = request.inline_boxes {
+        family.require_prepared(&prepared.inner)?;
+    }
     super::segments::admit(prepared, request.segment)?;
     super::continuation::validate(prepared, request.segment, request.start, request.incoming)?;
     let tables = &prepared.inner.tables;
@@ -752,6 +758,9 @@ pub(crate) fn scope_request_roots(
     prepared: &PreparedData,
     request: &LineSelectionRequest,
 ) -> Result<()> {
+    if let Some(family) = &request.inline_boxes {
+        family.require_prepared(prepared)?;
+    }
     require_data(
         prepared,
         &request.segment.prepared,
@@ -1031,6 +1040,7 @@ pub(crate) fn standalone_request(
     let participants = handle.participants().skip(from).take(to - from).collect();
     let atomics = standalone_atomics(&prepared, start, end)?;
     let request = LineSelectionRequest {
+        inline_boxes: None,
         segment: handle.source_segments().next().ok_or_else(invalid)?,
         boundary_context: Vec::new(),
         incoming: None,

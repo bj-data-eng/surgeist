@@ -234,6 +234,7 @@ fn registered(
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![1],
@@ -692,6 +693,7 @@ fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) 
         .unwrap();
     let origin = prepared.origin_views().next().unwrap().handle();
     let binding = TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: vec![1],

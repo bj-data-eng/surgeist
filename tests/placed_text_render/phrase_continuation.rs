@@ -287,6 +287,7 @@ fn capture() -> (
                 _ => unreachable!(),
             };
             layout::TextParagraphBinding {
+                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: prepared.clone(),
                 container,
                 nodes,

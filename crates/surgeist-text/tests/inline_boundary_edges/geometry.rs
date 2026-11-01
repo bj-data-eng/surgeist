@@ -60,6 +60,7 @@ fn request(
         })
         .collect();
     t::LineSelectionRequest {
+        inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start,
         end: boundary,
@@ -984,3 +985,15 @@ mod signed_shaping;
 
 #[path = "bidi_fragmentation_baseline.rs"]
 mod bidi_fragmentation_baseline;
+
+#[path = "family_admission_negative.rs"]
+mod family_admission_negative;
+
+#[path = "geometry/shared_packet_membership.rs"]
+mod shared_packet_membership;
+
+#[path = "deleted_only_box_family.rs"]
+mod deleted_only_box_family;
+
+#[path = "native_endpoint_uniqueness.rs"]
+mod native_endpoint_uniqueness;

@@ -223,6 +223,13 @@ impl PreparedConditionalOpportunity {
                 purpose: self.purpose,
             }));
         }
+        if self
+            .search
+            .as_ref()
+            .is_some_and(|s| s.frame.inline_boxes != request.inline_boxes)
+        {
+            return Err(invalid());
+        }
         if let Some(search) = &self.search
             && !search.selection_context.is_empty()
             && selection_context(&request.context) != search.selection_context
@@ -759,11 +766,20 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
 /// Native numeric proof includes the actual atomic fitting authority. Scope identity borrows the
 /// actual completed immutable owner, rather than copying a shadow transcript.
 /// Completed frames precede each search/request: Prepared has no reverse cache.
+/// Coupled phase authority for one conditional query.
+#[derive(Clone, Copy, Debug)]
+pub enum ConditionalLineContext<'a> {
+    Unframed {
+        inline_boxes: Option<&'a super::PreparedInlineBoxFamily>,
+    },
+    Finalized(&'a FinalizedLine),
+}
 #[derive(Clone, Debug, Default)]
 struct PolicyContext {
     native: Vec<u64>,
     source_segment: Option<super::PreparedSourceSegment>,
     frame: Option<FinalizedLine>,
+    inline_boxes: Option<super::PreparedInlineBoxFamily>,
 }
 impl PolicyContext {
     fn box_contexts(
@@ -793,6 +809,7 @@ impl PartialEq for PolicyContext {
             && self.source_segment == other.source_segment
             && self.scopes() == other.scopes()
             && self.box_contexts().eq(other.box_contexts())
+            && self.inline_boxes == other.inline_boxes
     }
 }
 impl Eq for PolicyContext {}
@@ -800,6 +817,7 @@ impl Hash for PolicyContext {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.native.hash(state);
         self.source_segment.hash(state);
+        self.inline_boxes.hash(state);
         for context in self.box_contexts() {
             context.hash(state);
         }
@@ -821,8 +839,10 @@ fn policy_context(line: &FinalizedLine) -> PolicyContext {
     }
     PolicyContext {
         native: values,
+        inline_boxes: selected.request().inline_boxes.clone(),
         source_segment: Some(selected.request().segment.clone()),
-        frame: (!line.scope_allocations().is_empty()
+        frame: (selected.request().inline_boxes.is_some()
+            || !line.scope_allocations().is_empty()
             || super::inline_box::contexts(
                 &selected.request().controls,
                 &selected.request().boundary_context,
@@ -837,12 +857,16 @@ fn policy_context(line: &FinalizedLine) -> PolicyContext {
 pub(crate) enum ScopeProofVisit<'a> {
     Work(usize),
     Frame(&'a FinalizedLine),
+    Family(&'a super::PreparedInlineBoxFamily),
 }
 fn visit_scope_policy<'a>(
     context: &'a PolicyContext,
     emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
 ) -> crate::Result<()> {
     emit(ScopeProofVisit::Work(1))?;
+    if let Some(family) = &context.inline_boxes {
+        emit(ScopeProofVisit::Family(family))?;
+    }
     if let Some(frame) = &context.frame {
         let request = &frame.inner.selected.request;
         if super::inline_box::contexts(&request.controls, &request.boundary_context)
@@ -922,6 +946,9 @@ pub(crate) fn visit_request_scope_frames<'a>(
     request: &'a LineSelectionRequest,
     emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
 ) -> crate::Result<()> {
+    if let Some(family) = &request.inline_boxes {
+        emit(ScopeProofVisit::Family(family))?;
+    }
     visit_termination_scope_frames(&request.termination, emit)
 }
 
@@ -1021,8 +1048,15 @@ impl super::PreparedSourceSegment {
         ceiling: &PreparedOpportunity,
         purpose: ConditionalPurpose,
         skipped: &[ConditionalDisposition],
-        frame: Option<&FinalizedLine>,
+        context: ConditionalLineContext<'_>,
     ) -> crate::Result<PreparedConditionalSearch> {
+        let (frame, inline_boxes) = match context {
+            ConditionalLineContext::Unframed { inline_boxes } => (None, inline_boxes),
+            ConditionalLineContext::Finalized(frame) => (Some(frame), frame.inline_box_family()),
+        };
+        if let Some(family) = inline_boxes {
+            family.require_prepared(&self.prepared)?;
+        }
         let prepared = self.prepared_text();
         let (frontier, ordinary) =
             validate_query(&prepared, self, start, incoming, ceiling, purpose, skipped)?;
@@ -1050,7 +1084,10 @@ impl super::PreparedSourceSegment {
             selection = selection_context(&request.context);
             policy_context(frame)
         } else {
-            PolicyContext::default()
+            PolicyContext {
+                inline_boxes: inline_boxes.cloned(),
+                ..PolicyContext::default()
+            }
         };
         Ok(PreparedConditionalSearch {
             identity: SearchIdentity {
@@ -1080,8 +1117,10 @@ impl PreparedConditionalSearch {
         segment: &super::PreparedSourceSegment,
         start: usize,
         incoming: Option<&super::HyphenationContinuation>,
+        inline_boxes: Option<&super::PreparedInlineBoxFamily>,
     ) -> bool {
-        self.identity.prepared == *prepared
+        self.identity.frame.inline_boxes.as_ref() == inline_boxes
+            && self.identity.prepared == *prepared
             && self.identity.segment == *segment
             && self.identity.start == start
             && self.identity.incoming.as_ref() == incoming

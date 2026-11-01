@@ -199,7 +199,7 @@ fn empty_structural_sections_reject_cross_owned_ceilings_even_at_identical_numer
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 &[],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap_err();
         assert_eq!(
@@ -217,7 +217,7 @@ fn empty_structural_sections_reject_cross_owned_ceilings_even_at_identical_numer
                 &other.end_opportunity(),
                 ConditionalPurpose::MinContent,
                 &[],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap_err();
         assert_eq!(
@@ -254,7 +254,7 @@ fn successful_conditional_searches_retain_their_genuine_structural_segment_ident
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 &[],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap();
         assert_eq!(query.source_segment(), *segment);
@@ -267,7 +267,7 @@ fn successful_conditional_searches_retain_their_genuine_structural_segment_ident
                     &ceiling,
                     ConditionalPurpose::MinContent,
                     &[],
-                    None
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .unwrap()
         );
@@ -279,7 +279,7 @@ fn successful_conditional_searches_retain_their_genuine_structural_segment_ident
                 &other.end_opportunity(),
                 ConditionalPurpose::MinContent,
                 &[],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap_err();
         assert_eq!(

@@ -14,6 +14,7 @@ pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
 #[derive(Clone)]
 pub(crate) struct PendingParagraph<Node> {
     pub binding_index: usize,
+    pub inline_boxes: super::AdmittedInlineBoxes,
     pub segment: surgeist_text::PreparedSourceSegment,
     pub line_box_start: crate::line_box::LineBoxContext,
     pub line_box_end: crate::line_box::LineBoxContext,
@@ -102,6 +103,8 @@ impl<Node, S: LayoutScalar> PassBasis<Node, S> {
         let Some(limits) = resources.key_limits()? else {
             return Ok(());
         };
+        self.associations
+            .admit_inline_box_comparison(&other.associations, limits, resources)?;
         super::scope_alignment::admit_key_comparison(
             limits,
             self.scope_alignments.rows().len(),
@@ -116,11 +119,29 @@ impl<Node, S: LayoutScalar> PassBasis<Node, S> {
                 limits,
                 self.lines.len(),
             )?;
-            for (line, other) in self.lines.iter().zip(&other.lines) {
+            for (line, other_line) in self.lines.iter().zip(&other.lines) {
+                if !self
+                    .associations
+                    .same_inline_box_families(&other.associations)
+                    && let (Some(left), Some(right)) =
+                        (&line.request.inline_boxes, &other_line.request.inline_boxes)
+                {
+                    let left = left
+                        .scope_alignment_retention()
+                        .map_or(0, |value| value.records());
+                    let right = right
+                        .scope_alignment_retention()
+                        .map_or(0, |value| value.records());
+                    super::scope_alignment::ScopeAlignmentFacts::visit(
+                        resources,
+                        limits,
+                        left.min(right),
+                    )?;
+                }
                 super::scope_alignment::admit_key_comparison(
                     limits,
                     line.scopes.comparison_rows(),
-                    other.scopes.comparison_rows(),
+                    other_line.scopes.comparison_rows(),
                     resources,
                 )?;
             }
@@ -571,6 +592,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 && old.container == paragraph.container
                 && old.nodes == paragraph.nodes
                 && old.prepared == paragraph.prepared
+                && old.inline_boxes == paragraph.inline_boxes
         }) {
             *old = paragraph;
         } else {
@@ -861,6 +883,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         while let Some(first) = pending.first() {
             let index = first.binding_index;
             let binding = &self.paragraphs[index];
+            let inline_boxes = self.associations.inline_boxes(index);
             let allocation = || {
                 crate::LayoutErrorOf::new(
                     crate::LayoutErrorSiteOf::Node(binding.container),
@@ -876,6 +899,28 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 for paragraph in pending.iter_mut().filter(|paragraph| {
                     paragraph.binding_index == index && paragraph.segment == segment
                 }) {
+                    if paragraph.prepared != binding.prepared
+                        || paragraph.inline_boxes != inline_boxes
+                    {
+                        return Err(crate::LayoutErrorOf::new(
+                            crate::LayoutErrorSiteOf::Node(binding.container),
+                            crate::LayoutOperation::TextPlacement,
+                            crate::LayoutErrorKindOf::Text(super::fragmentation::foreign_family()),
+                        ));
+                    }
+                    for entry in &paragraph.entries {
+                        super::fragmentation::InlineBoxFamilies::validate_line(
+                            &inline_boxes,
+                            entry.finalized_line(),
+                        )
+                        .map_err(|error| {
+                            crate::LayoutErrorOf::new(
+                                crate::LayoutErrorSiteOf::Node(binding.container),
+                                crate::LayoutOperation::TextPlacement,
+                                crate::LayoutErrorKindOf::Text(error),
+                            )
+                        })?;
+                    }
                     entries
                         .try_reserve(paragraph.entries.len())
                         .map_err(|_| allocation())?;
@@ -905,6 +950,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 binding.container,
                 nodes,
                 layout,
+                inline_boxes,
             ));
         }
         Ok(completed)

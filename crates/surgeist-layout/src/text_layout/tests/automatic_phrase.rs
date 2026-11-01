@@ -164,6 +164,7 @@ fn fixture_in_direction(
         },
     };
     let binding = TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: nodes.clone(),

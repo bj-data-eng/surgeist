@@ -496,6 +496,7 @@ fn fixture_with_child_topology(
             })
             .collect();
         layout::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes,
@@ -510,6 +511,7 @@ fn fixture_with_child_topology(
     })
     .collect();
     let empty_child = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared[1].clone(),
         container: 3,
         nodes: vec![],
@@ -521,6 +523,7 @@ fn fixture_with_child_topology(
     let additional_empty_children = prepared[2..resumed]
         .iter()
         .map(|prepared| layout::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 3,
             nodes: vec![],
@@ -965,6 +968,7 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
                 layout::LayoutInput::inline_text(layout::TextParticipation::new(origin.clone())),
             );
             layout::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: prepared[index].clone(),
                 container,
                 nodes: vec![node],
@@ -982,6 +986,7 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
         non_box: layout::NodeInput::non_box(),
     };
     let empty = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared[2].clone(),
         container: 3,
         nodes: vec![],
@@ -1180,6 +1185,7 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
         non_box: layout::NodeInput::non_box(),
     };
     let paragraph = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![],

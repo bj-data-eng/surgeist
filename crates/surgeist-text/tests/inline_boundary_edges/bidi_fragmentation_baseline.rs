@@ -403,3 +403,9 @@ fn f32_optional_break_makes_the_members_adjacent_without_donating_edges_to_cb() 
 fn f64_optional_break_makes_the_members_adjacent_without_donating_edges_to_cb() {
     wrapped(false);
 }
+
+#[path = "bidi_fragmentation_functional.rs"]
+mod bidi_fragmentation_functional;
+
+#[path = "empty_box_family.rs"]
+mod empty_box_family;

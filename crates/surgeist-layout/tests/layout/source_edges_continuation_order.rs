@@ -266,6 +266,7 @@ fn fixture<S: l::LayoutScalar>() -> (
                 })
                 .collect();
             l::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,

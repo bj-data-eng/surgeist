@@ -87,6 +87,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 input.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: text_orientation(WritingMode::HorizontalTb, &binding.prepared)
                 .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),

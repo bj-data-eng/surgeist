@@ -495,6 +495,7 @@ impl Paragraph {
             assert!(issued_origins.next().is_none());
         }
         let binding = l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container,
             nodes,

@@ -292,7 +292,7 @@ fn frame_identity_is_semantic_but_conditional_candidates_may_use_their_actual_fr
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(frame),
+                crate::ConditionalLineContext::Finalized(frame),
             )
             .unwrap()
     };

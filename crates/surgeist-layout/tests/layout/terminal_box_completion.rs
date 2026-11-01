@@ -239,6 +239,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
             })
             .collect();
         let binding = l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![1, 2],

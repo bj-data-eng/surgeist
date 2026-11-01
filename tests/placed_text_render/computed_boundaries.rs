@@ -79,6 +79,31 @@ fn glyph_rows(placed: &text::Layout) -> Vec<(usize, text::Range, u32, f32, f64, 
 
 #[test]
 fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() {
+    assert_computed_scope_before(layout::InlineBoxFragmentationDemand::NotRequested, None);
+}
+
+#[test]
+fn demanded_box_fragment_survives_computed_break_placement_and_retained_paint() {
+    assert_computed_scope_before(layout::InlineBoxFragmentationDemand::CompleteBodies, None);
+}
+
+#[test]
+fn demanded_family_counts_borrowed_backing_and_respects_capture_limits() {
+    assert_computed_scope_before(
+        layout::InlineBoxFragmentationDemand::CompleteBodies,
+        Some(text::ScopeAlignmentLimits::new(
+            100_000,
+            64,
+            10_000_000,
+            16 << 20,
+        )),
+    );
+}
+
+fn assert_computed_scope_before(
+    demand: layout::InlineBoxFragmentationDemand,
+    limits: Option<text::ScopeAlignmentLimits>,
+) {
     use text::SourceProcessingEvent as E;
     let aggregate = text::Source::identified("AA", text::Id::from_u64(650_810), 7);
     let originals = [
@@ -96,7 +121,7 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
     let processed = Arc::new(
         text::process_contextual_source(text::ContextualSourceInput {
             joint_flows: Vec::new(),
-            scope_alignment_limits: None,
+            scope_alignment_limits: limits,
             computed_line_boundaries: vec![text::ComputedLineBoundaryInput::Scope {
                 scope: 1,
                 side: text::SourceBoxSide::Before,
@@ -206,6 +231,93 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
     assert_eq!(prepared.control_views().count(), 0);
+    if limits.is_some() {
+        // Existing capture limits already fund this actual preparation. Family
+        // admission must count its additional owners without charging borrowed
+        // caller stack headers or changing the preparation's retained state.
+        let prepared_retention = prepared.scope_alignment_retention().unwrap();
+        let allowance = text::ScopeAlignmentAllowance::new(100_000, 16 << 20);
+        let products = text::ScopeAlignmentProducts::Mixed(&[]);
+        let baseline = text::scope_alignment_census(
+            text::ScopeAlignmentCensusInput::Product(text::ScopeAlignmentProduct::Prepared(
+                &prepared,
+            )),
+            products,
+            allowance,
+        )
+        .unwrap()
+        .input_retention();
+        let borrowed_census = |native_boxes: &Vec<text::InlineBoxSource>| {
+            text::scope_alignment_census(
+                text::ScopeAlignmentCensusInput::InlineBoxFamily {
+                    prepared: &prepared,
+                    native_boxes,
+                },
+                products,
+                allowance,
+            )
+            .unwrap()
+            .input_retention()
+        };
+        // Caller-owned stack headers are outside feature payload. A borrowed
+        // empty vector owns no backing; reservation contributes its real
+        // backing capacity even before any native declaration is initialized.
+        assert_eq!(borrowed_census(&Vec::new()), baseline);
+        let reserved = Vec::<text::InlineBoxSource>::with_capacity(3);
+        let expected_backing = reserved
+            .capacity()
+            .checked_mul(std::mem::size_of::<text::InlineBoxSource>())
+            .unwrap();
+        assert_eq!(borrowed_census(&reserved).records(), baseline.records());
+        assert_eq!(
+            borrowed_census(&reserved).payload_bytes(),
+            baseline
+                .payload_bytes()
+                .checked_add(expected_backing)
+                .unwrap(),
+        );
+        let refused = prepared
+            .inline_box_family(vec![], Some(text::ScopeAlignmentAllowance::new(0, 0)))
+            .unwrap_err();
+        assert_eq!(refused.code, text::ErrorCode::ScopeAlignmentRefused);
+        assert!(matches!(
+            refused.detail(),
+            Some(text::ErrorDetail::ScopeAlignment {
+                reason: text::ScopeAlignmentError::Limit { required, limit: 0, .. }
+            }) if *required > 0
+        ));
+        let family = prepared.inline_box_family(vec![], None).unwrap();
+        let retained = family.scope_alignment_retention().unwrap();
+        assert!(retained.records() > 0);
+        assert!(retained.payload_bytes() > 0);
+        let family_input = text::ScopeAlignmentCensusInput::Product(
+            text::ScopeAlignmentProduct::InlineBoxFamily(&family),
+        );
+        let single = text::scope_alignment_census(family_input, products, allowance).unwrap();
+        let alias = family.clone();
+        let related = [
+            text::ScopeAlignmentProduct::InlineBoxFamily(&alias),
+            text::ScopeAlignmentProduct::Prepared(&prepared),
+        ];
+        let shared = text::scope_alignment_census(
+            family_input,
+            text::ScopeAlignmentProducts::Mixed(&related),
+            allowance,
+        )
+        .unwrap();
+        assert_eq!(shared.input_retention(), single.input_retention());
+        assert_eq!(
+            shared.external_retention(),
+            text::ScopeAlignmentRetention::default()
+        );
+        let usage = family.scope_alignment_usage().unwrap();
+        assert!(usage.payload_bytes() >= retained.payload_bytes());
+        assert!(usage.peak_payload_bytes() >= usage.payload_bytes());
+        assert_eq!(
+            prepared.scope_alignment_retention(),
+            Some(prepared_retention)
+        );
+    }
     let origins = prepared
         .origin_views()
         .map(|view| view.handle())
@@ -238,6 +350,7 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: demand,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![1, 2],
@@ -272,7 +385,36 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
     .unwrap();
     assert_eq!(batch.placed_text().len(), 1);
     assert_eq!(batch.placed_text()[0].nodes(), &[1, 2]);
-    let placed = batch.placed_text()[0].layout();
+    let placed_output = &batch.placed_text()[0];
+    match demand {
+        layout::InlineBoxFragmentationDemand::NotRequested => {
+            assert!(placed_output.inline_box_fragments().is_none());
+        }
+        layout::InlineBoxFragmentationDemand::CompleteBodies => {
+            let fragments = placed_output.inline_box_fragments().unwrap();
+            assert_eq!(fragments.family().prepared_text(), prepared);
+            assert_eq!(
+                fragments.family().scope_alignment_retention().is_some(),
+                limits.is_some()
+            );
+            let owner = text::InlineBoxSource::captured(processed.captured_scope(1).unwrap());
+            let pieces = fragments
+                .pieces()
+                .filter(|piece| piece.fragment().owner() == owner)
+                .collect::<Vec<_>>();
+            // Only the receiving A belongs to the genuine captured Inline.
+            // The mandatory cause puts it on line one; neither an edge control
+            // nor decoration is needed to retain that actual box's identity.
+            assert_eq!(pieces.len(), 1);
+            assert_eq!(pieces[0].line_index(), 1);
+            assert_eq!(pieces[0].fragment().owner(), owner);
+        }
+    }
+    let placed = placed_output.layout();
+    let retained_box_fragments = placed
+        .inline_box_pieces()
+        .map(|piece| (piece.fragment(), piece.line_index()))
+        .collect::<Vec<_>>();
     assert_eq!(placed.source(), &aggregate);
     assert_eq!(placed.source().id(), Some(text::Id::from_u64(650_810)));
     assert_eq!(placed.source().revision(), 7);
@@ -377,6 +519,14 @@ fn computed_scope_before_keeps_original_receiving_caret_and_two_painted_lines() 
         (2, 2)
     );
     assert_eq!(paint.layout().lines(), placed.lines());
+    assert_eq!(
+        paint
+            .layout()
+            .inline_box_pieces()
+            .map(|piece| (piece.fragment(), piece.line_index()))
+            .collect::<Vec<_>>(),
+        retained_box_fragments
+    );
     assert_eq!(glyph_rows(paint.layout()), expected_glyphs);
     assert_eq!(paint.layout().cursor(cursor).unwrap().rect(), caret);
     assert_eq!(paint.layout().source(), &aggregate);

@@ -193,6 +193,7 @@ fn binding(
     strut: Option<t::LineStrut>,
 ) -> l::TextParagraphBinding<u32> {
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: f.prepared.clone(),
         container,
         nodes: nodes.to_vec(),
@@ -523,6 +524,7 @@ fn scene<S: l::LayoutScalar>(mode: l::WritingMode) -> Scene<S> {
         l::LayoutInputOf::inline_text(l::TextParticipation::new(out.origins[0].origin.clone())),
     );
     let outer = l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container: 0,
         nodes: vec![1, 2, 3, 4],

@@ -98,6 +98,10 @@ pub surgeist_text::ConditionalDisposition::AutoManualPriority::portion: surgeist
 pub surgeist_text::ConditionalDisposition::ConsumerHyphenationPolicy(surgeist_text::FinalizedLine)
 pub surgeist_text::ConditionalDisposition::Exhausted(surgeist_text::FinalizedLine)
 pub surgeist_text::ConditionalDisposition::Phantom(surgeist_text::FinalizedLine)
+pub enum surgeist_text::ConditionalLineContext<'a>
+pub surgeist_text::ConditionalLineContext::Finalized(&'a surgeist_text::FinalizedLine)
+pub surgeist_text::ConditionalLineContext::Unframed
+pub surgeist_text::ConditionalLineContext::Unframed::inline_boxes: core::option::Option<&'a surgeist_text::PreparedInlineBoxFamily>
 pub enum surgeist_text::ConditionalPurpose
 pub surgeist_text::ConditionalPurpose::MinContent
 pub surgeist_text::ConditionalPurpose::Overflow
@@ -565,6 +569,17 @@ pub surgeist_text::InlineBoxEdgeError::InvalidParent
 pub surgeist_text::InlineBoxEdgeError::MissingCapture
 pub surgeist_text::InlineBoxEdgeError::UnrepresentedIncidence
 pub surgeist_text::InlineBoxEdgeError::WrongDomain
+pub enum surgeist_text::InlineBoxFragmentationError
+pub surgeist_text::InlineBoxFragmentationError::DifferentBody
+pub surgeist_text::InlineBoxFragmentationError::FamilyContextMismatch
+pub surgeist_text::InlineBoxFragmentationError::FamilyContextMismatch::control: usize
+pub surgeist_text::InlineBoxFragmentationError::ForeignFamily
+pub surgeist_text::InlineBoxFragmentationError::IncompleteBodyCoverage
+pub surgeist_text::InlineBoxFragmentationError::IncompleteBodyCoverage::paragraph: usize
+pub surgeist_text::InlineBoxFragmentationError::IncompleteBodyCoverage::section: usize
+pub surgeist_text::InlineBoxFragmentationError::IncompleteTopology
+pub surgeist_text::InlineBoxFragmentationError::IncompleteTopology::domain: usize
+pub surgeist_text::InlineBoxFragmentationError::InvalidIncidence
 pub enum surgeist_text::InlineBoxKind
 pub surgeist_text::InlineBoxKind::InFlow
 pub surgeist_text::InlineBoxKind::OutOfFlow
@@ -823,6 +838,7 @@ pub surgeist_text::ProtocolError::IncompleteOriginCoverage::expected: usize
 pub surgeist_text::ProtocolError::IneligibleSpacingSlot
 pub surgeist_text::ProtocolError::IneligibleSpacingSlot::slot: usize
 pub surgeist_text::ProtocolError::InlineBoxEdge(surgeist_text::InlineBoxEdgeError)
+pub surgeist_text::ProtocolError::InlineBoxFragmentation(surgeist_text::InlineBoxFragmentationError)
 pub surgeist_text::ProtocolError::InvalidAnchorOrder
 pub surgeist_text::ProtocolError::InvalidAnchorOrder::kind: surgeist_text::ProtocolHandleKind
 pub surgeist_text::ProtocolError::InvalidAnchorOrder::occurrence: usize
@@ -953,6 +969,9 @@ pub surgeist_text::ScopeAlignmentCensusInput::Flow
 pub surgeist_text::ScopeAlignmentCensusInput::Flow::prepared: &'a surgeist_text::PreparedText
 pub surgeist_text::ScopeAlignmentCensusInput::Flow::request: &'a surgeist_text::FlowObservationRequest
 pub surgeist_text::ScopeAlignmentCensusInput::Flow::segment: &'a surgeist_text::PreparedFlowSegment
+pub surgeist_text::ScopeAlignmentCensusInput::InlineBoxFamily
+pub surgeist_text::ScopeAlignmentCensusInput::InlineBoxFamily::native_boxes: &'a alloc::vec::Vec<surgeist_text::InlineBoxSource>
+pub surgeist_text::ScopeAlignmentCensusInput::InlineBoxFamily::prepared: &'a surgeist_text::PreparedText
 pub surgeist_text::ScopeAlignmentCensusInput::Product(surgeist_text::ScopeAlignmentProduct<'a>)
 pub surgeist_text::ScopeAlignmentCensusInput::Selection
 pub surgeist_text::ScopeAlignmentCensusInput::Selection::prepared: &'a surgeist_text::PreparedText
@@ -1001,10 +1020,15 @@ pub surgeist_text::ScopeAlignmentLimitKind::Records
 pub surgeist_text::ScopeAlignmentLimitKind::StructuralWork
 pub enum surgeist_text::ScopeAlignmentProduct<'a>
 pub surgeist_text::ScopeAlignmentProduct::Finalized(&'a surgeist_text::FinalizedLine)
+pub surgeist_text::ScopeAlignmentProduct::InlineBoxFamily(&'a surgeist_text::PreparedInlineBoxFamily)
 pub surgeist_text::ScopeAlignmentProduct::Prepared(&'a surgeist_text::PreparedText)
 pub surgeist_text::ScopeAlignmentProduct::Selected(&'a surgeist_text::SelectedLine)
 pub enum surgeist_text::ScopeAlignmentProducts<'a>
+pub surgeist_text::ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies
+pub surgeist_text::ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies::families: &'a [core::option::Option<surgeist_text::PreparedInlineBoxFamily>]
+pub surgeist_text::ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies::finalized: &'a [core::option::Option<surgeist_text::FinalizedLine>]
 pub surgeist_text::ScopeAlignmentProducts::FinalizedSlots(&'a [core::option::Option<surgeist_text::FinalizedLine>])
+pub surgeist_text::ScopeAlignmentProducts::InlineBoxFamilySlots(&'a [core::option::Option<surgeist_text::PreparedInlineBoxFamily>])
 pub surgeist_text::ScopeAlignmentProducts::Mixed(&'a [surgeist_text::ScopeAlignmentProduct<'a>])
 pub enum surgeist_text::ScopeAllocations
 pub surgeist_text::ScopeAllocations::Complete(alloc::vec::Vec<surgeist_text::ScopeAllocation>)
@@ -2067,6 +2091,20 @@ pub const fn surgeist_text::FinalizedGlyphView<'_>::pen(self) -> f64
 pub const fn surgeist_text::FinalizedGlyphView<'_>::range(self) -> surgeist_text::Range
 pub const fn surgeist_text::FinalizedGlyphView<'_>::x(self) -> f32
 pub const fn surgeist_text::FinalizedGlyphView<'_>::y(self) -> f32
+pub struct surgeist_text::FinalizedInlineBoxPiece
+impl surgeist_text::FinalizedInlineBoxPiece
+pub fn surgeist_text::FinalizedInlineBoxPiece::end_control(&self) -> core::option::Option<surgeist_text::PreparedControl>
+pub fn surgeist_text::FinalizedInlineBoxPiece::end_edge(&self) -> core::option::Option<surgeist_text::FinalizedControlView<'_>>
+pub fn surgeist_text::FinalizedInlineBoxPiece::family(&self) -> &surgeist_text::PreparedInlineBoxFamily
+pub fn surgeist_text::FinalizedInlineBoxPiece::finalized_line(&self) -> &surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedInlineBoxPiece::fragment(&self) -> surgeist_text::InlineBoxFragment
+pub fn surgeist_text::FinalizedInlineBoxPiece::members(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::InlineBoxPieceMember<'_>>
+pub fn surgeist_text::FinalizedInlineBoxPiece::owner(&self) -> surgeist_text::InlineBoxSource
+pub fn surgeist_text::FinalizedInlineBoxPiece::shares_packet_with(&self, other: &Self) -> bool
+pub fn surgeist_text::FinalizedInlineBoxPiece::start_control(&self) -> core::option::Option<surgeist_text::PreparedControl>
+pub fn surgeist_text::FinalizedInlineBoxPiece::start_edge(&self) -> core::option::Option<surgeist_text::FinalizedControlView<'_>>
+impl core::fmt::Debug for surgeist_text::FinalizedInlineBoxPiece
+pub fn surgeist_text::FinalizedInlineBoxPiece::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::FinalizedLine
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::atomic_slots(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::AtomicSlotFeedback> + '_
@@ -2094,6 +2132,9 @@ pub fn surgeist_text::FinalizedLine::nonformatted(&self) -> surgeist_text::Resul
 pub fn surgeist_text::FinalizedLine::spacing_slots(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SpacingSlotFeedback> + '_
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::hyphenation_continuation(&self) -> core::option::Option<surgeist_text::HyphenationContinuation>
+impl surgeist_text::FinalizedLine
+pub fn surgeist_text::FinalizedLine::inline_box_family(&self) -> core::option::Option<&surgeist_text::PreparedInlineBoxFamily>
+pub fn surgeist_text::FinalizedLine::inline_box_pieces(&self) -> core::option::Option<impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::FinalizedInlineBoxPiece> + '_>
 impl surgeist_text::FinalizedLine
 pub fn surgeist_text::FinalizedLine::line_box_strut_scope_displacement(&self, index: usize) -> core::option::Option<surgeist_text::BaselineShift>
 pub fn surgeist_text::FinalizedLine::scope_alignment_retention(&self) -> core::option::Option<surgeist_text::ScopeAlignmentRetention>
@@ -2365,6 +2406,16 @@ impl surgeist_text::InlineBoxEdgeContext
 pub fn surgeist_text::InlineBoxEdgeContext::owner(&self) -> &surgeist_text::InlineBoxSource
 pub fn surgeist_text::InlineBoxEdgeContext::parent(&self) -> &surgeist_text::InlineBoxSource
 pub const fn surgeist_text::InlineBoxEdgeContext::start_side(&self) -> surgeist_text::LineEdgeSide
+pub struct surgeist_text::InlineBoxFragment
+impl surgeist_text::InlineBoxFragment
+pub fn surgeist_text::InlineBoxFragment::nearest_common_ancestor(&self, other: &Self) -> surgeist_text::Result<Self>
+pub fn surgeist_text::InlineBoxFragment::owner(&self) -> surgeist_text::InlineBoxSource
+pub fn surgeist_text::InlineBoxFragment::parent(&self) -> core::option::Option<Self>
+impl core::cmp::Eq for surgeist_text::InlineBoxFragment
+impl core::cmp::PartialEq for surgeist_text::InlineBoxFragment
+pub fn surgeist_text::InlineBoxFragment::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::InlineBoxFragment
+pub fn surgeist_text::InlineBoxFragment::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::InlineBoxMetricFact
 impl surgeist_text::InlineBoxMetricFact
 pub const fn surgeist_text::InlineBoxMetricFact::baseline_shift(self) -> surgeist_text::BaselineShiftFact
@@ -2375,6 +2426,11 @@ pub const fn surgeist_text::InlineBoxMetricFact::line(self) -> usize
 pub const fn surgeist_text::InlineBoxMetricFact::new(id: surgeist_text::Id, kind: surgeist_text::InlineBoxKind, index: usize, rect: surgeist_text::Rect, line: usize, vertical_align: surgeist_text::VerticalAlign, baseline_shift: surgeist_text::BaselineShiftFact) -> Self
 pub const fn surgeist_text::InlineBoxMetricFact::rect(self) -> surgeist_text::Rect
 pub const fn surgeist_text::InlineBoxMetricFact::vertical_align(self) -> surgeist_text::VerticalAlign
+pub struct surgeist_text::InlineBoxPieceMember<'a>
+impl surgeist_text::InlineBoxPieceMember<'_>
+pub fn surgeist_text::InlineBoxPieceMember<'_>::participant(&self) -> core::option::Option<&surgeist_text::PreparedParticipant>
+pub fn surgeist_text::InlineBoxPieceMember<'_>::presentation_range(&self) -> surgeist_text::PresentationRange
+pub fn surgeist_text::InlineBoxPieceMember<'_>::unit_source_range(&self) -> surgeist_text::Range
 pub struct surgeist_text::InlineBoxSource
 impl surgeist_text::InlineBoxSource
 pub fn surgeist_text::InlineBoxSource::captured(scope: surgeist_text::CapturedScope) -> Self
@@ -2431,6 +2487,8 @@ pub fn surgeist_text::Layout::run_views(&self) -> impl core::iter::traits::itera
 impl surgeist_text::Layout
 pub fn surgeist_text::Layout::from_finalized_lines(request: surgeist_text::PlacementRequest) -> surgeist_text::Result<Self>
 pub fn surgeist_text::Layout::nonformatted_lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_text::NonFormattedLinePlacement>
+impl surgeist_text::Layout
+pub fn surgeist_text::Layout::inline_box_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::PlacedInlineBoxPiece<'_>>
 impl surgeist_text::Layout
 pub fn surgeist_text::Layout::source_range_fragments(&self, origin: &surgeist_text::PreparedOrigin, local: surgeist_text::Range) -> surgeist_text::Result<surgeist_text::SourceRangeFragments<'_>>
 impl core::fmt::Debug for surgeist_text::Layout
@@ -2527,6 +2585,7 @@ pub surgeist_text::LineSelectionRequest::context: surgeist_text::LineContext
 pub surgeist_text::LineSelectionRequest::controls: alloc::vec::Vec<surgeist_text::ControlAllocation>
 pub surgeist_text::LineSelectionRequest::end: surgeist_text::PreparedBoundary
 pub surgeist_text::LineSelectionRequest::incoming: core::option::Option<surgeist_text::HyphenationContinuation>
+pub surgeist_text::LineSelectionRequest::inline_boxes: core::option::Option<surgeist_text::PreparedInlineBoxFamily>
 pub surgeist_text::LineSelectionRequest::line_box_struts: alloc::vec::Vec<surgeist_text::LineBoxStrut>
 pub surgeist_text::LineSelectionRequest::line_strut: core::option::Option<surgeist_text::LineStrut>
 pub surgeist_text::LineSelectionRequest::participants: alloc::vec::Vec<surgeist_text::PreparedParticipant>
@@ -2648,6 +2707,14 @@ impl surgeist_text::ParagraphTabReference
 pub const fn surgeist_text::ParagraphTabReference::direction(&self) -> surgeist_text::ParagraphBaseDirection
 pub fn surgeist_text::ParagraphTabReference::new(style: surgeist_text::Style, direction: surgeist_text::ParagraphBaseDirection) -> surgeist_text::Result<Self>
 pub fn surgeist_text::ParagraphTabReference::style(&self) -> &surgeist_text::Style
+pub struct surgeist_text::PlacedInlineBoxPiece<'a>
+impl surgeist_text::PlacedInlineBoxPiece<'_>
+pub fn surgeist_text::PlacedInlineBoxPiece<'_>::anchor(&self) -> surgeist_text::Point
+pub fn surgeist_text::PlacedInlineBoxPiece<'_>::family(&self) -> &surgeist_text::PreparedInlineBoxFamily
+pub fn surgeist_text::PlacedInlineBoxPiece<'_>::finalized_piece(&self) -> surgeist_text::FinalizedInlineBoxPiece
+pub fn surgeist_text::PlacedInlineBoxPiece<'_>::fragment(&self) -> surgeist_text::InlineBoxFragment
+pub fn surgeist_text::PlacedInlineBoxPiece<'_>::line_index(&self) -> usize
+pub fn surgeist_text::PlacedInlineBoxPiece<'_>::orientation(&self) -> surgeist_text::LineOrientation
 pub struct surgeist_text::PlacedPosition
 impl surgeist_text::PlacedPosition
 pub fn surgeist_text::PlacedPosition::source_cursor(&self) -> surgeist_text::Cursor
@@ -2898,6 +2965,7 @@ impl surgeist_text::PreparedFlowSegment
 pub fn surgeist_text::PreparedFlowSegment::alternative(&self) -> core::option::Option<surgeist_text::PreparedAlternative>
 pub fn surgeist_text::PreparedFlowSegment::end(&self) -> surgeist_text::PreparedBoundary
 pub fn surgeist_text::PreparedFlowSegment::incoming(&self) -> core::option::Option<surgeist_text::HyphenationContinuation>
+pub fn surgeist_text::PreparedFlowSegment::inline_box_family(&self) -> core::option::Option<&surgeist_text::PreparedInlineBoxFamily>
 pub fn surgeist_text::PreparedFlowSegment::mandatory_end(&self) -> core::option::Option<surgeist_text::PreparedOpportunity>
 pub fn surgeist_text::PreparedFlowSegment::outgoing(&self) -> core::option::Option<surgeist_text::HyphenationContinuation>
 pub fn surgeist_text::PreparedFlowSegment::participants(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedParticipant> + '_
@@ -2928,10 +2996,23 @@ pub fn surgeist_text::PreparedHyphenationCutView<'_>::style(&self) -> &surgeist_
 pub fn surgeist_text::PreparedHyphenationCutView<'_>::word(&self) -> core::option::Option<surgeist_text::PreparedWord>
 impl core::fmt::Debug for surgeist_text::PreparedHyphenationCutView<'_>
 pub fn surgeist_text::PreparedHyphenationCutView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::PreparedInlineBoxFamily
+impl surgeist_text::PreparedInlineBoxFamily
+pub fn surgeist_text::PreparedInlineBoxFamily::prepared_text(&self) -> surgeist_text::PreparedText
+pub fn surgeist_text::PreparedInlineBoxFamily::scope_alignment_retention(&self) -> core::option::Option<surgeist_text::ScopeAlignmentRetention>
+pub fn surgeist_text::PreparedInlineBoxFamily::scope_alignment_usage(&self) -> core::option::Option<surgeist_text::ScopeAlignmentUsage>
+impl core::cmp::Eq for surgeist_text::PreparedInlineBoxFamily
+impl core::cmp::PartialEq for surgeist_text::PreparedInlineBoxFamily
+pub fn surgeist_text::PreparedInlineBoxFamily::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_text::PreparedInlineBoxFamily
+pub fn surgeist_text::PreparedInlineBoxFamily::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for surgeist_text::PreparedInlineBoxFamily
+pub fn surgeist_text::PreparedInlineBoxFamily::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::PreparedMeasurementFlow
 impl surgeist_text::PreparedMeasurementFlow
 pub fn surgeist_text::PreparedMeasurementFlow::completion(&self) -> surgeist_text::PreparedOpportunity
 pub fn surgeist_text::PreparedMeasurementFlow::entry(&self) -> surgeist_text::PreparedBoundary
+pub fn surgeist_text::PreparedMeasurementFlow::inline_box_family(&self) -> core::option::Option<&surgeist_text::PreparedInlineBoxFamily>
 pub fn surgeist_text::PreparedMeasurementFlow::segments(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedFlowSegment> + '_
 pub fn surgeist_text::PreparedMeasurementFlow::source_segment(&self) -> surgeist_text::PreparedSourceSegment
 pub fn surgeist_text::PreparedMeasurementFlow::validate_observations(&self, observations: &[surgeist_text::FlowObservation]) -> surgeist_text::Result<()>
@@ -3050,7 +3131,7 @@ impl core::fmt::Debug for surgeist_text::PreparedScopeView<'_>
 pub fn surgeist_text::PreparedScopeView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::PreparedSourceSegment
 impl surgeist_text::PreparedSourceSegment
-pub fn surgeist_text::PreparedSourceSegment::conditional_search(&self, start: &surgeist_text::PreparedBoundary, incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped: &[surgeist_text::ConditionalDisposition], frame: core::option::Option<&surgeist_text::FinalizedLine>) -> surgeist_text::Result<surgeist_text::PreparedConditionalSearch>
+pub fn surgeist_text::PreparedSourceSegment::conditional_search(&self, start: &surgeist_text::PreparedBoundary, incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, ceiling: &surgeist_text::PreparedOpportunity, purpose: surgeist_text::ConditionalPurpose, skipped: &[surgeist_text::ConditionalDisposition], context: surgeist_text::ConditionalLineContext<'_>) -> surgeist_text::Result<surgeist_text::PreparedConditionalSearch>
 impl surgeist_text::PreparedSourceSegment
 pub fn surgeist_text::PreparedSourceSegment::end(&self) -> surgeist_text::PreparedBoundary
 pub fn surgeist_text::PreparedSourceSegment::end_opportunity(&self) -> surgeist_text::PreparedOpportunity
@@ -3101,7 +3182,7 @@ pub fn surgeist_text::PreparedText::select(&self, request: surgeist_text::LineSe
 pub fn surgeist_text::PreparedText::select_with_scope_allowance(&self, request: surgeist_text::LineSelectionRequest, allowance: surgeist_text::ScopeAlignmentAllowance) -> surgeist_text::Result<surgeist_text::SelectedLine>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::flow_boundary_context_demand(&self, segment: &surgeist_text::PreparedFlowSegment, request: &surgeist_text::FlowObservationRequest) -> surgeist_text::Result<core::option::Option<surgeist_text::PreparedControl>>
-pub fn surgeist_text::PreparedText::measurement_flow(&self, source_segment: &surgeist_text::PreparedSourceSegment, query_start: &surgeist_text::PreparedBoundary, query_incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, target: &surgeist_text::PreparedTermination) -> surgeist_text::Result<surgeist_text::PreparedMeasurementFlow>
+pub fn surgeist_text::PreparedText::measurement_flow(&self, source_segment: &surgeist_text::PreparedSourceSegment, query_start: &surgeist_text::PreparedBoundary, query_incoming: core::option::Option<&surgeist_text::HyphenationContinuation>, target: &surgeist_text::PreparedTermination, inline_boxes: core::option::Option<&surgeist_text::PreparedInlineBoxFamily>) -> surgeist_text::Result<surgeist_text::PreparedMeasurementFlow>
 pub fn surgeist_text::PreparedText::observe_flow(&self, segment: &surgeist_text::PreparedFlowSegment, request: &surgeist_text::FlowObservationRequest) -> surgeist_text::Result<surgeist_text::FlowObservation>
 pub fn surgeist_text::PreparedText::observe_flow_with_scope_allowance(&self, segment: &surgeist_text::PreparedFlowSegment, request: &surgeist_text::FlowObservationRequest, allowance: surgeist_text::ScopeAlignmentAllowance) -> surgeist_text::Result<surgeist_text::FlowObservation>
 impl surgeist_text::PreparedText
@@ -3110,6 +3191,8 @@ pub fn surgeist_text::PreparedText::word_views(&self) -> impl core::iter::traits
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::inline_box_edge_context(&self, owner: surgeist_text::InlineBoxSource, parent: surgeist_text::InlineBoxSource, start_side: surgeist_text::LineEdgeSide) -> surgeist_text::Result<surgeist_text::InlineBoxEdgeContext>
 pub fn surgeist_text::PreparedText::native_inline_box(&self, start: surgeist_text::CapturedControl, end: surgeist_text::CapturedControl) -> surgeist_text::Result<surgeist_text::InlineBoxSource>
+impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::inline_box_family(&self, native_boxes: alloc::vec::Vec<surgeist_text::InlineBoxSource>, allowance: core::option::Option<surgeist_text::ScopeAlignmentAllowance>) -> surgeist_text::Result<surgeist_text::PreparedInlineBoxFamily>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::line_direction_facts(&self, segment: &surgeist_text::PreparedSourceSegment, start: &surgeist_text::PreparedBoundary, end: &surgeist_text::PreparedBoundary) -> surgeist_text::Result<surgeist_text::LineDirectionFacts>
 impl surgeist_text::PreparedText
@@ -3395,10 +3478,22 @@ pub struct surgeist_text::ScopeMetricContribution
 pub surgeist_text::ScopeMetricContribution::after: f64
 pub surgeist_text::ScopeMetricContribution::alignment: surgeist_text::LineBoxAlignment
 pub surgeist_text::ScopeMetricContribution::before: f64
+pub struct surgeist_text::SelectedInlineBoxPiece
+impl surgeist_text::SelectedInlineBoxPiece
+pub fn surgeist_text::SelectedInlineBoxPiece::family(&self) -> &surgeist_text::PreparedInlineBoxFamily
+pub fn surgeist_text::SelectedInlineBoxPiece::fragment(&self) -> surgeist_text::InlineBoxFragment
+pub fn surgeist_text::SelectedInlineBoxPiece::members(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::InlineBoxPieceMember<'_>>
+pub fn surgeist_text::SelectedInlineBoxPiece::owner(&self) -> surgeist_text::InlineBoxSource
+pub fn surgeist_text::SelectedInlineBoxPiece::selected_line(&self) -> &surgeist_text::SelectedLine
+impl core::fmt::Debug for surgeist_text::SelectedInlineBoxPiece
+pub fn surgeist_text::SelectedInlineBoxPiece::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::SelectedLine
 impl surgeist_text::SelectedLine
 pub fn surgeist_text::SelectedLine::finalize(&self, allocations: surgeist_text::LineAllocations) -> surgeist_text::Result<surgeist_text::FinalizedLine>
 pub fn surgeist_text::SelectedLine::finalize_with_scope_allowance(&self, allocations: surgeist_text::LineAllocations, allowance: surgeist_text::ScopeAlignmentAllowance) -> surgeist_text::Result<surgeist_text::FinalizedLine>
+impl surgeist_text::SelectedLine
+pub fn surgeist_text::SelectedLine::inline_box_family(&self) -> core::option::Option<&surgeist_text::PreparedInlineBoxFamily>
+pub fn surgeist_text::SelectedLine::inline_box_pieces(&self) -> core::option::Option<impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SelectedInlineBoxPiece> + '_>
 impl surgeist_text::SelectedLine
 pub fn surgeist_text::SelectedLine::prepared_text(&self) -> surgeist_text::PreparedText
 impl surgeist_text::SelectedLine

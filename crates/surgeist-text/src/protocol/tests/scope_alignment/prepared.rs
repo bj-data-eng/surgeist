@@ -1005,3 +1005,6 @@ mod parent_geometry_resources;
 
 #[path = "prepared/parent_atomic_measure.rs"]
 mod parent_atomic_measure;
+
+#[path = "prepared/fragment_body_custody.rs"]
+mod fragment_body_custody;

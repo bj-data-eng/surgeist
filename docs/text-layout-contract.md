@@ -742,6 +742,63 @@ Zero BoxEdge still needs this context; zero Contribution needs no invented paren
 Capture does not promote a Contribution, and failed BoxEdge admission never
 downgrades it to Contribution.
 
+#### Complete-body bidi fragments
+
+`PreparedText::inline_box_family` issues a capability for one authentic
+preparation's complete structural bodies. Admission requires both explicit
+`SourceProcessingTopology::Complete` and ownership of every relevant raw member
+through the actual preparation or joint flow. Full raw coverage alone cannot
+establish box topology. Captured Inline scopes contribute their real ancestry;
+additional native pairs require genuine endpoint declarations. Unknown topology,
+incomplete bodies, foreign families and inconsistent edge contexts return their
+specific errors without changing prior results. Ordinary operations with
+`LineSelectionRequest::inline_boxes: None` make no global-fragment claim.
+
+The [pinned Writing Modes fragmentation rule](../references/css-writing-modes-4--CR-css-writing-modes-4-20190730--30a59de49343.md)
+determines fragments from intervening content in the hypothetical unwrapped body.
+Finite wrapping cannot merge their identities, and level changes alone cannot
+split a box. Parent links and nearest-common-ancestor queries describe fragment
+ancestry. Text reuses completed bidi analysis and full-body L1/L2; it does not
+repeat contextual analysis or shaping. A genuine empty Inline remains a box
+without an ink, advance or decoration threshold. Native empty-box ordering uses
+its actual opening gap, borrowing the following nonopaque resolved level or the
+body's paragraph level before L2. That is an explicit Native policy informed by
+[pinned Blink's opaque-row ordering](https://github.com/chromium/chromium/blob/79051446b0be39cd65045025894b32da4d49a804/third_party/blink/renderer/core/layout/inline/logical_line_builder.cc#L655),
+not a claim that Blink retains this global family. A finite-line fallback cannot
+change the family's unwrapped classification.
+
+Selected pieces reference these stable fragments and actual source/unit
+memberships. Removed or zero-output Source aliases retain their canonical
+occurrences independently; absent a real row/cut witness, lexical enclosure does
+not assign them exclusively to one fragment. A provider packet can support
+several pieces without lending one box another box's source ownership or
+duplicating glyphs. The same projection
+feeds parent-directed edge execution and selected, finalized and placed
+readback; a piece supplies no independently reconstructed paint rectangle.
+
+Layout's `TextParagraphBinding::inline_box_fragments` explicitly chooses
+`NotRequested` or `CompleteBodies`. Both checked constructors admit the latter
+only for genuine Flow or SemanticFlow bindings and reject AssociationOnly with
+`InlineBoxFragmentsRequireFlow`. The checked binding retains one family through
+measurement, conditional search, replay, finalization and placement.
+`PlacedTextOutput::inline_box_fragments()` exposes that exact association;
+`None` means unrequested, while a demanded empty result can have zero pieces.
+Render consumes the same placed Text layout.
+
+Family storage and projected incidences participate in the existing resource
+census, including shared ancestors and actual retained allocation owners.
+Captured limits fund both preparation and family through the existing preparation
+budget; current public constructors do not issue a funded family over an
+unfunded preparation. Without captured limits, the Native family uses fallible
+allocation and makes no feature-retention claim. Borrowed input vectors contribute
+actual backing capacity and initialized rows, excluding caller stack headers.
+The owned family header includes its embedded vector headers once. Derive native
+lookup and parent incidence at admission, borrowing captured ancestry instead of
+rescanning the entire native vector per endpoint. Rejected budgets preserve prior
+publications. Numeric-only global fragmentation,
+NCA-dependent text-justification inputs and decoration painting remain separate
+capabilities under [the complete fragmentation scope](https://github.com/bj-data-eng/surgeist/issues/780).
+
 #### Selected and context-only admission
 
 Every selected InlineBoundaryStart/End has a `ControlAllocation` with

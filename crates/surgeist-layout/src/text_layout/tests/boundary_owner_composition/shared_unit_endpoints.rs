@@ -145,7 +145,7 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool, nested: bool) {
             &ordinary,
             text::ConditionalPurpose::MinContent,
             &[],
-            None,
+            surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .unwrap();
     assert!(search.phrase_portions().is_empty());

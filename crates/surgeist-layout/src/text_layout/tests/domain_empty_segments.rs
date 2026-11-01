@@ -245,6 +245,7 @@ fn bind<S: LayoutScalar>(
                 })
                 .collect::<Vec<_>>();
             TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared: prepared.clone(),
                 container: if index == 0 { ROOT } else { BLOCK },
                 nodes: origins.iter().map(|origin| origin.node).collect(),
@@ -538,6 +539,7 @@ fn an_empty_resumed_section_rejects_an_earlier_frontier_with_different_original_
         assert_eq!(segment.end_opportunity().view().boundary(), segment.end());
     }
     let request = |segment: &text::PreparedSourceSegment| text::LineSelectionRequest {
+        inline_boxes: None,
         segment: segment.clone(),
         start: segment.start(),
         end: segment.end(),

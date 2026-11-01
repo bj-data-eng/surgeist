@@ -297,6 +297,7 @@ fn capture(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             nodes: (1..tree.inputs.len()).collect(),
             origins: vec![layout::TextOriginBinding {
                 origin,

@@ -75,6 +75,7 @@ fn first_request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        inline_boxes: None,
         segment: {
             let mut segments = prepared.source_segments();
             assert_eq!(

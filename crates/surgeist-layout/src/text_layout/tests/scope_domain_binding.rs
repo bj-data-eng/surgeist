@@ -388,6 +388,7 @@ fn atomic_domain_shape(
         .collect();
     let mut bindings = vec![
         TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent,
             container: 0,
             nodes: if foreign_parent {
@@ -405,6 +406,7 @@ fn atomic_domain_shape(
             line_strut: None,
         },
         TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared: child,
             container: if two_domains { A1 } else { A0 },
             nodes: INLINE_NODES.to_vec(),
@@ -517,6 +519,7 @@ fn atomic_domain_shape(
         bindings.insert(
             1,
             TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: A0,
                 nodes: vec![40, 41],

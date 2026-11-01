@@ -120,6 +120,7 @@ impl<S: layout::LayoutScalar> Host<S> {
             })
             .collect();
         layout::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: p.clone(),
             container: 0,
             nodes: self.children[0].clone(),

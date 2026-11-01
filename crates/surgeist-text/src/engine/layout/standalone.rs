@@ -75,7 +75,7 @@ impl RawRoleBasis<'_> {
                 crate::protocol::ProtocolError::UnsupportedStandaloneAnalysis,
             )
         })?;
-        let flow = handle.measurement_flow(&segment, &query_start, entry.incoming, target)?;
+        let flow = handle.measurement_flow(&segment, &query_start, entry.incoming, target, None)?;
         let phrase = matches!(target, PreparedTermination::PhraseMeasurement(_));
         let mut first = if phrase {
             entry.accepted.is_empty()
@@ -633,7 +633,7 @@ fn choose_phrase(
         ceiling,
         ConditionalPurpose::Overflow,
         &skipped,
-        Some(&receipt(frame)),
+        crate::ConditionalLineContext::Finalized(&receipt(frame)),
     )?;
     let mut decisions = Vec::new();
     for portion in search.phrase_portions() {

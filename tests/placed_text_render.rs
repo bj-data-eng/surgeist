@@ -207,6 +207,7 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],
@@ -448,6 +449,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],
@@ -767,6 +769,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],
@@ -1183,6 +1186,7 @@ mod kana_transform {
             &tree,
             0,
             vec![layout::TextParagraphBinding {
+                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes: vec![1],

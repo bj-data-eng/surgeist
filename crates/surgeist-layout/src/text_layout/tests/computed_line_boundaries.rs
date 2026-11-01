@@ -297,6 +297,14 @@ fn prepare(input: text::ContextualSourceInput) -> Fixture {
         .map(|origin| origin.source.clone())
         .collect();
     let processed = Arc::new(text::process_contextual_source(input).unwrap());
+    prepare_captured(processed, nodes, originals)
+}
+
+fn prepare_captured(
+    processed: Arc<text::ProcessedSource>,
+    nodes: Vec<u32>,
+    originals: Vec<Source>,
+) -> Fixture {
     let analyzed = text::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
         text::AnalysisTypography::HorizontalComposition,
@@ -339,6 +347,7 @@ fn prepare(input: text::ContextualSourceInput) -> Fixture {
         processed,
         originals,
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes,
@@ -1572,3 +1581,6 @@ fn unrepresented_float_at_semantic_only_scope_after_requires_real_side_incidence
     unproved_float::<f32>();
     unproved_float::<f64>();
 }
+
+#[path = "computed_line_boundaries/inline_box_fragments.rs"]
+mod inline_box_fragments;

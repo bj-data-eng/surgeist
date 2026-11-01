@@ -340,46 +340,80 @@ pub(crate) fn owner_section(
     paragraph: &ParagraphContext,
     sections: &[Section],
     combination: Option<&crate::transform::combined::CombinedOutput>,
-) -> usize {
+    mut budget: Option<&mut crate::processing::contextual::alignment::ScopeAlignmentBudget>,
+) -> Result<usize> {
     match owner {
-        super::BidiOwner::Atom(atom) => sections
-            .partition_point(|section| section.atoms.end <= atom)
+        super::BidiOwner::Atom(atom) => Ok(
+            crate::processing::contextual::alignment::operations::partition_point(
+                sections,
+                budget,
+                |section| section.atoms.end <= atom,
+            )?
             .min(sections.len() - 1),
+        ),
         super::BidiOwner::Atomic(index) => order_section(
             anchor_order(SemanticAnchorItem::Atomic(index), paragraph),
             sections,
+            budget,
         ),
         super::BidiOwner::Control(index) => order_section(
             anchor_order(SemanticAnchorItem::Control(index), paragraph),
             sections,
+            budget,
         ),
         super::BidiOwner::ComputedLineBoundary(index) => order_section(
             anchor_order(SemanticAnchorItem::ComputedLineBoundary(index), paragraph),
             sections,
+            budget,
         ),
         super::BidiOwner::CombinedCell(index) => {
             let binding = &combination.expect("real completed cell").bindings[index];
-            sections
-                .iter()
-                .position(|section| {
-                    section.events.start <= binding.events.start
-                        && binding.events.end <= section.events.end
-                })
-                .expect("completed cell belongs to one genuine structural section")
+            for (index, section) in sections.iter().enumerate() {
+                if let Some(budget) = budget.as_deref_mut() {
+                    budget.work(1)?;
+                }
+                if section.events.start <= binding.events.start
+                    && binding.events.end <= section.events.end
+                {
+                    return Ok(index);
+                }
+            }
+            unreachable!("completed cell belongs to one genuine structural section")
         }
     }
 }
-fn order_section(order: Option<usize>, sections: &[Section]) -> usize {
-    order.map_or(0, |order| {
-        sections
-            .iter()
-            .position(|section| {
-                section
-                    .span
-                    .is_some_and(|span| span.entry <= order && order <= span.exit)
-            })
-            .expect("owned source occurrence belongs to one actual structural span")
-    })
+
+/// Finds the actual containing capture span, without materializing an index.
+/// Callers share this visit accounting for owner and genuine empty-row custody.
+pub(crate) fn section_at_order(
+    order: usize,
+    sections: &[Section],
+    mut budget: Option<&mut crate::processing::contextual::alignment::ScopeAlignmentBudget>,
+) -> Result<Option<usize>> {
+    for (index, section) in sections.iter().enumerate() {
+        if let Some(budget) = budget.as_deref_mut() {
+            budget.work(1)?;
+        }
+        if section
+            .span
+            .is_some_and(|span| span.entry <= order && order <= span.exit)
+        {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
+}
+
+fn order_section(
+    order: Option<usize>,
+    sections: &[Section],
+    budget: Option<&mut crate::processing::contextual::alignment::ScopeAlignmentBudget>,
+) -> Result<usize> {
+    match order {
+        Some(order) => Ok(section_at_order(order, sections, budget)?
+            .expect("owned source occurrence belongs to one actual structural span")),
+        None => Ok(0),
+    }
 }
 
 pub(crate) fn source_envelope(

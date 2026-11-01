@@ -245,12 +245,22 @@ fn execute(
         collapse_edges_accounted(selected.presentation_input(), &mut shaped, &mut ledger)?;
     let levels = item_levels_accounted(&selected.presentation, &shaped, &mut ledger)?;
     let base = selected.presentation.analysis.base_level;
-    let boxed_execution = crate::protocol::inline_box::execution::build(
-        &selected,
-        &shaped,
-        &selected.basis.order,
-        &mut ledger,
-    )?;
+    let owned_boxed_execution = if selected.basis.inline_boxes.is_none() {
+        crate::protocol::inline_box::execution::build(
+            &selected,
+            &shaped,
+            &selected.basis.order,
+            &mut ledger,
+        )?
+    } else {
+        None
+    };
+    let boxed_execution = selected
+        .basis
+        .inline_boxes
+        .as_ref()
+        .and_then(|p| p.execution.as_ref())
+        .or(owned_boxed_execution.as_ref());
     let ordered = boxed_execution
         .as_ref()
         .map_or(selected.basis.order.as_slice(), |plan| {
@@ -441,7 +451,7 @@ fn execute(
         &atomics,
         phase_two::MeasurementOrder {
             order: &order,
-            box_edges: boxed_execution.as_ref(),
+            box_edges: boxed_execution,
         },
         natural,
         &mut metrics,
@@ -490,7 +500,14 @@ fn execute(
                             .map(|_| {
                                 scoped_reference(
                                     metrics.baseline,
-                                    scopes.displacement(selected.scopes.cluster_owners[index]),
+                                    scopes.displacement(
+                                        selected
+                                            .scopes
+                                            .cluster_owners
+                                            .get(index)
+                                            .copied()
+                                            .flatten(),
+                                    ),
                                 )
                             })
                             .transpose()?,
@@ -876,7 +893,14 @@ fn execute(
                             .map(|_| {
                                 scoped_reference(
                                     metrics.baseline,
-                                    scopes.displacement(selected.scopes.glyph_owners[glyph_index]),
+                                    scopes.displacement(
+                                        selected
+                                            .scopes
+                                            .glyph_owners
+                                            .get(glyph_index)
+                                            .copied()
+                                            .flatten(),
+                                    ),
                                 )
                             })
                             .transpose()?;
@@ -1424,7 +1448,7 @@ fn execute(
         account::drop_vec(&mut ledger, geometry.offsets)?;
         account::drop_vec(&mut ledger, geometry.leading)?;
     }
-    if let Some(plan) = boxed_execution {
+    if let Some(plan) = owned_boxed_execution {
         account::drop_vec(&mut ledger, plan.order)?;
         account::drop_vec(&mut ledger, plan.boxed_units)?;
     }
@@ -3853,6 +3877,7 @@ mod tests {
             .collect();
         prepared
             .select(LineSelectionRequest {
+                inline_boxes: None,
                 segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
@@ -4255,6 +4280,7 @@ mod tests {
             .handle();
         let line = prepared
             .select(LineSelectionRequest {
+                inline_boxes: None,
                 segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
@@ -4771,6 +4797,7 @@ mod tests {
             crate::test_wrapping::select_neutral(
                 &prepared,
                 LineSelectionRequest {
+                    inline_boxes: None,
                     segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,

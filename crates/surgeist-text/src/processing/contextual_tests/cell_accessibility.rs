@@ -182,6 +182,7 @@ fn many_genuine_unexpanded_wbr_controls_remain_inside_one_native_all_cell_and_it
     // real issued Cell participant directly in the ordinary selection protocol.
     let line = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

@@ -32,6 +32,7 @@ fn selected_line(
         .collect();
     prepared
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start,
             end: boundary,

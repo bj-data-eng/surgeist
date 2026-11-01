@@ -314,7 +314,7 @@ fn framed_conditional_search_retains_exact_spacing_amounts_when_geometry_rounds_
                 &prefix.offer,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(frame),
+                crate::ConditionalLineContext::Finalized(frame),
             )
             .unwrap();
         search.begin(&[]).unwrap();

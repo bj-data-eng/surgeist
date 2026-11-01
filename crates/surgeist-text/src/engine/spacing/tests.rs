@@ -78,6 +78,7 @@ fn shared_word_geometry_keeps_its_diagnostic_outside_the_payload_allowance() {
     assert!(segments.next().is_none());
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

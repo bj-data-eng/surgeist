@@ -14,6 +14,7 @@ use crate::{Result, ScopeAlignmentUsage};
 #[derive(Clone, Copy, Debug)]
 pub enum ScopeAlignmentProduct<'a> {
     Prepared(&'a PreparedText),
+    InlineBoxFamily(&'a super::PreparedInlineBoxFamily),
     Selected(&'a SelectedLine),
     Finalized(&'a FinalizedLine),
 }
@@ -24,6 +25,10 @@ pub enum ScopeAlignmentProduct<'a> {
 #[derive(Clone, Copy, Debug)]
 pub enum ScopeAlignmentCensusInput<'a> {
     Product(ScopeAlignmentProduct<'a>),
+    InlineBoxFamily {
+        prepared: &'a PreparedText,
+        native_boxes: &'a Vec<super::InlineBoxSource>,
+    },
     Selection {
         prepared: &'a PreparedText,
         request: &'a LineSelectionRequest,
@@ -46,6 +51,14 @@ pub enum ScopeAlignmentProducts<'a> {
     /// Caller-initialized strong guard slots. Empty slots contribute no Text
     /// product but their inspections are still charged as structural work.
     FinalizedSlots(&'a [Option<FinalizedLine>]),
+    /// Actual binding-indexed family custody. None slots add no Text owner;
+    /// every slot inspection still consumes structural work.
+    InlineBoxFamilySlots(&'a [Option<super::PreparedInlineBoxFamily>]),
+    /// Actual computation-owned finalized guards and binding-owned families.
+    FinalizedAndInlineBoxFamilies {
+        finalized: &'a [Option<FinalizedLine>],
+        families: &'a [Option<super::PreparedInlineBoxFamily>],
+    },
 }
 
 /// Scalar facts from one completed, bounded census. Allocation identities and

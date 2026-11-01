@@ -182,6 +182,7 @@ fn continuation_case() -> Case {
         .collect();
     Case {
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 20, 2, 22, 3, 23, 21],

@@ -257,6 +257,7 @@ where
                 capture.associations.clone(),
                 crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                     capture.scope_alignments.clone(),
+                    capture.associations.inline_box_families().clone(),
                 ),
             );
             text.graph = Some(&capture.graph);

@@ -458,6 +458,7 @@ mod tests {
         let end = offer.view().boundary();
         let to = end.view().participant_offset();
         let request = crate::LineSelectionRequest {
+            inline_boxes: None,
             segment: p.source_segments().next().unwrap(),
             start: b[0].clone(),
             end,

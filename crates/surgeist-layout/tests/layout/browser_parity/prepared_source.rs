@@ -517,6 +517,7 @@ impl Capture {
             ));
         }
         Ok(layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container,
             nodes: children.to_vec(),

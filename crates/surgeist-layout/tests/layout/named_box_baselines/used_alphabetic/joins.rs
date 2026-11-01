@@ -234,6 +234,7 @@ fn attach<S: l::LayoutScalar>(
         l::LayoutInputOf::inline_text(l::TextParticipation::new(origins[1].clone())),
     );
     let mut bindings = vec![l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container,
         nodes: vec![first, atomic, last],

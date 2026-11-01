@@ -75,7 +75,7 @@ fn offers(
             &first_after(prepared, &start),
             purpose,
             &[],
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -275,7 +275,14 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
                 .source_segments()
                 .next()
                 .unwrap()
-                .conditional_search(&start, None, &end, ConditionalPurpose::Overflow, &[], None)
+                .conditional_search(
+                    &start,
+                    None,
+                    &end,
+                    ConditionalPurpose::Overflow,
+                    &[],
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
+                )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
                 .unwrap_err()
@@ -294,7 +301,7 @@ fn conditional_interval_stops_at_first_ordinary_or_forced_endpoint() {
                     &first,
                     ConditionalPurpose::Overflow,
                     &[],
-                    None
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -412,7 +419,7 @@ fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
             &first_after(&prepared, &second_start),
             ConditionalPurpose::Overflow,
             &[],
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -692,7 +699,7 @@ fn missing_wrapping_fact_is_refused_only_on_the_path_that_consumes_it() {
                     &first_after(&prepared, &start),
                     ConditionalPurpose::Overflow,
                     &[],
-                    None
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -838,7 +845,7 @@ fn phantom_receipt_preserves_leading_original_custody_and_continuation() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[crate::ConditionalDisposition::Phantom(phantom.clone())],
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -941,7 +948,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             ceiling,
             ConditionalPurpose::Overflow,
             &phantom_dispositions(&receipts),
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -959,7 +966,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                 ceiling,
                 ConditionalPurpose::Overflow,
                 &phantom_dispositions(&receipts.clone()),
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -992,7 +999,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                 ceiling,
                 ConditionalPurpose::Overflow,
                 &phantom_dispositions(&other_trials),
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -1023,7 +1030,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                         ceiling,
                         ConditionalPurpose::Overflow,
                         &phantom_dispositions(&bad),
-                        None
+                        crate::ConditionalLineContext::Unframed { inline_boxes: None },
                     )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
@@ -1054,7 +1061,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
                     ceiling,
                     ConditionalPurpose::MinContent,
                     &phantom_dispositions(&receipts),
-                    None
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -1089,7 +1096,7 @@ fn phantom_receipts_cover_exact_same_offset_ordinals_and_recheck_strut_presence(
             ceiling,
             ConditionalPurpose::MinContent,
             &phantom_dispositions(&minimum_receipts),
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -1174,7 +1181,7 @@ fn retained_zero_or_signed_text_cannot_be_a_phantom_receipt() {
                         &ceiling,
                         ConditionalPurpose::Overflow,
                         &[crate::ConditionalDisposition::Phantom(receipt)],
-                        None
+                        crate::ConditionalLineContext::Unframed { inline_boxes: None },
                     )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
@@ -1278,7 +1285,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
                     &inventory[2],
                     ConditionalPurpose::Overflow,
                     &phantom_dispositions(&receipts),
-                    None
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -1304,7 +1311,7 @@ fn phantom_frontier_requires_every_real_discretionary_variant() {
                     &inventory[2],
                     ConditionalPurpose::Overflow,
                     &phantom_dispositions(&receipts),
-                    None
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())
@@ -1701,7 +1708,7 @@ fn raw_analysis_keeps_its_ordinary_model_without_additional_native_cuts() {
                         &first_after(&prepared, &start),
                         ConditionalPurpose::MinContent,
                         &[],
-                        None
+                        crate::ConditionalLineContext::Unframed { inline_boxes: None },
                     )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
@@ -2029,7 +2036,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2046,7 +2053,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
             &ceiling,
             ConditionalPurpose::Overflow,
             std::slice::from_ref(&disposition),
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -2090,7 +2097,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[ConditionalDisposition::ConsumerHyphenationPolicy(second)],
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2106,7 +2113,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 std::slice::from_ref(&disposition),
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2122,7 +2129,7 @@ fn finite_consumer_policy_discharge_reaches_a_real_manual_later_ceiling() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[disposition.clone(), disposition],
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2190,7 +2197,7 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2257,7 +2264,7 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
                 &end,
                 ConditionalPurpose::Overflow,
                 &[ConditionalDisposition::ConsumerHyphenationPolicy(line)],
-                None
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
@@ -2299,7 +2306,7 @@ fn unrelated_auto_phrase_owners_do_not_change_a_normal_intervals_authority() {
                 &normal_ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .expect("only actual interval owners require AutoPhrase finite stages");
         assert!(search.phrase_portions().is_empty());
@@ -2324,7 +2331,7 @@ fn unrelated_auto_phrase_owners_do_not_change_a_normal_intervals_authority() {
                     &first_after(&p, &affected_start),
                     ConditionalPurpose::Overflow,
                     &[],
-                    None
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .is_err(),
             "the actual AutoPhrase interval still requires its finite frame"

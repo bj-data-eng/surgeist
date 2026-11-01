@@ -1220,6 +1220,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             formatted: &context.formatted,
             line_box_context: context.line_box_context,
             prepared: &binding.prepared,
+            inline_boxes: run.inline_boxes.family(),
             segment: run.segment.clone(),
             scope_alignments: &context.scope_alignments,
             available,
@@ -2224,6 +2225,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         nonformatted_controls,
         paragraph: PendingParagraph {
             binding_index: run.binding_index,
+            inline_boxes: run.inline_boxes.clone(),
             segment: run.segment.clone(),
             container: binding.container,
             nodes,

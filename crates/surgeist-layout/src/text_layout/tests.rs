@@ -342,6 +342,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 capture.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: super::run::text_orientation(WritingMode::HorizontalTb, &binding.prepared)
                 .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),

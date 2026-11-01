@@ -124,6 +124,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
         .unwrap()
         .handle();
     LineSelectionRequest {
+        inline_boxes: None,
         segment: prepared.source_segments().next().unwrap(),
         boundary_context: Vec::new(),
         incoming: None,
@@ -517,6 +518,7 @@ fn selected_empty_control(policy: ParagraphStrut) -> SelectedLine {
         })
         .collect();
     p.select(LineSelectionRequest {
+        inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         boundary_context: Vec::new(),
         incoming: None,

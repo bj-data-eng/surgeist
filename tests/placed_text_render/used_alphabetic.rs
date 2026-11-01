@@ -271,6 +271,7 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![1],

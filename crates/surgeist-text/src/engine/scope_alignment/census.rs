@@ -146,6 +146,16 @@ fn visit_selected_own_allocations(
     visit: &mut AllocationVisitor<'_>,
 ) -> Result<()> {
     crate::protocol::inline_box::visit_request_allocations(request, visit)?;
+    crate::protocol::scope_alignment::visit_request_scope_frames(request, &mut |edge| {
+        if let crate::protocol::scope_alignment::ScopeProofVisit::Family(family) = edge {
+            family.visit_allocations(visit)?;
+        }
+        Ok(())
+    })?;
+    if let Some(projected) = &basis.inline_boxes {
+        projected.visit_allocations(visit)?;
+    }
+
     let shaped = &basis.shaped;
     let characters = &basis.characters;
     let order = &basis.order;
@@ -346,6 +356,7 @@ fn product_prepared<'a>(product: crate::protocol::ScopeAlignmentProduct<'a>) -> 
     use crate::protocol::ScopeAlignmentProduct as Product;
     match product {
         Product::Prepared(value) => &value.inner,
+        Product::InlineBoxFamily(value) => &value.inner.prepared.inner,
         Product::Selected(value) => &value.inner.prepared,
         Product::Finalized(value) => &value.inner.selected.prepared,
     }
@@ -355,6 +366,10 @@ fn product_prepared<'a>(product: crate::protocol::ScopeAlignmentProduct<'a>) -> 
 enum Input<'a> {
     Product(crate::protocol::ScopeAlignmentProduct<'a>),
     Placed(&'a crate::engine::layout::data::PlacedLayout),
+    InlineBoxFamily {
+        prepared: &'a PreparedData,
+        native_boxes: &'a Vec<crate::InlineBoxSource>,
+    },
     Selection {
         prepared: &'a PreparedData,
         request: &'a crate::protocol::LineSelectionRequest,
@@ -370,6 +385,13 @@ impl<'a> Input<'a> {
         use crate::protocol::ScopeAlignmentCensusInput as Public;
         match input {
             Public::Product(product) => Self::Product(product),
+            Public::InlineBoxFamily {
+                prepared,
+                native_boxes,
+            } => Self::InlineBoxFamily {
+                prepared: &prepared.inner,
+                native_boxes,
+            },
             Public::Selection { prepared, request } => Self::Selection {
                 prepared: &prepared.inner,
                 request,
@@ -389,7 +411,9 @@ impl<'a> Input<'a> {
         match self {
             Self::Product(product) => product_prepared(product),
             Self::Placed(layout) => &layout.prepared,
-            Self::Selection { prepared, .. } | Self::Flow { prepared, .. } => prepared,
+            Self::Selection { prepared, .. }
+            | Self::Flow { prepared, .. }
+            | Self::InlineBoxFamily { prepared, .. } => prepared,
         }
     }
 }
@@ -427,6 +451,8 @@ enum Phase {
 #[derive(Clone, Copy)]
 enum Root<'a> {
     Prepared(&'a PreparedData),
+    InlineBoxFamily(&'a crate::PreparedInlineBoxFamily),
+    NativeBoxes(&'a Vec<crate::InlineBoxSource>),
     Request(&'a crate::protocol::LineSelectionRequest),
     Selected(&'a Arc<crate::protocol::selection::SelectedData>),
     Finalized(&'a Arc<crate::engine::FinalizedLine>),
@@ -435,6 +461,8 @@ impl Root<'_> {
     fn same(self, other: Self) -> bool {
         match (self, other) {
             (Self::Prepared(a), Self::Prepared(b)) => std::ptr::eq(a, b),
+            (Self::InlineBoxFamily(a), Self::InlineBoxFamily(b)) => Arc::ptr_eq(&a.inner, &b.inner),
+            (Self::NativeBoxes(a), Self::NativeBoxes(b)) => std::ptr::eq(a, b),
             (Self::Request(a), Self::Request(b)) => std::ptr::eq(a, b),
             (Self::Selected(a), Self::Selected(b)) => Arc::ptr_eq(a, b),
             (Self::Finalized(a), Self::Finalized(b)) => Arc::ptr_eq(a, b),
@@ -444,6 +472,15 @@ impl Root<'_> {
     fn allocations(self, visit: &mut AllocationVisitor<'_>) -> Result<()> {
         match self {
             Self::Prepared(value) => visit_prepared(value, visit),
+            Self::InlineBoxFamily(value) => {
+                visit_prepared(&value.inner.prepared.inner, visit)?;
+                value.visit_allocations(visit)
+            }
+            Self::NativeBoxes(value) => {
+                // The consumed argument header is caller/stack bookkeeping;
+                // the real retained header is funded inside FamilyData once.
+                visit(AllocationWitness::buffer(value, value.len())?)
+            }
             Self::Request(value) => {
                 crate::protocol::inline_box::visit_request_allocations(value, visit)
             }
@@ -466,11 +503,20 @@ enum RootVisit<'a> {
     Owner { root: Root<'a>, phase: Phase },
 }
 
-fn related_slots(related: crate::protocol::ScopeAlignmentProducts<'_>) -> usize {
+fn related_slots(related: crate::protocol::ScopeAlignmentProducts<'_>) -> Result<usize> {
     use crate::protocol::ScopeAlignmentProducts as Products;
     match related {
-        Products::Mixed(values) => values.len(),
-        Products::FinalizedSlots(values) => values.len(),
+        Products::Mixed(values) => Ok(values.len()),
+        Products::FinalizedSlots(values) => Ok(values.len()),
+        Products::InlineBoxFamilySlots(values) => Ok(values.len()),
+        Products::FinalizedAndInlineBoxFamilies {
+            finalized,
+            families,
+        } => checked_sum(
+            crate::ScopeAlignmentLimitKind::StructuralWork,
+            finalized.len(),
+            families.len(),
+        ),
     }
 }
 
@@ -527,6 +573,12 @@ fn visit_product_roots<'a>(
             visit_closed_roots(&value.inner.scopes.proof_frames, phase, emit)
         }
         Product::Finalized(value) => visit_finalized_roots(&value.inner, phase, emit),
+        Product::InlineBoxFamily(value) if value.scope_alignment_retention().is_some() => {
+            emit(RootVisit::Owner {
+                root: Root::InlineBoxFamily(value),
+                phase,
+            })
+        }
         _ => Ok(()),
     }
 }
@@ -576,6 +628,13 @@ fn visit_input_roots<'a>(
             phase: Phase::Input,
         })?;
     }
+    if let Input::InlineBoxFamily { native_boxes, .. } = input {
+        emit(RootVisit::Work(native_boxes.len()))?;
+        emit(RootVisit::Owner {
+            root: Root::NativeBoxes(native_boxes),
+            phase: Phase::Input,
+        })?;
+    }
     if let Input::Selection { request, .. } = input
         && crate::protocol::inline_box::contexts(&request.controls, &request.boundary_context)
             .next()
@@ -608,6 +667,13 @@ fn visit_input_roots<'a>(
     }
     let mut proof = |edge: Proof<'a>| match edge {
         Proof::Work(count) => emit(RootVisit::Work(count)),
+        Proof::Family(family) => {
+            emit(RootVisit::Work(1))?;
+            emit(RootVisit::Owner {
+                root: Root::InlineBoxFamily(family),
+                phase: Phase::Input,
+            })
+        }
         Proof::Frame(frame) => {
             emit(RootVisit::Work(1))?;
             emit(RootVisit::Owner {
@@ -627,7 +693,7 @@ fn visit_input_roots<'a>(
             crate::protocol::scope_alignment::visit_request_scope_frames(request, &mut proof)
         }
         Input::Flow { segment, .. } => segment.visit_scope_frames(&mut proof),
-        Input::Product(_) | Input::Placed(_) => Ok(()),
+        Input::Product(_) | Input::Placed(_) | Input::InlineBoxFamily { .. } => Ok(()),
     }
 }
 
@@ -641,7 +707,7 @@ fn visit_raw_roots<'a>(
     use crate::protocol::ScopeAlignmentProducts as Products;
     emit(RootVisit::Work(checked_sum(
         crate::ScopeAlignmentLimitKind::StructuralWork,
-        related_slots(related),
+        related_slots(related)?,
         1,
     )?))?;
     visit_input_roots(input, emit)?;
@@ -655,6 +721,34 @@ fn visit_raw_roots<'a>(
             for frame in values.iter().flatten() {
                 visit_product_roots(
                     crate::protocol::ScopeAlignmentProduct::Finalized(frame),
+                    Phase::External,
+                    emit,
+                )?;
+            }
+        }
+        Products::InlineBoxFamilySlots(values) => {
+            for family in values.iter().flatten() {
+                visit_product_roots(
+                    crate::protocol::ScopeAlignmentProduct::InlineBoxFamily(family),
+                    Phase::External,
+                    emit,
+                )?;
+            }
+        }
+        Products::FinalizedAndInlineBoxFamilies {
+            finalized,
+            families,
+        } => {
+            for frame in finalized.iter().flatten() {
+                visit_product_roots(
+                    crate::protocol::ScopeAlignmentProduct::Finalized(frame),
+                    Phase::External,
+                    emit,
+                )?;
+            }
+            for family in families.iter().flatten() {
+                visit_product_roots(
+                    crate::protocol::ScopeAlignmentProduct::InlineBoxFamily(family),
                     Phase::External,
                     emit,
                 )?;
@@ -880,4 +974,33 @@ pub(crate) fn live_products(
         value.external_retention,
         value.budget.usage(),
     ))
+}
+
+/// Admit actual prepared/native declaration custody before family allocation.
+pub(crate) fn begin_inline_box_family(
+    prepared: &PreparedData,
+    native_boxes: &Vec<crate::InlineBoxSource>,
+    allowance: Option<crate::ScopeAlignmentAllowance>,
+) -> Result<Option<ScopeAlignmentBudget>> {
+    Ok(census(
+        Input::InlineBoxFamily {
+            prepared,
+            native_boxes,
+        },
+        crate::protocol::ScopeAlignmentProducts::Mixed(&[]),
+        allowance,
+    )?
+    .map(|c| c.budget))
+}
+
+pub(crate) fn retained_inline_box_family(
+    family: &crate::PreparedInlineBoxFamily,
+    budget: &mut ScopeAlignmentBudget,
+) -> Result<crate::ScopeAlignmentRetention> {
+    let mut set = AllocationSet::new();
+    visit_prepared(&family.inner.prepared.inner, &mut |w| {
+        set.observe(w, budget).map(|_| ())
+    })?;
+    family.visit_allocations(&mut |w| set.observe(w, budget).map(|_| ()))?;
+    set.finish(budget)
 }
