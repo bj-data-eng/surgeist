@@ -596,14 +596,7 @@ pub(crate) fn document(
                     .control
                     .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
             }
-            return Err(match parts.into_detached_failure() {
-                Ok(failure) => ordinary_failure(owner, reason, failure),
-                Err(_) => HtmlParseFailure {
-                    reason,
-                    storage: FailureStorage::OrdinaryInitialization(owner),
-                    cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
-                },
-            });
+            return Err(detach_frozen_ordinary(owner, reason, parts));
         }
     };
     match ImmutableParseReport::publish_document(sealed) {
@@ -621,6 +614,23 @@ pub(crate) fn document(
                 cleanup_error: refused.then_some(HtmlParseEngineCondition::Cleanup),
             })
         }
+    }
+}
+/// Ends a frozen ordinary execution that could not be sealed: the stopped
+/// parts are cleaned and detached into the failure, or, if either step is
+/// refused, the request-owning carrier reports it.
+fn detach_frozen_ordinary(
+    owner: OrdinaryInitialization,
+    reason: HtmlParseFailureReason,
+    parts: FrozenStandaloneParts,
+) -> HtmlParseFailure {
+    match parts.into_detached_failure() {
+        Ok(failure) => ordinary_failure(owner, reason, failure),
+        Err(_) => HtmlParseFailure {
+            reason,
+            storage: FailureStorage::OrdinaryInitialization(owner),
+            cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
+        },
     }
 }
 /// Joins a cleaned failure to the original request. If the join is refused the
@@ -779,14 +789,7 @@ pub(crate) fn fragment(
                     .control
                     .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
             }
-            return Err(match StoppedFragmentConstruction::from_frozen(parts) {
-                Ok(stopped) => fragment_failure(owner, reason, stopped),
-                Err(_) => HtmlParseFailure {
-                    reason,
-                    storage: FailureStorage::FragmentInitialization(owner),
-                    cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
-                },
-            });
+            return Err(detach_frozen_fragment(owner, reason, parts));
         }
     };
     match ImmutableParseReport::publish_fragment(sealed) {
@@ -804,6 +807,22 @@ pub(crate) fn fragment(
                 cleanup_error: refused.then_some(HtmlParseEngineCondition::Cleanup),
             })
         }
+    }
+}
+/// Ends a frozen fragment execution that could not be sealed, as
+/// [`detach_frozen_ordinary`] does for an ordinary one.
+fn detach_frozen_fragment(
+    owner: FragmentInitialization,
+    reason: HtmlParseFailureReason,
+    parts: FrozenContextFragmentParts,
+) -> HtmlParseFailure {
+    match StoppedFragmentConstruction::from_frozen(parts) {
+        Ok(stopped) => fragment_failure(owner, reason, stopped),
+        Err(_) => HtmlParseFailure {
+            reason,
+            storage: FailureStorage::FragmentInitialization(owner),
+            cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
+        },
     }
 }
 /// Joins a stopped construction to the original request. If either step is
