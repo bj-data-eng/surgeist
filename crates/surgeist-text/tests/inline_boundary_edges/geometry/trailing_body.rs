@@ -246,3 +246,6 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
 
 #[path = "trailing_body/supplement.rs"]
 mod supplement;
+
+#[path = "trailing_body/direction.rs"]
+mod direction;
