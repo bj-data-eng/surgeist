@@ -280,7 +280,8 @@ fn capture(
                     )
                     .unwrap(),
                     layout::InlineBoundaryEdge::ZERO,
-                ),
+                )
+                .unwrap(),
             ));
         }
     } else {

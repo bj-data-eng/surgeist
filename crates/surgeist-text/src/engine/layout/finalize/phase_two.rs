@@ -169,7 +169,13 @@ fn positions(
                 )?
             }
             ShapedItem::Anchor { unit } => {
-                crate::protocol::boundary::advance(selected.presentation_input(), unit)
+                let boundary =
+                    crate::protocol::boundary::facts(selected.presentation_input(), unit);
+                pen = boundary
+                    .execute(pen, TextNumericPhase::Finalization)?
+                    .flow
+                    .1;
+                continue;
             }
         };
         pen = add(
@@ -241,7 +247,10 @@ fn raw_trailing(
     for item in shaped.items.iter().rev() {
         match *item {
             ShapedItem::Anchor { unit } => {
-                if crate::protocol::boundary::advance(selected.presentation_input(), unit) != 0.0 {
+                if crate::protocol::boundary::facts(selected.presentation_input(), unit)
+                    .allocation()
+                    .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
+                {
                     break;
                 }
             }
@@ -345,7 +354,9 @@ pub(super) fn natural(
         for &ordinal in &visual {
             let row = match shaped.items[ordinal] {
                 ShapedItem::Anchor { unit } => {
-                    if crate::protocol::boundary::advance(selected.presentation_input(), unit) > 0.0
+                    if crate::protocol::boundary::facts(selected.presentation_input(), unit)
+                        .allocation()
+                        .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
                     {
                         break;
                     }
@@ -622,11 +633,19 @@ struct Baseline {
     raw_advance: Option<f64>,
     fit_anchor: bool,
 }
+/// The actual order and its selected-only BoxEdge authority. Context-only
+/// declarations do not produce a plan; zero-valued selected BoxEdges do.
+pub(super) struct MeasurementOrder<'order, 'source, 'scratch> {
+    pub(super) order: &'order crate::SuppliedVisualOrder<'source, 'scratch>,
+    pub(super) box_edges: Option<&'order crate::protocol::inline_box::execution::ExecutionPlan>,
+}
+
 /// Cluster positions and the actual admitted execution that produced them.
 /// Exclusion purposes vary; none may restore the selection's former traversal.
 struct MeasurementExecution<'positions, 'source, 'scratch> {
     positions: &'positions [(f64, f64)],
     order: &'positions crate::SuppliedVisualOrder<'source, 'scratch>,
+    box_edges: Option<&'positions crate::protocol::inline_box::execution::ExecutionPlan>,
 }
 fn measure(
     selected: &SelectedData,
@@ -638,80 +657,89 @@ fn measure(
     ledger: &mut Ledger,
 ) -> Result<(InlineMeasure, crate::MarginEdgeFit)> {
     let positions = execution.positions;
+    let canonical_box_flow =
+        execution.box_edges.is_some() && selected.metric_policy == LineMetricPolicy::Native;
     account::work(ledger, shaped.items.len())?;
     let mut advance = baseline.raw_advance.unwrap_or(0.0);
     let mut bounds = None;
     let mut anchor = 0.0;
-    let mut css_composed = false;
-    for item in &shaped.items {
-        let contribution = match *item {
-            ShapedItem::Cell(cell) => {
-                if baseline.raw_advance.is_some() {
-                    0.0
-                } else {
-                    shaped.cells[cell].advance
-                }
-            }
-            ShapedItem::TextCluster(i) if shaped.clusters[i].whitespace != Whitespace::Newline => {
-                let excluded = exclusions[i].excluded(positions[i], shaped.clusters[i].advance)?;
-                if baseline.fit_anchor && exclusions[i].punctuation_start {
-                    anchor = add(
-                        "raw punctuation origin",
-                        TextNumericPhase::Finalization,
-                        anchor,
-                        excluded,
-                    )?
-                }
-                if baseline.raw_advance.is_some() {
-                    let prior = if exclusions[i].raw_trim {
-                        shaped.clusters[i].advance
-                    } else {
+    let mut css_composed = execution.box_edges.is_some();
+    if !canonical_box_flow {
+        for item in &shaped.items {
+            let contribution = match *item {
+                ShapedItem::Cell(cell) => {
+                    if baseline.raw_advance.is_some() {
                         0.0
-                    };
-                    let extra = add(
-                        "raw additional exclusion",
-                        TextNumericPhase::Finalization,
-                        excluded,
-                        -prior,
-                    )?;
-                    -extra
-                } else {
-                    add(
-                        "retained attributed advance",
-                        TextNumericPhase::Finalization,
-                        shaped.clusters[i].advance,
-                        -excluded,
-                    )?
+                    } else {
+                        shaped.cells[cell].advance
+                    }
                 }
-            }
-            ShapedItem::InlineBox { occurrence, .. } => {
-                let (flow, _, _, fit) = inflow_allocation(atomics[&occurrence])?;
-                css_composed |= matches!(fit, crate::AtomicFitAllocation::CssMarginBox(_));
-                if baseline.raw_advance.is_some() {
-                    0.0
-                } else {
-                    super::super::super::spacing::character::atomic_advance(
-                        shaped,
-                        occurrence,
-                        flow.advance,
-                    )?
+                ShapedItem::TextCluster(i)
+                    if shaped.clusters[i].whitespace != Whitespace::Newline =>
+                {
+                    let excluded =
+                        exclusions[i].excluded(positions[i], shaped.clusters[i].advance)?;
+                    if baseline.fit_anchor && exclusions[i].punctuation_start {
+                        anchor = add(
+                            "raw punctuation origin",
+                            TextNumericPhase::Finalization,
+                            anchor,
+                            excluded,
+                        )?
+                    }
+                    if baseline.raw_advance.is_some() {
+                        let prior = if exclusions[i].raw_trim {
+                            shaped.clusters[i].advance
+                        } else {
+                            0.0
+                        };
+                        let extra = add(
+                            "raw additional exclusion",
+                            TextNumericPhase::Finalization,
+                            excluded,
+                            -prior,
+                        )?;
+                        -extra
+                    } else {
+                        add(
+                            "retained attributed advance",
+                            TextNumericPhase::Finalization,
+                            shaped.clusters[i].advance,
+                            -excluded,
+                        )?
+                    }
                 }
-            }
-            ShapedItem::Anchor { unit } => {
-                if baseline.raw_advance.is_some() {
-                    0.0
-                } else {
-                    crate::protocol::boundary::advance(selected.presentation_input(), unit)
+                ShapedItem::InlineBox { occurrence, .. } => {
+                    let (flow, _, _, fit) = inflow_allocation(atomics[&occurrence])?;
+                    css_composed |= matches!(fit, crate::AtomicFitAllocation::CssMarginBox(_));
+                    if baseline.raw_advance.is_some() {
+                        0.0
+                    } else {
+                        super::super::super::spacing::character::atomic_advance(
+                            shaped,
+                            occurrence,
+                            flow.advance,
+                        )?
+                    }
                 }
-            }
-            _ => 0.0,
-        };
-        advance = add(
-            "edge signed flow",
-            TextNumericPhase::Finalization,
-            advance,
-            contribution,
-        )?;
+                ShapedItem::Anchor { unit } => {
+                    // The raw-profile branch had no scalar lookup. Authority comes
+                    // from the already-admitted selected execution, not a new scan.
+                    if baseline.raw_advance.is_some() {
+                        0.0
+                    } else {
+                        crate::protocol::boundary::advance(selected.presentation_input(), unit)
+                    }
+                }
+                _ => 0.0,
+            };
+            advance = add(
+                "edge signed flow",
+                TextNumericPhase::Finalization,
+                advance,
+                contribution,
+            )?;
+        }
     }
     if baseline.fit_anchor {
         include(&mut bounds, anchor, anchor)
@@ -721,6 +749,7 @@ fn measure(
     let mut opaque = None;
     // Every purpose uses the same admitted order as actual positioning.
     for (ordinal, _) in execution.order.iter() {
+        let mut executed_end = None;
         let contribution = match shaped.items[ordinal] {
             ShapedItem::Cell(cell) => {
                 let extent = shaped.cells[cell].extent;
@@ -773,15 +802,16 @@ fn measure(
                 )?
             }
             ShapedItem::Anchor { unit } => {
-                let n = crate::protocol::boundary::advance(selected.presentation_input(), unit);
-                if n != 0.0 {
-                    include(
-                        &mut bounds,
-                        pen,
-                        add("occupied boundary", TextNumericPhase::Finalization, pen, n)?,
-                    )
+                let boundary =
+                    crate::protocol::boundary::facts(selected.presentation_input(), unit);
+                let edge = boundary.execute(pen, TextNumericPhase::Finalization)?;
+                if boundary.allocation().is_some_and(|allocation| {
+                    allocation.box_components().is_some() || allocation.strip_advance() != 0.0
+                }) {
+                    include(&mut bounds, edge.strip.0, edge.strip.1);
                 }
-                n
+                executed_end = Some(edge.flow.1);
+                boundary.advance()
             }
         };
         if css_composed {
@@ -809,16 +839,24 @@ fn measure(
                 delta,
             )?;
         }
-        pen = add(
-            "occupied edge flow",
-            TextNumericPhase::Finalization,
-            pen,
-            contribution,
-        )?;
+        pen = if let Some(end) = executed_end {
+            end
+        } else {
+            add(
+                "occupied edge flow",
+                TextNumericPhase::Finalization,
+                pen,
+                contribution,
+            )?
+        };
     }
     let (occupied_start, occupied_end) = bounds.unwrap_or((0.0, 0.0));
     let raw = InlineMeasure {
-        advance,
+        advance: if canonical_box_flow {
+            fit_flow
+        } else {
+            advance
+        },
         occupied_start,
         occupied_end,
     };
@@ -910,11 +948,12 @@ pub(super) fn allocated(
     selected: &SelectedData,
     shaped: &ShapedData,
     atomics: &OrdinalMap<&AtomicAllocation>,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    execution_order: MeasurementOrder<'_, '_, '_>,
     natural: Natural,
     metrics: &mut LineMetrics,
     ledger: &mut Ledger,
 ) -> Result<AllocatedMeasurements> {
+    let order = execution_order.order;
     for (i, cause) in natural.deferred.iter().enumerate() {
         if let Some((cause, _)) = cause
             && shaped.clusters[i].advance != 0.0
@@ -929,6 +968,11 @@ pub(super) fn allocated(
         Side::End
     };
     let (positions, total) = positions(selected, shaped, atomics, order, ledger)?;
+    if native && execution_order.box_edges.is_some() {
+        // Logical prefix receipts have already frozen their own fold. Feedback
+        // observes this selection's actual zero-origin physical execution.
+        metrics.advance = total;
+    }
     let needs_edge = natural.causes.iter().any(|cause| {
         cause
             .rows
@@ -1114,6 +1158,7 @@ pub(super) fn allocated(
     let execution = MeasurementExecution {
         positions: &positions,
         order,
+        box_edges: execution_order.box_edges,
     };
     let (fit, margin_fit) = measure(
         selected,

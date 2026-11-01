@@ -439,7 +439,7 @@ where
                     .control_slots()
                     .find(|slot| &slot.control() == control)
                     .unwrap();
-                assert_eq!(slot.inline_bounds(), expected);
+                assert_eq!(slot.strip_interval(), expected);
                 for entries in [batch.unrounded_entries(), batch.final_entries()] {
                     let endpoint = entries
                         .iter()
@@ -507,13 +507,21 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
                     vec![
                         (
                             100,
-                            InlineBoundaryEdgeOf::try_new(S::from_f64(1.0), S::from_f64(1.0))
-                                .unwrap(),
+                            InlineBoundaryEdgeOf::try_new(
+                                S::ZERO,
+                                S::from_f64(1.0),
+                                S::from_f64(1.0),
+                            )
+                            .unwrap(),
                         ),
                         (
                             101,
-                            InlineBoundaryEdgeOf::try_new(S::from_f64(1.0), S::from_f64(2.0))
-                                .unwrap(),
+                            InlineBoundaryEdgeOf::try_new(
+                                S::ZERO,
+                                S::from_f64(1.0),
+                                S::from_f64(2.0),
+                            )
+                            .unwrap(),
                         ),
                     ]
                 } else {
@@ -577,10 +585,13 @@ fn physical_nested_pairs_keep_the_mark_attached_and_count_each_edge_once() {
             let p = binding(&font, rtl, true, true, true);
             qualify_source(&p, rtl, true);
             let edges = [
-                (102, InlineBoundaryEdgeOf::try_new(S::ONE, S::ONE).unwrap()),
+                (
+                    102,
+                    InlineBoundaryEdgeOf::try_new(S::ZERO, S::ONE, S::ONE).unwrap(),
+                ),
                 (
                     103,
-                    InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(2.0)).unwrap(),
+                    InlineBoundaryEdgeOf::try_new(S::ZERO, S::ONE, S::from_f64(2.0)).unwrap(),
                 ),
             ];
             let tree = tree::<S>(&p, rtl, &edges);
@@ -662,7 +673,7 @@ fn snapshot<S: LayoutScalar>(
             let line = row.fragment().finalized_fragment().finalized_line();
             let controls = line
                 .control_slots()
-                .map(|slot| (slot.control(), slot.inline_bounds(), slot.slot()))
+                .map(|slot| (slot.control(), slot.strip_interval(), slot.slot()))
                 .collect::<Vec<_>>();
             (line.selected_line().request().clone(), controls)
         })
@@ -710,10 +721,13 @@ fn changed_end_edge_reuses_preparation_and_matches_fresh_current_packets() {
         qualify_source(&p, false, false);
         let preparation = p.prepared.clone();
         let edges = [
-            (100, InlineBoundaryEdgeOf::try_new(S::ONE, S::ONE).unwrap()),
+            (
+                100,
+                InlineBoundaryEdgeOf::try_new(S::ZERO, S::ONE, S::ONE).unwrap(),
+            ),
             (
                 101,
-                InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(2.0)).unwrap(),
+                InlineBoundaryEdgeOf::try_new(S::ZERO, S::ONE, S::from_f64(2.0)).unwrap(),
             ),
         ];
         let mut host = CachedHost::new(tree::<S>(&p, false, &edges));
@@ -727,13 +741,14 @@ fn changed_end_edge_reuses_preparation_and_matches_fresh_current_packets() {
         let before = host.tree.layout_input(101).as_inline_boundary().unwrap();
         assert_eq!(
             before.edge(),
-            InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(2.0)).unwrap()
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::ONE, S::from_f64(2.0)).unwrap()
         );
         let changed_input = InlineBoundaryInputOf::contribution(
             before.kind(),
             before.metrics(),
-            InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(4.0)).unwrap(),
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::ONE, S::from_f64(4.0)).unwrap(),
         )
+        .unwrap()
         .with_writing_mode(before.writing_mode())
         .with_direction(before.direction())
         .with_vertical_align(before.vertical_align());

@@ -57,6 +57,7 @@ fn numeric_boundary<S: l::LayoutScalar>(
             .unwrap(),
             l::InlineBoundaryEdgeOf::ZERO,
         )
+        .unwrap()
         .with_direction(direction),
     )
 }

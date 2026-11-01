@@ -31,7 +31,7 @@ private implementation organization.
 | Composition | `source`, `compose`, `Composer`, `Mark` | [composer.rs](../src/composer.rs) |
 | Pre-font source processing | `process_source_whitespace`, `process_contextual_source`, `ProcessedSource`, issued `ProcessedParagraph` views and partial plaintext | [processing.rs](../src/processing.rs), [contextual capture](../src/processing/contextual.rs) |
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
-| Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoxSource`, `InlineBoxEdgeContext`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::inline_bounds` | [protocol types](../src/protocol/mod.rs), [checked box ownership](../src/protocol/inline_box.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
+| Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoxEdgeComponents`, `InlineBoxSource`, `InlineBoxEdgeContext`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::{flow_interval, strip_interval}` | [protocol types](../src/protocol/mod.rs), [checked box ownership](../src/protocol/inline_box.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
 | Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Original analysis and layout | `AnalyzedSource`, `AnalyzedDomain`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
@@ -881,18 +881,19 @@ and [native determination](../../../references/text-hanging-punctuation--native-
 
 ## Native inline endpoint geometry
 
-Layout owns each Start/End endpoint's actual used border and padding.
-[InlineBoundaryEdgeOf](../../surgeist-layout/src/node_input/inline.rs)
-checks the nonnegative finite components and their sum in Layout scalar `S`.
-Its `ZERO` is affirmative used zero, not unavailable Style geometry. Lower
-`edge.advance()` once to Text's `f64`; separately widening and adding `f32`
-components would change the used sum and potentially a tab threshold.
+An endpoint's flow moves the line pen; its strip is the actual border/padding
+footprint. A signed margin can move the pen backwards or cancel the strip's
+advance, so these observations are separate. Layout's
+[InlineBoundaryEdgeOf](../../surgeist-layout/src/node_input/inline.rs) retains
+finite signed margin and finite nonnegative border/padding. Its `ZERO` is an
+affirmative three-component zero, not unavailable Style geometry.
 
 Choose the operation explicitly. `InlineBoundaryInputOf::contribution` and
-Text's `InlineBoundaryAllocation::contribution` supply one endpoint's advance;
-uncaptured, unpaired and strut-only Native controls remain valid. Full box-side
+Text's `InlineBoundaryAllocation::contribution` supply one endpoint's finite
+nonnegative advance; uncaptured, unpaired and strut-only Native controls remain
+valid. Layout's Contribution constructor refuses a nonzero margin. Full box-side
 geometry uses Layout's `box_edge(..., parent_axes)` and Text's
-`InlineBoundaryAllocation::box_edge(context, advance)`. Layout's existing
+`InlineBoundaryAllocation::box_edge(context, components)`. Layout's existing
 writing-mode/direction fields still describe the containing Block formatter.
 The immediate parent's axes are a separate resolved fact, including when its
 direction opposes that formatter.
@@ -902,25 +903,36 @@ For BoxEdge, obtain an `InlineBoxSource` from a genuine captured Inline scope or
 scope nominations canonicalize to that scope; matching cuts do not establish a
 pair. `PreparedText::inline_box_edge_context` checks the source owner and actual
 immediate parent, retaining the caller's resolved physical source-Start side.
-The domain is a legal parent, not an inline owner. Selection checks the supplied
-family, paired-side consistency and selected
-incidence. Both constructors check finite nonnegative advances and normalize
-negative zero. Zero BoxEdge still needs its context; zero Contribution does not
+The domain is a legal parent, not an inline owner. Selection checks all owner and
+parent references in the supplied family, paired-side consistency and selected
+incidence. Zero BoxEdge still needs its context; zero Contribution does not
 acquire box authority from capture. A refused BoxEdge is never retried as a
 Contribution by the implementation.
+
+`InlineBoxEdgeComponents::from_f32` and `::from_f64` check the actual component
+lane before widening its results. Ordinary border/padding addition retains that
+lane's existing rounding; the new signed margin-plus-strip flow is checked
+separately, including nonfinite and wholly lost nonzero terms. Exact cancellation
+is valid, and signed zeros canonicalize. A caller cannot supply inconsistent
+totals. Do not widen `f32` components separately and re-sum them in `f64`: that
+can change the used flow and a tab threshold. Actual execution and Layout
+conversion separately qualify nonzero margin displacement at its recipient.
 
 | Text input | Admission and custody |
 | --- | --- |
 | `InlineBoundaryAllocation::contribution(advance)` | One real endpoint's Native advance, without an inferred box or parent. |
-| `InlineBoundaryAllocation::box_edge(context, advance)` | Checked actual owner/parent/side plus the used advance, including zero. |
+| `InlineBoundaryAllocation::box_edge(context, components)` | Checked actual owner/parent/side plus the typed signed margin and border/padding receipt, including zero. |
 | `ControlAllocation::boundary` | Every selected InlineBoundaryStart/End requires `Some`, including zero; all other controls require `None`. Struts remain independent vertical metrics. |
 | `LineSelectionRequest::boundary_context` | Only demanded off-selection endpoint facts; no selected flow, strut, fragment or placement. Selected endpoints belong only in `controls`. |
 
 For each complete candidate request, `PreparedText::boundary_context_demand`
 returns the next genuine off-selection `PreparedControl` needed by consumed
 shaping context, or `None`. Append its actual `InlineBoundaryContextAllocation`
-and repeat. The list must be the canonical first-demand prefix; a proved positive
-barrier stops the outward walk, while zero can reveal a farther endpoint.
+and repeat. The list must be the canonical first-demand prefix; a proved separating
+boundary stops the outward walk, while an all-zero edge can reveal a farther
+endpoint. BoxEdge separation uses individual nonzero components, including
+negative margin and zero-total cancellation; Contribution retains its positive
+scalar rule.
 The query validates the request without shaping, fitting or querying fonts.
 `select` also accepts a directly supplied complete list in the same order.
 
@@ -934,7 +946,7 @@ typed. Missing geometry cannot be replaced with zero.
 `ProtocolError::InlineBoxEdge` distinguishes missing/foreign capture, wrong domain,
 invalid owner/pair/parent, inconsistent context and unrepresented incidence.
 
-Positive inter-unit edges bound selection-local original and presentation joining
+Separating inter-unit edges bound selection-local original and presentation joining
 context. A Contribution inside one indivisible typographic unit keeps its Native
 numeric contribution without splitting shared provider positions. BoxEdges use
 actual selected membership and packet extrema: the assigned sides surround the
@@ -944,20 +956,41 @@ unrepresentable incidence refuses. One schedule supplies spacing, TAB pens,
 measurements and geometry. Only selected endpoints add flow. Finalized
 `prefix_at` retains original-logical receipts from that complete frozen execution,
 including its actual TAB advances; a new partial selection executes separately.
-Zero edges remain transparent to hanging, and positive edges stop it locally.
+Hanging eligibility tests border/padding, not margin alone or net flow, for both
+punctuation and preserved separators. Conditional hanging still uses the actual
+signed geometry and available edge. `InlineBoundaryAllocation::participates()`
+uses individual nonzero margin/border/padding for BoxEdge and the positive scalar
+rule for Contribution, independently of struts and final physical size.
+Non-atomic boundaries remain transparent to
+phase-II whitespace processing.
 
 Operation and context remain part of request, conditional/frame and replay
-identity, even at zero advance. The operation accounts its actual retained records,
+identity, including component lane and zero-flow operations. A changed shaping
+barrier requires reselection; spacing replay preserves its admitted facts. The
+operation accounts its actual retained records,
 source owners and derived plan/scratch through the existing resource owner;
 Contribution-only requests need no box-family scan or topology buffer.
 
-`FinalizedControlView::inline_bounds()` returns the checked physical left/right
-interval; `slot().x` is its left end. The source-free
-`FinalizedFragmentOwner::Control` retains that interval at actual line-metric
-height. Layout separately publishes the endpoint node's width×0 footprint and
-own-side border/padding. Virtual-separator Scope fragments retain only their
-actual local separator geometry. These are distinct observations of genuine
-occurrences; endpoint width is never added to every incident source Range.
+`FinalizedControlView::flow_interval()` returns the executed directed pen pair;
+`strip_interval()` returns the nonnegative physical strip. A start margin of 3 with
+border 2/padding 1 produces strip 3..6 and flow 0..6. After Ahem10 at 6..16, end
+border 1/padding 2/margin −4 produces strip 16..19 but flow 16..15. No negative-width
+rectangle represents that backwards flow.
+
+The source-free `FinalizedFragmentOwner::Control` retains the strip at actual
+line-metric height. Layout separately publishes the node's strip footprint at
+zero block extent,
+own-side border/padding and actual physical margin. Static normal-flow consumers
+use flow; exact Source events retain their original-level orientation over the
+strip. Glyph, source Range and accessibility geometry do not acquire transparent
+margin gaps. Virtual-separator Scope fragments keep only their actual local
+separator geometry.
+
+Selected component-bearing BoxEdges use the existing
+[margin-edge fit observation](atomic-fit.md) with signed executed flow and
+independent Native opaque constraints. Context-only components add no flow or fit
+authority. Raw strip/glyph geometry remains truthful when a negative margin lets
+the selected candidate fit a narrower band.
 
 The [endpoint contract](../../../docs/text-layout-contract.md#native-inline-endpoint-geometry)
 defines soft-cut attachment, exact event-side positions, reuse and rollback.

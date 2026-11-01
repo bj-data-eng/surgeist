@@ -262,11 +262,13 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                         )
                         .unwrap(),
                         layout::InlineBoundaryEdgeOf::try_new(
+                            S::ZERO,
                             S::from_f64(edge.0),
                             S::from_f64(edge.1),
                         )
                         .unwrap(),
                     )
+                    .unwrap()
                     .with_direction(direction),
                 ));
                 controls.push(layout::TextControlBinding {
@@ -559,6 +561,7 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
                     .unwrap(),
                     layout::InlineBoundaryEdgeOf::ZERO,
                 )
+                .unwrap()
                 .with_direction(direction),
             ));
             layout::TextControlBinding {

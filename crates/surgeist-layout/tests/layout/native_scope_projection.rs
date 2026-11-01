@@ -62,16 +62,19 @@ fn fixture<S: LayoutScalar>(hidden: bool, width: f64) -> NativeRun<S> {
         })
     };
     let boundary = |kind| {
-        LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-            kind,
-            InlineMetricsOf::from_line_height_and_baseline(
-                surgeist_layout::InlineBaselineContext::Physical,
-                S::from_f64(10.0),
-                S::from_f64(10.0),
+        LayoutInputOf::inline_boundary(
+            InlineBoundaryInputOf::contribution(
+                kind,
+                InlineMetricsOf::from_line_height_and_baseline(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    S::from_f64(10.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
+                InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
-            InlineBoundaryEdgeOf::ZERO,
-        ))
+        )
     };
     NativeRun {
         // Actual source order is A, [H1,H2], Start, B, End, C, D. The declared

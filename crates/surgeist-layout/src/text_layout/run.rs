@@ -1900,7 +1900,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                     .iter()
                     .find(|row| row.occurrence == slot.control())
                     .expect("retained nonformatted control has actual capture ownership");
-                let (left, _) = slot.inline_bounds();
+                let (left, _) = slot.strip_interval();
                 let point = frame.point(used, 0.0, left, slot.slot().y)?;
                 frame.qualify_scope_position::<S>(point, slot.scope_displacement().get())?;
                 nonformatted_controls.push((actual.node, frame.relative_point(point)?));
@@ -2050,7 +2050,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .iter()
                 .find(|row| row.node == binding.node)
                 .expect("capture admitted every actual control node");
-            let (left, right) = slot.inline_bounds();
+            let (left, right) = slot.strip_interval();
             let inline_extent = number(finite(right - left)?)?;
             let physical = frame.point(anchor, feedback.baseline, left, slot.slot().y)?;
             frame.qualify_scope_position::<S>(physical, slot.scope_displacement().get())?;
@@ -2066,6 +2066,50 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 // Control anchors have no atomic edge-quantization stage.
                 qualify_shift_coordinate::<S>(matched - parent, shifted - parent)?;
             }
+            if let Some(components) = control
+                .allocation
+                .boundary
+                .as_ref()
+                .and_then(surgeist_text::InlineBoundaryAllocation::box_components)
+                && components.margin() != 0.0
+            {
+                let flow = slot.flow_interval();
+                let strip = slot.strip_interval();
+                let context = control
+                    .allocation
+                    .boundary
+                    .as_ref()
+                    .and_then(surgeist_text::InlineBoundaryAllocation::box_context)
+                    .expect("component edge has checked context");
+                let left_side = match control.kind {
+                    InlineParticipantLayoutKind::InlineBoundaryStart => {
+                        context.start_side() == surgeist_text::LineEdgeSide::Start
+                    }
+                    InlineParticipantLayoutKind::InlineBoundaryEnd => {
+                        context.start_side() == surgeist_text::LineEdgeSide::End
+                    }
+                    _ => unreachable!("a component edge retains its admitted endpoint role"),
+                };
+                let (before, after) = if left_side {
+                    (flow.0, strip.0)
+                } else {
+                    (strip.1, flow.1)
+                };
+                let before = frame.point(anchor, feedback.baseline, before, slot.slot().y)?;
+                let after = frame.point(anchor, feedback.baseline, after, slot.slot().y)?;
+                let (before, after) = if frame.vertical_cell() {
+                    (before.y - frame.origin.y, after.y - frame.origin.y)
+                } else {
+                    (before.x - frame.origin.x, after.x - frame.origin.x)
+                };
+                let actual = number::<S>(after)?;
+                if S::from_f64(before) == actual {
+                    return Err(FitError::Numeric(
+                        components.margin(),
+                        LayoutTextNumericError::NonZeroLost,
+                    ));
+                }
+            }
             let physical = frame.relative_point(physical)?;
             report.controls.push(InlineControlSourceOf {
                 kind: control.kind,
@@ -2073,6 +2117,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 position: InlineSourcePositionOf::Physical(physical),
                 inline_extent,
                 endpoint: control.endpoint,
+                margin_flow: None,
                 line_index,
                 visual_index: None,
             });

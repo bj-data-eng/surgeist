@@ -1,4 +1,4 @@
-# Atomic margin-box fitting
+# Margin-edge fitting
 
 An in-flow atomic allocation carries an explicit `AtomicFitAllocation`. Use
 `NativeOccupied` for the existing Native contract. CSS-used geometry can supply
@@ -8,6 +8,12 @@ its checked used advance. Selection validates it against the same issued atomic'
 actual flow, border size and occupied envelope. It does not infer CSS authority
 from a difference between advance and occupied size. Relative positioning and
 cross-axis metrics remain separate geometry facts.
+
+For a non-atomic inline BoxEdge, use the checked native-lane
+`InlineBoxEdgeComponents` with its authenticated owner, parent and assigned side.
+Its signed flow and nonnegative border/padding strip are separate observations;
+see [endpoint construction](reference.md#native-inline-endpoint-geometry).
+Contribution remains a finite nonnegative scalar without this CSS authority.
 
 `FinalizedLine::measurements()` keeps its existing raw `InlineMeasure` views.
 `margin_edge_fit()`, `margin_edge_min_content_contribution()` and
@@ -29,15 +35,17 @@ signed flow remain exactly what the Native caller allocated.
 
 ## CSS-composed authority
 
-A genuine selected CSS margin-box allocation activates `CssComposed`, including
-when both used margins are zero. This is an explicit Surgeist native mixing
+A genuine selected CSS margin-box allocation or checked component BoxEdge
+activates `CssComposed`, including explicit all-zero components. Context-only
+BoxEdges grant no selected fit authority. This is an explicit Surgeist native mixing
 policy, not a CSSWG definition for arbitrary Native allocation mixtures.
 
 Execute the actual selected visual traversal in its prealignment line frame.
 Keep final signed flow F. For each `NativeOccupied` atomic, translate its admitted
 local occupied interval by the actual incoming pen exactly once. Retain the
 joint minimum and maximum of those positioned Native intervals. CSS-authorized
-occupied/border/ink rectangles do not enter that independent requirement.
+occupied/border/ink rectangles and non-atomic decoration strips do not enter that
+independent requirement.
 
 With opaque endpoints l/r, the signed constraint endpoints are
 `L = min(0, all l)` and `R = max(F, all r)`. Without an opaque allocation use
@@ -49,6 +57,10 @@ nonnegative floor. In particular R has no implicit zero endpoint.
 | CSS100, then Native6/[0,10] at100..110 | 106 | 0 | 110 | 110 |
 | CSS−100, then Native6/[0,10] at−100..−90 | −94 | −100 | −90 | 10 |
 | The preceding selection, then CSS100 | 6 | −100 | 6 | 106 |
+| Ahem10, then non-atomic end margin−5 | 5 | 0 | 5 | 5 |
+
+The last row leaves actual text at0..10; a narrower margin-edge requirement does
+not clip or relocate its geometry.
 
 Later selected CSS contributions may retract the pen. Do not retain a CSS
 prefix maximum, clamp at each box, borrow an unselected future closing margin,
@@ -56,7 +68,7 @@ sum independent Native widths or re-zero each Native interval. Another box's
 margin cannot erase retained opaque endpoints. The required size is admission
 evidence, not a containment rectangle or a new origin.
 
-Layout supplies actual used CSS atomic components, consumes this observation
+Layout supplies actual used CSS atomic and non-atomic components, consumes this observation
 through its ordinary finite/intrinsic/conditional fit loop, and retains genuine
 block-height/float retry and independent BFC rules. An authorized negative
 margin can overlap a float without falsifying the actual border or ink.
@@ -91,14 +103,15 @@ floor is inserted into that equivalent expression.
 
 ## Ownership and limits
 
-The authority is stored in the canonical request and finalized atomic row, not
-a side cache. It participates in frame/conditional/replay equality. It adds
-fixed data, no font/source owner or separate allocation arena. Applicable
+The authority is stored in the canonical request and actual finalized atomic or
+endpoint record, not a side cache. It participates in frame/conditional/replay
+equality, including a BoxEdge's component lane and values. The fit observation adds
+fixed data and no separate allocation arena. Applicable
 existing Scope accounting uses the actual enlarged finalized-header/box-buffer
 types before growth and in retention census. Existing Native request/proof
 buffer ownership is unchanged; this is not a universal memory cap or a guessed
 sum of resource receipts. Diagnostic storage keeps its existing exclusion.
 
-Non-atomic signed margins and nested parent-side geometry are separate work.
+Complete fragmented inline decoration and painting remain separate work.
 Existing formatter-frame validation, Source bidi facts and unsupported Cell
 combinations are unchanged.

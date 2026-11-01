@@ -36,6 +36,7 @@ fn captured_pair_mismatch<S: LayoutScalar>() {
                 previous.metrics(),
                 previous.edge(),
             )
+            .unwrap()
         } else {
             InlineBoundaryInputOf::box_edge(
                 previous.kind(),

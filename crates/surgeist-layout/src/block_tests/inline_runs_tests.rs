@@ -280,16 +280,19 @@ fn fri06_c03_fixed_metric_break_retains_requested_baseline_both_scalars() {
 fn fri06_c03_fixed_metric_zero_edge_boundary_has_no_formatted_baseline_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         assert_fri06_c03_fixed_metric_participant(
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::Start,
-                InlineMetricsOf::from_ascent_descent(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(6.0),
-                    S::from_f64(4.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::from_ascent_descent(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(6.0),
+                        S::from_f64(4.0),
+                    )
+                    .unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                crate::InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
             None,
             None,
         );
@@ -304,16 +307,20 @@ fn fri06_c03_fixed_metric_positive_border_boundary_retains_requested_baseline_bo
         // Unlike the original zero-edge case, this actual inline border makes
         // the line real. Its own 6/10 metrics supply the exported baseline.
         assert_fri06_c03_fixed_metric_participant(
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::Start,
-                InlineMetricsOf::from_ascent_descent(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(6.0),
-                    S::from_f64(4.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::from_ascent_descent(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(6.0),
+                        S::from_f64(4.0),
+                    )
+                    .unwrap(),
+                    crate::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(1.0), S::ZERO)
+                        .unwrap(),
                 )
                 .unwrap(),
-                crate::InlineBoundaryEdgeOf::try_new(S::from_f64(1.0), S::ZERO).unwrap(),
-            )),
+            ),
             Some(S::from_f64(6.0)),
             Some(S::from_f64(6.0)),
         );
@@ -325,18 +332,20 @@ fn fri06_c03_fixed_metric_positive_border_boundary_retains_requested_baseline_bo
 #[test]
 fn fri06_c03_fixed_size_only_control_keeps_early_return_call_accounting_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let (size_only, layout_input_calls, child_compute_calls) = fri06_c03_fixed_size_output(
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::Start,
-                InlineMetricsOf::from_ascent_descent(
-                    crate::InlineBaselineContext::Physical,
-                    S::ZERO,
-                    S::ZERO,
+        let (size_only, layout_input_calls, child_compute_calls) =
+            fri06_c03_fixed_size_output(LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::from_ascent_descent(
+                        crate::InlineBaselineContext::Physical,
+                        S::ZERO,
+                        S::ZERO,
+                    )
+                    .unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                crate::InlineBoundaryEdgeOf::ZERO,
-            )),
-        );
+            ));
         assert_eq!(
             size_only.size,
             Size::new(S::from_f64(100.0), S::from_f64(50.0))
@@ -492,16 +501,19 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
             .with_style(3, NodeInputOf::non_box())
             .with_layout_input(
                 3,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                    InlineBoundaryKind::Start,
-                    InlineMetricsOf::from_ascent_descent(
-                        crate::InlineBaselineContext::Physical,
-                        S::ZERO,
-                        S::ZERO,
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        InlineBoundaryKind::Start,
+                        InlineMetricsOf::from_ascent_descent(
+                            crate::InlineBaselineContext::Physical,
+                            S::ZERO,
+                            S::ZERO,
+                        )
+                        .unwrap(),
+                        crate::InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
-                    crate::InlineBoundaryEdgeOf::ZERO,
-                )),
+                ),
             ),
         Fri08C07T01InlineRunStart::ExplicitLineBreak => tree
             .with_style(3, NodeInputOf::non_box())
@@ -1386,7 +1398,8 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
                 InlineBoundaryKind::Start,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
-            ),
+            )
+            .unwrap(),
         )
         .style(
             2,
@@ -1403,7 +1416,8 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
                 InlineBoundaryKind::End,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
-            ),
+            )
+            .unwrap(),
         )
         .style(
             4,
@@ -1467,7 +1481,8 @@ fn block_inline_boundaries_before_overwide_first_inline_block_do_not_create_lead
                 InlineBoundaryKind::Start,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
-            ),
+            )
+            .unwrap(),
         )
         .style(
             2,
@@ -1525,6 +1540,7 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
             )
+            .unwrap()
             .with_writing_mode(WritingMode::VerticalRl),
         )
         .style(
@@ -1544,6 +1560,7 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
             )
+            .unwrap()
             .with_writing_mode(WritingMode::VerticalRl),
         );
 
@@ -1597,6 +1614,7 @@ fn vertical_lr_block_inline_boundaries_use_parent_flow() {
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
             )
+            .unwrap()
             .with_writing_mode(WritingMode::VerticalLr),
         )
         .style(
@@ -1616,6 +1634,7 @@ fn vertical_lr_block_inline_boundaries_use_parent_flow() {
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
             )
+            .unwrap()
             .with_writing_mode(WritingMode::VerticalLr),
         );
 
@@ -1980,6 +1999,7 @@ fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [LayoutInputOf<S>; 3] {
                 .unwrap(),
                 crate::InlineBoundaryEdgeOf::ZERO,
             )
+            .unwrap()
             .with_writing_mode(flow.writing_mode())
             .with_direction(flow.direction()),
         )
@@ -2095,7 +2115,8 @@ fn vertical_parent_rejects_default_inline_boundary_flow_until_input_is_layout_re
                 InlineBoundaryKind::Start,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
-            ),
+            )
+            .unwrap(),
         );
 
     let error = compute_root(
@@ -4040,9 +4061,12 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
         ] {
             for direction in [Direction::Ltr, Direction::Rtl] {
                 for kind in [InlineBoundaryKind::Start, InlineBoundaryKind::End] {
-                    let edge =
-                        crate::InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0))
-                            .unwrap();
+                    let edge = crate::InlineBoundaryEdgeOf::try_new(
+                        S::ZERO,
+                        S::from_f64(3.0),
+                        S::from_f64(5.0),
+                    )
+                    .unwrap();
                     let metrics = InlineMetricsOf::try_new(
                         crate::InlineBaselineContext::Physical,
                         S::from_f64(8.0),
@@ -4078,6 +4102,7 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
                             2,
                             LayoutInputOf::inline_boundary(
                                 InlineBoundaryInputOf::contribution(kind, metrics, edge)
+                                    .unwrap()
                                     .with_direction(direction)
                                     .with_writing_mode(writing_mode),
                             ),
@@ -4184,7 +4209,7 @@ fn finite_endpoint_components_that_overflow_the_numeric_run_refuse_the_batch() {
         } else {
             f64::from(f32::MAX)
         };
-        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(largest), S::ZERO).unwrap();
+        let edge = InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(largest), S::ZERO).unwrap();
         let mut tree = PublicBlockTree::default()
             .with_children(0, vec![1, 2])
             .with_style(
@@ -4199,16 +4224,19 @@ fn finite_endpoint_components_that_overflow_the_numeric_run_refuse_the_batch() {
                 .with_style(node, NodeInputOf::non_box())
                 .with_layout_input(
                     node,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        kind,
-                        InlineMetricsOf::try_new(
-                            crate::InlineBaselineContext::Physical,
-                            S::from_f64(8.0),
-                            S::from_f64(10.0),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            kind,
+                            InlineMetricsOf::try_new(
+                                crate::InlineBaselineContext::Physical,
+                                S::from_f64(8.0),
+                                S::from_f64(10.0),
+                            )
+                            .unwrap(),
+                            edge,
                         )
                         .unwrap(),
-                        edge,
-                    )),
+                    ),
                 );
         }
         let error = compute_layout(
@@ -4238,7 +4266,7 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
         for (edge, x, y, second_x) in [
             (InlineBoundaryEdgeOf::ZERO, 20.0, 0.0, 30.0),
             (
-                InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap(),
+                InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(3.0), S::from_f64(5.0)).unwrap(),
                 0.0,
                 20.0,
                 18.0,
@@ -4285,16 +4313,19 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
                 .with_style(2, NodeInputOf::non_box())
                 .with_layout_input(
                     2,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        InlineBoundaryKind::Start,
-                        InlineMetricsOf::try_new(
-                            crate::InlineBaselineContext::Physical,
-                            S::from_f64(8.0),
-                            S::from_f64(10.0),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::Start,
+                            InlineMetricsOf::try_new(
+                                crate::InlineBaselineContext::Physical,
+                                S::from_f64(8.0),
+                                S::from_f64(10.0),
+                            )
+                            .unwrap(),
+                            edge,
                         )
                         .unwrap(),
-                        edge,
-                    )),
+                    ),
                 )
                 .with_style(3, atomic);
             let batch = compute_layout(
@@ -4318,7 +4349,7 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
             );
             assert_eq!(
                 public_final_output(&batch, 2).size,
-                Size::new(edge.advance(), S::ZERO)
+                Size::new(edge.border_padding_advance(), S::ZERO)
             );
         }
     }

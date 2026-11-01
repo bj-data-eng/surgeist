@@ -1,10 +1,13 @@
 //! Checked source ownership for explicitly requested physical inline edges.
+mod components;
 pub(crate) mod execution;
 use super::{LineEdgeSide, PreparedText, ProtocolError, protocol_error};
 use crate::engine::scope_alignment::accounting::{self as account, Ledger};
 use crate::{
     CapturedControl, CapturedEventPosition, CapturedScope, ParagraphControlKind, Result, ScopeRole,
 };
+pub(crate) use components::EdgeExecution;
+pub use components::InlineBoxEdgeComponents;
 
 /// An actual captured box or an explicitly declared native endpoint pair.
 /// This owns source references, never a Layout pointer or another source tree.
@@ -402,19 +405,41 @@ pub(crate) fn validate_request(
 pub(crate) fn context_identity<'a>(
     controls: &'a [super::ControlAllocation],
     context: &'a [super::InlineBoundaryContextAllocation],
-) -> impl Iterator<Item = (bool, &'a super::PreparedControl, &'a InlineBoxEdgeContext)> {
+) -> impl Iterator<
+    Item = (
+        bool,
+        &'a super::PreparedControl,
+        &'a InlineBoxEdgeContext,
+        &'a InlineBoxEdgeComponents,
+    ),
+> {
     controls
         .iter()
         .filter_map(|row| {
-            row.boundary
-                .as_ref()?
-                .box_context()
-                .map(|ctx| (false, &row.occurrence, ctx))
+            row.boundary.as_ref()?.box_context().map(|ctx| {
+                (
+                    false,
+                    &row.occurrence,
+                    ctx,
+                    row.boundary
+                        .as_ref()
+                        .expect("boxed control retains its allocation")
+                        .box_components()
+                        .expect("boxed control retains components"),
+                )
+            })
         })
         .chain(context.iter().filter_map(|row| {
-            row.boundary
-                .box_context()
-                .map(|ctx| (true, &row.occurrence, ctx))
+            row.boundary.box_context().map(|ctx| {
+                (
+                    true,
+                    &row.occurrence,
+                    ctx,
+                    row.boundary
+                        .box_components()
+                        .expect("boxed context retains components"),
+                )
+            })
         }))
 }
 

@@ -361,6 +361,7 @@ impl Case {
                         .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
+                    .unwrap()
                     .with_direction(self.direction),
                 ),
             );

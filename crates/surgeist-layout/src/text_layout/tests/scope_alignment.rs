@@ -585,18 +585,21 @@ impl Case {
                         .with_vertical_align(edge),
                 )
             } else {
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                    if matches!(
-                        control.occurrence.view().kind(),
-                        ParagraphControlKind::InlineBoundaryStart
-                    ) {
-                        InlineBoundaryKind::Start
-                    } else {
-                        InlineBoundaryKind::End
-                    },
-                    metrics,
-                    InlineBoundaryEdgeOf::ZERO,
-                ))
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        if matches!(
+                            control.occurrence.view().kind(),
+                            ParagraphControlKind::InlineBoundaryStart
+                        ) {
+                            InlineBoundaryKind::Start
+                        } else {
+                            InlineBoundaryKind::End
+                        },
+                        metrics,
+                        InlineBoundaryEdgeOf::ZERO,
+                    )
+                    .unwrap(),
+                )
             };
             tree = tree.children(control.node, []).input(control.node, input);
         }

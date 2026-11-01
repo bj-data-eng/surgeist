@@ -221,7 +221,7 @@ fn sibling_geometry(f: &Family, line: &FinalizedLine) {
             .control_slots()
             .find(|slot| slot.control() == *control)
             .unwrap();
-        assert_eq!(slot.inline_bounds(), bounds);
+        assert_eq!(slot.strip_interval(), bounds);
     }
     let glyphs = line
         .run_views()
@@ -341,7 +341,7 @@ fn crossing_geometry(f: &Family, line: &FinalizedLine) {
             .control_slots()
             .find(|slot| slot.control() == *control)
             .unwrap();
-        assert_eq!(slot.inline_bounds(), bounds);
+        assert_eq!(slot.strip_interval(), bounds);
     }
     let glyphs = line
         .run_views()

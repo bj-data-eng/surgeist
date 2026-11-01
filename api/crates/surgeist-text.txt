@@ -2033,10 +2033,11 @@ pub fn surgeist_text::FinalizedCellView<'_>::square(&self) -> surgeist_text::Rec
 pub struct surgeist_text::FinalizedControlView<'a>
 impl surgeist_text::FinalizedControlView<'_>
 pub fn surgeist_text::FinalizedControlView<'_>::control(&self) -> surgeist_text::PreparedControl
-pub const fn surgeist_text::FinalizedControlView<'_>::inline_bounds(&self) -> (f64, f64)
+pub const fn surgeist_text::FinalizedControlView<'_>::flow_interval(&self) -> (f64, f64)
 pub fn surgeist_text::FinalizedControlView<'_>::level(&self) -> surgeist_text::BidiLevel
 pub const fn surgeist_text::FinalizedControlView<'_>::scope_displacement(&self) -> surgeist_text::BaselineShift
 pub const fn surgeist_text::FinalizedControlView<'_>::slot(&self) -> surgeist_text::Point
+pub const fn surgeist_text::FinalizedControlView<'_>::strip_interval(&self) -> (f64, f64)
 impl core::fmt::Debug for surgeist_text::FinalizedControlView<'_>
 pub fn surgeist_text::FinalizedControlView<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::FinalizedFragment
@@ -2328,9 +2329,11 @@ pub struct surgeist_text::InlineBoundaryAllocation
 impl surgeist_text::InlineBoundaryAllocation
 pub const surgeist_text::InlineBoundaryAllocation::CONTRIBUTION_ZERO: Self
 pub const fn surgeist_text::InlineBoundaryAllocation::advance(&self) -> f64
+pub const fn surgeist_text::InlineBoundaryAllocation::box_components(&self) -> core::option::Option<&surgeist_text::InlineBoxEdgeComponents>
 pub const fn surgeist_text::InlineBoundaryAllocation::box_context(&self) -> core::option::Option<&surgeist_text::InlineBoxEdgeContext>
-pub fn surgeist_text::InlineBoundaryAllocation::box_edge(context: surgeist_text::InlineBoxEdgeContext, advance: f64) -> surgeist_text::Result<Self>
+pub fn surgeist_text::InlineBoundaryAllocation::box_edge(context: surgeist_text::InlineBoxEdgeContext, components: surgeist_text::InlineBoxEdgeComponents) -> Self
 pub fn surgeist_text::InlineBoundaryAllocation::contribution(advance: f64) -> surgeist_text::Result<Self>
+pub fn surgeist_text::InlineBoundaryAllocation::participates(&self) -> bool
 pub struct surgeist_text::InlineBoundaryContextAllocation
 pub surgeist_text::InlineBoundaryContextAllocation::boundary: surgeist_text::InlineBoundaryAllocation
 pub surgeist_text::InlineBoundaryContextAllocation::occurrence: surgeist_text::PreparedControl
@@ -2345,6 +2348,18 @@ pub const fn surgeist_text::InlineBox::size(self) -> surgeist_text::Size
 pub fn surgeist_text::InlineBox::try_with_letter_spacing(self, value: f64) -> surgeist_text::Result<Self>
 pub const fn surgeist_text::InlineBox::vertical_align(self) -> surgeist_text::VerticalAlign
 pub const fn surgeist_text::InlineBox::with_vertical_align(self, vertical_align: surgeist_text::VerticalAlign) -> Self
+pub struct surgeist_text::InlineBoxEdgeComponents
+impl surgeist_text::InlineBoxEdgeComponents
+pub const fn surgeist_text::InlineBoxEdgeComponents::border(self) -> f64
+pub const fn surgeist_text::InlineBoxEdgeComponents::border_padding_advance(self) -> f64
+pub const fn surgeist_text::InlineBoxEdgeComponents::flow_advance(self) -> f64
+pub fn surgeist_text::InlineBoxEdgeComponents::from_f32(margin: f32, border: f32, padding: f32) -> surgeist_text::Result<Self>
+pub fn surgeist_text::InlineBoxEdgeComponents::from_f64(margin: f64, border: f64, padding: f64) -> surgeist_text::Result<Self>
+pub const fn surgeist_text::InlineBoxEdgeComponents::margin(self) -> f64
+pub const fn surgeist_text::InlineBoxEdgeComponents::padding(self) -> f64
+impl core::cmp::Eq for surgeist_text::InlineBoxEdgeComponents
+impl core::hash::Hash for surgeist_text::InlineBoxEdgeComponents
+pub fn surgeist_text::InlineBoxEdgeComponents::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_text::InlineBoxEdgeContext
 impl surgeist_text::InlineBoxEdgeContext
 pub fn surgeist_text::InlineBoxEdgeContext::owner(&self) -> &surgeist_text::InlineBoxSource

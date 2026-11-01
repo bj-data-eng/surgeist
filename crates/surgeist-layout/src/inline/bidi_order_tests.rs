@@ -211,7 +211,7 @@ fn decorated_lane<S: LayoutScalar>() {
             flow,
             metrics,
             InlineControlAlignment::Baseline,
-            InlineBoundaryEdgeOf::try_new(n(border), n(padding)).unwrap(),
+            InlineBoundaryEdgeOf::try_new(S::ZERO, n(border), n(padding)).unwrap(),
             None,
         )
     };

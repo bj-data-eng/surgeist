@@ -139,8 +139,12 @@ pub(crate) struct NativePairProjection<Node> {
     pub(crate) end: ScopeEndpoint<Node>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum NumericWrappingError {
+    Geometry {
+        value: f64,
+        reason: crate::LayoutTextNumericError,
+    },
     Allocation,
     Baseline(crate::InlineBaselineError),
     Group(crate::group_alignment::NumericError),
@@ -166,6 +170,11 @@ pub(crate) fn numeric_wrapping_error<Node, S: crate::LayoutScalar, M>(
     error: NumericWrappingError,
 ) -> crate::LayoutErrorOf<Node, S, M> {
     match error {
+        NumericWrappingError::Geometry { value, reason } => crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::ChildLayout,
+            crate::LayoutErrorKindOf::TextNumeric { value, reason },
+        ),
         NumericWrappingError::Allocation => crate::LayoutErrorOf::new(
             crate::LayoutErrorSiteOf::Node(node),
             crate::LayoutOperation::InlineWrapping,

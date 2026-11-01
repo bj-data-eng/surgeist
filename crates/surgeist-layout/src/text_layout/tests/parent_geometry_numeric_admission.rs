@@ -67,6 +67,7 @@ fn paired_parent_disagreement<S: LayoutScalar>(contribution_end: bool) {
     let replacement = if contribution_end {
         let original = invalid.layout_input(4).as_inline_boundary().unwrap();
         InlineBoundaryInputOf::contribution(original.kind(), original.metrics(), original.edge())
+            .unwrap()
             .with_writing_mode(original.writing_mode())
             .with_direction(original.direction())
             .with_vertical_align(original.vertical_align())

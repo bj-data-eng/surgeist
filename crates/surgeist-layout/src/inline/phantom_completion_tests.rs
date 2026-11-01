@@ -29,7 +29,7 @@ fn boundary<S: LayoutScalar>(
         )
         .unwrap(),
         InlineControlAlignment::Baseline,
-        InlineBoundaryEdgeOf::try_new(n(border), n(padding)).unwrap(),
+        InlineBoundaryEdgeOf::try_new(S::ZERO, n(border), n(padding)).unwrap(),
         None,
     )
 }
@@ -395,6 +395,7 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
                     control.metrics(),
                     control.edge(),
                 )
+                .unwrap()
                 .with_direction(direction),
             ),
         );
@@ -508,6 +509,7 @@ fn scoped_metric_witness<S: LayoutScalar>(
                     control.metrics(),
                     control.edge(),
                 )
+                .unwrap()
                 .with_direction(direction),
             ),
         );

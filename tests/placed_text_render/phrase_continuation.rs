@@ -241,16 +241,19 @@ fn capture() -> (
     assert_eq!(prepared[1].virtual_separators().count(), 0);
 
     let boundary = |kind| {
-        layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::contribution(
-            kind,
-            layout::InlineMetrics::try_new(
-                surgeist_layout::InlineBaselineContext::Physical,
-                16.0,
-                20.0,
+        layout::LayoutInput::InlineBoundary(
+            layout::InlineBoundaryInput::contribution(
+                kind,
+                layout::InlineMetrics::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    16.0,
+                    20.0,
+                )
+                .unwrap(),
+                layout::InlineBoundaryEdge::ZERO,
             )
             .unwrap(),
-            layout::InlineBoundaryEdge::ZERO,
-        ))
+        )
     };
     let tree = ContinuationTree {
         inputs: vec![

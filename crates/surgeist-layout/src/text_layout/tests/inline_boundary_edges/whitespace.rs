@@ -116,7 +116,8 @@ fn collapsible_terminal_space_before_real_end_border_padding_is_trimmed_in_wide_
         let fixture = Fixture::new("A ", (0, 2), text::WhiteSpace::Collapse, false, false);
         let (_, end) = actual_pair(&fixture);
         assert_eq!(end.view().source_position().get(), 2);
-        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::from_f64(3.0)).unwrap();
+        let edge =
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::from_f64(3.0)).unwrap();
         for width in [100.0, 15.0] {
             let batch = fixture.compute(
                 InlineBoundaryEdgeOf::ZERO,
@@ -154,7 +155,7 @@ fn collapsible_terminal_space_before_real_end_border_padding_is_trimmed_in_wide_
                 .control_slots()
                 .find(|slot| slot.control() == end)
                 .unwrap();
-            assert_eq!(slot.inline_bounds(), (10.0, 15.0));
+            assert_eq!(slot.strip_interval(), (10.0, 15.0));
             let strip = output(&batch, 21);
             assert_eq!(strip.location.x, S::from_f64(10.0));
             assert_eq!(strip.size, Size::new(S::from_f64(5.0), S::ZERO));
@@ -176,7 +177,8 @@ fn collapsible_leading_space_after_real_start_border_padding_is_trimmed() {
         let fixture = Fixture::new(" A", (0, 2), text::WhiteSpace::Collapse, false, false);
         let (start, _) = actual_pair(&fixture);
         assert_eq!(start.view().source_position().get(), 0);
-        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::from_f64(3.0)).unwrap();
+        let edge =
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::from_f64(3.0)).unwrap();
         for width in [100.0, 15.0] {
             let batch = fixture.compute(
                 edge,
@@ -211,7 +213,7 @@ fn collapsible_leading_space_after_real_start_border_padding_is_trimmed() {
                 line.control_slots()
                     .find(|slot| slot.control() == start)
                     .unwrap()
-                    .inline_bounds(),
+                    .strip_interval(),
                 (0.0, 5.0)
             );
             let strip = output(&batch, 20);
@@ -236,7 +238,8 @@ fn a_following_real_sibling_keeps_internal_collapsible_space_and_real_end_strip(
         let fixture = Fixture::new("A B", (0, 2), text::WhiteSpace::Collapse, false, false);
         let (_, end) = actual_pair(&fixture);
         assert_eq!(fixture.binding.origins.len(), 2);
-        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::from_f64(3.0)).unwrap();
+        let edge =
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::from_f64(3.0)).unwrap();
         let batch = fixture.compute(
             InlineBoundaryEdgeOf::ZERO,
             edge,
@@ -263,7 +266,7 @@ fn a_following_real_sibling_keeps_internal_collapsible_space_and_real_end_strip(
             line.control_slots()
                 .find(|slot| slot.control() == end)
                 .unwrap()
-                .inline_bounds(),
+                .strip_interval(),
             (20.0, 25.0)
         );
         assert_eq!(output(&batch, 21).location.x, S::from_f64(20.0));
@@ -286,7 +289,8 @@ fn preserved_terminal_space_is_not_trimmed_by_the_collapsible_space_rule() {
     fn lane<S: LayoutScalar>() {
         let fixture = Fixture::new("A ", (0, 2), text::WhiteSpace::Preserve, false, false);
         let (_, end) = actual_pair(&fixture);
-        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::from_f64(3.0)).unwrap();
+        let edge =
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::from_f64(3.0)).unwrap();
         let batch = fixture.compute(
             InlineBoundaryEdgeOf::ZERO,
             edge,
@@ -311,7 +315,7 @@ fn preserved_terminal_space_is_not_trimmed_by_the_collapsible_space_rule() {
             line.control_slots()
                 .find(|slot| slot.control() == end)
                 .unwrap()
-                .inline_bounds(),
+                .strip_interval(),
             (20.0, 25.0)
         );
         // No asserted fit/alignment hanging classification here: preserving a
