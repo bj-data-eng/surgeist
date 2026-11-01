@@ -247,83 +247,16 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
         return Err(invalid(InlineBoxFragmentationError::InvalidIncidence));
     }
     let root = Owner::Scope(topology.capture.domain_scopes[topology.domain]);
-    for body in 0..data.bodies.len() {
-        let visual = data.bodies[body].visual.clone();
-        account::push_fallible(
-            ledger,
-            &mut data.fragments,
-            Fragment {
-                owner: root,
-                body,
-                visual: visual.clone(),
-                parent: None,
-            },
-        )?;
-        for &owner in &owners {
-            if owner == root {
-                continue;
-            }
-            let mut open = None;
-            for rank in visual.clone() {
-                account::work(ledger, 1)?;
-                let row = &data.rows[data.order[rank]];
-                if !row.content {
-                    continue;
-                }
-                if member(data, row, owner, ledger)? {
-                    if open.is_none() {
-                        open = Some(rank);
-                    }
-                } else if let Some(first) = open.take() {
-                    account::push_fallible(
-                        ledger,
-                        &mut data.fragments,
-                        Fragment {
-                            owner,
-                            body,
-                            visual: first..rank,
-                            parent: None,
-                        },
-                    )?;
-                }
-            }
-            if let Some(first) = open {
-                account::push_fallible(
-                    ledger,
-                    &mut data.fragments,
-                    Fragment {
-                        owner,
-                        body,
-                        visual: first..visual.end,
-                        parent: None,
-                    },
-                )?;
-            }
-        }
-    }
-    for index in 0..data.fragments.len() {
-        account::work(ledger, 1)?;
-        let child = &data.fragments[index];
-        let parent = data.parent(child.owner, ledger)?;
-        let mut found = None;
-        if let Some(parent) = parent {
-            for (candidate, row) in data.fragments.iter().enumerate() {
-                account::work(ledger, 1)?;
-                if row.owner == parent
-                    && row.body == child.body
-                    && row.visual.start <= child.visual.start
-                    && child.visual.end <= row.visual.end
-                {
-                    found = Some(candidate);
-                    break;
-                }
-            }
-            if found.is_none() {
-                return Err(invalid(InlineBoxFragmentationError::InvalidIncidence));
-            }
-        }
-        data.fragments[index].parent = found;
-    }
+    let derived = crate::inline_box_components::derive(
+        &PreparedComponents {
+            data,
+            owners: &owners,
+            root,
+        },
+        ledger,
+    )?;
+    data.fragments = derived.components;
+    data.row_fragments = derived.row_components;
     for (row, value) in data.rows.iter().enumerate() {
         account::work(ledger, 1)?;
         match value.source {
@@ -345,7 +278,12 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
         ledger.as_mut(),
         |a, b| a.0.cmp(&b.0),
     )?;
-    for (fragment, f) in data.fragments.iter().enumerate() {
+    for &(row, fragment) in &data.row_fragments {
+        account::work(ledger, 1)?;
+        if !data.rows[row].content {
+            continue;
+        }
+        let f = &data.fragments[fragment];
         let first_endpoint = crate::processing::contextual::alignment::operations::partition_point(
             &endpoints,
             ledger.as_mut(),
@@ -356,28 +294,20 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
             ledger.as_mut(),
             |endpoint| (endpoint.body, endpoint.owner) <= (f.body, f.owner),
         )?;
-        for rank in f.visual.clone() {
+        // The shared kernel's association is not an operation. Source Start/End
+        // still choose the first/last true logical member, independently of
+        // parent-directed BoxEdge geometry. Opaque Cells and genuine child-gap
+        // rows keep their existing authentic roles.
+        for endpoint in &mut endpoints[first_endpoint..last_endpoint] {
             account::work(ledger, 1)?;
-            let row = data.order[rank];
-            if member(data, &data.rows[row], f.owner, ledger)? {
-                account::push_fallible(ledger, &mut data.row_fragments, (row, fragment))?;
-                if data.rows[row].content {
-                    // Source Start/End select the first/last true logical member,
-                    // independently of parent-directed BoxEdge geometry. Opaque
-                    // Cells and genuine child-gap rows retain their real role.
-                    for endpoint in &mut endpoints[first_endpoint..last_endpoint] {
-                        account::work(ledger, 1)?;
-                        if endpoint.frontier.is_none_or(|(previous, _)| {
-                            if endpoint.start {
-                                row < previous
-                            } else {
-                                previous < row
-                            }
-                        }) {
-                            endpoint.frontier = Some((row, fragment));
-                        }
-                    }
+            if endpoint.frontier.is_none_or(|(previous, _)| {
+                if endpoint.start {
+                    row < previous
+                } else {
+                    previous < row
                 }
+            }) {
+                endpoint.frontier = Some((row, fragment));
             }
         }
     }
@@ -398,12 +328,42 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
         |a, b| a.cmp(b),
     )?;
     account::drop_vec(ledger, endpoints)?;
-    crate::processing::contextual::alignment::operations::order_by(
-        &mut data.row_fragments,
-        ledger.as_mut(),
-        |a, b| a.cmp(b),
-    )?;
     account::drop_vec(ledger, owners)
+}
+
+/// Borrow the already admitted Source rows and original captured ancestry.
+/// No captured tree or bidi/order transcript is copied by the common kernel.
+struct PreparedComponents<'a> {
+    data: &'a FamilyData,
+    owners: &'a [Owner],
+    root: Owner,
+}
+impl crate::inline_box_components::ComponentSource for PreparedComponents<'_> {
+    type Owner = Owner;
+    fn root(&self) -> Owner {
+        self.root
+    }
+    fn owners(&self) -> &[Owner] {
+        self.owners
+    }
+    fn parent(&self, owner: Owner, ledger: &mut Ledger) -> Result<Option<Owner>> {
+        self.data.parent(owner, ledger)
+    }
+    fn order(&self) -> &[usize] {
+        &self.data.order
+    }
+    fn body_count(&self) -> usize {
+        self.data.bodies.len()
+    }
+    fn body(&self, body: usize) -> Range<usize> {
+        self.data.bodies[body].visual.clone()
+    }
+    fn content(&self, row: usize) -> bool {
+        self.data.rows[row].content
+    }
+    fn leaves(&self, row: usize) -> &[Owner] {
+        &self.data.row_owners[self.data.rows[row].owners.clone()]
+    }
 }
 pub(super) fn scope_at(data: &FamilyData, site: SourceIncidence) -> Result<Owner> {
     let topology = data

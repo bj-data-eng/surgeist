@@ -560,6 +560,9 @@ pub enum surgeist_text::Hyphens
 pub surgeist_text::Hyphens::Auto
 pub surgeist_text::Hyphens::Manual
 pub surgeist_text::Hyphens::None
+pub enum surgeist_text::InlineBoxComponentParticipation
+pub surgeist_text::InlineBoxComponentParticipation::Metadata
+pub surgeist_text::InlineBoxComponentParticipation::Participating
 pub enum surgeist_text::InlineBoxEdgeError
 pub surgeist_text::InlineBoxEdgeError::ForeignCapture
 pub surgeist_text::InlineBoxEdgeError::InconsistentContext
@@ -3801,6 +3804,29 @@ pub struct surgeist_text::StyleKey
 impl surgeist_text::StyleKey
 pub const fn surgeist_text::StyleKey::hash(self) -> u64
 pub const fn surgeist_text::StyleKey::revision(self) -> u64
+pub struct surgeist_text::SuppliedInlineBoxComponent<'a>
+impl surgeist_text::SuppliedInlineBoxComponent<'_>
+pub fn surgeist_text::SuppliedInlineBoxComponent<'_>::body(&self) -> usize
+pub fn surgeist_text::SuppliedInlineBoxComponent<'_>::owner(&self) -> usize
+pub fn surgeist_text::SuppliedInlineBoxComponent<'_>::parent_index(&self) -> core::option::Option<usize>
+pub fn surgeist_text::SuppliedInlineBoxComponent<'_>::visual_range(&self) -> core::ops::range::Range<usize>
+pub struct surgeist_text::SuppliedInlineBoxComponentRow
+pub surgeist_text::SuppliedInlineBoxComponentRow::owners: core::ops::range::Range<usize>
+pub surgeist_text::SuppliedInlineBoxComponentRow::participation: surgeist_text::InlineBoxComponentParticipation
+pub struct surgeist_text::SuppliedInlineBoxComponents
+impl surgeist_text::SuppliedInlineBoxComponents
+pub fn surgeist_text::SuppliedInlineBoxComponents::component(&self, index: usize) -> core::option::Option<surgeist_text::SuppliedInlineBoxComponent<'_>>
+pub fn surgeist_text::SuppliedInlineBoxComponents::components(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::SuppliedInlineBoxComponent<'_>>
+pub fn surgeist_text::SuppliedInlineBoxComponents::row_components(&self, row: usize) -> impl core::iter::traits::iterator::Iterator<Item = usize> + '_
+pub fn surgeist_text::SuppliedInlineBoxComponents::try_new(input: surgeist_text::SuppliedInlineBoxComponentsInput<'_>) -> surgeist_text::Result<Self>
+pub struct surgeist_text::SuppliedInlineBoxComponentsInput<'a>
+pub surgeist_text::SuppliedInlineBoxComponentsInput::bodies: &'a [core::ops::range::Range<usize>]
+pub surgeist_text::SuppliedInlineBoxComponentsInput::memberships: &'a [usize]
+pub surgeist_text::SuppliedInlineBoxComponentsInput::order: &'a [usize]
+pub surgeist_text::SuppliedInlineBoxComponentsInput::owners: &'a [usize]
+pub surgeist_text::SuppliedInlineBoxComponentsInput::parents: &'a [core::option::Option<usize>]
+pub surgeist_text::SuppliedInlineBoxComponentsInput::root: usize
+pub surgeist_text::SuppliedInlineBoxComponentsInput::rows: &'a [surgeist_text::SuppliedInlineBoxComponentRow]
 pub struct surgeist_text::SuppliedLine<'a>
 impl<'a> surgeist_text::SuppliedLine<'a>
 pub fn surgeist_text::SuppliedLine<'a>::edges(self) -> surgeist_text::SuppliedLineEdges<'a>
