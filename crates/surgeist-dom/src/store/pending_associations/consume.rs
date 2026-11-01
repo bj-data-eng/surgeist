@@ -163,6 +163,7 @@ fn validate(
             }
             Step::Skipped => (),
             Step::Complete => return Ok(()),
+            Step::Fault(fault) => return Err(fault.into()),
         }
     }
 }
@@ -329,6 +330,11 @@ pub(super) fn decode_occurrence(
             HtmlParseHistoryStep::Progress => (),
             HtmlParseHistoryStep::Complete => break,
             HtmlParseHistoryStep::Cancelled => return Err(DomError::Cancelled.into()),
+            HtmlParseHistoryStep::Fault(fault) => {
+                return Err(DomParsedHtmlAssociationAdmissionError::History(
+                    surgeist_html_parser::HtmlParseHistoryError::Unresolved(fault),
+                ));
+            }
         }
     }
     meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
@@ -353,6 +359,7 @@ fn occurrences(
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Complete => return Ok(result),
             Step::Occurrence(row) if row.kind() == Kind::ChangePreferred => {
                 meter.reserve(&mut result, 1, cancel)?;

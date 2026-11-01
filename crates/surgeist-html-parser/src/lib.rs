@@ -17,7 +17,10 @@ pub use request::*;
 pub use settings::*;
 pub use source::*;
 
-pub use construction::read::{HtmlInputImageSource, HtmlParseRetiredDestination};
+pub use construction::read::{
+    HtmlInputImageSource, HtmlParseRetiredDestination, UnresolvedKind as HtmlParseUnresolvedKind,
+    UnresolvedReference as HtmlParseUnresolvedReference,
+};
 pub use construction::{
     ConstructionCompletion as HtmlParseCompletion, ConstructionReadiness as HtmlParseReadiness,
     StandaloneDocumentState as HtmlParseDocumentState,

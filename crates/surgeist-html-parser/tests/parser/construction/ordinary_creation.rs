@@ -53,6 +53,7 @@ fn creation(
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     found.expect("completed ordinary element must lend its actual creation state and saved is")

@@ -180,6 +180,6 @@ pub(super) mod tests {
         let storage = report.storage_mut().history_mut().storage_mut();
         let completion = storage.fragment.as_ref().unwrap().completion;
         storage.payloads.values[completion] = crate::construction::RetainedPayload::Retired;
-        assert!(report.fragment_parser_document().is_none());
+        assert!(report.fragment_parser_document().unwrap().is_none());
     }
 }

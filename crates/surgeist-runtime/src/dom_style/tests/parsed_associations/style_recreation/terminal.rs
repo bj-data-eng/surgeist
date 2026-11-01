@@ -23,6 +23,7 @@ fn ids(
     let mut meta = None;
     loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.requires_processing() => match row.kind() {
                 Kind::StyleUpdate(_) => styles.push(row.id()),
                 Kind::ChangePreferred => {

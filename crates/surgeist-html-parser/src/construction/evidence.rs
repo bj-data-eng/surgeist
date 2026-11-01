@@ -123,13 +123,18 @@ impl DiagnosticEvidenceView<'_> {
     }
     /// The committed record at `index` with the location it names, or `None`
     /// past the last record. Every committed record names a committed
-    /// location; a record that did not would also read as `None`.
+    /// location; a record that did not is a fault in the report.
     pub fn retained_record(
         &self,
         index: usize,
-    ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
-        let record = self.records.get(index)?;
-        Some((record, self.locations.get(record.location)?))
+    ) -> Result<Option<(&DiagnosticRecord, &DiagnosticLocation)>, read::UnresolvedReference> {
+        let Some(record) = self.records.get(index) else {
+            return Ok(None);
+        };
+        Ok(self
+            .locations
+            .get(record.location)
+            .map(|location| (record, location)))
     }
     #[cfg(test)]
     pub fn records_pointer(&self) -> *const DiagnosticRecord {
@@ -1404,7 +1409,7 @@ mod tests {
             let retained = evidence.diagnostics();
             assert_eq!(retained.len(), n);
             for i in 0..n {
-                let (record, location) = retained.retained_record(i).unwrap();
+                let (record, location) = retained.retained_record(i).unwrap().unwrap();
                 assert_eq!(record.location, i);
                 assert_eq!(
                     record.kind,
@@ -1416,7 +1421,7 @@ mod tests {
                     (4 + i, 5 + i)
                 );
             }
-            assert!(retained.retained_record(n).is_none());
+            assert!(retained.retained_record(n).unwrap().is_none());
             assert_eq!(c.stop(), None);
             let before_cleanup = c.usage().clone();
             lexer.release(&mut c).unwrap();
@@ -1498,7 +1503,7 @@ mod tests {
             locations: &[],
         };
         assert_eq!(view.len(), 1);
-        assert!(view.retained_record(0).is_none());
-        assert!(view.retained_record(1).is_none());
+        assert!(view.retained_record(0).unwrap().is_none());
+        assert!(view.retained_record(1).unwrap().is_none());
     }
 }

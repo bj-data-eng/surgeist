@@ -118,7 +118,7 @@ fn recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_
         let diagnostics = report.diagnostics();
         assert_eq!(diagnostics.len(), expected_errors.len());
         for (i, (code, anchor, branch, start, end)) in expected_errors.into_iter().enumerate() {
-            let (record, location) = diagnostics.retained_record(i).unwrap();
+            let (record, location) = diagnostics.retained_record(i).unwrap().unwrap();
             assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
             assert_eq!(
                 record.context(),
@@ -154,7 +154,7 @@ fn recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_
         let associations = report.associations();
         let mut actual = Vec::new();
         for i in 0..associations.len() {
-            let row = associations.row(i).unwrap();
+            let row = associations.row(i).unwrap().unwrap();
             if row.relation() == HtmlParseAssociationRelation::Output
                 && let HtmlParseDestination::Field {
                     node,
@@ -211,6 +211,7 @@ fn recovered_references_public_reader_preserves_typed_chronology_and_exact_dual_
                 HtmlParseReverseStep::Cancelled => {
                     panic!("original cancellation cannot revoke immutable read")
                 }
+                HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(complete, "one flat row per action must reach completion");
@@ -259,7 +260,7 @@ fn document_parse_owns_exact_source_native_and_complete_d1_after_cancellation() 
     assert!(!associations.is_empty());
     let mut character_reference = false;
     for index in 0..associations.len() {
-        let row = associations.row(index).unwrap();
+        let row = associations.row(index).unwrap().unwrap();
         if row.origin_kind() == Some(HtmlParseOriginKind::CharacterReference) {
             character_reference = true;
             assert_eq!(
@@ -599,6 +600,7 @@ fn canonical_control_metadata_lends_actual_nodes_flags_raw_values_and_form_ident
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!((input, textarea, select, option), (true, true, true, true));
@@ -612,7 +614,7 @@ fn canonical_control_metadata_lends_actual_nodes_flags_raw_values_and_form_ident
     let rows = report.associations();
     let mut attribute_rows = 0;
     for i in 0..rows.len() {
-        let row = rows.row(i).unwrap();
+        let row = rows.row(i).unwrap().unwrap();
         if let HtmlParseDestination::Field {
             node,
             field: HtmlParseField::AttributeValue(slot),
@@ -667,6 +669,7 @@ fn a_form_inserted_after_its_controls_owns_only_the_control_naming_it_by_id() {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!((associations, owned), (61, 1));
@@ -762,7 +765,7 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
         contents,
         source,
         ..
-    }) = effects.effect(0)
+    }) = effects.effect(0).unwrap()
     else {
         panic!("captured shadow attachment")
     };
@@ -778,7 +781,7 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
     );
     assert!(matches!(
         effects.effect(1),
-        Some(HtmlParseEffect::TemplateCache { .. })
+        Ok(Some(HtmlParseEffect::TemplateCache { .. }))
     ));
     assert_eq!(report.usage(), &usage);
 }
@@ -794,7 +797,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
     let mut final_group = None;
     let mut retired = false;
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         if matches!(
             row.destination(),
             HtmlParseDestination::Field {
@@ -805,7 +808,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
         {
             final_group = row.group();
         }
-        if row.cause().retired_destination().is_some() {
+        if row.cause().retired_destination().unwrap().is_some() {
             retired = true;
         }
     }
@@ -836,6 +839,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
             }
             HtmlParseHistoryStep::Complete => break,
             HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+            HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(units, [65, 38, 66]);
@@ -855,6 +859,7 @@ fn immutable_history_retains_literal_old_leaves_and_one_action_reverse() {
             HtmlParseReverseStep::Skipped => {}
             HtmlParseReverseStep::Complete => break,
             HtmlParseReverseStep::Cancelled => panic!("no query cancellation"),
+            HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert!(count > 0);
@@ -909,7 +914,7 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
     let history = report.history_view();
     let (mut attribute, mut pi, mut original) = (false, false, false);
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         match row.destination() {
             HtmlParseDestination::Field {
                 node,
@@ -930,9 +935,9 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
         let cause = row.cause();
         if let Some(HtmlParseRetiredDestination::StagedField {
             field: HtmlParseField::AttributeValue(0),
-        }) = cause.retired_destination()
+        }) = cause.retired_destination().unwrap()
         {
-            let group = cause.original_group().unwrap();
+            let group = cause.original_group().unwrap().unwrap();
             let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
             let mut cursor = history.cursor(group, &mut scratch, None).unwrap();
             let mut units = Vec::new();
@@ -942,6 +947,7 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
                     HtmlParseHistoryStep::Leaf(leaf) => units.extend_from_slice(leaf.units()),
                     HtmlParseHistoryStep::Complete => break,
                     HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
                 }
             }
             assert_eq!(units, [65, 13, 66, 10, 67]);
@@ -961,6 +967,7 @@ fn attribute_and_pi_map_destinations_resolve_real_container_owners_and_retired_v
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(value, Some(&DocumentString::from("x&y")));
@@ -1257,7 +1264,7 @@ fn successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_dia
     let mut actual_origins = Vec::new();
     let associations = report.associations();
     for i in 0..associations.len() {
-        let row = associations.row(i).unwrap();
+        let row = associations.row(i).unwrap().unwrap();
         if row.relation() != HtmlParseAssociationRelation::Output {
             continue;
         }
@@ -1325,7 +1332,7 @@ fn successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_dia
     .into_iter()
     .enumerate()
     {
-        let (record, location) = diagnostics.retained_record(i).unwrap();
+        let (record, location) = diagnostics.retained_record(i).unwrap().unwrap();
         assert_eq!(record.kind(), kind);
         assert_eq!(record.context(), context);
         assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
@@ -1338,7 +1345,7 @@ fn successful_utf16_keeps_bom_surrogate_newline_origins_and_ordered_recovery_dia
         assert_eq!(location.role(), role);
         assert_eq!(location.token(), token);
     }
-    assert!(diagnostics.retained_record(2).is_none());
+    assert!(diagnostics.retained_record(2).unwrap().is_none());
     assert_eq!(report.usage(), &usage);
 }
 
@@ -1379,7 +1386,7 @@ fn empty_utf16_recovers_implied_document_with_one_source_qualified_eof_diagnosti
     }
     let diagnostics = report.diagnostics();
     assert_eq!(diagnostics.len(), 1);
-    let (record, location) = diagnostics.retained_record(0).unwrap();
+    let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
     assert_eq!(
         record.kind(),
         HtmlParseDiagnosticKind::Prologue(HtmlPrologueDiagnostic::MissingDoctype)
@@ -1400,7 +1407,7 @@ fn empty_utf16_recovers_implied_document_with_one_source_qualified_eof_diagnosti
         HtmlParseDiagnosticLocationRole::TokenEnvelope
     );
     assert_eq!(location.token(), Some(HtmlParseTokenFamily::Eof));
-    assert!(diagnostics.retained_record(1).is_none());
+    assert!(diagnostics.retained_record(1).unwrap().is_none());
     assert_eq!(report.usage(), &usage);
 }
 
@@ -1435,7 +1442,7 @@ fn retired_removed_attribute_keeps_historical_ordinal_without_reading_reindexed_
     let mut historical_name = false;
     let mut current_tail = false;
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         if let HtmlParseDestination::Field {
             node,
             field: HtmlParseField::AttributeName(2),
@@ -1448,12 +1455,12 @@ fn retired_removed_attribute_keeps_historical_ordinal_without_reading_reindexed_
         if let Some(HtmlParseRetiredDestination::Field {
             node,
             field: HtmlParseField::AttributeName(2),
-        }) = cause.retired_destination()
+        }) = cause.retired_destination().unwrap()
         {
             assert_eq!(node.id(), details[1]);
             let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
             let mut cursor = history
-                .cursor(cause.original_group().unwrap(), &mut scratch, None)
+                .cursor(cause.original_group().unwrap().unwrap(), &mut scratch, None)
                 .unwrap();
             let mut units = Vec::new();
             loop {
@@ -1462,6 +1469,7 @@ fn retired_removed_attribute_keeps_historical_ordinal_without_reading_reindexed_
                     HtmlParseHistoryStep::Leaf(leaf) => units.extend_from_slice(leaf.units()),
                     HtmlParseHistoryStep::Complete => break,
                     HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
                 }
             }
             assert_eq!(units, [111, 112, 101, 110]);
@@ -1544,6 +1552,7 @@ fn multiple_email_count_retains_produced_empty_values_and_immutable_source_after
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(found, 1);
@@ -1568,6 +1577,7 @@ fn multiple_email_count_retains_produced_empty_values_and_immutable_source_after
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(inputs, 2);
@@ -1647,6 +1657,7 @@ fn button_default_value_preserves_ordered_content_and_retained_raw_after_cancel(
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(inputs, 1);
@@ -1717,6 +1728,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(inputs, 1);
@@ -1729,7 +1741,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
         let history = report.history_view();
         let mut normalized = 0;
         for index in 0..rows.len() {
-            let row = rows.row(index).unwrap();
+            let row = rows.row(index).unwrap().unwrap();
             if row.origin_kind() != Some(HtmlParseOriginKind::InputValueNormalization)
                 || row.relation() != HtmlParseAssociationRelation::Output
             {
@@ -1749,7 +1761,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
                 cause.operation(),
                 HtmlParseConstructionOperation::Replacement
             );
-            let original = cause.original_group().unwrap();
+            let original = cause.original_group().unwrap().unwrap();
             let mut scratch = vec![HtmlParseHistoryFrame::default(); history.len()];
             let mut cursor = history.cursor(original, &mut scratch, None).unwrap();
             let mut units = Vec::new();
@@ -1762,6 +1774,7 @@ fn local_datetime_normalization_retains_exact_space_origin_and_original_value_hi
                     }
                     HtmlParseHistoryStep::Complete => break,
                     HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+                    HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
                 }
             }
             assert_eq!(
@@ -1906,7 +1919,7 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
         let diagnostics = report.diagnostics();
         assert_eq!(diagnostics.len(), expected.len());
         for (index, (code, state, anchor, branch, start, end)) in expected.into_iter().enumerate() {
-            let (record, location) = diagnostics.retained_record(index).unwrap();
+            let (record, location) = diagnostics.retained_record(index).unwrap().unwrap();
             assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
             assert_eq!(
                 record.context(),
@@ -1933,7 +1946,7 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
         let mut data = Vec::new();
         let mut end = false;
         for index in 0..rows.len() {
-            let row = rows.row(index).unwrap();
+            let row = rows.row(index).unwrap().unwrap();
             if let HtmlParseDestination::Lexical {
                 occurrence,
                 part: Some(part),
@@ -2022,6 +2035,7 @@ fn pi_recovery_chronology_and_abandoned_eof_are_public_exact_source_evidence() {
                 HtmlParseReverseStep::Cancelled => {
                     panic!("completed immutable evidence has no parse cancellation lease")
                 }
+                HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(reverse_anchor);
@@ -2159,7 +2173,7 @@ fn assert_value_sharing_origin(
     let rows = report.associations();
     let mut actual = Vec::new();
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         if row.relation() == HtmlParseAssociationRelation::Output
             && let HtmlParseDestination::Field {
                 node,
@@ -2446,7 +2460,7 @@ fn report_value_sharing_preserves_raw_surrogates_and_each_source_interval() {
     let diagnostics = report.diagnostics();
     assert_eq!(diagnostics.len(), 2);
     for index in 0..2 {
-        let (record, location) = diagnostics.retained_record(index).unwrap();
+        let (record, location) = diagnostics.retained_record(index).unwrap().unwrap();
         assert_eq!(
             record.kind(),
             HtmlParseDiagnosticKind::Tokenizer(HtmlTokenizerDiagnostic::SurrogateInInputStream)

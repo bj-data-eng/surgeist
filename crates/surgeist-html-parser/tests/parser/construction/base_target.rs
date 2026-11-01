@@ -283,6 +283,7 @@ fn first_href_binds_decoded_value_and_actual_node_before_later_bases() {
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(seen, [true; 3]);
@@ -337,6 +338,7 @@ fn failure_blocked_and_forbidden_schemes_freeze_fallback_without_response() {
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(count, 1);

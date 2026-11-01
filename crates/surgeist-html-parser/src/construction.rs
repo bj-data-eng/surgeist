@@ -30317,8 +30317,8 @@ mod tests {
         }
         let (group, computation) = step.expect("literal 50 with min0 step20 selects60");
         assert!(!computation.original_is_fresh_empty());
-        assert!(computation.original_group().is_some());
-        assert!(computation.original_cause().is_some());
+        assert!(computation.original_group().unwrap().is_some());
+        assert!(computation.original_cause().unwrap().is_some());
         for role in [
             RangeOperandRole::Minimum,
             RangeOperandRole::Maximum,
@@ -30326,9 +30326,11 @@ mod tests {
         ] {
             let operand = computation.operand(role);
             assert_eq!(operand.kind(), RangeOperandKind::Finite);
-            assert!(operand.group().is_some() && operand.cause().is_some());
-            assert!((0..rows.len()).any(|i| rows.row(i).unwrap().relation()
-                == provenance::AssociationRelation::RangeDependency(role)));
+            assert!(operand.group().unwrap().is_some() && operand.cause().unwrap().is_some());
+            assert!(
+                (0..rows.len()).any(|i| rows.row(i).unwrap().unwrap().relation()
+                    == provenance::AssociationRelation::RangeDependency(role))
+            );
         }
         assert_eq!(
             computation.operand(RangeOperandRole::ValueContent).kind(),
@@ -30374,15 +30376,15 @@ mod tests {
         }
         let (group, computation) = underflow.expect("later min75 clamps generated50");
         assert!(!computation.original_is_fresh_empty());
-        let original = computation.original_group().unwrap();
-        let original_cause = computation.original_cause().unwrap();
+        let original = computation.original_group().unwrap().unwrap();
+        let original_cause = computation.original_cause().unwrap().unwrap();
         assert_eq!(
             original_cause.range_computation().unwrap().branch(),
             RangeBranch::InvalidDefaultMidpoint
         );
         let minimum = computation.operand(RangeOperandRole::Minimum);
         assert_eq!(minimum.kind(), RangeOperandKind::Finite);
-        assert!(minimum.cause().unwrap().source().is_some());
+        assert!(minimum.cause().unwrap().unwrap().source().is_some());
         assert_eq!(
             computation.operand(RangeOperandRole::Maximum).kind(),
             RangeOperandKind::Absent
@@ -30390,7 +30392,7 @@ mod tests {
         let mut frames = [history::HistoryFrame::default(); 32];
         for (target, expected, origin_free) in [
             (original, &[53, 48][..], true),
-            (minimum.group().unwrap(), &[55, 53][..], false),
+            (minimum.group().unwrap().unwrap(), &[55, 53][..], false),
             (group, &[55, 53][..], true),
         ] {
             let mut cursor = history.cursor(target, &mut frames, None).unwrap();
@@ -30402,7 +30404,7 @@ mod tests {
             assert!(matches!(cursor.advance(), history::HistoryStep::Complete));
         }
         let mut minimum_cursor = history
-            .cursor(minimum.group().unwrap(), &mut frames, None)
+            .cursor(minimum.group().unwrap().unwrap(), &mut frames, None)
             .unwrap();
         let history::HistoryStep::Leaf(minimum_atom) = minimum_cursor.advance() else {
             panic!("actual minimum lexical leaf")
@@ -30414,6 +30416,7 @@ mod tests {
         let mut complete = false;
         for _ in 0..=associations.len() {
             match reverse.advance() {
+                read::HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
                 read::HtmlParseReverseStep::Match(row) => {
                     if row.relation()
                         == provenance::AssociationRelation::RangeDependency(
@@ -30468,8 +30471,12 @@ mod tests {
         let mut frames = [history::HistoryFrame::default(); 32];
         for (target, expected, origin_free) in [
             // Valid authored75 was preserved, so this original is lexical.
-            (computation.original_group().unwrap(), &[55, 53][..], false),
-            (maximum.group().unwrap(), &[54, 48][..], false),
+            (
+                computation.original_group().unwrap().unwrap(),
+                &[55, 53][..],
+                false,
+            ),
+            (maximum.group().unwrap().unwrap(), &[54, 48][..], false),
             (group, &[54, 48][..], true),
         ] {
             let mut cursor = history.cursor(target, &mut frames, None).unwrap();
@@ -30486,6 +30493,7 @@ mod tests {
         let mut complete = false;
         for _ in 0..=associations.len() {
             match reverse.advance() {
+                read::HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
                 read::HtmlParseReverseStep::Match(row)
                     if row.relation()
                         == provenance::AssociationRelation::RangeDependency(

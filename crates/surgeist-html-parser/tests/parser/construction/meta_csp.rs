@@ -146,6 +146,7 @@ fn rows(report: &HtmlParseReport) -> Vec<HtmlParseDocumentMeta<'_>> {
                 }
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => (),
         }
     }

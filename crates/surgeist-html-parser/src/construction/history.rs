@@ -376,7 +376,12 @@ pub(crate) struct HistoryView<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HistoryReadError {
     ForeignOwner,
-    InsufficientScratch { required: usize, supplied: usize },
+    InsufficientScratch {
+        required: usize,
+        supplied: usize,
+    },
+    /// The report's history holds a reference its own tables cannot resolve.
+    Unresolved(read::UnresolvedReference),
 }
 
 pub(crate) struct HistoryHeader<'a> {
@@ -556,6 +561,9 @@ pub enum HistoryStep<'a> {
     Leaf(HistoryLeaf<'a>),
     Complete,
     Cancelled,
+    /// The history holds a reference its own tables cannot resolve. The cursor
+    /// stays faulted, so a caller that continues is told again.
+    Fault(read::UnresolvedReference),
 }
 impl<'a> HistoryCursor<'a, '_> {
     pub fn advance(&mut self) -> HistoryStep<'a> {
@@ -757,6 +765,7 @@ mod tests {
             let mut actions = 0;
             loop {
                 match cursor.advance() {
+                    HistoryStep::Fault(fault) => panic!("{fault}"),
                     HistoryStep::Progress => actions += 1,
                     HistoryStep::Leaf(leaf) => {
                         actions += 1;
@@ -1048,6 +1057,7 @@ mod tests {
             let mut leaves = 0;
             loop {
                 match cursor.advance() {
+                    HistoryStep::Fault(fault) => panic!("{fault}"),
                     HistoryStep::Progress => progress += 1,
                     HistoryStep::Leaf(leaf) => {
                         assert_eq!(leaf.offset(), leaves);
@@ -1337,6 +1347,7 @@ mod tests {
             let mut units = Vec::new();
             loop {
                 match cursor.advance() {
+                    HistoryStep::Fault(fault) => panic!("{fault}"),
                     HistoryStep::Leaf(leaf) => {
                         assert_eq!(leaf.offset(), units.len());
                         for origin in leaf.origins() {

@@ -154,6 +154,7 @@ fn producer_scheme(report: &HtmlParseReport) -> Arc<CssColorSchemeParseReport> {
     let mut metadata = report.metadata();
     loop {
         match metadata.advance() {
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             HtmlParseMetadataStep::Record(row) => {
                 if let Some(meta) = row.document_meta()
                     && meta.document().id() == root

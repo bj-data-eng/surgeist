@@ -19,6 +19,7 @@ fn ready() -> (
     let mut cursor = report.pending_associations();
     let wanted = loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(r) if r.kind() == Kind::ChangePreferred => break r.id(),
             Step::Complete => panic!("real Meta occurrence"),
             _ => (),

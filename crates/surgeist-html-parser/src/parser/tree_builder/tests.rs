@@ -14742,7 +14742,7 @@ fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
             let diagnostics = completed.diagnostics().unwrap();
             assert_eq!(diagnostics.len(), n);
             for i in 0..n {
-                let (record, location) = diagnostics.retained_record(i).unwrap();
+                let (record, location) = diagnostics.retained_record(i).unwrap().unwrap();
                 assert_eq!(
                     record.kind,
                     DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
@@ -15772,7 +15772,7 @@ fn progressive_completed_native_evidence(
         let retained = completed.diagnostics().unwrap();
         assert_eq!(retained.len(), diagnostics.len());
         for (index, expected) in diagnostics.iter().enumerate() {
-            let (record, location) = retained.retained_record(index).unwrap();
+            let (record, location) = retained.retained_record(index).unwrap().unwrap();
             assert_eq!(record.kind, expected.kind);
             assert_eq!(record.context, expected.context);
             assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
@@ -18771,7 +18771,7 @@ fn afterhead_template_removes_exact_head_identity_and_retains_source_diagnostic(
         let diagnostics = frozen.retained_evidence().unwrap().diagnostics();
         assert_eq!(diagnostics.len(), usize::from(late));
         if late {
-            let (record, location) = diagnostics.retained_record(0).unwrap();
+            let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
             assert_eq!(
                 record.kind,
                 DiagnosticKind::Tree(HeadCondition::UnexpectedBodyToken)
@@ -19091,7 +19091,7 @@ mod complete_hostile_scan {
         };
         assert_eq!(view.len(), count);
         for index in 0..count {
-            let (record, location) = view.retained_record(index).unwrap();
+            let (record, location) = view.retained_record(index).unwrap().unwrap();
             let duplicate = matches!(scan, Scan::Duplicates);
             assert_eq!(
                 record.kind,
@@ -19134,7 +19134,7 @@ mod complete_hostile_scan {
             };
             assert_eq!((location.source.start(), location.source.end()), expected);
         }
-        assert!(view.retained_record(count).is_none());
+        assert!(view.retained_record(count).unwrap().is_none());
     }
 
     fn element(view: &mut NativeView<'_>, path: &[usize], local: &str) -> ParserNode {
@@ -19520,7 +19520,7 @@ mod complete_hostile_scan {
             let count = if complete { 2 } else { 1 };
             assert_eq!(view.len(), count);
             for index in 0..count {
-                let (record, location) = view.retained_record(index).unwrap();
+                let (record, location) = view.retained_record(index).unwrap().unwrap();
                 let (code, anchor, branch, range) = if index == 0 {
                     (
                         DiagnosticCode::NullCharacterReference,
@@ -19553,7 +19553,7 @@ mod complete_hostile_scan {
                 assert_eq!(location.source.coordinates(), source.coordinates());
                 assert_eq!((location.source.start(), location.source.end()), range);
             }
-            assert!(view.retained_record(count).is_none());
+            assert!(view.retained_record(count).unwrap().is_none());
         }
 
         fn run(

@@ -91,6 +91,7 @@ fn report() -> (Arc<HtmlParseReport>, Processor, HtmlCspAssociation) {
     let mut rows = report.pending_associations();
     let original = loop {
         match rows.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.requires_processing() && row.style().is_some() => {
                 break row.context().csp_association().unwrap().clone();
             }

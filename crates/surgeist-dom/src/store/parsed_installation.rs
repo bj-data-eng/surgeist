@@ -577,7 +577,7 @@ fn collect_fragment<'a>(
     let fragment = report.fragment().ok_or(Error::NotCompletedFragmentReport)?;
     let context = report.context().ok_or(Error::NotCompletedFragmentReport)?;
     let parser = report
-        .fragment_parser_document()
+        .fragment_parser_document()?
         .ok_or(Error::NotCompletedFragmentReport)?;
     let state = parser.completion();
     c.step(1)?;
@@ -633,7 +633,7 @@ fn collect_fragment<'a>(
     let effects = report.effects().ok_or(Error::NotCompletedFragmentReport)?;
     for index in 0..effects.registry_slots() {
         c.step(1)?;
-        if let Some(binding) = effects.registry(index) {
+        if let Some(binding) = effects.registry(index)? {
             if !matches!(binding.registry(), HtmlParseRegistry::Null) {
                 return Err(Error::CurrentPolicyUnavailable);
             }
@@ -645,7 +645,7 @@ fn collect_fragment<'a>(
     for index in 0..effects.len() {
         c.step(1)?;
         match effects
-            .effect(index)
+            .effect(index)?
             .ok_or(Error::NotCompletedFragmentReport)?
         {
             HtmlParseEffect::TemplateCache { document, inert } => {
@@ -701,6 +701,7 @@ fn collect_rows<'a>(
             HtmlParseMetadataStep::Record(record) => record,
             HtmlParseMetadataStep::Skipped => continue,
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => return Err(fault.into()),
         };
         // The auxiliary parser Document/html are installed only if an actual
         // retained semantic reference reaches them, not merely as bootstrap.
@@ -780,7 +781,7 @@ fn collect_rows<'a>(
     for index in 0..associations.len() {
         c.step(1)?;
         let row = associations
-            .row(index)
+            .row(index)?
             .expect("qualified association index");
         match row.destination() {
             HtmlParseDestination::Node(node)
@@ -852,6 +853,7 @@ fn collect_rows<'a>(
             }
             HtmlParsePendingAssociationStep::Skipped => {}
             HtmlParsePendingAssociationStep::Complete => break,
+            HtmlParsePendingAssociationStep::Fault(fault) => return Err(fault.into()),
         }
     }
     // Grow only from actual retained subjects and current relationships. Retired
@@ -927,7 +929,7 @@ fn apply_fragment_effects(
     for index in 0..effects.len() {
         c.step(1)?;
         match effects
-            .effect(index)
+            .effect(index)?
             .ok_or(Error::NotCompletedFragmentReport)?
         {
             HtmlParseEffect::TemplateCache { document, inert } => {
@@ -1150,14 +1152,12 @@ impl Dom {
                         design_mode_enabled,
                     )
                 }
-            } else if report
-                .fragment_parser_document()
-                .is_some_and(|descriptor| descriptor.document().id() == node.id())
+            } else if let Some(descriptor) = report
+                .fragment_parser_document()?
+                .filter(|descriptor| descriptor.document().id() == node.id())
             {
                 DomDocumentMetadata::from_fragment_parser(
-                    &report
-                        .fragment_parser_document()
-                        .expect("selected descriptor"),
+                    &descriptor,
                     self.document_environment.clone(),
                     design_mode_enabled,
                 )
@@ -1375,6 +1375,7 @@ impl Dom {
                     }
                 }
                 HtmlParsePendingAssociationStep::Complete => break,
+                HtmlParsePendingAssociationStep::Fault(fault) => return Err(fault.into()),
                 _ => {}
             }
         }

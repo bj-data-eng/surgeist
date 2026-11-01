@@ -215,6 +215,7 @@ pub(super) fn scan<'a>(
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(DomError::ParsedReportUnresolved(fault)),
             Step::Document(row) => {
                 documents = documents
                     .checked_add(1)
@@ -263,6 +264,7 @@ pub(super) fn scan<'a>(
                 let valid = loop {
                     meter.step(cancel)?;
                     match prior_rows.advance() {
+                        Step::Fault(fault) => return Err(DomError::ParsedReportUnresolved(fault)),
                         Step::Occurrence(prior) if prior.id() == row.id() => {
                             break row.prior_document() == preceding;
                         }

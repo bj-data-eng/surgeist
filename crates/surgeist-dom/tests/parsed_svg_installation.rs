@@ -101,7 +101,7 @@ fn completed_disabled_contextual_svg_script_keeps_processed_parser_state_and_tar
         HtmlParserScriptingMode::Disabled
     );
     assert!(report.document().is_none());
-    let descriptor = report.fragment_parser_document().unwrap();
+    let descriptor = report.fragment_parser_document().unwrap().unwrap();
     let completion = descriptor.completion();
     assert_eq!(completion.completion(), HtmlParseCompletion::Complete);
     assert_eq!(completion.readiness(), HtmlParseReadiness::Complete);
@@ -127,6 +127,7 @@ fn completed_disabled_contextual_svg_script_keeps_processed_parser_state_and_tar
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     let source_script = source_script.unwrap();
@@ -145,6 +146,7 @@ fn completed_disabled_contextual_svg_script_keeps_processed_parser_state_and_tar
                 }
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => {}
         }
     }
@@ -287,6 +289,7 @@ fn source_scripts(
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => return result,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
 }
@@ -355,7 +358,12 @@ fn inert_template_and_auxiliary_parser_documents_remain_distinct_through_adoptio
         host,
         "<style>a{}</style><template><svg><script/></svg></template>",
     );
-    let parser_document = report.fragment_parser_document().unwrap().document().id();
+    let parser_document = report
+        .fragment_parser_document()
+        .unwrap()
+        .unwrap()
+        .document()
+        .id();
     let scripts = source_scripts(&report);
     assert_eq!(scripts.len(), 1);
     let installed = dom
@@ -684,7 +692,7 @@ fn declarative_shadow_svg_preserves_captured_and_owned_effect_state_until_real_c
                 declarative,
                 available_to_internals,
                 ..
-            } = effects.effect(index).unwrap()
+            } = effects.effect(index).unwrap().unwrap()
             {
                 attachment_count += 1;
                 assert!(declarative);
@@ -731,6 +739,7 @@ fn declarative_shadow_svg_preserves_captured_and_owned_effect_state_until_real_c
                     }
                 }
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
                 _ => {}
             }
         }

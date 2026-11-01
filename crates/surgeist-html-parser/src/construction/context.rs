@@ -2565,13 +2565,19 @@ impl<'a> FrozenFragmentEffects<'a> {
     /// The effect at `index`. Every row is qualified before publication and the
     /// report is immutable afterwards; a row that no longer qualifies reads as
     /// absent rather than panicking.
-    pub fn effect(&self, index: usize) -> Option<FrozenFragmentEffect<'a>> {
-        self.get(index).ok().flatten()
+    pub fn effect(
+        &self,
+        index: usize,
+    ) -> Result<Option<FrozenFragmentEffect<'a>>, read::UnresolvedReference> {
+        Ok(self.get(index).ok().flatten())
     }
     /// The registry binding at `index`, with the same qualification rule as
     /// [`Self::effect`].
-    pub fn registry(&self, index: usize) -> Option<FrozenFragmentRegistryBinding<'a>> {
-        self.registry_binding(index).ok().flatten()
+    pub fn registry(
+        &self,
+        index: usize,
+    ) -> Result<Option<FrozenFragmentRegistryBinding<'a>>, read::UnresolvedReference> {
+        Ok(self.registry_binding(index).ok().flatten())
     }
 }
 impl FrozenFragmentRegistryBinding<'_> {
@@ -3787,8 +3793,8 @@ mod fragment_origin_tests {
         let mut frozen = session.freeze(&mut c).unwrap();
         let effects = frozen.frozen_fragment_effects().unwrap();
         assert_eq!(effects.len(), 1);
-        assert!(effects.effect(0).is_none());
-        assert!(effects.effect(1).is_none());
+        assert!(effects.effect(0).unwrap().is_none());
+        assert!(effects.effect(1).unwrap().is_none());
         frozen.release(&mut c).unwrap();
         crate::construction::tests::storage_zero(&c);
     }

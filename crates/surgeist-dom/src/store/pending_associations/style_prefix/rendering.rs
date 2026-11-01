@@ -104,6 +104,7 @@ fn facts(
     loop {
         scratch.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *q.occurrence() => {
                 if row.subject().id() != *q.subject() || row.context().epoch() != *q.context_epoch()
                 {

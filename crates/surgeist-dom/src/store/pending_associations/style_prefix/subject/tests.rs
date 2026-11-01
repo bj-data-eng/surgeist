@@ -220,6 +220,7 @@ fn diagnostic_mapping_preserves_actual_original_work_refusal() {
         .pending_associations();
     let row = loop {
         match rows.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.id() == *q.occurrence() => break row,
             Step::Complete => panic!("authentic original occurrence"),
             _ => (),

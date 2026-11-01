@@ -114,6 +114,16 @@ pub enum DomParsedHtmlAssociationAdmissionError {
         document: DocumentId,
     },
     History(surgeist_html_parser::HtmlParseHistoryError),
+    /// The report holds a reference to a record its own tables cannot resolve,
+    /// so the contribution cannot be classified.
+    UnresolvedReport(surgeist_html_parser::HtmlParseUnresolvedReference),
+}
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference>
+    for DomParsedHtmlAssociationAdmissionError
+{
+    fn from(value: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::UnresolvedReport(value)
+    }
 }
 impl From<DomError> for DomParsedHtmlAssociationAdmissionError {
     fn from(value: DomError) -> Self {
@@ -132,6 +142,7 @@ impl std::error::Error for DomParsedHtmlAssociationAdmissionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Dom(error) => Some(error),
+            Self::UnresolvedReport(error) => Some(error),
             _ => None,
         }
     }

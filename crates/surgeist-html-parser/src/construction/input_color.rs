@@ -820,6 +820,7 @@ mod tests {
                             let mut units = Vec::new();
                             loop {
                                 match cursor.advance() {
+                                    history::HistoryStep::Fault(fault) => panic!("{fault}"),
                                     history::HistoryStep::Leaf(leaf) => {
                                         assert!(leaf.origins().is_empty());
                                         units.extend_from_slice(leaf.units());

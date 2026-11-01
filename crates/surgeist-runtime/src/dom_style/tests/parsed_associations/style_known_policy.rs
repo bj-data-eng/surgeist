@@ -168,6 +168,7 @@ fn parsed(
     let mut policies = Vec::new();
     loop {
         match cursor.advance() {
+            HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
             HtmlParsePendingAssociationStep::Occurrence(row) if row.requires_processing() => {
                 policies.push(row.context().csp_association().unwrap().clone())
             }

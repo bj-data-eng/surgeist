@@ -1239,8 +1239,13 @@ pub struct Cursor<'a> {
 pub enum Step<'a> {
     Document(DocumentView<'a>),
     Occurrence(OccurrenceView<'a>),
+    /// A row that is not an association.
     Skipped,
     Complete,
+    /// The row is an association that names a reference the report cannot
+    /// resolve. The cursor stays faulted, so a caller that continues is told
+    /// again.
+    Fault(read::UnresolvedReference),
 }
 impl<'a> Cursor<'a> {
     pub(crate) fn new(history: &'a FrozenHistory) -> Self {
@@ -1471,25 +1476,41 @@ impl<'a> StyleInputs<'a> {
     pub fn text_len(&self) -> usize {
         self.value.text.len()
     }
-    /// `None` past the text or when the history no longer holds the group.
-    pub fn text(&self, index: usize) -> Option<HistoryGroup<'a>> {
-        group(self.anchor.history, self.value.text.as_slice().get(index)?)
+    /// `None` past the text.
+    pub fn text(
+        &self,
+        index: usize,
+    ) -> Result<Option<HistoryGroup<'a>>, read::UnresolvedReference> {
+        Ok(self
+            .value
+            .text
+            .as_slice()
+            .get(index)
+            .and_then(|value| group(self.anchor.history, value)))
     }
     pub fn sheet_order_len(&self) -> usize {
         self.value.order.map_or(0, |order| order.len)
     }
-    /// `None` past the order or when the report no longer holds the entry.
-    pub fn sheet_order(&self, index: usize) -> Option<HtmlNode<'a>> {
-        let order = self.value.order?;
+    /// `None` past the order.
+    pub fn sheet_order(
+        &self,
+        index: usize,
+    ) -> Result<Option<HtmlNode<'a>>, read::UnresolvedReference> {
+        let Some(order) = self.value.order else {
+            return Ok(None);
+        };
         if index >= order.len {
-            return None;
+            return Ok(None);
         }
         let Some(RetainedPayload::StyleOrder(list)) =
             self.anchor.storage.payloads.values.get(order.slot)
         else {
-            return None;
+            return Ok(None);
         };
-        native(self.anchor.storage, *list.as_slice().get(index)?)
+        Ok(list
+            .as_slice()
+            .get(index)
+            .and_then(|node| native(self.anchor.storage, *node)))
     }
     pub fn attribute(
         &self,
@@ -2348,6 +2369,7 @@ mod tests {
         let mut cursor = report.pending_associations();
         loop {
             match cursor.advance() {
+                Step::Fault(fault) => panic!("{fault}"),
                 Step::Occurrence(view) => {
                     let context = view.context();
                     let _ = (
@@ -2458,7 +2480,7 @@ mod tests {
                     if let Some(style) = view.style()
                         && style.text_len() != 0
                     {
-                        assert!(style.text(0).is_none());
+                        assert!(style.text(0).unwrap().is_none());
                         checked = true;
                     }
                 }
@@ -2484,7 +2506,7 @@ mod tests {
                     if let Some(style) = view.style()
                         && style.sheet_order_len() != 0
                     {
-                        assert!(style.sheet_order(0).is_none());
+                        assert!(style.sheet_order(0).unwrap().is_none());
                         checked = true;
                     }
                 }

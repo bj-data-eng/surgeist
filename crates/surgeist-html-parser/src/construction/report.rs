@@ -846,8 +846,12 @@ pub struct MetadataCursor<'a> {
 }
 pub enum MetadataStep<'a> {
     Record(MetadataRef<'a>),
+    /// A slot that holds no metadata record.
     Skipped,
     Complete,
+    /// The record of this slot names a reference the report cannot resolve.
+    /// The cursor stays faulted, so a caller that continues is told again.
+    Fault(read::UnresolvedReference),
 }
 impl<'a> MetadataCursor<'a> {
     /// One actual canonical slot, never a next-match loop or materialization.

@@ -367,7 +367,7 @@ fn frozen_native_projection_cancellation_partitions_only_committed_diagnostics()
     {
         let diagnostics = parts.diagnostics().unwrap();
         assert_eq!(diagnostics.records_pointer(), pointer);
-        let (record, location) = diagnostics.retained_record(2).unwrap();
+        let (record, location) = diagnostics.retained_record(2).unwrap().unwrap();
         assert_eq!(
             record.kind,
             crate::construction::evidence::DiagnosticKind::Tree(
@@ -452,7 +452,7 @@ fn frozen_native_projection_alias_refusal_keeps_partition_and_reclaims_it_once()
     assert_eq!(parts.at_stop(), Some(&first));
     assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
     let diagnostics = parts.diagnostics().unwrap();
-    let (record, location) = diagnostics.retained_record(2).unwrap();
+    let (record, location) = diagnostics.retained_record(2).unwrap().unwrap();
     assert_eq!(
         record.kind,
         crate::construction::evidence::DiagnosticKind::Tree(
@@ -2169,7 +2169,7 @@ fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
     ];
     assert_eq!(evidence.len(), expected.len());
     for (index, (kind, context, start, end, anchor)) in expected.into_iter().enumerate() {
-        let (record, source) = evidence.retained_record(index).unwrap();
+        let (record, source) = evidence.retained_record(index).unwrap().unwrap();
         assert_eq!(
             (record.kind, record.context, record.severity),
             (kind, context, DiagnosticSeverity::Recoverable)
@@ -2197,7 +2197,7 @@ fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
         );
         assert!(!record.rule.branch.is_empty());
     }
-    assert!(evidence.retained_record(expected.len()).is_none());
+    assert!(evidence.retained_record(expected.len()).unwrap().is_none());
     completed.release().unwrap();
 }
 
@@ -2361,7 +2361,7 @@ fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
     assert_eq!(failed.control.owned_span_observation().polls, polls);
     let evidence = failed.diagnostics().unwrap();
     assert_eq!(evidence.len(), 1);
-    let (record, source) = evidence.retained_record(0).unwrap();
+    let (record, source) = evidence.retained_record(0).unwrap().unwrap();
     assert_eq!(
         record.kind,
         crate::construction::evidence::DiagnosticKind::Prologue(
@@ -3049,7 +3049,7 @@ fn failed_transfer_preserves_first_stop_usage_before_reference_scratch_cleanup()
     assert_eq!(failed.source().identity(), request.source().identity());
     let evidence = failed.diagnostics().unwrap();
     assert_eq!(evidence.len(), 1);
-    let (record, source) = evidence.retained_record(0).unwrap();
+    let (record, source) = evidence.retained_record(0).unwrap().unwrap();
     assert_eq!(
         record.kind,
         crate::construction::evidence::DiagnosticKind::Prologue(

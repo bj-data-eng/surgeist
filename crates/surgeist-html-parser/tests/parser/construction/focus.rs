@@ -21,6 +21,7 @@ fn original_document_and_reused_inert_owner_keep_null_beside_pending_style_histo
                 documents.push(row.node().id());
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => (),
         }
     }
@@ -66,7 +67,11 @@ fn captured_target_stays_external_while_auxiliary_and_new_inert_owners_qualify()
     let target = context.target_document().clone();
     let report = HtmlFragmentParseRequest::new(HtmlSource::utf8(
         "<dialog open></dialog><template><input autofocus></template><template><dialog open></dialog></template>"), context, limits()).unwrap().parse().unwrap();
-    let auxiliary = report.fragment_parser_document().unwrap().document();
+    let auxiliary = report
+        .fragment_parser_document()
+        .unwrap()
+        .unwrap()
+        .document();
     assert_eq!(
         auxiliary.document_focused_area_designation(),
         Some(HtmlFocusedAreaDesignation::KnownNull)
@@ -96,6 +101,7 @@ fn captured_target_stays_external_while_auxiliary_and_new_inert_owners_qualify()
                 }
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => (),
         }
     }
@@ -116,6 +122,6 @@ fn captured_target_stays_external_while_auxiliary_and_new_inert_owners_qualify()
     );
     assert!(matches!(
         effects.effect(0),
-        Some(HtmlParseEffect::TemplateCache { .. })
+        Ok(Some(HtmlParseEffect::TemplateCache { .. }))
     ));
 }

@@ -176,6 +176,7 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
     let mut records = 0;
     loop {
         match cursor.advance() {
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             HtmlParseMetadataStep::Record(_) => records += 1,
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
@@ -270,7 +271,7 @@ fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_dest
         .unwrap()
     };
     let source = parse();
-    let descriptor = source.fragment_parser_document().unwrap();
+    let descriptor = source.fragment_parser_document().unwrap().unwrap();
     let current = crate::DomDocumentEnvironment::new(crate::DomNativeInputPlatform::new(
         HtmlInputEmptySelectionSupport::Unsupported,
         HtmlInputNoneDirectionSupport::Unsupported,
@@ -293,10 +294,11 @@ fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_dest
     );
     let independent = parse();
     let separate = DomDocumentMetadata::from_fragment_parser(
-        &independent.fragment_parser_document().unwrap(),
+        &independent.fragment_parser_document().unwrap().unwrap(),
         current,
         independent
             .fragment_parser_document()
+            .unwrap()
             .unwrap()
             .document()
             .document_design_mode_enabled()
@@ -366,6 +368,7 @@ fn actual_img_generation_maps_once_and_the_next_native_update_does_not_restart_i
     let mut subject = None;
     loop {
         match cursor.advance() {
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             HtmlParseMetadataStep::Record(row) => {
                 if let Some(image) = row.image() {
                     assert!(subject.is_none());

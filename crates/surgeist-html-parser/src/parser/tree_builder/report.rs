@@ -205,9 +205,14 @@ impl ImmutableParseReport {
     /// completed contextual report. Ordinary reports cannot issue this lender.
     pub fn fragment_parser_document(
         &self,
-    ) -> Option<crate::construction::fragment_document::FragmentParserDocument<'_>> {
-        self.context()?;
-        self.storage.fragment_parser_document(self.source())
+    ) -> Result<
+        Option<crate::construction::fragment_document::FragmentParserDocument<'_>>,
+        crate::construction::read::UnresolvedReference,
+    > {
+        if self.context().is_none() {
+            return Ok(None);
+        }
+        Ok(self.storage.fragment_parser_document(self.source()))
     }
     pub fn document_state(&self) -> Option<StandaloneDocumentState> {
         match &self.context {
@@ -367,6 +372,7 @@ mod tests {
         let mut cursor = report.metadata();
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     for (index, id) in details.iter().enumerate() {
                         if record.node().id() == *id {
@@ -547,6 +553,7 @@ mod tests {
         loop {
             use crate::construction::report::{MetadataDocument, MetadataStep};
             match metadata.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(MetadataDocument::Captured(document)) = record.node_document() {
                         assert!(matches!(document.kind(), HtmlCapturedNodeKind::Document(_)));
@@ -606,6 +613,7 @@ mod tests {
         let mut input_source = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some((state, raw)) = record.input() {
                         assert_eq!(state.flags.input_type(), surgeist_html::HtmlInputType::Text);
@@ -711,6 +719,7 @@ mod tests {
         let mut saved_creation = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(output) = record.output() {
                         assert_eq!(
@@ -796,6 +805,7 @@ mod tests {
         let mut script = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some((state, Some(value))) = record.creation() {
                         assert_eq!(state, crate::HtmlCustomElementState::Undefined);
@@ -1076,7 +1086,7 @@ mod tests {
             assert!(kept.parts.arena.is_none());
             let diagnostics = kept.parts.diagnostics().unwrap();
             assert_eq!(diagnostics.len(), 1);
-            let (diagnostic, location) = diagnostics.retained_record(0).unwrap();
+            let (diagnostic, location) = diagnostics.retained_record(0).unwrap().unwrap();
             assert_eq!(
                 diagnostic.kind(),
                 crate::HtmlParseDiagnosticKind::Prologue(
@@ -1119,6 +1129,7 @@ mod tests {
         let mut found = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(script) = record.script() {
                         assert!(script.flags.already_started() && !script.flags.force_async());
@@ -1355,6 +1366,7 @@ mod tests {
         let mut inert = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(count) = record.pi_attribute_count() {
                         assert_eq!(count, 1);
@@ -1431,6 +1443,7 @@ mod tests {
         let mut inapplicable = 0;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if record.select().is_some() {
                         select = Some(record.node().id());
@@ -1491,6 +1504,9 @@ mod tests {
                 let mut nonnull = 0;
                 loop {
                     match cursor.advance() {
+                        crate::construction::report::MetadataStep::Fault(fault) => {
+                            panic!("{fault}")
+                        }
                         crate::construction::report::MetadataStep::Record(record) => {
                             if record
                                 .option_nearest_select()
@@ -1557,6 +1573,7 @@ mod tests {
         let mut null = 0;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(cache) = record.option_nearest_select() {
                         assert!(cache.is_none());

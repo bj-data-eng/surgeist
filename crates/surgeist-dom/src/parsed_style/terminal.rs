@@ -14,6 +14,11 @@ pub enum DomParsedHtmlTerminalError {
         remaining: std::num::NonZeroU64,
     },
 }
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference> for DomParsedHtmlTerminalError {
+    fn from(error: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::Frontier(error.into())
+    }
+}
 impl From<DomError> for DomParsedHtmlTerminalError {
     fn from(error: DomError) -> Self {
         Self::Frontier(error.into())

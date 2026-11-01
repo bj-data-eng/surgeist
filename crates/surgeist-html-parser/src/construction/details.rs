@@ -1139,7 +1139,7 @@ mod tests {
         let mut completed = StandaloneDocumentDriver::take_completed(&mut driver).unwrap();
         let evidence = completed.diagnostics().unwrap();
         assert_eq!(evidence.len(), 1);
-        let (record, location) = evidence.retained_record(0).unwrap();
+        let (record, location) = evidence.retained_record(0).unwrap().unwrap();
         assert_eq!(
             record.kind,
             evidence::DiagnosticKind::Tree(HeadCondition::UnacknowledgedSelfClosing)

@@ -668,6 +668,12 @@ fn append_group(
             HtmlParseHistoryStep::Progress => (),
             HtmlParseHistoryStep::Complete => return Ok(()),
             HtmlParseHistoryStep::Cancelled => return Err(DomError::Cancelled.into()),
+            HtmlParseHistoryStep::Fault(fault) => {
+                return Err(crate::DomParsedHtmlAssociationAdmissionError::History(
+                    surgeist_html_parser::HtmlParseHistoryError::Unresolved(fault),
+                )
+                .into());
+            }
         }
     }
 }
@@ -721,6 +727,9 @@ fn select(
                 }
             }
             Step::Complete => break,
+            Step::Fault(fault) => {
+                return Err(crate::DomParsedHtmlAssociationAdmissionError::from(fault).into());
+            }
             _ => (),
         }
     }
@@ -800,6 +809,9 @@ fn select(
             }
             Step::Occurrence(_) | Step::Skipped => (),
             Step::Complete => return Err(unsupported()),
+            Step::Fault(fault) => {
+                return Err(crate::DomParsedHtmlAssociationAdmissionError::from(fault).into());
+            }
         }
     }
 }
@@ -843,6 +855,7 @@ fn form_original_policy(
     loop {
         meter.step(cancel)?;
         match rows.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *selection.qualification.occurrence() => {
                 let context = row.context();
                 if row.subject().id() != *selection.qualification.subject()
@@ -931,6 +944,7 @@ fn form_text_nonce(
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *id => {
                 let inputs = row.style().expect("selected original Style");
                 let mut units = Vec::new();
@@ -938,7 +952,7 @@ fn form_text_nonce(
                     meter.step(cancel)?;
                     append_group(
                         report,
-                        inputs.text(i).expect("retained text index"),
+                        inputs.text(i)?.expect("retained text index"),
                         &mut units,
                         meter,
                         cancel,
