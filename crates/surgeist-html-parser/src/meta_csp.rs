@@ -18,14 +18,14 @@ pub enum HtmlParseCspFailureKind {
 /// A terminal consuming parse, its native error and original accounting owner.
 /// Backend error custody cannot be extracted separately from this envelope.
 pub struct HtmlParseCspFailure<E> {
-    pub(crate) parse: Option<HtmlParseFailure>,
+    pub(crate) parse: HtmlParseFailure,
     pub(crate) native: Option<E>,
     pub(crate) kind: HtmlParseCspFailureKind,
     pub(crate) storage: Storage,
 }
 impl<E> HtmlParseCspFailure<E> {
     pub fn parse_failure(&self) -> &HtmlParseFailure {
-        self.parse.as_ref().expect("terminal original owner")
+        &self.parse
     }
     pub fn kind(&self) -> HtmlParseCspFailureKind {
         self.kind
@@ -60,10 +60,7 @@ impl<E> Drop for HtmlParseCspFailure<E> {
     fn drop(&mut self) {
         drop(self.native.take());
         if self.storage != Storage::ZERO {
-            self.parse
-                .as_mut()
-                .expect("native error retains original control")
-                .release_csp_storage(self.storage);
+            self.parse.release_csp_storage(self.storage);
         }
     }
 }
@@ -311,7 +308,7 @@ pub(crate) fn parse<P: HtmlMetaCspProcessor>(
                 _ => adapter.kind,
             };
             Err(HtmlParseCspFailure {
-                parse: Some(parse),
+                parse,
                 native: adapter.error,
                 kind,
                 storage: adapter.storage,
