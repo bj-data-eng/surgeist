@@ -145,14 +145,22 @@ pub(crate) enum HeadError {
     IncompleteCompletion,
 }
 impl HeadError {
-    /// A stage, kernel or prologue owner its driver keeps is gone, or the
-    /// formatting list holds a state its own sequencing cannot produce.
-    pub(super) fn lost_owner(&self) -> bool {
+    /// The error names a state the stage's own sequencing cannot produce: an
+    /// owner, slot or mode it keeps is gone, or a token, formatting entry,
+    /// script nesting or tokenizer state is one it never creates. No input
+    /// reaches these; they are faults of the parser, not unsupported documents.
+    pub(super) fn invariant_fault(&self) -> bool {
         match self {
-            Self::Consumed | Self::MissingInput | Self::MissingTokenizer => true,
-            Self::InvalidFormattingState => true,
+            Self::Consumed
+            | Self::MissingInput
+            | Self::MissingTokenizer
+            | Self::MissingReturnMode
+            | Self::InvalidFormattingState
+            | Self::InvalidTextToken
+            | Self::InvalidScriptNesting
+            | Self::TokenizerExhausted => true,
             Self::Kernel(KernelError::Consumed) => true,
-            Self::Prologue(error) => error.lost_owner(),
+            Self::Prologue(error) => error.invariant_fault(),
             _ => false,
         }
     }

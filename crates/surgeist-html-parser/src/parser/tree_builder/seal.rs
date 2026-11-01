@@ -157,7 +157,6 @@ impl OrdinaryInitialization {
     }
     /// Joins the cleaned failure of the execution this carrier ran to the
     /// original request. A refusal hands back the carrier and the failure.
-    #[allow(clippy::type_complexity)]
     #[expect(
         clippy::result_large_err,
         reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
@@ -199,7 +198,6 @@ impl OrdinaryInitialization {
     }
     /// Seals the frozen construction of the execution this carrier ran with the
     /// original request. A refusal hands back the carrier and the parts.
-    #[allow(clippy::type_complexity)]
     #[expect(
         clippy::result_large_err,
         reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
@@ -332,8 +330,8 @@ impl<'request> InitializationAttempt<'request> {
 }
 
 /// Three carrier fields, four attempt fields and its three phase transitions,
-/// plus the cleared original request slot;
-/// plus the exact entry transfer slots. All are fixed bootstrap storage, not
+/// plus the exact entry transfer slots. The request is held by the carrier and
+/// moved out by value, so no request slot is cleared. All are fixed bootstrap storage, not
 /// variable source/native copies. Running admission follows source precedence;
 /// an earlier stop cannot pretend this layout was admitted.
 pub(super) const fn initialization_bootstrap_layout() -> (usize, usize) {
@@ -344,9 +342,8 @@ pub(super) const fn initialization_bootstrap_layout() -> (usize, usize) {
             bytes
                 + size_of::<OrdinaryInitialization>()
                 + size_of::<InitializationAttempt>()
-                + 3 * size_of::<InitializationPhase>()
-                + size_of::<Option<HtmlDocumentParseRequest>>(),
-            writes + 3 + 4 + 3 + 1,
+                + 3 * size_of::<InitializationPhase>(),
+            writes + 3 + 4 + 3,
         )
     }
 }
@@ -361,7 +358,7 @@ pub(super) const fn initialization_qualification_bytes() -> usize {
 }
 
 /// Exact physical transfer layouts are prepaid by the initialization owner.
-/// Four cleared owning options, five detached fields, four request fields and
+/// Three cleared owning options, five detached fields, four request fields and
 /// two joined fields: every terminal move is fixed and needs no new admission.
 pub(super) const fn terminal_transfer_layout() -> (usize, usize) {
     const {
@@ -370,11 +367,10 @@ pub(super) const fn terminal_transfer_layout() -> (usize, usize) {
             size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
                 + size_of::<Option<super::terminal::FailedStandaloneDocument>>()
                 + size_of::<super::terminal::DetachedStandaloneFailure>()
-                + size_of::<Option<HtmlDocumentParseRequest>>()
                 + size_of::<Option<super::terminal::DetachedStandaloneFailure>>()
                 + size_of::<DocumentRequestParts>()
                 + size_of::<OwnedOrdinaryFailure>(),
-            4 + 5 + 4 + 2,
+            3 + 5 + 4 + 2,
         )
     }
 }
@@ -514,7 +510,6 @@ impl OwnedOrdinaryFailure {
         }
     }
     /// A refusal hands both owners back unchanged.
-    #[allow(clippy::type_complexity)]
     #[expect(
         clippy::result_large_err,
         reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
@@ -1118,13 +1113,12 @@ mod tests {
             .current;
         let bytes = std::mem::size_of::<SealedOrdinaryConstruction>()
             + std::mem::size_of::<Option<FrozenStandaloneParts>>()
-            + std::mem::size_of::<Option<HtmlDocumentParseRequest>>()
             + std::mem::size_of::<DocumentRequestParts>()
             + std::mem::size_of::<crate::parser::control::ParseUsage>();
         measured.release().unwrap();
         let mut request = Some(HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<!doctype html><p>A&amp;B"),
-            work_limits(before + bytes as u64 + 1 + 5 + 9 - 1),
+            work_limits(before + bytes as u64 + 1 + 5 + 8 - 1),
         ));
         let mut parts = Some(frozen(request.as_ref().unwrap()));
         assert_eq!(
@@ -1141,7 +1135,7 @@ mod tests {
             Err(StandaloneError::Stop(
                 crate::parser::control::ParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
-                    requested_delta: 9,
+                    requested_delta: 8,
                     ..
                 }
             ))

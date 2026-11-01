@@ -23,15 +23,15 @@ impl FragmentExecutionError {
     /// An owner this driver's own sequencing keeps is gone while its controller
     /// is still held: the first stop becomes the invariant, or stays the stop
     /// that was already first.
-    pub(super) fn owner_lost(control: &mut ParseControl) -> Self {
+    pub(super) fn latch_invariant(control: &mut ParseControl) -> Self {
         Self::Stop(control.fail_invariant(super::Invariant::RegistryRow))
     }
-    /// The error names an owner that the driver's own sequencing keeps present
-    /// and that is gone, rather than a document or a limit.
-    pub(super) fn lost_owner(&self) -> bool {
+    /// The error names a state the driver's own sequencing cannot produce,
+    /// rather than a document or a limit.
+    pub(super) fn invariant_fault(&self) -> bool {
         match self {
             Self::Consumed => true,
-            Self::Head(error) => error.lost_owner(),
+            Self::Head(error) => error.invariant_fault(),
             Self::Kernel(KernelError::Consumed) => true,
             _ => false,
         }
@@ -142,9 +142,9 @@ impl<'source> ContextFragmentDriver<'source> {
     /// Latches the stop a public failure reports: a lost owner is an invariant
     /// and anything else is the provenance boundary. A stop already latched
     /// stays the first one.
-    pub(super) fn stop_for_public_failure(&mut self, lost_owner: bool) {
-        if lost_owner {
-            FragmentExecutionError::owner_lost(&mut self.control);
+    pub(super) fn stop_for_public_failure(&mut self, invariant_fault: bool) {
+        if invariant_fault {
+            FragmentExecutionError::latch_invariant(&mut self.control);
         } else {
             self.control
                 .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
@@ -180,8 +180,8 @@ impl<'source> ContextFragmentDriver<'source> {
             Err(error) => {
                 // A driver that has not reached its head stage is not complete
                 // yet; one that has reached it must still hold its owners.
-                if self.head.is_some() && error.lost_owner() {
-                    FragmentExecutionError::owner_lost(&mut self.control);
+                if self.head.is_some() && error.invariant_fault() {
+                    FragmentExecutionError::latch_invariant(&mut self.control);
                 }
                 Err((error, self))
             }
@@ -226,8 +226,8 @@ impl<'source> ContextFragmentDriver<'source> {
             // One controller owns terminality; a stop the step already latched
             // stays the first one. A lost owner is an invariant, not an
             // unsupported construct.
-            if error.lost_owner() {
-                FragmentExecutionError::owner_lost(&mut self.control);
+            if error.invariant_fault() {
+                FragmentExecutionError::latch_invariant(&mut self.control);
             } else {
                 self.control
                     .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
@@ -507,11 +507,10 @@ impl FrozenContextFragmentParts {
             const {
                 size_of::<ownership::SealedFragmentConstruction>()
                     + size_of::<crate::request::FragmentRequestParts>()
-                    + size_of::<Option<HtmlFragmentParseRequest>>()
                     + size_of::<Option<Self>>()
                     + size_of::<super::super::control::ParseUsage>()
             },
-            12,
+            11,
             &mut self.control,
         )?;
         self.control.checkpoint()?;
@@ -592,9 +591,9 @@ impl FrozenContextFragmentParts {
 }
 
 impl<'source> CompletedContextFragment<'source> {
-    pub(super) fn stop_for_public_failure(&mut self, lost_owner: bool) {
+    pub(super) fn stop_for_public_failure(&mut self, invariant_fault: bool) {
         if let Some(d) = &mut self.driver {
-            d.stop_for_public_failure(lost_owner);
+            d.stop_for_public_failure(invariant_fault);
         }
     }
     pub(crate) fn take_failed(
@@ -1131,7 +1130,7 @@ mod tests {
     }
 
     #[test]
-    fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
+    fn only_invariant_faults_are_classified_as_invariant_faults() {
         use head::HeadError;
         let lost = [
             FragmentExecutionError::Consumed,
@@ -1147,7 +1146,7 @@ mod tests {
             FragmentExecutionError::Head(HeadError::Kernel(KernelError::Consumed)),
         ];
         for error in &lost {
-            assert!(error.lost_owner(), "{error:?}");
+            assert!(error.invariant_fault(), "{error:?}");
         }
         let named = [
             FragmentExecutionError::Stop(ParseStop::Cancelled),
@@ -1162,7 +1161,7 @@ mod tests {
             ))),
         ];
         for error in &named {
-            assert!(!error.lost_owner(), "{error:?}");
+            assert!(!error.invariant_fault(), "{error:?}");
         }
     }
 
@@ -1189,7 +1188,8 @@ mod tests {
     }
 
     #[test]
-    fn a_fragment_completion_stopped_for_a_lost_owner_latches_the_invariant_and_still_cleans() {
+    fn a_fragment_completion_stopped_for_an_invariant_fault_latches_the_invariant_and_still_cleans()
+    {
         for lost in [true, false] {
             let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
             let mut driver = Some(initialized_driver(&request));

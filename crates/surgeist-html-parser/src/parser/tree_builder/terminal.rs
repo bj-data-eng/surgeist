@@ -48,8 +48,8 @@ impl<'source> StandaloneDocumentDriver<'source> {
             Err(error) => {
                 // A driver that has not reached its head stage is not complete
                 // yet; one that has reached it must still hold its owners.
-                if self.head.is_some() && error.lost_owner() {
-                    StandaloneError::owner_lost(&mut self.control);
+                if self.head.is_some() && error.invariant_fault() {
+                    StandaloneError::latch_invariant(&mut self.control);
                 }
                 Err((error, self))
             }
@@ -93,10 +93,10 @@ impl<'source> CompletedStandaloneDocument<'source> {
     /// Latches the stop a public failure reports: a lost owner is an invariant
     /// and anything else is the provenance boundary. A stop already latched
     /// stays the first one.
-    pub(super) fn stop_for_public_failure(&mut self, lost_owner: bool) {
+    pub(super) fn stop_for_public_failure(&mut self, invariant_fault: bool) {
         if let Some(d) = &mut self.driver {
-            if lost_owner {
-                StandaloneError::owner_lost(&mut d.control);
+            if invariant_fault {
+                StandaloneError::latch_invariant(&mut d.control);
             } else {
                 d.control
                     .stop_unsupported_standalone(super::StandaloneUnsupported::Provenance);
@@ -593,7 +593,7 @@ impl FrozenStandaloneParts {
         // Cleanup refuses an owner that has not stopped, so the stop is there.
         let stop = self.control.stop().ok_or(StandaloneError::Consumed)?;
         let Some(after_cleanup) = self.after_cleanup.take() else {
-            return Err(StandaloneError::owner_lost(&mut self.control));
+            return Err(StandaloneError::latch_invariant(&mut self.control));
         };
         match self.control.take_stopped_source_binding() {
             Ok(binding) => Ok((stop, binding, after_cleanup)),
@@ -638,11 +638,10 @@ impl FrozenStandaloneParts {
             const {
                 size_of::<super::seal::SealedOrdinaryConstruction>()
                     + size_of::<Option<Self>>()
-                    + size_of::<Option<crate::HtmlDocumentParseRequest>>()
                     + size_of::<crate::request::DocumentRequestParts>()
                     + size_of::<super::super::control::ParseUsage>()
             },
-            9,
+            8,
             &mut self.control,
         )?;
         self.control.checkpoint()?;

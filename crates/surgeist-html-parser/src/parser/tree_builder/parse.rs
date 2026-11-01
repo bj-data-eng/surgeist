@@ -151,8 +151,23 @@ impl HtmlParseFailure {
     pub fn reason(&self) -> HtmlParseFailureReason {
         self.reason
     }
+    /// A condition under which the failure could not keep all it learned. When
+    /// it is `Cleanup` or `Ownership` the evidence readers (`first_stop`,
+    /// `source_admitted`, `at_stop`, `retained_usage`, `after_cleanup` and
+    /// `diagnostics`) can read `None` even though execution ran, so a `None`
+    /// from them does not mean the request was rejected before execution. The
+    /// original request, its source and the reason are always kept, and
+    /// `first_stop` still names the stop when the reason does.
     pub fn cleanup_error(&self) -> Option<HtmlParseEngineCondition> {
         self.cleanup_error
+    }
+    /// The stop the reason names, for a failure that reports a cleanup or an
+    /// ownership condition and so holds no stopped prefix.
+    fn stop_of_refused_cleanup(&self) -> Option<ParseStop> {
+        match (self.cleanup_error, self.reason) {
+            (Some(_), HtmlParseFailureReason::Stop(stop)) => Some(stop),
+            _ => None,
+        }
     }
     /// The original execution stop, including an unsupported construction's
     /// canonical terminal stop. Pre-execution rejection has no invented stop.
@@ -160,16 +175,22 @@ impl HtmlParseFailure {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => match o.failure() {
                 Some(super::entry::InitializationFailure::Stopped(stop)) => Some(stop),
-                _ => None,
+                // A refused cleanup keeps no stopped prefix, but the reason
+                // still names the stop that ended execution.
+                _ => self.stop_of_refused_cleanup(),
             },
             FailureStorage::Ordinary(o) => Some(o.stop()),
-            FailureStorage::FragmentInitialization(o) => o.failure().map(|f| f.stop()),
+            FailureStorage::FragmentInitialization(o) => o
+                .failure()
+                .map(|f| f.stop())
+                .or_else(|| self.stop_of_refused_cleanup()),
             FailureStorage::Fragment(o) => Some(o.stop()),
             FailureStorage::OrdinaryFrozen(o) => o.parts.control.stop(),
             FailureStorage::FragmentFrozen(o) => o.parts.control.stop(),
         }
     }
-    /// None means rejection before an execution control was established.
+    /// None means rejection before an execution control was established, or a
+    /// failure whose `cleanup_error` reports that it kept no stopped prefix.
     /// Some(false) is a stopped source-admission attempt, distinct from an
     /// admitted empty source.
     pub fn source_admitted(&self) -> Option<bool> {
@@ -414,7 +435,7 @@ fn fragment_reason(e: &FragmentExecutionError) -> HtmlParseFailureReason {
 enum OrdinaryAttempt {
     Ready(FrozenStandaloneParts),
     Failed(HtmlParseFailureReason, DetachedStandaloneFailure),
-    Initialization(HtmlParseFailureReason, bool),
+    Initialization(HtmlParseFailureReason, Option<HtmlParseEngineCondition>),
 }
 /// Ends an execution that stopped: the driver is cleaned and its failure
 /// detached, or, if either step is refused, the request-owning carrier reports
@@ -423,17 +444,17 @@ enum OrdinaryAttempt {
 fn abandon_ordinary(
     mut driver: StandaloneDocumentDriver<'_>,
     reason: HtmlParseFailureReason,
-    lost_owner: bool,
+    invariant_fault: bool,
 ) -> OrdinaryAttempt {
-    if lost_owner {
-        StandaloneError::owner_lost(&mut driver.control);
+    if invariant_fault {
+        StandaloneError::latch_invariant(&mut driver.control);
     } else {
         driver
             .control
             .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
     }
     let Ok(failed) = driver.into_failed() else {
-        return OrdinaryAttempt::Initialization(reason, true);
+        return OrdinaryAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Cleanup));
     };
     detach_ordinary(failed, reason)
 }
@@ -443,7 +464,10 @@ fn detach_ordinary(
 ) -> OrdinaryAttempt {
     match failed.into_detached() {
         Ok(failure) => OrdinaryAttempt::Failed(reason, failure),
-        Err(_) => OrdinaryAttempt::Initialization(reason, true),
+        // The cleaned failure could not be detached from its source binding.
+        Err(_) => {
+            OrdinaryAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Ownership))
+        }
     }
 }
 fn ordinary_attempt(
@@ -454,14 +478,17 @@ fn ordinary_attempt(
 ) -> OrdinaryAttempt {
     let mut attempt = match owner.begin_report() {
         Ok(a) => a,
-        Err(e) => return OrdinaryAttempt::Initialization(ordinary_reason(&e), false),
+        Err(e) => return OrdinaryAttempt::Initialization(ordinary_reason(&e), None),
     };
     let mut driver = match attempt.take_driver() {
         Ok(d) => d,
         Err(e) => {
             let reason = ordinary_reason(&e);
-            let cleanup_failed = attempt.retain_failure().is_err();
-            return OrdinaryAttempt::Initialization(reason, cleanup_failed);
+            let refused = attempt
+                .retain_failure()
+                .is_err()
+                .then_some(HtmlParseEngineCondition::Cleanup);
+            return OrdinaryAttempt::Initialization(reason, refused);
         }
     };
     // Actual output receivers are admitted on this public-only path before
@@ -483,6 +510,9 @@ fn ordinary_attempt(
             reason = Some(ordinary_reason(&e));
         }
     }
+    // The parse functions give the tokenizer the complete source, which never
+    // starves it, so a request for more input is a fault of the parser.
+    let mut starved = false;
     while reason.is_none() {
         match driver.step_with_meta_csp(&mut service) {
             Ok(HeadStep::Consumed) => {}
@@ -490,6 +520,7 @@ fn ordinary_attempt(
                 reason = Some(HtmlParseFailureReason::Engine(
                     HtmlParseEngineCondition::Tokenizer,
                 ));
+                starved = true;
                 break;
             }
             Ok(HeadStep::Complete) => break,
@@ -504,13 +535,13 @@ fn ordinary_attempt(
         }
     }
     if let Some(reason) = reason {
-        return abandon_ordinary(driver, reason, false);
+        return abandon_ordinary(driver, reason, starved);
     }
     // A refused completion has already latched a lost owner as an invariant.
     let mut completed = match driver.into_completed() {
         Ok(completed) => completed,
         Err((error, driver)) => {
-            return abandon_ordinary(driver, ordinary_reason(&error), error.lost_owner());
+            return abandon_ordinary(driver, ordinary_reason(&error), error.invariant_fault());
         }
     };
     let completion = completed
@@ -520,10 +551,12 @@ fn ordinary_attempt(
         Ok(parts) => OrdinaryAttempt::Ready(parts),
         Err(e) => {
             let reason = ordinary_reason(&e);
-            completed.stop_for_public_failure(e.lost_owner());
+            completed.stop_for_public_failure(e.invariant_fault());
             match completed.take_public_failure() {
                 Ok(failed) => detach_ordinary(failed, reason),
-                Err(_) => OrdinaryAttempt::Initialization(reason, true),
+                Err(_) => {
+                    OrdinaryAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Cleanup))
+                }
             }
         }
     }
@@ -545,7 +578,7 @@ pub(crate) fn document(
             return Err(HtmlParseFailure {
                 reason,
                 storage: FailureStorage::OrdinaryInitialization(owner),
-                cleanup_error: refused.then_some(HtmlParseEngineCondition::Cleanup),
+                cleanup_error: refused,
             });
         }
         OrdinaryAttempt::Failed(reason, failure) => {
@@ -556,8 +589,8 @@ pub(crate) fn document(
         Ok(sealed) => sealed,
         Err((error, owner, mut parts)) => {
             let reason = ordinary_reason(&error);
-            if error.lost_owner() {
-                StandaloneError::owner_lost(&mut parts.control);
+            if error.invariant_fault() {
+                StandaloneError::latch_invariant(&mut parts.control);
             } else {
                 parts
                     .control
@@ -617,7 +650,7 @@ fn ordinary_failure(
 enum FragmentAttempt {
     Ready(FrozenContextFragmentParts),
     Failed(HtmlParseFailureReason, StoppedFragmentConstruction),
-    Initialization(HtmlParseFailureReason, bool),
+    Initialization(HtmlParseFailureReason, Option<HtmlParseEngineCondition>),
 }
 /// Ends a fragment execution that stopped; a refused step is reported by the
 /// request-owning carrier, as for the ordinary driver.
@@ -627,16 +660,19 @@ fn abandon_fragment(
 ) -> FragmentAttempt {
     match driver.into_failed() {
         Ok(failed) => stop_fragment(failed, reason),
-        Err(_) => FragmentAttempt::Initialization(reason, true),
+        Err(_) => FragmentAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Cleanup)),
     }
 }
 fn stop_fragment(
     failed: FailedContextFragment<'_>,
     reason: HtmlParseFailureReason,
 ) -> FragmentAttempt {
-    match StoppedFragmentConstruction::take(&mut Some(failed), &mut None) {
+    match StoppedFragmentConstruction::from_failed(failed) {
         Ok(stopped) => FragmentAttempt::Failed(reason, stopped),
-        Err(_) => FragmentAttempt::Initialization(reason, true),
+        // The failure did not qualify against its request and binding.
+        Err(_) => {
+            FragmentAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Ownership))
+        }
     }
 }
 fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
@@ -645,7 +681,7 @@ fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
         Err(_) => {
             return FragmentAttempt::Initialization(
                 HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership),
-                false,
+                None,
             );
         }
     };
@@ -656,14 +692,21 @@ fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
                 let why = attempt.reason().map(fragment_reason).unwrap_or(
                     HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership),
                 );
-                let refused = attempt.retain_failure().is_err();
+                let refused = attempt
+                    .retain_failure()
+                    .is_err()
+                    .then_some(HtmlParseEngineCondition::Cleanup);
                 return FragmentAttempt::Initialization(why, refused);
             }
         };
+    // A fragment source is complete, which never starves the tokenizer, so a
+    // request for more input is a fault of the parser.
+    let mut starved = false;
     let why = loop {
         match driver.step() {
             Ok(HeadStep::Consumed) => {}
             Ok(HeadStep::NeedInput) => {
+                starved = true;
                 break Some(HtmlParseFailureReason::Engine(
                     HtmlParseEngineCondition::Tokenizer,
                 ));
@@ -676,14 +719,14 @@ fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
         }
     };
     if let Some(why) = why {
-        driver.stop_for_public_failure(false);
+        driver.stop_for_public_failure(starved);
         return abandon_fragment(driver, why);
     }
     // A refused completion has already latched a lost owner as an invariant.
     let mut completed = match driver.into_completed() {
         Ok(completed) => completed,
         Err((error, mut driver)) => {
-            driver.stop_for_public_failure(error.lost_owner());
+            driver.stop_for_public_failure(error.invariant_fault());
             return abandon_fragment(driver, fragment_reason(&error));
         }
     };
@@ -694,10 +737,12 @@ fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
         Ok(parts) => FragmentAttempt::Ready(parts),
         Err(e) => {
             let why = fragment_reason(&e);
-            completed.stop_for_public_failure(e.lost_owner());
+            completed.stop_for_public_failure(e.invariant_fault());
             match completed.take_failed() {
                 Ok(failed) => stop_fragment(failed, why),
-                Err(_) => FragmentAttempt::Initialization(why, true),
+                Err(_) => {
+                    FragmentAttempt::Initialization(why, Some(HtmlParseEngineCondition::Cleanup))
+                }
             }
         }
     }
@@ -716,7 +761,7 @@ pub(crate) fn fragment(
             return Err(HtmlParseFailure {
                 reason,
                 storage: FailureStorage::FragmentInitialization(owner),
-                cleanup_error: refused.then_some(HtmlParseEngineCondition::Cleanup),
+                cleanup_error: refused,
             });
         }
         FragmentAttempt::Failed(reason, stopped) => {
@@ -727,23 +772,21 @@ pub(crate) fn fragment(
         Ok(sealed) => sealed,
         Err((error, owner, mut parts)) => {
             let reason = fragment_reason(&error);
-            if error.lost_owner() {
-                FragmentExecutionError::owner_lost(&mut parts.control);
+            if error.invariant_fault() {
+                FragmentExecutionError::latch_invariant(&mut parts.control);
             } else {
                 parts
                     .control
                     .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
             }
-            return Err(
-                match StoppedFragmentConstruction::take_frozen(&mut Some(parts), &mut None) {
-                    Ok(stopped) => fragment_failure(owner, reason, stopped),
-                    Err(_) => HtmlParseFailure {
-                        reason,
-                        storage: FailureStorage::FragmentInitialization(owner),
-                        cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
-                    },
+            return Err(match StoppedFragmentConstruction::from_frozen(parts) {
+                Ok(stopped) => fragment_failure(owner, reason, stopped),
+                Err(_) => HtmlParseFailure {
+                    reason,
+                    storage: FailureStorage::FragmentInitialization(owner),
+                    cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
                 },
-            );
+            });
         }
     };
     match ImmutableParseReport::publish_fragment(sealed) {

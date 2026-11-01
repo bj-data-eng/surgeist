@@ -19887,7 +19887,7 @@ fn a_token_event_is_taken_only_from_a_token_slot_and_other_content_stays_for_rel
 }
 
 #[test]
-fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
+fn only_invariant_faults_are_classified_as_invariant_faults() {
     use super::head::HeadError;
     use super::prologue::PrologueError;
     let lost = [
@@ -19908,7 +19908,7 @@ fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
         StandaloneError::Prologue(PrologueError::Kernel(KernelError::Consumed)),
     ];
     for error in &lost {
-        assert!(error.lost_owner(), "{error:?}");
+        assert!(error.invariant_fault(), "{error:?}");
     }
     let named = [
         StandaloneError::UnsupportedDocumentInitialization,
@@ -19926,7 +19926,7 @@ fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
         StandaloneError::Prologue(PrologueError::PendingInput),
     ];
     for error in &named {
-        assert!(!error.lost_owner(), "{error:?}");
+        assert!(!error.invariant_fault(), "{error:?}");
     }
 }
 

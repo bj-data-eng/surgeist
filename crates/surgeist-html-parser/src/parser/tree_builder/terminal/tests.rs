@@ -223,7 +223,7 @@ fn frozen_completed(request: &HtmlDocumentParseRequest) -> CompletedStandaloneDo
     panic!("real EOF was not reached");
 }
 #[test]
-fn a_completion_stopped_for_a_lost_owner_latches_the_invariant_and_still_cleans() {
+fn a_completion_stopped_for_an_invariant_fault_latches_the_invariant_and_still_cleans() {
     for lost in [true, false] {
         let request = HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<p>x"),

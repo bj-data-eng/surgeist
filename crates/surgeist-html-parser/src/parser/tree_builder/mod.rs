@@ -1087,16 +1087,16 @@ impl StandaloneError {
     /// An owner this driver's own sequencing keeps is gone while its controller
     /// is still held: the first stop becomes the invariant, or stays the stop
     /// that was already first.
-    pub(super) fn owner_lost(control: &mut ParseControl) -> Self {
+    pub(super) fn latch_invariant(control: &mut ParseControl) -> Self {
         Self::Stop(control.fail_invariant(Invariant::RegistryRow))
     }
-    /// The error names an owner that the driver's own sequencing keeps present
-    /// and that is gone, rather than a document or a limit.
-    pub(super) fn lost_owner(&self) -> bool {
+    /// The error names a state the driver's own sequencing cannot produce,
+    /// rather than a document or a limit.
+    pub(super) fn invariant_fault(&self) -> bool {
         match self {
-            Self::Consumed => true,
-            Self::Prologue(error) => error.lost_owner(),
-            Self::Head(error) => error.lost_owner(),
+            Self::Consumed | Self::TokenizerExhausted => true,
+            Self::Prologue(error) => error.invariant_fault(),
+            Self::Head(error) => error.invariant_fault(),
             _ => false,
         }
     }
@@ -1136,6 +1136,16 @@ pub(crate) struct StandaloneDocumentDriver<'source> {
 }
 impl<'source> StandaloneDocumentDriver<'source> {
     pub(super) fn enable_meta_csp(&mut self, initial_base: bool) -> Result<(), StandaloneError> {
+        let result = self.enable_meta_csp_inner(initial_base);
+        if let Err(error) = &result
+            && error.invariant_fault()
+        {
+            // Any other refusal keeps the stop its caller latches for it.
+            StandaloneError::latch_invariant(&mut self.control);
+        }
+        result
+    }
+    fn enable_meta_csp_inner(&mut self, initial_base: bool) -> Result<(), StandaloneError> {
         let session = &mut self
             .prologue
             .as_mut()
@@ -1162,7 +1172,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         if let Err(error) = &result {
             // One controller owns terminality. Retained owners support cleanup,
             // never resumption or successful partial continuation publication.
-            if error.lost_owner() {
+            if error.invariant_fault() {
                 // Nothing the document contains made this unsupported; a driver
                 // lost an owner its own sequencing keeps.
                 self.control.fail_invariant(Invariant::RegistryRow);

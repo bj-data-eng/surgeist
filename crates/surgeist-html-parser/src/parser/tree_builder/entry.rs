@@ -130,8 +130,8 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                 // prefix; a lost owner is an invariant, not an unsupported
                 // document.
                 if driver.control.stop().is_none() {
-                    if error.lost_owner() {
-                        StandaloneError::owner_lost(&mut driver.control);
+                    if error.invariant_fault() {
+                        StandaloneError::latch_invariant(&mut driver.control);
                     } else {
                         driver
                             .control
@@ -281,7 +281,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                 let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
                 return Err(match driver.control.stop() {
                     Some(stop) => StandaloneError::Stop(stop),
-                    None => StandaloneError::owner_lost(&mut driver.control),
+                    None => StandaloneError::latch_invariant(&mut driver.control),
                 });
             }
             Phase::Transferred => return Err(StandaloneError::Consumed),
@@ -323,7 +323,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         if driver.failure_usage.is_none() {
             let Some(at_stop) = driver.control.first_stop_usage().cloned() else {
-                return Err(StandaloneError::owner_lost(&mut driver.control));
+                return Err(StandaloneError::latch_invariant(&mut driver.control));
             };
             driver.failure_usage = Some(at_stop);
             if let Some(prologue) = &mut driver.prologue
@@ -381,7 +381,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         // back what it took if the next one is refused.
         let Some(after_cleanup) = self.after_cleanup.take() else {
             return Err(match self.driver.as_mut() {
-                Some(driver) => StandaloneError::owner_lost(&mut driver.control),
+                Some(driver) => StandaloneError::latch_invariant(&mut driver.control),
                 None => StandaloneError::Consumed,
             });
         };

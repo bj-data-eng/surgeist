@@ -43,8 +43,8 @@ impl<'source> FragmentEntry<'source> {
         ) {
             Ok(()) => None,
             Err(error) => {
-                if error.lost_owner() {
-                    FragmentExecutionError::owner_lost(&mut driver.control);
+                if error.invariant_fault() {
+                    FragmentExecutionError::latch_invariant(&mut driver.control);
                 } else {
                     driver
                         .control
@@ -276,12 +276,12 @@ impl<'source> FragmentEntry<'source> {
         self.cleanup_failure()?;
         let mut driver = self.driver.take().ok_or(FragmentExecutionError::Consumed)?;
         match self.cleaned_observations(&mut driver) {
-            Ok((stop, at_stop, after_cleanup, binding)) => Ok(StoppedFragmentConstruction {
-                stop,
-                at_stop,
-                after_cleanup,
+            Ok(cleaned) => Ok(StoppedFragmentConstruction {
+                stop: cleaned.stop,
+                at_stop: cleaned.at_stop,
+                after_cleanup: cleaned.after_cleanup,
                 control: driver.control,
-                binding,
+                binding: cleaned.binding,
                 evidence: driver.failed_evidence,
                 _reason: self.reason.take(),
             }),
@@ -293,19 +293,10 @@ impl<'source> FragmentEntry<'source> {
     }
     /// Moves the stop, both usage observations and the source binding out of
     /// the cleaned entry; a refusal puts back what it had already moved.
-    #[allow(clippy::type_complexity)]
     fn cleaned_observations(
         &mut self,
         driver: &mut ContextFragmentDriver<'source>,
-    ) -> Result<
-        (
-            ParseStop,
-            ParseUsage,
-            ParseUsage,
-            Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>,
-        ),
-        FragmentExecutionError,
-    > {
+    ) -> Result<CleanedObservations, FragmentExecutionError> {
         // Cleanup refuses an owner that has not stopped, and the stop and its
         // snapshot exist together.
         let (stop, at_stop) = driver
@@ -314,16 +305,28 @@ impl<'source> FragmentEntry<'source> {
             .map(|(stop, usage)| (stop, usage.clone()))
             .ok_or(FragmentExecutionError::Consumed)?;
         let Some(after_cleanup) = self.after_cleanup.take() else {
-            return Err(FragmentExecutionError::owner_lost(&mut driver.control));
+            return Err(FragmentExecutionError::latch_invariant(&mut driver.control));
         };
         match driver.control.take_stopped_optional_source_binding() {
-            Ok(binding) => Ok((stop, at_stop, after_cleanup, binding)),
+            Ok(binding) => Ok(CleanedObservations {
+                stop,
+                at_stop,
+                after_cleanup,
+                binding,
+            }),
             Err(error) => {
                 self.after_cleanup = Some(after_cleanup);
                 Err(error.into())
             }
         }
     }
+}
+/// What a cleaned stopped construction hands over when it is detached.
+struct CleanedObservations {
+    stop: ParseStop,
+    at_stop: ParseUsage,
+    after_cleanup: ParseUsage,
+    binding: Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>,
 }
 
 /// The original source/capture/options and one preexisting stopped-carrier
@@ -381,7 +384,6 @@ impl FragmentInitialization {
     }
     /// The same request-owned terminal slot is filled, never reconstructed. A
     /// refusal hands back the carrier and the stopped construction.
-    #[allow(clippy::type_complexity)]
     #[expect(
         clippy::result_large_err,
         reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
@@ -427,7 +429,6 @@ impl FragmentInitialization {
     }
     /// Seals the frozen construction with the original request. A refusal hands
     /// back the carrier and the parts.
-    #[allow(clippy::type_complexity)]
     #[expect(
         clippy::result_large_err,
         reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
@@ -560,16 +561,15 @@ impl<'owner> FragmentInitializationAttempt<'owner> {
     }
 }
 
-/// Original request fields (7), two owning Option clears and joined fields
+/// Original request fields (7), one owning Option clear and joined fields
 /// (2). This compiled fixed envelope precedes every terminal request join.
 const fn request_join_layout() -> (usize, usize) {
     const {
         (
-            size_of::<Option<HtmlFragmentParseRequest>>()
-                + size_of::<Option<StoppedFragmentConstruction>>()
+            size_of::<Option<StoppedFragmentConstruction>>()
                 + size_of::<FragmentRequestParts>()
                 + size_of::<OwnedFragmentFailure>(),
-            2 + 7 + 2,
+            1 + 7 + 2,
         )
     }
 }
@@ -646,11 +646,33 @@ impl StoppedFragmentConstruction {
                 id == request.source().identity() && *basis == request.source().coordinates()
             })
     }
+    /// The slot form that tests drive; a refusal leaves both slots as they were.
+    #[cfg(test)]
     pub(crate) fn take(
         input: &mut Option<FailedContextFragment<'_>>,
         reason: &mut Option<FragmentExecutionError>,
     ) -> Result<Self, FragmentExecutionError> {
-        let mut failed = input.take().ok_or(FragmentExecutionError::Consumed)?;
+        let failed = input.take().ok_or(FragmentExecutionError::Consumed)?;
+        match Self::from_failed(failed) {
+            Ok(mut stopped) => {
+                stopped._reason = reason.take();
+                Ok(stopped)
+            }
+            Err((error, failed)) => {
+                *input = Some(failed);
+                Err(error)
+            }
+        }
+    }
+    /// Detaches the cleaned failure of an execution from its borrow of the
+    /// request. A refusal hands the failure back with its binding intact.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn from_failed<'a>(
+        mut failed: FailedContextFragment<'a>,
+    ) -> Result<Self, (FragmentExecutionError, FailedContextFragment<'a>)> {
         match Self::qualified_binding(&mut failed) {
             Ok(binding) => Ok(Self {
                 control: failed.control,
@@ -659,12 +681,9 @@ impl StoppedFragmentConstruction {
                 at_stop: failed.at_stop,
                 after_cleanup: failed.after_cleanup,
                 evidence: failed.evidence,
-                _reason: reason.take(),
+                _reason: None,
             }),
-            Err(error) => {
-                *input = Some(failed);
-                Err(error)
-            }
+            Err(error) => Err((error, failed)),
         }
     }
     fn qualified_binding(
@@ -683,41 +702,51 @@ impl StoppedFragmentConstruction {
         Ok(failed.control.take_stopped_optional_source_binding()?)
     }
 
+    /// The slot form that tests drive; a refusal leaves both slots as they were.
+    #[cfg(test)]
     pub(crate) fn take_frozen(
         input: &mut Option<FrozenContextFragmentParts>,
         reason: &mut Option<FragmentExecutionError>,
     ) -> Result<Self, FragmentExecutionError> {
-        let mut parts = input.take().ok_or(FragmentExecutionError::Consumed)?;
-        match Self::cleaned_frozen(&mut parts) {
-            Ok((binding, stop, at_stop, after_cleanup)) => Ok(Self {
-                control: parts.control,
-                binding,
-                stop,
-                at_stop,
-                after_cleanup,
-                evidence: parts.failed_evidence,
-                _reason: reason.take(),
-            }),
-            Err(error) => {
+        let parts = input.take().ok_or(FragmentExecutionError::Consumed)?;
+        match Self::from_frozen(parts) {
+            Ok(mut stopped) => {
+                stopped._reason = reason.take();
+                Ok(stopped)
+            }
+            Err((error, parts)) => {
                 *input = Some(parts);
                 Err(error)
             }
         }
     }
+    /// Cleans a stopped frozen construction and detaches its failure. A
+    /// refusal hands the construction back with what it had already moved.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn from_frozen(
+        mut parts: FrozenContextFragmentParts,
+    ) -> Result<Self, (FragmentExecutionError, FrozenContextFragmentParts)> {
+        match Self::cleaned_frozen(&mut parts) {
+            Ok(cleaned) => Ok(Self {
+                control: parts.control,
+                binding: cleaned.binding,
+                stop: cleaned.stop,
+                at_stop: cleaned.at_stop,
+                after_cleanup: cleaned.after_cleanup,
+                evidence: parts.failed_evidence,
+                _reason: None,
+            }),
+            Err(error) => Err((error, parts)),
+        }
+    }
     /// Cleans the stopped immutable owner, then moves its observations and
     /// source binding out; a refusal puts back what it had already moved.
-    #[allow(clippy::type_complexity)]
     fn cleaned_frozen(
         parts: &mut FrozenContextFragmentParts,
-    ) -> Result<
-        (
-            Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>,
-            ParseStop,
-            ParseUsage,
-            ParseUsage,
-        ),
-        FragmentExecutionError,
-    > {
+    ) -> Result<CleanedObservations, FragmentExecutionError> {
         parts.cleanup_failure()?;
         let actual = parts.control.stopped_source_binding()?;
         if actual.is_some_and(|(id, basis)| id != &parts.source.0 || *basis != parts.source.1) {
@@ -728,13 +757,18 @@ impl StoppedFragmentConstruction {
             .stopped()
             .map(|(stop, usage)| (stop, usage.clone()))
         else {
-            return Err(FragmentExecutionError::owner_lost(&mut parts.control));
+            return Err(FragmentExecutionError::latch_invariant(&mut parts.control));
         };
         let Some(after_cleanup) = parts.after_cleanup.take() else {
-            return Err(FragmentExecutionError::owner_lost(&mut parts.control));
+            return Err(FragmentExecutionError::latch_invariant(&mut parts.control));
         };
         match parts.control.take_stopped_optional_source_binding() {
-            Ok(binding) => Ok((binding, stop, at_stop, after_cleanup)),
+            Ok(binding) => Ok(CleanedObservations {
+                stop,
+                at_stop,
+                after_cleanup,
+                binding,
+            }),
             Err(error) => {
                 parts.after_cleanup = Some(after_cleanup);
                 Err(error.into())
@@ -784,7 +818,6 @@ impl OwnedFragmentFailure {
         &self.request
     }
     /// A refusal hands both owners back unchanged.
-    #[allow(clippy::type_complexity)]
     #[expect(
         clippy::result_large_err,
         reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
@@ -852,7 +885,6 @@ pub(crate) struct SealedFragmentConstruction {
 }
 impl SealedFragmentConstruction {
     /// A refusal hands both owners back unchanged.
-    #[allow(clippy::type_complexity)]
     #[expect(
         clippy::result_large_err,
         reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
@@ -1422,7 +1454,7 @@ mod tests {
         drop(names);
         measured_parts.release().unwrap();
         // One request-authority call, eleven comparisons, their actual fixed
-        // envelopes, then seven request fields/two clears/two joined fields
+        // envelopes, then seven request fields/one clear/two joined fields
         // and one final usage snapshot. Source qualification only polls.
         let reads = 2 * size_of::<crate::HtmlFragmentContext>()
             + 2 * size_of::<crate::HtmlSourceId>()
@@ -1432,10 +1464,9 @@ mod tests {
             + 2 * size_of::<bool>();
         let moves = size_of::<SealedFragmentConstruction>()
             + size_of::<FragmentRequestParts>()
-            + size_of::<Option<HtmlFragmentParseRequest>>()
             + size_of::<Option<FrozenContextFragmentParts>>()
             + size_of::<ParseUsage>();
-        let tail = 1 + 11 + reads as u64 + effect_qualification + moves as u64 + 12;
+        let tail = 1 + 11 + reads as u64 + effect_qualification + moves as u64 + 11;
         for missing in [0, 1] {
             let mut owner = FragmentInitializationOwner::new(with_limits(
                 literal,
