@@ -16,8 +16,18 @@
 
 use std::{fmt, marker::PhantomData};
 
+/// Implementable only through [`slots!`], which proves the mapping at compile
+/// time. A hand-written [`Slots`] would bypass those proofs, so the trait is
+/// sealed by this supertrait; the macro implements both.
+#[doc(hidden)]
+pub(crate) mod sealed {
+    pub(crate) trait Sealed<const N: usize> {}
+}
+
 /// Maps every variant of a closed enum to its element of an `N`-element array.
-pub(crate) trait Slots<const N: usize>: Copy {
+///
+/// Sealed: [`slots!`] is the only implementation route.
+pub(crate) trait Slots<const N: usize>: Copy + sealed::Sealed<N> {
     fn slot_ref<T>(table: &[T; N], key: Self) -> &T;
     fn slot_mut<T>(table: &mut [T; N], key: Self) -> &mut T;
 }
@@ -101,6 +111,7 @@ impl<K, T: fmt::Debug, const N: usize> fmt::Debug for Table<K, T, N> {
 /// discriminant, so a table is also readable in declaration order.
 macro_rules! slots {
     ($key:ty, $count:expr, { $($variant:ident => $slot:literal),+ $(,)? }) => {
+        impl $crate::keyed::sealed::Sealed<{ $count }> for $key {}
         impl $crate::keyed::Slots<{ $count }> for $key {
             fn slot_ref<T>(table: &[T; $count], key: Self) -> &T {
                 match key {
