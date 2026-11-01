@@ -25,7 +25,7 @@ use crate::bounded::{HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttribut
 use crate::keyed::{Table, slots};
 use crate::parser::control::{
     ControlIdentity, DocumentStringAllocation, FinalReleaseError, OwnedVec, ParseControl,
-    ParseStop, SharedAllocation, StandaloneUnsupported, VectorCapacity, WorkCategory,
+    ParseStop, SharedAllocation, StandaloneUnsupported, VectorCapacity, WalkSite, WorkCategory,
 };
 use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
@@ -2005,6 +2005,34 @@ fn keep_first<E: Into<SessionError>>(refused: &mut Option<SessionError>, result:
     if let Err(error) = result {
         refused.get_or_insert(error.into());
     }
+}
+/// [`keep_first`] for one step of a cleanup walk. Tests can make the step
+/// refuse after it did its work, as a reported refusal would.
+#[cfg(not(test))]
+fn keep_first_step<E: Into<SessionError>>(
+    _control: &mut ParseControl,
+    _site: WalkSite,
+    refused: &mut Option<SessionError>,
+    result: Result<(), E>,
+) {
+    keep_first(refused, result);
+}
+#[cfg(test)]
+fn keep_first_step<E: Into<SessionError>>(
+    control: &mut ParseControl,
+    site: WalkSite,
+    refused: &mut Option<SessionError>,
+    result: Result<(), E>,
+) {
+    if let Some(issued) = control.take_walk_refusal(site) {
+        let injected = if issued == 0 {
+            SessionError::WrongToken
+        } else {
+            latch_registry_row(control)
+        };
+        refused.get_or_insert(injected);
+    }
+    keep_first(refused, result);
 }
 fn release_logical(
     control: &mut ParseControl,
@@ -8979,25 +9007,27 @@ impl FrozenArena {
         // returned at the end. The recovery put the storage back before it
         // could refuse, so the owner below can still be retired.
         let mut refused = None;
-        keep_first(&mut refused, construction.recovered(control, recovery));
+        let recovered = construction.recovered(control, recovery);
+        keep_first_step(control, WalkSite::FrozenOwner, &mut refused, recovered);
         if let Some(fragment) = fragment {
-            keep_first(&mut refused, fragment.release(control, &owner));
+            let released = fragment.release(control, &owner);
+            keep_first_step(control, WalkSite::FrozenOwner, &mut refused, released);
         }
         if let Some(evidence) = evidence {
-            keep_first(&mut refused, evidence.release(control));
+            let released = evidence.release(control);
+            keep_first_step(control, WalkSite::FrozenOwner, &mut refused, released);
         }
-        keep_first(&mut refused, effects.release(control));
-        keep_first(
-            &mut refused,
-            release_parts(
-                control,
-                &owner,
-                ReleasedStorage {
-                    construction,
-                    payloads,
-                },
-            ),
+        let released = effects.release(control);
+        keep_first_step(control, WalkSite::FrozenOwner, &mut refused, released);
+        let released = release_parts(
+            control,
+            &owner,
+            ReleasedStorage {
+                construction,
+                payloads,
+            },
         );
+        keep_first_step(control, WalkSite::FrozenOwner, &mut refused, released);
         refused.map_or(Ok(()), Err)
     }
 }

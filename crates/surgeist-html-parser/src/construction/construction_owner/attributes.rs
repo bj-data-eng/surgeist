@@ -141,10 +141,8 @@ impl ConstructionOwner {
                     ..
                 } => {
                     action.perform();
-                    keep_first(
-                        &mut refused,
-                        control.cleanup_auxiliary_entries(auxiliary_entries as u64),
-                    );
+                    let cleaned = control.cleanup_auxiliary_entries(auxiliary_entries as u64);
+                    keep_first_step(control, WalkSite::AttributeWitness, &mut refused, cleaned);
                 }
                 HtmlConstructionAttributeRetirementDescription::Allocation => {
                     let ticket = self.attribute_plan.take();

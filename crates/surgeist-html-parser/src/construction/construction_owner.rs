@@ -777,10 +777,15 @@ impl ConstructionOwner {
             match credit {
                 Credit::Bank(bank) => match self.allocation_slot(control, bank) {
                     Ok(slot) => match slot.take() {
-                        Some(ticket) => keep_first(
-                            &mut refused,
-                            control.retire_construction_allocation(ticket, receipt),
-                        ),
+                        Some(ticket) => {
+                            let credited = control.retire_construction_allocation(ticket, receipt);
+                            keep_first_step(
+                                control,
+                                WalkSite::ConstructionBank,
+                                &mut refused,
+                                credited,
+                            );
+                        }
                         None => keep_first(&mut refused, Err(latch_registry_row(control))),
                     },
                     Err(error) => keep_first(&mut refused, Err(error)),

@@ -516,3 +516,65 @@ fn a_refused_recovery_still_releases_everything_the_frozen_arena_holds() {
     assert_registry_row(frozen.release(&mut c), &c);
     crate::construction::tests::storage_zero(&c);
 }
+
+// Characterization: a cleanup walk that meets a refusal keeps going, so every
+// other owner is still released or credited, and it reports the first refusal.
+// A test hook makes the first step refuse after its work (reported as a wrong
+// token) and the second refuse as the registry row, which latches as the first
+// stop. The walk must return the first refusal and leave nothing behind.
+use crate::parser::control::WalkSite;
+
+#[test]
+fn a_refused_bank_credit_still_retires_every_other_bank_and_reports_the_first_refusal() {
+    let (mut control, owner, _root, _child) = insertion_pair(crate::construction::tests::limits());
+    // One bank could not tell a continued walk from a stopped one.
+    let banks = owner.children.iter().flatten().count()
+        + usize::from(owner.records.is_some())
+        + usize::from(owner.identity.is_some());
+    assert!(banks >= 3, "{banks} banks");
+    control.refuse_walk_steps(WalkSite::ConstructionBank, 2);
+    let result = owner.retire(&mut control);
+    assert_eq!(result.err(), Some(SessionError::WrongToken));
+    assert_eq!(control.stop(), Some(registry_row()));
+    assert_eq!(control.usage().actual_capacity_bytes, 0);
+}
+
+#[test]
+fn a_refused_witness_retirement_still_retires_the_rest_of_the_edit_and_reports_the_first_refusal() {
+    use crate::construction::tests::{control, lexical_kind, storage_zero};
+    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::TokenKind};
+    let source = crate::HtmlSource::utf8("<html id=x><html a=y b=z>");
+    let mut c = control();
+    c.admit_source(&source).unwrap();
+    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let TokenKind::Tag(first) = lexical_kind(&mut lexer, &mut c) else {
+        panic!("tag")
+    };
+    let root = session.allocate_html_tag(&mut c, &mut Some(first)).unwrap();
+    let TokenKind::Tag(second) = lexical_kind(&mut lexer, &mut c) else {
+        panic!("tag")
+    };
+    let mut incoming = Some(second);
+    // Two new names give the edit two witnesses to retire.
+    c.refuse_walk_steps(WalkSite::AttributeWitness, 2);
+    let result = session.add_attributes_if_missing(&mut c, &root, &mut incoming);
+    assert_eq!(result, Err(SessionError::WrongToken));
+    assert_eq!(c.stop(), Some(registry_row()));
+    lexer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_refused_frozen_owner_still_releases_every_other_owner_and_reports_the_first_refusal() {
+    use crate::construction::effects::tests::{graph, request};
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let mut frozen = session.freeze(&mut c).unwrap();
+    c.refuse_walk_steps(WalkSite::FrozenOwner, 2);
+    let result = frozen.release(&mut c);
+    assert_eq!(result.err(), Some(SessionError::WrongToken));
+    assert_eq!(c.stop(), Some(registry_row()));
+    crate::construction::tests::storage_zero(&c);
+}

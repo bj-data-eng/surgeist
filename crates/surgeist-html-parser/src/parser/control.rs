@@ -229,6 +229,24 @@ pub(crate) struct ParseControl {
     /// ticket is prepared, as an allocation refusal would.
     #[cfg(test)]
     text_append_backing_fault: bool,
+    /// Remaining forced refusals per cleanup-walk site, and how many have
+    /// been issued so far.
+    #[cfg(test)]
+    walk_refusals: [usize; 3],
+    #[cfg(test)]
+    walk_refusals_issued: usize,
+}
+
+/// A cleanup walk that keeps going after a refusal, so tests can make one of
+/// its steps refuse.
+#[derive(Clone, Copy)]
+pub(crate) enum WalkSite {
+    /// The credit of each bank the construction owner retires.
+    ConstructionBank,
+    /// The retirement of each name witness of an attribute edit.
+    AttributeWitness,
+    /// Each owner a frozen arena releases.
+    FrozenOwner,
 }
 
 /// Fixed-size diagnostic metadata for actual execution between real polls.
@@ -291,6 +309,10 @@ impl ParseControl {
             text_append_restore_fault: false,
             #[cfg(test)]
             text_append_backing_fault: false,
+            #[cfg(test)]
+            walk_refusals: [0; 3],
+            #[cfg(test)]
+            walk_refusals_issued: 0,
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
@@ -468,6 +490,23 @@ impl ParseControl {
     #[cfg(test)]
     pub(crate) fn fail_next_text_append_backing(&mut self) {
         self.text_append_backing_fault = true;
+    }
+    /// Makes the next `count` steps of a cleanup walk refuse once their work
+    /// is done. The first refusal issued is reported as a wrong token, the
+    /// later ones as the registry row, so the order of reporting is visible.
+    #[cfg(test)]
+    pub(crate) fn refuse_walk_steps(&mut self, site: WalkSite, count: usize) {
+        self.walk_refusals[site as usize] = count;
+        self.walk_refusals_issued = 0;
+    }
+    /// The position of the refusal to issue at this step, when one is due.
+    #[cfg(test)]
+    pub(crate) fn take_walk_refusal(&mut self, site: WalkSite) -> Option<usize> {
+        let remaining = &mut self.walk_refusals[site as usize];
+        *remaining = remaining.checked_sub(1)?;
+        let issued = self.walk_refusals_issued;
+        self.walk_refusals_issued = issued.saturating_add(1);
+        Some(issued)
     }
     #[cfg(test)]
     pub(crate) fn take_text_append_backing_fault(&mut self) -> bool {
