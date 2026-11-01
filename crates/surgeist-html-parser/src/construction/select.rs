@@ -27,11 +27,15 @@ impl SelectState {
 /// The facts about a single-select's list of options that one more option
 /// appended at its end can change, as the selectedness setting algorithm
 /// (HTML 877d, "selectedness setting algorithm", step 5) leaves them: the last
-/// selected option, which is the only one, and whether any option is enabled.
+/// selected option, which is the only one, whether any option is enabled, and
+/// the last option the run counted. An insertion that connects several options
+/// runs the full algorithm for the first, which counts the later ones too, so
+/// the shortcut declines for an option the summary already ends with.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct SettledOptions {
     selected: Option<usize>,
     enabled: bool,
+    last: Option<usize>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OptionState {
@@ -828,6 +832,10 @@ impl SessionStorage {
             payload_write::<HtmlSelectCursor>(c, 1)?;
             cursor.reply(reply).map_err(|_| SessionError::WrongToken)?;
         };
+        let last = match count.checked_sub(1) {
+            Some(ordinal) => self.work_list_node(c, list, ordinal)?,
+            None => None,
+        };
         self.release_work_list(c, list)?;
         // The run keeps the last option read selected, and the fallback writes
         // selectedness only when it read none.
@@ -837,6 +845,7 @@ impl SessionStorage {
             SettledOptions {
                 selected: selected_by_fallback.or(last_selected),
                 enabled,
+                last,
             },
         )?;
         Ok(changed)
@@ -926,8 +935,10 @@ impl SessionStorage {
         let Some(settled) = select_state.settled else {
             return Ok(None);
         };
-        // An option's own descendants are not in the list.
-        if !self.ends_subtree(c, select, option)? {
+        // An option's own descendants are not in the list. A summary that ends
+        // with this option already counted it, with the options that connected
+        // before its hook ran.
+        if settled.last == Some(option) || !self.ends_subtree(c, select, option)? {
             return Ok(None);
         }
         let (option_slot, SelectMetadata::Option(mut option_state)) =
@@ -937,7 +948,10 @@ impl SessionStorage {
         };
         #[cfg(test)]
         let before = self.uncharged_option_list(select)?;
-        let mut next = settled;
+        let mut next = SettledOptions {
+            last: Some(option),
+            ..settled
+        };
         let mut changed = false;
         let disabled = if settled.enabled {
             None
@@ -1216,6 +1230,7 @@ impl SessionStorage {
             Some(SettledOptions {
                 selected: last_selected.map(|index| before[index].0),
                 enabled: before.iter().any(|&(.., disabled)| !disabled),
+                last: before.last().map(|&(node, ..)| node),
             }),
             "settled summary of the full walk"
         );
