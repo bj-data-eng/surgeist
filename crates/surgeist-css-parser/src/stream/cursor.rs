@@ -152,11 +152,47 @@ impl<'i, P> Stream<'i, P> {
         document.meter()
     }
 
-    /// Returns the boundary before the next token, which is also the boundary
-    /// after the token consumed last.
+    /// Returns the boundary after the token consumed last, which is also the
+    /// boundary before the next token when no comment stands between them.
+    /// Comments are transparent to the consuming methods but not to this
+    /// boundary: a comment after the token consumed last is after this
+    /// boundary. [`next_site`](Self::next_site) is the boundary before the next
+    /// token itself.
     #[must_use]
     pub const fn site(&self) -> Site<'i, P> {
         Site::new(self.document, self.list, self.next, false)
+    }
+
+    /// Returns the boundary before the next token: [`site`](Self::site) with the
+    /// comments in front of that token passed over, which is where the token
+    /// [`consume_token`](Self::consume_token) would return starts. At the end of
+    /// the stream, or after a refusal of the meter, it is the end boundary and
+    /// the current boundary respectively.
+    ///
+    /// Like [`next_token`](Self::next_token) it examines nodes, and takes one
+    /// meter step for each it examines: the comments it passes over and the
+    /// token it stops at, or the end of the stream.
+    ///
+    /// ```
+    /// use surgeist_css_parser::lexer::Options;
+    /// use surgeist_css_parser::limits::{DepthExcess, Limits};
+    /// use surgeist_css_parser::{Document, Offset};
+    ///
+    /// let document: Document =
+    ///     Document::parse("a/**/b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    /// let mut stream = document.root();
+    /// stream.consume_ident().unwrap();
+    /// assert_eq!(stream.site().offset(), Some(Offset::new(1)));
+    /// assert_eq!(stream.next_site().offset(), Some(Offset::new(5)));
+    /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
+    /// ```
+    #[must_use]
+    pub fn next_site(&self) -> Site<'i, P> {
+        match self.find(false) {
+            Ok(Some(index)) => Site::new(self.document, self.list, index, false),
+            Ok(None) => self.end_site(),
+            Err(_) => self.site(),
+        }
     }
 
     /// Returns the boundary at the start of the span the stream covers.

@@ -175,6 +175,11 @@ with `anb::parse`, `serialize::identifier`, `serialize::string` and
 [tests/oracle/syntax_differences.tsv](tests/oracle/syntax_differences.tsv), each
 citing the clause that makes this crate's answer correct.
 
+`anb::parse` and `anb::parse_saturating` are one recognizer (the `Policy` of
+[src/anb.rs](src/anb.rs)): they differ only in what an integer outside `i32` is,
+an overflow or the nearest `i32` as each integer token reads before the
+production's sign applies. Keep the recognition in one place.
+
 The sizes of `AnPlusB`, `AnPlusBError`, `RuleEnd`, `UnitKind`, `Failed`,
 `AtRule`, `QualifiedRule`, `Declaration` and `Adjacency` are pinned in
 [tests/layout_pins.rs](tests/layout_pins.rs).

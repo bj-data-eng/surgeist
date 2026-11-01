@@ -12,12 +12,17 @@ use common::grammar::show;
 use common::tree::parse;
 use surgeist_css_parser::anb::{self, AnPlusB};
 
-/// What `anb::parse` made of `text`: `A` and `B`, or the kind of failure, and
-/// what was left in the stream.
-fn read(text: &str) -> (Result<(i32, i32), String>, String) {
+/// What `parse_notation` made of `text`: `A` and `B`, or the kind of failure,
+/// and what was left in the stream.
+fn read_with(
+    text: &str,
+    parse_notation: for<'a> fn(
+        &mut surgeist_css_parser::Stream<'a>,
+    ) -> Result<AnPlusB, anb::AnPlusBError<'a>>,
+) -> (Result<(i32, i32), String>, String) {
     let document = parse(text);
     let mut stream = document.root();
-    let result = anb::parse(&mut stream)
+    let result = parse_notation(&mut stream)
         .map(|value| (value.a(), value.b()))
         .map_err(|error| {
             if error.is_overflow() {
@@ -32,6 +37,16 @@ fn read(text: &str) -> (Result<(i32, i32), String>, String) {
             }
         });
     (result, show(&stream))
+}
+
+/// What `anb::parse` made of `text`.
+fn read(text: &str) -> (Result<(i32, i32), String>, String) {
+    read_with(text, anb::parse)
+}
+
+/// What `anb::parse_saturating` made of `text`.
+fn read_saturating(text: &str) -> (Result<(i32, i32), String>, String) {
+    read_with(text, anb::parse_saturating)
 }
 
 /// The value of `text` when it is a notation by itself.
@@ -357,6 +372,57 @@ fn a_value_outside_i32_is_a_typed_overflow_and_not_a_saturated_number() {
 }
 
 #[test]
+fn saturating_reads_each_integer_outside_i32_as_the_nearest_i32_before_its_sign() {
+    let (min, max) = (i32::MIN, i32::MAX);
+    for (text, expected) in [
+        // An integer, or the A of a dimension, signed or not: the nearest i32.
+        ("2147483648", (0, max)),
+        ("-2147483649", (0, min)),
+        ("99999999999999999999", (0, max)),
+        ("-99999999999999999999", (0, min)),
+        ("2147483648n", (max, 0)),
+        ("-2147483649n+1", (min, 1)),
+        // A signed integer after n.
+        ("n+2147483648", (1, max)),
+        ("n -2147483649", (1, min)),
+        ("n+99999999999999999999", (1, max)),
+        ("n-99999999999999999999", (1, min)),
+        // The B of an n-digits unit is the negation of its digits, read as a
+        // signed integer.
+        ("n-2147483649", (1, min)),
+        ("-n-99999999999999999999", (-1, min)),
+        // A signless integer after a minus is negated after it is clamped to
+        // 0..=i32::MAX.
+        ("n- 2147483649", (1, -max)),
+        ("n - 2147483649", (1, -max)),
+        ("n- 99999999999999999999999999", (1, -max)),
+        ("-n - 99999999999999999999", (-1, -max)),
+        // What i32 holds is exact, including its minimum.
+        ("n- 2147483648", (1, min)),
+        ("n - 2147483648", (1, min)),
+        ("n-2147483648", (1, min)),
+        ("n+2147483647", (1, max)),
+        ("2147483647n-2147483647", (max, -max)),
+    ] {
+        assert_eq!(
+            read_saturating(text),
+            (Ok(expected), String::new()),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn saturating_reads_what_parse_reads_and_fails_as_parse_fails() {
+    for text in [
+        "odd", "2n+1", "-n+3", "n", "5", "+3n - 2", "n- 1", "2n 1", "x", "", "n+", "3 n", "1.5",
+        "n+1 of", "2n+1 x",
+    ] {
+        assert_eq!(read(text), read_saturating(text), "{text:?}");
+    }
+}
+
+#[test]
 fn an_overflow_leaves_the_stream_where_it_was_and_names_the_boundary() {
     let document = parse("n + 2147483648");
     let mut stream = document.root();
@@ -472,4 +538,19 @@ fn a_refusal_is_reported_and_never_read_as_the_end_of_the_notation() {
     meter.refuse_from(3);
     let value = anb::parse(&mut document.root()).unwrap();
     assert_eq!((value.a(), value.b()), (1, 0));
+}
+
+#[test]
+fn a_plus_sign_followed_by_a_comment_names_the_token_after_the_comment_where_it_starts() {
+    // `+/**/1` is a plus sign, a comment and a number: the number cannot
+    // follow a plus sign here, and it is where the failure is.
+    let document = parse("+/**/1");
+    let mut stream = document.root();
+    let error = anb::parse(&mut stream).unwrap_err();
+    assert!(error.is_unexpected_token());
+    assert_eq!(
+        error.at().offset(),
+        Some(surgeist_css_parser::Offset::new(5))
+    );
+    assert_eq!(error.at().spelling(), Some("1"));
 }

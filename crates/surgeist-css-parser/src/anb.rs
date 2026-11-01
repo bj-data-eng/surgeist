@@ -11,12 +11,13 @@
 //! crate stores them as `i32`. A value outside `i32` is not saturated, because a
 //! saturated value would be a different number: [`parse`] reports it as a typed
 //! overflow ([`AnPlusBError::is_overflow`]) and the grammar decides what its
-//! own rules say about such a number.
+//! own rules say about such a number. A grammar whose rule is to take the
+//! nearest `i32` reads the notation with [`parse_saturating`].
 
 use std::fmt;
 
-use crate::stream::StreamError;
-use crate::token::{Number, NumberKind};
+use crate::stream::{Mark, StreamError};
+use crate::token::{Number, NumberKind, Sign};
 use crate::{Site, Stream, Token};
 
 /// The step `A` and the offset `B` of an `An+B` notation (section 6).
@@ -265,8 +266,51 @@ impl<P> std::error::Error for AnPlusBError<'_, P> {}
 /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
 /// ```
 pub fn parse<'i, P>(stream: &mut Stream<'i, P>) -> Result<AnPlusB, AnPlusBError<'i, P>> {
+    read(stream, Policy::Reject)
+}
+
+/// Recognizes and interprets the `<a-n-plus-b>` type as [`parse`] does, except
+/// that an integer outside `i32` is the nearest `i32` and not an overflow.
+///
+/// A grammar that must accept every notation, whatever the size of its numbers,
+/// asks for this. Each integer is read as the token it is before the sign the
+/// production gives it applies: a signed integer, or the `A` of a dimension, is
+/// clamped to `i32::MIN..=i32::MAX`, and a signless integer to
+/// `0..=i32::MAX`, so `n- 2147483649` is `B` of `-2147483647` and `n -2147483649`
+/// is `B` of `-2147483648`. A value `i32` holds is exact, as in [`parse`].
+///
+/// # Errors
+///
+/// As [`parse`], except that the failure is never an
+/// [overflow](AnPlusBError::is_overflow).
+///
+/// ```
+/// use surgeist_css_parser::lexer::Options;
+/// use surgeist_css_parser::limits::{DepthExcess, Limits};
+/// use surgeist_css_parser::{Document, anb};
+///
+/// let document: Document =
+///     Document::parse("n + 2147483648", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+/// let value = anb::parse_saturating(&mut document.root()).unwrap();
+/// assert_eq!((value.a(), value.b()), (1, i32::MAX));
+/// # Ok::<(), surgeist_css_parser::document::BuildError>(())
+/// ```
+pub fn parse_saturating<'i, P>(stream: &mut Stream<'i, P>) -> Result<AnPlusB, AnPlusBError<'i, P>> {
+    read(stream, Policy::Saturate)
+}
+
+/// What a value outside `i32` is.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Policy {
+    /// An overflow.
+    Reject,
+    /// The nearest `i32`.
+    Saturate,
+}
+
+fn read<'i, P>(stream: &mut Stream<'i, P>, policy: Policy) -> Result<AnPlusB, AnPlusBError<'i, P>> {
     let start = stream.mark();
-    let result = recognize(stream);
+    let result = recognize(stream, policy);
     if result.is_err() {
         stream.restore(start);
     }
@@ -294,14 +338,55 @@ fn unexpected<'i, P>(at: Site<'i, P>, token: Token<'i>) -> AnPlusBError<'i, P> {
     StreamError::unexpected(at, token).into()
 }
 
-fn to_i32<'i, P>(value: i64, at: Site<'i, P>) -> Result<i32, AnPlusBError<'i, P>> {
-    i32::try_from(value).map_err(|_| overflow(at))
+/// The failure at the token `token`, which `stream` consumed after the mark
+/// `after`: it starts after the comments that follow the mark. The position is
+/// looked up only here, so that a notation that is recognized takes the steps
+/// of the meter that its tokens take, and no more.
+fn unexpected_after<'i, P>(
+    stream: &mut Stream<'i, P>,
+    after: Mark<'i, P>,
+    token: Token<'i>,
+) -> AnPlusBError<'i, P> {
+    stream.restore(after);
+    unexpected(stream.next_site(), token)
+}
+
+fn to_i32<'i, P>(value: i64, at: Site<'i, P>, policy: Policy) -> Result<i32, AnPlusBError<'i, P>> {
+    match (i32::try_from(value), policy) {
+        (Ok(value), _) => Ok(value),
+        (Err(_), Policy::Reject) => Err(overflow(at)),
+        (Err(_), Policy::Saturate) => Ok(if value < 0 { i32::MIN } else { i32::MAX }),
+    }
+}
+
+/// `B` as the negation of the signless integer `value`: an integer outside `i32`
+/// is the negation of the nearest non-negative `i32`.
+fn negated_to_i32<'i, P>(
+    value: i64,
+    at: Site<'i, P>,
+    policy: Policy,
+) -> Result<i32, AnPlusBError<'i, P>> {
+    match (i32::try_from(-value), policy) {
+        (Ok(value), _) => Ok(value),
+        (Err(_), Policy::Reject) => Err(overflow(at)),
+        (Err(_), Policy::Saturate) => Ok(-i32::MAX),
+    }
 }
 
 /// The value of an integer-flagged number, or an overflow when the spelling is
-/// too large even for an `i64`.
-fn integer_value<'i, P>(number: Number<'i>, at: Site<'i, P>) -> Result<i64, AnPlusBError<'i, P>> {
-    number.integer().ok_or_else(|| overflow(at))
+/// too large even for an `i64`, which is the largest or smallest `i64` when
+/// saturating.
+fn integer_value<'i, P>(
+    number: Number<'i>,
+    at: Site<'i, P>,
+    policy: Policy,
+) -> Result<i64, AnPlusBError<'i, P>> {
+    match (number.integer(), policy) {
+        (Some(value), _) => Ok(value),
+        (None, Policy::Reject) => Err(overflow(at)),
+        (None, Policy::Saturate) if number.sign() == Some(Sign::Minus) => Ok(i64::MIN),
+        (None, Policy::Saturate) => Ok(i64::MAX),
+    }
 }
 
 /// Splits an `n`-form of an ident or dimension unit into the tail it spells:
@@ -328,34 +413,37 @@ fn tail_of(text: &str) -> Option<Result<Tail, ()>> {
     )
 }
 
-fn recognize<'i, P>(stream: &mut Stream<'i, P>) -> Result<AnPlusB, AnPlusBError<'i, P>> {
+fn recognize<'i, P>(
+    stream: &mut Stream<'i, P>,
+    policy: Policy,
+) -> Result<AnPlusB, AnPlusBError<'i, P>> {
     stream.discard_whitespace();
     let at = stream.site();
     let token = stream.consume_token()?;
     match token {
         Token::Number(number) if number.kind() == NumberKind::Integer => {
             // <integer>: A is 0, B is the value.
-            let value = integer_value(number, at)?;
-            Ok(AnPlusB::new(0, to_i32(value, at)?))
+            let value = integer_value(number, at, policy)?;
+            Ok(AnPlusB::new(0, to_i32(value, at, policy)?))
         }
         Token::Dimension { number, unit } if number.kind() == NumberKind::Integer => {
             let Some(tail) = tail_of(unit) else {
                 return Err(unexpected(at, token));
             };
-            let a = to_i32(integer_value(number, at)?, at)?;
-            finish(stream, at, a, tail)
+            let a = to_i32(integer_value(number, at, policy)?, at, policy)?;
+            finish(stream, at, a, tail, policy)
         }
         Token::Delim('+') => {
             // `'+'? n ...`: the ident must follow with nothing between.
-            let next_at = stream.site();
+            let after_sign = stream.mark();
             let next = stream.consume_token()?;
             let Token::Ident(name) = next else {
-                return Err(unexpected(next_at, next));
+                return Err(unexpected_after(stream, after_sign, next));
             };
             let Some(tail) = tail_of(name) else {
-                return Err(unexpected(next_at, next));
+                return Err(unexpected_after(stream, after_sign, next));
             };
-            finish(stream, at, 1, tail)
+            finish(stream, at, 1, tail, policy)
         }
         Token::Ident(name) => {
             if name.eq_ignore_ascii_case("odd") {
@@ -367,12 +455,12 @@ fn recognize<'i, P>(stream: &mut Stream<'i, P>) -> Result<AnPlusB, AnPlusBError<
             if let Some(rest) = name.strip_prefix('-') {
                 // `-n`, `-n-`, `<dashndashdigit-ident>`.
                 return match tail_of(rest) {
-                    Some(tail) => finish(stream, at, -1, tail),
+                    Some(tail) => finish(stream, at, -1, tail, policy),
                     None => Err(unexpected(at, token)),
                 };
             }
             match tail_of(name) {
-                Some(tail) => finish(stream, at, 1, tail),
+                Some(tail) => finish(stream, at, 1, tail, policy),
                 None => Err(unexpected(at, token)),
             }
         }
@@ -386,9 +474,15 @@ fn finish<'i, P>(
     at: Site<'i, P>,
     a: i32,
     tail: Result<Tail, ()>,
+    policy: Policy,
 ) -> Result<AnPlusB, AnPlusBError<'i, P>> {
-    match tail.map_err(|()| overflow(at))? {
-        Tail::Done(b) => Ok(AnPlusB::new(a, to_i32(b, at)?)),
+    let tail = match (tail, policy) {
+        (Ok(tail), _) => tail,
+        (Err(()), Policy::Reject) => return Err(overflow(at)),
+        (Err(()), Policy::Saturate) => Tail::Done(i64::MIN),
+    };
+    match tail {
+        Tail::Done(b) => Ok(AnPlusB::new(a, to_i32(b, at, policy)?)),
         Tail::Dash => {
             // `n-` <signless-integer>: B is the negation of the integer.
             stream.discard_whitespace();
@@ -398,20 +492,24 @@ fn finish<'i, P>(
                 Token::Number(number)
                     if number.kind() == NumberKind::Integer && number.sign().is_none() =>
                 {
-                    let value = integer_value(number, number_at)?;
-                    Ok(AnPlusB::new(a, to_i32(-value, number_at)?))
+                    let value = integer_value(number, number_at, policy)?;
+                    Ok(AnPlusB::new(a, negated_to_i32(value, number_at, policy)?))
                 }
                 other => Err(unexpected(number_at, other)),
             }
         }
-        Tail::Open => open_tail(stream, a),
+        Tail::Open => open_tail(stream, a, policy),
     }
 }
 
 /// After an `n`, reads the optional `B`: a signed integer, or a sign and a
 /// signless integer. When neither follows, `B` is zero and the stream is left
 /// right after the `n`.
-fn open_tail<'i, P>(stream: &mut Stream<'i, P>, a: i32) -> Result<AnPlusB, AnPlusBError<'i, P>> {
+fn open_tail<'i, P>(
+    stream: &mut Stream<'i, P>,
+    a: i32,
+    policy: Policy,
+) -> Result<AnPlusB, AnPlusBError<'i, P>> {
     let mark = stream.mark();
     stream.discard_whitespace();
     let at = stream.site();
@@ -428,8 +526,8 @@ fn open_tail<'i, P>(stream: &mut Stream<'i, P>, a: i32) -> Result<AnPlusB, AnPlu
         Token::Number(number)
             if number.kind() == NumberKind::Integer && number.sign().is_some() =>
         {
-            let value = integer_value(number, at)?;
-            Ok(AnPlusB::new(a, to_i32(value, at)?))
+            let value = integer_value(number, at, policy)?;
+            Ok(AnPlusB::new(a, to_i32(value, at, policy)?))
         }
         Token::Delim(sign @ ('+' | '-')) => {
             // ['+' | '-'] <signless-integer>
@@ -439,9 +537,13 @@ fn open_tail<'i, P>(stream: &mut Stream<'i, P>, a: i32) -> Result<AnPlusB, AnPlu
                 Ok(Token::Number(number))
                     if number.kind() == NumberKind::Integer && number.sign().is_none() =>
                 {
-                    let value = integer_value(number, number_at)?;
-                    let value = if sign == '-' { -value } else { value };
-                    Ok(AnPlusB::new(a, to_i32(value, number_at)?))
+                    let value = integer_value(number, number_at, policy)?;
+                    let value = if sign == '-' {
+                        negated_to_i32(value, number_at, policy)?
+                    } else {
+                        to_i32(value, number_at, policy)?
+                    };
+                    Ok(AnPlusB::new(a, value))
                 }
                 Err(error) if error.is_refused() => Err(error.into()),
                 Ok(_) | Err(_) => {
