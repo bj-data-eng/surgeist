@@ -2,7 +2,10 @@
 use crate::construction::SessionError;
 use crate::parser::control::{ParseControl, ParseStop, WorkCategory};
 use crate::{HtmlDocumentParseRequest, HtmlParseFailure, HtmlParseReport};
-use std::{cell::RefCell, mem::size_of};
+use std::{
+    cell::{Cell, RefCell},
+    mem::size_of,
+};
 use surgeist_html::*;
 
 /// Original external failure; no owned native error is erased or stringified.
@@ -203,6 +206,42 @@ pub(crate) trait Service {
         request: &HtmlMetaCspRequest,
     ) -> Result<Outcome, SessionError>;
 }
+/// The controller and aggregate the processor's admission and release
+/// callbacks act on. The two callbacks are separate closures, so they share
+/// this state through one cell.
+struct Shared<'c, 'a> {
+    state: RefCell<(&'c mut ParseControl, &'a mut Account)>,
+    release_error: Cell<Option<ParseStop>>,
+}
+impl<'c, 'a> Shared<'c, 'a> {
+    fn new(c: &'c mut ParseControl, account: &'a mut Account) -> Self {
+        Self {
+            state: RefCell::new((c, account)),
+            release_error: Cell::new(None),
+        }
+    }
+    fn admit(&self, layout: HtmlCspLayout) -> Result<(), ParseStop> {
+        let mut state = self.state.borrow_mut();
+        let (c, account) = &mut *state;
+        account.admit(c, layout)
+    }
+    fn release(&self, storage: HtmlCspStorage) {
+        let mut state = self.state.borrow_mut();
+        let (c, account) = &mut *state;
+        if let Err(e) = account.release(c, storage) {
+            self.release_error.set(Some(e));
+        }
+    }
+    /// Hands the controller and aggregate back once the processor has returned.
+    fn finish(self) -> Result<(&'c mut ParseControl, &'a mut Account), SessionError> {
+        let release_error = self.release_error.get();
+        let (c, account) = self.state.into_inner();
+        match release_error {
+            Some(e) => Err(e.into()),
+            None => Ok((c, account)),
+        }
+    }
+}
 struct Adapter<'a, P: HtmlMetaCspProcessor> {
     processor: &'a mut P,
     error: Option<P::Error>,
@@ -220,27 +259,13 @@ impl<P: HtmlMetaCspProcessor> Service for Adapter<'_, P> {
         request: &HtmlMetaCspRequest,
     ) -> Result<Outcome, SessionError> {
         let before = account.live;
-        let pair = RefCell::new((c, account));
-        let mut release_error = None;
-        let result = self.processor.prepare(
-            request,
-            &mut |a| {
-                let mut p = pair.borrow_mut();
-                let (c, a0) = &mut *p;
-                a0.admit(c, a)
-            },
-            &mut |s| {
-                let mut p = pair.borrow_mut();
-                let (c, a) = &mut *p;
-                if let Err(e) = a.release(c, s) {
-                    release_error = Some(e);
-                }
-            },
-        );
-        let (c, account) = pair.into_inner();
-        if let Some(e) = release_error {
-            return Err(e.into());
-        }
+        let shared = Shared::new(c, account);
+        let result = self
+            .processor
+            .prepare(request, &mut |a| shared.admit(a), &mut |s| {
+                shared.release(s)
+            });
+        let (c, account) = shared.finish()?;
         account.settle(c);
         let refused = matches!(&result, Ok(HtmlMetaCspOutcome::Refused(_)));
         match result {
