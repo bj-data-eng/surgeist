@@ -368,6 +368,16 @@ impl SessionStorage {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_colour_digit_fault_is_a_color_conversion_invariant() {
+        let mut c = ParseControl::new(color_limits(), crate::HtmlParseCancellation::new());
+        let error = integrity(&mut c);
+        let stop =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::ColorConversionState);
+        assert_eq!(error, SessionError::Stop(stop));
+        assert_eq!(c.stop(), Some(stop));
+    }
+
     // A thread-local observer of actual completed adapter actions. It changes
     // only the real request's cancellation flag. No production field, fee,
     // parser state, artificial tick, or second controller is introduced.

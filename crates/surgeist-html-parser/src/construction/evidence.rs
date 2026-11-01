@@ -589,6 +589,19 @@ mod tests {
     }
 
     #[test]
+    fn a_record_identifier_past_the_retained_records_is_a_registry_row_invariant() {
+        let source = HtmlSource::utf8("\0");
+        let (mut c, mut evidence) = owner(&source, limits(100));
+        evidence.initialize_native_source(&mut c, &source).unwrap();
+        let mut id = append(&mut evidence, &mut c, &source, 0).unwrap();
+        id.index = evidence.len();
+        let stop = evidence.get(&mut c, &id).err().unwrap();
+        assert_eq!(stop, ParseStop::InternalInvariant(Invariant::RegistryRow));
+        assert_eq!(c.stop(), Some(stop));
+        evidence.release(&mut c).unwrap();
+    }
+
+    #[test]
     fn failed_partition_refusals_preserve_the_actual_owner_and_committed_buffer() {
         let source = HtmlSource::utf8("\0");
         let (mut c, mut evidence) = owner(&source, limits(100));

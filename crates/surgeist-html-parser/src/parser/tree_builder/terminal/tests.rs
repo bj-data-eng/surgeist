@@ -232,7 +232,7 @@ fn a_completion_stopped_for_an_invariant_fault_latches_the_invariant_and_still_c
         let mut completed = frozen_completed(&request);
         completed.stop_for_public_failure(lost);
         let expected = if lost {
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState)
         } else {
             ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
         };

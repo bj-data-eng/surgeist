@@ -3981,7 +3981,7 @@ fn progressive_attribute_named_reference_waits_for_actual_equal_sign_exception()
 }
 
 fn first_invariant_stop() -> ParseStop {
-    ParseStop::InternalInvariant(Invariant::InputCursorState)
+    ParseStop::InternalInvariant(Invariant::TokenizerState)
 }
 
 fn fixture_with_event(raw: &str) -> (HtmlSource, ParseControl) {

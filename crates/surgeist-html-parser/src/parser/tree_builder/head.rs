@@ -2037,7 +2037,7 @@ mod script_state_tests {
         assert_eq!(
             driver.control.stop(),
             Some(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::RegistryRow
+                crate::parser::control::Invariant::TreeBuilderState
             ))
         );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();

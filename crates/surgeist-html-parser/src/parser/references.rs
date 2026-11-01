@@ -275,7 +275,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             stop,
-            ParseStop::InternalInvariant(Invariant::InputCursorState)
+            ParseStop::InternalInvariant(Invariant::TokenizerState)
         );
         assert_eq!(control.stop(), Some(stop));
     }

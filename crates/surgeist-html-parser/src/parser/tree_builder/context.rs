@@ -1232,7 +1232,7 @@ mod tests {
     }
 
     #[test]
-    fn stepping_a_fragment_driver_whose_stage_waits_at_a_boundary_latches_the_registry_row() {
+    fn stepping_a_fragment_driver_whose_stage_waits_at_a_boundary_latches_the_tree_builder_state() {
         let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
         let mut driver = initialized_driver(&request);
         // Private-state fault injection: the stage is left at a boundary, which
@@ -1257,7 +1257,7 @@ mod tests {
         assert_eq!(
             driver.control.stop(),
             Some(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::RegistryRow
+                crate::parser::control::Invariant::TreeBuilderState
             ))
         );
         driver.release().unwrap();
@@ -1265,7 +1265,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fragment_completion_without_its_stage_state_latches_the_registry_row() {
+    fn a_fragment_completion_without_its_stage_state_latches_the_tree_builder_state() {
         let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
         let mut driver = initialized_driver(&request);
         let state = driver.head.as_mut().unwrap().state.take().unwrap();
@@ -1278,7 +1278,8 @@ mod tests {
             "{error:?}"
         );
         let mut driver = slot.unwrap();
-        let stop = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let stop =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState);
         assert_eq!(driver.control.stop(), Some(stop));
         driver.head.as_mut().unwrap().state = Some(state);
         driver.release().unwrap();
@@ -1296,7 +1297,7 @@ mod tests {
             let mut completed = ContextFragmentDriver::take_completed(&mut driver).unwrap();
             completed.stop_for_public_failure(lost);
             let expected = if lost {
-                ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+                ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState)
             } else {
                 ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
             };
@@ -1319,7 +1320,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fragment_step_without_its_stage_state_latches_the_registry_row_as_first_stop() {
+    fn a_fragment_step_without_its_stage_state_latches_the_tree_builder_state_as_first_stop() {
         let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
         let mut driver = initialized_driver(&request);
         // Private-state fault injection: the stage's state is not where the
@@ -1333,7 +1334,8 @@ mod tests {
             ),
             "{error:?}"
         );
-        let stop = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let stop =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState);
         assert_eq!(driver.control.stop(), Some(stop));
         driver.head.as_mut().unwrap().state = Some(state);
         driver.release().unwrap();
@@ -1342,7 +1344,7 @@ mod tests {
     }
 
     #[test]
-    fn a_fragment_step_without_its_stage_latches_the_registry_row_as_first_stop() {
+    fn a_fragment_step_without_its_stage_latches_the_tree_builder_state_as_first_stop() {
         let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
         let mut driver = initialized_driver(&request);
         let head = driver.head.take().unwrap();
@@ -1351,7 +1353,8 @@ mod tests {
             matches!(error, FragmentExecutionError::Consumed),
             "{error:?}"
         );
-        let stop = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let stop =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState);
         assert_eq!(driver.control.stop(), Some(stop));
         driver.head = Some(head);
         driver.release().unwrap();

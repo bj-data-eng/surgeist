@@ -15608,7 +15608,7 @@ fn progressive_successfully_released_driver_refuses_feed_once(seal: bool) {
     }
     .unwrap_err();
     assert!(matches!(error, StandaloneError::Consumed));
-    let expected = ParseStop::InternalInvariant(Invariant::RegistryRow);
+    let expected = ParseStop::InternalInvariant(Invariant::TreeBuilderState);
     assert_eq!(driver.control.stop(), Some(expected));
     let first = driver.control.first_stop_usage().unwrap().clone();
     assert_eq!(driver.control.usage(), &first);
@@ -19853,7 +19853,7 @@ fn the_fresh_head_transition_without_retained_lexical_evidence_reports_consumed(
     // cleanup runs under.
     assert_eq!(
         driver.control.stop(),
-        Some(ParseStop::InternalInvariant(Invariant::RegistryRow))
+        Some(ParseStop::InternalInvariant(Invariant::TreeBuilderState))
     );
     driver.release().unwrap();
     assert_released(&driver.control);
@@ -19869,7 +19869,7 @@ fn a_token_event_is_taken_only_from_a_token_slot_and_other_content_stays_for_rel
     let stop = take_token_event(&mut empty, &mut c).err().unwrap();
     assert_eq!(
         stop,
-        ParseStop::InternalInvariant(Invariant::InputCursorState)
+        ParseStop::InternalInvariant(Invariant::TreeBuilderState)
     );
     assert_eq!(c.stop(), Some(stop));
     assert!(empty.is_none());
@@ -19948,7 +19948,7 @@ fn only_invariant_faults_are_classified_as_invariant_faults() {
 }
 
 #[test]
-fn an_ordinary_completion_without_its_stage_state_latches_the_registry_row() {
+fn an_ordinary_completion_without_its_stage_state_latches_the_tree_builder_state() {
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits(100));
     let mut driver = entry::initialized_driver(&request);
     for _ in 0..100 {
@@ -19969,7 +19969,7 @@ fn an_ordinary_completion_without_its_stage_state_latches_the_registry_row() {
         "{error:?}"
     );
     let mut driver = slot.unwrap();
-    let stop = ParseStop::InternalInvariant(Invariant::RegistryRow);
+    let stop = ParseStop::InternalInvariant(Invariant::TreeBuilderState);
     assert_eq!(driver.control.stop(), Some(stop));
     driver.head.as_mut().unwrap().state = Some(state);
     driver.release().unwrap();
@@ -19978,7 +19978,7 @@ fn an_ordinary_completion_without_its_stage_state_latches_the_registry_row() {
 }
 
 #[test]
-fn enabling_meta_csp_without_the_prologue_latches_the_registry_row() {
+fn enabling_meta_csp_without_the_prologue_latches_the_tree_builder_state() {
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits(100));
     let mut driver = entry::initialized_driver(&request);
     // Private-state fault injection: the prologue the processor attaches to is
@@ -19986,7 +19986,7 @@ fn enabling_meta_csp_without_the_prologue_latches_the_registry_row() {
     let prologue = driver.prologue.take().unwrap();
     let error = driver.enable_meta_csp(false).err().unwrap();
     assert!(matches!(error, StandaloneError::Consumed), "{error:?}");
-    let stop = ParseStop::InternalInvariant(Invariant::RegistryRow);
+    let stop = ParseStop::InternalInvariant(Invariant::TreeBuilderState);
     assert_eq!(driver.control.stop(), Some(stop));
     driver.prologue = Some(prologue);
     driver.release().unwrap();
@@ -19995,7 +19995,7 @@ fn enabling_meta_csp_without_the_prologue_latches_the_registry_row() {
 }
 
 #[test]
-fn stepping_a_driver_whose_stage_waits_at_a_boundary_latches_the_registry_row() {
+fn stepping_a_driver_whose_stage_waits_at_a_boundary_latches_the_tree_builder_state() {
     // The parse functions stop at the first boundary a stage returns, and the
     // driver itself consumes the after-head one, so a driver stepped while its
     // stage waits at a boundary has lost its place; no document puts it there.
@@ -20027,7 +20027,7 @@ fn stepping_a_driver_whose_stage_waits_at_a_boundary_latches_the_registry_row() 
     );
     assert_eq!(
         driver.control.stop(),
-        Some(ParseStop::InternalInvariant(Invariant::RegistryRow))
+        Some(ParseStop::InternalInvariant(Invariant::TreeBuilderState))
     );
     driver.release().unwrap();
     assert_released(&driver.control);

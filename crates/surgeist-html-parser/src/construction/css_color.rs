@@ -236,3 +236,18 @@ pub(super) fn parse<'facts, E: From<SessionError> + From<ParseStop>>(
     disposal?;
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::control::Invariant;
+
+    #[test]
+    fn a_colour_bank_fault_is_a_color_conversion_invariant() {
+        let mut c = crate::construction::tests::control();
+        let error = integrity(&mut c);
+        let stop = ParseStop::InternalInvariant(Invariant::ColorConversionState);
+        assert_eq!(error, SessionError::Stop(stop));
+        assert_eq!(c.stop(), Some(stop));
+    }
+}

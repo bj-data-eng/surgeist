@@ -5758,13 +5758,13 @@ mod tests {
         assert!(owner.stopped_source_binding().unwrap().is_none());
     }
     #[test]
-    fn malformed_input_from_the_utf16_adapter_is_an_input_cursor_invariant() {
+    fn malformed_input_from_the_utf16_adapter_is_a_color_conversion_invariant() {
         // CSS Syntax preprocessing decodes every UTF-16 unit, a lone surrogate
         // as U+FFFD, so the adapter's input is never malformed for its encoding.
         let mut owner = control();
         assert_eq!(
             owner.stop_color_processing(css_color_error(b"r\xffd")),
-            ParseStop::InternalInvariant(Invariant::InputCursorState)
+            ParseStop::InternalInvariant(Invariant::ColorConversionState)
         );
     }
 }
