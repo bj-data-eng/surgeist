@@ -245,7 +245,17 @@ fn execute(
         collapse_edges_accounted(selected.presentation_input(), &mut shaped, &mut ledger)?;
     let levels = item_levels_accounted(&selected.presentation, &shaped, &mut ledger)?;
     let base = selected.presentation.analysis.base_level;
-    let ordered = &selected.basis.order;
+    let boxed_execution = crate::protocol::inline_box::execution::build(
+        &selected,
+        &shaped,
+        &selected.basis.order,
+        &mut ledger,
+    )?;
+    let ordered = boxed_execution
+        .as_ref()
+        .map_or(selected.basis.order.as_slice(), |plan| {
+            plan.order.as_slice()
+        });
     let participants = account::try_collect(
         &mut ledger,
         levels.iter().map(|&level| {
@@ -524,8 +534,13 @@ fn execute(
         &shaped,
         &dispositions,
         &order,
-        &groups,
-        &atom_groups,
+        SharedEndpointGroups {
+            ranges: &groups,
+            atom_groups: &atom_groups,
+        },
+        boxed_execution
+            .as_ref()
+            .map(|plan| plan.boxed_units.as_slice()),
         &mut ledger,
     )?;
     let mut internal_edges = account::filled(&mut ledger, groups.len(), 0.0)?;
@@ -588,9 +603,12 @@ fn execute(
                 };
                 let cut = selected.presentation.units[unit].atoms.start;
                 let group = groups.partition_point(|group| group.end <= cut);
-                if groups
-                    .get(group)
-                    .is_some_and(|group| group.start < cut && cut < group.end)
+                if !boxed_execution
+                    .as_ref()
+                    .is_some_and(|plan| plan.boxed_units[unit])
+                    && groups
+                        .get(group)
+                        .is_some_and(|group| group.start < cut && cut < group.end)
                 {
                     internal_edges[group] = add(
                         "shared unit boundary advance",
@@ -1389,6 +1407,10 @@ fn execute(
         account::drop_vec(&mut ledger, geometry.offsets)?;
         account::drop_vec(&mut ledger, geometry.leading)?;
     }
+    if let Some(plan) = boxed_execution {
+        account::drop_vec(&mut ledger, plan.order)?;
+        account::drop_vec(&mut ledger, plan.boxed_units)?;
+    }
     account::drop_vec(&mut ledger, character_order)?;
     account::drop_vec(&mut ledger, word_halves)?;
     account::drop_vec(&mut ledger, dispositions)?;
@@ -1766,6 +1788,12 @@ struct SharedEndpointGeometry {
     leading: Vec<f64>,
 }
 
+/// Closed units and the corresponding atom-to-unit index from the same pass.
+struct SharedEndpointGroups<'a> {
+    ranges: &'a [std::ops::Range<usize>],
+    atom_groups: &'a [usize],
+}
+
 // Physical endpoints inside a shared unit retain their exact event order, but
 // their numeric intervals surround its complete text contribution rather than
 // its artificial component/caret shares. The flow pen consumes every item once.
@@ -1774,15 +1802,22 @@ fn shared_endpoint_offsets(
     shaped: &ShapedData,
     dispositions: &[SpacingSlotDisposition],
     order: &crate::SuppliedVisualOrder<'_, '_>,
-    groups: &[std::ops::Range<usize>],
-    atom_groups: &[usize],
+    groups: SharedEndpointGroups<'_>,
+    boxed_units: Option<&[bool]>,
     ledger: &mut Ledger,
 ) -> Result<Option<SharedEndpointGeometry>> {
+    let SharedEndpointGroups {
+        ranges: groups,
+        atom_groups,
+    } = groups;
     account::work(ledger, shaped.items.len())?;
     let mut endpoints = shaped.items.iter().filter_map(|item| {
         let ShapedItem::Anchor { unit } = *item else {
             return None;
         };
+        if boxed_units.is_some_and(|units| units[unit]) {
+            return None;
+        }
         let crate::protocol::prepared::PresentationUnitKind::Control { occurrence } =
             selected.presentation.units[unit].kind
         else {
@@ -3787,7 +3822,7 @@ mod tests {
                         crate::ParagraphControlKind::InlineBoundaryStart
                             | crate::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -4702,7 +4737,7 @@ mod tests {
                                 crate::ParagraphControlKind::InlineBoundaryStart
                                     | crate::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }

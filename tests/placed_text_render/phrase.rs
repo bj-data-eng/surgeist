@@ -271,7 +271,7 @@ fn capture(
                 node: inputs.len(),
             });
             inputs.push(layout::LayoutInput::InlineBoundary(
-                layout::InlineBoundaryInput::new(
+                layout::InlineBoundaryInput::contribution(
                     kind,
                     layout::InlineMetrics::try_new(
                         surgeist_layout::InlineBaselineContext::Physical,

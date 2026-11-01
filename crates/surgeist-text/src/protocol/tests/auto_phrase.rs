@@ -190,7 +190,7 @@ fn interval_request(
                     ParagraphControlKind::InlineBoundaryStart
                         | ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(InlineBoundaryAllocation::ZERO),
+                .then_some(InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 strut: None,
             }),
             PreparedParticipant::Atomic(_) => panic!("staged phrase fixtures contain no atomics"),

@@ -704,17 +704,34 @@ the same punctuation kernel with its actual raw metric and emission profile.
 
 ### Native inline endpoint geometry
 
-Layout owns used border/padding on each endpoint's own inline side. Its
+Layout owns used border/padding on each endpoint. Its
 [InlineBoundaryEdgeOf<S>](../crates/surgeist-layout/src/node_input/inline.rs)
 constructor checks each component and their sum in scalar `S`, with explicit
-`ZERO` for a genuine used zero. `InlineBoundaryInputOf::new(kind, metrics, edge)`
-requires that value. Lower the one checked `edge.advance()` result once to Text's
+`ZERO` for a genuine used zero. Both `InlineBoundaryInputOf::contribution` and
+`::box_edge` require that explicit value. Lower the one checked `edge.advance()` result once to Text's
 `f64` total; do not widen the components separately and recompute the sum. Layout
-retains the components, Start/End role and own writing-mode/direction for output.
+retains the components and Start/End role for output. Existing boundary
+writing-mode/direction describe the containing Block formatter, preserving
+`InlineFlowMismatch`; they do not describe an inline parent's own axes.
 Text's [InlineBoundaryAllocation](../crates/surgeist-text/src/protocol/mod.rs)
 checks the finite nonnegative total and normalizes negative zero. Unknown Style
 geometry is not zero; no compatibility constructor, Boolean barrier, padded
 atomic substitute or new font/style supplies a missing endpoint fact.
+
+Choose Contribution or BoxEdge explicitly at both boundaries. Contribution is
+one real endpoint's nonnegative advance, preserving uncaptured, unpaired and
+zero/strut-only Native operations. BoxEdge additionally requires its actual owner,
+immediate parent and physical source-Start side. Layout receives that parent's
+resolved `FlowAxes` separately. Text authenticates an `InlineBoxSource` from a
+captured Inline scope or an explicitly declared pair of genuine captured Start/End
+controls; exact nominations canonicalize to the scope. Its
+`inline_box_edge_context` checks the actual preparation/domain and parent. A domain
+can be the parent, never the inline owner. Selection checks the supplied
+noncrossing family and consistent paired contexts. Do not infer a pair or parent
+from equal cuts, flattened native containment, child direction or source levels.
+Zero BoxEdge still needs this context; zero Contribution needs no invented parent.
+Capture does not promote a Contribution, and failed BoxEdge admission never
+downgrades it to Contribution.
 
 #### Selected and context-only admission
 
@@ -762,21 +779,33 @@ Before/After attachments. Incoming indications retain their
 or positive edges. Zero preserves permitted whole-word context across an
 unforced Soft cut. Rebuild only selection-local boundaries/assignments using the
 retained font instances; do not requery a catalogue or mutate preparation.
-An endpoint inside an indivisible typographic unit remains a numeric contribution
+An explicit Contribution inside an indivisible typographic unit remains a numeric contribution
 with its own interval, while the unit retains shared glyph associations and
 provider positions. Count the edge once before positioning the next unit;
 never move an attached mark independently or introduce an interior break.
-Physical Start/End events retain their captured order at an admitted decoded
-atom seam, independently of caret affinity. An exact event inside the unit is
+Source Start/End events retain their captured chronology at an admitted decoded
+atom seam, independently of caret affinity or a relocated BoxEdge interval.
+An exact event inside the unit is
 still not a boundary-exact control or a legal line cut. A source point inside
 one connected scalar or an indivisible processed replacement cannot be assigned
 an invented side; retain the owning source-validation refusal.
+
+For BoxEdge, derive actual selected owner/member incidence and the extrema of
+indivisible grapheme/provider/Cell packets. Place only selected edges on their
+assigned parent sides; authentic ancestry orders nested ties. Execute a shared
+packet once, retaining original Source levels and relative non-edge payload order.
+Empty or deleted-only owners use an authentic captured gap or return a precise
+incidence refusal. Context-only endpoints never become selected flow.
 
 One canonical visual-order contribution supplies raw/occupied flow, fit,
 alignment, MinContent/MaxContent, tabs, prefixes, placement and overflow. Positive
 selected edges count as retained flow; context-only rows contribute nothing.
 `FinalizedPrefixView` retains the same provider-closed grouping and exact source
-chronology. CSS tab resolution includes preceding endpoint advances in the real
+chronology. These are receipts from the complete frozen execution, including
+the TAB advances that actually executed. A logical prefix is not a prefix of
+the physical edge insertion order or a counterfactual shorter execution. A newly
+selected partial recipe executes its own selected inventory; no future closing
+edge adds flow. CSS tab resolution includes preceding endpoint advances in the real
 pen and recomputes after spacing. Layout's numeric box/control-only path consumes
 the same used advance through Text-owned ordering without inventing text rows.
 Every ordinary/conditional/measurement trial and float/justification retry uses
@@ -799,17 +828,18 @@ allocated-spacing replay; this is no global scope-wide disable-hanging flag.
 | --- | --- |
 | `FinalizedControlView` | `inline_bounds()` is the checked physical left/right interval; `slot().x` is left, with the actual control baseline. Alignment translates both ends. |
 | `FinalizedFragmentOwner::Control` | The same source-free occurrence gets the interval at actual line-metric height. Original/local/aggregate/processed source ranges remain absent; no glyph ink is invented. |
-| Layout endpoint node | Publish a width×0 footprint and its own-side border/padding, using actual endpoint writing-mode/direction and Start/End role. Preserve the Control fragment without replacing this footprint with a text-fragment envelope. Numeric-only flow publishes the same footprint without Text fragments. |
+| Layout endpoint node | Publish the endpoint footprint and border/padding on the admitted side: formatter basis for Contribution, actual immediate-parent basis for BoxEdge. Preserve the Control fragment without replacing this footprint with a text-fragment envelope. Numeric-only flow publishes the same footprint without Text fragments. |
 | Virtual-separator Scope fragment | Retain only that separator's actual local geometry, empty authored association and canonical global scope identity. Several separators keep separate occurrences; no separator means no Scope fragment. No endpoint strip is donated to them. |
-| Original source and exact placed positions | Endpoints add no UTF-16, source Range membership, glyph or plaintext. Exact relation-event Before/After positions distinguish the two interval sides: even level maps to left/right, odd to right/left. Exact selected-event ranges include the endpoint's actual line-height interval even with glyphs selected; source-offset queries do not invent that membership. |
+| Original source and exact placed positions | Endpoints add no UTF-16, source Range membership, glyph or plaintext. Exact relation-event Before/After positions retain original Source-event cuts and source-level orientation, using the actual finalized interval, including relocated BoxEdge geometry. Parent side/role controls physical insertion. Exact selected-event ranges include the endpoint's actual line-height interval even with glyphs selected; source-offset queries do not invent that membership. |
 
 The node footprint and Control fragment observe one contribution, not two widths.
 Source/caret/Range, Render and accessibility consume the same displaced genuine
 geometry and retain source-free endpoint custody. Global scope pairing remains
 capture-owned; paragraph cuts manufacture no continuation endpoint or envelope.
 
-Selected allocations and the exact reached context list enter request equality,
-candidate reuse, spacing replay and cycle checks. Layout retains dependencies on
+Selected operations, actual owner/parent/side contexts and the exact reached
+context list enter request equality, conditional/frame identity, candidate reuse,
+spacing replay and cycle checks, including zero-valued operations. Layout retains dependencies on
 each demanded endpoint, including off-selection nodes. A changed edge or
 candidate/alternative/incoming/purpose request reruns demand: zero↔positive can
 reveal or hide farther context. Geometry-only changes reuse the same preparation
@@ -817,6 +847,10 @@ but rebuild affected joining, glyph, prefix, fit, tab, fragment and float result
 unreached endpoints enter no Text request identity. Rigid translation can reuse
 an unchanged complete receipt. Missing facts, numeric/shaping failures and late
 feedback refusal publish nothing and leave earlier completed results immutable.
+Fund the actual enlarged fixed records, retained source owners and derived
+plan/scratch/backings, including coexistence and source-allocation deduplication.
+Contribution-only requests retain their existing path without a new family scan
+or topology buffer. Native fallible allocation does not invent a global memory cap.
 
 This operation consumes native used geometry. It does not resolve live Style or
 authored percentages or construct full inline-element

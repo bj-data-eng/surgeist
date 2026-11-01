@@ -163,7 +163,7 @@ fn continuation(
     for (node, kind) in [(1, InlineBoundaryKind::Start), (5, InlineBoundaryKind::End)] {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
                     .unwrap(),
@@ -609,7 +609,7 @@ fn segmented_fixture(
     for &node in &boundary_nodes {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 if node <= 101 {
                     InlineBoundaryKind::Start
                 } else {
@@ -913,7 +913,7 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
     ] {
         tree.insert_input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
                     .unwrap(),

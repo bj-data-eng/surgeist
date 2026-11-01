@@ -573,6 +573,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
             .unwrap(),
             InlineControlAlignment::Baseline,
             crate::InlineBoundaryEdgeOf::ZERO,
+            None,
         ))
     };
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
@@ -786,7 +787,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
     let second_atomic = atomic(32.0, InlineBreakOpportunity::Allowed);
     let third_atomic = atomic(36.0, InlineBreakOpportunity::Allowed);
     let fourth_atomic = atomic(40.0, InlineBreakOpportunity::Prohibited);
-    let line_strut = InlineBoundaryInputOf::new(
+    let line_strut = InlineBoundaryInputOf::contribution(
         InlineBoundaryKind::Start,
         InlineMetricsOf::from_line_height_and_baseline(
             crate::InlineBaselineContext::Physical,
@@ -1227,7 +1228,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         let text = paragraph.text_input(1);
         let binding = paragraph.binding(0);
         let atomic = prepared_atomic_style(25.25, 10.5, 0.0, 0.0);
-        let boundary = InlineBoundaryInputOf::new(
+        let boundary = InlineBoundaryInputOf::contribution(
             InlineBoundaryKind::Start,
             InlineMetricsOf::from_ascent_descent(
                 crate::InlineBaselineContext::Physical,

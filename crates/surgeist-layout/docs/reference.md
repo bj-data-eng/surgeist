@@ -442,15 +442,32 @@ AssociationOnly metadata stays nonrendering, and numerical struts alone do not
 create work. Known-size and cache paths retain actual semantic baseline/metric
 work; whole-paragraph placement applies the same phantom disposition above.
 
-Native non-atomic endpoints currently carry their actual border and padding;
-they do not represent signed inline margins. That remaining geometry capability
+Native non-atomic endpoints carry their actual border and padding.
+`InlineBoundaryInputOf::contribution(kind, metrics, edge)` supplies the existing
+endpoint operation without a full-box claim. `box_edge(kind, metrics, edge,
+parent_axes)` requests actual box-side geometry with a separately resolved
+immediate-parent basis. The existing writing-mode/direction fields remain the
+containing Block formatter and retain `InlineFlowMismatch` validation;
+`parent_edge_axes()` is present only for BoxEdge. Neither a child's direction nor
+its parent's endpoint formatter fields establish the parent's own used axes.
+
+Layout authenticates the actual captured scope/native pair and parent relation,
+then lowers checked Text contexts or uses the genuine numeric family. Selected
+BoxEdges surround their actual indivisible packet or authentic empty gap on the
+assigned sides. Flattened native containment, equal source cuts and bidi parity
+do not establish this ownership. Original levels and non-edge payload order stay
+unchanged; context-only controls add no flow. A failed BoxEdge request refuses
+without becoming a Contribution. Captured Contribution controls remain genuine
+Contribution operations, including zero.
+
+These endpoints do not represent signed inline margins. That remaining capability
 belongs to [fragmented inline decoration work](https://github.com/bj-data-eng/surgeist/issues/780).
 An atomic's signed margins cannot stand in for a non-atomic margin-only witness.
 
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope
-can span a whole typographic unit without physical endpoints. Physical paired
-endpoints at admitted decoded atom seams retain their genuine captured order,
+can span a whole typographic unit without physical endpoints. Paired endpoints
+at admitted decoded atom seams retain their genuine captured chronology,
 including inside a unit shared by same-font connected origins. Their used
 border/padding contributes once without separating the shared glyphs or granting
 an interior line cut. Layout validates that order and canonical pairing;

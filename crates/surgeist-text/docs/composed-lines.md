@@ -241,6 +241,14 @@ origin and occurrences outside this selected line refuse. The returned
 `FinalizedPrefixView` borrows this exact line and retains the original seam
 independently of the descriptor's lifetime.
 
+Its receipts belong to the complete frozen execution. When checked BoxEdges move
+to their actual parent sides, the query still follows original logical source
+cuts, including whole-unit closure and the TAB advances that actually executed.
+It does not sum a prefix of the physical insertion order. Selecting a shorter
+recipe is a different operation: its TAB pen can change, and unselected closing
+edges add no flow. See [endpoint operations](reference.md#native-inline-endpoint-geometry)
+for explicit Contribution versus checked BoxEdge construction.
+
 An interior seam counts the whole smallest unit closed under both selected
 graphemes and actual provider-cluster associations. `interior_unit()` lends its
 presentation extent, actual original `source_pieces`, every actual `alternatives()` owner and

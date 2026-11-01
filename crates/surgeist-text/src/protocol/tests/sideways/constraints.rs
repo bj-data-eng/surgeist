@@ -429,7 +429,7 @@ fn real_endpoint_strips_keep_source_free_slots_and_exact_cw_position_selection()
     let controls = p.control_views().map(|c| c.handle()).collect::<Vec<_>>();
     assert_eq!(controls.len(), 2);
     let allocation = |c: &PreparedControl| {
-        crate::InlineBoundaryAllocation::try_new(match c.view().kind() {
+        crate::InlineBoundaryAllocation::contribution(match c.view().kind() {
             K::InlineBoundaryStart => 2.0,
             K::InlineBoundaryEnd => 3.0,
             _ => panic!("only actual endpoints in this profile"),

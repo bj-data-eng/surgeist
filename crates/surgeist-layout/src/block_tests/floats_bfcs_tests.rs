@@ -1098,7 +1098,7 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
             .with_style(7, NodeInputOf::non_box())
             .with_layout_input(
                 7,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_line_height_and_baseline(
                         crate::InlineBaselineContext::Physical,
@@ -1196,7 +1196,7 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
             .with_style(5, NodeInputOf::non_box())
             .with_layout_input(
                 4,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_line_height_and_baseline(
                         crate::InlineBaselineContext::Physical,
@@ -1209,7 +1209,7 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
             )
             .with_layout_input(
                 5,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_line_height_and_baseline(
                         crate::InlineBaselineContext::Physical,

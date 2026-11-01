@@ -858,6 +858,24 @@ pub(crate) fn finalize(
     let mut scope_plan =
         super::scope_alignment::selection_plan(prepared, presentation, allowance, scope_input)?;
     let mut scope_budget = scope_plan.budget.take();
+    match scope_input {
+        super::scope_alignment::PlanInput::Selection(request) => {
+            crate::protocol::inline_box::validate_request(
+                prepared,
+                &request.controls,
+                &request.boundary_context,
+                &mut scope_budget,
+            )?
+        }
+        super::scope_alignment::PlanInput::Flow { request, .. } => {
+            crate::protocol::inline_box::validate_request(
+                prepared,
+                &request.controls,
+                &request.boundary_context,
+                &mut scope_budget,
+            )?
+        }
+    }
     let mut cells = cell::SelectedCells::new(prepared, presentation, &mut scope_budget)?;
     let character_input =
         super::spacing::character::Input::selected(prepared, presentation, &mut scope_budget)?;

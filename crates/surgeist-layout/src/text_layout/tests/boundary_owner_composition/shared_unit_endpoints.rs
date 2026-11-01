@@ -729,7 +729,7 @@ fn changed_end_edge_reuses_preparation_and_matches_fresh_current_packets() {
             before.edge(),
             InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(2.0)).unwrap()
         );
-        let changed_input = InlineBoundaryInputOf::new(
+        let changed_input = InlineBoundaryInputOf::contribution(
             before.kind(),
             before.metrics(),
             InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(4.0)).unwrap(),
@@ -764,3 +764,6 @@ fn changed_end_edge_reuses_preparation_and_matches_fresh_current_packets() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[path = "shared_unit_endpoints/parent_geometry.rs"]
+mod parent_geometry;

@@ -170,7 +170,7 @@ impl MarginEdgeFit {
 }
 
 /// Actual physical edge, independent of source order and signed flow.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum LineEdgeSide {
     Start,
     End,

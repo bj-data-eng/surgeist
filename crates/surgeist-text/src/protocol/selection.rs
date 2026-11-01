@@ -627,6 +627,11 @@ pub(crate) fn admit_geometry(
             occurrence: *occurrence,
         }));
     }
+    super::inline_box::validate_sources(
+        &prepared.inner,
+        request.controls,
+        request.boundary_context,
+    )?;
     for allocation in request.line_box_struts {
         finite("line box baseline", allocation.metrics.baseline)?;
         finite("line box extent", allocation.metrics.line_extent)?;

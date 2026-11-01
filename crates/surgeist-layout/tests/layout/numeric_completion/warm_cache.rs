@@ -157,7 +157,7 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
                 l::InlineBoundaryEdgeOf::ZERO
             };
             self.actual.inputs[node] = l::LayoutInputOf::inline_boundary(
-                l::InlineBoundaryInputOf::new(
+                l::InlineBoundaryInputOf::contribution(
                     kind,
                     l::InlineMetricsOf::try_new(
                         surgeist_layout::InlineBaselineContext::Physical,

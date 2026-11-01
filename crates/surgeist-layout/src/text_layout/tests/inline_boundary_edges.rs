@@ -153,7 +153,7 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
                             .occurrence
                 })
                 .unwrap();
-            assert_eq!(allocation.boundary.unwrap().advance(), total);
+            assert_eq!(allocation.boundary.as_ref().unwrap().advance(), total);
             assert_eq!(output(&batch, 20).size.width, edge.advance());
             assert_eq!(output(&batch, 20).border.left, edge.border());
             assert_eq!(output(&batch, 20).padding.left, edge.padding());
@@ -204,7 +204,7 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
             .request()
             .controls
             .iter()
-            .find_map(|row| row.boundary.filter(|edge| edge.advance() > 0.0))
+            .find_map(|row| row.boundary.as_ref().filter(|edge| edge.advance() > 0.0))
             .unwrap()
             .advance(),
         5.0
@@ -406,6 +406,7 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
                 .find(|row| row.occurrence == start.occurrence)
                 .unwrap()
                 .boundary
+                .as_ref()
                 .unwrap()
                 .advance(),
             8.0
@@ -423,3 +424,6 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[path = "inline_boundary_edges/parent_geometry.rs"]
+mod parent_geometry;

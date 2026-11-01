@@ -608,6 +608,7 @@ fn inline_boundary_control(
         metrics,
         alignment,
         crate::InlineBoundaryEdgeOf::ZERO,
+        None,
     )
 }
 
@@ -708,6 +709,7 @@ fn mixed_boundary<S: LayoutScalar>(
         metrics,
         crate::inline::InlineControlAlignment::Baseline,
         crate::InlineBoundaryEdgeOf::ZERO,
+        None,
     ))
 }
 
@@ -2355,6 +2357,7 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
                     .unwrap(),
                     InlineControlAlignment::Baseline,
                     edge,
+                    None,
                 )),
                 mr02_atomic(2, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             ]

@@ -142,8 +142,10 @@ fn visit_selected_own_allocations(
     basis: &crate::engine::SelectedShape,
     policy: crate::SpacingPolicy,
     slots: &Vec<crate::protocol::selection::SpacingSlotData>,
+    request: &crate::protocol::LineSelectionRequest,
     visit: &mut AllocationVisitor<'_>,
 ) -> Result<()> {
+    crate::protocol::inline_box::visit_request_allocations(request, visit)?;
     let shaped = &basis.shaped;
     let characters = &basis.characters;
     let order = &basis.order;
@@ -237,6 +239,7 @@ fn visit_finalized_own_allocations(
         &selected.basis,
         selected.request.context.spacing,
         &selected.spacing_slots,
+        &selected.request,
         visit,
     )?;
     frame.visit_scope_allocations(visit)
@@ -250,9 +253,10 @@ fn visit_selected_allocations(
     basis: &crate::engine::SelectedShape,
     policy: crate::SpacingPolicy,
     slots: &Vec<crate::protocol::selection::SpacingSlotData>,
+    request: &crate::protocol::LineSelectionRequest,
     visit: &mut AllocationVisitor<'_>,
 ) -> Result<()> {
-    visit_selected_own_allocations(prepared, scopes, basis, policy, slots, visit)?;
+    visit_selected_own_allocations(prepared, scopes, basis, policy, slots, request, visit)?;
     for frame in &scopes.proof_frames {
         visit_finalized_own_allocations(&frame.inner, visit)?;
     }
@@ -294,12 +298,19 @@ pub(crate) fn retained_selected(
     basis: &crate::engine::SelectedShape,
     policy: crate::SpacingPolicy,
     slots: &Vec<crate::protocol::selection::SpacingSlotData>,
+    request: &crate::protocol::LineSelectionRequest,
     budget: &mut ScopeAlignmentBudget,
 ) -> Result<crate::ScopeAlignmentRetention> {
     let mut set = AllocationSet::new();
-    visit_selected_allocations(prepared, scopes, basis, policy, slots, &mut |allocation| {
-        set.observe(allocation, budget).map(|_| ())
-    })?;
+    visit_selected_allocations(
+        prepared,
+        scopes,
+        basis,
+        policy,
+        slots,
+        request,
+        &mut |allocation| set.observe(allocation, budget).map(|_| ()),
+    )?;
     set.finish(budget)
 }
 
@@ -315,6 +326,7 @@ pub(crate) fn retained_finalized(
         &selected.basis,
         selected.request.context.spacing,
         &selected.spacing_slots,
+        &selected.request,
         &mut |allocation| set.observe(allocation, budget).map(|_| ()),
     )?;
     data.visit_scope_allocations(&mut |allocation| set.observe(allocation, budget).map(|_| ()))?;
@@ -415,6 +427,7 @@ enum Phase {
 #[derive(Clone, Copy)]
 enum Root<'a> {
     Prepared(&'a PreparedData),
+    Request(&'a crate::protocol::LineSelectionRequest),
     Selected(&'a Arc<crate::protocol::selection::SelectedData>),
     Finalized(&'a Arc<crate::engine::FinalizedLine>),
 }
@@ -422,6 +435,7 @@ impl Root<'_> {
     fn same(self, other: Self) -> bool {
         match (self, other) {
             (Self::Prepared(a), Self::Prepared(b)) => std::ptr::eq(a, b),
+            (Self::Request(a), Self::Request(b)) => std::ptr::eq(a, b),
             (Self::Selected(a), Self::Selected(b)) => Arc::ptr_eq(a, b),
             (Self::Finalized(a), Self::Finalized(b)) => Arc::ptr_eq(a, b),
             _ => false,
@@ -430,12 +444,16 @@ impl Root<'_> {
     fn allocations(self, visit: &mut AllocationVisitor<'_>) -> Result<()> {
         match self {
             Self::Prepared(value) => visit_prepared(value, visit),
+            Self::Request(value) => {
+                crate::protocol::inline_box::visit_request_allocations(value, visit)
+            }
             Self::Selected(value) => visit_selected_own_allocations(
                 &value.prepared,
                 &value.scopes,
                 &value.basis,
                 value.request.context.spacing,
                 &value.spacing_slots,
+                &value.request,
                 visit,
             ),
             Self::Finalized(value) => visit_finalized_own_allocations(value, visit),
@@ -555,6 +573,18 @@ fn visit_input_roots<'a>(
     if input.prepared().scope_alignment.retention.is_some() {
         emit(RootVisit::Owner {
             root: Root::Prepared(input.prepared()),
+            phase: Phase::Input,
+        })?;
+    }
+    if let Input::Selection { request, .. } = input
+        && crate::protocol::inline_box::contexts(&request.controls, &request.boundary_context)
+            .next()
+            .is_some()
+    {
+        emit(RootVisit::Work(request.controls.len()))?;
+        emit(RootVisit::Work(request.boundary_context.len()))?;
+        emit(RootVisit::Owner {
+            root: Root::Request(request),
             phase: Phase::Input,
         })?;
     }
@@ -792,8 +822,6 @@ fn census(
     }))
 }
 
-/// Start the real operation ledger without losing the input census work,
-/// monotonic scratch records or peak. The seen allocation is already dropped.
 pub(crate) fn begin_selection(
     prepared: &PreparedData,
     request: &crate::protocol::LineSelectionRequest,
