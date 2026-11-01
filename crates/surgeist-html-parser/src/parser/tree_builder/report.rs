@@ -713,8 +713,27 @@ mod tests {
 
     #[test]
     fn a_metadata_row_left_bound_to_no_node_is_not_published() {
+        // A row of some kinds is also refused by a check of its own, so the
+        // refusal is required, not which check makes it.
         for kind in crate::construction::report::UnboundRow::ALL {
-            assert_unpublishable(kind.literal(), |arena| arena.unbind_row_for_test(kind));
+            let mut input = Some(ordinary(kind.literal(), true));
+            assert!(
+                input
+                    .as_mut()
+                    .unwrap()
+                    .parts
+                    .arena
+                    .as_mut()
+                    .unwrap()
+                    .unbind_row_for_test(kind)
+            );
+            assert!(
+                ImmutableParseReport::take_document(&mut input).is_err(),
+                "{kind:?}"
+            );
+            let kept = input.as_mut().expect("the seal is kept");
+            kept.release().unwrap();
+            super::super::tests::assert_released(&kept.parts.control);
         }
     }
 

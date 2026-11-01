@@ -1181,6 +1181,16 @@ impl PayloadStorage {
         control.charge(WorkCategory::RecordVisit, 1)?;
         Ok(self.node_joins.get(node).and_then(|cell| cell.get(join)))
     }
+    /// Forgets the join of the row at `slot`, for a test that leaves the row
+    /// bound to no node.
+    #[cfg(test)]
+    fn unjoin_for_test(&mut self, slot: usize) {
+        if let Some((join, node)) = self.values.get(slot).and_then(row_join)
+            && let Some(cell) = self.node_joins.get_mut(node)
+        {
+            *cell.rows.get_mut(join) = None;
+        }
+    }
     /// The same join cell without a charge, for a published report, which has
     /// no controller. The caller checks the row it gets.
     fn joined_uncharged(&self, node: usize, join: Join) -> Option<usize> {

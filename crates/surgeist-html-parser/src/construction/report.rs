@@ -68,9 +68,9 @@ impl UnboundRow {
             Self::SvgScript => "<!doctype html><svg><script/></svg>",
         }
     }
-    /// Leaves the first row of this kind bound to no node. Whether one was found.
-    pub(super) fn unbind(self, row: &mut RetainedPayload) -> bool {
-        let node = match (self, row) {
+    /// The node a row of this kind is bound to, if it is one.
+    fn node_of(self, row: &mut RetainedPayload) -> Option<&mut Option<usize>> {
+        match (self, row) {
             (Self::Textarea, RetainedPayload::Textarea { node, .. })
             | (Self::Output, RetainedPayload::Output { node, .. })
             | (Self::Input, RetainedPayload::Input { node, .. })
@@ -81,25 +81,37 @@ impl UnboundRow {
             | (Self::Template, RetainedPayload::Template { node, .. })
             | (Self::LookupRegistry, RetainedPayload::LookupRegistry { node, .. })
             | (Self::NodeDocument, RetainedPayload::NodeDocument { node, .. })
-            | (Self::SvgScript, RetainedPayload::SvgScript { node, .. }) => node,
-            _ => return false,
-        };
-        *node = None;
-        true
+            | (Self::SvgScript, RetainedPayload::SvgScript { node, .. }) => Some(node),
+            _ => None,
+        }
+    }
+    /// Leaves this row bound to no node. Whether it is a row of this kind.
+    pub(super) fn unbind(self, row: &mut RetainedPayload) -> bool {
+        self.node_of(row).map(|node| *node = None).is_some()
     }
 }
 #[cfg(test)]
 impl FrozenArena {
-    /// Leaves the first row of `kind` bound to no node. Whether one was found.
+    /// Leaves the first row of `kind` bound to no node, and unjoined, as a
+    /// row that was never bound. Whether one was found.
     pub(crate) fn unbind_row_for_test(&mut self, kind: UnboundRow) -> bool {
         let Some(storage) = self.storage.as_mut() else {
             return false;
         };
-        storage
+        let Some(slot) = storage
             .payloads
             .values
             .iter_mut()
-            .any(|row| kind.unbind(row))
+            .position(|row| kind.node_of(row).is_some())
+        else {
+            return false;
+        };
+        storage.payloads.unjoin_for_test(slot);
+        storage
+            .payloads
+            .values
+            .get_mut(slot)
+            .is_some_and(|row| kind.unbind(row))
     }
 }
 
@@ -189,7 +201,7 @@ impl<'a> PreparedReportStorage<'a> {
                 mem::size_of::<RetainedPayload>() as u64,
             )?;
             let node = metadata_node(payload);
-            if let Some(node) = node {
+            if let MetadataNode::Bound(node) = node {
                 checked_node(arena, node, c)?;
             }
             match payload {
@@ -722,6 +734,12 @@ impl<'a> PreparedReportStorage<'a> {
                 }
                 _ => {}
             }
+            // A row is bound to its node when its creation completes, and a
+            // creation that fails stops the parse, so a published report holds
+            // none that is not. The metadata cursor lends a record only for a node.
+            if node == MetadataNode::Unbound {
+                return Err(latch_registry_row(c));
+            }
         }
         pending_association::qualify(storage, c)?;
         if storage.fragment.is_some() {
@@ -838,18 +856,39 @@ fn checked_dialog_missing(
     }
     Ok(())
 }
-fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
+/// The node a metadata row is issued for.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MetadataNode {
+    /// The row is issued for this node.
+    Bound(usize),
+    /// A row of a kind that is issued for a node, bound to none.
+    ///
+    /// None of these can be published. Textarea, Output, Input, InputSource,
+    /// FormAssociation, SelectFamily, Link and Details rows are pushed
+    /// before the element is allocated and bound in the same creation, where
+    /// a failure is the incomplete-creation stop. Script, LookupRegistry and
+    /// Shadow rows are bound when their node is allocated, and a failure
+    /// before that is a stop. Template, NodeDocument, PiAttributes,
+    /// SvgScript, Base, BaseDocument and Document rows are required bound at
+    /// freeze or by their own checks below. Every report the test corpus
+    /// publishes passes this rule.
+    Unbound,
+    /// A row of a kind that is not issued as a record.
+    None,
+}
+fn metadata_node(payload: &RetainedPayload) -> MetadataNode {
+    let bound = |node: Option<usize>| node.map_or(MetadataNode::Unbound, MetadataNode::Bound);
     match payload {
         // Notification eligibility is a parser proof, not authored state.
         // Details name/open remain canonical native attributes.
-        RetainedPayload::Details { .. } => None,
-        RetainedPayload::Shadow { root, .. } => *root,
+        RetainedPayload::Details { .. } => MetadataNode::None,
+        RetainedPayload::Shadow { root, .. } => bound(*root),
         RetainedPayload::StandaloneDocumentCompletion { node, .. }
         | RetainedPayload::BaseDocument { node, .. }
         | RetainedPayload::Hyperlink { node, .. }
         | RetainedPayload::Image { node, .. }
         | RetainedPayload::Style { node, .. }
-        | RetainedPayload::Dialog { node, .. } => Some(*node),
+        | RetainedPayload::Dialog { node, .. } => MetadataNode::Bound(*node),
         RetainedPayload::Base { node, .. }
         | RetainedPayload::Nonce { node, .. }
         | RetainedPayload::LookupRegistry { node, .. }
@@ -865,8 +904,8 @@ fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
         | RetainedPayload::Output { node, .. }
         | RetainedPayload::Input { node, .. }
         | RetainedPayload::InputSource { node, .. }
-        | RetainedPayload::SelectFamily { node, .. } => *node,
-        _ => None,
+        | RetainedPayload::SelectFamily { node, .. } => bound(*node),
+        _ => MetadataNode::None,
     }
 }
 impl ReportStorage {
@@ -961,8 +1000,15 @@ impl<'a> MetadataCursor<'a> {
         };
         // `next` named a registry row, so it is below the address space.
         self.next = self.next.saturating_add(1);
-        let Some(node) = metadata_node(payload) else {
-            return MetadataStep::Skipped;
+        let node = match metadata_node(payload) {
+            MetadataNode::Bound(node) => node,
+            MetadataNode::None => return MetadataStep::Skipped,
+            // Publication refuses a row bound to no node.
+            MetadataNode::Unbound => {
+                let fault = unresolved(read::UnresolvedKind::Node);
+                self.fault = Some(fault);
+                return MetadataStep::Fault(fault);
+            }
         };
         let resolver = Resolver {
             history: self.history,
