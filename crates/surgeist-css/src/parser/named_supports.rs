@@ -57,9 +57,12 @@ pub(super) fn parse_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &RecoveryState,
 ) -> Result<NamedSupportsPrelude, ParseError<'i, CssError>> {
-    let at = input.current_source_location();
-    let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
-        .map_err(|error| invalid_component_value(at, error))?;
+    let collected =
+        super::descriptor_stream::collect_native_scope(input, recovery.source_snapshot())?;
+    let at = collected.start;
+    let values = collected
+        .values
+        .map_err(|(error, _)| invalid_component_value(at, error))?;
     let meaningful: Vec<_> = values
         .items()
         .iter()

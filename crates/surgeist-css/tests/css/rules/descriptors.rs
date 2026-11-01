@@ -5,3 +5,4 @@ mod descriptor_env_admission;
 mod descriptor_env_phase_contract;
 mod descriptor_syntax3_lexing;
 mod descriptor_value_source_windows;
+mod unicode_range_syntax3;

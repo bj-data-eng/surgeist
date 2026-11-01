@@ -2,237 +2,232 @@
 //!
 //! The value is re-tokenized from its original text with unicode ranges
 //! allowed, so each range is one contiguous `<unicode-range-token>` (§4.3.14)
-//! starting with a literal `U` or `u` (§4.3.1). The provider tokens covering
-//! that text are collected and their original spellings are consumed as the
-//! token's code points; whitespace or a comment ends the token (§4.3.1
-//! consumes comments before every token).
+//! starting with a literal `U` or `u` (§4.3.1). The grammar of the descriptor
+//! (Fonts 4 `<urange>#`) is then a comma-separated list whose every member is
+//! one such token; whitespace or a comment ends a token (§4.3.1 consumes
+//! comments before every token). The tokenizer does not judge the range: a
+//! bound above U+10FFFF, or an end before the start, is the descriptor's
+//! business ([`CssUnicodeRange::try_new`]).
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value>
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-token>
 
-use cssparser::{ParseError, Parser, SourceLocation, SourcePosition, Token};
+use cssparser::SourceLocation;
+use surgeist_css_parser::Token;
 
-use crate::component::CssSerializedOrigin;
+use crate::component::{CssSerializedOrigin, CssSerializedValue};
+use crate::diagnostic::error::{
+    incomplete_descriptor_at, invalid_component_value, invalid_descriptor_authored_syntax_token_at,
+    unexpected_at,
+};
 use crate::numeric::expression::NumericInputContext;
-
-use crate::diagnostic::CssError;
-use crate::diagnostic::error::{incomplete_descriptor_at, invalid_descriptor_token_at};
+use crate::parser::block_units::{location_at, offset_of};
+use crate::parser::combinators::parse_native_comma_list;
+use crate::parser::descriptor_stream::{
+    NativeValueError, Value, ValueError, at_serialized_offset, consume_remaining, fail,
+    serialized_offset,
+};
+use crate::parser::syntax_types::{Site, Stream, SyntaxError};
 use crate::rule::font_face::CssUnicodeRange;
+use crate::source::CssSourceSnapshot;
 
-struct RangeToken<'i> {
-    token: Token<'i>,
-    spelling: &'i str,
-    location: SourceLocation,
-    /// For a separator, the authored token after it: trivia ends a range
-    /// but is never itself responsible, so that token is.
-    following: Option<(Token<'i>, &'i str, SourceLocation)>,
+/// Where a boundary of the re-tokenized text is, in the terms of the
+/// diagnostics.
+enum Locator<'a> {
+    /// The text is a window of the source: boundaries are bytes of it.
+    Source(&'a CssSourceSnapshot),
+    /// The text is the serialization of checked components from byte `base` on,
+    /// without the comments the serialization inserted between tokens; each
+    /// entry of `inserted` is where such a comment was in the text and how long.
+    Serialized {
+        serialized: &'a CssSerializedValue,
+        base: usize,
+        inserted: Vec<(usize, usize)>,
+    },
 }
 
-impl RangeToken<'_> {
-    fn error<'i>(&self) -> ParseError<'i, CssError> {
-        let (token, spelling, location) = match &self.following {
-            Some((token, spelling, location)) => (token, *spelling, *location),
-            None => (&self.token, self.spelling, self.location),
-        };
-        invalid_descriptor_token_at(location, "font-face", "unicode-range", token, spelling)
+impl Locator<'_> {
+    fn at(&self, site: Site<'_>) -> SourceLocation {
+        let offset = site.offset().map_or(0, surgeist_css_parser::Offset::value);
+        match self {
+            Self::Source(snapshot) => location_at(snapshot, offset),
+            Self::Serialized {
+                serialized,
+                base,
+                inserted,
+            } => {
+                let removed: usize = inserted
+                    .iter()
+                    .take_while(|(at, _)| *at <= offset)
+                    .map(|(_, length)| length)
+                    .sum();
+                at_serialized_offset(serialized, base + offset + removed)
+            }
+        }
     }
 }
 
-fn missing<'i>(end: SourceLocation) -> ParseError<'i, CssError> {
-    incomplete_descriptor_at(end, "font-face", "unicode-range")
-}
-
-pub(super) fn parse<'i, 't>(
-    input: &mut Parser<'i, 't>,
+/// The ranges of the value of a `unicode-range` descriptor that `input` holds,
+/// to its end. The text of the value is tokenized again with unicode ranges
+/// allowed, and `input` is left at its end.
+pub(in crate::parser) fn parse_list<'i>(
+    input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssUnicodeRange, ParseError<'i, CssError>> {
-    // A valid range has at most eight tokens (u, +, six question marks).
-    // A ninth token suffices to prove failure, even for unbounded malformed input.
-    let mut tokens = Vec::with_capacity(9);
-    // The first whitespace or comment after the range's first token ends it.
-    let mut separator = None;
-    loop {
-        let state = input.state();
-        let start = input.position();
-        let location = input.current_source_location();
-        let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
-            break;
-        };
-        if matches!(token, Token::Comment(_)) && inserted_separator(numeric, start) {
-            continue;
+) -> Value<'i, Vec<CssUnicodeRange>> {
+    let at = input.site();
+    let end = input.end_site();
+    let ranges = match numeric.ordinary() {
+        NumericInputContext::Parsed(snapshot) => {
+            let range = offset_of(at)..offset_of(end);
+            let document = crate::syntax_consumption::unicode_range_document(snapshot, range)
+                .map_err(|error| fail(numeric, at, |at| invalid_component_value(at, error)))?;
+            read(&mut document.root(), &Locator::Source(snapshot))
         }
-        if matches!(token, Token::Comma) {
-            if tokens.is_empty() {
-                return Err(invalid_descriptor_token_at(
-                    location,
-                    "font-face",
-                    "unicode-range",
-                    &token,
-                    input.slice_from(start),
-                ));
-            }
-            input.reset(&state);
-            break;
+        NumericInputContext::Components(values, serialized) => {
+            let base = serialized_offset(values, serialized, at);
+            let finish = serialized_offset(values, serialized, end).max(base);
+            let (text, inserted) = authored_text(serialized, base..finish);
+            let document = crate::syntax_consumption::unicode_range_text_document(&text)
+                .map_err(|error| fail(numeric, at, |at| invalid_component_value(at, error)))?;
+            read(
+                &mut document.root(),
+                &Locator::Serialized {
+                    serialized,
+                    base,
+                    inserted,
+                },
+            )
         }
-        let token = RangeToken {
-            token,
-            spelling: input.slice_from(start),
-            location,
-            following: None,
-        };
-        if matches!(token.token, Token::WhiteSpace(_) | Token::Comment(_)) {
-            if !tokens.is_empty() && separator.is_none() {
-                separator = Some(token);
-            }
-            continue;
-        }
-        if let Some(mut space) = separator.take() {
-            space.following = Some((token.token.clone(), token.spelling, token.location));
-            tokens.push(space);
-            if tokens.len() == 9 {
-                break;
-            }
-        }
-        let terminal = !matches!(
-            token.token,
-            Token::Ident(_)
-                | Token::Number { .. }
-                | Token::Dimension { .. }
-                | Token::Delim('+' | '?' | '-')
-        );
-        tokens.push(token);
-        if tokens.len() == 9 || terminal {
-            break;
+        NumericInputContext::Checked | NumericInputContext::QuirkyLengths(_) => {
+            return Err(fail(numeric, at, unexpected_at));
         }
     }
-    let end = input.current_source_location();
-    check_token_grammar(&tokens, end)?;
-    interpret(&tokens[1..], end)
+    .map_err(|error| SyntaxError::custom(at, error))?;
+    consume_remaining(input);
+    Ok(ranges)
 }
 
 // Checked components have no source text. Their serialization inserts empty
-// comments only where the category table requires one; such a separator is not
-// authored, so the components' own adjacent spellings remain one range text.
-fn inserted_separator(numeric: &NumericInputContext<'_>, start: SourcePosition) -> bool {
-    let NumericInputContext::Components(_, serialized) = numeric.ordinary() else {
-        return false;
+// comments only where the table of section 9 requires one; such a separator is
+// not authored, so the components' own adjacent spellings remain one range text.
+fn authored_text(
+    serialized: &CssSerializedValue,
+    window: std::ops::Range<usize>,
+) -> (String, Vec<(usize, usize)>) {
+    let mut text = String::new();
+    let mut inserted = Vec::new();
+    for segment in serialized.segments() {
+        let range = segment.byte_range();
+        let (start, end) = (range.start.max(window.start), range.end.min(window.end));
+        if start >= end {
+            continue;
+        }
+        if matches!(segment.origin(), CssSerializedOrigin::Separator { .. }) {
+            inserted.push((text.len(), end - start));
+        } else if let Some(part) = serialized.as_css().get(start..end) {
+            text.push_str(part);
+        }
+    }
+    (text, inserted)
+}
+
+fn read<'w>(
+    stream: &mut Stream<'w>,
+    locator: &Locator<'_>,
+) -> Result<Vec<CssUnicodeRange>, NativeValueError> {
+    parse_native_comma_list(
+        stream,
+        |item| range(item, locator),
+        |_, at| {
+            SyntaxError::custom(
+                at,
+                incomplete_descriptor_at(locator.at(at), "font-face", "unicode-range"),
+            )
+        },
+    )
+    .map_err(|error| {
+        error
+            .custom_value()
+            .cloned()
+            .unwrap_or_else(|| unexpected_at(locator.at(error.at())))
+    })
+}
+
+/// One member of the list: exactly one range token.
+fn range<'w>(
+    item: &mut Stream<'w>,
+    locator: &Locator<'_>,
+) -> Result<CssUnicodeRange, ValueError<'w>> {
+    item.discard_whitespace();
+    let at = item.site();
+    let invalid = |site: Site<'w>, token: Token<'w>| invalid_at(locator, site, token);
+    let Ok(token) = item.consume_token() else {
+        return Err(SyntaxError::custom(
+            at,
+            incomplete_descriptor_at(locator.at(item.end_site()), "font-face", "unicode-range"),
+        ));
     };
-    matches!(
-        serialized.origin_at(start.byte_index()),
-        Some(CssSerializedOrigin::Separator { .. })
+    let Token::UnicodeRange(code_points) = token else {
+        return Err(cannot_continue(item, at, token, locator));
+    };
+    item.discard_whitespace();
+    let extra = item.site();
+    if let Some(next) = item.next_token() {
+        return Err(invalid(extra, next));
+    }
+    CssUnicodeRange::try_new(code_points.start(), code_points.end())
+        .ok_or_else(|| invalid(at, token))
+}
+
+/// The failure of a member at the token `token` at `site`.
+fn invalid_at<'w>(locator: &Locator<'_>, site: Site<'w>, token: Token<'w>) -> ValueError<'w> {
+    SyntaxError::custom(
+        site,
+        invalid_descriptor_authored_syntax_token_at(
+            locator.at(site),
+            "font-face",
+            "unicode-range",
+            token,
+            site.spelling().unwrap_or_default(),
+        ),
     )
 }
 
-fn check_token_grammar<'i>(
-    tokens: &[RangeToken<'_>],
-    end: SourceLocation,
-) -> Result<(), ParseError<'i, CssError>> {
-    let first = tokens.first().ok_or_else(|| missing(end))?;
-    // An escaped `u` decodes to the same ident but does not start the token.
-    if !matches!(first.token, Token::Ident(_)) || !first.spelling.eq_ignore_ascii_case("u") {
-        return Err(first.error());
-    }
-    let second = tokens.get(1).ok_or_else(|| missing(end))?;
-    let question_start = match second.token {
-        Token::Delim('+') => {
-            let third = tokens.get(2).ok_or_else(|| missing(end))?;
-            match third.token {
-                Token::Ident(_) => 3,
-                Token::Delim('?') => 2,
-                _ => return Err(third.error()),
-            }
-        }
-        Token::Dimension { .. } => 2,
-        Token::Number { .. } => {
-            if let Some(third) = tokens.get(2)
-                && matches!(third.token, Token::Number { .. } | Token::Dimension { .. })
-            {
-                return match tokens.get(3) {
-                    Some(extra) => Err(extra.error()),
-                    None => Ok(()),
-                };
-            }
-            2
-        }
-        _ => return Err(second.error()),
+/// The failure of a member that begins with `token` at `at`, which is not a
+/// range token. A literal `u` followed by a plus sign begins a range that
+/// needs a hexadecimal digit or a question mark next (section 4.3.14): the
+/// token that does not continue it is responsible, and a member that ends
+/// inside it is incomplete. Any other first token is responsible itself.
+fn cannot_continue<'w>(
+    item: &mut Stream<'w>,
+    at: Site<'w>,
+    token: Token<'w>,
+    locator: &Locator<'_>,
+) -> ValueError<'w> {
+    let incomplete = |item: &Stream<'w>| {
+        SyntaxError::custom(
+            at,
+            incomplete_descriptor_at(locator.at(item.end_site()), "font-face", "unicode-range"),
+        )
     };
-    for token in &tokens[question_start..] {
-        if !matches!(token.token, Token::Delim('?')) {
-            return Err(token.error());
-        }
+    let begins_range = matches!(token, Token::Ident(_))
+        && at
+            .spelling()
+            .is_some_and(|spelling| spelling.eq_ignore_ascii_case("u"));
+    if !begins_range {
+        return invalid_at(locator, at, token);
     }
-    Ok(())
-}
-
-// The logical representation stream retains its original token owner at each
-// byte. No comment-stripped input, numeric serialization, or decoded ident text
-// is fed back through tokenization, and malformed long tokens are not copied.
-fn interpret<'i>(
-    tokens: &[RangeToken<'_>],
-    end: SourceLocation,
-) -> Result<CssUnicodeRange, ParseError<'i, CssError>> {
-    let mut text = tokens
-        .iter()
-        .flat_map(|token| token.spelling.bytes().map(move |byte| (byte, token)))
-        .peekable();
-    match text.next() {
-        Some((b'+', _)) => {}
-        Some((_, token)) => return Err(token.error()),
-        None => return Err(missing(end)),
+    item.discard_whitespace();
+    let next_at = item.site();
+    let Ok(next) = item.consume_token() else {
+        return incomplete(item);
+    };
+    if !matches!(next, Token::Delim('+')) {
+        return invalid_at(locator, next_at, next);
     }
-    let endpoint = text
-        .peek()
-        .map(|(_, token)| *token)
-        .ok_or_else(|| missing(end))?;
-    let mut start = 0u32;
-    let mut finish = 0u32;
-    let mut digits = 0;
-    let mut wildcard = false;
-    while let Some(&(byte, token)) = text.peek() {
-        let digit = (byte as char).to_digit(16);
-        if byte != b'?' && (wildcard || digit.is_none()) {
-            break;
-        }
-        if digits == 6 {
-            return Err(token.error());
-        }
-        text.next();
-        digits += 1;
-        if byte == b'?' {
-            wildcard = true;
-            start *= 16;
-            finish = finish * 16 + 15;
-        } else if let Some(digit) = digit {
-            start = start * 16 + digit;
-            finish = start;
-        }
+    item.discard_whitespace();
+    let after_at = item.site();
+    match item.consume_token() {
+        Ok(after) => invalid_at(locator, after_at, after),
+        Err(_) => incomplete(item),
     }
-    if digits == 0 {
-        return Err(endpoint.error());
-    }
-    if wildcard {
-        if let Some((_, token)) = text.next() {
-            return Err(token.error());
-        }
-        return CssUnicodeRange::try_new(start, finish).ok_or_else(|| endpoint.error());
-    }
-    match text.next() {
-        None => return CssUnicodeRange::try_new(start, start).ok_or_else(|| endpoint.error()),
-        Some((b'-', _)) => {}
-        Some((_, token)) => return Err(token.error()),
-    }
-    let endpoint = text
-        .peek()
-        .map(|(_, token)| *token)
-        .ok_or_else(|| missing(end))?;
-    let mut finish = 0u32;
-    for (digits, (byte, token)) in text.enumerate() {
-        let Some(digit) = (byte as char).to_digit(16) else {
-            return Err(token.error());
-        };
-        if digits == 6 {
-            return Err(token.error());
-        }
-        finish = finish * 16 + digit;
-    }
-    CssUnicodeRange::try_new(start, finish).ok_or_else(|| endpoint.error())
 }

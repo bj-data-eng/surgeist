@@ -361,24 +361,37 @@ impl CssTokenSummary {
     }
 
     /// The summary of a token of the parser crate's token tree, in its
-    /// canonical spelling (Syntax 3 section 9).
+    /// canonical spelling (Syntax 3 section 9), with a number in the normal
+    /// form of [`normal_number`].
     pub(crate) fn from_syntax_token(token: surgeist_css_parser::Token<'_>) -> Self {
+        use surgeist_css_parser::Token as Syntax;
+        let authored = match token {
+            Syntax::Number(number) => normal_number(number),
+            Syntax::Percentage(number) => format!("{}%", normal_number(number)),
+            Syntax::Dimension { number, unit } => {
+                let written = token.to_string();
+                let unit = written
+                    .strip_prefix(number.representation())
+                    .unwrap_or(unit);
+                format!("{}{unit}", normal_number(number))
+            }
+            _ => token.to_string(),
+        };
         Self {
             kind: syntax_token_kind(token),
-            authored: token.to_string(),
+            authored,
         }
     }
 
-    fn from_authored_token(token: &Token<'_>, authored: &str) -> Self {
-        let (token, range) =
-            crate::tokenization::source_token_parts(authored, token.clone(), 0..authored.len())
-                .into_iter()
-                .flatten()
-                .next()
-                .expect("an authored provider capture has a first canonical token");
+    /// The summary of a token of the parser crate's token tree, in the
+    /// spelling it was written in.
+    pub(crate) fn from_authored_syntax_token(
+        token: surgeist_css_parser::Token<'_>,
+        authored: &str,
+    ) -> Self {
         Self {
-            kind: token_kind(&token),
-            authored: authored[range].to_owned(),
+            kind: syntax_token_kind(token),
+            authored: authored.to_owned(),
         }
     }
 
@@ -388,6 +401,114 @@ impl CssTokenSummary {
             authored: "!".to_owned(),
         }
     }
+}
+
+/// The normal form of a number in a token summary, which is the diagnostic
+/// contract and not the spelling of the source.
+///
+/// An integer is its value, saturated to `i32`. Any other number is its `f32`
+/// value with at most six significant digits: in decimal notation from `1e-6`
+/// up to below `1e21` and in scientific notation outside that range, and a
+/// whole number that has no decimal point is followed by `.0`. A `+` precedes a
+/// number that was written with a sign and is positive, and negative zero is
+/// `-0`.
+fn normal_number(number: surgeist_css_parser::token::Number<'_>) -> String {
+    use surgeist_css_parser::token::NumberKind;
+    let mut value = number.to_f64() as f32;
+    if value.is_infinite() {
+        value = f32::MAX.copysign(value);
+    }
+    let negative = value.is_sign_negative();
+    let mut text = String::new();
+    if number.sign().is_some() && !negative {
+        text.push('+');
+    }
+    if value == 0.0 && negative {
+        text.push_str("-0");
+        return text;
+    }
+    if number.kind() == NumberKind::Integer {
+        let saturated = match number.integer() {
+            Some(integer) => {
+                i32::try_from(integer).unwrap_or(if integer < 0 { i32::MIN } else { i32::MAX })
+            }
+            None if negative => i32::MIN,
+            None => i32::MAX,
+        };
+        text.push_str(&saturated.to_string());
+        return text;
+    }
+    if negative {
+        text.push('-');
+    }
+    let (digits, exponent) = six_digits(value.abs());
+    let scientific = !(-6..=20).contains(&exponent);
+    if scientific {
+        text.push_str(&digits[..1]);
+        if digits.len() > 1 {
+            text.push('.');
+            text.push_str(&digits[1..]);
+        }
+        text.push('e');
+        text.push_str(&exponent.to_string());
+    } else if exponent >= 0 {
+        let whole = usize::try_from(exponent).unwrap_or(0) + 1;
+        if digits.len() <= whole {
+            text.push_str(&digits);
+            text.push_str(&"0".repeat(whole - digits.len()));
+        } else {
+            text.push_str(&digits[..whole]);
+            text.push('.');
+            text.push_str(&digits[whole..]);
+        }
+    } else {
+        text.push_str("0.");
+        text.push_str(&"0".repeat(usize::try_from(-exponent - 1).unwrap_or(0)));
+        text.push_str(&digits);
+    }
+    if value.fract() == 0.0 && !text.contains('.') && !scientific {
+        text.push_str(".0");
+    }
+    text
+}
+
+/// The shortest digits of the positive `f32` `value` rounded to six significant
+/// digits, without trailing zeros, and the exponent of its first digit in
+/// scientific notation. Zero is the digit `0` and the exponent `0`.
+fn six_digits(value: f32) -> (String, i32) {
+    if value == 0.0 {
+        return ("0".to_owned(), 0);
+    }
+    let scientific = format!("{value:e}");
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let mut exponent: i32 = exponent.parse().unwrap_or(0);
+    let mut digits: Vec<u8> = mantissa.bytes().filter(u8::is_ascii_digit).collect();
+    if digits.len() > 6 {
+        let round_up = digits[6] >= b'5';
+        digits.truncate(6);
+        if round_up {
+            let mut index = 6;
+            loop {
+                if index == 0 {
+                    digits.insert(0, b'1');
+                    digits.truncate(6);
+                    exponent += 1;
+                    break;
+                }
+                index -= 1;
+                if digits[index] == b'9' {
+                    digits[index] = b'0';
+                } else {
+                    digits[index] += 1;
+                    break;
+                }
+            }
+        }
+    }
+    while digits.len() > 1 && digits.last() == Some(&b'0') {
+        digits.pop();
+    }
+    (String::from_utf8(digits).unwrap_or_default(), exponent)
 }
 
 pub(crate) const EXPECT_CSS_SYNTAX: CssGrammarExpectation =
@@ -1994,6 +2115,14 @@ pub(crate) fn selector_basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, C
         BasicParseErrorKind::UnexpectedToken(token) => Some(CssTokenSummary::from_token(&token)),
         _ => None,
     };
+    selector_encountered_at(location, encountered)
+}
+
+/// An invalid selector at `location`, naming the token it met when there is one.
+pub(crate) fn selector_encountered_at<'i>(
+    location: cssparser::SourceLocation,
+    encountered: Option<CssTokenSummary>,
+) -> ParseError<'i, CssError> {
     error_at(
         location,
         ErrorKind::InvalidSelector(CssSelectorError {
@@ -2211,10 +2340,6 @@ pub(crate) fn invalid_at_rule_body_at<'i>(
     }
 }
 
-pub(crate) fn invalid_selector<'i, 't>(input: &Parser<'i, 't>) -> ParseError<'i, CssError> {
-    invalid_selector_at(input.current_source_location())
-}
-
 pub(crate) fn invalid_selector_at<'i>(
     location: cssparser::SourceLocation,
 ) -> ParseError<'i, CssError> {
@@ -2427,22 +2552,6 @@ pub(crate) fn with_descriptor_context<'i>(
     error
 }
 
-pub(crate) fn invalid_descriptor_token_at<'i>(
-    location: cssparser::SourceLocation,
-    at_rule: &str,
-    descriptor: &str,
-    token: &Token<'_>,
-    authored: &str,
-) -> ParseError<'i, CssError> {
-    explicit_descriptor_error(
-        location,
-        at_rule,
-        descriptor,
-        Some(CssTokenSummary::from_authored_token(token, authored)),
-        DiagnosticOrigin::Token,
-    )
-}
-
 /// A descriptor value that a token of the parser crate's token tree ends.
 pub(crate) fn invalid_descriptor_syntax_token_at<'i>(
     location: cssparser::SourceLocation,
@@ -2455,6 +2564,23 @@ pub(crate) fn invalid_descriptor_syntax_token_at<'i>(
         at_rule,
         descriptor,
         Some(CssTokenSummary::from_syntax_token(token)),
+        DiagnosticOrigin::Token,
+    )
+}
+
+/// [`invalid_descriptor_syntax_token_at`] for a token written as `authored`.
+pub(crate) fn invalid_descriptor_authored_syntax_token_at<'i>(
+    location: cssparser::SourceLocation,
+    at_rule: &str,
+    descriptor: &str,
+    token: surgeist_css_parser::Token<'_>,
+    authored: &str,
+) -> ParseError<'i, CssError> {
+    explicit_descriptor_error(
+        location,
+        at_rule,
+        descriptor,
+        Some(CssTokenSummary::from_authored_syntax_token(token, authored)),
         DiagnosticOrigin::Token,
     )
 }
@@ -2598,6 +2724,21 @@ pub(crate) fn unexpected_syntax_token<'i>(
         ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
             expectation: EXPECT_CSS_SYNTAX,
             encountered: CssTokenSummary::from_syntax_token(token),
+        }),
+    )
+}
+
+/// [`unexpected_syntax_token`] for a token written as `authored`.
+pub(crate) fn unexpected_authored_syntax_token<'i>(
+    location: cssparser::SourceLocation,
+    token: surgeist_css_parser::Token<'_>,
+    authored: &str,
+) -> ParseError<'i, CssError> {
+    error_at(
+        location,
+        ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
+            expectation: EXPECT_CSS_SYNTAX,
+            encountered: CssTokenSummary::from_authored_syntax_token(token, authored),
         }),
     )
 }
@@ -2820,37 +2961,98 @@ mod tests {
         cssparser::SourceLocation { line: 0, column: 1 }
     }
 
+    /// The summary text of the first token of `text`.
+    fn summary(text: &str) -> String {
+        let mut lexer = surgeist_css_parser::lexer::Lexer::new(text, &Default::default());
+        let token = lexer.next_lexeme().expect("a token").token();
+        CssTokenSummary::from_syntax_token(token)
+            .authored()
+            .to_owned()
+    }
+
+    /// Characterises the format of the number a token summary spells: integers
+    /// by their value saturated to `i32`, other numbers with at most six
+    /// significant digits, and a whole number written with a decimal point kept
+    /// with `.0`. The summary names a token for a diagnostic; it is no
+    /// serialization of the value.
     #[test]
-    fn explicit_descriptor_operator_diagnostics_publish_the_first_original_delimiter() {
-        for (operator, native) in [
-            ("~=", Token::IncludeMatch),
-            ("|=", Token::DashMatch),
-            ("^=", Token::PrefixMatch),
-            ("$=", Token::SuffixMatch),
-            ("*=", Token::SubstringMatch),
+    fn a_number_in_a_summary_is_in_its_normal_form() {
+        for (written, normal) in [
+            // Integers: their value, saturated to i32, with a plus sign only when written.
+            ("01", "1"),
+            ("+5", "+5"),
+            ("-5", "-5"),
+            ("-0", "-0"),
+            ("16777217", "16777217"),
+            ("100000000000", "2147483647"),
+            ("2147483648", "2147483647"),
+            ("-2147483649", "-2147483648"),
+            // Other numbers: at most six significant digits.
+            ("1.50", "1.5"),
+            (".5", "0.5"),
+            ("+.5", "+0.5"),
+            ("-.5", "-0.5"),
+            ("00.5", "0.5"),
+            ("0.10", "0.1"),
+            ("0.30000001", "0.3"),
+            ("0.1234567890123", "0.123457"),
+            ("12345.678", "12345.7"),
+            ("123456.7", "123457"),
+            ("1234567.8", "1234570"),
+            ("999999.5", "1000000"),
+            ("0.9999995", "1"),
+            ("1.999999", "2"),
+            ("99999.95", "100000"),
+            ("0.0001234567", "0.000123457"),
+            // A whole number written without a decimal point is followed by `.0`.
+            ("1.0", "1.0"),
+            ("+1.0em", "+1.0em"),
+            ("1e3", "1000.0"),
+            ("1E3", "1000.0"),
+            ("5e0", "5.0"),
+            ("1e0", "1.0"),
+            ("1.5e3", "1500.0"),
+            ("25e-1", "2.5"),
+            ("2.5e1", "25.0"),
+            ("1e5", "100000.0"),
+            ("1234567.0", "1234570.0"),
+            ("9999995.0", "10000000.0"),
+            ("123456789.0", "123457000.0"),
+            ("1e10", "10000000000.0"),
+            ("1e15", "1000000000000000.0"),
+            ("1e20", "100000000000000000000.0"),
+            ("12345678901234567890.5", "12345700000000000000.0"),
+            ("0e0", "0.0"),
+            ("0e5", "0.0"),
+            (".0", "0.0"),
+            ("7.0e-46", "0.0"),
+            ("-0.0", "-0"),
+            // Decimal notation from 1e-6 up to below 1e21, scientific outside.
+            ("0.000001", "0.000001"),
+            ("1e-6", "0.000001"),
+            ("1.5e-6", "0.0000015"),
+            ("5e-6", "0.000005"),
+            ("123e-8", "0.00000123"),
+            ("1e-3", "0.001"),
+            ("1e-7", "1e-7"),
+            ("9.9e-7", "9.9e-7"),
+            ("0.5e-6", "5e-7"),
+            ("1e-8", "1e-8"),
+            ("1e-38", "1e-38"),
+            ("1e-45", "1e-45"),
+            ("1e21", "1e21"),
+            ("1.5e21", "1.5e21"),
+            ("-1.5e21", "-1.5e21"),
+            ("+1e30", "+1e30"),
+            ("3.4e38", "3.4e38"),
+            ("3.4028235e38", "3.40282e38"),
+            ("1e39", "3.40282e38"),
+            // Percentages and dimensions keep their unit.
+            (".5%", "0.5%"),
+            ("1.50%", "1.5%"),
+            ("1e3px", "1000.0px"),
         ] {
-            let source = format!("x;\r\n😀{operator}");
-            let error = from_parse_error(
-                &source,
-                invalid_descriptor_token_at(
-                    cssparser::SourceLocation { line: 1, column: 3 },
-                    "font-face",
-                    "unicode-range",
-                    &native,
-                    operator,
-                ),
-            );
-            let ErrorKind::InvalidDescriptorValue(detail) = error.kind() else {
-                panic!("explicit descriptor error");
-            };
-            assert_eq!(detail.at_rule().as_str(), "font-face");
-            assert_eq!(detail.descriptor().as_str(), "unicode-range");
-            let token = detail.encountered().unwrap();
-            assert_eq!(token.kind(), CssTokenKind::Delim);
-            assert_eq!(token.authored(), &operator[..1]);
-            assert_eq!(error.position().byte_offset().value(), 8);
-            assert_eq!(error.position().line().value(), 1);
-            assert_eq!(error.position().column().value(), 2);
+            assert_eq!(summary(written), normal, "{written}");
         }
     }
 

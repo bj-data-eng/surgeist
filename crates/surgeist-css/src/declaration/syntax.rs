@@ -537,20 +537,19 @@ impl CssCustomPropertyName {
     #[must_use]
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let authored = name.into();
-        let mut input = cssparser::ParserInput::new(&authored);
-        let mut parser = cssparser::Parser::new(&mut input);
-        let cssparser::Token::Ident(decoded) =
-            parser.next_including_whitespace_and_comments().ok()?
-        else {
+        let mut lexer = surgeist_css_parser::lexer::Lexer::new(
+            &authored,
+            &surgeist_css_parser::lexer::Options::default(),
+        );
+        let lexeme = lexer.next_lexeme()?;
+        let surgeist_css_parser::Token::Ident(decoded) = lexeme.token() else {
             return None;
         };
-        let decoded = decoded.clone();
-        let token_end = parser.position();
-        parser.expect_exhausted().ok()?;
-        if token_end.byte_index() != authored.len() {
+        // The identifier is the whole text: no whitespace or comment follows it.
+        if lexeme.range().end.value() != authored.len() {
             return None;
         }
-        Self::from_ident_token(decoded.as_ref())
+        Self::from_ident_token(decoded)
     }
 
     /// Admits an already decoded or supplied semantic custom-property name.

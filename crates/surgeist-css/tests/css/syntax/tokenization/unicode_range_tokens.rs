@@ -58,15 +58,20 @@ fn invalid_unicode_ranges_point_to_the_responsible_original_token() {
         (r"u+\61", r"\61", r"\61"), // Preserve original escaped representation.
         (r"\75+0", r"\75+0", r"\75"), // Only a literal U or u starts a range.
         ("u+😀", "😀", "😀"),
-        ("u+12-", "-", "-"), // A lone hyphen is a Delim after Number(+12).
+        ("u+12-", "-", "-"), // The range token ends at `u+12`; a lone hyphen is a Delim.
         ("u+12-/**/", "-", "-"),
-        ("u+0g", "+0g", "+0g"), // Bad character within the original Dimension token.
-        ("u+110000", "+110000", "+110000"),
-        ("u+0-110000", "-110000", "-110000"),
-        ("u+ff-0", "ff-0", "ff-0"),
-        ("u+1-0", "-0", "-0"),
-        ("u+??????", "?", "?"), // Wildcard endpoint domain overflow.
-        ("u+1234567", "+1234567", "+1234567"),
+        // §4.3.14 ends the range token at the first code point that cannot
+        // continue it: `g` is not a hexadecimal digit, and a seventh digit is
+        // another token.
+        ("u+0g", "g", "g"),
+        ("u+1234567", "7", "7"),
+        // A token whose code points are no range (above U+10FFFF, ending before
+        // its start, or six wildcards) is rejected as the one token it is.
+        ("u+110000", "u+110000", "u+110000"),
+        ("u+0-110000", "u+0-110000", "u+0-110000"),
+        ("u+ff-0", "u+ff-0", "u+ff-0"),
+        ("u+1-0", "u+1-0", "u+1-0"),
+        ("u+??????", "u+??????", "u+??????"),
         ("u+0, /*😀*/ u+g", "g", "g"),
     ] {
         let source = format!(
@@ -142,9 +147,10 @@ fn incomplete_unicode_ranges_name_their_last_authored_token() {
     // authored token of the value is responsible.
     for (value, last) in [
         ("u+", "+"),
-        ("u+ab-", "ab-"),
         ("u+/**/", "+"),
-        ("u+ab-/**/", "ab-"),
+        // The range token ends at `u+ab`; the hyphen after it is responsible.
+        ("u+ab-", "-"),
+        ("u+ab-/**/", "-"),
     ] {
         let source = format!("@font-face{{unicode-range:{value};font-display:swap}}");
         let report = CssParser::default().parse_sheet(&source);

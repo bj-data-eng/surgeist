@@ -395,6 +395,11 @@ pub(crate) trait StreamExt<'i> {
         additional: usize,
     ) -> Result<(), SyntaxError<'i, E>>;
     fn collect_component(&mut self) -> Result<Cow<'i, CssComponentValue>, CssComponentValueError>;
+    /// The components of every token the stream still holds, as a document of
+    /// source text reads them; the stream does not move.
+    fn remaining_components(
+        &self,
+    ) -> Result<crate::component::CssComponentValues, CssComponentValueError>;
     fn collect_numeric_component(
         &mut self,
         numeric: &crate::numeric::expression::NumericInputContext<'_>,
@@ -442,10 +447,22 @@ impl<'i> StreamExt<'i> for Stream<'i> {
         self.discard_whitespace();
         let site = self.site();
         let Ok(component) = self.consume_component_value() else {
-            let origin = match site.origin() {
-                CssSerializedOrigin::End(Some(origin)) | CssSerializedOrigin::Token(origin) => {
-                    origin
-                }
+            // No component at the end of source text is an absent one, at the end.
+            let absent = site
+                .offset()
+                .filter(|_| site.node().is_none())
+                .and_then(|offset| {
+                    use crate::syntax_consumption::DocumentExt as _;
+                    let snapshot = site.document().snapshot()?;
+                    CssParsedOrigin::from_range(snapshot, offset.value()..offset.value())
+                })
+                .map(CssValueOrigin::Parsed);
+            let origin = match (absent, site.origin()) {
+                (Some(origin), _) => origin,
+                (
+                    _,
+                    CssSerializedOrigin::End(Some(origin)) | CssSerializedOrigin::Token(origin),
+                ) => origin,
                 _ => CssValueOrigin::Programmatic,
             };
             return Err(CssComponentValueError::new(
@@ -469,6 +486,15 @@ impl<'i> StreamExt<'i> for Stream<'i> {
                 document.origin(node),
             )
         })
+    }
+
+    fn remaining_components(
+        &self,
+    ) -> Result<crate::component::CssComponentValues, CssComponentValueError> {
+        let (from, to) = (self.site(), self.end_site());
+        let document = from.document();
+        let nodes = &document.list(from.list())[from.index()..to.index()];
+        crate::component::values::parse::promote_run(document, nodes)
     }
 
     fn collect_numeric_component(
@@ -501,10 +527,7 @@ impl<'i> StreamExt<'i> for Stream<'i> {
                 .push_components(std::slice::from_ref(component))
                 .expect("checked output boundaries");
         }
-        output
-            .finish()
-            .expect("checked output boundaries")
-            .into_css()
+        output.into_text()
     }
 
     fn authored_text_since(&self, from: Site<'i>) -> String {
@@ -512,146 +535,37 @@ impl<'i> StreamExt<'i> for Stream<'i> {
     }
 }
 
-/// Existing native descriptor/rule consumers enter the same value grammar.
-/// The checked property front door never enters this adapter.
-pub(crate) enum NativeValueRange {
-    /// A single-node helper must not admit an unrelated following value.
-    Component,
-    /// Family names and settings lists consume a sequence of sibling values.
-    Remaining,
-    /// The whole scope the native callback was handed, to its end: the
-    /// contents of a rule block or the value of a declaration. Only the native
-    /// `AtRuleParser`, `QualifiedRuleParser` and `DeclarationParser` methods
-    /// whose grammar has not been ported enter a ported grammar this way.
-    Scope,
-}
-
-pub(crate) fn adapt_native<'s, 'n, T, F>(
+/// Runs a stream grammar over the whole scope the native parser `input` was
+/// handed, to its end: the contents of a rule block or the value of a
+/// declaration, as the source text `source` holds, and leaves `input` after what
+/// the grammar consumed. Only the native `AtRuleParser`, `QualifiedRuleParser`
+/// and `DeclarationParser` methods whose grammar has not been ported enter a
+/// ported grammar this way.
+pub(crate) fn adapt_native<'s, T, F>(
     input: &mut cssparser::Parser<'s, '_>,
-    numeric: &crate::numeric::expression::NumericInputContext<'n>,
-    range: NativeValueRange,
+    source: &crate::source::CssSourceSnapshot,
     parse: F,
 ) -> Result<T, cssparser::ParseError<'s, crate::diagnostic::CssError>>
 where
     F: for<'i> FnOnce(
         &mut Stream<'i>,
-        &crate::numeric::expression::NumericInputContext<'n>,
     ) -> Result<T, SyntaxError<'i, crate::diagnostic::error::property::Error>>,
 {
     use crate::diagnostic::error::property::SyntaxErrorExt;
-    use crate::numeric::expression::NumericInputContext;
-    use crate::syntax_consumption::{
-        SyntaxInputLimits, checked_document, source_scope_document, source_window_document,
-    };
-    let checkpoint = input.state();
+    use crate::syntax_consumption::source_scope_document;
     let start = input.position().byte_index();
-    let whole_scope = matches!(range, NativeValueRange::Scope);
-    match range {
-        NativeValueRange::Component => {
-            input.skip_whitespace();
-            let _ = advance_native_component(input);
-        }
-        NativeValueRange::Remaining | NativeValueRange::Scope => {
-            while advance_native_component(input).is_ok() {}
-        }
-    }
-    let end = input.position().byte_index();
-    input.reset(&checkpoint);
-    match numeric.ordinary() {
-        NumericInputContext::Parsed(source) => {
-            let window = if whole_scope {
-                source_scope_document(source, start..end)
-            } else {
-                source_window_document(source, start..end)
-            };
-            let document = window.map_err(|detail| {
-                crate::diagnostic::error::invalid_component_value(
-                    input.current_source_location(),
-                    detail,
-                )
-            })?;
-            let mut parser = document.root();
-            let result = parse(&mut parser, numeric);
-            let consumed = document
-                .boundary(document.root_list(), parser.site().index())
-                .offset
-                .expect("source cursor boundary");
-            advance_native_to(input, consumed);
-            result.map_err(SyntaxErrorExt::into_native_source)
-        }
-        NumericInputContext::Components(values, serialized) => {
-            let paths = serialized
-                .component_paths_in_range(start..end)
-                .ok_or_else(|| {
-                    crate::diagnostic::error::invalid_syntax(input.current_source_location())
-                })?;
-            let (siblings, first, parent) = if let Some(path) = paths.first() {
-                let (first, parent) = path.split_last().expect("component path");
-                let siblings = if parent.is_empty() {
-                    values.items()
-                } else {
-                    values
-                        .component_at_path(parent)
-                        .and_then(CssComponentValue::child_values)
-                        .expect("mapped component parent")
-                        .items()
-                };
-                (&siblings[*first..*first + paths.len()], *first, parent)
-            } else {
-                (&[][..], 0, &[][..])
-            };
-            let document =
-                checked_document(siblings, SyntaxInputLimits::default(), 0).map_err(|detail| {
-                    crate::diagnostic::error::invalid_component_value(
-                        input.current_source_location(),
-                        detail,
-                    )
-                })?;
-            let mut parser = document.root();
-            let result = parse(&mut parser, numeric);
-            let ordinal = parser.site().index();
-            let consumed = paths
-                .get(ordinal)
-                .and_then(|path| serialized.component_offset_for_path(path))
-                .unwrap_or(end);
-            advance_native_to(input, consumed);
-            result.map_err(|error| {
-                let error = error.qualify();
-                let site = error.at();
-                let relative = site.component_path();
-                let offset = if relative
-                    .first()
-                    .is_some_and(|index| *index >= siblings.len())
-                {
-                    Some(end)
-                } else {
-                    let mut path = parent.to_vec();
-                    path.push(first + relative[0]);
-                    path.extend_from_slice(&relative[1..]);
-                    if site.is_closing() {
-                        serialized
-                            .component_end_for_path(&path)
-                            .map(|end| end.saturating_sub(1))
-                    } else if let Some(offset) = serialized.component_offset_for_path(&path) {
-                        Some(offset)
-                    } else if relative.len() > 1 {
-                        path.pop();
-                        serialized
-                            .component_end_for_path(&path)
-                            .map(|end| end.saturating_sub(1))
-                    } else {
-                        None
-                    }
-                }
-                .unwrap_or(end);
-                error.into_native_at(serialized.as_css(), offset)
-            })
-        }
-        NumericInputContext::Checked => {
-            unreachable!("checked property input enters the component cursor directly")
-        }
-        NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric context"),
-    }
+    let end = native_scope_end(input);
+    let document = source_scope_document(source, start..end).map_err(|detail| {
+        crate::diagnostic::error::invalid_component_value(input.current_source_location(), detail)
+    })?;
+    let mut parser = document.root();
+    let result = parse(&mut parser);
+    let consumed = document
+        .boundary(document.root_list(), parser.site().index())
+        .offset
+        .expect("source cursor boundary");
+    advance_native_to(input, consumed);
+    result.map_err(SyntaxErrorExt::into_native_source)
 }
 fn advance_native_component(input: &mut cssparser::Parser<'_, '_>) -> Result<(), ()> {
     use cssparser::Token as Native;
@@ -834,131 +748,23 @@ mod tests {
 #[cfg(test)]
 mod native_adapter_tests {
     use super::*;
-    use crate::component::CssComponentValues;
-    use crate::numeric::expression::NumericInputContext;
     use crate::source::CssSourceSnapshot;
 
     #[test]
-    fn source_url_prefix_does_not_admit_the_unconsumed_nested_suffix() {
-        let prefix = " /*lead*/ url(test)";
-        let source = CssSourceSnapshot::new(&format!(
-            "{prefix} {}x{}",
-            "future(".repeat(257),
-            ")".repeat(257)
-        ));
-        let mut storage = cssparser::ParserInput::new(source.as_str());
-        let mut native = cssparser::Parser::new(&mut storage);
-        let value = adapt_native(
-            &mut native,
-            &NumericInputContext::Parsed(&source),
-            NativeValueRange::Component,
-            super::super::url::parse_url,
-        )
-        .unwrap();
-        assert_eq!(value.as_str(), "test");
-        assert_eq!(native.position().byte_index(), prefix.len());
-        native.expect_function_matching("future").unwrap();
-    }
-
-    #[test]
-    fn source_family_sequence_retains_all_words() {
-        let source = CssSourceSnapshot::new("Fancy Font");
-        let mut storage = cssparser::ParserInput::new(source.as_str());
-        let mut native = cssparser::Parser::new(&mut storage);
-        let value = adapt_native(
-            &mut native,
-            &NumericInputContext::Parsed(&source),
-            NativeValueRange::Remaining,
-            |input, _| super::super::typography::parse_non_generic_font_family_name(input),
-        )
-        .unwrap();
-        assert_eq!(value.as_str(), "Fancy Font");
-        assert!(native.is_exhausted());
-    }
-
-    #[test]
-    fn source_prefix_adapter_leaves_the_following_component_available() {
+    fn a_scope_grammar_leaves_the_native_parser_after_what_it_consumed() {
         let source = CssSourceSnapshot::new("f(a) tail");
         let mut storage = cssparser::ParserInput::new(source.as_str());
         let mut native = cssparser::Parser::new(&mut storage);
-        let value = adapt_native(
-            &mut native,
-            &NumericInputContext::Parsed(&source),
-            NativeValueRange::Component,
-            |input, _| {
-                input.consume_function_named("f")?;
-                input.within_block(|nested| {
-                    nested.consume_keyword("a")?;
-                    Ok::<_, SyntaxError<'_, crate::diagnostic::error::property::Error>>(42)
-                })
-            },
-        )
+        let value = adapt_native(&mut native, &source, |input| {
+            input.consume_function_named("f")?;
+            input.within_block(|nested| {
+                nested.consume_keyword("a")?;
+                Ok::<_, SyntaxError<'_, crate::diagnostic::error::property::Error>>(42)
+            })
+        })
         .unwrap();
         assert_eq!(value, 42);
         assert_eq!(native.position().byte_index(), 4);
         assert_eq!(native.expect_ident().unwrap().as_ref(), "tail");
-    }
-
-    #[test]
-    fn checked_prefix_adapter_borrows_the_original_component_across_inserted_separators() {
-        let values = CssComponentValues::try_new(
-            vec![
-                CssComponentValue::try_ident("a").unwrap(),
-                CssComponentValue::try_ident("b").unwrap(),
-            ],
-            Default::default(),
-        )
-        .unwrap();
-        let serialized = values.serialize_tokens(Default::default()).unwrap();
-        let mut storage = cssparser::ParserInput::new(serialized.as_css());
-        let mut native = cssparser::Parser::new(&mut storage);
-        let address = adapt_native(
-            &mut native,
-            &NumericInputContext::Components(&values, &serialized),
-            NativeValueRange::Component,
-            |input, _| {
-                let component = input.collect_component().map_err(|error| {
-                    crate::diagnostic::error::property::invalid_component_value(input.site(), error)
-                })?;
-                assert!(matches!(component, Cow::Borrowed(_)));
-                Ok(component.as_ref() as *const CssComponentValue as usize)
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            address,
-            &values.items()[0] as *const CssComponentValue as usize
-        );
-        assert_eq!(native.expect_ident().unwrap().as_ref(), "b");
-    }
-
-    #[test]
-    fn checked_nested_adapter_maps_the_actual_child_path_to_existing_native_input() {
-        let values = crate::component::values::parse_component_values("f(a wrong)").unwrap();
-        let serialized = values.serialize_tokens(Default::default()).unwrap();
-        let mut storage = cssparser::ParserInput::new(serialized.as_css());
-        let mut native = cssparser::Parser::new(&mut storage);
-        let error = adapt_native(
-            &mut native,
-            &NumericInputContext::Components(&values, &serialized),
-            NativeValueRange::Component,
-            |input, _| {
-                input.consume_function_named("f")?;
-                input.within_block(|nested| {
-                    nested.consume_keyword("a")?;
-                    nested.consume_keyword("other")?;
-                    Ok::<_, SyntaxError<'_, crate::diagnostic::error::property::Error>>(())
-                })
-            },
-        )
-        .unwrap_err();
-        let cssparser::ParseErrorKind::Custom(error) = error.kind else {
-            panic!("typed checked error");
-        };
-        assert_eq!(
-            error.position().byte_offset().value(),
-            serialized.component_offset_for_path(&[0, 2]).unwrap()
-        );
-        assert_eq!(native.position().byte_index(), serialized.as_css().len());
     }
 }

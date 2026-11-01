@@ -1,14 +1,21 @@
-use cssparser::{
-    BasicParseErrorKind, Delimiter, ParseError, Parser, ParserState, Token, parse_nth,
-};
-use surgeist_css_parser::match_ignore_ascii_case;
+use cssparser::{ParseError, Parser};
+use surgeist_css_parser::anb;
+use surgeist_css_parser::stream::StopToken;
+use surgeist_css_parser::token::HashKind;
+use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
-use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
-use crate::diagnostic::error::{
-    from_parse_error, invalid_selector, invalid_selector_at, selector_basic,
-    selector_component_error,
+use super::block_units::offset_of;
+use super::descriptor_stream::{
+    Value, ValueError, after_token, at_final_comma, consume_remaining, fail, native, parse_scope,
 };
-use crate::diagnostic::{CssError, CssFeatureId};
+use super::property_input::StreamExt;
+use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
+use super::syntax_types::{Mark, Site, Stream, SyntaxError};
+use crate::diagnostic::error::{
+    from_parse_error, invalid_selector_at, selector_component_error, selector_encountered_at,
+};
+use crate::diagnostic::{CssError, CssFeatureId, CssTokenSummary};
+use crate::numeric::expression::NumericInputContext;
 use crate::rule::CssNamespacePrefix;
 use crate::selector::selector_syntax::{
     CssCompoundMembers, CssPseudoSuffixContext, CssSelectorGrammarContext,
@@ -88,6 +95,62 @@ pub(crate) struct SelectorRecovery<'a> {
     state: RecoveryState,
 }
 
+/// The delimiter that a failure at an `=` names when it follows `~`, `|`, `^`,
+/// `$` or `*` directly: the two make the operator of an attribute selector, and
+/// the operator is where the failure begins. Anything else is as it was met.
+fn matcher_start<'i>(at: Site<'i>, token: Option<Token<'i>>) -> (Site<'i>, Option<Token<'i>>) {
+    if !matches!(token, Some(Token::Delim('='))) {
+        return (at, token);
+    }
+    let document = at.document();
+    let nodes = document.list(at.list());
+    let at_equals = nodes
+        .get(at.index())
+        .is_some_and(|node| matches!(document.token(*node), Token::Delim('=')));
+    let before = at
+        .index()
+        .checked_sub(1)
+        .filter(|_| at_equals)
+        .and_then(|previous| nodes.get(previous).map(|node| (previous, *node)));
+    match before {
+        Some((previous, node)) => match document.token(node) {
+            Token::Delim(delim @ ('~' | '|' | '^' | '$' | '*')) => (
+                document.site(at.list(), previous).unwrap_or(at),
+                Some(Token::Delim(delim)),
+            ),
+            _ => (at, token),
+        },
+        None => (at, token),
+    }
+}
+
+/// The summary of the unexpected `token` of the text at `at`.
+fn encountered(at: Site<'_>, token: Token<'_>) -> CssTokenSummary {
+    match token {
+        // The whitespace is named as it was written.
+        Token::Whitespace => CssTokenSummary::from_authored_syntax_token(
+            token,
+            super::descriptor_stream::token_spelling(at).unwrap_or(" "),
+        ),
+        _ => CssTokenSummary::from_syntax_token(token),
+    }
+}
+
+/// The failure of a grammar whose stream ended, at `at`.
+fn end_of<'i>(at: Site<'i>) -> ValueError<'i> {
+    at.end_of_stream()
+}
+
+/// The failure of a grammar that met `token` at `at` where it needed another.
+fn unexpected<'i>(at: Site<'i>, token: Token<'i>) -> ValueError<'i> {
+    at.unexpected(token)
+}
+
+/// The byte where the opening token at `at` ends, its last byte.
+fn opening_end(at: Site<'_>) -> usize {
+    (offset_of(at) + at.spelling().map_or(1, str::len)).saturating_sub(1)
+}
+
 impl<'a> SelectorRecovery<'a> {
     pub(super) fn new(
         source: &'a str,
@@ -113,31 +176,64 @@ impl<'a> SelectorRecovery<'a> {
         self.state.active_namespace_prefix(prefix)
     }
 
-    pub(super) fn check_depth<'i, 't>(
-        &self,
-        input: &Parser<'i, 't>,
-    ) -> std::result::Result<(), ParseError<'i, CssError>> {
-        self.state
-            .check_specialized_components(self.source, input, "baseline.selector.complex")
-            .map(|_| ())
+    fn numeric(&self) -> NumericInputContext<'_> {
+        NumericInputContext::parsed(self.state.source_snapshot())
     }
 
-    fn check_forgiving_envelope<'i>(
+    /// An invalid selector, at the boundary `at`.
+    fn invalid<'i>(&self, at: Site<'i>) -> ValueError<'i> {
+        let (at, _) = matcher_start(at, Some(Token::Delim('=')));
+        fail(&self.numeric(), at, invalid_selector_at)
+    }
+
+    /// The failure `error` of the token stream, as the selector failure that
+    /// names the token it met.
+    fn basic<'i>(&self, error: impl Into<ValueError<'i>>) -> ValueError<'i> {
+        let error = error.into();
+        let (at, unexpected) = matcher_start(error.at(), error.unexpected_token());
+        let token = unexpected.map(|token| encountered(at, token));
+        fail(&self.numeric(), at, |at| selector_encountered_at(at, token))
+    }
+
+    /// The failure that met the whitespace at `whitespace`, reported at `after`.
+    fn basic_whitespace<'i>(&self, whitespace: Site<'i>, after: Site<'i>) -> ValueError<'i> {
+        let token = encountered(whitespace, Token::Whitespace);
+        fail(&self.numeric(), after, |at| {
+            selector_encountered_at(at, Some(token))
+        })
+    }
+
+    /// A failure of the component values of the selector, at `at`.
+    fn component<'i>(
         &self,
-        input: &mut Parser<'i, '_>,
-    ) -> Result<(), ParseError<'i, CssError>> {
+        at: Site<'i>,
+        error: crate::component::CssComponentValueError,
+    ) -> ValueError<'i> {
+        fail(&self.numeric(), at, |at| {
+            selector_component_error(at, error)
+        })
+    }
+
+    pub(super) fn check_depth<'i>(&self, input: &Stream<'i>) -> Result<(), ValueError<'i>> {
+        self.state
+            .check_specialized_components_from(
+                self.source,
+                offset_of(input.site()),
+                "baseline.selector.complex",
+            )
+            .map(|_| ())
+            .map_err(|error| SyntaxError::custom(input.site(), error))
+    }
+
+    fn check_forgiving_envelope<'i>(&self, input: &Stream<'i>) -> Result<(), ValueError<'i>> {
         // Selectors 4 checks the complete <any-value>? envelope before member
         // forgiveness. The component owner sees bad tokens and mismatched
         // closers at every depth, while allowing missing EOF delimiters.
-        let start = input.state();
-        let result = crate::component::CssComponentValues::collect_from_parser(
-            input,
-            self.state.source_snapshot(),
-        );
-        input.reset(&start);
-        result
+        let start = input.site();
+        input
+            .remaining_components()
             .map(|_| ())
-            .map_err(|error| selector_component_error(start.source_location(), error))
+            .map_err(|error| self.component(start, error))
     }
 
     fn diagnose_forgiving_member(
@@ -165,22 +261,44 @@ impl<'a> SelectorRecovery<'a> {
             self.diagnostics.push(diagnostic);
         }
     }
+
+    /// Reads the scope of the native parser `input` with `parse`, and leaves
+    /// the parser where the grammar left the stream.
+    fn read<'i, T>(
+        &mut self,
+        input: &mut Parser<'i, '_>,
+        parse: impl for<'d> FnOnce(&mut Stream<'d>, &mut Self) -> Value<'d, T>,
+    ) -> Result<T, ParseError<'i, CssError>> {
+        let snapshot = self.state.source_snapshot().clone();
+        parse_scope(input, &snapshot, |stream, _| parse(stream, self))
+    }
 }
 
 pub(crate) fn parse_rule_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<Vec<CssSelector>, ParseError<'i, CssError>> {
-    recovery.check_depth(input)?;
-    let mut selectors = Vec::new();
-    loop {
-        selectors.push(parse_rule_selector(input, recovery)?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
+    recovery.read(input, |input, recovery| {
+        recovery.check_depth(input)?;
+        let mut selectors = Vec::new();
+        loop {
+            selectors.push(read_rule_selector(input, recovery)?);
+            if input.attempt(Stream::consume_comma).is_err() {
+                break;
+            }
         }
-    }
-    input.expect_exhausted().map_err(selector_basic)?;
-    Ok(selectors)
+        expect_exhausted(input, recovery)?;
+        Ok(selectors)
+    })
+}
+
+/// Requires that only whitespace remains, as a selector failure that names the
+/// first token that remains where the whitespace begins.
+fn expect_exhausted<'i>(
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Result<(), ValueError<'i>> {
+    super::descriptor_stream::expect_exhausted(input).map_err(|error| recovery.basic(error))
 }
 
 pub(crate) fn parse_scope_boundary_selector_list<'i, 't>(
@@ -189,74 +307,87 @@ pub(crate) fn parse_scope_boundary_selector_list<'i, 't>(
     anchors: SelectorAnchorMode,
     allow_relative: bool,
 ) -> std::result::Result<CssScopeSelectorList, ParseError<'i, CssError>> {
-    recovery
-        .state
-        .check_component_contents(recovery.source, input, "baseline.selector.complex")?;
-    let options = SelectorParseOptions::scope_boundary(anchors);
-    let mut selectors = Vec::new();
-    loop {
-        let member = if allow_relative {
-            parse_style_selector_with_options(input, options, recovery)?
-        } else {
-            CssStyleSelector::Selector(parse_rule_selector_with_options(input, options, recovery)?)
-        };
-        selectors.push(member);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
+    recovery.read(input, |input, recovery| {
+        recovery
+            .state
+            .check_component_contents_from(
+                recovery.source,
+                offset_of(input.site()),
+                "baseline.selector.complex",
+            )
+            .map_err(|error| SyntaxError::custom(input.site(), error))?;
+        let options = SelectorParseOptions::scope_boundary(anchors);
+        let mut selectors = Vec::new();
+        loop {
+            let member = if allow_relative {
+                parse_style_selector_with_options(input, options, recovery)?
+            } else {
+                CssStyleSelector::Selector(parse_rule_selector_with_options(
+                    input, options, recovery,
+                )?)
+            };
+            selectors.push(member);
+            if input.attempt(Stream::consume_comma).is_err() {
+                break;
+            }
         }
-    }
-    input.expect_exhausted().map_err(selector_basic)?;
-    CssScopeSelectorList::try_new(selectors).ok_or_else(|| invalid_selector(input))
+        expect_exhausted(input, recovery)?;
+        CssScopeSelectorList::try_new(selectors).ok_or_else(|| recovery.invalid(input.site()))
+    })
 }
 
 pub(crate) fn parse_scoped_style_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssStyleSelectorList, ParseError<'i, CssError>> {
-    recovery.check_depth(input)?;
-    let mut selectors = Vec::new();
-    loop {
-        selectors.push(parse_style_selector_with_options(
-            input,
-            SelectorParseOptions::scoped_style(),
-            recovery,
-        )?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
+    recovery.read(input, |input, recovery| {
+        recovery.check_depth(input)?;
+        let mut selectors = Vec::new();
+        loop {
+            selectors.push(parse_style_selector_with_options(
+                input,
+                SelectorParseOptions::scoped_style(),
+                recovery,
+            )?);
+            if input.attempt(Stream::consume_comma).is_err() {
+                break;
+            }
         }
-    }
-    input.expect_exhausted().map_err(selector_basic)?;
-    CssStyleSelectorList::try_new(selectors).ok_or_else(|| invalid_selector(input))
+        expect_exhausted(input, recovery)?;
+        CssStyleSelectorList::try_new(selectors).ok_or_else(|| recovery.invalid(input.site()))
+    })
 }
 
 pub(super) fn parse_nested_style_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<Vec<CssStyleSelector>, ParseError<'i, CssError>> {
-    recovery.check_depth(input)?;
-    let mut selectors = Vec::new();
-    loop {
-        selectors.push(parse_style_selector_with_options(
-            input,
-            SelectorParseOptions::nested_style(),
-            recovery,
-        )?);
-        if input.try_parse(Parser::expect_comma).is_err() {
-            break;
+    recovery.read(input, |input, recovery| {
+        recovery.check_depth(input)?;
+        let mut selectors = Vec::new();
+        loop {
+            selectors.push(parse_style_selector_with_options(
+                input,
+                SelectorParseOptions::nested_style(),
+                recovery,
+            )?);
+            if input.attempt(Stream::consume_comma).is_err() {
+                break;
+            }
         }
-    }
-    input.expect_exhausted().map_err(selector_basic)?;
-    Ok(selectors)
+        expect_exhausted(input, recovery)?;
+        Ok(selectors)
+    })
 }
 
-fn parse_style_selector_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_style_selector_with_options<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssStyleSelector, ParseError<'i, CssError>> {
-    consume_selector_whitespace(input)?;
-    let state = input.state();
-    match input.next_including_whitespace() {
+) -> Value<'i, CssStyleSelector> {
+    consume_selector_whitespace(input, recovery)?;
+    let state = input.mark();
+    match input.consume_token() {
         Ok(Token::Delim('>')) => parse_selector_after_leading_combinator_with_options(
             input,
             CssSelectorCombinator::Child,
@@ -279,7 +410,7 @@ fn parse_style_selector_with_options<'i, 't>(
         )
         .map(CssStyleSelector::Relative),
         Ok(Token::Delim('|')) => {
-            if matches!(input.next_including_whitespace(), Ok(Token::Delim('|'))) {
+            if matches!(input.consume_token(), Ok(Token::Delim('|'))) {
                 return parse_selector_after_leading_combinator_with_options(
                     input,
                     CssSelectorCombinator::Column,
@@ -288,28 +419,36 @@ fn parse_style_selector_with_options<'i, 't>(
                 )
                 .map(CssStyleSelector::Relative);
             }
-            input.reset(&state);
+            input.restore(state);
             parse_rule_selector_with_options(input, options, recovery)
                 .map(CssStyleSelector::Selector)
         }
         Ok(_) => {
-            input.reset(&state);
+            input.restore(state);
             parse_rule_selector_with_options(input, options, recovery)
                 .map(CssStyleSelector::Selector)
         }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            input.reset(&state);
-            Err(invalid_selector(input))
+        Err(error) if error.is_end_of_stream() => {
+            input.restore(state);
+            Err(recovery.invalid(input.site()))
         }
-        Err(error) => Err(selector_basic(error)),
+        Err(error) => Err(recovery.basic(error)),
     }
 }
 
+pub(super) fn read_rule_selector<'i>(
+    input: &mut Stream<'i>,
+    recovery: &mut SelectorRecovery<'_>,
+) -> Value<'i, CssSelector> {
+    parse_rule_selector_with_options(input, SelectorParseOptions::standard(), recovery)
+}
+
+/// The selector that the native parser `input` holds, to the end of its scope.
 pub(super) fn parse_rule_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssSelector, ParseError<'i, CssError>> {
-    parse_rule_selector_with_options(input, SelectorParseOptions::standard(), recovery)
+    recovery.read(input, |input, recovery| read_rule_selector(input, recovery))
 }
 
 #[derive(Clone, Copy)]
@@ -394,55 +533,54 @@ impl SelectorParseOptions {
     }
 }
 
-fn parse_rule_selector_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_rule_selector_with_options<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssSelector, ParseError<'i, CssError>> {
+) -> Value<'i, CssSelector> {
     let first = parse_compound_selector_model_with_options(input, options, recovery)?;
     let selector = parse_selector_after_first_compound(input, first, options, recovery)?;
     if options.compound_only && matches!(selector, CssSelector::Complex(_)) {
-        return Err(invalid_selector(input));
+        return Err(recovery.invalid(input.site()));
     }
     if options.pseudo_suffix.is_some_and(|suffix| {
         !selector_is_valid_pseudo_suffix(&selector, suffix, options.allow_has)
     }) {
-        return Err(invalid_selector(input));
+        return Err(recovery.invalid(input.site()));
     }
     Ok(selector)
 }
 
-fn parse_selector_after_first_compound<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_selector_after_first_compound<'i>(
+    input: &mut Stream<'i>,
     first: CssCompoundSelector,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssSelector, ParseError<'i, CssError>> {
+) -> Value<'i, CssSelector> {
     let mut rest = Vec::new();
 
     loop {
-        let had_whitespace = consume_selector_whitespace(input)?;
-        let state = input.state();
+        let had_whitespace = consume_selector_whitespace(input, recovery)?;
+        let state = input.mark();
         // Selectors 4 §3.6.3: no combinator may follow a pseudo-element, so
         // that combinator is responsible.
         let after_pseudo_element = rest
             .last()
             .map_or(&first, CssComplexSelectorPart::selector)
             .has_pseudo_elements();
-        let reject_combinator = || invalid_selector_at(state.source_location());
-        match input.next_including_whitespace().cloned() {
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                input.reset(&state);
+        match input.consume_token() {
+            Err(error) if error.is_end_of_stream() => {
+                input.restore(state);
                 break;
             }
-            Err(error) => return Err(selector_basic(error)),
+            Err(error) => return Err(recovery.basic(error)),
             Ok(Token::Comma) => {
-                input.reset(&state);
+                input.restore(state);
                 break;
             }
             Ok(Token::Delim('>')) => {
                 if after_pseudo_element {
-                    return Err(reject_combinator());
+                    return Err(recovery.invalid(state.site()));
                 }
                 rest.push(parse_complex_selector_part_with_options(
                     input,
@@ -453,7 +591,7 @@ fn parse_selector_after_first_compound<'i, 't>(
             }
             Ok(Token::Delim('+')) => {
                 if after_pseudo_element {
-                    return Err(reject_combinator());
+                    return Err(recovery.invalid(state.site()));
                 }
                 rest.push(parse_complex_selector_part_with_options(
                     input,
@@ -464,7 +602,7 @@ fn parse_selector_after_first_compound<'i, 't>(
             }
             Ok(Token::Delim('~')) => {
                 if after_pseudo_element {
-                    return Err(reject_combinator());
+                    return Err(recovery.invalid(state.site()));
                 }
                 rest.push(parse_complex_selector_part_with_options(
                     input,
@@ -473,9 +611,9 @@ fn parse_selector_after_first_compound<'i, 't>(
                     recovery,
                 )?);
             }
-            Ok(Token::Delim('|')) if input.try_parse(expect_adjacent_bar).is_ok() => {
+            Ok(Token::Delim('|')) if input.attempt(expect_adjacent_bar).is_ok() => {
                 if after_pseudo_element {
-                    return Err(reject_combinator());
+                    return Err(recovery.invalid(state.site()));
                 }
                 rest.push(parse_complex_selector_part_with_options(
                     input,
@@ -486,9 +624,9 @@ fn parse_selector_after_first_compound<'i, 't>(
             }
             Ok(_) if had_whitespace => {
                 if after_pseudo_element {
-                    return Err(reject_combinator());
+                    return Err(recovery.invalid(state.site()));
                 }
-                input.reset(&state);
+                input.restore(state);
                 let selector =
                     parse_compound_selector_model_with_options(input, options, recovery)?;
                 rest.push(CssComplexSelectorPart::new(
@@ -497,13 +635,8 @@ fn parse_selector_after_first_compound<'i, 't>(
                 ));
             }
             Ok(token) => {
-                let token = token.clone();
-                input.reset(&state);
-                return Err(selector_basic(
-                    state
-                        .source_location()
-                        .new_basic_unexpected_token_error(token),
-                ));
+                input.restore(state);
+                return Err(recovery.basic(unexpected(state.site(), token)));
             }
         }
     }
@@ -513,7 +646,7 @@ fn parse_selector_after_first_compound<'i, 't>(
     } else if crate::selector::selector_syntax::complex_selector_has_non_terminal_pseudo_elements(
         &first, &rest,
     ) {
-        Err(invalid_selector(input))
+        Err(recovery.invalid(input.site()))
     } else {
         // The parser has proved each compound under its own grammar/recovery
         // budget. Public construction's separate specified-output limit is not
@@ -522,59 +655,60 @@ fn parse_selector_after_first_compound<'i, 't>(
     }
 }
 
-fn parse_complex_selector_part_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_complex_selector_part_with_options<'i>(
+    input: &mut Stream<'i>,
     combinator: CssSelectorCombinator,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssComplexSelectorPart, ParseError<'i, CssError>> {
-    consume_selector_whitespace(input)?;
+) -> Value<'i, CssComplexSelectorPart> {
+    consume_selector_whitespace(input, recovery)?;
     let selector = parse_compound_selector_model_with_options(input, options, recovery)?;
     Ok(CssComplexSelectorPart::new(combinator, selector))
 }
 
-pub(super) fn consume_selector_whitespace<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<bool, ParseError<'i, CssError>> {
+pub(super) fn consume_selector_whitespace<'i>(
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, bool> {
     let mut consumed = false;
     loop {
-        let state = input.state();
-        match input.next_including_whitespace() {
-            Ok(Token::WhiteSpace(_)) => consumed = true,
+        let state = input.mark();
+        match input.consume_token() {
+            Ok(Token::Whitespace) => consumed = true,
             Ok(_) => {
-                input.reset(&state);
+                input.restore(state);
                 return Ok(consumed);
             }
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                input.reset(&state);
+            Err(error) if error.is_end_of_stream() => {
+                input.restore(state);
                 return Ok(consumed);
             }
-            Err(error) => return Err(selector_basic(error)),
+            Err(error) => return Err(recovery.basic(error)),
         }
     }
 }
 
-fn parse_type_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_type_selector<'i>(
+    input: &mut Stream<'i>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<Option<CssQualifiedSelectorName>, ParseError<'i, CssError>> {
-    let start = input.state();
-    let first = match input.next_including_whitespace() {
-        Ok(token) => token.clone(),
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            input.reset(&start);
+) -> Value<'i, Option<CssQualifiedSelectorName>> {
+    let start = input.mark();
+    let first = match input.consume_token() {
+        Ok(token) => token,
+        Err(error) if error.is_end_of_stream() => {
+            input.restore(start);
             return Ok(None);
         }
-        Err(error) => return Err(selector_basic(error)),
+        Err(error) => return Err(recovery.basic(error)),
     };
     let (namespace, prefix, local_name) = match first {
         Token::Ident(prefix_or_name) => {
             let prefix_or_name = prefix_or_name.to_string();
-            if consume_namespace_separator(input)? {
-                let local_name = parse_qualified_local_name(input)?;
+            if consume_namespace_separator(input, recovery)? {
+                let local_name = parse_qualified_local_name(input, recovery)?;
                 // Namespaces 3 §3.3: the undeclared prefix is responsible.
                 let Some(prefix) = recovery.named_namespace(&prefix_or_name) else {
-                    return Err(invalid_selector_at(start.source_location()));
+                    return Err(recovery.invalid(start.site()));
                 };
                 (
                     CssNamespaceConstraint::Named(prefix.clone()),
@@ -590,11 +724,11 @@ fn parse_type_selector<'i, 't>(
             }
         }
         Token::Delim('*') => {
-            if consume_namespace_separator(input)? {
+            if consume_namespace_separator(input, recovery)? {
                 (
                     CssNamespaceConstraint::Any,
                     CssQualifiedNamePrefix::Any,
-                    parse_qualified_local_name(input)?,
+                    parse_qualified_local_name(input, recovery)?,
                 )
             } else {
                 (
@@ -607,10 +741,10 @@ fn parse_type_selector<'i, 't>(
         Token::Delim('|') => (
             CssNamespaceConstraint::ExplicitNone,
             CssQualifiedNamePrefix::ExplicitNone,
-            parse_qualified_local_name(input)?,
+            parse_qualified_local_name(input, recovery)?,
         ),
         _ => {
-            input.reset(&start);
+            input.restore(start);
             return Ok(None);
         }
     };
@@ -622,40 +756,43 @@ fn parse_type_selector<'i, 't>(
     }))
 }
 
-fn parse_qualified_local_name<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<Option<String>, ParseError<'i, CssError>> {
+fn parse_qualified_local_name<'i>(
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, Option<String>> {
     // A token that is neither an identifier nor `*` cannot follow `|`.
-    let location = input.current_source_location();
-    match input.next_including_whitespace() {
+    let location = input.site();
+    match input.consume_token() {
         Ok(Token::Ident(name)) => Ok(Some(name.to_string())),
-        Ok(Token::Delim('*')) => Ok(None),
-        Ok(_) => Err(invalid_selector_at(location)),
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            Err(invalid_selector(input))
+        // A star and an equals sign directly after it make an attribute matcher.
+        Ok(Token::Delim('*')) if equals_follows(input) => {
+            Err(recovery.basic(unexpected(location, Token::Delim('*'))))
         }
-        Err(error) => Err(selector_basic(error)),
+        Ok(Token::Delim('*')) => Ok(None),
+        Ok(_) => Err(recovery.invalid(location)),
+        Err(error) if error.is_end_of_stream() => Err(recovery.invalid(input.end_site())),
+        Err(error) => Err(recovery.basic(error)),
     }
 }
 
-fn parse_compound_selector_model_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_compound_selector_model_with_options<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssCompoundSelector, ParseError<'i, CssError>> {
+) -> Value<'i, CssCompoundSelector> {
     loop {
-        let state = input.state();
-        match input.next_including_whitespace() {
-            Ok(Token::WhiteSpace(_)) => continue,
+        let state = input.mark();
+        match input.consume_token() {
+            Ok(Token::Whitespace) => continue,
             Ok(_) => {
-                input.reset(&state);
+                input.restore(state);
                 break;
             }
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                input.reset(&state);
+            Err(error) if error.is_end_of_stream() => {
+                input.restore(state);
                 break;
             }
-            Err(error) => return Err(selector_basic(error)),
+            Err(error) => return Err(recovery.basic(error)),
         }
     }
 
@@ -664,22 +801,25 @@ fn parse_compound_selector_model_with_options<'i, 't>(
     let mut pseudo_elements = None;
 
     loop {
-        let state = input.state();
-        match input.next_including_whitespace() {
-            Ok(Token::WhiteSpace(_) | Token::Comma) => {
-                input.reset(&state);
+        let state = input.mark();
+        match input.consume_token() {
+            Ok(Token::Whitespace | Token::Comma) => {
+                input.restore(state);
                 break;
             }
-            Ok(_) => input.reset(&state),
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => break,
-            Err(error) => return Err(selector_basic(error)),
+            Ok(_) => input.restore(state),
+            Err(error) if error.is_end_of_stream() => {
+                consume_remaining(input);
+                break;
+            }
+            Err(error) => return Err(recovery.basic(error)),
         }
 
         if pseudo_elements.is_some() {
-            return Err(invalid_selector(input));
+            return Err(recovery.invalid(input.site()));
         }
 
-        if input.try_parse(|input| input.expect_delim('&')).is_ok() {
+        if input.attempt(|input| input.consume_delim('&')).is_ok() {
             match options.anchors {
                 SelectorAnchorMode::Nesting => members.push_nesting(),
                 SelectorAnchorMode::Scope => members.push_scope_anchor(),
@@ -687,28 +827,28 @@ fn parse_compound_selector_model_with_options<'i, 't>(
             continue;
         }
 
-        if input.try_parse(|input| input.expect_delim('.')).is_ok() {
-            members.push_class(parse_adjacent_class_name(input)?);
+        if input.attempt(|input| input.consume_delim('.')).is_ok() {
+            members.push_class(parse_adjacent_class_name(input, recovery)?);
             continue;
         }
 
-        if input.try_parse(Parser::expect_square_bracket_block).is_ok() {
+        if input.attempt(expect_open_square).is_ok() {
             let attribute =
-                input.parse_nested_block(|input| parse_attribute_selector(input, recovery))?;
+                input.within_block(|input| parse_attribute_selector(input, recovery))?;
             members.push_attribute(attribute);
             continue;
         }
 
-        if input.try_parse(Parser::expect_colon).is_ok() {
-            if input.try_parse(expect_adjacent_colon).is_ok() {
+        if input.attempt(Stream::consume_colon).is_ok() {
+            if input.attempt(expect_adjacent_colon).is_ok() {
                 if !options.allow_pseudo_elements {
-                    return Err(invalid_selector(input));
+                    return Err(recovery.invalid(input.site()));
                 }
                 let sequence = parse_pseudo_element_sequence(input, options, recovery)?;
                 pseudo_elements = Some(sequence);
-            } else if let Ok(first) = input.try_parse(parse_legacy_pseudo_element) {
+            } else if let Ok(first) = input.attempt(parse_legacy_pseudo_element) {
                 if !options.allow_pseudo_elements {
-                    return Err(invalid_selector(input));
+                    return Err(recovery.invalid(input.site()));
                 }
                 pseudo_elements = Some(parse_pseudo_element_sequence_from_first(
                     input, first, options, recovery,
@@ -720,38 +860,41 @@ fn parse_compound_selector_model_with_options<'i, 't>(
             continue;
         }
 
-        let state = input.state();
-        match input.next() {
-            Ok(Token::IDHash(key)) => {
+        let state = input.mark();
+        match input.consume_after_whitespace() {
+            Ok(Token::Hash {
+                value: key,
+                kind: HashKind::Id,
+            }) => {
                 members.push_id(key.to_string());
             }
             Ok(Token::Delim('|')) => {
-                if input.try_parse(expect_adjacent_bar).is_ok() {
-                    input.reset(&state);
+                // Two bars make the column combinator, unless the second one
+                // and the equals sign after it make an attribute matcher.
+                if input.attempt(expect_adjacent_bar).is_ok() && !equals_follows(input) {
+                    input.restore(state);
                     break;
                 }
                 // A lone `|` cannot continue the compound.
-                return Err(invalid_selector_at(state.source_location()));
+                return Err(recovery.invalid(state.site()));
             }
             Ok(token) => {
-                let token = token.clone();
-                input.reset(&state);
+                input.restore(state);
                 if type_selector.is_none() && members.is_empty() && pseudo_elements.is_none() {
-                    return Err(selector_basic(
-                        state
-                            .source_location()
-                            .new_basic_unexpected_token_error(token),
-                    ));
+                    return Err(recovery.basic(unexpected(state.site(), token)));
                 }
                 break;
             }
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => break,
-            Err(error) => return Err(selector_basic(error)),
+            Err(error) if error.is_end_of_stream() => {
+                consume_remaining(input);
+                break;
+            }
+            Err(error) => return Err(recovery.basic(error)),
         }
     }
 
     if type_selector.is_none() && members.is_empty() && pseudo_elements.is_none() {
-        return Err(invalid_selector(input));
+        return Err(recovery.invalid(input.site()));
     }
     Ok(members.into_compound(type_selector, pseudo_elements))
 }
@@ -807,90 +950,111 @@ fn compound_selector_to_selector(selector: CssCompoundSelector) -> CssSelector {
     CssSelector::Compound(selector)
 }
 
-fn expect_adjacent_colon<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<(), cssparser::BasicParseError<'i>> {
-    match input.next_including_whitespace()?.clone() {
-        Token::Colon => Ok(()),
-        token => Err(input.new_basic_unexpected_token_error(token)),
+/// Consumes the next token, whitespace included, when it is `[`.
+fn expect_open_square<'i>(input: &mut Stream<'i>) -> Result<(), ValueError<'i>> {
+    input.discard_whitespace();
+    let at = input.site();
+    match input.consume_token()? {
+        Token::OpenSquare => Ok(()),
+        token => Err(unexpected(at, token)),
     }
 }
 
-fn expect_adjacent_bar<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<(), cssparser::BasicParseError<'i>> {
-    match input.next_including_whitespace()?.clone() {
+fn expect_adjacent_colon<'i>(input: &mut Stream<'i>) -> Result<(), ValueError<'i>> {
+    let at = input.site();
+    match input.consume_token()? {
+        Token::Colon => Ok(()),
+        token => Err(unexpected(at, token)),
+    }
+}
+
+/// Whether an equals sign is the next token with nothing between it and the
+/// token consumed last: the second half of an attribute matcher.
+fn equals_follows(input: &Stream<'_>) -> bool {
+    let site = input.site();
+    let document = site.document();
+    document
+        .list(site.list())
+        .get(site.index())
+        .is_some_and(|node| matches!(document.token(*node), Token::Delim('=')))
+}
+
+fn expect_adjacent_bar<'i>(input: &mut Stream<'i>) -> Result<(), ValueError<'i>> {
+    let at = input.site();
+    match input.consume_token()? {
         Token::Delim('|') => Ok(()),
-        token => Err(input.new_basic_unexpected_token_error(token)),
+        token => Err(unexpected(at, token)),
     }
 }
 
 /// A namespace separator is one adjacent bar, rather than the two-token column
 /// combinator. Leave both column tokens for the complex-selector provider.
 fn consume_namespace_separator<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<bool, ParseError<'i, CssError>> {
-    let start = input.state();
-    match input.next_including_whitespace() {
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, bool> {
+    let start = input.mark();
+    match input.consume_token() {
         Ok(Token::Delim('|')) => {
-            let after_bar = input.state();
-            let column = input.try_parse(expect_adjacent_bar).is_ok();
-            input.reset(if column { &start } else { &after_bar });
+            let after_bar = input.mark();
+            // Two bars make the column combinator, unless the second one and
+            // the equals sign after it make an attribute matcher.
+            let column = input.attempt(expect_adjacent_bar).is_ok() && !equals_follows(input);
+            input.restore(if column { start } else { after_bar });
             Ok(!column)
         }
         Ok(_) => {
-            input.reset(&start);
+            input.restore(start);
             Ok(false)
         }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            input.reset(&start);
+        Err(error) if error.is_end_of_stream() => {
+            input.restore(start);
             Ok(false)
         }
-        Err(error) => Err(selector_basic(error)),
+        Err(error) => Err(recovery.basic(error)),
     }
 }
 
 fn parse_adjacent_class_name<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<String, ParseError<'i, CssError>> {
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, String> {
     loop {
-        let start = input.state();
-        match input.next_including_whitespace_and_comments().cloned() {
-            Ok(Token::Comment(_)) => continue,
+        let start = input.mark();
+        match input.consume_token_with_comments() {
+            Ok(Token::Comment) => continue,
             Ok(Token::Ident(value)) => return Ok(value.to_string()),
             Ok(token) => {
-                input.reset(&start);
-                return Err(selector_basic(
-                    input.new_basic_unexpected_token_error(token),
-                ));
+                input.restore(start);
+                return Err(recovery.basic(unexpected(input.site(), token)));
             }
-            Err(error) => return Err(selector_basic(error)),
+            Err(error) => return Err(recovery.basic(error)),
         }
     }
 }
 
-fn parse_pseudo_element_sequence<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_pseudo_element_sequence<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoElementSequence, ParseError<'i, CssError>> {
+) -> Value<'i, CssPseudoElementSequence> {
     let first = parse_pseudo_element(input, options, recovery)?;
     parse_pseudo_element_sequence_from_first(input, first, options, recovery)
 }
 
-fn parse_pseudo_element_sequence_from_first<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_pseudo_element_sequence_from_first<'i>(
+    input: &mut Stream<'i>,
     first: CssPseudoElement,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoElementSequence, ParseError<'i, CssError>> {
+) -> Value<'i, CssPseudoElementSequence> {
     let mut suffix = first.suffix_context();
     let mut segments = vec![CssPseudoElementSegment::PseudoElement(first)];
-    while input.try_parse(expect_adjacent_colon).is_ok() {
-        let element = if input.try_parse(expect_adjacent_colon).is_ok() {
+    while input.attempt(expect_adjacent_colon).is_ok() {
+        let element = if input.attempt(expect_adjacent_colon).is_ok() {
             Some(parse_pseudo_element(input, options, recovery)?)
         } else {
-            input.try_parse(parse_legacy_pseudo_element).ok()
+            input.attempt(parse_legacy_pseudo_element).ok()
         };
         if let Some(element) = element {
             suffix = element.suffix_context();
@@ -907,37 +1071,35 @@ fn parse_pseudo_element_sequence_from_first<'i, 't>(
             segments.push(CssPseudoElementSegment::PseudoClass(pseudo));
         }
     }
-    CssPseudoElementSequence::try_from_segments(segments).ok_or_else(|| invalid_selector(input))
+    CssPseudoElementSequence::try_from_segments(segments)
+        .ok_or_else(|| recovery.invalid(input.site()))
 }
 
-fn parse_legacy_pseudo_element<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssPseudoElement, ParseError<'i, CssError>> {
-    let name = match input.next_including_whitespace()?.clone() {
+fn parse_legacy_pseudo_element<'i>(
+    input: &mut Stream<'i>,
+) -> Result<CssPseudoElement, ValueError<'i>> {
+    let at = input.site();
+    let name = match input.consume_token()? {
         Token::Ident(name) => name,
-        token => return Err(input.new_basic_unexpected_token_error(token).into()),
+        token => return Err(unexpected(at, token)),
     };
-    match_ignore_ascii_case! { &name,
+    match_ignore_ascii_case! { name,
         "before" => Ok(CssPseudoElement::Before),
         "after" => Ok(CssPseudoElement::After),
         "first-line" => Ok(CssPseudoElement::FirstLine),
         "first-letter" => Ok(CssPseudoElement::FirstLetter),
-        _ => Err(
-            input
-                .new_basic_unexpected_token_error(Token::Ident(name))
-                .into(),
-        ),
+        _ => Err(unexpected(at, Token::Ident(name))),
     }
 }
 
-fn parse_pseudo_element<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_pseudo_element<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoElement, ParseError<'i, CssError>> {
-    let state = input.state();
-    match input.next_including_whitespace() {
-        Ok(Token::Ident(name)) => match_ignore_ascii_case! { &name,
+) -> Value<'i, CssPseudoElement> {
+    let state = input.mark();
+    match input.consume_token() {
+        Ok(Token::Ident(name)) => match_ignore_ascii_case! { name,
             "before" => Ok(CssPseudoElement::Before),
             "after" => Ok(CssPseudoElement::After),
             "first-line" => Ok(CssPseudoElement::FirstLine),
@@ -959,8 +1121,8 @@ fn parse_pseudo_element<'i, 't>(
                 if let Ok(name) = CssUnknownWebkitPseudoElement::try_new(name.to_string()) {
                     return Ok(CssPseudoElement::UnknownWebkit(name));
                 }
-                input.reset(&state);
-                Err(invalid_selector(input))
+                input.restore(state);
+                Err(recovery.invalid(input.site()))
             }
         },
         Ok(Token::Function(name))
@@ -972,27 +1134,29 @@ fn parse_pseudo_element<'i, 't>(
                 || name.eq_ignore_ascii_case("view-transition-old")
                 || name.eq_ignore_ascii_case("view-transition-new") =>
         {
-            let name = name.clone();
-            let mut depth = recovery.state.enter_component_block(
-                recovery.source,
-                input,
-                "baseline.selector.complex",
-            )?;
-            let result = input.parse_nested_block(|input| {
+            let mut depth = recovery
+                .state
+                .enter_component_block_at(
+                    recovery.source,
+                    opening_end(state.site()),
+                    "baseline.selector.complex",
+                )
+                .map_err(|error| SyntaxError::custom(state.site(), error))?;
+            let result = input.within_block(|input| {
                 if name.eq_ignore_ascii_case("slotted") {
                     parse_compound_argument(input, options, recovery).map(CssPseudoElement::Slotted)
                 } else if name.eq_ignore_ascii_case("part") {
                     parse_part_names(input, recovery).map(CssPseudoElement::Part)
                 } else if name.eq_ignore_ascii_case("highlight") {
-                    parse_highlight_name(input).map(CssPseudoElement::Highlight)
+                    parse_highlight_name(input, recovery).map(CssPseudoElement::Highlight)
                 } else {
-                    let argument = parse_view_transition_name_selector(input)?;
-                    match_ignore_ascii_case! { &name,
+                    let argument = parse_view_transition_name_selector(input, recovery)?;
+                    match_ignore_ascii_case! { name,
                         "view-transition-group" => Ok(CssPseudoElement::ViewTransitionGroup(argument)),
                         "view-transition-image-pair" => Ok(CssPseudoElement::ViewTransitionImagePair(argument)),
                         "view-transition-old" => Ok(CssPseudoElement::ViewTransitionOld(argument)),
                         "view-transition-new" => Ok(CssPseudoElement::ViewTransitionNew(argument)),
-                        _ => unreachable!("guard admits only named transition pseudos"),
+                        _ => Err(recovery.invalid(input.site())),
                     }
                 }
             });
@@ -1002,95 +1166,78 @@ fn parse_pseudo_element<'i, 't>(
             result
         }
         Ok(_) => {
-            input.reset(&state);
-            Err(invalid_selector(input))
+            input.restore(state);
+            Err(recovery.invalid(input.site()))
         }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            Err(invalid_selector(input))
-        }
-        Err(error) => Err(selector_basic(error)),
+        Err(error) if error.is_end_of_stream() => Err(recovery.invalid(input.end_site())),
+        Err(error) => Err(recovery.basic(error)),
     }
 }
 
 // Comments are absent from CSS grammar, but actual whitespace cannot separate
 // the two components of an attribute matcher.
-fn expect_adjacent_attribute_equals<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<(), cssparser::BasicParseError<'i>> {
+fn expect_adjacent_attribute_equals<'i>(input: &mut Stream<'i>) -> Result<(), ValueError<'i>> {
     loop {
-        let location = input.current_source_location();
-        match input.next_including_whitespace_and_comments()?.clone() {
-            Token::Comment(_) => continue,
+        let location = input.site();
+        match input.consume_token_with_comments()? {
+            Token::Comment => continue,
             Token::Delim('=') => return Ok(()),
-            token => return Err(location.new_basic_unexpected_token_error(token)),
+            token => return Err(unexpected(location, token)),
         }
     }
 }
 
-fn parse_attribute_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_attribute_selector<'i>(
+    input: &mut Stream<'i>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<CssAttributeSelector, ParseError<'i, CssError>> {
-    consume_selector_whitespace(input)?;
+) -> Value<'i, CssAttributeSelector> {
+    consume_selector_whitespace(input, recovery)?;
     let name = parse_attribute_selector_name(input, recovery)?;
 
     // Each rejection below names the consumed token that cannot continue the
     // attribute selector, not the token after it.
-    let matcher_location = input.current_source_location();
-    let matcher = match input.next() {
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+    let matcher_location = input.site();
+    let matcher = match input.consume_after_whitespace() {
+        Err(error) if error.is_end_of_stream() => {
             return Ok(CssAttributeSelector::new_qualified(
                 name,
                 CssAttributeMatcher::Exists,
                 CssAttributeCaseSensitivity::DocumentDefault,
             ));
         }
-        Err(error) => return Err(selector_basic(error)),
+        Err(error) => return Err(recovery.basic(error)),
         Ok(Token::Delim('=')) => {
-            CssAttributeMatcher::Equals(parse_attribute_selector_value(input)?)
+            CssAttributeMatcher::Equals(parse_attribute_selector_value(input, recovery)?)
         }
-        Ok(Token::IncludeMatch) => {
-            CssAttributeMatcher::Includes(parse_attribute_selector_value(input)?)
-        }
-        Ok(Token::DashMatch) => {
-            CssAttributeMatcher::DashMatch(parse_attribute_selector_value(input)?)
-        }
-        Ok(Token::PrefixMatch) => {
-            CssAttributeMatcher::Prefix(parse_attribute_selector_value(input)?)
-        }
-        Ok(Token::SuffixMatch) => {
-            CssAttributeMatcher::Suffix(parse_attribute_selector_value(input)?)
-        }
-        Ok(Token::SubstringMatch) => {
-            CssAttributeMatcher::Substring(parse_attribute_selector_value(input)?)
-        }
+        // The two-character matchers are two delimiters: Syntax 3 §4.3.1 has
+        // no token for them.
         Ok(Token::Delim('~')) => {
-            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
-            CssAttributeMatcher::Includes(parse_attribute_selector_value(input)?)
+            expect_adjacent_attribute_equals(input).map_err(|error| recovery.basic(error))?;
+            CssAttributeMatcher::Includes(parse_attribute_selector_value(input, recovery)?)
         }
         Ok(Token::Delim('|')) => {
-            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
-            CssAttributeMatcher::DashMatch(parse_attribute_selector_value(input)?)
+            expect_adjacent_attribute_equals(input).map_err(|error| recovery.basic(error))?;
+            CssAttributeMatcher::DashMatch(parse_attribute_selector_value(input, recovery)?)
         }
         Ok(Token::Delim('^')) => {
-            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
-            CssAttributeMatcher::Prefix(parse_attribute_selector_value(input)?)
+            expect_adjacent_attribute_equals(input).map_err(|error| recovery.basic(error))?;
+            CssAttributeMatcher::Prefix(parse_attribute_selector_value(input, recovery)?)
         }
         Ok(Token::Delim('$')) => {
-            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
-            CssAttributeMatcher::Suffix(parse_attribute_selector_value(input)?)
+            expect_adjacent_attribute_equals(input).map_err(|error| recovery.basic(error))?;
+            CssAttributeMatcher::Suffix(parse_attribute_selector_value(input, recovery)?)
         }
         Ok(Token::Delim('*')) => {
-            expect_adjacent_attribute_equals(input).map_err(selector_basic)?;
-            CssAttributeMatcher::Substring(parse_attribute_selector_value(input)?)
+            expect_adjacent_attribute_equals(input).map_err(|error| recovery.basic(error))?;
+            CssAttributeMatcher::Substring(parse_attribute_selector_value(input, recovery)?)
         }
         Ok(_) => {
-            return Err(invalid_selector_at(matcher_location));
+            return Err(recovery.invalid(matcher_location));
         }
     };
 
-    let case_sensitivity = parse_attribute_case_sensitivity(input)?;
-    input.expect_exhausted().map_err(selector_basic)?;
+    let case_sensitivity = parse_attribute_case_sensitivity(input, recovery)?;
+    expect_exhausted(input, recovery)?;
     Ok(CssAttributeSelector::new_qualified(
         name,
         matcher,
@@ -1098,41 +1245,41 @@ fn parse_attribute_selector<'i, 't>(
     ))
 }
 
-fn parse_attribute_selector_name<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_attribute_selector_name<'i>(
+    input: &mut Stream<'i>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<CssQualifiedAttributeName, ParseError<'i, CssError>> {
-    let prefix_location = input.current_source_location();
-    match input.next_including_whitespace() {
+) -> Value<'i, CssQualifiedAttributeName> {
+    let prefix_location = input.site();
+    match input.consume_token() {
         Ok(Token::Ident(prefix_or_name)) => {
             let prefix_or_name = prefix_or_name.to_string();
-            let after_ident = input.state();
-            match input.next_including_whitespace() {
+            let after_ident = input.mark();
+            match input.consume_token() {
                 Ok(Token::Delim('|')) => {
                     // A split |= matcher belongs to this unqualified name;
                     // a namespace separator instead requires an adjacent ident.
-                    if input.try_parse(expect_adjacent_attribute_equals).is_ok() {
-                        input.reset(&after_ident);
+                    if input.attempt(expect_adjacent_attribute_equals).is_ok() {
+                        input.restore(after_ident);
                         return Ok(CssQualifiedAttributeName::new(
                             CssNamespaceConstraint::ExplicitNone,
                             CssQualifiedNamePrefix::Unqualified,
                             CssAttributeName::new(prefix_or_name),
                         ));
                     }
-                    let local_location = input.current_source_location();
-                    let local_name = input.next_including_whitespace();
+                    let local_location = input.site();
+                    let local_name = input.consume_token();
                     let local_name = match local_name {
                         Ok(Token::Ident(name)) => name.to_string(),
                         Ok(_) => {
-                            return Err(invalid_selector_at(local_location));
+                            return Err(recovery.invalid(local_location));
                         }
-                        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                            return Err(invalid_selector(input));
+                        Err(error) if error.is_end_of_stream() => {
+                            return Err(recovery.invalid(input.end_site()));
                         }
-                        Err(error) => return Err(selector_basic(error)),
+                        Err(error) => return Err(recovery.basic(error)),
                     };
                     let Some(prefix) = recovery.named_namespace(&prefix_or_name) else {
-                        return Err(invalid_selector_at(prefix_location));
+                        return Err(recovery.invalid(prefix_location));
                     };
                     Ok(CssQualifiedAttributeName::new(
                         CssNamespaceConstraint::Named(prefix.clone()),
@@ -1141,95 +1288,92 @@ fn parse_attribute_selector_name<'i, 't>(
                     ))
                 }
                 Ok(_) => {
-                    input.reset(&after_ident);
+                    input.restore(after_ident);
                     Ok(CssQualifiedAttributeName::new(
                         CssNamespaceConstraint::ExplicitNone,
                         CssQualifiedNamePrefix::Unqualified,
                         CssAttributeName::new(prefix_or_name),
                     ))
                 }
-                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                    input.reset(&after_ident);
+                Err(error) if error.is_end_of_stream() => {
+                    input.restore(after_ident);
                     Ok(CssQualifiedAttributeName::new(
                         CssNamespaceConstraint::ExplicitNone,
                         CssQualifiedNamePrefix::Unqualified,
                         CssAttributeName::new(prefix_or_name),
                     ))
                 }
-                Err(error) => Err(selector_basic(error)),
+                Err(error) => Err(recovery.basic(error)),
             }
         }
         Ok(Token::Delim('*')) => {
-            let bar_location = input.current_source_location();
-            match input.next_including_whitespace() {
+            let bar_location = input.site();
+            match input.consume_token() {
                 Ok(Token::Delim('|')) => {}
                 Ok(_) => {
-                    return Err(invalid_selector_at(bar_location));
+                    return Err(recovery.invalid(bar_location));
                 }
-                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                    return Err(invalid_selector(input));
+                Err(error) if error.is_end_of_stream() => {
+                    return Err(recovery.invalid(input.end_site()));
                 }
-                Err(error) => return Err(selector_basic(error)),
+                Err(error) => return Err(recovery.basic(error)),
             }
-            let name_location = input.current_source_location();
-            let name = input.next_including_whitespace();
+            let name_location = input.site();
+            let name = input.consume_token();
             match name {
                 Ok(Token::Ident(name)) => Ok(CssQualifiedAttributeName::new(
                     CssNamespaceConstraint::Any,
                     CssQualifiedNamePrefix::Any,
                     CssAttributeName::new(name.to_string()),
                 )),
-                Ok(_) => Err(invalid_selector_at(name_location)),
-                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                    Err(invalid_selector(input))
-                }
-                Err(error) => Err(selector_basic(error)),
+                Ok(_) => Err(recovery.invalid(name_location)),
+                Err(error) if error.is_end_of_stream() => Err(recovery.invalid(input.end_site())),
+                Err(error) => Err(recovery.basic(error)),
             }
         }
         Ok(Token::Delim('|')) => {
-            let name_location = input.current_source_location();
-            match input.next_including_whitespace() {
+            let name_location = input.site();
+            match input.consume_token() {
                 Ok(Token::Ident(name)) => Ok(CssQualifiedAttributeName::new(
                     CssNamespaceConstraint::ExplicitNone,
                     CssQualifiedNamePrefix::ExplicitNone,
                     CssAttributeName::new(name.to_string()),
                 )),
-                Ok(_) => Err(invalid_selector_at(name_location)),
-                Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                    Err(invalid_selector(input))
-                }
-                Err(error) => Err(selector_basic(error)),
+                Ok(_) => Err(recovery.invalid(name_location)),
+                Err(error) if error.is_end_of_stream() => Err(recovery.invalid(input.end_site())),
+                Err(error) => Err(recovery.basic(error)),
             }
         }
-        Ok(_) => Err(invalid_selector_at(prefix_location)),
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            Err(invalid_selector(input))
-        }
-        Err(error) => Err(selector_basic(error)),
+        Ok(_) => Err(recovery.invalid(prefix_location)),
+        Err(error) if error.is_end_of_stream() => Err(recovery.invalid(input.end_site())),
+        Err(error) => Err(recovery.basic(error)),
     }
 }
 
-fn parse_attribute_selector_value<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<String, ParseError<'i, CssError>> {
-    let value = input
-        .expect_ident_or_string()
-        .map_err(selector_basic)?
-        .to_string();
-    Ok(value)
+fn parse_attribute_selector_value<'i>(
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, String> {
+    let at = input.site();
+    match input.consume_after_whitespace() {
+        Ok(Token::Ident(value) | Token::String(value)) => Ok(value.to_string()),
+        Ok(token) => Err(recovery.basic(unexpected(at, token))),
+        Err(error) => Err(recovery.basic(error)),
+    }
 }
 
-fn parse_attribute_case_sensitivity<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssAttributeCaseSensitivity, ParseError<'i, CssError>> {
-    let state = input.state();
-    let location = input.current_source_location();
-    match input.next() {
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            input.reset(&state);
+fn parse_attribute_case_sensitivity<'i>(
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, CssAttributeCaseSensitivity> {
+    let state = input.mark();
+    let location = input.site();
+    match input.consume_after_whitespace() {
+        Err(error) if error.is_end_of_stream() => {
+            input.restore(state);
             Ok(CssAttributeCaseSensitivity::DocumentDefault)
         }
-        Err(error) => Err(selector_basic(error)),
+        Err(error) => Err(recovery.basic(error)),
         Ok(Token::Ident(modifier)) if modifier.eq_ignore_ascii_case("i") => {
             Ok(CssAttributeCaseSensitivity::AsciiCaseInsensitive)
         }
@@ -1237,42 +1381,37 @@ fn parse_attribute_case_sensitivity<'i, 't>(
             Ok(CssAttributeCaseSensitivity::ExplicitSensitive)
         }
         // The modifier itself cannot continue the attribute selector.
-        Ok(_) => Err(invalid_selector_at(location)),
+        Ok(_) => Err(recovery.invalid(location)),
     }
 }
 
-fn parse_pseudo_class_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_pseudo_class_with_options<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoClass, ParseError<'i, CssError>> {
-    let state = input.state();
-    match input.next_including_whitespace() {
+) -> Value<'i, CssPseudoClass> {
+    let state = input.mark();
+    match input.consume_token() {
         Ok(Token::Ident(name)) => {
-            let name = name.clone();
-            let pseudo = parse_named_pseudo_class(name.as_ref(), input, &state)?;
+            let pseudo = parse_named_pseudo_class(name, input, state, recovery)?;
             if options.grammar().admits_pseudo(&pseudo) {
                 Ok(pseudo)
             } else {
-                input.reset(&state);
-                Err(invalid_selector(input))
+                input.restore(state);
+                Err(recovery.invalid(input.site()))
             }
         }
         Ok(Token::Function(name)) => {
-            let name = name.clone();
-            let mut depth = recovery.state.enter_component_block(
-                recovery.source,
-                input,
-                "baseline.selector.complex",
-            )?;
-            let result = input.parse_nested_block(|input| {
-                parse_function_pseudo_class(
-                    name.as_ref(),
-                    state.source_location(),
-                    input,
-                    options,
-                    recovery,
+            let mut depth = recovery
+                .state
+                .enter_component_block_at(
+                    recovery.source,
+                    opening_end(state.site()),
+                    "baseline.selector.complex",
                 )
+                .map_err(|error| SyntaxError::custom(state.site(), error))?;
+            let result = input.within_block(|input| {
+                parse_function_pseudo_class(name, state.site(), input, options, recovery)
             });
             if result.is_ok() {
                 depth.retain();
@@ -1280,22 +1419,21 @@ fn parse_pseudo_class_with_options<'i, 't>(
             result
         }
         Ok(_) => {
-            input.reset(&state);
-            Err(invalid_selector(input))
+            input.restore(state);
+            Err(recovery.invalid(input.site()))
         }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            Err(invalid_selector(input))
-        }
-        Err(error) => Err(selector_basic(error)),
+        Err(error) if error.is_end_of_stream() => Err(recovery.invalid(input.end_site())),
+        Err(error) => Err(recovery.basic(error)),
     }
 }
 
 #[inline(never)]
 fn parse_named_pseudo_class<'i>(
     name: &str,
-    input: &mut Parser<'i, '_>,
-    name_start: &ParserState,
-) -> std::result::Result<CssPseudoClass, ParseError<'i, CssError>> {
+    input: &mut Stream<'i>,
+    name_start: Mark<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, CssPseudoClass> {
     match_ignore_ascii_case! { name,
         "host" => Ok(CssPseudoClass::Host),
         "root" => Ok(CssPseudoClass::Root),
@@ -1349,239 +1487,257 @@ fn parse_named_pseudo_class<'i>(
         "in-range" => Ok(CssPseudoClass::InRange),
         "out-of-range" => Ok(CssPseudoClass::OutOfRange),
         _ => {
-            input.reset(name_start);
-            Err(invalid_selector(input))
+            input.restore(name_start);
+            Err(recovery.invalid(input.site()))
         },
     }
 }
 
 #[inline(never)]
-fn parse_function_pseudo_class<'i, 't>(
+fn parse_function_pseudo_class<'i>(
     name: &str,
-    name_start: cssparser::SourceLocation,
-    input: &mut Parser<'i, 't>,
+    name_start: Site<'i>,
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoClass, ParseError<'i, CssError>> {
+) -> Value<'i, CssPseudoClass> {
     let arguments = options.independent_arguments();
     let pseudo_class = match_ignore_ascii_case! { name,
         "host" => CssPseudoClass::HostFunction(parse_compound_argument(input, arguments, recovery)?),
         "host-context" => CssPseudoClass::HostContext(parse_compound_argument(input, arguments, recovery)?),
         "nth-child" => CssPseudoClass::NthChild(parse_nth_child_pattern(input, arguments, recovery)?),
         "nth-last-child" => CssPseudoClass::NthLastChild(parse_nth_child_pattern(input, arguments, recovery)?),
-        "nth-of-type" => CssPseudoClass::NthOfType(parse_nth_pattern(input)?),
-        "nth-last-of-type" => CssPseudoClass::NthLastOfType(parse_nth_pattern(input)?),
+        "nth-of-type" => CssPseudoClass::NthOfType(parse_nth_pattern(input, recovery)?),
+        "nth-last-of-type" => CssPseudoClass::NthLastOfType(parse_nth_pattern(input, recovery)?),
         "dir" => CssPseudoClass::Dir(parse_directionality(input, recovery)?),
         "lang" => CssPseudoClass::Lang(parse_language_ranges(input, recovery)?),
         "not" => CssPseudoClass::Not(parse_pseudo_selector_list_with_options(input, options.without_pseudo_elements(), recovery)?),
         "is" => CssPseudoClass::Is(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
         "where" => CssPseudoClass::Where(parse_forgiving_pseudo_selector_list(input, options.without_pseudo_elements(), recovery)?),
         "has" if options.allow_has => CssPseudoClass::Has(parse_has_relative_selector_list(input, arguments, recovery)?),
-        "has" => return Err(invalid_selector(input)),
-        _ => return Err(invalid_selector_at(name_start)),
+        "has" => return Err(recovery.invalid(input.site())),
+        _ => return Err(recovery.invalid(name_start)),
     };
-    input.expect_exhausted().map_err(selector_basic)?;
+    expect_exhausted(input, recovery)?;
     Ok(pseudo_class)
 }
 
-fn parse_compound_argument<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_compound_argument<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> Result<CssCompoundSelectorArgument, ParseError<'i, CssError>> {
+) -> Value<'i, CssCompoundSelectorArgument> {
     let options = SelectorParseOptions {
         compound_only: true,
         pseudo_suffix: None,
         ..options.without_pseudo_elements()
     };
     let selector = parse_rule_selector_with_options(input, options, recovery)?;
-    input.expect_exhausted().map_err(selector_basic)?;
-    CssCompoundSelectorArgument::try_new(selector).ok_or_else(|| invalid_selector(input))
+    expect_exhausted(input, recovery)?;
+    CssCompoundSelectorArgument::try_new(selector).ok_or_else(|| recovery.invalid(input.site()))
 }
 
-fn parse_part_names<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_part_names<'i>(
+    input: &mut Stream<'i>,
     recovery: &SelectorRecovery<'_>,
-) -> Result<CssPartNameList, ParseError<'i, CssError>> {
+) -> Value<'i, CssPartNameList> {
     let mut names = Vec::new();
     loop {
-        input.skip_whitespace();
-        if input.is_exhausted() {
+        input.discard_whitespace();
+        if input.only_whitespace_remains() {
             break;
         }
-        let start = input.state();
-        input.expect_ident().map_err(selector_basic)?;
-        input.reset(&start);
-        let name = crate::component::CssComponentValue::collect_from_parser(
-            input,
-            recovery.state.source_snapshot(),
-        )
-        .and_then(CssPartName::from_component)
-        .map_err(|error| selector_component_error(start.source_location(), error))?;
+        let start = input.mark();
+        input
+            .consume_ident()
+            .map_err(|error| recovery.basic(error))?;
+        input.restore(start);
+        let name = input
+            .collect_component()
+            .map(std::borrow::Cow::into_owned)
+            .and_then(CssPartName::from_component)
+            .map_err(|error| recovery.component(start.site(), error))?;
         names.push(name);
     }
-    CssPartNameList::try_new(names).ok_or_else(|| invalid_selector(input))
+    CssPartNameList::try_new(names).ok_or_else(|| recovery.invalid(input.site()))
 }
 
 fn parse_view_transition_name_selector<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<CssViewTransitionNameSelector, ParseError<'i, CssError>> {
-    input.skip_whitespace();
-    let start = input.state();
-    let argument = match input.next().map_err(selector_basic)? {
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, CssViewTransitionNameSelector> {
+    input.discard_whitespace();
+    let start = input.site();
+    let argument = match input
+        .consume_after_whitespace()
+        .map_err(|error| recovery.basic(error))?
+    {
         Token::Delim('*') => CssViewTransitionNameSelector::Wildcard,
         Token::Ident(name) => CssViewTransitionNameSelector::Name(
-            CssCustomIdent::try_new(name.to_string())
-                .ok_or_else(|| invalid_selector_at(start.source_location()))?,
+            CssCustomIdent::try_new(name.to_string()).ok_or_else(|| recovery.invalid(start))?,
         ),
-        _ => return Err(invalid_selector_at(start.source_location())),
+        _ => return Err(recovery.invalid(start)),
     };
-    input.expect_exhausted().map_err(selector_basic)?;
+    expect_exhausted(input, recovery)?;
     Ok(argument)
 }
 
 fn parse_highlight_name<'i>(
-    input: &mut Parser<'i, '_>,
-) -> Result<CssCustomIdent, ParseError<'i, CssError>> {
-    input.skip_whitespace();
-    let start = input.state();
-    let name = input.expect_ident().map_err(selector_basic)?.to_string();
-    let name = CssCustomIdent::try_new(name)
-        .ok_or_else(|| invalid_selector_at(start.source_location()))?;
-    input.expect_exhausted().map_err(selector_basic)?;
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, CssCustomIdent> {
+    input.discard_whitespace();
+    let start = input.site();
+    let name = input
+        .consume_ident()
+        .map_err(|error| recovery.basic(error))?
+        .to_string();
+    let name = CssCustomIdent::try_new(name).ok_or_else(|| recovery.invalid(start))?;
+    expect_exhausted(input, recovery)?;
     Ok(name)
 }
 
-fn parse_directionality<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_directionality<'i>(
+    input: &mut Stream<'i>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<CssDirectionality, ParseError<'i, CssError>> {
-    input.skip_whitespace();
-    let start = input.state();
-    input.expect_ident().map_err(selector_basic)?;
-    input.reset(&start);
-    crate::component::CssComponentValue::collect_from_parser(
-        input,
-        recovery.state.source_snapshot(),
-    )
-    .and_then(CssDirectionality::from_component)
-    .map_err(|error| selector_component_error(start.source_location(), error))
+) -> Value<'i, CssDirectionality> {
+    input.discard_whitespace();
+    let start = input.mark();
+    input
+        .consume_ident()
+        .map_err(|error| recovery.basic(error))?;
+    input.restore(start);
+    input
+        .collect_component()
+        .map(std::borrow::Cow::into_owned)
+        .and_then(CssDirectionality::from_component)
+        .map_err(|error| recovery.component(start.site(), error))
 }
 
-fn parse_language_ranges<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_language_ranges<'i>(
+    input: &mut Stream<'i>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<CssLanguageRangeList, ParseError<'i, CssError>> {
+) -> Value<'i, CssLanguageRangeList> {
     let mut ranges = Vec::new();
     loop {
-        input.skip_whitespace();
-        let start = input.state();
-        input.expect_ident_or_string().map_err(selector_basic)?;
-        input.reset(&start);
-        let range = crate::component::CssComponentValue::collect_from_parser(
-            input,
-            recovery.state.source_snapshot(),
-        )
-        .and_then(CssLanguageRange::from_component)
-        .map_err(|error| selector_component_error(start.source_location(), error))?;
+        input.discard_whitespace();
+        let start = input.mark();
+        let at = input.site();
+        match input.consume_after_whitespace() {
+            Ok(Token::Ident(_) | Token::String(_)) => {}
+            Ok(token) => return Err(recovery.basic(unexpected(at, token))),
+            Err(error) => return Err(recovery.basic(error)),
+        }
+        input.restore(start);
+        let range = input
+            .collect_component()
+            .map(std::borrow::Cow::into_owned)
+            .and_then(CssLanguageRange::from_component)
+            .map_err(|error| recovery.component(start.site(), error))?;
         ranges.push(range);
-        if input.try_parse(Parser::expect_comma).is_err() {
+        if input.attempt(Stream::consume_comma).is_err() {
             break;
         }
     }
-    CssLanguageRangeList::try_new(ranges).map_err(|_| invalid_selector(input))
+    CssLanguageRangeList::try_new(ranges).map_err(|_| recovery.invalid(input.site()))
 }
 
-fn parse_pseudo_selector_list_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_pseudo_selector_list_with_options<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoSelectorList, ParseError<'i, CssError>> {
+) -> Value<'i, CssPseudoSelectorList> {
     let selectors = parse_pseudo_selector_list_items_with_options(input, options, recovery)?;
     // This parser has proved each member in its actual containing context and
     // charged the shared parse budget. Programmatic output limits are separate.
     Ok(CssPseudoSelectorList::from_parsed_items(selectors))
 }
 
-fn parse_pseudo_selector_list_items_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn capacity_overflow<'i>(recovery: &SelectorRecovery<'_>, at: Site<'i>) -> ValueError<'i> {
+    recovery.component(
+        at,
+        crate::component::CssComponentValueError::new(
+            crate::component::values::CssComponentValueErrorKind::CapacityOverflow,
+            crate::component::CssValueOrigin::Programmatic,
+        ),
+    )
+}
+
+fn parse_pseudo_selector_list_items_with_options<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssPseudoSelectorListItem>, ParseError<'i, CssError>> {
+) -> Value<'i, Vec<CssPseudoSelectorListItem>> {
     let mut selectors = Vec::new();
     loop {
         let selector = parse_rule_selector_with_options(input, options, recovery)?;
-        selectors.try_reserve(1).map_err(|_| {
-            selector_component_error(
-                input.current_source_location(),
-                crate::component::CssComponentValueError::new(
-                    crate::component::values::CssComponentValueErrorKind::CapacityOverflow,
-                    crate::component::CssValueOrigin::Programmatic,
-                ),
-            )
-        })?;
+        selectors
+            .try_reserve(1)
+            .map_err(|_| capacity_overflow(recovery, input.site()))?;
         selectors.push(CssPseudoSelectorListItem::Selector(selector));
-        if input.try_parse(Parser::expect_comma).is_err() {
+        if input.attempt(Stream::consume_comma).is_err() {
             break;
         }
     }
-    input.expect_exhausted().map_err(selector_basic)?;
+    expect_exhausted(input, recovery)?;
     Ok(selectors)
 }
 
-fn parse_forgiving_pseudo_selector_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+/// Whether the failure is a selector that is not valid, rather than a fault of
+/// the text or a resource.
+fn is_invalid_selector(error: &ValueError<'_>) -> bool {
+    matches!(
+        error.custom_value().map(|error| &error.kind),
+        Some(cssparser::ParseErrorKind::Custom(error))
+            if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidSelector(_))
+    )
+}
+
+fn parse_forgiving_pseudo_selector_list<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssPseudoSelectorList, ParseError<'i, CssError>> {
+) -> Value<'i, CssPseudoSelectorList> {
     recovery.check_forgiving_envelope(input)?;
     let mut items = Vec::new();
     let mut preceding_comma = None;
     loop {
-        let member_start = input.position().byte_index();
-        let (result, invalid_components) =
-            input.parse_until_before(Delimiter::Comma, |member| {
-                let start = member.state();
-                let result = parse_rule_selector_with_options(member, options, recovery);
-                let components = match &result {
-                    Err(error)
-                        if matches!(&error.kind,
-                    cssparser::ParseErrorKind::Custom(error)
-                    if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidSelector(_))) =>
-                    {
-                        member.reset(&start);
-                        Some(
-                            crate::component::CssComponentValues::collect_from_parser(
-                                member,
-                                recovery.state.source_snapshot(),
-                            )
-                            .map_err(|error| {
-                                selector_component_error(start.source_location(), error)
-                            })?,
-                        )
-                    }
-                    Err(error) => return Err(error.clone()),
-                    Ok(_) => None,
-                };
-                Ok((result, components))
-            })?;
-        let member_end = input.position().byte_index();
+        let member_start = offset_of(input.site());
+        let (result, invalid_components) = input.within_list_until(StopToken::Comma, |member| {
+            let start = member.mark();
+            let result = parse_rule_selector_with_options(member, options, recovery);
+            let components = match result {
+                Ok(_) => None,
+                Err(ref error) if is_invalid_selector(error) => {
+                    member.restore(start);
+                    let components = member
+                        .remaining_components()
+                        .map_err(|error| recovery.component(start.site(), error));
+                    consume_remaining(member);
+                    Some(components?)
+                }
+                Err(error) => return Err(error),
+            };
+            Ok((result, components))
+        })?;
+        let member_end = offset_of(input.site());
         let comma_start = member_end;
-        let following_comma = match input.next() {
-            Ok(Token::Comma) => Some((comma_start, input.position().byte_index())),
-            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => None,
-            Ok(_) => return Err(invalid_selector(input)),
-            Err(error) => return Err(selector_basic(error)),
+        let following_comma = match input.consume_after_whitespace() {
+            Ok(Token::Comma) => Some((comma_start, offset_of(input.site()))),
+            Err(error) if error.is_end_of_stream() => None,
+            Ok(_) => return Err(recovery.invalid(input.site())),
+            Err(error) => return Err(recovery.basic(error)),
         };
 
         let item = match result {
             Ok(selector) => Some(CssPseudoSelectorListItem::Selector(selector)),
             Err(error) => {
                 let components = invalid_components.expect("failed member components");
+                let error = native(&recovery.numeric(), &error);
                 let location = error.location;
-                let contains_nesting = components
-                    .contains_delimiter('&')
-                    .map_err(|error| selector_component_error(location, error))?;
+                let contains_nesting = components.contains_delimiter('&').map_err(|error| {
+                    SyntaxError::custom(input.site(), selector_component_error(location, error))
+                })?;
                 let action = if contains_nesting {
                     crate::diagnostic::CssRecoveryAction::PreserveInvalidSelectorListItem
                 } else {
@@ -1610,22 +1766,16 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
             }
         };
         if let Some(item) = item {
-            items.try_reserve(1).map_err(|_| {
-                selector_component_error(
-                    input.current_source_location(),
-                    crate::component::CssComponentValueError::new(
-                        crate::component::values::CssComponentValueErrorKind::CapacityOverflow,
-                        crate::component::CssValueOrigin::Programmatic,
-                    ),
-                )
-            })?;
+            items
+                .try_reserve(1)
+                .map_err(|_| capacity_overflow(recovery, input.site()))?;
             items.push(item);
         }
         let Some(comma) = following_comma else {
             break;
         };
         // Selectors 4 "parse a list" splits with Syntax 3 (2026 CRD) §5.4.10.
-        if super::at_final_comma(input) {
+        if at_final_comma(input) {
             break;
         }
         preceding_comma = Some(comma);
@@ -1633,11 +1783,11 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
     Ok(CssPseudoSelectorList::from_parsed_items(items))
 }
 
-fn parse_has_relative_selector_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_has_relative_selector_list<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, CssError>> {
+) -> Value<'i, CssRelativeSelectorList> {
     parse_relative_selector_list_with_options(
         input,
         options.without_nested_has().without_pseudo_elements(),
@@ -1649,35 +1799,37 @@ pub(super) fn parse_general_relative_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, CssError>> {
-    recovery.check_depth(input)?;
-    parse_relative_selector_list_with_options(input, SelectorParseOptions::standard(), recovery)
+    recovery.read(input, |input, recovery| {
+        recovery.check_depth(input)?;
+        parse_relative_selector_list_with_options(input, SelectorParseOptions::standard(), recovery)
+    })
 }
 
-fn parse_relative_selector_list_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_relative_selector_list_with_options<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, CssError>> {
+) -> Value<'i, CssRelativeSelectorList> {
     let mut selectors = Vec::new();
     loop {
         selectors.push(parse_relative_selector_with_options(
             input, options, recovery,
         )?);
-        if input.try_parse(Parser::expect_comma).is_err() {
+        if input.attempt(Stream::consume_comma).is_err() {
             break;
         }
     }
-    input.expect_exhausted().map_err(selector_basic)?;
+    expect_exhausted(input, recovery)?;
     // The caller's grammar and parse budget are already checked; avoid applying
     // an unrelated default specified-output budget or losing parse provenance.
     Ok(CssRelativeSelectorList::new(selectors))
 }
 
-fn parse_relative_selector_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_relative_selector_with_options<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelector, ParseError<'i, CssError>> {
+) -> Value<'i, CssRelativeSelector> {
     match parse_style_selector_with_options(input, options, recovery)? {
         CssStyleSelector::Selector(selector) => Ok(CssRelativeSelector::new(
             CssSelectorCombinator::Descendant,
@@ -1687,26 +1839,26 @@ fn parse_relative_selector_with_options<'i, 't>(
     }
 }
 
-fn parse_selector_after_leading_combinator_with_options<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_selector_after_leading_combinator_with_options<'i>(
+    input: &mut Stream<'i>,
     combinator: CssSelectorCombinator,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelector, ParseError<'i, CssError>> {
-    consume_selector_whitespace(input)?;
+) -> Value<'i, CssRelativeSelector> {
+    consume_selector_whitespace(input, recovery)?;
     let first = parse_compound_selector_model_with_options(input, options, recovery)?;
     let selector = parse_selector_after_first_compound(input, first, options, recovery)?;
     Ok(CssRelativeSelector::new(combinator, selector))
 }
 
-fn parse_nth_child_pattern<'i, 't>(
-    input: &mut Parser<'i, 't>,
+fn parse_nth_child_pattern<'i>(
+    input: &mut Stream<'i>,
     options: SelectorParseOptions,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssNthChildPattern, ParseError<'i, CssError>> {
-    let pattern = parse_nth_pattern(input)?;
-    let state = input.state();
-    match input.next() {
+) -> Value<'i, CssNthChildPattern> {
+    let pattern = parse_nth_pattern(input, recovery)?;
+    let state = input.mark();
+    match input.consume_after_whitespace() {
         Ok(Token::Ident(value)) if value.eq_ignore_ascii_case("of") => {
             let selector_list = parse_pseudo_selector_list_with_options(
                 input,
@@ -1716,36 +1868,45 @@ fn parse_nth_child_pattern<'i, 't>(
             Ok(CssNthChildPattern::new(pattern, Some(selector_list)))
         }
         Ok(_) => {
-            input.reset(&state);
+            input.restore(state);
             Ok(CssNthChildPattern::new(pattern, None))
         }
-        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-            input.reset(&state);
+        Err(error) if error.is_end_of_stream() => {
+            input.restore(state);
             Ok(CssNthChildPattern::new(pattern, None))
         }
-        Err(error) => Err(selector_basic(error)),
+        Err(error) => Err(recovery.basic(error)),
     }
 }
 
-fn parse_nth_pattern<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssNthPattern, ParseError<'i, CssError>> {
-    if input
-        .try_parse(|input| input.expect_ident_matching("odd"))
-        .is_ok()
-    {
+fn parse_nth_pattern<'i>(
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Value<'i, CssNthPattern> {
+    if input.attempt(|input| input.consume_keyword("odd")).is_ok() {
         return Ok(CssNthPattern::Odd);
     }
-    if input
-        .try_parse(|input| input.expect_ident_matching("even"))
-        .is_ok()
-    {
+    if input.attempt(|input| input.consume_keyword("even")).is_ok() {
         return Ok(CssNthPattern::Even);
     }
 
-    let start = input.position();
-    let (a, b) = parse_nth(input).map_err(selector_basic)?;
-    let b = negative_signless_nth_offset(input.slice_from(start), b);
+    // A value outside the range of an integer is the nearest integer.
+    let notation =
+        anb::parse_saturating(input).map_err(|error| match error.into_stream_error() {
+            Ok(error) => match error.unexpected_token() {
+                // The token that does not fit is responsible where it ends.
+                Some(Token::Whitespace) => {
+                    // The whitespace is named as it was written, and the failure
+                    // is where it ends.
+                    recovery.basic_whitespace(error.at(), after_token(error.at()))
+                }
+                Some(token) => recovery.basic(unexpected(after_unit(error.at(), token), token)),
+                None => recovery.basic(end_of(input.end_site())),
+            },
+            Err(overflow) => recovery.invalid(overflow.at()),
+        })?;
+    require_integer_after_sign(input, recovery)?;
+    let (a, b) = (notation.a(), notation.b());
     if a == 0 {
         Ok(CssNthPattern::Integer(b))
     } else {
@@ -1753,49 +1914,90 @@ fn parse_nth_pattern<'i, 't>(
     }
 }
 
-/// Interprets an already-admitted negative signless offset from its spelling.
-/// The provider's positive integer cache may saturate before a separate minus
-/// is applied, although the final negative coefficient still fits in i32.
-fn negative_signless_nth_offset(consumed: &str, delegated: i32) -> i32 {
-    if delegated >= 0 {
-        return delegated;
-    }
-    let mut offset = 0;
-    let mut representation = None;
-    while let Some((start, end, token)) = crate::tokenization::next_source_token(consumed, offset) {
-        offset = end;
-        match token {
-            Token::WhiteSpace(_) | Token::Comment(_) => {}
-            Token::Number {
-                has_sign: false,
-                int_value: Some(_),
-                ..
-            } => representation = Some(&consumed[start..end]),
-            _ => representation = None,
+/// The boundary after the unit that begins with the token `token` at `at`: the
+/// token, and the equals sign after it when the two make an attribute matcher.
+fn after_unit<'i>(at: Site<'i>, token: Token<'i>) -> Site<'i> {
+    let after = after_token(at);
+    if matches!(token, Token::Delim('~' | '|' | '^' | '$' | '*')) {
+        let document = after.document();
+        if document
+            .list(after.list())
+            .get(after.index())
+            .is_some_and(|node| matches!(document.token(*node), Token::Delim('=')))
+        {
+            return after_token(after);
         }
     }
-    // With grammar admission complete, a negative B ending in a signless
-    // integer is exactly the separate-minus or n- signless production. Signed
-    // B ends in a signed Number; an embedded digit suffix ends in Ident or
-    // Dimension. Those alternatives therefore keep the delegated pair.
-    // Accumulate with the selected sign already applied, without a positive
-    // i32 intermediate. Out-of-model values retain the provider's behavior.
-    representation
-        .and_then(|digits| {
-            digits.bytes().try_fold(0_i32, |value, digit| {
-                if !digit.is_ascii_digit() {
-                    return None;
-                }
-                value.checked_mul(10)?.checked_sub(i32::from(digit - b'0'))
-            })
-        })
-        .unwrap_or(delegated)
+    after
+}
+
+/// A sign that follows the `n` of a notation takes the integer that is its `B`:
+/// a notation that ends at a bare `n` and is followed by a sign is not complete.
+fn require_integer_after_sign<'i>(
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> Result<(), ValueError<'i>> {
+    if !ends_with_bare_n(input.site()) {
+        return Ok(());
+    }
+    let mark = input.mark();
+    input.discard_whitespace();
+    if !matches!(input.consume_token(), Ok(Token::Delim('+' | '-'))) {
+        input.restore(mark);
+        return Ok(());
+    }
+    input.discard_whitespace();
+    let at = input.site();
+    match input.consume_token() {
+        Ok(token) => Err(recovery.basic(unexpected(after_unit(at, token), token))),
+        Err(_) => Err(recovery.basic(end_of(input.end_site()))),
+    }
+}
+
+/// Whether the last token before `site` spells an `n` that carries no `B`.
+fn ends_with_bare_n(site: Site<'_>) -> bool {
+    let document = site.document();
+    let nodes = document.list(site.list());
+    let last = nodes[..site.index().min(nodes.len())]
+        .iter()
+        .rev()
+        .map(|node| document.token(*node))
+        .find(|token| !token.is_trivia());
+    let bare = |text: &str| text.eq_ignore_ascii_case("n") || text.eq_ignore_ascii_case("-n");
+    match last {
+        Some(Token::Ident(text)) => bare(text),
+        Some(Token::Dimension { unit, .. }) => unit.eq_ignore_ascii_case("n"),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
 mod nth_tests {
     use super::*;
-    use cssparser::ParserInput;
+    use crate::source::CssSourceSnapshot;
+    use crate::syntax_consumption::source_document;
+
+    /// The notation of `source` and what follows it, read as the selectors do.
+    fn read(source: &str) -> (CssNthPattern, Vec<String>) {
+        let snapshot = CssSourceSnapshot::new(source);
+        let document = source_document(source, &snapshot, 0).unwrap();
+        let mut input = document.root();
+        let mut diagnostics = Vec::new();
+        let recovery = SelectorRecovery::new(
+            source,
+            &mut diagnostics,
+            RecoveryState::at_depth(
+                source,
+                0,
+                crate::parser::recovery::StyleContextCaptures::default(),
+            ),
+        );
+        let pattern = parse_nth_pattern(&mut input, &recovery).unwrap();
+        let rest = std::iter::from_fn(|| input.consume_after_whitespace().ok())
+            .map(|token| token.to_string())
+            .collect();
+        (pattern, rest)
+    }
 
     #[test]
     fn signless_negative_offset_interpretation_preserves_trivia_and_the_following_of_cursor() {
@@ -1808,18 +2010,13 @@ mod nth_tests {
             (r"\6e - 0002147483648 of .after", 1, i32::MIN),
             ("n - 0002 of .after", 1, -2),
         ] {
-            let mut storage = ParserInput::new(source);
-            let mut parser = Parser::new(&mut storage);
-            let pattern = parse_nth_pattern(&mut parser).unwrap();
+            let (pattern, rest) = read(source);
             assert_eq!(
                 pattern,
                 CssNthPattern::AnPlusB(CssNthAnPlusB::new(a, b)),
                 "{source}"
             );
-            parser.expect_ident_matching("of").unwrap();
-            parser.expect_delim('.').unwrap();
-            parser.expect_ident_matching("after").unwrap();
-            parser.expect_exhausted().unwrap();
+            assert_eq!(rest, ["of", ".", "after"], "{source}");
         }
     }
 
@@ -1832,14 +2029,13 @@ mod nth_tests {
             ("n- 99999999999999999999999999", -i32::MAX),
             ("n + 2147483648", i32::MAX),
         ] {
-            let mut storage = ParserInput::new(source);
-            let mut parser = Parser::new(&mut storage);
+            let (pattern, rest) = read(source);
             assert_eq!(
-                parse_nth_pattern(&mut parser).unwrap(),
+                pattern,
                 CssNthPattern::AnPlusB(CssNthAnPlusB::new(1, b)),
                 "{source}"
             );
-            parser.expect_exhausted().unwrap();
+            assert!(rest.is_empty(), "{source}");
         }
     }
 }

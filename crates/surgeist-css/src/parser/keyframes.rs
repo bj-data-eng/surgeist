@@ -3,9 +3,10 @@ use super::block_units::{
     location_at, offset_of, refused_declaration,
 };
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
-use super::property_input::NativeValueRange;
+use super::descriptor_stream::{Value, fail, from_component, from_here, parse_scope};
 use super::syntax_types::{Attached, Stream, SyntaxError};
-use cssparser::{AtRuleParser, ParseError, Parser, ParserState, QualifiedRuleParser, Token};
+use cssparser::{AtRuleParser, ParseError, Parser, ParserState, QualifiedRuleParser};
+use surgeist_css_parser::Token;
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar, UnitKind};
 use surgeist_css_parser::match_ignore_ascii_case;
 
@@ -17,9 +18,9 @@ use super::{
     DeclarationMode, consume_failed_rule_block, is_declaration_recovery_unit,
     structural_recovery_production, structural_rule_diagnostic,
 };
-use crate::diagnostic::error::{basic, invalid_at_rule_placement, invalid_syntax, unexpected_at};
+use crate::diagnostic::error::{invalid_at_rule_placement, invalid_syntax, unexpected_at};
 use crate::diagnostic::{CssError, CssFeatureId};
-use crate::numeric::expression::CalculationRoot;
+use crate::numeric::expression::{CalculationRoot, NumericInputContext};
 use crate::numeric::{CssCalculation, CssPercentage};
 use crate::rule::keyframes::{
     CssKeyframeBlock, CssKeyframeDeclaration, CssKeyframeDeclarationList, CssKeyframePercent,
@@ -30,19 +31,32 @@ use crate::rule::keyframes::{
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.rule.keyframes")];
 
+/// The name of a `@keyframes` rule that the native parser `input` holds next.
 pub(crate) fn parse_keyframes_name<'i, 't>(
     input: &mut Parser<'i, 't>,
+    snapshot: &crate::source::CssSourceSnapshot,
 ) -> std::result::Result<CssKeyframesName, ParseError<'i, CssError>> {
-    let location = input.current_source_location();
-    if let Ok(name) = input.try_parse(Parser::expect_ident_cloned) {
-        return parse_custom_ident_from_str_at_source(name.as_ref(), location)
+    super::descriptor_stream::parse_scope(input, snapshot, |stream, numeric| {
+        keyframes_name(stream, numeric)
+    })
+}
+
+fn keyframes_name<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+) -> Value<'i, CssKeyframesName> {
+    let at = input.site();
+    let location = super::descriptor_stream::location(numeric, at);
+    if let Ok(name) = input.attempt(Stream::consume_ident) {
+        return parse_custom_ident_from_str_at_source(name, location)
             .and_then(|name| {
                 CssKeyframesIdent::try_new(name).ok_or_else(|| unexpected_at(location))
             })
-            .map(CssKeyframesName::Ident);
+            .map(CssKeyframesName::Ident)
+            .map_err(|error| SyntaxError::custom(at, error));
     }
 
-    let value = input.expect_string_cloned().map_err(basic)?;
+    let value = from_here(input, Stream::consume_string)?;
     Ok(CssKeyframesName::String(CssKeyframesString::new(
         value.to_string(),
     )))
@@ -145,14 +159,10 @@ pub(super) fn parse_declarations<'i>(
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssKeyframeDeclarationList, ParseError<'i, CssError>> {
-    let numeric =
-        crate::numeric::expression::NumericInputContext::parsed(recovery.source_snapshot());
-    let (declarations, mut recovered) = super::property_input::adapt_native(
-        input,
-        &numeric,
-        NativeValueRange::Scope,
-        |contents, _| Ok(drive_declarations(contents, source, &recovery)),
-    )?;
+    let (declarations, mut recovered) =
+        super::property_input::adapt_native(input, recovery.source_snapshot(), |contents| {
+            Ok(drive_declarations(contents, source, &recovery))
+        })?;
     diagnostics.append(&mut recovered);
     Ok(declarations)
 }
@@ -280,12 +290,7 @@ impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
         &mut self,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        parse_keyframe_selector_list(
-            input,
-            &crate::numeric::expression::NumericInputContext::parsed(
-                self.recovery.source_snapshot(),
-            ),
-        )
+        parse_keyframe_selector_list(input, self.recovery.source_snapshot())
     }
 
     fn parse_block<'t>(
@@ -317,58 +322,66 @@ impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
     }
 }
 
+/// The selector list of a keyframe block that the native parser `input`
+/// holds, to the end of its scope.
 pub(super) fn parse_keyframe_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+    snapshot: &crate::source::CssSourceSnapshot,
 ) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, CssError>> {
+    parse_scope(input, snapshot, read_keyframe_selector_list)
+}
+
+fn read_keyframe_selector_list<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+) -> Value<'i, CssKeyframeSelectorList> {
     let selectors = super::combinators::parse_native_comma_list(
         input,
         |input| parse_keyframe_selector(input, numeric),
-        |_, at| unexpected_at(at),
+        |_, at| fail(numeric, at, unexpected_at),
     )?;
     CssKeyframeSelectorList::try_new(selectors)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+        .ok_or_else(|| fail(numeric, input.site(), unexpected_at))
 }
 
-fn parse_keyframe_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::expression::NumericInputContext<'_>,
-) -> std::result::Result<CssKeyframeSelector, ParseError<'i, CssError>> {
-    input.skip_whitespace();
-    let location = input.current_source_location();
-    let start = input.state();
-    let token_start = input.position();
-    match input.next().map_err(basic)? {
+fn parse_keyframe_selector<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+) -> Value<'i, CssKeyframeSelector> {
+    input.discard_whitespace();
+    let location = input.site();
+    let start = input.mark();
+    match input.consume_after_whitespace()? {
         Token::Ident(ident) => match_ignore_ascii_case! { ident,
             "from" => Ok(CssKeyframeSelector::From),
             "to" => Ok(CssKeyframeSelector::To),
-            _ => Err(invalid_syntax(location)),
+            _ => Err(fail(numeric, location, invalid_syntax)),
         },
-        Token::Percentage { .. } => {
-            let value = checked_percentage_value(location, input.slice_from(token_start))?;
+        Token::Percentage(_) => {
+            let text = input.text_since(location).unwrap_or_default();
+            let value = checked_percentage_value(
+                super::descriptor_stream::location(numeric, location),
+                text,
+            )
+            .map_err(|error| SyntaxError::custom(location, error))?;
             CssKeyframePercent::try_new(value)
                 .map(CssKeyframeSelector::Percent)
-                .ok_or_else(|| invalid_syntax(location))
+                .ok_or_else(|| fail(numeric, location, invalid_syntax))
         }
-        Token::Number { .. } => Err(invalid_syntax(location)),
+        Token::Number(_) => Err(fail(numeric, location, invalid_syntax)),
         Token::Function(name) if crate::numeric::expression::is_math_function(name) => {
-            input.reset(&start);
-            let expression = super::property_input::adapt_native(
-                input,
-                numeric,
-                NativeValueRange::Component,
-                |input, numeric| {
-                    let start = input.mark();
-                    parse_numeric_function(input, &start, numeric, CalculationRoot::Percentage)
-                },
-            )?;
+            input.restore(start);
+            let expression = from_component(numeric, input, |input| {
+                let start = input.mark();
+                parse_numeric_function(input, &start, numeric, CalculationRoot::Percentage)
+            })?;
             CssKeyframePercent::from_parser_calculation(
                 CssCalculation::<CssPercentage>::from_expression(expression),
             )
             .map(CssKeyframeSelector::Percent)
-            .ok_or_else(|| invalid_syntax(location))
+            .ok_or_else(|| fail(numeric, location, invalid_syntax))
         }
-        token => Err(location.new_unexpected_token_error::<CssError>(token.clone())),
+        token => Err(location.unexpected(token)),
     }
 }
 

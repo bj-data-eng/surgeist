@@ -12,9 +12,12 @@
 //! example a malformed nested function) propagates unchanged, and [`fill`]
 //! treats an ordinary rejection as "no match" while nesting and
 //! component-resource failures propagate from any operand.
-use super::syntax_types::Stream;
+use super::descriptor_stream::ValueError;
+use super::syntax_types::{Site, Stream};
 use crate::diagnostic::error::property::{Error, is_resource_parse_error, unexpected_at};
 use crate::parser::syntax_types::SyntaxError;
+use surgeist_css_parser::Token;
+use surgeist_css_parser::stream::StopToken;
 
 /// The reorderable combinator joining one operand table.
 #[derive(Clone, Copy)]
@@ -195,44 +198,43 @@ pub(super) fn fill<'i, T>(
 }
 
 /// The Values 4 §2.3 `#` multiplier over a native rule-level parser, each
-/// item bounded at its comma (cssparser's `parse_until_before`). An empty
-/// item keeps the list's own
+/// item bounded at its comma. An empty item keeps the list's own
 /// post-conditions: at the end of the list it is diagnosed by `trailing`
 /// (given the exhausted input and the empty item's start); elsewhere `item`
 /// re-enters at the stray separator and reports it as it would any
 /// unexpected component.
-pub(super) fn parse_native_comma_list<'i, 't, T>(
-    input: &mut cssparser::Parser<'i, 't>,
-    mut item: impl FnMut(
-        &mut cssparser::Parser<'i, '_>,
-    ) -> Result<T, cssparser::ParseError<'i, crate::diagnostic::CssError>>,
-    trailing: impl FnOnce(
-        &mut cssparser::Parser<'i, 't>,
-        cssparser::SourceLocation,
-    ) -> cssparser::ParseError<'i, crate::diagnostic::CssError>,
-) -> Result<Vec<T>, cssparser::ParseError<'i, crate::diagnostic::CssError>> {
+pub(super) fn parse_native_comma_list<'i, T>(
+    input: &mut Stream<'i>,
+    mut item: impl FnMut(&mut Stream<'i>) -> Result<T, ValueError<'i>>,
+    trailing: impl FnOnce(&mut Stream<'i>, Site<'i>) -> ValueError<'i>,
+) -> Result<Vec<T>, ValueError<'i>> {
     let mut values = Vec::with_capacity(1);
     loop {
         // The item starts directly after its separator.
-        let start = input.current_source_location();
+        let start = input.site();
         let mut empty = false;
-        let value = input.parse_until_before(cssparser::Delimiter::Comma, |input| {
-            if input.is_exhausted() {
+        let value = input.within_list_until(StopToken::Comma, |input| {
+            if input.only_whitespace_remains() {
                 empty = true;
-                return Err(input.new_error(cssparser::BasicParseErrorKind::EndOfInput));
+                return Err(input.end_of_stream());
             }
             item(input)
         });
         match value {
             Ok(value) => values.push(value),
-            Err(_) if empty && input.is_exhausted() => return Err(trailing(input, start)),
+            Err(_) if empty && input.only_whitespace_remains() => {
+                return Err(trailing(input, start));
+            }
             Err(error) if empty => return Err(item(input).err().unwrap_or(error)),
             Err(error) => return Err(error),
         }
-        match input.next() {
-            Err(_) => return Ok(values),
-            Ok(cssparser::Token::Comma) => {}
-            Ok(_) => unreachable!("an item ends at a comma or the end of the list"),
+        match input.consume_after_whitespace() {
+            Ok(Token::Comma) => {}
+            // An item ends at a comma or at the end of the list.
+            Ok(_) => return Ok(values),
+            Err(error) if error.is_end_of_stream() => return Ok(values),
+            // A refusal of the meter does not end the list.
+            Err(error) => return Err(error.into()),
         }
     }
 }

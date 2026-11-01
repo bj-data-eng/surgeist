@@ -4,14 +4,15 @@ use crate::query::container::container_features::*;
 use crate::query::container::{CssScrollStateLeaf, CssStyleQueryLeaf};
 use crate::query::media::media_features::*;
 use crate::source::CssSourcePosition;
+use surgeist_css_parser::Token;
+use surgeist_css_parser::lexer::{Lexer, Options};
 
 fn is_exact_css_identifier(value: &str) -> bool {
-    let mut input = cssparser::ParserInput::new(value);
-    let mut parser = cssparser::Parser::new(&mut input);
-    parser
-        .expect_ident_cloned()
-        .ok()
-        .is_some_and(|parsed| parser.expect_exhausted().is_ok() && parsed.as_ref() == value)
+    let mut lexer = Lexer::new(value, &Options::default());
+    let is_that_ident = lexer
+        .next_lexeme()
+        .is_some_and(|lexeme| matches!(lexeme.token(), Token::Ident(parsed) if parsed == value));
+    is_that_ident && lexer.next_lexeme().is_none()
 }
 
 /// A container name: a decoded `<custom-ident>` that is not a CSS-wide keyword or one of `none`, `and`, `or`, `not` and `default`.

@@ -14,7 +14,7 @@ pub(crate) mod tokenizer_agreement_tests;
 use std::fmt;
 use std::ops::Range;
 
-use cssparser::{ToCss, Token, TokenSerializationType};
+use surgeist_css_parser::Token;
 
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 
@@ -562,21 +562,23 @@ impl ValueToken {
         }
     }
 
-    fn serialization_type(&self) -> TokenSerializationType {
-        use TokenSerializationType as Kind;
+    fn serialization_type(&self) -> serialize::Joint {
+        use serialize::Joint;
+        use surgeist_css_parser::serialize::Adjacency;
         match &self.data {
-            TokenData::Ident(_) => Kind::Ident,
-            TokenData::AtKeyword(_) | TokenData::Hash { .. } => Kind::AtKeywordOrHash,
-            TokenData::String(_) => Kind::Other,
-            TokenData::Url(_) => Kind::UrlOrBadUrl,
-            TokenData::Delim(character) => Token::Delim(*character).serialization_type(),
-            TokenData::Number(_) => Kind::Number,
-            TokenData::Percentage(_) => Kind::Percentage,
-            TokenData::Dimension { .. } => Kind::Dimension,
-            TokenData::Whitespace => Kind::WhiteSpace,
-            TokenData::Cdc => Kind::CDC,
+            TokenData::Ident(_) => Joint::of(Adjacency::Ident),
+            TokenData::AtKeyword(_) => Joint::of(Adjacency::AtKeyword),
+            TokenData::Hash { .. } => Joint::of(Adjacency::Hash),
+            TokenData::String(_) => Joint::OTHER,
+            TokenData::Url(_) => Joint::of(Adjacency::Url),
+            TokenData::Delim(character) => Joint::of(Adjacency::Delim(*character)),
+            TokenData::Number(_) => Joint::of(Adjacency::Number),
+            TokenData::Percentage(_) => Joint::of(Adjacency::Percentage),
+            TokenData::Dimension { .. } => Joint::of(Adjacency::Dimension),
+            TokenData::Whitespace => Joint::WHITESPACE,
+            TokenData::Cdc => Joint::of(Adjacency::Cdc),
             TokenData::Colon | TokenData::Semicolon | TokenData::Comma | TokenData::Cdo => {
-                Kind::Other
+                Joint::OTHER
             }
         }
     }
@@ -881,7 +883,7 @@ impl CssComponentValue {
                 CssComponentValueErrorKind::InvalidIdentifier,
             ));
         }
-        let token = Token::Ident(value.as_str().into()).to_css_string();
+        let token = Token::Ident(value.as_str()).to_string();
         let result =
             parse::programmatic_token(&token, CssComponentValueErrorKind::InvalidIdentifier)?;
         if matches!(result.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(decoded)) if decoded == value)
@@ -923,11 +925,11 @@ impl CssComponentValue {
             CssComponentValueError::programmatic(CssComponentValueErrorKind::InvalidDimension)
         })?;
         let escaped_unit = if let Some(rest) = unit.strip_prefix('e') {
-            format!("\\65 {}", Token::Ident(rest.into()).to_css_string())
+            format!("\\65 {}", Token::Ident(rest))
         } else if let Some(rest) = unit.strip_prefix('E') {
-            format!("\\45 {}", Token::Ident(rest.into()).to_css_string())
+            format!("\\45 {}", Token::Ident(rest))
         } else {
-            Token::Ident(unit.as_str().into()).to_css_string()
+            Token::Ident(unit.as_str()).to_string()
         };
         let result = parse::programmatic_token(
             &format!("{number}{escaped_unit}"),
@@ -961,11 +963,11 @@ impl CssComponentValue {
             ));
         }
         let spelling = if url {
-            Token::UnquotedUrl(value.as_str().into())
+            Token::Url(value.as_str())
         } else {
-            Token::QuotedString(value.as_str().into())
+            Token::String(value.as_str())
         }
-        .to_css_string();
+        .to_string();
         let result =
             parse::programmatic_token(&spelling, CssComponentValueErrorKind::InvalidString)?;
         let same = match result.view() {
@@ -1010,7 +1012,7 @@ impl CssComponentValue {
                 ));
             }
         }
-        let opening = programmatic_lexeme(Token::Function(name.as_str().into()).to_css_string());
+        let opening = programmatic_lexeme(Token::Function(name.as_str()).to_string());
         Ok(Self {
             parsed: None,
             data: ComponentData::Function(CssFunctionValue {
@@ -1525,68 +1527,6 @@ impl CssSerializedValue {
             .find(|(_, candidate)| candidate.as_slice() == path)
             .map(|(range, _)| range.end)
     }
-    /// Finds complete sibling components, never a token fragment or a reconstructed graph.
-    pub(crate) fn component_paths_in_range(&self, range: Range<usize>) -> Option<Vec<&[usize]>> {
-        if range.start > range.end || range.end > self.css.len() {
-            return None;
-        }
-        let mut candidates: Vec<_> = self
-            .component_paths
-            .iter()
-            .filter(|(candidate, _)| candidate.start >= range.start && candidate.end <= range.end)
-            .collect();
-        candidates
-            .sort_by_key(|(candidate, _)| (candidate.start, std::cmp::Reverse(candidate.end)));
-        let mut selected: Vec<&(Range<usize>, Vec<usize>)> = Vec::new();
-        for candidate in candidates {
-            if selected
-                .last()
-                .is_some_and(|previous| candidate.0.end <= previous.0.end)
-            {
-                continue;
-            }
-            selected.push(candidate);
-        }
-        if let Some(first) = selected.first() {
-            let parent = &first.1[..first.1.len() - 1];
-            for (index, candidate) in selected.iter().enumerate() {
-                if candidate.1.len() != first.1.len()
-                    || &candidate.1[..candidate.1.len() - 1] != parent
-                    || candidate.1.last().copied()?
-                        != first.1.last().copied()?.checked_add(index)?
-                {
-                    return None;
-                }
-            }
-        }
-        let mut selected_index = 0;
-        for segment in self
-            .segments
-            .iter()
-            .filter(|segment| segment.range.start < range.end && segment.range.end > range.start)
-        {
-            if matches!(segment.origin, CssSerializedOrigin::Separator { .. }) {
-                continue;
-            }
-            while selected
-                .get(selected_index)
-                .is_some_and(|(candidate, _)| candidate.end <= segment.range.start)
-            {
-                selected_index += 1;
-            }
-            let (candidate, _) = selected.get(selected_index)?;
-            if candidate.start > segment.range.start || candidate.end < segment.range.end {
-                return None;
-            }
-        }
-        Some(
-            selected
-                .into_iter()
-                .map(|(_, path)| path.as_slice())
-                .collect(),
-        )
-    }
-
     pub(crate) fn value_origin_at(&self, byte: usize) -> Option<&CssValueOrigin> {
         match self.origin_at(byte)? {
             CssSerializedOrigin::Token(origin)

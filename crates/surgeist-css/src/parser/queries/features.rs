@@ -1,16 +1,19 @@
 //! Feature shapes, known-domain admission, and when-media leaf construction.
 
+use super::super::descriptor_stream::{
+    Value, ValueError, consume_remaining, expect_exhausted, from_here, native,
+};
 use super::super::query_components::{
     RangePrefix, media_literal_number, negative_literal, query_comparison, query_plain_range,
     query_range_chain,
 };
-use super::{MediaInput, media_committed_error, media_terminal_error};
+use super::super::syntax_types::{Mark, Site, Stream, SyntaxError};
+use super::{MediaInput, media_committed, media_terminal};
 use crate::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin, CssValueTokenRef,
 };
-use crate::diagnostic::CssError;
-use crate::diagnostic::error::{basic, invalid_syntax, unexpected_at};
+use crate::diagnostic::error::{invalid_component_value, unexpected_at};
 use crate::numeric::expression::CssCalculationExpression;
 use crate::numeric::expression::{CalculationRoot, NumericInputContext};
 use crate::numeric::{
@@ -30,23 +33,22 @@ use crate::query::media::{
     CssReducedTransparencyPreference, CssScanMode, CssUnknownMediaFeature,
     CssUnknownMediaFeatureReason,
 };
-use cssparser::{ParseError, Parser, Token};
-use surgeist_css_parser::match_ignore_ascii_case;
+use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
 pub(super) enum AdmittedMediaFeature {
     Feature(CssMediaFeatureQuery, Box<MediaFeatureSyntax>),
     Unknown(CssUnknownMediaFeature),
 }
 /// A selected feature shape before its enclosing component is retained.
-pub(super) struct ParsedMediaFeature {
+pub(super) struct ParsedMediaFeature<'i> {
     pub(super) name: CssComponentValue,
     /// Where the feature name starts, for diagnostics naming that name.
-    pub(super) name_location: cssparser::SourceLocation,
+    pub(super) name_site: Site<'i>,
     pub(super) name_text: String,
     pub(super) shape: MediaFeatureShape,
     separators: Vec<Vec<CssValueOrigin>>,
 }
-impl ParsedMediaFeature {
+impl ParsedMediaFeature<'_> {
     pub(super) fn into_syntax(self, component: CssComponentValue) -> MediaFeatureSyntax {
         MediaFeatureSyntax {
             component,
@@ -60,11 +62,11 @@ impl ParsedMediaFeature {
 }
 pub(super) fn classify_generic_media_feature<'i>(
     source: &str,
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
-    initial: &cssparser::ParserState,
+    initial: Mark<'i>,
     mut syntax: MediaFeatureSyntax,
-) -> Result<AdmittedMediaFeature, ParseError<'i, CssError>> {
+) -> Value<'i, AdmittedMediaFeature> {
     let reason = if let Some(name) = known_generic_name(&syntax.name_text, &syntax.shape) {
         syntax.canonical_name = Some(syntax.name_text.to_ascii_lowercase());
         let discrete_range = name.id.family() == MediaValueFamily::Discrete
@@ -73,12 +75,12 @@ pub(super) fn classify_generic_media_feature<'i>(
         if discrete_range {
             CssUnknownMediaFeatureReason::InvalidOperation
         } else {
-            input.reset(initial);
+            input.restore(initial);
             match parse_media_feature_query(source, input, numeric) {
-                Ok(feature) if input.is_exhausted() => {
+                Ok(feature) if input.only_whitespace_remains() => {
                     return Ok(AdmittedMediaFeature::Feature(feature, Box::new(syntax)));
                 }
-                Err(error) if media_committed_error(&error) => return Err(error),
+                Err(error) if media_committed(&error) => return Err(error),
                 _ => {}
             }
             CssUnknownMediaFeatureReason::InvalidValue
@@ -86,7 +88,7 @@ pub(super) fn classify_generic_media_feature<'i>(
     } else {
         CssUnknownMediaFeatureReason::UnknownName
     };
-    while input.next_including_whitespace_and_comments().is_ok() {}
+    consume_remaining(input);
     Ok(AdmittedMediaFeature::Unknown(CssUnknownMediaFeature::new(
         syntax, reason,
     )))
@@ -112,24 +114,28 @@ pub(super) fn construct_when_media_feature(
     let values = CssComponentValues::try_new(vec![component.clone()], limits)?;
     let serialized = values.serialize_tokens(limits)?;
     let numeric = NumericInputContext::components(&values, &serialized);
-    let numeric = MediaInput {
+    let media = MediaInput {
         numeric: &numeric,
         limits,
     };
     let source = serialized.as_css();
-    let working_source = crate::tokenization::prepare(source);
-    let mut parser_input = cssparser::ParserInput::new(&working_source);
-    let mut input = Parser::new(&mut parser_input);
-    let result: Result<_, ParseError<'_, CssError>> = (|| {
-        input.expect_function_matching("media")?;
-        input.parse_nested_block(|input| {
-            let initial = input.state();
-            let syntax = parse_generic_media_feature(source, input, &numeric)?
-                .into_syntax(component.clone());
-            classify_generic_media_feature(source, input, &numeric, &initial, syntax)
+    let document = crate::syntax_consumption::checked_document(
+        values.items(),
+        crate::syntax_consumption::SyntaxInputLimits::default(),
+        0,
+    )?;
+    let mut input = document.root();
+    let result: Value<'_, _> = (|| {
+        input.consume_function_named("media")?;
+        input.within_block(|input| {
+            let initial = input.mark();
+            let syntax =
+                parse_generic_media_feature(source, input, &media)?.into_syntax(component.clone());
+            classify_generic_media_feature(source, input, &media, initial, syntax)
         })
     })();
     let admitted = result.map_err(|error| {
+        let error = native(&numeric, &error);
         if let cssparser::ParseErrorKind::Custom(error) = &error.kind
             && let crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) =
                 error.kind()
@@ -159,22 +165,22 @@ fn known_generic_name(name_text: &str, shape: &MediaFeatureShape) -> Option<Medi
         None
     }
 }
-pub(super) fn parse_generic_media_feature<'i, 't>(
+pub(super) fn parse_generic_media_feature<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
-) -> Result<ParsedMediaFeature, ParseError<'i, CssError>> {
-    let initial = input.state();
-    let first = input.try_parse(|p| generic_feature_first(source, p, numeric));
+) -> Value<'i, ParsedMediaFeature<'i>> {
+    let initial = input.mark();
+    let first = input.attempt(|p| generic_feature_first(source, p, numeric));
     match &first {
         Ok(v) if known_generic_name(&v.name_text, &v.shape).is_some() => return first,
-        Err(e) if media_terminal_error(e) => return first,
+        Err(e) if media_terminal(e) => return first,
         _ => {}
     }
-    input.reset(&initial);
-    let second = input.try_parse(|p| generic_value_first(source, p, numeric));
+    input.restore(initial);
+    let second = input.attempt(|p| generic_value_first(source, p, numeric));
     if let Err(e) = &second
-        && media_terminal_error(e)
+        && media_terminal(e)
     {
         return second;
     }
@@ -183,33 +189,33 @@ pub(super) fn parse_generic_media_feature<'i, 't>(
             Ok(second)
         }
         (Ok(first), _) => {
-            while input.next_including_whitespace_and_comments().is_ok() {}
+            consume_remaining(input);
             Ok(first)
         }
         (_, other) => other,
     }
 }
-fn generic_feature_first<'i, 't>(
+fn generic_feature_first<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
-) -> Result<ParsedMediaFeature, ParseError<'i, CssError>> {
-    input.skip_whitespace();
-    let name_start = input.state();
-    let name_location = name_start.source_location();
-    let name_text = input.expect_ident_cloned().map_err(basic)?.to_string();
-    input.reset(&name_start);
+) -> Value<'i, ParsedMediaFeature<'i>> {
+    input.discard_whitespace();
+    let name_start = input.mark();
+    let name_site = name_start.site();
+    let name_text = from_here(input, Stream::consume_ident)?.to_string();
+    input.restore(name_start);
     let name = numeric
         .collect(input)
         .map_err(|e| media_numeric_error(source, input, numeric, e))?;
-    let mut separators = if input.is_exhausted() {
+    let mut separators = if input.only_whitespace_remains() {
         Vec::new()
     } else {
         vec![vec![numeric.next_origin(input)]]
     };
-    let shape = if input.is_exhausted() {
+    let shape = if input.only_whitespace_remains() {
         MediaFeatureShape::Boolean
-    } else if input.try_parse(Parser::expect_colon).is_ok() {
+    } else if input.attempt(Stream::consume_colon).is_ok() {
         MediaFeatureShape::Range(CssMediaRange::new(MediaRangeState::Plain {
             value: generic_media_value(source, input, numeric)?,
         }))
@@ -221,32 +227,32 @@ fn generic_feature_first<'i, 't>(
             value: generic_media_value(source, input, numeric)?,
         }))
     };
-    input.expect_exhausted()?;
+    expect_exhausted(input)?;
     Ok(ParsedMediaFeature {
         name: name.into_owned(),
-        name_location,
+        name_site,
         name_text,
         shape,
         separators,
     })
 }
-fn generic_value_first<'i, 't>(
+fn generic_value_first<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
-) -> Result<ParsedMediaFeature, ParseError<'i, CssError>> {
+) -> Value<'i, ParsedMediaFeature<'i>> {
     let left = generic_media_value(source, input, numeric)?;
     let (comparison, origins) = generic_comparison(input, numeric)?;
     let mut separators = vec![origins];
-    input.skip_whitespace();
-    let name_start = input.state();
-    let name_location = name_start.source_location();
-    let name_text = input.expect_ident_cloned().map_err(basic)?.to_string();
-    input.reset(&name_start);
+    input.discard_whitespace();
+    let name_start = input.mark();
+    let name_site = name_start.site();
+    let name_text = from_here(input, Stream::consume_ident)?.to_string();
+    input.restore(name_start);
     let name = numeric
         .collect(input)
         .map_err(|e| media_numeric_error(source, input, numeric, e))?;
-    let state = if input.is_exhausted() {
+    let state = if input.only_whitespace_remains() {
         MediaRangeState::ValueFirst {
             value: left,
             comparison,
@@ -274,26 +280,26 @@ fn generic_value_first<'i, 't>(
                 }
             }
             _ => {
-                return Err(invalid_syntax(input.current_source_location()));
+                return Err(numeric.invalid(input.site()));
             }
         }
     };
-    input.expect_exhausted()?;
+    expect_exhausted(input)?;
     Ok(ParsedMediaFeature {
         name: name.into_owned(),
-        name_location,
+        name_site,
         name_text,
         shape: MediaFeatureShape::Range(CssMediaRange::new(state)),
         separators,
     })
 }
-fn generic_media_value<'i, 't>(
+fn generic_media_value<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
-) -> Result<CssComponentValues, ParseError<'i, CssError>> {
-    input.skip_whitespace();
-    let start = input.state();
+) -> Value<'i, CssComponentValues> {
+    input.discard_whitespace();
+    let start = input.mark();
     let component = numeric
         .collect(input)
         .map_err(|e| media_numeric_error(source, input, numeric, e))?;
@@ -314,55 +320,55 @@ fn generic_media_value<'i, 't>(
             result_type == CssCalculationType::Number
         }
         _ => {
-            return Err(invalid_syntax(start.source_location()));
+            return Err(numeric.invalid(start.site()));
         }
     };
-    if can_ratio && input.try_parse(|p| p.expect_delim('/')).is_ok() {
+    if can_ratio && input.attempt(|p| p.consume_delim('/')).is_ok() {
         let denominator = parse_media_numeric(source, input, numeric, CalculationRoot::Number)
             .map(CssCalculation::<CssNumber>::from_expression)?;
         if media_literal_number(denominator.components()).is_some_and(negative_literal) {
-            return Err(invalid_syntax(start.source_location()));
+            return Err(numeric.invalid(start.site()));
         }
     }
-    numeric.between(input, &start)
+    numeric.between(input, start)
 }
 
-fn parse_media_feature_query<'i, 't>(
+fn parse_media_feature_query<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaFeatureQuery, ParseError<'i, CssError>> {
-    let initial = input.state();
-    let first_name = input.try_parse(Parser::expect_ident_cloned).ok();
-    let name = if let Some(name) = first_name.as_deref().and_then(MediaFeatureName::parse) {
-        if input.is_exhausted() {
+) -> Value<'i, CssMediaFeatureQuery> {
+    let initial = input.mark();
+    let first_name = input.attempt(Stream::consume_ident).ok();
+    let name = if let Some(name) = first_name.and_then(MediaFeatureName::parse) {
+        if input.only_whitespace_remains() {
             return name
                 .boolean_kind()
                 .map(CssMediaFeatureQuery::Boolean)
-                .ok_or_else(|| invalid_syntax(input.current_source_location()));
+                .ok_or_else(|| numeric.invalid(input.site()));
         }
         name
     } else {
         // The first operand precedes the feature name. Consume its component shape
         // only to discover the named domain; the domain parser reads it after reset.
-        input.reset(&initial);
+        input.restore(initial);
         let _ = numeric
             .collect(input)
             .map_err(|error| media_numeric_error(source, input, numeric, error))?;
-        if input.try_parse(|p| p.expect_delim('/')).is_ok() {
+        if input.attempt(|p| p.consume_delim('/')).is_ok() {
             let _ = numeric
                 .collect(input)
                 .map_err(|error| media_numeric_error(source, input, numeric, error))?;
         }
-        parse_media_comparison(input)?;
-        let keyword_location = input.current_source_location();
-        let ident = input.expect_ident_cloned().map_err(basic)?;
-        MediaFeatureName::parse(&ident).ok_or_else(|| unexpected_at(keyword_location))?
+        parse_media_comparison(input, numeric)?;
+        let keyword_site = input.site();
+        let ident = from_here(input, Stream::consume_ident)?;
+        MediaFeatureName::parse(ident).ok_or_else(|| numeric.unexpected(keyword_site))?
     };
-    input.reset(&initial);
+    input.restore(initial);
     match name.id.family() {
         MediaValueFamily::Length => {
-            let range = parse_media_range(input, name, |p| {
+            let range = parse_media_range(input, numeric, name, |p| {
                 parse_media_numeric(source, p, numeric, CalculationRoot::Length)
                     .map(CssCalculation::<CssLength>::from_expression)
                     .map(CssMediaLength::new)
@@ -376,7 +382,7 @@ fn parse_media_feature_query<'i, 't>(
             })
         }
         MediaValueFamily::Integer => {
-            let range = parse_media_range(input, name, |p| {
+            let range = parse_media_range(input, numeric, name, |p| {
                 parse_media_numeric(source, p, numeric, CalculationRoot::Integer)
                     .map(CssCalculation::<CssInteger>::from_expression)
                     .map(CssMediaInteger::new)
@@ -395,7 +401,9 @@ fn parse_media_feature_query<'i, 't>(
             })
         }
         MediaValueFamily::Ratio => {
-            let range = parse_media_range(input, name, |p| parse_media_ratio(source, p, numeric))?;
+            let range = parse_media_range(input, numeric, name, |p| {
+                parse_media_ratio(source, p, numeric)
+            })?;
             Ok(match name.id {
                 CssMediaFeatureKind::AspectRatio => CssMediaFeatureQuery::AspectRatio(range),
                 CssMediaFeatureKind::DeviceAspectRatio => {
@@ -404,10 +412,10 @@ fn parse_media_feature_query<'i, 't>(
                 _ => unreachable!("ratio feature catalog"),
             })
         }
-        MediaValueFamily::Resolution => parse_media_range(input, name, |p| {
-            let initial = p.state();
-            if p.try_parse(|p| p.expect_ident_matching("infinite")).is_ok() {
-                p.reset(&initial);
+        MediaValueFamily::Resolution => parse_media_range(input, numeric, name, |p| {
+            let initial = p.mark();
+            if p.attempt(|p| p.consume_keyword("infinite")).is_ok() {
+                p.restore(initial);
                 numeric
                     .collect(p)
                     .map(|component| CssMediaResolution::infinite(component.into_owned()))
@@ -420,87 +428,85 @@ fn parse_media_feature_query<'i, 't>(
         })
         .map(CssMediaFeatureQuery::Resolution),
         MediaValueFamily::Discrete => {
-            input.expect_ident().map_err(basic)?;
-            input.expect_colon().map_err(basic)?;
+            from_here(input, Stream::consume_ident)?;
+            from_here(input, Stream::consume_colon)?;
             parse_media_discrete(source, input, numeric, name.id)
         }
     }
 }
 
-fn parse_media_comparison<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> Result<CssQueryComparison, ParseError<'i, CssError>> {
-    let location = input.current_source_location();
-    let token = input.next().map_err(basic)?.clone();
+fn parse_media_comparison<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssQueryComparison> {
+    let at = input.site();
+    let token = input.consume_after_whitespace()?;
     let symbol = match token {
         Token::Delim(v @ ('<' | '>' | '=')) => v,
-        _ => return Err(invalid_syntax(location)),
+        _ => return Err(numeric.invalid(at)),
     };
     if symbol == '=' {
         return Ok(CssQueryComparison::Equal);
     }
-    let after = input.state();
-    let inclusive = loop {
-        match input.next_including_whitespace_and_comments() {
-            Ok(Token::Comment(_)) => {}
-            Ok(Token::Delim('=')) => break true,
-            _ => {
-                input.reset(&after);
-                break false;
-            }
+    let after = input.mark();
+    let inclusive = match input.consume_token() {
+        Ok(Token::Delim('=')) => true,
+        _ => {
+            input.restore(after);
+            false
         }
     };
     Ok(query_comparison(symbol, inclusive))
 }
 
-fn parse_media_range<'i, 't, T>(
-    input: &mut Parser<'i, 't>,
+fn parse_media_range<'i, T>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
     name: MediaFeatureName,
-    mut value: impl FnMut(&mut Parser<'i, 't>) -> Result<T, ParseError<'i, CssError>>,
-) -> Result<CssMediaRange<T>, ParseError<'i, CssError>> {
-    let initial = input.state();
-    if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned)
-        && MediaFeatureName::parse(&ident).is_some_and(|actual| actual == name)
+    mut value: impl FnMut(&mut Stream<'i>) -> Value<'i, T>,
+) -> Value<'i, CssMediaRange<T>> {
+    let initial = input.mark();
+    if let Ok(ident) = input.attempt(Stream::consume_ident)
+        && MediaFeatureName::parse(ident).is_some_and(|actual| actual == name)
     {
-        if input.try_parse(Parser::expect_colon).is_ok() {
+        if input.attempt(Stream::consume_colon).is_ok() {
             let value = value(input)?;
             return Ok(CssMediaRange::new(query_plain_range(value, name.prefix)));
         }
         if name.prefix.is_some() {
-            return Err(invalid_syntax(input.current_source_location()));
+            return Err(numeric.invalid(input.site()));
         }
-        let comparison = parse_media_comparison(input)?;
+        let comparison = parse_media_comparison(input, numeric)?;
         return value(input)
             .map(|value| CssMediaRange::new(MediaRangeState::FeatureFirst { comparison, value }));
     }
-    input.reset(&initial);
+    input.restore(initial);
     if name.prefix.is_some() {
-        return Err(invalid_syntax(input.current_source_location()));
+        return Err(numeric.invalid(input.site()));
     }
     let left = value(input)?;
-    let first = parse_media_comparison(input)?;
-    input
-        .expect_ident_matching(name.id.as_str())
-        .map_err(basic)?;
-    if input.is_exhausted() {
+    let first = parse_media_comparison(input, numeric)?;
+    from_here(input, |p| p.consume_keyword(name.id.as_str()))?;
+    if input.only_whitespace_remains() {
         return Ok(CssMediaRange::new(MediaRangeState::ValueFirst {
             value: left,
             comparison: first,
         }));
     }
-    let second = parse_media_comparison(input)?;
+    let second = parse_media_comparison(input, numeric)?;
     let right = value(input)?;
     let state = query_range_chain(left, first, right, second)
-        .ok_or_else(|| invalid_syntax(input.current_source_location()))?;
+        .ok_or_else(|| numeric.invalid(input.site()))?;
     Ok(CssMediaRange::new(state))
 }
 
 pub(super) fn media_numeric_error<'i>(
     source: &str,
-    input: &Parser<'i, '_>,
+    input: &Stream<'i>,
     numeric: &MediaInput<'_>,
     error: crate::numeric::CssNumericConstructionError,
-) -> ParseError<'i, CssError> {
+) -> ValueError<'i> {
+    let at = input.site();
     if let Some(component) = error.component_error() {
         // No component at a grammar boundary is an absent operand, not a bad
         // authored token. Other component failures remain terminal and typed.
@@ -508,40 +514,39 @@ pub(super) fn media_numeric_error<'i>(
             == crate::component::values::CssComponentValueErrorKind::InvalidToken
             && matches!(component.origin(), CssValueOrigin::Parsed(origin) if origin.span().start()==origin.span().end());
         if !absent {
-            return crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                component.clone(),
+            return SyntaxError::custom(
+                at,
+                invalid_component_value(numeric.location(at), component.clone()),
             );
         }
     }
     let _ = source;
-    unexpected_at(numeric.error_location(
-        &error,
-        input.current_source_location(),
-        input.position().byte_index(),
-    ))
+    SyntaxError::custom(
+        at,
+        unexpected_at(numeric.error_location(&error, numeric.location(at), numeric.offset(at))),
+    )
 }
-fn parse_media_numeric<'i, 't>(
+fn parse_media_numeric<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
     root: CalculationRoot,
-) -> Result<CssCalculationExpression, ParseError<'i, CssError>> {
+) -> Value<'i, CssCalculationExpression> {
     let component = numeric
         .collect(input)
         .map_err(|error| media_numeric_error(source, input, numeric, error))?;
     let values = crate::numeric::expression::CalculationComponents::single(component)
-        .map_err(|_| invalid_syntax(input.current_source_location()))?;
+        .map_err(|_| numeric.invalid(input.site()))?;
     numeric
         .admit(values, root)
         .map_err(|error| media_numeric_error(source, input, numeric, error))
 }
-fn parse_media_ratio<'i, 't>(
+fn parse_media_ratio<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaRatio, ParseError<'i, CssError>> {
-    let operand = |input: &mut Parser<'i, 't>| {
+) -> Value<'i, CssMediaRatio> {
+    let operand = |input: &mut Stream<'i>| {
         let value = CssCalculation::<CssNumber>::from_expression(parse_media_numeric(
             source,
             input,
@@ -549,12 +554,12 @@ fn parse_media_ratio<'i, 't>(
             CalculationRoot::Number,
         )?);
         if media_literal_number(value.components()).is_some_and(negative_literal) {
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(numeric.unexpected(input.site()));
         }
         Ok(value)
     };
     let numerator = operand(input)?;
-    let denominator_is_omitted = input.try_parse(|p| p.expect_delim('/')).is_err();
+    let denominator_is_omitted = input.attempt(|p| p.consume_delim('/')).is_err();
     let denominator = if denominator_is_omitted {
         CssCalculation::<CssNumber>::try_from_components(
             crate::component::CssComponentValues::try_new(
@@ -578,11 +583,11 @@ fn parse_media_ratio<'i, 't>(
     ))
 }
 
-fn parse_media_grid<'i, 't>(
+fn parse_media_grid<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaGrid, ParseError<'i, CssError>> {
+) -> Value<'i, CssMediaGrid> {
     let calculation = CssCalculation::<CssInteger>::from_expression(parse_media_numeric(
         source,
         input,
@@ -599,7 +604,7 @@ fn parse_media_grid<'i, 't>(
         } else if !n.representation().starts_with('-') && digits == "1" {
             CssGridMode::Grid
         } else {
-            return Err(unexpected_at(input.current_source_location()));
+            return Err(numeric.unexpected(input.site()));
         })
     } else {
         None
@@ -607,153 +612,160 @@ fn parse_media_grid<'i, 't>(
     Ok(CssMediaGrid::new(calculation, literal))
 }
 
-fn parse_media_discrete<'i, 't>(
+fn parse_media_discrete<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
     id: CssMediaFeatureKind,
-) -> Result<CssMediaFeatureQuery, ParseError<'i, CssError>> {
+) -> Value<'i, CssMediaFeatureQuery> {
     match id {
         CssMediaFeatureKind::Orientation => {
-            parse_orientation(input).map(CssMediaFeatureQuery::Orientation)
+            parse_orientation(input, numeric).map(CssMediaFeatureQuery::Orientation)
         }
-        CssMediaFeatureKind::Scan => parse_scan_mode(input).map(CssMediaFeatureQuery::Scan),
-        CssMediaFeatureKind::PrefersColorScheme => {
-            parse_color_scheme_preference(input).map(CssMediaFeatureQuery::PrefersColorScheme)
+        CssMediaFeatureKind::Scan => {
+            parse_scan_mode(input, numeric).map(CssMediaFeatureQuery::Scan)
         }
+        CssMediaFeatureKind::PrefersColorScheme => parse_color_scheme_preference(input, numeric)
+            .map(CssMediaFeatureQuery::PrefersColorScheme),
         CssMediaFeatureKind::PrefersReducedMotion => {
-            parse_reduced_motion_preference(input).map(CssMediaFeatureQuery::PrefersReducedMotion)
+            parse_reduced_motion_preference(input, numeric)
+                .map(CssMediaFeatureQuery::PrefersReducedMotion)
         }
         CssMediaFeatureKind::PrefersReducedTransparency => {
-            parse_reduced_transparency_preference(input)
+            parse_reduced_transparency_preference(input, numeric)
                 .map(CssMediaFeatureQuery::PrefersReducedTransparency)
         }
         CssMediaFeatureKind::PrefersContrast => {
-            parse_contrast_preference(input).map(CssMediaFeatureQuery::PrefersContrast)
+            parse_contrast_preference(input, numeric).map(CssMediaFeatureQuery::PrefersContrast)
         }
         CssMediaFeatureKind::ForcedColors => {
-            parse_forced_colors_mode(input).map(CssMediaFeatureQuery::ForcedColors)
+            parse_forced_colors_mode(input, numeric).map(CssMediaFeatureQuery::ForcedColors)
         }
         CssMediaFeatureKind::Hover => {
-            parse_hover_capability(input).map(CssMediaFeatureQuery::Hover)
+            parse_hover_capability(input, numeric).map(CssMediaFeatureQuery::Hover)
         }
         CssMediaFeatureKind::AnyHover => {
-            parse_hover_capability(input).map(CssMediaFeatureQuery::AnyHover)
+            parse_hover_capability(input, numeric).map(CssMediaFeatureQuery::AnyHover)
         }
         CssMediaFeatureKind::Pointer => {
-            parse_pointer_capability(input).map(CssMediaFeatureQuery::Pointer)
+            parse_pointer_capability(input, numeric).map(CssMediaFeatureQuery::Pointer)
         }
         CssMediaFeatureKind::AnyPointer => {
-            parse_pointer_capability(input).map(CssMediaFeatureQuery::AnyPointer)
+            parse_pointer_capability(input, numeric).map(CssMediaFeatureQuery::AnyPointer)
         }
         CssMediaFeatureKind::DisplayMode => {
-            parse_display_mode(input).map(CssMediaFeatureQuery::DisplayMode)
+            parse_display_mode(input, numeric).map(CssMediaFeatureQuery::DisplayMode)
         }
         CssMediaFeatureKind::Grid => {
             parse_media_grid(source, input, numeric).map(CssMediaFeatureQuery::Grid)
         }
-        CssMediaFeatureKind::Update => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
+        CssMediaFeatureKind::Update => parse_discrete_ident(input, numeric, |ident| {
+            match ident.to_ascii_lowercase().as_str() {
                 "none" => Some(CssMediaUpdate::None),
                 "slow" => Some(CssMediaUpdate::Slow),
                 "fast" => Some(CssMediaUpdate::Fast),
                 _ => None,
-            })
-            .map(CssMediaFeatureQuery::Update)
-        }
-        CssMediaFeatureKind::OverflowBlock => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
+            }
+        })
+        .map(CssMediaFeatureQuery::Update),
+        CssMediaFeatureKind::OverflowBlock => parse_discrete_ident(input, numeric, |ident| {
+            match ident.to_ascii_lowercase().as_str() {
                 "none" => Some(CssMediaOverflowBlock::None),
                 "scroll" => Some(CssMediaOverflowBlock::Scroll),
                 "paged" => Some(CssMediaOverflowBlock::Paged),
                 _ => None,
-            })
-            .map(CssMediaFeatureQuery::OverflowBlock)
-        }
-        CssMediaFeatureKind::OverflowInline => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
+            }
+        })
+        .map(CssMediaFeatureQuery::OverflowBlock),
+        CssMediaFeatureKind::OverflowInline => parse_discrete_ident(input, numeric, |ident| {
+            match ident.to_ascii_lowercase().as_str() {
                 "none" => Some(CssMediaOverflowInline::None),
                 "scroll" => Some(CssMediaOverflowInline::Scroll),
                 _ => None,
-            })
-            .map(CssMediaFeatureQuery::OverflowInline)
-        }
+            }
+        })
+        .map(CssMediaFeatureQuery::OverflowInline),
         CssMediaFeatureKind::ColorGamut => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
-                "srgb" => Some(CssMediaColorGamut::Srgb),
-                "p3" => Some(CssMediaColorGamut::P3),
-                "rec2020" => Some(CssMediaColorGamut::Rec2020),
-                _ => None,
+            parse_discrete_ident(input, numeric, |ident| {
+                match ident.to_ascii_lowercase().as_str() {
+                    "srgb" => Some(CssMediaColorGamut::Srgb),
+                    "p3" => Some(CssMediaColorGamut::P3),
+                    "rec2020" => Some(CssMediaColorGamut::Rec2020),
+                    _ => None,
+                }
             })
             .map(CssMediaFeatureQuery::ColorGamut)
         }
-        CssMediaFeatureKind::VideoColorGamut => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
+        CssMediaFeatureKind::VideoColorGamut => parse_discrete_ident(input, numeric, |ident| {
+            match ident.to_ascii_lowercase().as_str() {
                 "srgb" => Some(CssMediaColorGamut::Srgb),
                 "p3" => Some(CssMediaColorGamut::P3),
                 "rec2020" => Some(CssMediaColorGamut::Rec2020),
                 _ => None,
-            })
-            .map(CssMediaFeatureQuery::VideoColorGamut)
-        }
-        CssMediaFeatureKind::DynamicRange => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
+            }
+        })
+        .map(CssMediaFeatureQuery::VideoColorGamut),
+        CssMediaFeatureKind::DynamicRange => parse_discrete_ident(input, numeric, |ident| {
+            match ident.to_ascii_lowercase().as_str() {
                 "standard" => Some(CssMediaDynamicRange::Standard),
                 "high" => Some(CssMediaDynamicRange::High),
                 _ => None,
-            })
-            .map(CssMediaFeatureQuery::DynamicRange)
-        }
-        CssMediaFeatureKind::VideoDynamicRange => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
+            }
+        })
+        .map(CssMediaFeatureQuery::DynamicRange),
+        CssMediaFeatureKind::VideoDynamicRange => parse_discrete_ident(input, numeric, |ident| {
+            match ident.to_ascii_lowercase().as_str() {
                 "standard" => Some(CssMediaDynamicRange::Standard),
                 "high" => Some(CssMediaDynamicRange::High),
                 _ => None,
-            })
-            .map(CssMediaFeatureQuery::VideoDynamicRange)
-        }
-        CssMediaFeatureKind::EnvironmentBlending => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
+            }
+        })
+        .map(CssMediaFeatureQuery::VideoDynamicRange),
+        CssMediaFeatureKind::EnvironmentBlending => parse_discrete_ident(input, numeric, |ident| {
+            match ident.to_ascii_lowercase().as_str() {
                 "opaque" => Some(CssMediaEnvironmentBlending::Opaque),
                 "additive" => Some(CssMediaEnvironmentBlending::Additive),
                 "subtractive" => Some(CssMediaEnvironmentBlending::Subtractive),
                 _ => None,
-            })
-            .map(CssMediaFeatureQuery::EnvironmentBlending)
-        }
-        CssMediaFeatureKind::InvertedColors => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
+            }
+        })
+        .map(CssMediaFeatureQuery::EnvironmentBlending),
+        CssMediaFeatureKind::InvertedColors => parse_discrete_ident(input, numeric, |ident| {
+            match ident.to_ascii_lowercase().as_str() {
                 "none" => Some(CssMediaInvertedColors::None),
                 "inverted" => Some(CssMediaInvertedColors::Inverted),
                 _ => None,
-            })
-            .map(CssMediaFeatureQuery::InvertedColors)
-        }
+            }
+        })
+        .map(CssMediaFeatureQuery::InvertedColors),
         CssMediaFeatureKind::NavControls => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
-                "none" => Some(CssMediaNavigationControls::None),
-                "back" => Some(CssMediaNavigationControls::Back),
-                _ => None,
+            parse_discrete_ident(input, numeric, |ident| {
+                match ident.to_ascii_lowercase().as_str() {
+                    "none" => Some(CssMediaNavigationControls::None),
+                    "back" => Some(CssMediaNavigationControls::Back),
+                    _ => None,
+                }
             })
             .map(CssMediaFeatureQuery::NavControls)
         }
-        CssMediaFeatureKind::Scripting => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
-                "none" => Some(CssMediaScripting::None),
-                "initial-only" => Some(CssMediaScripting::InitialOnly),
-                "enabled" => Some(CssMediaScripting::Enabled),
-                _ => None,
-            })
-            .map(CssMediaFeatureQuery::Scripting)
-        }
-        CssMediaFeatureKind::PrefersReducedData => {
-            parse_discrete_ident(input, |ident| match ident.to_ascii_lowercase().as_str() {
+        CssMediaFeatureKind::Scripting => parse_discrete_ident(input, numeric, |ident| match ident
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "none" => Some(CssMediaScripting::None),
+            "initial-only" => Some(CssMediaScripting::InitialOnly),
+            "enabled" => Some(CssMediaScripting::Enabled),
+            _ => None,
+        })
+        .map(CssMediaFeatureQuery::Scripting),
+        CssMediaFeatureKind::PrefersReducedData => parse_discrete_ident(input, numeric, |ident| {
+            match ident.to_ascii_lowercase().as_str() {
                 "no-preference" => Some(CssMediaReducedDataPreference::NoPreference),
                 "reduce" => Some(CssMediaReducedDataPreference::Reduce),
                 _ => None,
-            })
-            .map(CssMediaFeatureQuery::PrefersReducedData)
-        }
+            }
+        })
+        .map(CssMediaFeatureQuery::PrefersReducedData),
         _ => unreachable!("discrete media feature catalog"),
     }
 }
@@ -786,10 +798,11 @@ impl MediaFeatureName {
     }
 }
 
-fn parse_orientation<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssOrientation, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_orientation<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssOrientation> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "portrait" => Some(CssOrientation::Portrait),
             "landscape" => Some(CssOrientation::Landscape),
@@ -798,10 +811,8 @@ fn parse_orientation<'i, 't>(
     })
 }
 
-fn parse_scan_mode<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssScanMode, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_scan_mode<'i>(input: &mut Stream<'i>, numeric: &MediaInput<'_>) -> Value<'i, CssScanMode> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "progressive" => Some(CssScanMode::Progressive),
             "interlace" => Some(CssScanMode::Interlace),
@@ -810,10 +821,11 @@ fn parse_scan_mode<'i, 't>(
     })
 }
 
-fn parse_color_scheme_preference<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssColorSchemePreference, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_color_scheme_preference<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssColorSchemePreference> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "light" => Some(CssColorSchemePreference::Light),
             "dark" => Some(CssColorSchemePreference::Dark),
@@ -822,10 +834,11 @@ fn parse_color_scheme_preference<'i, 't>(
     })
 }
 
-fn parse_reduced_motion_preference<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssReducedMotionPreference, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_reduced_motion_preference<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssReducedMotionPreference> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "reduce" => Some(CssReducedMotionPreference::Reduce),
             "no-preference" => Some(CssReducedMotionPreference::NoPreference),
@@ -834,10 +847,11 @@ fn parse_reduced_motion_preference<'i, 't>(
     })
 }
 
-fn parse_reduced_transparency_preference<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssReducedTransparencyPreference, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_reduced_transparency_preference<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssReducedTransparencyPreference> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "reduce" => Some(CssReducedTransparencyPreference::Reduce),
             "no-preference" => Some(CssReducedTransparencyPreference::NoPreference),
@@ -846,10 +860,11 @@ fn parse_reduced_transparency_preference<'i, 't>(
     })
 }
 
-fn parse_contrast_preference<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssContrastPreference, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_contrast_preference<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssContrastPreference> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "no-preference" => Some(CssContrastPreference::NoPreference),
             "more" => Some(CssContrastPreference::More),
@@ -860,10 +875,11 @@ fn parse_contrast_preference<'i, 't>(
     })
 }
 
-fn parse_forced_colors_mode<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssForcedColorsMode, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_forced_colors_mode<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssForcedColorsMode> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "none" => Some(CssForcedColorsMode::None),
             "active" => Some(CssForcedColorsMode::Active),
@@ -872,10 +888,11 @@ fn parse_forced_colors_mode<'i, 't>(
     })
 }
 
-fn parse_hover_capability<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssHoverCapability, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_hover_capability<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssHoverCapability> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "none" => Some(CssHoverCapability::None),
             "hover" => Some(CssHoverCapability::Hover),
@@ -884,10 +901,11 @@ fn parse_hover_capability<'i, 't>(
     })
 }
 
-fn parse_pointer_capability<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssPointerCapability, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_pointer_capability<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssPointerCapability> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "none" => Some(CssPointerCapability::None),
             "coarse" => Some(CssPointerCapability::Coarse),
@@ -897,10 +915,11 @@ fn parse_pointer_capability<'i, 't>(
     })
 }
 
-fn parse_display_mode<'i, 't>(
-    input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssDisplayMode, ParseError<'i, CssError>> {
-    parse_discrete_ident(input, |ident| {
+fn parse_display_mode<'i>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
+) -> Value<'i, CssDisplayMode> {
+    parse_discrete_ident(input, numeric, |ident| {
         match_ignore_ascii_case! { ident,
             "fullscreen" => Some(CssDisplayMode::Fullscreen),
             "standalone" => Some(CssDisplayMode::Standalone),
@@ -912,23 +931,24 @@ fn parse_display_mode<'i, 't>(
     })
 }
 
-fn parse_discrete_ident<'i, 't, T>(
-    input: &mut Parser<'i, 't>,
+fn parse_discrete_ident<'i, T>(
+    input: &mut Stream<'i>,
+    numeric: &MediaInput<'_>,
     parse: impl FnOnce(&str) -> Option<T>,
-) -> std::result::Result<T, ParseError<'i, CssError>> {
-    let location = input.current_source_location();
-    let ident = input.expect_ident_cloned().map_err(basic)?;
-    parse(&ident).ok_or_else(|| unexpected_at(location))
+) -> Value<'i, T> {
+    let at = input.site();
+    let ident = from_here(input, Stream::consume_ident)?;
+    parse(ident).ok_or_else(|| numeric.unexpected(at))
 }
 
 fn generic_comparison<'i>(
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     numeric: &MediaInput<'_>,
-) -> Result<(CssQueryComparison, Vec<CssValueOrigin>), ParseError<'i, CssError>> {
-    input.skip_whitespace();
-    let start = input.state();
-    let comparison = parse_media_comparison(input)?;
-    let components = numeric.between(input, &start)?;
+) -> Value<'i, (CssQueryComparison, Vec<CssValueOrigin>)> {
+    input.discard_whitespace();
+    let start = input.mark();
+    let comparison = parse_media_comparison(input, numeric)?;
+    let components = numeric.between(input, start)?;
     let origins = components
         .items()
         .iter()

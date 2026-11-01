@@ -16,4 +16,5 @@ mod media_known_feature_semantics;
 mod media_profile_catalog;
 mod media_query_authored_structure;
 mod media_query_grammars;
+mod media_syntax3_lexing;
 mod media_utf16;

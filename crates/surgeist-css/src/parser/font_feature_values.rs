@@ -461,7 +461,7 @@ fn display_data<'i>(
     if qualifies(components, numeric, input.site())? {
         return Ok(FontFeatureDisplayData::Pending(pending(input)));
     }
-    let value = super::font_face::parse_font_display_value(input, numeric)?;
+    let value = super::font_face::parse_font_display(input, numeric)?;
     expect_exhausted(input)?;
     Ok(FontFeatureDisplayData::Ordinary(value))
 }

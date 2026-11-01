@@ -200,10 +200,14 @@ impl<'a> NumericInputContext<'a> {
                 let Some(offset) = serialized.component_offset_for_path(&path) else {
                     return fallback;
                 };
-                let mut input = cssparser::ParserInput::new(&serialized.as_css()[..offset]);
-                let mut parser = cssparser::Parser::new(&mut input);
-                while parser.next_including_whitespace_and_comments().is_ok() {}
-                parser.current_source_location()
+                let position = crate::source::CssSourcePosition::from_byte_offset_in(
+                    serialized.as_css(),
+                    offset,
+                );
+                cssparser::SourceLocation {
+                    line: position.line().value(),
+                    column: position.column().value().saturating_add(1),
+                }
             }
         }
     }
@@ -311,18 +315,6 @@ impl<'a> NumericInputContext<'a> {
             self.admission_policy(),
         )
     }
-    pub(crate) fn origin_at(&self, offset: usize) -> Option<CssValueOrigin> {
-        match self.ordinary() {
-            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
-            Self::Components(_, serialized) => serialized.value_origin_at(offset).cloned(),
-            Self::Checked => None,
-            Self::Parsed(source) => {
-                let (_, end, _) = crate::tokenization::next_source_token(source.as_str(), offset)?;
-                crate::source::CssParsedOrigin::from_range(source, offset..end)
-                    .map(CssValueOrigin::Parsed)
-            }
-        }
-    }
     pub(crate) fn parsed(source: &'a crate::source::CssSourceSnapshot) -> Self {
         Self::Parsed(source)
     }
@@ -332,66 +324,24 @@ impl<'a> NumericInputContext<'a> {
     ) -> Self {
         Self::Components(values, serialized)
     }
-    pub(crate) fn collect(
+    /// The next component of `input`, after its whitespace: borrowed from the
+    /// checked components of a document of components, and read from the
+    /// source text of a document of source.
+    pub(crate) fn collect<'i>(
         &self,
-        input: &mut cssparser::Parser<'_, '_>,
-    ) -> Result<Cow<'a, CssComponentValue>> {
-        input.skip_whitespace();
-        match self.ordinary() {
-            Self::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
-            Self::Parsed(source) => CssComponentValue::collect_from_parser(input, source)
-                .map(Cow::Owned)
-                .map_err(CssNumericConstructionError::component),
-            Self::Checked => {
-                unreachable!("checked property collection uses its actual component cursor")
-            }
-            Self::Components(values, serialized) => {
-                input.skip_whitespace();
-                let offset = input.position().byte_index();
-                let path = serialized.component_path_at(offset).ok_or_else(|| {
-                    CssNumericConstructionError::at(
-                        CssNumericConstructionErrorKind::MalformedExpression,
-                        None,
-                    )
-                })?;
-                let mut items = values.items();
-                let mut found = None;
-                for index in path {
-                    let c = &items[*index];
-                    found = Some(c);
-                    items = match c.view() {
-                        CssComponentValueRef::Function(f) => f.values().items(),
-                        CssComponentValueRef::Block(b) => b.values().items(),
-                        _ => &[],
-                    };
-                }
-                let component = found.expect("serialized component path is nonempty");
-                let nested = matches!(
-                    component.view(),
-                    CssComponentValueRef::Function(_) | CssComponentValueRef::Block(_)
-                );
-                input.next().map_err(|_| {
-                    CssNumericConstructionError::at(
-                        CssNumericConstructionErrorKind::MalformedExpression,
-                        Some(component),
-                    )
-                })?;
-                if nested {
-                    input
-                        .parse_nested_block(|p| {
-                            while p.next_including_whitespace_and_comments().is_ok() {}
-                            Ok::<_, cssparser::ParseError<'_, ()>>(())
-                        })
-                        .map_err(|_| {
-                            CssNumericConstructionError::at(
-                                CssNumericConstructionErrorKind::MalformedExpression,
-                                Some(component),
-                            )
-                        })?;
-                }
-                Ok(Cow::Borrowed(component))
-            }
+        input: &mut crate::parser::syntax_types::Stream<'i>,
+    ) -> Result<Cow<'i, CssComponentValue>> {
+        use crate::parser::property_input::StreamExt as _;
+        input.discard_whitespace();
+        if input.only_whitespace_remains() {
+            return Err(CssNumericConstructionError::at(
+                CssNumericConstructionErrorKind::MalformedExpression,
+                None,
+            ));
         }
+        input
+            .collect_component()
+            .map_err(CssNumericConstructionError::component)
     }
 }
 
@@ -3235,7 +3185,7 @@ impl CssCalculation<CssLengthPercentage> {
 
 fn escaped_profile_name(name: &crate::color::CssColorProfileComponentName) -> String {
     let mut text = String::new();
-    cssparser::serialize_identifier(name.as_str(), &mut text)
+    surgeist_css_parser::serialize::identifier(name.as_str(), &mut text)
         .expect("String writing is infallible");
     text
 }

@@ -18,15 +18,16 @@ use super::block_units::{
     Failure, NativeError, drive_units, dropped_unit, location_at, offset_of, refused_declaration,
 };
 use super::declaration_unit::DeclarationText;
+use super::property_input::StreamExt as _;
 use super::property_input::{SiteExt, advance_native_to, native_scope_end};
 use super::recovery::RecoveryState;
-use super::syntax_types::{Attached, Document, Site, Stream, SyntaxError};
+use super::syntax_types::{Attached, Document, Site, Stream, StreamError, SyntaxError};
 use super::{block_item_diagnostic, is_declaration_recovery_unit, structural_rule_diagnostic};
 use crate::component::{CssComponentValues, CssSerializedValue};
 use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{
     invalid_component_value, invalid_descriptor_annotation, invalid_descriptor_syntax_token_at,
-    unexpected_syntax_end, unexpected_syntax_token,
+    unexpected_authored_syntax_token, unexpected_syntax_end, unexpected_syntax_token,
 };
 use crate::diagnostic::{CssError, CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::numeric::expression::NumericInputContext;
@@ -54,7 +55,12 @@ pub(super) fn location(numeric: &NumericInputContext<'_>, site: Site<'_>) -> Sou
     }
 }
 
-fn at_serialized_offset(serialized: &CssSerializedValue, offset: usize) -> SourceLocation {
+/// Where the byte `offset` of the serialization is, as the native diagnostics
+/// say it.
+pub(super) fn at_serialized_offset(
+    serialized: &CssSerializedValue,
+    offset: usize,
+) -> SourceLocation {
     let position = CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset);
     SourceLocation {
         line: position.line().value(),
@@ -64,7 +70,7 @@ fn at_serialized_offset(serialized: &CssSerializedValue, offset: usize) -> Sourc
 
 /// The byte of the serialization of `values` that the boundary `site` of the
 /// document of `values` is at.
-fn serialized_offset(
+pub(super) fn serialized_offset(
     values: &CssComponentValues,
     serialized: &CssSerializedValue,
     site: Site<'_>,
@@ -94,6 +100,35 @@ fn serialized_offset(
     .unwrap_or(end)
 }
 
+/// The byte of the text the boundary `site` of a document is at, in the terms of
+/// the recovery diagnostics: a byte of the source for a document of source
+/// text, and of the serialization of the components for a document of
+/// components.
+pub(super) fn byte_offset(numeric: &NumericInputContext<'_>, site: Site<'_>) -> usize {
+    match numeric.ordinary() {
+        NumericInputContext::Components(values, serialized) => {
+            serialized_offset(values, serialized, site)
+        }
+        _ => site.offset().map_or(0, surgeist_css_parser::Offset::value),
+    }
+}
+
+/// The spelling of the token at the boundary `site`. Comments are transparent
+/// to the token methods, so the token a failure names is the first one that is
+/// no comment, and a comment in front of it is not its spelling.
+pub(super) fn token_spelling<'i>(site: Site<'i>) -> Option<&'i str> {
+    if site.is_closing() {
+        return site.spelling();
+    }
+    let document = site.document();
+    let nodes = document.list(site.list());
+    let node = nodes
+        .get(site.index()..)?
+        .iter()
+        .find(|node| document.token(**node) != Token::Comment)?;
+    document.spelling(*node)
+}
+
 /// The native error of a failure of a value grammar.
 pub(super) fn native(
     numeric: &NumericInputContext<'_>,
@@ -104,6 +139,10 @@ pub(super) fn native(
     }
     let at = location(numeric, error.at());
     match error.unexpected_token() {
+        // The whitespace is named as it was written.
+        Some(token @ Token::Whitespace) => {
+            unexpected_authored_syntax_token(at, token, token_spelling(error.at()).unwrap_or(" "))
+        }
         Some(token) => unexpected_syntax_token(at, token),
         None => unexpected_syntax_end(at),
     }
@@ -306,6 +345,69 @@ pub(super) fn comma_list<'i, T>(
     })
 }
 
+/// Runs `consume`, which discards whitespace and then consumes a token, and
+/// reports a token it did not expect where the stream stood before the
+/// whitespace: the boundary a reader of the text points at.
+pub(super) fn from_here<'i, T, E>(
+    input: &mut Stream<'i>,
+    consume: impl FnOnce(&mut Stream<'i>) -> Result<T, StreamError<'i>>,
+) -> Result<T, SyntaxError<'i, E>> {
+    let before = input.site();
+    consume(input).map_err(|error| match error.unexpected_token() {
+        Some(token) => before.unexpected(token),
+        None => SyntaxError::from(error),
+    })
+}
+
+/// The components of every token of the document `input` reads, which is the
+/// scope of a native callback, or the failure to collect them and where it is
+/// reported: at the end of the top-level component that holds the failing token.
+pub(super) fn collect_scope(
+    input: &Stream<'_>,
+    numeric: &NumericInputContext<'_>,
+) -> Result<CssComponentValues, (crate::component::CssComponentValueError, SourceLocation)> {
+    let document = input.start_site().document();
+    input.remaining_components().map_err(|error| {
+        let end = input.end_site();
+        let at = match numeric.ordinary() {
+            NumericInputContext::Parsed(snapshot) => {
+                component_failure_location(snapshot, document, &error, offset_of(end))
+            }
+            _ => location(numeric, end),
+        };
+        (error, at)
+    })
+}
+
+/// The components of the scope of the native parser `input`, to its end, which
+/// is where the parser is left; or the fault that kept them from being
+/// collected and where it is reported. `start` is where the scope begins.
+pub(super) struct CollectedScope {
+    pub(super) values:
+        Result<CssComponentValues, (crate::component::CssComponentValueError, SourceLocation)>,
+    pub(super) start: SourceLocation,
+}
+
+/// Collects the components of the scope of the native parser `input`.
+pub(super) fn collect_native_scope<'i>(
+    input: &mut cssparser::Parser<'i, '_>,
+    snapshot: &CssSourceSnapshot,
+) -> Result<CollectedScope, ParseError<'i, CssError>> {
+    parse_scope(input, snapshot, |stream, numeric| {
+        let start = location(numeric, stream.site());
+        let values = collect_scope(stream, numeric);
+        consume_remaining(stream);
+        Ok(CollectedScope { values, start })
+    })
+}
+
+/// Whether the comma just consumed ends the stream, so that it adds no member
+/// to a comma-separated list (Syntax 3 section 5.4.10). A whitespace token
+/// after it is a token; a comment is not.
+pub(super) fn at_final_comma(input: &Stream<'_>) -> bool {
+    input.clone().consume_token().is_err()
+}
+
 /// Requires that only whitespace remains, and reports what remains where the
 /// whitespace begins. The check does not move the cursor.
 pub(super) fn expect_exhausted<'i, E>(input: &mut Stream<'i>) -> Result<(), SyntaxError<'i, E>> {
@@ -319,6 +421,30 @@ pub(super) fn expect_exhausted<'i, E>(input: &mut Stream<'i>) -> Result<(), Synt
         });
     input.restore(mark);
     result
+}
+
+/// The boundary after the token at `at`: after the opening token of a function
+/// or block, inside it.
+pub(super) fn after_token<'i>(at: Site<'i>) -> Site<'i> {
+    let document = at.document();
+    at.node()
+        .and_then(|node| match document.children(node) {
+            Some(list) => document.site(list, 0),
+            None => document.site(at.list(), at.index() + 1),
+        })
+        .unwrap_or(at)
+}
+
+/// Where the contents begin of the function or block that was consumed last,
+/// given the stream's site after it; `site` when it was not a group.
+pub(super) fn inside_consumed<'i>(site: Site<'i>) -> Site<'i> {
+    let document = site.document();
+    site.index()
+        .checked_sub(1)
+        .and_then(|previous| document.list(site.list()).get(previous))
+        .and_then(|node| document.children(*node))
+        .and_then(|list| document.site(list, 0))
+        .unwrap_or(site)
 }
 
 /// Consumes the rest of the stream, nested blocks included.
@@ -824,6 +950,19 @@ mod tests {
         })
         .unwrap();
         assert_eq!(input.site().offset().map(|offset| offset.value()), Some(4));
+    }
+
+    #[test]
+    fn a_family_name_is_read_from_every_remaining_component() {
+        let (snapshot, document) = document("Fancy Font");
+        let numeric = NumericInputContext::parsed(&snapshot);
+        let mut input = document.root();
+        let family = from_remaining(&numeric, &mut input, |window| {
+            crate::parser::typography::parse_non_generic_font_family_name(window)
+        })
+        .unwrap();
+        assert_eq!(family.as_str(), "Fancy Font");
+        assert!(input.only_whitespace_remains());
     }
 
     #[test]
