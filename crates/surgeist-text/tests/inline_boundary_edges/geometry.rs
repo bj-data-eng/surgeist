@@ -981,3 +981,6 @@ mod signed_source_consumers;
 
 #[path = "geometry/signed_shaping.rs"]
 mod signed_shaping;
+
+#[path = "bidi_fragmentation_baseline.rs"]
+mod bidi_fragmentation_baseline;
