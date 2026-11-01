@@ -446,7 +446,11 @@ impl SessionStorage {
                     Err(refused) => {
                         // Unpublished backing is uniquely owned, so a refusal
                         // is an invariant stop. The refused Arc and ticket stay
-                        // in the row for cleanup to retry.
+                        // in the row for cleanup to retry. The backing here is
+                        // the empty vector just created, and validating fewer
+                        // than two attributes has no comparison to charge or
+                        // refuse, so no limit or cancellation reaches this arm
+                        // and no test can force it with a work cut.
                         let (_, backing, shared) = refused.into_parts();
                         *storage = Some(AttributeStorage::Unvalidated {
                             backing,
