@@ -1,5 +1,6 @@
 mod depth;
 mod focus;
+mod order;
 use std::sync::Arc;
 use surgeist_html::{
     DocumentString, HtmlBuilderNode, HtmlConstructionError, HtmlDocumentMode, HtmlElement,
