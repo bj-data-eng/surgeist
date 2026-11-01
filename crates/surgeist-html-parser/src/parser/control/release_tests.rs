@@ -21,6 +21,21 @@ fn control() -> ParseControl {
 fn current(c: &ParseControl, resource: HtmlParseResource) -> u64 {
     c.usage().resource(resource).current()
 }
+/// Every live (refundable) resource is back at zero. Permanent and cumulative
+/// resources are never refunded, so they are not drain-checked.
+fn assert_drained(c: &ParseControl) {
+    for resource in crate::settings::RESOURCES {
+        match resource {
+            HtmlParseResource::SourceUnits
+            | HtmlParseResource::ManagedNodes
+            | HtmlParseResource::Diagnostics
+            | HtmlParseResource::TreeDepth
+            | HtmlParseResource::AtomicLayoutBytes
+            | HtmlParseResource::WorkCredits => {}
+            live => assert_eq!(current(c, live), 0, "{live:?}"),
+        }
+    }
+}
 fn current_of(usage: &ParseUsage, resource: HtmlParseResource) -> u64 {
     usage.resource(resource).current()
 }
@@ -202,8 +217,7 @@ fn characterization_final_vector_release_with_an_unrepresentable_capacity_hands_
     c.release_final_vector(vector, 1).unwrap();
     c.release_final_shared(shared).unwrap();
     drop(values);
-    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
-    assert_eq!(current(&c, HtmlParseResource::ManagedAttributes), 0);
+    assert_drained(&c);
 }
 
 // Characterization, as above. The vector capacity must equal the bank's real
@@ -226,8 +240,7 @@ fn characterization_final_attribute_release_with_an_unrepresentable_byte_count_h
     assert_eq!(c.usage(), &before);
     shared.bytes = real;
     c.release_final_attributes(values, vector, shared).unwrap();
-    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
-    assert_eq!(current(&c, HtmlParseResource::ManagedAttributes), 0);
+    assert_drained(&c);
 }
 
 fn text(units: &[u16]) -> crate::DocumentString {

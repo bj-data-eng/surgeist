@@ -56,11 +56,6 @@ impl CssSchemeValue {
     }
 }
 
-/// The controller and live-storage cell the CSS parser's admission and release
-/// callbacks act on. The two callbacks are separate closures, so they share
-/// this state through one cell. A callback that finds the state in use, or a
-/// release the ledger cannot honour, cannot reach the controller to latch the
-/// stop; it records it for [`Self::finish`].
 /// A state the CSS parser cannot produce, forced into the next scheme parse.
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -70,6 +65,11 @@ pub(super) enum SchemeFault {
     /// The storage admitted differs from the storage the report retains.
     LiveDrift,
 }
+/// The controller and live-storage cell the CSS parser's admission and release
+/// callbacks act on. The two callbacks are separate closures, so they share
+/// this state through one cell. A callback that finds the state in use, or a
+/// release the ledger cannot honour, cannot reach the controller to latch the
+/// stop; it records it for [`Self::finish`].
 struct SchemeCallbacks<'c> {
     #[cfg(test)]
     fault: Option<SchemeFault>,
@@ -172,15 +172,18 @@ impl<'c> SchemeCallbacks<'c> {
     fn finish(self) -> Finished<'c> {
         let reentered = self.reentered.get();
         let release_error = self.release_error.get();
-        #[allow(unused_mut)]
-        let mut live = self.live.get();
+        let live = self.live.get();
         let control = self.control.into_inner();
         #[cfg(test)]
-        if self.fault == Some(SchemeFault::LiveDrift)
-            && control.acquire_retained_provider(1, 0, 0).is_ok()
-        {
-            live.0 += 1;
-        }
+        let live = {
+            let mut live = live;
+            if self.fault == Some(SchemeFault::LiveDrift)
+                && control.acquire_retained_provider(1, 0, 0).is_ok()
+            {
+                live.0 += 1;
+            }
+            live
+        };
         let refusal = if reentered {
             Some(control.fail_invariant(Invariant::ReentrantProviderCallback))
         } else {
