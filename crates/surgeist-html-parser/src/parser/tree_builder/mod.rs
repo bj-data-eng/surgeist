@@ -565,10 +565,27 @@ impl LocationKernel {
     fn last_template_index(&self) -> Option<usize> {
         self.template_indices().last().copied()
     }
+    /// Searches the listings for the stack entry at `index`, charging one state
+    /// step for each comparison the search can make. State steps are what this
+    /// kernel charges for each entry a loop over its own state examines (the
+    /// duplicate scan, the scope walks); a comparison examines one listing the
+    /// same way. A binary search over `n` listings makes at most
+    /// floor(log2 n) + 1 comparisons, which is `usize::BITS - n.leading_zeros()`
+    /// and is none for an empty list.
+    fn search_templates(
+        &self,
+        index: usize,
+        c: &mut ParseControl,
+    ) -> Result<Result<usize, usize>, KernelError> {
+        let listed = self.template_indices();
+        let comparisons = u64::from(usize::BITS - listed.len().leading_zeros());
+        c.charge(WorkCategory::StateStep, comparisons)?;
+        Ok(listed.binary_search(&index))
+    }
     /// Whether the stack entry at `index` is listed as a template.
     fn template_listed(&self, index: usize, c: &mut ParseControl) -> Result<bool, KernelError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        Ok(self.template_indices().binary_search(&index).is_ok())
+        Ok(self.search_templates(index, c)?.is_ok())
     }
     /// Drops the last listing: the stack entry it names left the stack.
     fn template_unlist_last(&mut self, c: &mut ParseControl) -> Result<(), KernelError> {
@@ -599,10 +616,10 @@ impl LocationKernel {
     }
     /// Unlists the listed stack entry at `index`. Only the entries above it move.
     fn template_remove(&mut self, index: usize, c: &mut ParseControl) -> Result<(), KernelError> {
-        let templates = self.templates.as_mut().ok_or(KernelError::Consumed)?;
-        let Ok(at) = templates.as_slice().binary_search(&index) else {
+        let Ok(at) = self.search_templates(index, c)? else {
             return Err(KernelError::EmptyStack);
         };
+        let templates = self.templates.as_mut().ok_or(KernelError::Consumed)?;
         for shift in at..templates.len().saturating_sub(1) {
             if !templates.swap_slots(shift, shift + 1, c)? {
                 return Err(KernelError::EmptyStack);
