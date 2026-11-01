@@ -134,6 +134,11 @@ pub(crate) struct LocationKernel {
     owner: ControlIdentity,
     session: ParserArenaSession,
     open: Option<OwnedVec<ParserNode>>,
+    /// Exclusive upper bound on the arena position of every node that is or
+    /// was on the stack of open elements. Arena positions are never reused, so
+    /// a node at or beyond the bound cannot already be on the stack: pushing it
+    /// needs no duplicate scan.
+    stack_position_bound: usize,
     root_target: Option<ParserNode>,
     foster_parenting: bool,
 }
@@ -175,7 +180,7 @@ impl LocationKernel {
         capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<(), KernelError> {
         self.require(c)?;
-        self.session.validate_node(c, target)?;
+        let position = self.session.node_position(c, target)?;
         let removed = self.at(index, c)?;
         self.session
             .qualify_stack_removal(c, &removed, capability)?;
@@ -188,6 +193,7 @@ impl LocationKernel {
             .get_mut(index, c)?
             .ok_or(KernelError::EmptyStack)?;
         *slot = node;
+        self.stack_position_bound = self.stack_position_bound.max(position.saturating_add(1));
         self.session.parser_stack_removed(c, &removed, capability)?;
         Ok(())
     }
@@ -345,6 +351,7 @@ impl LocationKernel {
                 .take()
                 .expect("verified session remains owned until commit"),
             open: Some(open),
+            stack_position_bound: 0,
             root_target,
             foster_parenting: false,
         })
@@ -396,11 +403,14 @@ impl LocationKernel {
         if self.stack()?.len() == 0 && !self.named(node, "html", control)? {
             return Err(KernelError::FirstOpenElementNotHtml);
         }
-        for index in 0..self.stack()?.len() {
-            control.charge(WorkCategory::StateStep, 1)?;
-            let existing = self.at(index, control)?;
-            if self.session.same_node(control, &existing, node)? {
-                return Err(KernelError::DuplicateOpenElement);
+        let position = self.session.node_position(control, node)?;
+        if position < self.stack_position_bound {
+            for index in 0..self.stack()?.len() {
+                control.charge(WorkCategory::StateStep, 1)?;
+                let existing = self.at(index, control)?;
+                if self.session.same_node(control, &existing, node)? {
+                    return Err(KernelError::DuplicateOpenElement);
+                }
             }
         }
         let copied = copy_node(node, control)?;
@@ -408,6 +418,7 @@ impl LocationKernel {
             .as_mut()
             .ok_or(KernelError::Consumed)?
             .try_push(control, copied)?;
+        self.stack_position_bound = self.stack_position_bound.max(position.saturating_add(1));
         self.session.parser_stack_added(control, node)?;
         Ok(())
     }

@@ -7923,6 +7923,15 @@ impl ParserArenaSession {
         self.active()?.index(control, node)?;
         Ok(())
     }
+    /// The validated arena position that is the node's identity: two nodes are
+    /// the same node exactly when their positions are equal.
+    pub(crate) fn node_position(
+        &self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<usize, SessionError> {
+        self.active()?.index(control, node)
+    }
     pub(crate) fn same_node(
         &self,
         control: &mut ParseControl,
