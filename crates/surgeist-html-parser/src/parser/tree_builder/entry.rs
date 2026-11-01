@@ -37,7 +37,6 @@ pub(crate) enum InitializationFailure {
 }
 #[derive(Clone, Copy)]
 enum Phase {
-    Preparing,
     Ready,
     Rejected(EntryRejection),
     Failed,
@@ -57,6 +56,7 @@ pub(crate) struct OrdinaryDocumentEntry<'source> {
 impl<'source> OrdinaryDocumentEntry<'source> {
     #[cfg(test)]
     pub(crate) fn new(request: &'source HtmlDocumentParseRequest) -> Self {
+        request.require_inputs_reach_execution();
         Self::create(
             request,
             false,
@@ -91,21 +91,18 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         target: super::parse::InitializationTarget,
         #[cfg(test)] progressive: bool,
     ) -> Self {
-        let rejection = EntryRejection::for_request(request);
-        let mut entry = Self {
-            source: request.source(),
-            driver: None,
-            phase: Phase::Preparing,
-            after_cleanup: None,
-        };
-        if let Some(reason) = rejection {
-            entry.phase = Phase::Rejected(reason);
-            return entry;
+        if let Some(reason) = EntryRejection::for_request(request) {
+            return Self {
+                source: request.source(),
+                driver: None,
+                phase: Phase::Rejected(reason),
+                after_cleanup: None,
+            };
         }
         // This fixed guard is established before any admission can fail. The
         // selected bootstrap retains the existing control/Arc provider limits;
         // it performs no variable allocation for an error envelope.
-        entry.driver = Some(StandaloneDocumentDriver {
+        let mut driver = StandaloneDocumentDriver {
             source: request.source(),
             control: ParseControl::new(*request.limits(), request.cancellation().clone()),
             prologue: None,
@@ -117,39 +114,41 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             lexical: None,
             failed_evidence: None,
             failure_usage: None,
-        });
-        if entry
-            .prepare(
-                request,
-                owned,
-                target,
-                #[cfg(test)]
-                progressive,
-            )
-            .is_err()
-        {
-            let driver = entry.driver.as_mut().expect("actual initialization guard");
-            // Resource/cancellation failure already owns the first stop. An
-            // unexpected nonterminal stage error cannot leave a runnable prefix.
-            if driver.control.stop().is_none() {
-                driver
-                    .control
-                    .stop_unsupported_standalone(StandaloneUnsupported::InvalidNesting);
+        };
+        let phase = match Self::prepare(
+            &mut driver,
+            request,
+            owned,
+            target,
+            #[cfg(test)]
+            progressive,
+        ) {
+            Ok(()) => Phase::Ready,
+            Err(_) => {
+                // Resource/cancellation failure already owns the first stop. An
+                // unexpected nonterminal stage error cannot leave a runnable prefix.
+                if driver.control.stop().is_none() {
+                    driver
+                        .control
+                        .stop_unsupported_standalone(StandaloneUnsupported::InvalidNesting);
+                }
+                Phase::Failed
             }
-            entry.phase = Phase::Failed;
-        } else {
-            entry.phase = Phase::Ready;
+        };
+        Self {
+            source: request.source(),
+            driver: Some(driver),
+            phase,
+            after_cleanup: None,
         }
-        entry
     }
     fn prepare(
-        &mut self,
+        driver: &mut StandaloneDocumentDriver<'source>,
         request: &HtmlDocumentParseRequest,
         owned: bool,
         target: super::parse::InitializationTarget,
         #[cfg(test)] progressive: bool,
     ) -> Result<(), StandaloneError> {
-        let driver = self.driver.as_mut().expect("actual initialization guard");
         let c = &mut driver.control;
         // Preserve source-admission precedence and use actual compiled layouts.
         c.admit_source(driver.source)?;
@@ -202,27 +201,19 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             None,
             c,
         )?);
-        driver.prologue = Some(prologue::DocumentPrologue::new(driver.source, c)?);
+        let prologue = driver
+            .prologue
+            .insert(prologue::DocumentPrologue::new(driver.source, c)?);
         if let Some(inputs) = request.shared_associated_inputs() {
-            driver
-                .prologue
-                .as_mut()
-                .expect("initialized prologue")
-                .kernel
-                .as_mut()
-                .expect("initialized kernel")
+            prologue
+                .kernel()?
                 .session
                 .install_associated_inputs(c, inputs)
                 .map_err(|error| StandaloneError::Head(error.into()))?;
         }
         if let Some(facts) = request.base_facts() {
-            driver
-                .prologue
-                .as_mut()
-                .expect("initialized prologue")
-                .kernel
-                .as_mut()
-                .expect("initialized kernel")
+            prologue
+                .kernel()?
                 .session
                 .install_document_base_facts(c, facts)
                 .map_err(|error| StandaloneError::Head(error.into()))?;
@@ -245,7 +236,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                     .stop()
                     .expect("failed execution owns first stop"),
             )),
-            Phase::Preparing | Phase::Ready | Phase::Transferred => None,
+            Phase::Ready | Phase::Transferred => None,
         }
     }
     #[cfg(test)]
@@ -281,19 +272,16 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                 return Err(StandaloneError::UnsupportedExecutionProfile);
             }
             Phase::Failed => {
-                return Err(StandaloneError::Stop(
-                    self.driver
-                        .as_ref()
-                        .expect("retained failed entry")
-                        .control
-                        .stop()
-                        .expect("first initialization stop"),
-                ));
+                let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
+                return Err(match driver.control.stop() {
+                    Some(stop) => StandaloneError::Stop(stop),
+                    None => StandaloneError::owner_lost(&mut driver.control),
+                });
             }
-            Phase::Preparing | Phase::Transferred => return Err(StandaloneError::Consumed),
+            Phase::Transferred => return Err(StandaloneError::Consumed),
             Phase::Ready => {}
         }
-        let driver = self.driver.as_mut().expect("ready actual driver");
+        let mut driver = self.driver.take().ok_or(StandaloneError::Consumed)?;
         let result = driver.control.require_source(self.source).and_then(|()| {
             write(
                 const {
@@ -306,11 +294,12 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             )
         });
         if let Err(stop) = result {
+            self.driver = Some(driver);
             self.phase = Phase::Failed;
             return Err(stop.into());
         }
         self.phase = Phase::Transferred;
-        Ok(self.driver.take().expect("admitted actual driver transfer"))
+        Ok(driver)
     }
     /// Retains safe committed diagnostics; no post-stop polling, useful work,
     /// allocation, or source reconstruction. Refusal leaves the actual owner.
@@ -318,22 +307,19 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         match self.phase {
             Phase::Rejected(_) => return Ok(()),
             Phase::Failed => {}
-            Phase::Preparing | Phase::Ready | Phase::Transferred => {
+            Phase::Ready | Phase::Transferred => {
                 return Err(StandaloneError::Consumed);
             }
         }
         if self.after_cleanup.is_some() {
             return Ok(());
         }
-        let driver = self.driver.as_mut().expect("retained failed entry");
+        let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
         if driver.failure_usage.is_none() {
-            driver.failure_usage = Some(
-                driver
-                    .control
-                    .first_stop_usage()
-                    .expect("canonical first-stop snapshot")
-                    .clone(),
-            );
+            let Some(at_stop) = driver.control.first_stop_usage().cloned() else {
+                return Err(StandaloneError::owner_lost(&mut driver.control));
+            };
+            driver.failure_usage = Some(at_stop);
             if let Some(prologue) = &mut driver.prologue
                 && let Some(kernel) = &mut prologue.kernel
             {
@@ -385,20 +371,30 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             return Err(StandaloneError::Consumed);
         }
         self.cleanup_failure()?;
-        let binding = self
-            .driver
-            .as_mut()
-            .expect("qualified cleaned initialization")
-            .control
-            .take_stopped_optional_source_binding()?;
-        let driver = self.driver.take().expect("cleaned initialization owner");
+        // Cleanup succeeded, so the observation exists; each move below puts
+        // back what it took if the next one is refused.
+        let Some(after_cleanup) = self.after_cleanup.take() else {
+            return Err(match self.driver.as_mut() {
+                Some(driver) => StandaloneError::owner_lost(&mut driver.control),
+                None => StandaloneError::Consumed,
+            });
+        };
+        let Some(mut driver) = self.driver.take() else {
+            self.after_cleanup = Some(after_cleanup);
+            return Err(StandaloneError::Consumed);
+        };
+        let binding = match driver.control.take_stopped_optional_source_binding() {
+            Ok(binding) => binding,
+            Err(stop) => {
+                self.after_cleanup = Some(after_cleanup);
+                self.driver = Some(driver);
+                return Err(stop.into());
+            }
+        };
         *output = Some(StoppedInitialization {
             control: driver.control,
             binding,
-            after_cleanup: self
-                .after_cleanup
-                .take()
-                .expect("actual cleanup observation"),
+            after_cleanup,
             evidence: driver.failed_evidence,
         });
         self.phase = Phase::Transferred;
@@ -415,16 +411,14 @@ pub(super) struct StoppedInitialization {
     evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
 }
 impl StoppedInitialization {
-    pub(super) fn stop(&self) -> ParseStop {
-        self.control.stop().expect("stopped initialization")
+    pub(super) fn stop(&self) -> Option<ParseStop> {
+        self.control.stop()
     }
     pub(super) fn source_admitted(&self) -> bool {
         self.binding.is_some()
     }
-    pub(super) fn at_stop(&self) -> &ParseUsage {
-        self.control
-            .first_stop_usage()
-            .expect("canonical first stop")
+    pub(super) fn at_stop(&self) -> Option<&ParseUsage> {
+        self.control.first_stop_usage()
     }
     pub(super) fn after_cleanup(&self) -> &ParseUsage {
         &self.after_cleanup
@@ -719,6 +713,24 @@ mod tests {
                 }
             }
         }
+    }
+    #[test]
+    #[should_panic(expected = "input banks are shared")]
+    fn a_borrowed_test_entry_refuses_a_request_whose_inputs_it_would_skip() {
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits())
+            .with_encoding_url_facts(Vec::new());
+        let _ = OrdinaryDocumentEntry::new(&request);
+    }
+    #[test]
+    fn a_borrowed_test_entry_installs_the_inputs_of_a_request_shared_for_it() {
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits())
+            .with_encoding_url_facts(Vec::new())
+            .share_associated_inputs();
+        let mut entry = OrdinaryDocumentEntry::new(&request);
+        assert!(entry.failure().is_none());
+        let mut driver = entry.take_driver().unwrap();
+        driver.release().unwrap();
+        released(driver.control.usage());
     }
     #[test]
     fn a_ready_entry_whose_driver_is_gone_reports_consumed_and_the_driver_still_releases() {

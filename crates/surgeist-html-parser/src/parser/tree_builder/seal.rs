@@ -96,12 +96,11 @@ impl OrdinaryInitializationOwner {
             InitializationPhase::Rejected(reason) => {
                 Some(super::entry::InitializationFailure::Rejected(reason))
             }
-            InitializationPhase::Stopped => Some(super::entry::InitializationFailure::Stopped(
-                self.failure
-                    .as_ref()
-                    .expect("retained initialization failure")
-                    .stop(),
-            )),
+            InitializationPhase::Stopped => self
+                .failure
+                .as_ref()
+                .and_then(|failure| failure.stop())
+                .map(super::entry::InitializationFailure::Stopped),
             _ => None,
         }
     }
@@ -114,7 +113,7 @@ impl OrdinaryInitializationOwner {
             .map(|failure| failure.source_admitted())
     }
     pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
-        self.failure.as_ref().map(|failure| failure.at_stop())
+        self.failure.as_ref().and_then(|failure| failure.at_stop())
     }
     pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::ParseUsage> {
         self.failure.as_ref().map(|failure| failure.after_cleanup())
@@ -253,17 +252,19 @@ impl SealedOrdinaryConstruction {
         request: &mut Option<HtmlDocumentParseRequest>,
         parts: &mut Option<FrozenStandaloneParts>,
     ) -> Result<Self, StandaloneError> {
-        let original = request.as_ref().ok_or(StandaloneError::Consumed)?;
-        parts
-            .as_mut()
-            .ok_or(StandaloneError::Consumed)?
-            .prepare_seal(original)?;
+        let original = request.take().ok_or(StandaloneError::Consumed)?;
+        let Some(mut frozen) = parts.take() else {
+            *request = Some(original);
+            return Err(StandaloneError::Consumed);
+        };
+        if let Err(error) = frozen.prepare_seal(&original) {
+            *request = Some(original);
+            *parts = Some(frozen);
+            return Err(error);
+        }
         Ok(Self {
-            request: request
-                .take()
-                .expect("qualified original request")
-                .into_parts(),
-            parts: parts.take().expect("admitted immutable construction"),
+            request: original.into_parts(),
+            parts: frozen,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {
@@ -326,23 +327,25 @@ impl OwnedOrdinaryFailure {
         request: &mut Option<HtmlDocumentParseRequest>,
         failure: &mut Option<super::terminal::DetachedStandaloneFailure>,
     ) -> Result<Self, StandaloneError> {
-        let original = request.as_ref().ok_or(StandaloneError::Consumed)?;
-        let failed = failure.as_ref().ok_or(StandaloneError::Consumed)?;
+        let original = request.take().ok_or(StandaloneError::Consumed)?;
+        let Some(failed) = failure.take() else {
+            *request = Some(original);
+            return Err(StandaloneError::Consumed);
+        };
         if original.capture().is_some()
             || original.document().is_some()
             || !failed.owns_request(original.cancellation())
             || &failed.binding.0 != original.source().identity()
             || failed.binding.1 != original.source().coordinates()
         {
+            *request = Some(original);
+            *failure = Some(failed);
             return Err(StandaloneError::Consumed);
         }
         // Fixed envelope moves were admitted before the first source pull.
         Ok(Self {
-            request: request
-                .take()
-                .expect("actual original request")
-                .into_parts(),
-            failure: failure.take().expect("qualified cleaned failure"),
+            request: original.into_parts(),
+            failure: failed,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {
@@ -351,7 +354,7 @@ impl OwnedOrdinaryFailure {
     pub(crate) fn stop(&self) -> crate::parser::control::ParseStop {
         self.failure.stop()
     }
-    pub(crate) fn at_stop(&self) -> &crate::parser::control::ParseUsage {
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
         self.failure.at_stop()
     }
     pub(crate) fn after_cleanup(&self) -> &crate::parser::control::ParseUsage {
@@ -1096,7 +1099,7 @@ mod tests {
         assert!(parts.is_none());
         let mut owned = OwnedOrdinaryFailure::take(&mut request, &mut failure).unwrap();
         assert_eq!(owned.source().identity(), &source);
-        assert_eq!(owned.at_stop(), &first);
+        assert_eq!(owned.at_stop(), Some(&first));
         assert_eq!(
             owned
                 .retained_usage()
@@ -1105,7 +1108,7 @@ mod tests {
             first.resource(HtmlParseResource::ManagedNodes).current
         );
         owned.release().unwrap();
-        assert_eq!(owned.at_stop(), &first);
+        assert_eq!(owned.at_stop(), Some(&first));
         assert_eq!(
             owned
                 .retained_usage()
@@ -1161,7 +1164,7 @@ mod tests {
         ));
         let identity = request.as_ref().unwrap().source().identity().clone();
         let mut failure = Some(stopped(request.as_ref().unwrap()));
-        let at_stop = failure.as_ref().unwrap().at_stop().clone();
+        let at_stop = failure.as_ref().unwrap().at_stop().cloned();
         let cleaned = failure.as_ref().unwrap().after_cleanup().clone();
         let retained = failure.as_ref().unwrap().retained_usage().clone();
         let records = failure.as_ref().unwrap().diagnostics().unwrap().len();
@@ -1170,12 +1173,12 @@ mod tests {
         assert!(request.is_none() && failure.is_none());
         assert_eq!(owned.source().identity(), &identity);
         assert_eq!(owned.stop(), crate::parser::control::ParseStop::Cancelled);
-        assert_eq!(owned.at_stop(), &at_stop);
+        assert_eq!(owned.at_stop(), at_stop.as_ref());
         assert_eq!(owned.after_cleanup(), &cleaned);
         assert_eq!(owned.retained_usage(), &retained);
         assert_eq!(owned.diagnostics().unwrap().len(), records);
         owned.release().unwrap();
-        assert_eq!(owned.at_stop(), &at_stop);
+        assert_eq!(owned.at_stop(), at_stop.as_ref());
         assert_eq!(owned.after_cleanup(), &cleaned);
         assert_eq!(
             owned

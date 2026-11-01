@@ -73,7 +73,8 @@ pub enum Invariant {
     PendingFormEffects,
     IncompleteFormAssociationCreation,
     /// A retained record, child or payload row that internal state names is
-    /// missing, out of range or of another kind.
+    /// missing, out of range or of another kind, or an owner that the parser's
+    /// own sequencing keeps in a slot is not there.
     RegistryRow,
     /// A Meta CSP processor, or the CSS color-scheme parser, called an
     /// admission or release callback while another callback of the same call
@@ -188,14 +189,20 @@ impl ParseUsage {
     }
 }
 
+/// The first latched stop and the usage observed at that moment.
+struct FirstStop {
+    reason: ParseStop,
+    usage: ParseUsage,
+}
+
 /// Exclusively mutable owner. Only the cancellation handle can be cloned.
 pub(crate) struct ParseControl {
     limits: ResourceTable<u64>,
     usage: ParseUsage,
     cancellation: HtmlParseCancellation,
-    terminal: Option<ParseStop>,
-    // Fixed first-stop observation, captured before any producer cleanup.
-    first_stop_usage: Option<ParseUsage>,
+    // The first stop and its fixed usage observation, captured together before
+    // any producer cleanup, so neither can exist without the other.
+    stopped: Option<FirstStop>,
     source: Option<(HtmlSourceId, HtmlSourceCoordinates)>,
     identity: Arc<()>,
     #[cfg(test)]
@@ -291,8 +298,7 @@ impl ParseControl {
                 largest_atomic_layout: 0,
             },
             cancellation,
-            terminal: None,
-            first_stop_usage: None,
+            stopped: None,
             source: None,
             identity: Arc::new(()),
             #[cfg(test)]
@@ -342,10 +348,17 @@ impl ParseControl {
         }
     }
     pub(crate) fn stop(&self) -> Option<ParseStop> {
-        self.terminal
+        self.stopped.as_ref().map(|first| first.reason)
     }
     pub(crate) fn first_stop_usage(&self) -> Option<&ParseUsage> {
-        self.first_stop_usage.as_ref()
+        self.stopped.as_ref().map(|first| &first.usage)
+    }
+    /// The first stop with the usage observed when it was latched; one test
+    /// answers both, since they exist together or not at all.
+    pub(crate) fn stopped(&self) -> Option<(ParseStop, &ParseUsage)> {
+        self.stopped
+            .as_ref()
+            .map(|first| (first.reason, &first.usage))
     }
     /// Fixed identity readback, including after stop. The actual entry copies
     /// the fresh immutable request's capability into this sole controller.
@@ -357,7 +370,7 @@ impl ParseControl {
     pub(crate) fn stopped_source_binding(
         &self,
     ) -> Result<Option<&(HtmlSourceId, HtmlSourceCoordinates)>, ParseStop> {
-        if self.terminal.is_none() {
+        if self.stopped.is_none() {
             return Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning));
         }
         Ok(self.source.as_ref())
@@ -376,7 +389,7 @@ impl ParseControl {
     pub(crate) fn take_stopped_source_binding(
         &mut self,
     ) -> Result<(HtmlSourceId, HtmlSourceCoordinates), ParseStop> {
-        if self.terminal.is_none() {
+        if self.stopped.is_none() {
             return Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning));
         }
         self.source
@@ -396,13 +409,15 @@ impl ParseControl {
         self.latch_stop(ParseStop::Cancelled)
     }
     fn latch_stop(&mut self, reason: ParseStop) -> ParseStop {
-        if let Some(first) = self.terminal {
-            return first;
+        if let Some(first) = &self.stopped {
+            return first.reason;
         }
         // No allocation or useful progression: the fixed control layout owns
         // this observation. Denied requests remain in the stop, not in usage.
-        self.first_stop_usage = Some(self.usage.clone());
-        self.terminal = Some(reason);
+        self.stopped = Some(FirstStop {
+            reason,
+            usage: self.usage.clone(),
+        });
         reason
     }
     pub(crate) fn fail_invariant(&mut self, invariant: Invariant) -> ParseStop {
@@ -448,8 +463,8 @@ impl ParseControl {
         Err(self.latch_stop(reason))
     }
     pub(crate) fn checkpoint(&mut self) -> Result<(), ParseStop> {
-        if let Some(reason) = self.terminal {
-            return Err(reason);
+        if let Some(first) = &self.stopped {
+            return Err(first.reason);
         }
         #[cfg(test)]
         {

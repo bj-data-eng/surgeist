@@ -24,43 +24,57 @@ impl<'source> FragmentEntry<'source> {
         target: super::super::parse::InitializationTarget,
     ) -> Self {
         // Bootstrap fixed ownership exists before the first source admission.
-        let mut entry = Self {
-            driver: Some(ContextFragmentDriver {
-                request,
-                control: ParseControl::new(*request.limits(), request.cancellation().clone()),
-                head: None,
-                failed_evidence: None,
-                failure_usage: None,
-            }),
-            session: None,
-            tokenizer: None,
-            before: None,
-            reason: None,
-            after_cleanup: None,
+        let mut driver = ContextFragmentDriver {
+            request,
+            control: ParseControl::new(*request.limits(), request.cancellation().clone()),
+            head: None,
+            failed_evidence: None,
+            failure_usage: None,
         };
-        if let Err(error) = entry.prepare(target) {
-            entry
-                .driver
-                .as_mut()
-                .expect("retained initialization")
-                .control
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            entry.reason = Some(error);
+        let mut session = None;
+        let mut before = None;
+        let mut tokenizer = None;
+        let reason = match Self::prepare(
+            &mut driver,
+            &mut session,
+            &mut before,
+            &mut tokenizer,
+            target,
+        ) {
+            Ok(()) => None,
+            Err(error) => {
+                if error.lost_owner() {
+                    FragmentExecutionError::owner_lost(&mut driver.control);
+                } else {
+                    driver
+                        .control
+                        .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+                }
+                Some(error)
+            }
+        };
+        Self {
+            driver: Some(driver),
+            session,
+            tokenizer,
+            before,
+            reason,
+            after_cleanup: None,
         }
-        entry
     }
     fn prepare(
-        &mut self,
+        driver: &mut ContextFragmentDriver<'source>,
+        session: &mut Option<ParserArenaSession>,
+        before: &mut Option<BeforeHead>,
+        tokenizer: &mut Option<Tokenizer<'source>>,
         target: super::super::parse::InitializationTarget,
     ) -> Result<(), FragmentExecutionError> {
-        let driver = self.driver.as_mut().expect("actual bootstrap owner");
         let request = driver.request;
         let c = &mut driver.control;
         c.admit_source(request.source())?;
         target.admit(c)?;
         // Actual owning slots, error receiver and terminal transfers. No
         // stopped extraction allocates variable storage or copies source text.
-
         write(
             const {
                 size_of::<Self>() + initialization_transfer_layout().0 + 2 * size_of::<ParseUsage>()
@@ -73,51 +87,46 @@ impl<'source> FragmentEntry<'source> {
             terminal_qualification_bytes() as u64,
         )?;
         let (lexical, mode, template) = initial_modes(request, c)?;
-        self.session = Some(ParserArenaSession::new(
+        let document = session.insert(ParserArenaSession::new(
             c,
             RootKind::Document(request.context().document_mode()),
         )?);
-        let session = self.session.as_mut().expect("retained parser Document");
-        session.initialize_standalone_document(c)?;
-        session.initialize_parse_evidence(c, request.source())?;
-        let bootstrap = session.initialize_fragment(c, request)?;
+        document.initialize_standalone_document(c)?;
+        document.initialize_parse_evidence(c, request.source())?;
+        let bootstrap = document.initialize_fragment(c, request)?;
         if let Some(inputs) = request.shared_associated_inputs() {
-            session.install_associated_inputs(c, inputs)?;
+            document.install_associated_inputs(c, inputs)?;
             if let Some(facts) = &inputs.parser_document {
-                session.install_document_base_facts(c, facts)?;
+                document.install_document_base_facts(c, facts)?;
             }
         }
 
         let mut whitespace = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         whitespace.require_owner(c)?;
-        let kernel = match LocationKernel::new(&mut self.session, c) {
+        let kernel = match LocationKernel::new(session, c) {
             Ok(kernel) => kernel,
             Err(error) => {
                 whitespace.release(c)?;
                 return Err(error.into());
             }
         };
-        self.before = Some(BeforeHead {
+        let retained = before.insert(BeforeHead {
             kernel,
             input: None,
             whitespace,
         });
-        let kernel = &mut self.before.as_mut().expect("retained kernel").kernel;
+        let kernel = &mut retained.kernel;
         write(size_of::<Option<ParserNode>>(), 1, c)?;
         kernel.root_target = Some(bootstrap.output);
         kernel.push(&bootstrap.root, c)?;
-        self.tokenizer = Some(Tokenizer::new(request.source(), State::Data, None, c)?);
-        driver.head = Some(HeadStage::new(
-            request.source(),
-            &mut self.before,
-            &mut self.tokenizer,
-            c,
-        )?);
-        let stage = driver.head.as_mut().expect("actual stage");
+        *tokenizer = Some(Tokenizer::new(request.source(), State::Data, None, c)?);
+        let stage = driver
+            .head
+            .insert(HeadStage::new(request.source(), before, tokenizer, c)?);
         let document = stage
             .state
             .as_ref()
-            .expect("active state")
+            .ok_or(head::HeadError::Consumed)?
             .before
             .kernel
             .session
@@ -137,10 +146,14 @@ impl<'source> FragmentEntry<'source> {
             },
             c,
         )?;
-        let state = stage.state.as_mut().expect("active state");
+        let state = stage.state.as_mut().ok_or(head::HeadError::Consumed)?;
         state.before.kernel.session.retain_fragment_bootstrap(
             c,
-            &state.script.as_ref().expect("issued capability").capability,
+            &state
+                .script
+                .as_ref()
+                .ok_or(head::HeadError::ConstructionCapabilityUnavailable)?
+                .capability,
         )?;
         if let Some(form) = request.context().nearest_form() {
             c.charge(WorkCategory::ProviderCall, 1)?;
@@ -156,7 +169,7 @@ impl<'source> FragmentEntry<'source> {
         state
             .tokenizer
             .as_mut()
-            .expect("actual tokenizer")
+            .ok_or(head::HeadError::MissingTokenizer)?
             .set_state(lexical, c)?;
         Ok(())
     }
@@ -169,7 +182,7 @@ impl<'source> FragmentEntry<'source> {
         if self.reason.is_some() {
             return Err(InitializationState::Failed);
         }
-        let driver = self.driver.as_mut().ok_or(InitializationState::Consumed)?;
+        let mut driver = self.driver.take().ok_or(InitializationState::Consumed)?;
         let transfer = driver
             .control
             .require_source(driver.request.source())
@@ -193,10 +206,11 @@ impl<'source> FragmentEntry<'source> {
             )
         });
         if let Err(stop) = transfer {
+            self.driver = Some(driver);
             self.reason = Some(stop.into());
             return Err(InitializationState::Failed);
         }
-        Ok(self.driver.take().expect("admitted driver transfer"))
+        Ok(driver)
     }
     fn cleanup_failure(&mut self) -> Result<(), FragmentExecutionError> {
         if self.after_cleanup.is_some() {
@@ -235,7 +249,8 @@ impl<'source> FragmentEntry<'source> {
                 .whitespace
                 .require_disposal_owner(&mut driver.control)?;
             before.kernel.release(&mut driver.control)?;
-            let before = self.before.take().expect("reclaimed kernel");
+        }
+        if let Some(before) = self.before.take() {
             before.whitespace.release(&mut driver.control)?;
         }
         if let Some(session) = &mut self.session {
@@ -259,21 +274,56 @@ impl<'source> FragmentEntry<'source> {
     }
     fn detach(&mut self) -> Result<StoppedFragmentConstruction, FragmentExecutionError> {
         self.cleanup_failure()?;
-        let driver = self
-            .driver
-            .as_mut()
-            .ok_or(FragmentExecutionError::Consumed)?;
-        let binding = driver.control.take_stopped_optional_source_binding()?;
-        let driver = self.driver.take().expect("cleaned same-control owner");
-        Ok(StoppedFragmentConstruction {
-            stop: driver.control.stop().expect("first stop"),
-            at_stop: driver.failure_usage.expect("first-stop snapshot"),
-            after_cleanup: self.after_cleanup.take().expect("actual cleanup snapshot"),
-            control: driver.control,
-            binding,
-            evidence: driver.failed_evidence,
-            _reason: self.reason.take(),
-        })
+        let mut driver = self.driver.take().ok_or(FragmentExecutionError::Consumed)?;
+        match self.cleaned_observations(&mut driver) {
+            Ok((stop, at_stop, after_cleanup, binding)) => Ok(StoppedFragmentConstruction {
+                stop,
+                at_stop,
+                after_cleanup,
+                control: driver.control,
+                binding,
+                evidence: driver.failed_evidence,
+                _reason: self.reason.take(),
+            }),
+            Err(error) => {
+                self.driver = Some(driver);
+                Err(error)
+            }
+        }
+    }
+    /// Moves the stop, both usage observations and the source binding out of
+    /// the cleaned entry; a refusal puts back what it had already moved.
+    #[allow(clippy::type_complexity)]
+    fn cleaned_observations(
+        &mut self,
+        driver: &mut ContextFragmentDriver<'source>,
+    ) -> Result<
+        (
+            ParseStop,
+            ParseUsage,
+            ParseUsage,
+            Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>,
+        ),
+        FragmentExecutionError,
+    > {
+        let Some(stop) = driver.control.stop() else {
+            return Err(FragmentExecutionError::owner_lost(&mut driver.control));
+        };
+        let Some(at_stop) = driver.failure_usage.take() else {
+            return Err(FragmentExecutionError::owner_lost(&mut driver.control));
+        };
+        let Some(after_cleanup) = self.after_cleanup.take() else {
+            driver.failure_usage = Some(at_stop);
+            return Err(FragmentExecutionError::owner_lost(&mut driver.control));
+        };
+        match driver.control.take_stopped_optional_source_binding() {
+            Ok(binding) => Ok((stop, at_stop, after_cleanup, binding)),
+            Err(error) => {
+                driver.failure_usage = Some(at_stop);
+                self.after_cleanup = Some(after_cleanup);
+                Err(error.into())
+            }
+        }
     }
 }
 
@@ -477,7 +527,27 @@ impl StoppedFragmentConstruction {
         input: &mut Option<FailedContextFragment<'_>>,
         reason: &mut Option<FragmentExecutionError>,
     ) -> Result<Self, FragmentExecutionError> {
-        let failed = input.as_mut().ok_or(FragmentExecutionError::Consumed)?;
+        let mut failed = input.take().ok_or(FragmentExecutionError::Consumed)?;
+        match Self::qualified_binding(&mut failed) {
+            Ok(binding) => Ok(Self {
+                control: failed.control,
+                binding,
+                stop: failed.stop,
+                at_stop: failed.at_stop,
+                after_cleanup: failed.after_cleanup,
+                evidence: failed.evidence,
+                _reason: reason.take(),
+            }),
+            Err(error) => {
+                *input = Some(failed);
+                Err(error)
+            }
+        }
+    }
+    fn qualified_binding(
+        failed: &mut FailedContextFragment<'_>,
+    ) -> Result<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>, FragmentExecutionError>
+    {
         let actual = failed.control.stopped_source_binding()?;
         if !failed.control.owns_request(failed.request.cancellation())
             || actual.is_some_and(|(id, basis)| {
@@ -487,46 +557,66 @@ impl StoppedFragmentConstruction {
         {
             return Err(FragmentExecutionError::Consumed);
         }
-        let binding = failed.control.take_stopped_optional_source_binding()?;
-        let failed = input.take().expect("qualified cleaned execution");
-        Ok(Self {
-            control: failed.control,
-            binding,
-            stop: failed.stop,
-            at_stop: failed.at_stop,
-            after_cleanup: failed.after_cleanup,
-            evidence: failed.evidence,
-            _reason: reason.take(),
-        })
+        Ok(failed.control.take_stopped_optional_source_binding()?)
     }
 
     pub(crate) fn take_frozen(
         input: &mut Option<FrozenContextFragmentParts>,
         reason: &mut Option<FragmentExecutionError>,
     ) -> Result<Self, FragmentExecutionError> {
-        let parts = input.as_mut().ok_or(FragmentExecutionError::Consumed)?;
+        let mut parts = input.take().ok_or(FragmentExecutionError::Consumed)?;
+        match Self::cleaned_frozen(&mut parts) {
+            Ok((binding, stop, at_stop, after_cleanup)) => Ok(Self {
+                control: parts.control,
+                binding,
+                stop,
+                at_stop,
+                after_cleanup,
+                evidence: parts.failed_evidence,
+                _reason: reason.take(),
+            }),
+            Err(error) => {
+                *input = Some(parts);
+                Err(error)
+            }
+        }
+    }
+    /// Cleans the stopped immutable owner, then moves its observations and
+    /// source binding out; a refusal puts back what it had already moved.
+    #[allow(clippy::type_complexity)]
+    fn cleaned_frozen(
+        parts: &mut FrozenContextFragmentParts,
+    ) -> Result<
+        (
+            Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>,
+            ParseStop,
+            ParseUsage,
+            ParseUsage,
+        ),
+        FragmentExecutionError,
+    > {
         parts.cleanup_failure()?;
         let actual = parts.control.stopped_source_binding()?;
         if actual.is_some_and(|(id, basis)| id != &parts.source.0 || *basis != parts.source.1) {
             return Err(FragmentExecutionError::Consumed);
         }
-        let binding = parts.control.take_stopped_optional_source_binding()?;
-        let parts = input.take().expect("qualified cleaned immutable owner");
-        let stop = parts.control.stop().expect("actual stop");
-        let at_stop = parts
+        let Some((stop, at_stop)) = parts
             .control
-            .first_stop_usage()
-            .expect("actual first-stop snapshot")
-            .clone();
-        Ok(Self {
-            control: parts.control,
-            binding,
-            stop,
-            at_stop,
-            after_cleanup: parts.after_cleanup.expect("reclaimed actual arena"),
-            evidence: parts.failed_evidence,
-            _reason: reason.take(),
-        })
+            .stopped()
+            .map(|(stop, usage)| (stop, usage.clone()))
+        else {
+            return Err(FragmentExecutionError::owner_lost(&mut parts.control));
+        };
+        let Some(after_cleanup) = parts.after_cleanup.take() else {
+            return Err(FragmentExecutionError::owner_lost(&mut parts.control));
+        };
+        match parts.control.take_stopped_optional_source_binding() {
+            Ok(binding) => Ok((binding, stop, at_stop, after_cleanup)),
+            Err(error) => {
+                parts.after_cleanup = Some(after_cleanup);
+                Err(error.into())
+            }
+        }
     }
     pub(crate) fn stop(&self) -> ParseStop {
         self.stop
@@ -574,21 +664,23 @@ impl OwnedFragmentFailure {
         request: &mut Option<HtmlFragmentParseRequest>,
         stopped: &mut Option<StoppedFragmentConstruction>,
     ) -> Result<Self, FragmentExecutionError> {
-        let original = request.as_ref().ok_or(FragmentExecutionError::Consumed)?;
-        let failed = stopped.as_ref().ok_or(FragmentExecutionError::Consumed)?;
+        let original = request.take().ok_or(FragmentExecutionError::Consumed)?;
+        let Some(failed) = stopped.take() else {
+            *request = Some(original);
+            return Err(FragmentExecutionError::Consumed);
+        };
         if !failed.control.owns_request(original.cancellation())
             || failed.binding.as_ref().is_some_and(|(id, basis)| {
                 id != original.source().identity() || *basis != original.source().coordinates()
             })
         {
+            *request = Some(original);
+            *stopped = Some(failed);
             return Err(FragmentExecutionError::Consumed);
         }
         Ok(Self {
-            request: request
-                .take()
-                .expect("qualified original request")
-                .into_parts(),
-            failure: stopped.take().expect("cleaned stopped owner"),
+            request: original.into_parts(),
+            failure: failed,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {
@@ -634,17 +726,19 @@ impl SealedFragmentConstruction {
         request: &mut Option<HtmlFragmentParseRequest>,
         parts: &mut Option<FrozenContextFragmentParts>,
     ) -> Result<Self, FragmentExecutionError> {
-        let original = request.as_ref().ok_or(FragmentExecutionError::Consumed)?;
-        parts
-            .as_mut()
-            .ok_or(FragmentExecutionError::Consumed)?
-            .prepare_seal(original)?;
+        let original = request.take().ok_or(FragmentExecutionError::Consumed)?;
+        let Some(mut frozen) = parts.take() else {
+            *request = Some(original);
+            return Err(FragmentExecutionError::Consumed);
+        };
+        if let Err(error) = frozen.prepare_seal(&original) {
+            *request = Some(original);
+            *parts = Some(frozen);
+            return Err(error);
+        }
         Ok(Self {
-            request: request
-                .take()
-                .expect("qualified original request")
-                .into_parts(),
-            parts: parts.take().expect("admitted frozen construction"),
+            request: original.into_parts(),
+            parts: frozen,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {

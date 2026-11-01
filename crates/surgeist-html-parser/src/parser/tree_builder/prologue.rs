@@ -54,6 +54,15 @@ pub(crate) enum PrologueError {
     MissingInput,
     Consumed,
 }
+impl PrologueError {
+    /// A prologue owner its driver keeps is gone.
+    pub(super) fn lost_owner(&self) -> bool {
+        matches!(
+            self,
+            Self::Consumed | Self::MissingInput | Self::Kernel(KernelError::Consumed)
+        )
+    }
+}
 impl From<KernelError> for PrologueError {
     fn from(error: KernelError) -> Self {
         Self::Kernel(error)

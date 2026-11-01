@@ -64,7 +64,8 @@ pub(crate) mod tests;
 use super::tokenizer::token::Tag;
 use super::{
     control::{
-        ControlIdentity, OwnedVec, ParseControl, ParseStop, StandaloneUnsupported, WorkCategory,
+        ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, StandaloneUnsupported,
+        WorkCategory,
     },
     tokenizer::token::Text,
 };
@@ -1082,6 +1083,24 @@ impl std::fmt::Debug for StandaloneError {
         }
     }
 }
+impl StandaloneError {
+    /// An owner this driver's own sequencing keeps is gone while its controller
+    /// is still held: the first stop becomes the invariant, or stays the stop
+    /// that was already first.
+    pub(super) fn owner_lost(control: &mut ParseControl) -> Self {
+        Self::Stop(control.fail_invariant(Invariant::RegistryRow))
+    }
+    /// The error names an owner that the driver's own sequencing keeps present
+    /// and that is gone, rather than a document or a limit.
+    fn lost_owner(&self) -> bool {
+        match self {
+            Self::Consumed => true,
+            Self::Prologue(error) => error.lost_owner(),
+            Self::Head(error) => error.lost_owner(),
+            _ => false,
+        }
+    }
+}
 impl From<ParseStop> for StandaloneError {
     fn from(error: ParseStop) -> Self {
         Self::Stop(error)
@@ -1143,6 +1162,12 @@ impl<'source> StandaloneDocumentDriver<'source> {
         if let Err(error) = &result {
             // One controller owns terminality. Retained owners support cleanup,
             // never resumption or successful partial continuation publication.
+            if error.lost_owner() {
+                // Nothing the document contains made this unsupported; a driver
+                // lost an owner its own sequencing keeps.
+                self.control.fail_invariant(Invariant::RegistryRow);
+                return;
+            }
             let reason = match error {
                 StandaloneError::Head(head::HeadError::UnsupportedScriptPause) => {
                     StandaloneUnsupported::ScriptPause

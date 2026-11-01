@@ -144,6 +144,17 @@ pub(crate) enum HeadError {
     InvalidFormattingState,
     IncompleteCompletion,
 }
+impl HeadError {
+    /// A stage, kernel or prologue owner its driver keeps is gone.
+    pub(super) fn lost_owner(&self) -> bool {
+        match self {
+            Self::Consumed | Self::MissingInput | Self::MissingTokenizer => true,
+            Self::Kernel(KernelError::Consumed) => true,
+            Self::Prologue(error) => error.lost_owner(),
+            _ => false,
+        }
+    }
+}
 impl std::fmt::Debug for HeadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

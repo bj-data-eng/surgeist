@@ -325,7 +325,7 @@ impl HtmlParseFailure {
     pub fn at_stop(&self) -> Option<&ParseUsage> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.at_stop(),
-            FailureStorage::Ordinary(o) => Some(o.at_stop()),
+            FailureStorage::Ordinary(o) => o.at_stop(),
             FailureStorage::FragmentInitialization(o) => o.failure().map(|f| f.at_stop()),
             FailureStorage::Fragment(o) => Some(o.at_stop()),
             FailureStorage::OrdinaryFrozen(o) => o.parts.at_stop(),

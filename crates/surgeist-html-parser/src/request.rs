@@ -102,32 +102,58 @@ enum DocumentContext {
     },
 }
 
-/// The supplied observation banks. They are edited only while the caller
-/// builds the request, and then shared once with execution, so no edit can
-/// ever need to copy a bank that execution also holds.
-#[derive(Debug, Default)]
-struct InputBank {
-    building: Option<crate::construction::associated::Inputs>,
-    shared: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+/// The supplied observation banks, in exactly one of two states. They are
+/// edited only while the caller builds the request, and then shared once with
+/// execution, so no edit can ever need to copy a bank that execution also holds
+/// and a request can never carry both an editable and a shared bank.
+#[derive(Debug)]
+enum InputBank {
+    Building(Option<crate::construction::associated::Inputs>),
+    Shared(Option<std::sync::Arc<crate::construction::associated::Inputs>>),
+}
+impl Default for InputBank {
+    fn default() -> Self {
+        Self::Building(None)
+    }
 }
 impl InputBank {
-    fn edit(&mut self) -> &mut crate::construction::associated::Inputs {
-        self.building.get_or_insert_with(Default::default)
+    /// Applies a builder's edit. The builders consume a request, and a parse
+    /// owner never hands a request back to a builder, so only a building bank
+    /// is edited here. A shared bank that nothing else holds reopens for the
+    /// edit; one that execution also holds is left as it is.
+    fn edited(self, edit: impl FnOnce(&mut crate::construction::associated::Inputs)) -> Self {
+        let mut bank = match self {
+            Self::Building(bank) => bank.unwrap_or_default(),
+            Self::Shared(None) => Default::default(),
+            Self::Shared(Some(shared)) => match std::sync::Arc::try_unwrap(shared) {
+                Ok(bank) => bank,
+                Err(shared) => return Self::Shared(Some(shared)),
+            },
+        };
+        edit(&mut bank);
+        Self::Building(Some(bank))
     }
-    fn share(&mut self) {
-        if let Some(bank) = self.building.take() {
-            self.shared = Some(std::sync::Arc::new(bank));
-        }
+    /// Ends editing: a supplied bank becomes the one execution shares.
+    fn share(self) -> Self {
+        Self::Shared(self.into_shared())
     }
     fn inputs(&self) -> Option<&crate::construction::associated::Inputs> {
-        self.building.as_ref().or(self.shared.as_deref())
+        match self {
+            Self::Building(bank) => bank.as_ref(),
+            Self::Shared(bank) => bank.as_deref(),
+        }
     }
     fn shared(&self) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
-        self.shared.as_ref()
+        match self {
+            Self::Building(_) => None,
+            Self::Shared(bank) => bank.as_ref(),
+        }
     }
     fn into_shared(self) -> Option<std::sync::Arc<crate::construction::associated::Inputs>> {
-        self.shared
-            .or_else(|| self.building.map(std::sync::Arc::new))
+        match self {
+            Self::Building(bank) => bank.map(std::sync::Arc::new),
+            Self::Shared(bank) => bank,
+        }
     }
 }
 
@@ -289,7 +315,7 @@ impl HtmlDocumentParseRequest {
         mut self,
         facts: Vec<surgeist_html_semantics::HtmlEncodingUrlParseFacts>,
     ) -> Self {
-        self.associated_mut().encoding_urls = facts;
+        self.edit_associated(|bank| bank.encoding_urls = facts);
         self
     }
     /// Attests the actual default URL/encoding context of this parse's separately
@@ -299,11 +325,11 @@ impl HtmlDocumentParseRequest {
         facts: crate::HtmlParseBaseFacts,
     ) -> Result<Self, HtmlParseRequestError> {
         validate_constructor_base_facts(&facts)?;
-        self.associated_mut().template = Some(facts);
+        self.edit_associated(|bank| bank.template = Some(facts));
         Ok(self)
     }
-    fn associated_mut(&mut self) -> &mut crate::construction::associated::Inputs {
-        self.associated.edit()
+    fn edit_associated(&mut self, edit: impl FnOnce(&mut crate::construction::associated::Inputs)) {
+        self.associated = std::mem::take(&mut self.associated).edited(edit);
     }
     pub(crate) fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
         self.associated.inputs()
@@ -315,11 +341,20 @@ impl HtmlDocumentParseRequest {
     ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
         self.associated.shared()
     }
+    /// A test entry borrows its request, so it cannot share the banks for it
+    /// and would skip supplied inputs without a trace; it refuses such a request.
+    #[cfg(test)]
+    pub(crate) fn require_inputs_reach_execution(&self) {
+        assert!(
+            self.associated.inputs().is_none() || self.associated.shared().is_some(),
+            "a borrowed test entry needs a request whose input banks are shared"
+        );
+    }
     /// Ends the caller's editing of the supplied banks and shares them with
     /// execution. No builder is reachable afterwards: builders consume the
     /// request, and only the parse owners call this.
     pub(crate) fn share_associated_inputs(mut self) -> Self {
-        self.associated.share();
+        self.associated = std::mem::take(&mut self.associated).share();
         self
     }
     /// Exact supplied source, including its immutable identity and coordinates.
@@ -521,7 +556,7 @@ impl HtmlFragmentParseRequest {
         mut self,
         facts: Vec<surgeist_html_semantics::HtmlEncodingUrlParseFacts>,
     ) -> Self {
-        self.associated_mut().encoding_urls = facts;
+        self.edit_associated(|bank| bank.encoding_urls = facts);
         self
     }
     /// Sealed immutable semantic query results for independently qualified
@@ -530,7 +565,7 @@ impl HtmlFragmentParseRequest {
         mut self,
         contexts: Vec<surgeist_html_semantics::HtmlDocumentEncodingUrlContext>,
     ) -> Self {
-        self.associated_mut().captured = contexts;
+        self.edit_associated(|bank| bank.captured = contexts);
         self
     }
     /// Actual external observations for this operation's auxiliary §13.4
@@ -540,7 +575,7 @@ impl HtmlFragmentParseRequest {
         facts: crate::HtmlParseBaseFacts,
     ) -> Result<Self, HtmlParseRequestError> {
         validate_constructor_base_facts(&facts)?;
-        self.associated_mut().parser_document = Some(facts);
+        self.edit_associated(|bank| bank.parser_document = Some(facts));
         Ok(self)
     }
     /// Actual observations for separately source-created inert template owners;
@@ -550,11 +585,11 @@ impl HtmlFragmentParseRequest {
         facts: crate::HtmlParseBaseFacts,
     ) -> Result<Self, HtmlParseRequestError> {
         validate_constructor_base_facts(&facts)?;
-        self.associated_mut().template = Some(facts);
+        self.edit_associated(|bank| bank.template = Some(facts));
         Ok(self)
     }
-    fn associated_mut(&mut self) -> &mut crate::construction::associated::Inputs {
-        self.associated.edit()
+    fn edit_associated(&mut self, edit: impl FnOnce(&mut crate::construction::associated::Inputs)) {
+        self.associated = std::mem::take(&mut self.associated).edited(edit);
     }
     pub(crate) fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
         self.associated.inputs()
@@ -566,11 +601,20 @@ impl HtmlFragmentParseRequest {
     ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
         self.associated.shared()
     }
+    /// A test entry borrows its request, so it cannot share the banks for it
+    /// and would skip supplied inputs without a trace; it refuses such a request.
+    #[cfg(test)]
+    pub(crate) fn require_inputs_reach_execution(&self) {
+        assert!(
+            self.associated.inputs().is_none() || self.associated.shared().is_some(),
+            "a borrowed test entry needs a request whose input banks are shared"
+        );
+    }
     /// Ends the caller's editing of the supplied banks and shares them with
     /// execution. No builder is reachable afterwards: builders consume the
     /// request, and only the parse owners call this.
     pub(crate) fn share_associated_inputs(mut self) -> Self {
-        self.associated.share();
+        self.associated = std::mem::take(&mut self.associated).share();
         self
     }
     pub fn with_base_facts(
@@ -763,5 +807,47 @@ mod tests {
         assert_eq!(control.usage().work(WorkCategory::RecordVisit), 1);
         assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 0);
         assert_eq!(control.stop(), None);
+    }
+
+    #[test]
+    fn input_banks_are_editable_until_shared_and_visible_through_one_view_each() {
+        let none = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1));
+        assert!(none.associated_inputs().is_none());
+        assert!(none.shared_associated_inputs().is_none());
+        let none = none.share_associated_inputs();
+        assert!(none.associated_inputs().is_none());
+        assert!(none.shared_associated_inputs().is_none());
+
+        let supplied = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1))
+            .with_encoding_url_facts(Vec::new());
+        // Being built, the bank is editable and not yet shared with execution.
+        assert!(supplied.associated_inputs().is_some());
+        assert!(supplied.shared_associated_inputs().is_none());
+        let shared = supplied.share_associated_inputs();
+        let seen = shared.shared_associated_inputs().unwrap();
+        assert!(std::ptr::eq(
+            std::sync::Arc::as_ptr(seen),
+            shared.associated_inputs().unwrap()
+        ));
+    }
+
+    #[test]
+    fn an_edit_after_sharing_reopens_a_bank_nothing_else_holds_and_spares_one_execution_holds() {
+        let shared = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1))
+            .with_encoding_url_facts(Vec::new())
+            .share_associated_inputs();
+        // Nothing else holds the bank, so the edit reopens it without a copy.
+        let reopened = shared.with_encoding_url_facts(Vec::new());
+        assert!(reopened.shared_associated_inputs().is_none());
+        assert!(reopened.associated_inputs().is_some());
+
+        let shared = reopened.share_associated_inputs();
+        let held = std::sync::Arc::clone(shared.shared_associated_inputs().unwrap());
+        // Execution holds the bank: the edit is not applied and no copy is made.
+        let unchanged = shared.with_encoding_url_facts(Vec::new());
+        assert!(std::sync::Arc::ptr_eq(
+            unchanged.shared_associated_inputs().unwrap(),
+            &held
+        ));
     }
 }
