@@ -113,7 +113,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             head: None,
             lexical: None,
             failed_evidence: None,
-            failure_usage: None,
+            evidence_taken: false,
         };
         let phase = match Self::prepare(
             &mut driver,
@@ -321,11 +321,11 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             return Ok(());
         }
         let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
-        if driver.failure_usage.is_none() {
-            let Some(at_stop) = driver.control.first_stop_usage().cloned() else {
+        if !driver.evidence_taken {
+            if driver.control.first_stop_usage().is_none() {
                 return Err(StandaloneError::latch_invariant(&mut driver.control));
-            };
-            driver.failure_usage = Some(at_stop);
+            }
+            driver.evidence_taken = true;
             if let Some(prologue) = &mut driver.prologue
                 && let Some(kernel) = &mut prologue.kernel
             {

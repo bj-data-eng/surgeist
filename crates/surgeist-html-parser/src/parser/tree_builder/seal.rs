@@ -358,19 +358,20 @@ pub(super) const fn initialization_qualification_bytes() -> usize {
 }
 
 /// Exact physical transfer layouts are prepaid by the initialization owner.
-/// Three cleared owning options, five detached fields, four request fields and
-/// two joined fields: every terminal move is fixed and needs no new admission.
+/// One cleared owning option (the controller's source binding), five detached
+/// fields, four request fields and two joined fields: every terminal move is
+/// fixed and needs no new admission. The failure moves between the stopped
+/// driver, the cleaned failure and the detached failure by value, so no option
+/// slot is cleared for them.
 pub(super) const fn terminal_transfer_layout() -> (usize, usize) {
     const {
         use std::mem::size_of;
         (
             size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-                + size_of::<Option<super::terminal::FailedStandaloneDocument>>()
                 + size_of::<super::terminal::DetachedStandaloneFailure>()
-                + size_of::<Option<super::terminal::DetachedStandaloneFailure>>()
                 + size_of::<DocumentRequestParts>()
                 + size_of::<OwnedOrdinaryFailure>(),
-            3 + 5 + 4 + 2,
+            1 + 5 + 4 + 2,
         )
     }
 }

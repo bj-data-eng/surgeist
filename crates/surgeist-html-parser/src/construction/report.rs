@@ -37,6 +37,9 @@ pub(crate) enum UnboundRow {
     LookupRegistry,
     NodeDocument,
     SvgScript,
+    /// Only a contextual report that allows declarative shadow roots has these
+    /// rows, so [`Self::ALL`] leaves it out.
+    Shadow,
 }
 #[cfg(test)]
 impl UnboundRow {
@@ -66,6 +69,7 @@ impl UnboundRow {
             Self::Template => "<!doctype html><template>a</template>",
             Self::LookupRegistry | Self::NodeDocument => "<!doctype html><p>a",
             Self::SvgScript => "<!doctype html><svg><script/></svg>",
+            Self::Shadow => "<template shadowrootmode=open><p>B</p></template>",
         }
     }
     /// The node a row of this kind is bound to, if it is one.
@@ -81,7 +85,8 @@ impl UnboundRow {
             | (Self::Template, RetainedPayload::Template { node, .. })
             | (Self::LookupRegistry, RetainedPayload::LookupRegistry { node, .. })
             | (Self::NodeDocument, RetainedPayload::NodeDocument { node, .. })
-            | (Self::SvgScript, RetainedPayload::SvgScript { node, .. }) => Some(node),
+            | (Self::SvgScript, RetainedPayload::SvgScript { node, .. })
+            | (Self::Shadow, RetainedPayload::Shadow { root: node, .. }) => Some(node),
             _ => None,
         }
     }

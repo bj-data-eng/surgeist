@@ -73,7 +73,8 @@ pub(crate) struct ContextFragmentDriver<'source> {
     control: ParseControl,
     head: Option<HeadStage<'source>>,
     failed_evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
-    failure_usage: Option<super::super::control::ParseUsage>,
+    /// Whether the failure evidence has been taken from the session.
+    evidence_taken: bool,
 }
 
 /// Completion keeps the actual fragment execution owner intact. It neither
@@ -336,8 +337,8 @@ impl<'source> ContextFragmentDriver<'source> {
             .stopped()
             .map(|(stop, usage)| (stop, usage.clone()))
             .ok_or(FragmentExecutionError::Consumed)?;
-        if self.failure_usage.is_none() {
-            self.failure_usage = Some(at_stop.clone());
+        if !self.evidence_taken {
+            self.evidence_taken = true;
             self.failed_evidence = self
                 .head
                 .as_mut()
@@ -507,10 +508,9 @@ impl FrozenContextFragmentParts {
             const {
                 size_of::<ownership::SealedFragmentConstruction>()
                     + size_of::<crate::request::FragmentRequestParts>()
-                    + size_of::<Option<Self>>()
                     + size_of::<super::super::control::ParseUsage>()
             },
-            11,
+            10,
             &mut self.control,
         )?;
         self.control.checkpoint()?;
@@ -631,8 +631,8 @@ impl<'source> CompletedContextFragment<'source> {
             .stopped()
             .map(|(stop, usage)| (stop, usage.clone()))
             .ok_or(FragmentExecutionError::Consumed)?;
-        if driver.failure_usage.is_none() {
-            driver.failure_usage = Some(at_stop.clone());
+        if !driver.evidence_taken {
+            driver.evidence_taken = true;
             driver.failed_evidence = frozen.take_stopped_evidence(&mut driver.control)?;
         }
         if let Some(head) = &mut driver.head {

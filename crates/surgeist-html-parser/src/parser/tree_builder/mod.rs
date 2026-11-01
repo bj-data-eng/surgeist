@@ -1134,7 +1134,8 @@ pub(crate) struct StandaloneDocumentDriver<'source> {
     head: Option<head::HeadStage<'source>>,
     lexical: Option<OwnedVec<super::tokenizer::token::Event>>,
     failed_evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
-    failure_usage: Option<super::control::ParseUsage>,
+    /// Whether the failure evidence has been taken from the session.
+    evidence_taken: bool,
 }
 impl<'source> StandaloneDocumentDriver<'source> {
     pub(super) fn enable_meta_csp(&mut self, initial_base: bool) -> Result<(), StandaloneError> {

@@ -29,7 +29,7 @@ impl<'source> FragmentEntry<'source> {
             control: ParseControl::new(*request.limits(), request.cancellation().clone()),
             head: None,
             failed_evidence: None,
-            failure_usage: None,
+            evidence_taken: false,
         };
         let mut session = None;
         let mut before = None;
@@ -223,9 +223,7 @@ impl<'source> FragmentEntry<'source> {
         if driver.control.stop().is_none() {
             return Err(FragmentExecutionError::Consumed);
         }
-        if driver.failure_usage.is_none() {
-            driver.failure_usage = driver.control.first_stop_usage().cloned();
-        }
+        driver.evidence_taken = true;
         // A refused partition preserves the actual evidence owner. Snapshot
         // presence is not evidence that that separate move already completed.
         if driver.failed_evidence.is_none() {
@@ -591,35 +589,33 @@ const fn initialization_transfer_layout() -> (usize, usize) {
 }
 /// Ready execution also retains the original six-field failure receiver and
 /// two actual usage snapshots before the first token pull.
-/// Active failure clears its actual binding, cleaned failure and supplied
-/// error slots (3), writes seven carrier fields, then joins the original request.
+/// Active failure clears its actual binding slot (1), writes seven carrier
+/// fields, then joins the original request. The cleaned failure moves into the
+/// carrier by value, so no slot is cleared for it or for an error.
 const fn execution_transfer_layout() -> (usize, usize) {
     const {
         let (join_bytes, join_writes) = request_join_layout();
         (
             size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-                + size_of::<Option<FailedContextFragment>>()
-                + size_of::<Option<FragmentExecutionError>>()
                 + size_of::<StoppedFragmentConstruction>()
                 + 2 * size_of::<Option<StoppedFragmentConstruction>>()
                 + join_bytes,
-            3 + 7 + 2 + join_writes,
+            1 + 7 + 2 + join_writes,
         )
     }
 }
-/// A frozen failure has its own actual Option receiver, not an active failed
-/// execution receiver. This envelope is admitted before freezing that owner.
+/// A frozen failure is cleaned and detached into the carrier by value, as an
+/// active failed execution is. This envelope is admitted before freezing that
+/// owner and clears only the controller's source binding slot.
 pub(super) const fn frozen_failure_layout() -> (usize, usize) {
     const {
         let (join_bytes, join_writes) = request_join_layout();
         (
             size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-                + size_of::<Option<FrozenContextFragmentParts>>()
-                + size_of::<Option<FragmentExecutionError>>()
                 + size_of::<StoppedFragmentConstruction>()
                 + 2 * size_of::<Option<StoppedFragmentConstruction>>()
                 + join_bytes,
-            3 + 7 + 2 + join_writes,
+            1 + 7 + 2 + join_writes,
         )
     }
 }

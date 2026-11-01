@@ -637,11 +637,10 @@ impl FrozenStandaloneParts {
         write(
             const {
                 size_of::<super::seal::SealedOrdinaryConstruction>()
-                    + size_of::<Option<Self>>()
                     + size_of::<crate::request::DocumentRequestParts>()
                     + size_of::<super::super::control::ParseUsage>()
             },
-            8,
+            7,
             &mut self.control,
         )?;
         self.control.checkpoint()?;
@@ -865,8 +864,8 @@ impl<'source> StandaloneDocumentDriver<'source> {
             .ok_or(StandaloneError::Consumed)?;
         // Fixed snapshots and moves use the envelope admitted before first pull.
         // No checkpoint, allocation, variable copy or error append follows stop.
-        if self.failure_usage.is_none() {
-            self.failure_usage = Some(at_stop.clone());
+        if !self.evidence_taken {
+            self.evidence_taken = true;
             let session = if let Some(head) = &mut self.head {
                 &mut head
                     .state

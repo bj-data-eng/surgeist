@@ -786,6 +786,27 @@ mod tests {
     }
 
     #[test]
+    fn a_shadow_row_left_bound_to_no_node_is_not_published() {
+        // Shadow rows exist only in a contextual report that allows them.
+        let kind = crate::construction::report::UnboundRow::Shadow;
+        let mut input = Some(fragment(kind.literal(), true));
+        assert!(
+            input
+                .as_mut()
+                .unwrap()
+                .parts
+                .arena
+                .as_mut()
+                .unwrap()
+                .unbind_row_for_test(kind)
+        );
+        assert!(ImmutableParseReport::take_fragment(&mut input).is_err());
+        let kept = input.as_mut().expect("the seal is kept");
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
+    #[test]
     fn a_document_naming_a_policy_row_the_report_lacks_is_not_published() {
         assert_unpublishable(
             "<!doctype html><p>a",

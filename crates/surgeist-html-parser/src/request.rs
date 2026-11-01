@@ -840,7 +840,7 @@ mod tests {
     }
 
     #[test]
-    fn an_edit_after_sharing_reopens_a_bank_nothing_else_holds_without_a_copy() {
+    fn an_edit_after_sharing_reopens_a_bank_nothing_else_holds() {
         let shared = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1))
             .with_encoding_url_facts(Vec::new())
             .share_associated_inputs();
