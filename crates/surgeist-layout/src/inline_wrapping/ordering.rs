@@ -461,7 +461,7 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
                     for &owner in &owners {
                         let child = admitted.scope_keys[owner]
                             .ok_or(WrappingScopeError::InvalidGapAnchor)?;
-                        if !proof.captured_empty_leaf(child)
+                        if !proof.captured_complete_normal(child)
                             || proof.data.parents[child] != Some(parent)
                         {
                             return Err(WrappingScopeError::InvalidGapAnchor);
@@ -548,31 +548,35 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
                 }
             };
             for &owner in &owners {
-                let Some(row) = data.native_box_row(owner) else {
-                    let admitted = admission
-                        .as_ref()
-                        .ok_or(WrappingScopeError::InvalidGapAnchor)?;
-                    let key =
-                        admitted.scope_keys[owner].ok_or(WrappingScopeError::IncompleteFamily)?;
-                    proof
-                        .ok_or(WrappingScopeError::MissingChildOrder)?
-                        .validate_attachment(
-                            key,
-                            admitted.root,
-                            data.raw_frontier(anchor, body)?,
-                        )?;
-                    continue;
-                };
-                let range = &data.bodies[body].range;
-                if row.range.start >= range.end || range.start >= row.range.end {
-                    return Err(WrappingScopeError::InvalidGapAnchor);
-                }
                 if data
                     .groups
                     .iter()
                     .any(|group| group.body == body && group.owners.contains(&owner))
                 {
                     return Err(WrappingScopeError::ConflictingGap);
+                }
+                let Some(row) = data.native_box_row(owner) else {
+                    let admitted = admission
+                        .as_ref()
+                        .ok_or(WrappingScopeError::InvalidGapAnchor)?;
+                    let key =
+                        admitted.scope_keys[owner].ok_or(WrappingScopeError::IncompleteFamily)?;
+                    let proof = proof.ok_or(WrappingScopeError::MissingChildOrder)?;
+                    if !(proof.captured_empty_leaf(key)
+                        || data.unique_empty_raw_frontier() && proof.captured_complete_normal(key))
+                    {
+                        return Err(WrappingScopeError::UnsupportedIncidence);
+                    }
+                    proof.validate_attachment(
+                        key,
+                        admitted.root,
+                        data.raw_frontier(anchor, body)?,
+                    )?;
+                    continue;
+                };
+                let range = &data.bodies[body].range;
+                if row.range.start >= range.end || range.start >= row.range.end {
+                    return Err(WrappingScopeError::InvalidGapAnchor);
                 }
             }
             data.groups
@@ -1390,6 +1394,7 @@ impl NativeOrderingData {
         ports.resize(self.slots.len(), None);
         let mut all = buffer(self.slots.len())?;
         all.extend(0..self.slots.len());
+        let mut group_bounds: Vec<Option<(usize, usize)>> = Vec::new();
         for (body, actual) in self.bodies.iter().enumerate() {
             let begin = order.len();
             let selection = NativeOrderingSelection {
@@ -1437,6 +1442,105 @@ impl NativeOrderingData {
                         }
                         tied.swap(j - 1, j);
                         j -= 1;
+                    }
+                }
+                if tied.len() > 1 {
+                    // Insertion established each adjacent precedence. Certify
+                    // every declared unrelated-owner constraint as well: an
+                    // inverted nonadjacent constraint closes that chain into
+                    // a cycle. Bounds describe actual descendant leaf rows,
+                    // including constraints inherited from named ancestors.
+                    for group in self
+                        .groups
+                        .iter()
+                        .filter(|group| group.body == body && group.owners.len() > 1)
+                    {
+                        let actual_gap = match self.project_anchor(
+                            group.anchor,
+                            body,
+                            &selection,
+                            &actual.visual,
+                        ) {
+                            Ok(gap) => gap,
+                            Err(WrappingScopeError::GapOutsideSelection) => continue,
+                            Err(error) => return Err(error),
+                        };
+                        if actual_gap != gap {
+                            continue;
+                        }
+                        // A pure ancestry chain supplies no unrelated-owner
+                        // precedence and needs no bounds scratch or pair walk.
+                        let mut deepest = admission.scope_keys[group.owners[0]]
+                            .ok_or(WrappingScopeError::IncompleteFamily)?;
+                        let mut constrained = false;
+                        for &owner in &group.owners[1..] {
+                            let key = admission.scope_keys[owner]
+                                .ok_or(WrappingScopeError::IncompleteFamily)?;
+                            if proof_ancestor(&proof.data.parents, admission.root, deepest, key)? {
+                                deepest = key;
+                            } else if !proof_ancestor(
+                                &proof.data.parents,
+                                admission.root,
+                                key,
+                                deepest,
+                            )? {
+                                constrained = true;
+                                break;
+                            }
+                        }
+                        if !constrained {
+                            continue;
+                        }
+                        group_bounds.clear();
+                        group_bounds
+                            .try_reserve(group.owners.len())
+                            .map_err(|_| WrappingScopeError::Allocation)?;
+                        group_bounds.resize(group.owners.len(), None);
+                        for (index, &owner) in group.owners.iter().enumerate() {
+                            let key = admission.scope_keys[owner]
+                                .ok_or(WrappingScopeError::IncompleteFamily)?;
+                            for (position, &empty) in tied.iter().enumerate() {
+                                let child = empties[empty]
+                                    .owner
+                                    .ok_or(WrappingScopeError::InconsistentIncidence)?;
+                                let child = admission.scope_keys[child]
+                                    .ok_or(WrappingScopeError::IncompleteFamily)?;
+                                if proof_ancestor(&proof.data.parents, admission.root, key, child)?
+                                {
+                                    group_bounds[index] =
+                                        Some(group_bounds[index].map_or(
+                                            (position, position),
+                                            |(first, last)| {
+                                                (first.min(position), last.max(position))
+                                            },
+                                        ));
+                                }
+                            }
+                        }
+                        for (left, bounds) in group_bounds.iter().copied().enumerate() {
+                            let Some((_, last)) = bounds else {
+                                continue;
+                            };
+                            for (right, bounds) in
+                                group_bounds.iter().copied().enumerate().skip(left + 1)
+                            {
+                                let Some((first, _)) = bounds else {
+                                    continue;
+                                };
+                                if last < first {
+                                    continue;
+                                }
+                                let a = admission.scope_keys[group.owners[left]]
+                                    .ok_or(WrappingScopeError::IncompleteFamily)?;
+                                let b = admission.scope_keys[group.owners[right]]
+                                    .ok_or(WrappingScopeError::IncompleteFamily)?;
+                                if !proof_ancestor(&proof.data.parents, admission.root, a, b)?
+                                    && !proof_ancestor(&proof.data.parents, admission.root, b, a)?
+                                {
+                                    return Err(WrappingScopeError::CyclicGap);
+                                }
+                            }
+                        }
                     }
                 }
                 for i in tied {

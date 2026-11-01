@@ -221,7 +221,7 @@ impl<Node: Copy + Eq> AdmittedGeneratedBoxProof<Node> {
             scope_keys,
         })
     }
-    pub(super) fn captured_empty_leaf(&self, key: usize) -> bool {
+    pub(super) fn captured_complete_normal(&self, key: usize) -> bool {
         self.captured_orders_validated
             && matches!(
                 self.boxes[key].box_,
@@ -229,10 +229,17 @@ impl<Node: Copy + Eq> AdmittedGeneratedBoxProof<Node> {
             )
             && self.data.orders.iter().any(|order| {
                 order.parent == key
-                    && order.children.is_empty()
                     && order.prefix == ChildOrderCompleteness::Complete
                     && order.suffix == ChildOrderCompleteness::Complete
             })
+    }
+    pub(super) fn captured_empty_leaf(&self, key: usize) -> bool {
+        self.captured_complete_normal(key)
+            && self
+                .data
+                .orders
+                .iter()
+                .any(|order| order.parent == key && order.children.is_empty())
     }
 
     /// Authenticate an attached source cut against the original generated order.
@@ -243,7 +250,7 @@ impl<Node: Copy + Eq> AdmittedGeneratedBoxProof<Node> {
         root: usize,
         cut: usize,
     ) -> Result<(), WrappingScopeError> {
-        if !self.captured_empty_leaf(key) {
+        if !self.captured_complete_normal(key) {
             return Err(WrappingScopeError::UnsupportedIncidence);
         }
         let mut child = key;
