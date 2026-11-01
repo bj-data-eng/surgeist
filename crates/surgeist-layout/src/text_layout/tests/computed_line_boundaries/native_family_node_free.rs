@@ -78,6 +78,8 @@ enum Front {
 
 #[derive(Clone, Copy)]
 enum Attachment {
+    DuplicateStart,
+    StartAndEmptyParent,
     ExplicitStart,
     EmptyParentRoot,
     UniqueEmptyRaw,
@@ -230,6 +232,84 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
             });
             "the actual ordering-empty formatter parent must authenticate its real node-free captured Inline attachment"
         }
+        Attachment::DuplicateStart | Attachment::StartAndEmptyParent => {
+            let first = crate::InlineGapGroupInput {
+                anchor: crate::InlineGapAnchor::Formatter {
+                    node: 0,
+                    edge: crate::InlineFormatterEdge::Start,
+                },
+                boxes: vec![crate::InlineBoxRef::Scope(scope.clone())],
+            };
+            demand.gaps.push(first.clone());
+            let valid = construct(demand.clone())
+                .expect("one genuine FormatterStart attachment for this child/body is valid");
+            assert!(!valid.associations.has_prepared_execution(0));
+            let valid_batch = compute_layout_with_flow(
+                &valid,
+                0,
+                request_at(AvailableOf::definite(S::from_f64(40.0))),
+            )
+            .unwrap();
+            assert_eq!(valid_batch.final_entries(), prior.final_entries());
+            assert!(valid_batch.placed_text().is_empty());
+            assert_eq!(valid_batch.native_inline_box_pieces().count(), 0);
+            let valid_families = valid_batch.native_inline_box_families().collect::<Vec<_>>();
+            assert_eq!(valid_families.len(), 1);
+            assert_eq!(
+                valid_families[0]
+                    .fragments()
+                    .filter(|fragment| fragment.owner()
+                        == crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(
+                            scope.clone()
+                        )))
+                    .count(),
+                1
+            );
+            let second = match attachment {
+                Attachment::DuplicateStart => first,
+                Attachment::StartAndEmptyParent => crate::InlineGapGroupInput {
+                    anchor: crate::InlineGapAnchor::EmptyParent(crate::GeneratedBoxRef::Node(0)),
+                    boxes: vec![crate::InlineBoxRef::Scope(scope.clone())],
+                },
+                _ => unreachable!("this branch contains only the two duplicate nominations"),
+            };
+            demand.gaps.push(second);
+            let Err(error) = construct(demand) else {
+                panic!("one authentic child/body cannot belong to two explicit gap groups");
+            };
+            assert!(
+                matches!(
+                    error.kind(),
+                    LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
+                        crate::WrappingScopeError::ConflictingGap
+                    ))
+                ),
+                "{error:?}"
+            );
+            let replay = compute_layout_with_flow(
+                &baseline,
+                0,
+                request_at(AvailableOf::definite(S::from_f64(40.0))),
+            )
+            .unwrap();
+            assert_eq!(replay.final_entries(), prior.final_entries());
+            assert!(prior.placed_text().is_empty());
+            assert!(replay.placed_text().is_empty());
+            assert_eq!(prior.native_inline_box_families().count(), 0);
+            assert_eq!(replay.native_inline_box_families().count(), 0);
+            assert_eq!(valid_batch.native_inline_box_families().count(), 1);
+            assert_eq!(
+                valid_families[0]
+                    .fragments()
+                    .filter(|fragment| fragment.owner()
+                        == crate::GeneratedBoxRef::Inline(crate::InlineBoxRef::Scope(
+                            scope.clone()
+                        )))
+                    .count(),
+                1
+            );
+            return;
+        }
         Attachment::UniqueEmptyRaw => {
             assert!(demand.gaps.is_empty());
             "an actual unscheduled node-free captured Inline at the unique empty raw frontier must retain native family identity without an explicit gap"
@@ -333,3 +413,39 @@ fn native_family_attaches_to_empty_formatter_parent_source_receipt_f64() {
 
 #[path = "native_family_node_free/nested_empty_parent.rs"]
 mod nested_empty_parent;
+
+#[path = "native_family_node_free/ancestry_cycle.rs"]
+mod ancestry_cycle;
+
+#[test]
+fn native_family_duplicate_node_free_gap_refuses_direct_f32() {
+    node_free_captured_inline_family::<f32>(Front::Direct, Attachment::DuplicateStart);
+}
+#[test]
+fn native_family_duplicate_node_free_gap_refuses_direct_f64() {
+    node_free_captured_inline_family::<f64>(Front::Direct, Attachment::DuplicateStart);
+}
+#[test]
+fn native_family_duplicate_node_free_gap_refuses_source_receipt_f32() {
+    node_free_captured_inline_family::<f32>(Front::SourceReceipt, Attachment::DuplicateStart);
+}
+#[test]
+fn native_family_duplicate_node_free_gap_refuses_source_receipt_f64() {
+    node_free_captured_inline_family::<f64>(Front::SourceReceipt, Attachment::DuplicateStart);
+}
+#[test]
+fn native_family_overlapping_node_free_gap_refuses_direct_f32() {
+    node_free_captured_inline_family::<f32>(Front::Direct, Attachment::StartAndEmptyParent);
+}
+#[test]
+fn native_family_overlapping_node_free_gap_refuses_direct_f64() {
+    node_free_captured_inline_family::<f64>(Front::Direct, Attachment::StartAndEmptyParent);
+}
+#[test]
+fn native_family_overlapping_node_free_gap_refuses_source_receipt_f32() {
+    node_free_captured_inline_family::<f32>(Front::SourceReceipt, Attachment::StartAndEmptyParent);
+}
+#[test]
+fn native_family_overlapping_node_free_gap_refuses_source_receipt_f64() {
+    node_free_captured_inline_family::<f64>(Front::SourceReceipt, Attachment::StartAndEmptyParent);
+}

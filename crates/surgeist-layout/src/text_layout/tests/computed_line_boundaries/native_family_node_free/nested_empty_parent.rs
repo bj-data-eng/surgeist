@@ -3,6 +3,9 @@ use super::*;
 
 #[derive(Clone, Copy)]
 enum NestedNomination {
+    EmptyRootParentAndChild,
+    ParentAndChild,
+    ParentOnly,
     DirectParent,
     SkippedParent,
 }
@@ -219,16 +222,41 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
     demand
         .native_inline_boxes
         .push(crate::NativeInlineBoxFamilyInput { formatter: 0 });
-    let anchor_parent = match nomination {
-        NestedNomination::DirectParent => parent_ref.clone(),
-        NestedNomination::SkippedParent => crate::GeneratedBoxRef::Node(0),
-    };
-    demand.gaps.push(crate::InlineGapGroupInput {
-        anchor: crate::InlineGapAnchor::EmptyParent(anchor_parent),
-        boxes: vec![crate::InlineBoxRef::Scope(child_scope.clone())],
-    });
+    if matches!(
+        nomination,
+        NestedNomination::ParentAndChild
+            | NestedNomination::ParentOnly
+            | NestedNomination::EmptyRootParentAndChild
+    ) {
+        let anchor = if matches!(nomination, NestedNomination::EmptyRootParentAndChild) {
+            crate::InlineGapAnchor::EmptyParent(crate::GeneratedBoxRef::Node(0))
+        } else {
+            crate::InlineGapAnchor::Formatter {
+                node: 0,
+                edge: crate::InlineFormatterEdge::Start,
+            }
+        };
+        demand.gaps.push(crate::InlineGapGroupInput {
+            anchor,
+            boxes: vec![crate::InlineBoxRef::Scope(parent.clone())],
+        });
+    }
+    if !matches!(nomination, NestedNomination::ParentOnly) {
+        let anchor_parent = if matches!(nomination, NestedNomination::SkippedParent) {
+            crate::GeneratedBoxRef::Node(0)
+        } else {
+            parent_ref.clone()
+        };
+        demand.gaps.push(crate::InlineGapGroupInput {
+            anchor: crate::InlineGapAnchor::EmptyParent(anchor_parent),
+            boxes: vec![crate::InlineBoxRef::Scope(child_scope.clone())],
+        });
+    }
     match nomination {
-        NestedNomination::DirectParent => {
+        NestedNomination::DirectParent
+        | NestedNomination::ParentAndChild
+        | NestedNomination::ParentOnly
+        | NestedNomination::EmptyRootParentAndChild => {
             let demanded = construct(demand).expect(
                 "the actual immediate ordering-empty captured parent P authenticates child C",
             );
@@ -330,4 +358,60 @@ fn native_family_skipped_empty_parent_refuses_source_receipt_f32() {
 #[test]
 fn native_family_skipped_empty_parent_refuses_source_receipt_f64() {
     nested_node_free_empty_parent::<f64>(Front::SourceReceipt, NestedNomination::SkippedParent);
+}
+
+#[test]
+fn native_family_explicit_empty_ancestor_and_child_direct_f32() {
+    nested_node_free_empty_parent::<f32>(Front::Direct, NestedNomination::ParentAndChild);
+}
+#[test]
+fn native_family_explicit_empty_ancestor_and_child_direct_f64() {
+    nested_node_free_empty_parent::<f64>(Front::Direct, NestedNomination::ParentAndChild);
+}
+#[test]
+fn native_family_explicit_empty_ancestor_and_child_source_receipt_f32() {
+    nested_node_free_empty_parent::<f32>(Front::SourceReceipt, NestedNomination::ParentAndChild);
+}
+#[test]
+fn native_family_explicit_empty_ancestor_and_child_source_receipt_f64() {
+    nested_node_free_empty_parent::<f64>(Front::SourceReceipt, NestedNomination::ParentAndChild);
+}
+#[test]
+fn native_family_explicit_empty_ancestor_with_inferred_child_direct_f32() {
+    nested_node_free_empty_parent::<f32>(Front::Direct, NestedNomination::ParentOnly);
+}
+#[test]
+fn native_family_explicit_empty_ancestor_with_inferred_child_direct_f64() {
+    nested_node_free_empty_parent::<f64>(Front::Direct, NestedNomination::ParentOnly);
+}
+#[test]
+fn native_family_explicit_empty_ancestor_with_inferred_child_source_receipt_f32() {
+    nested_node_free_empty_parent::<f32>(Front::SourceReceipt, NestedNomination::ParentOnly);
+}
+#[test]
+fn native_family_explicit_empty_ancestor_with_inferred_child_source_receipt_f64() {
+    nested_node_free_empty_parent::<f64>(Front::SourceReceipt, NestedNomination::ParentOnly);
+}
+
+#[test]
+fn native_family_empty_root_parent_names_empty_ancestor_direct_f32() {
+    nested_node_free_empty_parent::<f32>(Front::Direct, NestedNomination::EmptyRootParentAndChild);
+}
+#[test]
+fn native_family_empty_root_parent_names_empty_ancestor_direct_f64() {
+    nested_node_free_empty_parent::<f64>(Front::Direct, NestedNomination::EmptyRootParentAndChild);
+}
+#[test]
+fn native_family_empty_root_parent_names_empty_ancestor_source_receipt_f32() {
+    nested_node_free_empty_parent::<f32>(
+        Front::SourceReceipt,
+        NestedNomination::EmptyRootParentAndChild,
+    );
+}
+#[test]
+fn native_family_empty_root_parent_names_empty_ancestor_source_receipt_f64() {
+    nested_node_free_empty_parent::<f64>(
+        Front::SourceReceipt,
+        NestedNomination::EmptyRootParentAndChild,
+    );
 }
