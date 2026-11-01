@@ -216,7 +216,7 @@ impl LocationKernel {
         let removed = self.at(index, c)?;
         self.session
             .qualify_stack_removal(c, &removed, capability)?;
-        let was_template = self.template_listed(index, c)?;
+        let listed_at = self.template_position(index, c)?;
         let is_template = self.named(target, "template", c)?;
         let node = copy_node(target, c)?;
         write(size_of::<ParserNode>(), 1, c)?;
@@ -227,10 +227,10 @@ impl LocationKernel {
             .get_mut(index, c)?
             .ok_or(KernelError::EmptyStack)?;
         *slot = node;
-        if was_template && !is_template {
-            self.template_remove(index, c)?;
-        } else if is_template && !was_template {
-            self.template_insert(index, c)?;
+        match (listed_at, is_template) {
+            (Some(at), false) => self.template_remove(at, c)?,
+            (None, true) => self.template_insert(index, c)?,
+            _ => {}
         }
         self.stack_position_bound = self.stack_position_bound.max(position.saturating_add(1));
         self.session.parser_stack_removed(c, &removed, capability)?;
@@ -364,8 +364,8 @@ impl LocationKernel {
             if self.session.same_node(c, &node, target)? {
                 self.session.qualify_stack_removal(c, &node, capability)?;
                 // The removal moves every entry above `index` one place down.
-                if self.template_listed(index, c)? {
-                    self.template_remove(index, c)?;
+                if let Some(at) = self.template_position(index, c)? {
+                    self.template_remove(at, c)?;
                 }
                 self.templates_shift(index + 1, false, c)?;
                 for shift in index..len - 1 {
@@ -606,10 +606,15 @@ impl LocationKernel {
             c.charge(WorkCategory::StateStep, 1)
         })?)
     }
-    /// Whether the stack entry at `index` is listed as a template.
-    fn template_listed(&self, index: usize, c: &mut ParseControl) -> Result<bool, KernelError> {
+    /// The position among the listings of the stack entry at `index`, if it is
+    /// listed as a template.
+    fn template_position(
+        &self,
+        index: usize,
+        c: &mut ParseControl,
+    ) -> Result<Option<usize>, KernelError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        Ok(self.search_templates(index, c)?.is_ok())
+        Ok(self.search_templates(index, c)?.ok())
     }
     /// Drops the last listing: the stack entry it names left the stack.
     fn template_unlist_last(&mut self, c: &mut ParseControl) -> Result<(), KernelError> {
@@ -638,13 +643,12 @@ impl LocationKernel {
         }
         Ok(())
     }
-    /// Unlists the listed stack entry at `index`. Only the entries above it move.
-    fn template_remove(&mut self, index: usize, c: &mut ParseControl) -> Result<(), KernelError> {
-        self.templates.as_ref().ok_or(KernelError::Consumed)?;
-        let Ok(at) = self.search_templates(index, c)? else {
-            return Err(KernelError::EmptyStack);
-        };
+    /// Unlists the listing at position `at`. Only the listings above it move.
+    fn template_remove(&mut self, at: usize, c: &mut ParseControl) -> Result<(), KernelError> {
         let templates = self.templates.as_mut().ok_or(KernelError::Consumed)?;
+        if at >= templates.len() {
+            return Err(KernelError::EmptyStack);
+        }
         for shift in at..templates.len().saturating_sub(1) {
             if !templates.swap_slots(shift, shift + 1, c)? {
                 return Err(KernelError::EmptyStack);
