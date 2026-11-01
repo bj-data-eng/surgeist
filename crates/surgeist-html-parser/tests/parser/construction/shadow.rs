@@ -113,7 +113,7 @@ fn template(report: &HtmlParseReport) -> (HtmlNode<'_>, HtmlNode<'_>) {
 }
 
 fn shadow(report: &HtmlParseReport) -> HtmlNode<'_> {
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     for index in 0..effects.len() {
         if let Some(HtmlParseEffect::AttachShadow { contents, .. }) = effects.effect(index).unwrap()
         {
@@ -158,7 +158,7 @@ fn assert_shadow_readback_source_and_native_alias(local_host: bool) {
         assert!(shadow.fragment_owner().is_none());
     }
     let mut effect_seen = false;
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     for index in 0..effects.len() {
         if let Some(HtmlParseEffect::AttachShadow {
             host,

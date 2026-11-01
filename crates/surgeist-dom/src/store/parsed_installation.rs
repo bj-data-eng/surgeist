@@ -545,7 +545,7 @@ fn collect<'a>(report: &'a HtmlParseReport, c: &mut Control<'_>) -> Result<Sourc
         || state.readiness() != HtmlParseReadiness::Complete
         || !state.ready_for_post_load_tasks()
         || report.context().is_some()
-        || report.effects().is_some()
+        || report.effects()?.is_some()
         || report.allow_declarative_shadow_roots()
         || report.effective_scripting_mode() != surgeist_html::HtmlParserScriptingMode::Disabled
         || report.image_support() != surgeist_html_semantics::HtmlImageSupport::Disabled
@@ -630,7 +630,7 @@ fn collect_fragment<'a>(
     if let Some(form) = context.nearest_form() {
         source.add_captured(form.subject().clone(), c)?;
     }
-    let effects = report.effects().ok_or(Error::NotCompletedFragmentReport)?;
+    let effects = report.effects()?.ok_or(Error::NotCompletedFragmentReport)?;
     for index in 0..effects.registry_slots() {
         c.step(1)?;
         if let Some(binding) = effects.registry(index)? {
@@ -925,7 +925,7 @@ fn apply_fragment_effects(
     c: &mut Control<'_>,
 ) -> Result<(), Error> {
     use surgeist_html_parser::{HtmlParseEffect, HtmlParseEffectHost};
-    let effects = report.effects().ok_or(Error::NotCompletedFragmentReport)?;
+    let effects = report.effects()?.ok_or(Error::NotCompletedFragmentReport)?;
     for index in 0..effects.len() {
         c.step(1)?;
         match effects

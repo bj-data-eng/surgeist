@@ -114,7 +114,7 @@ fn captured_target_stays_external_while_auxiliary_and_new_inert_owners_qualify()
         3,
         "auxiliary plus distinct auxiliary/target inert caches"
     );
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     assert_eq!(
         effects.len(),
         1,

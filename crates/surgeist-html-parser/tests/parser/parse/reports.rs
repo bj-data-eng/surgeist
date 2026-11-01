@@ -758,7 +758,7 @@ fn fragment_parse_retains_actual_captured_attachment_and_fallback_after_cancel()
     assert!(
         matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(),HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
     );
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     assert_eq!(effects.len(), 2);
     let Some(HtmlParseEffect::AttachShadow {
         host: HtmlParseEffectHost::Captured(host),
@@ -1838,7 +1838,7 @@ fn owned_fragment_details_publishes_canonical_exclusivity_without_changing_captu
     assert!(
         matches!(fragment.node(&p.children().next().unwrap()).unwrap().kind(), HtmlNodeKind::Text(t) if t==&DocumentString::from("Z"))
     );
-    assert_eq!(report.effects().unwrap().len(), 0);
+    assert_eq!(report.effects().unwrap().unwrap().len(), 0);
     assert_eq!(report.usage(), &usage);
 }
 

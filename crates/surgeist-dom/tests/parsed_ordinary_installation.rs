@@ -1860,7 +1860,7 @@ fn contextual_hosted_template_target_reuses_actual_inert_owner_without_overwriti
         .parse()
         .unwrap(),
     );
-    assert!(report.effects().unwrap().is_empty()); // actual existing inert owner reuse
+    assert!(report.effects().unwrap().unwrap().is_empty()); // actual existing inert owner reuse
     let installed = dom
         .install_parsed_html_fragment(report, &capture, limits(), &AtomicBool::new(false))
         .unwrap();

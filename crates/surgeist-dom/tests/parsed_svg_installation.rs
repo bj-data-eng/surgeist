@@ -682,7 +682,7 @@ fn declarative_shadow_svg_preserves_captured_and_owned_effect_state_until_real_c
         let mut source_template = None;
         let mut source_host = None;
         let mut attachment_count = 0;
-        let effects = report.effects().unwrap();
+        let effects = report.effects().unwrap().unwrap();
         for index in 0..effects.len() {
             if let HtmlParseEffect::AttachShadow {
                 host,

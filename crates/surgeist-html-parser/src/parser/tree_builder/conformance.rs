@@ -4578,7 +4578,7 @@ mod whole_source_comparisons {
         );
         assert!(report.fragment().is_none());
         assert!(report.context().is_none());
-        assert!(report.effects().is_none());
+        assert!(report.effects().unwrap().is_none());
         assert_eq!(
             report.requested_scripting_mode(),
             crate::HtmlParserScriptingMode::Disabled

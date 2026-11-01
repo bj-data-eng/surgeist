@@ -835,7 +835,7 @@ fn an_effect_naming_a_missing_inert_document_is_reported() {
         panic!("a template cache")
     };
     *inert = Some(usize::MAX);
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     assert_eq!(effects.effect(0).err(), Some(fault(Kind::Node)));
 }
 
@@ -848,14 +848,14 @@ fn an_effect_whose_cache_was_never_bound_is_reported() {
         panic!("a template cache")
     };
     *inert = None;
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     assert_eq!(effects.effect(0).err(), Some(fault(Kind::Fact)));
 }
 
 #[test]
 fn an_effect_past_the_last_is_absent_and_a_bound_effect_is_lent() {
     let report = fragment_effects_report();
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     assert!(matches!(effects.effect(0), Ok(Some(_))));
     assert!(matches!(effects.effect(effects.len()), Ok(None)));
 }
@@ -875,14 +875,14 @@ fn a_registry_binding_naming_a_missing_node_is_reported() {
         panic!("a registry binding")
     };
     *node = missing_node();
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     assert_eq!(effects.registry(slot).err(), Some(fault(Kind::Node)));
 }
 
 #[test]
 fn a_row_that_is_not_a_registry_binding_is_absent_not_a_fault() {
     let report = fragment_effects_report();
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     let slots = effects.registry_slots();
     assert!(matches!(effects.registry(slots), Ok(None)));
 }

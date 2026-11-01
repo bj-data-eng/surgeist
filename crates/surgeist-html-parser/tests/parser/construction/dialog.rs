@@ -249,7 +249,7 @@ fn captured_absent_activity_and_actual_inert_or_auxiliary_documents_stay_distinc
         assert_eq!(inert_documents, 2);
         let auxiliary_inert = auxiliary_inert.unwrap();
         assert!(inert_ids.contains(&auxiliary_inert));
-        let effects = report.effects().unwrap();
+        let effects = report.effects().unwrap().unwrap();
         assert_eq!(effects.len(), 1);
         let HtmlParseEffect::TemplateCache { document, inert } =
             effects.effect(0).unwrap().unwrap()

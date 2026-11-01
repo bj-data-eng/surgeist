@@ -175,7 +175,7 @@ fn focused_designation_contextual_auxiliary_is_qualified_and_captured_owners_are
             .parse()
             .unwrap(),
         );
-        assert!(report.effects().unwrap().is_empty());
+        assert!(report.effects().unwrap().unwrap().is_empty());
         let auxiliary = report
             .fragment_parser_document()
             .unwrap()

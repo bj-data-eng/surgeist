@@ -1157,7 +1157,7 @@ pub fn surgeist_html_parser::HtmlParseReport::document(&self) -> core::option::O
 pub fn surgeist_html_parser::HtmlParseReport::document_base_facts(&self) -> core::option::Option<&surgeist_html_semantics::base::HtmlParseBaseFacts>
 pub fn surgeist_html_parser::HtmlParseReport::document_state(&self) -> core::option::Option<surgeist_html_parser::HtmlParseDocumentState>
 pub fn surgeist_html_parser::HtmlParseReport::effective_scripting_mode(&self) -> surgeist_html::fragment_initialization::HtmlParserScriptingMode
-pub fn surgeist_html_parser::HtmlParseReport::effects(&self) -> core::option::Option<surgeist_html_parser::HtmlParseEffects<'_>>
+pub fn surgeist_html_parser::HtmlParseReport::effects(&self) -> core::result::Result<core::option::Option<surgeist_html_parser::HtmlParseEffects<'_>>, surgeist_html_parser::HtmlParseUnresolvedReference>
 pub fn surgeist_html_parser::HtmlParseReport::fragment(&self) -> core::option::Option<&surgeist_html::construction::HtmlFragment>
 pub fn surgeist_html_parser::HtmlParseReport::fragment_parser_document(&self) -> core::result::Result<core::option::Option<surgeist_html_parser::HtmlParseFragmentParserDocument<'_>>, surgeist_html_parser::HtmlParseUnresolvedReference>
 pub fn surgeist_html_parser::HtmlParseReport::image_support(&self) -> surgeist_html_semantics::capture::HtmlImageSupport

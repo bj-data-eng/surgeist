@@ -261,8 +261,13 @@ impl ImmutableParseReport {
     pub fn diagnostics(&self) -> crate::construction::evidence::DiagnosticEvidenceView<'_> {
         self.storage.evidence().diagnostics()
     }
-    pub fn effects(&self) -> Option<crate::construction::context::FrozenFragmentEffects<'_>> {
-        self.storage.effects()
+    pub fn effects(
+        &self,
+    ) -> Result<
+        Option<crate::construction::context::FrozenFragmentEffects<'_>>,
+        crate::construction::read::UnresolvedReference,
+    > {
+        Ok(self.storage.effects())
     }
 }
 
@@ -517,7 +522,7 @@ mod tests {
             matches!(output.node(&children[0]).unwrap().kind(), HtmlNodeKind::Element(e) if e.name().local_name().code_units() == [116,101,109,112,108,97,116,101])
         );
         assert_eq!(output.node(&children[0]).unwrap().children().len(), 0);
-        let effects = report.effects().unwrap();
+        let effects = report.effects().unwrap().unwrap();
         // The attachment uses the captured target document directly. Only the
         // second template's ordinary fallback allocates that document's cache.
         assert_eq!(effects.len(), 2);
@@ -592,7 +597,7 @@ mod tests {
         assert_eq!(report.source().as_utf8(), Some(literal));
         assert!(report.fragment().is_none());
         assert!(report.context().is_none());
-        assert!(report.effects().is_none());
+        assert!(report.effects().unwrap().is_none());
         assert_eq!(
             report.document().unwrap().mode(),
             crate::HtmlDocumentMode::NoQuirks
