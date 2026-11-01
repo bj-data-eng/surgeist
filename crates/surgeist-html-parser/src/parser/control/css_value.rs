@@ -74,10 +74,19 @@ impl<'c> SchemeCallbacks<'c> {
         }
     }
     fn admit(&self, event: Admission) -> Result<(), ParseStop> {
+        let live = if let Admission::Live(next) = event {
+            Some((next.bytes() as u64, next.utf16_units() as u64))
+        } else {
+            None
+        };
+        self.admit_live(live)
+    }
+    /// One admission event: its step, and for a live-storage observation the
+    /// growth over the storage already admitted.
+    fn admit_live(&self, next: Option<(u64, u64)>) -> Result<(), ParseStop> {
         let mut c = self.control.borrow_mut();
         c.charge(WorkCategory::StateStep, 1)?;
-        if let Admission::Live(next) = event {
-            let next = (next.bytes() as u64, next.utf16_units() as u64);
+        if let Some(next) = next {
             let old = self.live.get();
             let bytes = next
                 .0
@@ -93,7 +102,10 @@ impl<'c> SchemeCallbacks<'c> {
         Ok(())
     }
     fn release(&self, remaining: Storage) {
-        let next = (remaining.bytes() as u64, remaining.utf16_units() as u64);
+        self.release_to((remaining.bytes() as u64, remaining.utf16_units() as u64));
+    }
+    /// Credits the storage the parser dropped, leaving `next` live.
+    fn release_to(&self, next: (u64, u64)) {
         let old = self.live.replace(next);
         self.control.borrow_mut().release_retained_provider(
             &self.owner,
