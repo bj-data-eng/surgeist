@@ -301,6 +301,9 @@ struct PreparedAttributeMerge {
     stage: usize,
     start: usize,
     count: usize,
+    /// Rows registered before the stage row and bound to it; the stagers that
+    /// register their strings afterwards leave this empty.
+    earlier: [Option<usize>; 4],
 }
 
 pub(crate) struct ParserArenaSession {
@@ -357,6 +360,9 @@ struct SessionStorage {
     construction: ConstructionOwner,
     payloads: PayloadStorage,
     failed_text_append: Option<text_append::FailedTextAppend>,
+    /// The registry row listing the document tree's style elements while every
+    /// change to that list since it was built has been applied to it.
+    style_order: Option<pending_association::CurrentOrder>,
 }
 
 use crate::bounded::HtmlConstructionResult;
@@ -387,6 +393,17 @@ struct PayloadStorage {
     kind_slots: [KindSlots; KIND_LISTS],
     preexisting_units: usize,
     preexisting_attributes: usize,
+    /// Registry rows below this slot were audited by an earlier creation-time
+    /// `check_new_aliases`; the completed-freeze preflight and release audit
+    /// every row again.
+    audited_rows: usize,
+    /// Registry rows of selectedcontent metadata. Rows are never removed, so zero
+    /// proves that no select has a selectedcontent descendant to update.
+    selectedcontent_rows: usize,
+    /// Times a second row of a family that report preparation requires to be
+    /// unique per record joined that record. Zero proves the join names the
+    /// only row, so preparation need not scan the registry to count them.
+    repeated_unique_rows: usize,
 }
 /// Derived joins into the actual payload registry, one cell per record
 /// position. Dense record positions are append-only; a join never substitutes
@@ -428,6 +445,15 @@ enum Join {
     /// The latest style occurrence naming the record as its subject.
     StyleOccurrence,
 }
+impl Join {
+    /// Report preparation requires exactly one row of these kinds per record.
+    fn unique_per_record(self) -> bool {
+        matches!(
+            self,
+            Self::Image | Self::Hyperlink | Self::Style | Self::Dialog
+        )
+    }
+}
 const JOIN_COUNT: usize = Join::StyleOccurrence as usize + 1;
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
 /// refused as the registry invariant (see `joined_cell`).
@@ -457,17 +483,19 @@ impl NodeJoins {
         *cell = Some(joined_cell(slot)?);
         Ok(())
     }
-    /// Keeps the earliest registry row, the one a front-to-back scan finds.
-    fn set_first(&mut self, join: Join, slot: usize) -> Result<(), SessionError> {
+    /// Keeps the earliest registry row, the one a front-to-back scan finds, and
+    /// reports whether the cell already named another row.
+    fn set_first(&mut self, join: Join, slot: usize) -> Result<bool, SessionError> {
         let cell = self
             .rows
             .get_mut(join as usize)
             .ok_or_else(SessionError::registry_row)?;
         let slot = joined_cell(slot)?;
+        let repeated = cell.is_some_and(|current| current != slot);
         if cell.is_none_or(|current| slot < current) {
             *cell = Some(slot);
         }
-        Ok(())
+        Ok(repeated)
     }
 }
 /// Slot plus one as a nonzero 32-bit cell. A registry of more than `u32::MAX`
@@ -639,6 +667,9 @@ enum RetainedPayload {
         state: SelectMetadata,
     },
     WorkList(Option<OwnedVec<usize>>),
+    /// The style elements of one tree in tree order, shared by the style
+    /// occurrences recorded while the tree held exactly a prefix of them.
+    StyleOrder(OwnedVec<usize>),
     // A replaced raw backing was disposed; its initialized registry slot
     // remains admitted until the registry itself is released.
     Retired,
@@ -868,6 +899,122 @@ fn row_list(row: &RetainedPayload) -> Option<KindList> {
     }
 }
 
+#[cfg(test)]
+impl SessionStorage {
+    /// Uncharged: `node` is an HTML element named `local`.
+    fn uncharged_html_local(&self, node: usize, local: &str) -> bool {
+        let Some(record) = self.construction.node_at(node) else {
+            return false;
+        };
+        let HtmlNodeKind::Element(element) = record.kind() else {
+            return false;
+        };
+        element
+            .name()
+            .namespace()
+            .uri()
+            .is_some_and(|uri| uri.to_utf8().as_deref() == Ok("http://www.w3.org/1999/xhtml"))
+            && element.name().local_name().to_utf8().as_deref() == Ok(local)
+    }
+    fn uncharged_attribute(&self, node: usize, local: &str) -> bool {
+        let Some(HtmlNodeKind::Element(element)) =
+            self.construction.node_at(node).map(|record| record.kind())
+        else {
+            return false;
+        };
+        element.attributes().as_slice().iter().any(|attribute| {
+            attribute.name().namespace().uri().is_none()
+                && attribute.name().local_name().to_utf8().as_deref() == Ok(local)
+        })
+    }
+    fn uncharged_parent(&self, node: usize) -> Option<usize> {
+        self.construction
+            .node_at(node)
+            .and_then(|record| record.parent())
+            .map(|parent| parent.position())
+    }
+    /// Uncharged: the style elements of the tree at `root` in tree order.
+    fn uncharged_style_order(&self, root: usize) -> Vec<usize> {
+        let mut found = Vec::new();
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            let record = self.construction.node_at(node).expect("a retained node");
+            if self.uncharged_html_local(node, "style") {
+                found.push(node);
+            }
+            stack.extend(
+                (0..record.child_count())
+                    .rev()
+                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
+            );
+        }
+        found
+    }
+    /// Uncharged, from the registry rather than the joins: whether a Base or form
+    /// association row's node lies in the subtree at `root`, or the subtree holds
+    /// an id while some listed control has a form attribute.
+    fn uncharged_form_subtree_is_local(&self, root: usize) -> bool {
+        let inside = |mut node: usize| loop {
+            if node == root {
+                return true;
+            }
+            match self
+                .construction
+                .node_at(node)
+                .and_then(|record| record.parent())
+            {
+                Some(parent) => node = parent.position(),
+                None => return false,
+            }
+        };
+        let mut listed_explicit = false;
+        for row in &self.payloads.values {
+            match row {
+                RetainedPayload::Base {
+                    node: Some(node), ..
+                } if inside(*node) => return true,
+                RetainedPayload::FormAssociation {
+                    node: Some(node),
+                    state,
+                } => {
+                    if inside(*node) {
+                        return true;
+                    }
+                    listed_explicit |=
+                        state.kind.listed() && self.uncharged_attribute(*node, "form");
+                }
+                _ => {}
+            }
+        }
+        if !listed_explicit {
+            return false;
+        }
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            let record = self.construction.node_at(node).expect("a retained node");
+            if let HtmlNodeKind::Element(element) = record.kind()
+                && element
+                    .attributes()
+                    .as_slice()
+                    .iter()
+                    .find(|attribute| {
+                        attribute.name().namespace().uri().is_none()
+                            && attribute.name().local_name().to_utf8().as_deref() == Ok("id")
+                    })
+                    .is_some_and(|id| !id.value().is_empty())
+            {
+                return true;
+            }
+            stack.extend(
+                (0..record.child_count())
+                    .rev()
+                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
+            );
+        }
+        false
+    }
+}
+
 impl PayloadStorage {
     /// The first registry row of `join` bound to `node`: one join cell, however
     /// many other rows the registry retains. The caller checks the row it gets.
@@ -887,10 +1034,41 @@ impl PayloadStorage {
         let Some((join, node)) = self.values.get(slot).and_then(row_join) else {
             return Ok(());
         };
-        self.node_joins
+        let repeated = self
+            .node_joins
             .get_mut(node)
             .ok_or_else(SessionError::registry_row)?
-            .set_first(join, slot)
+            .set_first(join, slot)?;
+        if repeated && join.unique_per_record() {
+            self.repeated_unique_rows = self
+                .repeated_unique_rows
+                .checked_add(1)
+                .ok_or_else(SessionError::registry_row)?;
+        }
+        Ok(())
+    }
+    /// How many rows of `join` name `node`, or `None` when only a registry scan
+    /// can tell. With no repeated row of any unique family, the join names the
+    /// only row, so one cell and one row decide the count.
+    fn unique_row_count(
+        &self,
+        control: &mut ParseControl,
+        node: usize,
+        join: Join,
+    ) -> Result<Option<usize>, SessionError> {
+        if self.repeated_unique_rows != 0 || !join.unique_per_record() {
+            return Ok(None);
+        }
+        let Some(slot) = self.joined(control, node, join)? else {
+            return Ok(Some(0));
+        };
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        Ok(self
+            .values
+            .get(slot)
+            .and_then(row_join)
+            .filter(|&(row, owner)| row == join && owner == node)
+            .map(|_| 1))
     }
     /// Names `slot` as the latest row of `join` for `node`; used by the kinds
     /// whose join follows a back-to-front scan rather than the first row.
@@ -939,6 +1117,18 @@ impl PayloadStorage {
             return Err(SessionError::registry_row());
         }
         let slot = self.values.len();
+        if matches!(
+            row,
+            RetainedPayload::SelectFamily {
+                state: SelectMetadata::Selectedcontent(_),
+                ..
+            }
+        ) {
+            self.selectedcontent_rows = self
+                .selectedcontent_rows
+                .checked_add(1)
+                .ok_or_else(SessionError::registry_row)?;
+        }
         self.values.push(row);
         if let Some(kind) = list.and_then(|list| self.kind_slots.get_mut(list as usize)) {
             kind.slots.push(slot);
@@ -1035,7 +1225,27 @@ impl PayloadStorage {
         records: ConstructionView<'_>,
         control: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        for index in 0..self.values.len() {
+        self.audit_aliases(records, control, 0)
+    }
+    /// The creation-time audit: only the rows registered since the previous one,
+    /// so the cost is the rows the operations in between added, not the registry.
+    /// Every row is audited again by the completed-freeze preflight and release.
+    fn check_new_aliases(
+        &mut self,
+        records: ConstructionView<'_>,
+        control: &mut ParseControl,
+    ) -> Result<(), SessionError> {
+        self.audit_aliases(records, control, self.audited_rows)?;
+        self.audited_rows = self.values.len();
+        Ok(())
+    }
+    fn audit_aliases(
+        &self,
+        records: ConstructionView<'_>,
+        control: &mut ParseControl,
+        first: usize,
+    ) -> Result<(), SessionError> {
+        for index in first..self.values.len() {
             cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
             let payload = &self.values[index];
             match payload {
@@ -1148,6 +1358,7 @@ impl PayloadStorage {
                 }
                 RetainedPayload::WorkList(Some(list)) => list.require_disposal_owner(control)?,
                 RetainedPayload::WorkList(None) => return Err(SessionError::Consumed),
+                RetainedPayload::StyleOrder(list) => list.require_disposal_owner(control)?,
             }
         }
         Ok(())
@@ -1327,6 +1538,10 @@ impl PayloadStorage {
                 continue;
             }
             if let RetainedPayload::WorkList(Some(list)) = payload {
+                keep_first(&mut refused, list.release(control));
+                continue;
+            }
+            if let RetainedPayload::StyleOrder(list) = payload {
                 keep_first(&mut refused, list.release(control));
                 continue;
             }
@@ -1653,6 +1868,7 @@ impl SessionStorage {
             standalone_ineligibility: None,
             construction,
             failed_text_append: None,
+            style_order: Some(pending_association::CurrentOrder::empty_main_tree()),
             payloads: PayloadStorage {
                 values,
                 allocation,
@@ -1661,6 +1877,9 @@ impl SessionStorage {
                 kind_slots,
                 preexisting_units: 0,
                 preexisting_attributes: 0,
+                audited_rows: 0,
+                selectedcontent_rows: 0,
+                repeated_unique_rows: 0,
             },
         };
         let kind = match root {
@@ -2211,6 +2430,7 @@ impl SessionStorage {
                     stage,
                     start: 0,
                     count: 0,
+                    earlier: [None; 4],
                 },
             )?;
 
@@ -3761,7 +3981,7 @@ impl SessionStorage {
             return Err(SessionError::WrongToken);
         }
         let container = self.element_attribute_container(control, target)?;
-        self.payloads.check_aliases(
+        self.payloads.check_new_aliases(
             ConstructionView::Active(self.construction.storage()),
             control,
         )?;
@@ -3934,6 +4154,7 @@ impl SessionStorage {
                 stage,
                 start: old_len,
                 count,
+                earlier: [None; 4],
             }))
         })();
         let cleanup = release_token_attributes(attributes, control);
@@ -3951,6 +4172,7 @@ impl SessionStorage {
             stage,
             start,
             count,
+            earlier,
         } = prepared;
         for _ in 0..count {
             self.edit_attributes(control, target, container, stage, 1, true)?;
@@ -3958,10 +4180,29 @@ impl SessionStorage {
                 self.drain_form_effects(control)?;
             }
         }
-        // Deliberately a whole-registry walk: the staged strings sit at arbitrary
-        // slots (write-back and clone stage rows registered earlier), so a bound
-        // list would need its own admitted, nested-stage-aware storage.
-        for index in 0..self.payloads.values.len() {
+        // The strings staged for this merge are the registry rows from the stage on
+        // and the few rows registered before it that the stager names.
+        #[cfg(test)]
+        for (index, row) in self.payloads.values[..stage].iter().enumerate() {
+            if let RetainedPayload::String { location, .. } = row {
+                assert!(
+                    !matches!(
+                        location,
+                        StringLocation::AttributeName(owner, _)
+                            | StringLocation::AttributeValue(owner, _)
+                            | StringLocation::AttributeNamespace(owner, _)
+                            | StringLocation::AttributePrefix(owner, _)
+                            if *owner == stage
+                    ) || earlier.contains(&Some(index)),
+                    "row {index} before stage {stage} names the stage unlisted"
+                );
+            }
+        }
+        for index in earlier
+            .into_iter()
+            .flatten()
+            .chain(stage..self.payloads.values.len())
+        {
             self.rebind_attribute_location(control, index, stage, container, start)?;
         }
         // Clearing the redirect is safe only after every original location was
@@ -4461,25 +4702,6 @@ impl SessionStorage {
         Err(SessionError::Cycle)
     }
 
-    fn ordinary_descendant(
-        &self,
-        control: &mut ParseControl,
-        mut node: usize,
-        root: usize,
-    ) -> Result<bool, SessionError> {
-        for _ in 0..self.construction.storage().len() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            if node == root {
-                return Ok(true);
-            }
-            match self.ordinary_parent(control, node, None)? {
-                Some(parent) => node = parent,
-                None => return Ok(false),
-            }
-        }
-        Err(SessionError::Cycle)
-    }
-
     fn html_local(
         &self,
         control: &mut ParseControl,
@@ -4565,50 +4787,13 @@ impl SessionStorage {
             false
         };
         let mut local = adoption;
-        let mut listed_explicit = false;
-        // Only a Base or form association row can make the subtree local, and
-        // either one makes it so; the visit order has no other effect.
-        for &slot in self.payloads.kind_list(KindList::Base) {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            if let Some(RetainedPayload::Base {
-                node: Some(node), ..
-            }) = self.payloads.values.get(slot)
-                && self.ordinary_descendant(control, *node, root)?
-            {
-                local = true;
-                break;
-            }
-        }
-        if !local {
-            for &slot in self.payloads.kind_list(KindList::FormAssociation) {
-                control.charge(WorkCategory::RecordVisit, 1)?;
-                if let Some(RetainedPayload::FormAssociation {
-                    node: Some(node),
-                    state,
-                }) = self.payloads.values.get(slot)
-                {
-                    control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
-                    if self.ordinary_descendant(control, *node, root)? {
-                        local = true;
-                        break;
-                    }
-                    if state.kind.listed() && self.form_attribute(control, *node, "form")?.is_some()
-                    {
-                        listed_explicit = true;
-                    }
-                }
-            }
-        }
-        if !local && listed_explicit {
-            let mut next = Some(root);
-            while let Some(node) = next {
-                if self.has_id(control, node)? {
-                    local = true;
-                    break;
-                }
-                next = self.next_effect_node(control, root, node)?;
-            }
-        }
+        // The subtree is local when it holds a Base or form association row's
+        // node, or an id while some listed control has a form attribute (an id
+        // can then resolve that attribute). One walk of the subtree finds the
+        // rows through their joins and whether it holds an id, so only a
+        // subtree with an id scans the registry's form associations.
+        let mut joined = false;
+        let mut identified = false;
         let mut next = Some(root);
         while let Some(node) = next {
             for name in [
@@ -4638,8 +4823,35 @@ impl SessionStorage {
                 self.svg_state_at(control, node)?;
                 local = true;
             }
+            for join in [Join::Base, Join::FormAssociation] {
+                joined |= self.payloads.joined(control, node, join)?.is_some();
+            }
+            identified |= self.has_id(control, node)?;
             next = self.next_effect_node(control, root, node)?;
         }
+        let mut listed_explicit = false;
+        if !joined && identified {
+            for &slot in self.payloads.kind_list(KindList::FormAssociation) {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                if let Some(RetainedPayload::FormAssociation {
+                    node: Some(node),
+                    state,
+                }) = self.payloads.values.get(slot)
+                    && state.kind.listed()
+                    && self.form_attribute(control, *node, "form")?.is_some()
+                {
+                    listed_explicit = true;
+                    break;
+                }
+            }
+        }
+        #[cfg(test)]
+        assert_eq!(
+            joined || listed_explicit,
+            self.uncharged_form_subtree_is_local(root),
+            "form locality of the subtree at {root}"
+        );
+        local |= joined || listed_explicit;
         if !local && !children_changed {
             return Ok(None);
         }
@@ -4713,6 +4925,40 @@ impl SessionStorage {
         )
     }
 
+    /// Whether no node follows `node` in `root`'s subtree in tree order, apart
+    /// from `node`'s own descendants: it ends every ancestor's children up to
+    /// `root`.
+    fn ends_subtree(
+        &self,
+        c: &mut ParseControl,
+        root: usize,
+        node: usize,
+    ) -> Result<bool, SessionError> {
+        let mut node = node;
+        for _ in 0..self.construction.storage().len() {
+            let Some(parent) = self.ordinary_parent(c, node, None)? else {
+                return Ok(false);
+            };
+            c.charge(WorkCategory::RecordVisit, 2)?;
+            let record = self
+                .construction
+                .node_at(parent)
+                .ok_or_else(|| latch_registry_row(c))?;
+            let last = record
+                .child_count()
+                .checked_sub(1)
+                .and_then(|last| record.child_at(last))
+                .map(|child| child.position());
+            if last != Some(node) {
+                return Ok(false);
+            }
+            if parent == root {
+                return Ok(true);
+            }
+            node = parent;
+        }
+        Err(SessionError::Cycle)
+    }
     fn next_effect_node(
         &self,
         control: &mut ParseControl,
@@ -5747,6 +5993,7 @@ impl SessionStorage {
             construction,
             payloads,
             failed_text_append,
+            style_order: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
         } = self;
@@ -6456,11 +6703,14 @@ impl ParserArenaSession {
         {
             kind = Some(HtmlNativeFormAssociationKind::Select);
         }
+        // Every creation audits the rows registered since the previous one, so no
+        // creation pays for the registry its predecessors built.
+        let storage = self.active_mut()?;
+        storage.payloads.check_new_aliases(
+            ConstructionView::Active(storage.construction.storage()),
+            control,
+        )?;
         if !matches!(profile, CreationProfile::Ordinary) {
-            storage.payloads.check_aliases(
-                ConstructionView::Active(storage.construction.storage()),
-                control,
-            )?;
             if matches!(profile, CreationProfile::Input(..))
                 && !exact_ascii(control, Some(tag.name.value.text()), "input")?
             {
@@ -7971,6 +8221,7 @@ impl ParserArenaSession {
             construction,
             payloads,
             failed_text_append,
+            style_order: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
         } = self

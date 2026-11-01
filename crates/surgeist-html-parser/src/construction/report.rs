@@ -409,17 +409,43 @@ impl<'a> PreparedReportStorage<'a> {
                             _ => 0,
                         };
                         if family != 0 {
-                            let mut count = 0usize;
-                            for candidate in &storage.payloads.values {
-                                c.charge(WorkCategory::RecordVisit, 1)?;
-                                if matches!((family, candidate),
-                                    (1, RetainedPayload::Hyperlink { node, .. })
-                                    | (2, RetainedPayload::Image {node, ..})
-                                    | (3, RetainedPayload::Style {node, ..})
-                                    | (4, RetainedPayload::Dialog {node, ..}) if *node == subject)
-                                {
-                                    count += 1;
+                            let scan = |c: &mut ParseControl, charged: bool| {
+                                let mut count = 0usize;
+                                for candidate in &storage.payloads.values {
+                                    if charged {
+                                        c.charge(WorkCategory::RecordVisit, 1)?;
+                                    }
+                                    if matches!((family, candidate),
+                                        (1, RetainedPayload::Hyperlink { node, .. })
+                                        | (2, RetainedPayload::Image {node, ..})
+                                        | (3, RetainedPayload::Style {node, ..})
+                                        | (4, RetainedPayload::Dialog {node, ..}) if *node == subject)
+                                    {
+                                        count += 1;
+                                    }
                                 }
+                                Ok::<_, SessionError>(count)
+                            };
+                            let join = match family {
+                                1 => Join::Hyperlink,
+                                2 => Join::Image,
+                                3 => Join::Style,
+                                _ => Join::Dialog,
+                            };
+                            // The join names the only row unless a second row of a
+                            // unique family ever joined a record; only then count by scan.
+                            let count = match storage.payloads.unique_row_count(c, subject, join)? {
+                                Some(count) => count,
+                                None => scan(c, true)?,
+                            };
+                            #[cfg(test)]
+                            {
+                                // An uncharged scan, so the check stays out of the work.
+                                assert_eq!(
+                                    count,
+                                    scan(c, false)?,
+                                    "join count of record {subject}"
+                                );
                             }
                             if count != 1 {
                                 return Err(SessionError::AssociatedFacts);

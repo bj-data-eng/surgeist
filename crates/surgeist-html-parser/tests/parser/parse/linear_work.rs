@@ -26,7 +26,7 @@ type Measure = (&'static str, fn(&Work) -> u64);
 
 /// Limits that no measured document reaches, so only the work model differs
 /// between sizes.
-fn roomy_limits() -> HtmlParseLimits {
+pub(super) fn roomy_limits() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(1_000_000)
         .buffered_utf16_units(1_000_000)
@@ -126,8 +126,8 @@ fn reservation_work_added_by_each_doubling_of_one_elements_attributes_is_near_do
 
 #[test]
 fn reservation_work_added_by_each_doubling_of_one_selects_options_is_near_double() {
-    // The selectedness algorithm walks every option on each insertion, so total
-    // work is not linear; the list it collects must still grow geometrically.
+    // An option inserted last settles from the select's summary of its list, so
+    // the list is not collected per insertion and total work is linear too.
     assert_doublings_add_near_double(
         [50, 100, 200, 400],
         |options| {
@@ -136,15 +136,18 @@ fn reservation_work_added_by_each_doubling_of_one_selects_options_is_near_double
                 "<option>x</option>".repeat(options)
             )
         },
-        &[("reservation work", |work| work.reserved)],
+        &[
+            ("total work", |work| work.total),
+            ("reservation work", |work| work.reserved),
+        ],
     );
 }
 
 #[test]
 fn reservation_work_added_by_each_doubling_of_a_documents_style_elements_is_near_double() {
-    // Each style element's association collects every style element of its
-    // tree in order, so total work is not linear; that list must still grow
-    // geometrically.
+    // The style elements of the tree share one order row that each style at the
+    // end of the tree extends by one entry, so total work is linear and the
+    // row must grow geometrically.
     assert_doublings_add_near_double(
         [50, 100, 200, 400],
         |styles| {
@@ -153,7 +156,10 @@ fn reservation_work_added_by_each_doubling_of_a_documents_style_elements_is_near
                 "<style>a{}</style>".repeat(styles)
             )
         },
-        &[("reservation work", |work| work.reserved)],
+        &[
+            ("total work", |work| work.total),
+            ("reservation work", |work| work.reserved),
+        ],
     );
 }
 

@@ -641,6 +641,12 @@ impl SessionStorage {
                     stage,
                     start: position,
                     count: 0,
+                    earlier: [
+                        Some(name_slot),
+                        Some(value_slot),
+                        namespace_slot,
+                        prefix_slot,
+                    ],
                 },
             )?;
         }
@@ -759,9 +765,7 @@ impl SessionStorage {
         for (name, state) in [
             (
                 "select",
-                SelectMetadata::Select(select::SelectState {
-                    flags: crate::HtmlSelectFlags::default(),
-                }),
+                SelectMetadata::Select(select::SelectState::fresh()),
             ),
             (
                 "option",
