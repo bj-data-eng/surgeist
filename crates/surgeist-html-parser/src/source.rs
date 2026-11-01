@@ -526,3 +526,66 @@ impl fmt::Display for HtmlSourceRangeError {
     }
 }
 impl Error for HtmlSourceRangeError {}
+
+#[cfg(test)]
+mod text_tests {
+    use super::*;
+
+    /// A range that only this module can build: it names the source's own
+    /// identity but was never validated against its text.
+    fn forged(source: &HtmlSource, start: usize, end: usize) -> HtmlSourceRange {
+        HtmlSourceRange {
+            source: source.identity().clone(),
+            coordinates: source.coordinates(),
+            start,
+            end,
+        }
+    }
+
+    #[test]
+    fn text_of_a_range_beyond_the_source_reports_out_of_bounds() {
+        let utf8 = HtmlSource::utf8("ab");
+        assert_eq!(
+            utf8.text(&forged(&utf8, 0, 5)),
+            Err(HtmlSourceRangeError::OutOfBounds { end: 5, length: 2 })
+        );
+        let utf16 = HtmlSource::utf16(DocumentString::from("ab"));
+        assert_eq!(
+            utf16.text(&forged(&utf16, 1, 3)),
+            Err(HtmlSourceRangeError::OutOfBounds { end: 3, length: 2 })
+        );
+    }
+
+    #[test]
+    fn text_of_a_range_splitting_a_utf8_scalar_reports_the_boundary() {
+        let source = HtmlSource::utf8("é");
+        assert_eq!(
+            source.text(&forged(&source, 1, 2)),
+            Err(HtmlSourceRangeError::Utf8Boundary { offset: 1 })
+        );
+    }
+
+    #[test]
+    fn text_of_a_reversed_range_reports_it() {
+        let source = HtmlSource::utf8("abc");
+        assert_eq!(
+            source.text(&forged(&source, 2, 1)),
+            Err(HtmlSourceRangeError::Reversed { start: 2, end: 1 })
+        );
+    }
+
+    #[test]
+    fn text_of_a_validated_range_is_the_exact_slice_in_both_coordinates() {
+        let utf8 = HtmlSource::utf8("a🙂b");
+        assert_eq!(
+            utf8.text(&utf8.range(1, 5).unwrap()).unwrap(),
+            DocumentString::from("🙂")
+        );
+        let units = DocumentString::from_utf16(vec![0x61, 0xD800, 0x62]);
+        let utf16 = HtmlSource::utf16(units);
+        assert_eq!(
+            utf16.text(&utf16.range(1, 3).unwrap()).unwrap(),
+            DocumentString::from_utf16(vec![0xD800, 0x62])
+        );
+    }
+}
