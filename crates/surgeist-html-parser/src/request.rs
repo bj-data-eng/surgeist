@@ -467,6 +467,7 @@ impl HtmlFragmentParseRequest {
             requested: self.requested,
             effective: self.effective,
             allow_declarative_shadow_roots: self.allow_declarative_shadow_roots,
+            image_support: self.image_support,
             base_facts: self.base_facts,
             associated: self.associated.into_shared(),
             #[cfg(test)]
@@ -631,6 +632,7 @@ pub(crate) struct FragmentRequestParts {
     requested: HtmlParserScriptingMode,
     effective: HtmlParserScriptingMode,
     allow_declarative_shadow_roots: bool,
+    image_support: crate::HtmlImageSupport,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
     #[cfg(test)]
@@ -673,6 +675,10 @@ impl FragmentRequestParts {
     }
     pub(crate) fn allow_declarative_shadow_roots(&self) -> bool {
         self.allow_declarative_shadow_roots
+    }
+    /// The entry Document's image support, resolved when the request was made.
+    pub(crate) fn image_support(&self) -> crate::HtmlImageSupport {
+        self.image_support
     }
 }
 

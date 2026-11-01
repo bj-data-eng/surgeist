@@ -98,7 +98,11 @@ impl ImmutableParseReport {
         storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        let sealed = input.take().expect("qualified original document seal");
+        // The seal is still held, and the controller went with it, so there is
+        // none to latch a refusal on.
+        let Some(sealed) = input.take() else {
+            return Err(SessionError::registry_row());
+        };
         // The remaining source binding and execution control are consumed here;
         // no useful work, release/refund or cancellation check follows snapshot.
         Ok(Self {
@@ -147,7 +151,10 @@ impl ImmutableParseReport {
         storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        let sealed = input.take().expect("qualified original fragment seal");
+        // As for the Document seal, there is no controller left to latch on.
+        let Some(sealed) = input.take() else {
+            return Err(SessionError::registry_row());
+        };
         Ok(Self {
             context: ReportContext::Fragment(sealed.request),
             storage,
@@ -220,18 +227,7 @@ impl ImmutableParseReport {
     pub fn image_support(&self) -> crate::HtmlImageSupport {
         match &self.context {
             ReportContext::Document { request, .. } => request.image_support(),
-            ReportContext::Fragment(request) => match request
-                .context()
-                .capture()
-                .node(request.context().target_document().subject())
-                .expect("checked target document")
-                .kind()
-            {
-                crate::HtmlCapturedNodeKind::Document(facts) => {
-                    facts.parser_creation_image_support()
-                }
-                _ => unreachable!("checked target document"),
-            },
+            ReportContext::Fragment(request) => request.image_support(),
         }
     }
     pub fn allow_declarative_shadow_roots(&self) -> bool {

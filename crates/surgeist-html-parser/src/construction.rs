@@ -173,7 +173,7 @@ pub(crate) enum ElementInsertionIgnored {
 }
 impl SessionError {
     /// An impossible registry state with no controller in reach.
-    fn registry_row() -> Self {
+    pub(crate) fn registry_row() -> Self {
         Self::Stop(ParseStop::InternalInvariant(
             crate::parser::control::Invariant::RegistryRow,
         ))
