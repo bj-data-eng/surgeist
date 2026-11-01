@@ -1047,7 +1047,7 @@ fn aborting_a_child_order_change_after_any_action_leaves_the_old_orders_and_pare
             );
             assert_eq!(
                 children_snapshot(&owner, &other),
-                [x.clone()],
+                std::slice::from_ref(&x),
                 "command {index} after {performed}"
             );
             assert_eq!(owner.node(&a).unwrap().parent().unwrap().handle(), root);
@@ -1235,7 +1235,7 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
     assert!(grown.id().same_owner_role(previous.id()));
     assert!(grown.capacity() > previous.capacity());
     let (owner, _, _) = operation.unwrap().abort().into_parts();
-    assert_eq!(children_snapshot(&owner, &root), [a.clone()]);
+    assert_eq!(children_snapshot(&owner, &root), std::slice::from_ref(&a));
     assert!(owner.node(&b).unwrap().parent().is_none());
     // The retry finds the grown bank and requests no growth.
     let mut operation = Some(

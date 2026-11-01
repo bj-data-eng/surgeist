@@ -2632,8 +2632,11 @@ mod order_commit_guard_tests {
         }
     }
 
+    /// Corrupts a pending operation's plan or storage.
+    type Spoil = fn(&mut HtmlConstructionOperation);
+
     /// Edits whose planned places no longer hold what planning found.
-    const STALE: [(Build, fn(&mut HtmlConstructionOperation)); 4] = [
+    const STALE: [(Build, Spoil); 4] = [
         (insert_before_first, stale_insertion_position),
         (move_first_to_end, stale_old_position),
         (move_first_to_end, stale_insertion_position),
