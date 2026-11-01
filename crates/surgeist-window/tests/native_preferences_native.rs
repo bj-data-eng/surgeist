@@ -206,6 +206,9 @@ fn main() {
         ContrastPreference, Handler, InputCapabilities, Point, PointerAccuracy, PointerCapability,
         Ready, Rect, ReductionPreference, Result, Size, WindowSnapshot, app, open,
     };
+    use windows::Devices::Display::Core::{
+        DisplayManager, DisplayManagerOptions, DisplayManagerResult, DisplayWireFormatPixelEncoding,
+    };
     use windows::Devices::Input::{PointerDevice, PointerDeviceType};
     use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
 
@@ -222,6 +225,7 @@ fn main() {
         client_origin: winsafe::POINT,
         dpi: u32,
         input: std::result::Result<InputCapabilities, String>,
+        color: std::result::Result<Option<u32>, String>,
     }
     fn expected_input() -> std::result::Result<InputCapabilities, String> {
         let devices = PointerDevice::GetPointerDevices().map_err(|error| error.to_string())?;
@@ -288,6 +292,84 @@ fn main() {
         };
         InputCapabilities::new(primary, pointers).map_err(|error| error.to_string())
     }
+    fn expected_color(device_name: &str) -> std::result::Result<Option<u32>, String> {
+        let manager = DisplayManager::Create(DisplayManagerOptions::None)
+            .map_err(|error| error.to_string())?;
+        let observed = (|| -> windows::core::Result<Option<u32>> {
+            let result = manager.TryReadCurrentStateForAllTargets()?;
+            if result.ErrorCode()? != DisplayManagerResult::Success {
+                return Ok(None);
+            }
+            let state = result.State()?;
+            if !state.IsReadOnly()? || state.IsStale()? {
+                return Ok(None);
+            }
+            // The snapshot's freshness interval must include the independent
+            // HWND monitor mapping. Do not interleave WinRT calls with this
+            // complete WinSafe enumeration, which consults the error slot.
+            let mut interfaces = Vec::new();
+            let mut devices = winsafe::EnumDisplayDevices(
+                Some(device_name),
+                Some(winsafe::co::EDD::GET_DEVICE_INTERFACE_NAME),
+            );
+            loop {
+                winsafe::SetLastError(winsafe::co::ERROR::SUCCESS);
+                match devices.next() {
+                    None => break,
+                    Some(Ok(device)) => interfaces.push(device.DeviceID()),
+                    Some(Err(error)) => {
+                        eprintln!("Native color witness interface read failed: {error}");
+                        return Ok(None);
+                    }
+                }
+            }
+            let [interface] = interfaces.as_slice() else {
+                return Ok(None);
+            };
+            if interface.is_empty() {
+                return Ok(None);
+            }
+            let targets = state.Targets()?;
+            let mut selected = None;
+            for index in 0..targets.Size()? {
+                let target = targets.GetAt(index)?;
+                if !target.IsConnected()? {
+                    continue;
+                }
+                if target.IsStale()? {
+                    return Ok(None);
+                }
+                if target.DeviceInterfacePath()? == interface.as_str() {
+                    if selected.is_some() {
+                        return Ok(None);
+                    }
+                    selected = Some(target);
+                }
+            }
+            let Some(target) = selected else {
+                return Ok(None);
+            };
+            let wire = state.GetPathForTarget(&target)?.WireFormat()?;
+            if wire.PixelEncoding()? != DisplayWireFormatPixelEncoding::Rgb444 {
+                return Ok(None);
+            }
+            let bits = wire.BitsPerChannel()?;
+            let depth = u16::try_from(bits)
+                .ok()
+                .filter(|bits| *bits > 0)
+                .and_then(|bits| bits.checked_mul(3))
+                .map(u32::from);
+            if state.IsStale()? || target.IsStale()? || !target.IsConnected()? {
+                return Ok(None);
+            }
+            Ok(depth)
+        })()
+        .map_err(|error| error.to_string());
+        // Close even when querying or validation failed; never acquire or apply
+        // a writable display state for this read-only witness.
+        manager.Close().map_err(|error| error.to_string())?;
+        observed
+    }
     fn native_witness(title: &str) -> std::result::Result<NativeWitness, String> {
         let mut matches = Vec::new();
         winsafe::EnumWindows(|window| {
@@ -305,17 +387,20 @@ fn main() {
                 matches.len()
             ));
         };
+        let monitor = window
+            .MonitorFromWindow(winsafe::co::MONITOR::DEFAULTTONULL)
+            .GetMonitorInfo()
+            .map_err(|error| error.to_string())?;
+        let color = expected_color(&monitor.szDevice());
         Ok(NativeWitness {
-            monitor: window
-                .MonitorFromWindow(winsafe::co::MONITOR::DEFAULTTONULL)
-                .GetMonitorInfo()
-                .map_err(|error| error.to_string())?,
+            monitor,
             client: window.GetClientRect().map_err(|error| error.to_string())?,
             client_origin: window
                 .ClientToScreen(winsafe::POINT::default())
                 .map_err(|error| error.to_string())?,
             dpi: window.GetDpiForWindow(),
             input: expected_input(),
+            color,
         })
     }
     struct Capture {
@@ -418,6 +503,15 @@ fn main() {
         witness.input.as_ref().ok()
     );
     println!("native input={:?}", snapshot.environment().input);
+    if let Ok(Some(depth)) = witness.color {
+        assert_eq!(screen.color_depth(), depth);
+        println!("native RGB wire color depth={depth}");
+    } else {
+        eprintln!(
+            "SKIP color comparison: no complete fresh RGB native witness: {:?}",
+            witness.color
+        );
+    }
     println!(
         "native monitor {}: screen={screen:?}, client={client:?}, scale={scale}",
         witness.monitor.szDevice()

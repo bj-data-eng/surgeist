@@ -1,7 +1,10 @@
 //! Exact native monitor identity and checked desktop work-area conversion.
 
-use super::MonitorFacts;
+use super::{ColorEstimate, MonitorFacts};
 use crate::{Point, Rect, ScaleFactor, Size};
+
+#[cfg(target_os = "windows")]
+mod color;
 
 #[cfg(target_os = "windows")]
 pub(super) fn observe(
@@ -30,7 +33,7 @@ pub(super) fn observe(
     if enumeration.is_err() || failed {
         return MonitorFacts::default();
     }
-    facts_for(&id, &observations, origin, scale)
+    facts_for(&id, &observations, origin, scale, color::observe(&id))
 }
 
 #[derive(Clone, Copy)]
@@ -64,6 +67,7 @@ fn facts_for(
     observations: &[Observation],
     origin: Point,
     scale: ScaleFactor,
+    color: Option<ColorEstimate>,
 ) -> MonitorFacts {
     if id.trim().is_empty() {
         return MonitorFacts::default();
@@ -82,8 +86,10 @@ fn facts_for(
         available_area: selected.and_then(|observation| {
             available_area(observation.frame, observation.work, origin, scale)
         }),
-        // GDI storage bits do not establish color precision or RGB channel depth.
-        ..MonitorFacts::default()
+        color_depth: selected.and(color).map(|color| color.depth),
+        color_component_bits: selected
+            .and(color)
+            .and_then(|color| color.rgb_component_bits),
     }
 }
 
@@ -208,7 +214,13 @@ mod tests {
             observation("DISPLAY2", edges(-2370, -1140, -90, 480)),
         ];
         assert_eq!(
-            facts_for("DISPLAY2", &observations, Point::default(), scale(2.0)),
+            facts_for(
+                "DISPLAY2",
+                &observations,
+                Point::default(),
+                scale(2.0),
+                None
+            ),
             MonitorFacts {
                 available_area: Some(rect(15.0, 30.0, 1140.0, 810.0)),
                 color_depth: None,
@@ -217,12 +229,58 @@ mod tests {
         );
         for id in ["", " ", "DISPLAY3", "display2", " DISPLAY2"] {
             assert_eq!(
-                facts_for(id, &observations, Point::default(), scale(1.0)),
+                facts_for(id, &observations, Point::default(), scale(1.0), None),
                 MonitorFacts::default()
             );
         }
         assert_eq!(
-            facts_for("DISPLAY1", &[], Point::default(), scale(1.0)),
+            facts_for("DISPLAY1", &[], Point::default(), scale(1.0), None),
+            MonitorFacts::default()
+        );
+    }
+
+    #[test]
+    fn unavailable_color_preserves_valid_work_area_and_observed_color_composes_independently() {
+        let observations = [observation("DISPLAY1", edges(-2370, -1140, -90, 480))];
+        let without_color = facts_for(
+            "DISPLAY1",
+            &observations,
+            Point::default(),
+            scale(2.0),
+            None,
+        );
+        assert_eq!(
+            without_color.available_area,
+            Some(rect(15.0, 30.0, 1140.0, 810.0))
+        );
+        assert_eq!(without_color.color_depth, None);
+        assert_eq!(without_color.color_component_bits, None);
+        let color = Some(ColorEstimate {
+            depth: 30,
+            rgb_component_bits: Some(10),
+        });
+        assert_eq!(
+            facts_for(
+                "DISPLAY1",
+                &observations,
+                Point::default(),
+                scale(2.0),
+                color
+            ),
+            MonitorFacts {
+                available_area: without_color.available_area,
+                color_depth: Some(30),
+                color_component_bits: Some(10),
+            }
+        );
+        assert_eq!(
+            facts_for(
+                "unknown",
+                &observations,
+                Point::default(),
+                scale(2.0),
+                color
+            ),
             MonitorFacts::default()
         );
     }
@@ -237,13 +295,25 @@ mod tests {
         ] {
             let observations = ids.map(|id| observation(id, frame));
             assert_eq!(
-                facts_for("DISPLAY1", &observations, Point::default(), scale(1.0)),
+                facts_for(
+                    "DISPLAY1",
+                    &observations,
+                    Point::default(),
+                    scale(1.0),
+                    None
+                ),
                 MonitorFacts::default()
             );
         }
         let observations = ["DISPLAY1", "DISPLAY2", "DISPLAY2"].map(|id| observation(id, frame));
         assert_eq!(
-            facts_for("DISPLAY1", &observations, Point::default(), scale(1.0)),
+            facts_for(
+                "DISPLAY1",
+                &observations,
+                Point::default(),
+                scale(1.0),
+                None
+            ),
             MonitorFacts::default()
         );
     }

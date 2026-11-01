@@ -38,7 +38,13 @@ sample independently checks the host's primary and union input capabilities;
 unavailable native input remains explicit. It works with multiple monitors without
 selecting a device by screen geometry or enumeration order. Keep settings and
 monitor configuration and input devices stable during the probe. It reads facts without changing
-them and makes no claim about color precision, notification wakeups or rendering.
+them. An independent fresh read-only display-state query also compares RGB wire
+color depth when that witness is available; unavailable or unsupported witnesses
+print an explicit skip for that comparison. On an 8-bit RGB output, the resulting
+24 bits equal the public unknown-depth fallback, so that native comparison alone
+does not distinguish observation from fallback. Private fixture checks cover
+other channel depths and invalid states. The probe makes no claim about panel
+precision, HDR behavior, notification wakeups or rendering.
 
 See [host observations](explanation.md#host-observations-and-consumer-inputs) for
 the supported values, sampling opportunities and unavailable observations.

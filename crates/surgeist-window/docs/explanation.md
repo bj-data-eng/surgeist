@@ -283,9 +283,28 @@ Windows work rectangles already use top-left/right/down axes. Their offsets
 within the selected monitor are divided by the committed display scale and
 added to the captured logical screen origin. This preserves negative desktop
 origins and each window's scale. Work bounds must be finite, nonnegative and
-contained in a positive-area selected screen. Pixel-storage depth is not treated
-as color precision: Windows color estimates remain unavailable rather than counting
-alpha or storage padding as color bits.
+contained in a positive-area selected screen.
+
+Windows color capture uses a synchronous read-only display-state query. The
+selected device's fully enumerated PnP monitor interface must match exactly one
+fresh connected `DisplayTarget.DeviceInterfacePath`; multiple child interfaces
+remain ambiguous. The display state and selected target must remain fresh
+through the read. The snapshot is acquired before resolving the GDI mapping, so
+its freshness interval covers interface enumeration and wire queries. Failed
+queries, invalid identities, missing wire formats or
+unknown encodings leave color unavailable without discarding valid work bounds.
+The native display manager is closed after every query; no display ownership or
+configuration mutation is requested.
+
+For RGB444 wire formats, the observed positive channel precision gives a
+three-channel estimate and the matching RGB component bound. Alpha and storage
+padding do not participate. Other encodings remain unavailable. This is an
+active wire-format estimate, not a renderer format, panel precision or HDR
+qualification. Pixel-storage depth is never substituted for that observation.
+See the native contracts for
+[monitor interface identity](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-enumdisplaydevicesw),
+[target identity](https://learn.microsoft.com/en-us/uwp/api/windows.devices.display.core.displaytarget.deviceinterfacepath)
+and [wire channel precision](https://learn.microsoft.com/en-us/uwp/api/windows.devices.display.core.displaywireformat.bitsperchannel).
 
 Raw native event captures retain the existing basic geometry but defer these
 monitor facts. At `about_to_wait`, after queued metric transitions have
