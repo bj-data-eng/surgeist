@@ -257,8 +257,7 @@ impl SessionStorage {
                             Target::Other
                         };
                         if nesting.inspect(target).map_err(|_| {
-                            c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
-                                .unwrap_err()
+                            c.stop_representation(HtmlParseResource::AuxiliaryEntries)
                         })? {
                             return Ok((Some(node), Some(current)));
                         }

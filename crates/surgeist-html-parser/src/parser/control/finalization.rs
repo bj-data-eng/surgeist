@@ -184,10 +184,7 @@ impl ParseControl {
             .resource(HtmlParseResource::ManagedCapacityBytes)
             .current
             .checked_add(bytes)
-            .ok_or_else(|| {
-                self.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
         self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
         self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
         for resource in RESOURCES {
@@ -214,10 +211,7 @@ impl ParseControl {
             .checked_mul(size_of::<u16>())
             .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
             .and_then(|n| u64::try_from(n).ok())
-            .ok_or_else(|| {
-                self.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
         self.acquire_final(bytes, value.len() as u64, 0)?;
         Ok(DocumentStringAllocation {
             owner: self.identity.clone(),
@@ -243,10 +237,7 @@ impl ParseControl {
             .checked_mul(size_of::<Attribute>())
             .and_then(|n| n.checked_add(size_of::<Vec<Attribute>>()))
             .and_then(|n| u64::try_from(n).ok())
-            .ok_or_else(|| {
-                self.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
         self.acquire_final(bytes, 0, value.len() as u64)?;
         Ok((
             VectorCapacity {

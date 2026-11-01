@@ -23,18 +23,18 @@ impl AssociatedStorageUsage {
         other: Self,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        self.bytes = self.bytes.checked_add(other.bytes).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                .unwrap_err()
-        })?;
-        self.units = self.units.checked_add(other.units).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                .unwrap_err()
-        })?;
-        self.entries = self.entries.checked_add(other.entries).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
-                .unwrap_err()
-        })?;
+        self.bytes = self
+            .bytes
+            .checked_add(other.bytes)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
+        self.units = self
+            .units
+            .checked_add(other.units)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
+        self.entries = self
+            .entries
+            .checked_add(other.entries)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))?;
         Ok(())
     }
     pub(super) fn resources(self) -> [(HtmlParseResource, u64); 4] {
@@ -52,18 +52,18 @@ impl AssociatedStorageUsage {
         entries: usize,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        self.bytes = self.bytes.checked_add(bytes as u64).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                .unwrap_err()
-        })?;
-        self.units = self.units.checked_add(units as u64).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                .unwrap_err()
-        })?;
-        self.entries = self.entries.checked_add(entries as u64).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
-                .unwrap_err()
-        })?;
+        self.bytes = self
+            .bytes
+            .checked_add(bytes as u64)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
+        self.units = self
+            .units
+            .checked_add(units as u64)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
+        self.entries = self
+            .entries
+            .checked_add(entries as u64)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))?;
         Ok(())
     }
     pub(super) fn acquire(self, c: &mut ParseControl) -> Result<(), SessionError> {
@@ -101,10 +101,7 @@ impl Inputs {
                     .and_then(|n| v.checked_add(n))
             })
             .and_then(|v| mem::size_of::<Self>().checked_add(v))
-            .ok_or_else(|| {
-                c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
         usage.add(
             header,
             0,
@@ -146,7 +143,7 @@ impl Inputs {
                     && previous.encoding() == facts.encoding()
                     && previous.revision() == facts.revision()
                 {
-                    return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                    return Err(c.stop_invalid_associated_facts().into());
                 }
             }
             let retained = facts.retained_storage_usage();
@@ -213,20 +210,20 @@ impl ParserArenaSession {
         for (index, context) in inputs.captured.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 3)?;
             let Some(fragment) = &storage.fragment else {
-                return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                return Err(c.stop_invalid_associated_facts().into());
             };
             let capture = fragment.context.capture();
             if context.host_revision() != capture.host_facts_revision() {
-                return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                return Err(c.stop_invalid_associated_facts().into());
             }
             c.charge(WorkCategory::ProviderCall, 1)?;
             if capture.document_id(context.document().subject()).is_err() {
-                return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                return Err(c.stop_invalid_associated_facts().into());
             }
             for previous in &inputs.captured[..index] {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if previous.document() == context.document() {
-                    return Err(c.invalid_associated_facts::<()>().unwrap_err().into());
+                    return Err(c.stop_invalid_associated_facts().into());
                 }
             }
         }
@@ -763,10 +760,10 @@ impl SessionStorage {
         let Some(RetainedPayload::Image { state, .. }) = self.payloads.values.get(slot) else {
             return Err(latch_registry_row(c));
         };
-        let next = state.latest.checked_add(1).ok_or_else(|| {
-            c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
-                .unwrap_err()
-        })?;
+        let next = state
+            .latest
+            .checked_add(1)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))?;
         if state.waiting.is_some()
             && !surgeist_html::image_update_is_superseded(state.latest.cmp(&next))
                 .map_err(|_| SessionError::AssociatedFacts)?

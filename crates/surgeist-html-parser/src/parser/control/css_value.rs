@@ -115,10 +115,7 @@ impl ParseControl {
             let bytes = units
                 .checked_mul(size_of::<u16>() as u64)
                 .and_then(|n| n.checked_add(size_of::<Vec<u16>>() as u64))
-                .ok_or_else(|| {
-                    self.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                        .unwrap_err()
-                })?;
+                .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
             self.charge(WorkCategory::CopyByte, size_of::<Arc<Vec<u16>>>() as u64)?;
             // Last fallible operation; the existing backing remains admitted.
             self.acquire(HtmlParseResource::ManagedUtf16Units, units)?;

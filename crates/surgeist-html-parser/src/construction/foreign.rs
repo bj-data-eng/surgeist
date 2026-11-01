@@ -1031,11 +1031,7 @@ impl SessionStorage {
             let mut units = name
                 .len()
                 .checked_add(namespace.uri().map_or(0, DocumentString::len))
-                .ok_or_else(|| {
-                    control
-                        .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
+                .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             let (values, allocation) = control.new_vector()?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
@@ -1073,9 +1069,7 @@ impl SessionStorage {
                     })
                     .and_then(|sum| sum.checked_add(value.len()))
                     .ok_or_else(|| {
-                        control
-                            .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                            .unwrap_err()
+                        control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
                 let RetainedPayload::Attributes(Some(AttributeStorage::Building {
                     values,

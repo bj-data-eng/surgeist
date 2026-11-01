@@ -11,8 +11,7 @@ use surgeist_html::bounded::{
 
 fn pool_error(c: &mut ParseControl, error: HtmlValuePoolError) -> SessionError {
     if matches!(error, HtmlValuePoolError::RepresentationExhausted) {
-        c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-            .unwrap_err()
+        c.stop_representation(HtmlParseResource::ManagedCapacityBytes)
             .into()
     } else {
         c.fail_invariant(crate::parser::control::Invariant::CapacityMismatch)
@@ -1173,21 +1172,15 @@ impl Finalizing {
                     .capacity()
                     .checked_mul(mem::size_of::<u16>())
                     .and_then(|n| n.checked_add(mem::size_of::<Vec<u16>>()))
-                    .ok_or_else(|| {
-                        c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                            .unwrap_err()
-                    })? as u64;
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedCapacityBytes))?
+                    as u64;
                 temporary.bytes = temporary.bytes.checked_add(bytes).ok_or_else(|| {
-                    c.representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                        .unwrap_err()
+                    c.stop_representation(HtmlParseResource::ManagedCapacityBytes)
                 })?;
                 temporary.units = temporary
                     .units
                     .checked_add(component.len() as u64)
-                    .ok_or_else(|| {
-                        c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                            .unwrap_err()
-                    })?;
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             }
             temporary.retain(c)?;
             bounded::HtmlConstructionContent::ElementName(QualifiedName::new(

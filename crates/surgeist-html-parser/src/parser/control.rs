@@ -350,9 +350,11 @@ impl ParseControl {
         }
         self.latch_stop(ParseStop::ColorProcessing(error))
     }
-    pub(crate) fn invalid_associated_facts<T>(&mut self) -> Result<T, ParseStop> {
-        self.checkpoint()?;
-        self.fail(ParseStop::InvalidAssociatedFacts)
+    pub(crate) fn stop_invalid_associated_facts(&mut self) -> ParseStop {
+        if let Err(first) = self.checkpoint() {
+            return first;
+        }
+        self.latch_stop(ParseStop::InvalidAssociatedFacts)
     }
     pub(crate) fn stop_base_facts(&mut self, reason: crate::HtmlBaseMissing) -> ParseStop {
         if let Err(first) = self.checkpoint() {
@@ -361,8 +363,7 @@ impl ParseControl {
         self.latch_stop(ParseStop::BaseFacts(reason))
     }
     fn fail<T>(&mut self, reason: ParseStop) -> Result<T, ParseStop> {
-        let first = self.latch_stop(reason);
-        Err(first)
+        Err(self.latch_stop(reason))
     }
     pub(crate) fn checkpoint(&mut self) -> Result<(), ParseStop> {
         if let Some(reason) = self.terminal {
@@ -424,11 +425,16 @@ impl ParseControl {
     }
     /// Latches a checked-arithmetic failure observed after the caller's initial
     /// checkpoint. No extra poll can replace that already observed first stop.
+    pub(crate) fn stop_representation(&mut self, resource: HtmlParseResource) -> ParseStop {
+        self.latch_stop(ParseStop::RepresentationExhausted { resource })
+    }
+    /// The same latched stop as [`Self::stop_representation`], for a caller
+    /// whose own result type is `Result`.
     pub(crate) fn representation<T>(
         &mut self,
         resource: HtmlParseResource,
     ) -> Result<T, ParseStop> {
-        self.fail(ParseStop::RepresentationExhausted { resource })
+        Err(self.stop_representation(resource))
     }
     /// Admits one known indivisible owned-record layout before its move/copy.
     /// The caller separately precharges actual bytes and record writes. This
@@ -1072,9 +1078,7 @@ impl ParseControl {
         allocation: SharedAllocation<T>,
     ) -> Result<T, SharedReleaseError<T>> {
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
-            let stop = self
-                .fail::<()>(ParseStop::InternalInvariant(Invariant::ForeignControl))
-                .unwrap_err();
+            let stop = self.latch_stop(ParseStop::InternalInvariant(Invariant::ForeignControl));
             return Err(SharedReleaseError {
                 stop,
                 shared,
@@ -1082,9 +1086,7 @@ impl ParseControl {
             });
         }
         if !std::ptr::eq(Arc::as_ptr(&shared), allocation.shared.as_ptr()) {
-            let stop = self
-                .fail::<()>(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
-                .unwrap_err();
+            let stop = self.latch_stop(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
             return Err(SharedReleaseError {
                 stop,
                 shared,
@@ -1097,9 +1099,7 @@ impl ParseControl {
             .current
             < allocation.bytes
         {
-            let stop = self
-                .fail::<()>(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow))
-                .unwrap_err();
+            let stop = self.latch_stop(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
             return Err(SharedReleaseError {
                 stop,
                 shared,
@@ -1113,11 +1113,9 @@ impl ParseControl {
                 Ok(payload)
             }
             Err(shared) => {
-                let stop = self
-                    .fail::<()>(ParseStop::InternalInvariant(
-                        Invariant::SharedAllocationAliased,
-                    ))
-                    .unwrap_err();
+                let stop = self.latch_stop(ParseStop::InternalInvariant(
+                    Invariant::SharedAllocationAliased,
+                ));
                 Err(SharedReleaseError {
                     stop,
                     shared,
@@ -1146,9 +1144,7 @@ impl ParseControl {
             None
         };
         if let Some(invariant) = invariant {
-            let stop = self
-                .fail::<()>(ParseStop::InternalInvariant(invariant))
-                .unwrap_err();
+            let stop = self.latch_stop(ParseStop::InternalInvariant(invariant));
             return Err(SharedReleaseError {
                 stop,
                 shared,
@@ -3378,6 +3374,59 @@ mod tests {
             Err(ParseStop::Cancelled)
         );
         assert_eq!(control.stop(), Some(ParseStop::Cancelled));
+    }
+    #[test]
+    fn stop_constructors_return_the_stop_the_result_form_carries_and_latch_it() {
+        let expected = ParseStop::RepresentationExhausted {
+            resource: HtmlParseResource::ManagedEdges,
+        };
+        let mut direct = control();
+        assert_eq!(
+            direct.stop_representation(HtmlParseResource::ManagedEdges),
+            expected
+        );
+        assert_eq!(direct.stop(), Some(expected));
+        let mut through_result = control();
+        assert_eq!(
+            through_result.representation::<()>(HtmlParseResource::ManagedEdges),
+            Err(expected)
+        );
+        assert_eq!(through_result.stop(), Some(expected));
+
+        let mut facts = control();
+        assert_eq!(
+            facts.stop_invalid_associated_facts(),
+            ParseStop::InvalidAssociatedFacts
+        );
+        assert_eq!(facts.stop(), Some(ParseStop::InvalidAssociatedFacts));
+    }
+    #[test]
+    fn stop_constructors_keep_the_first_stop() {
+        let mut control = control();
+        let first = control.stop_representation(HtmlParseResource::ManagedEdges);
+        assert_eq!(
+            control.stop_representation(HtmlParseResource::AuxiliaryEntries),
+            first
+        );
+        assert_eq!(control.stop_invalid_associated_facts(), first);
+        assert_eq!(
+            control.latch_stop(ParseStop::InternalInvariant(Invariant::ForeignControl)),
+            first
+        );
+        assert_eq!(control.stop(), Some(first));
+
+        let cancellation = HtmlParseCancellation::new();
+        let mut cancelled = ParseControl::new(limits(), cancellation.clone());
+        cancellation.cancel();
+        assert_eq!(
+            cancelled.stop_invalid_associated_facts(),
+            ParseStop::Cancelled
+        );
+        assert_eq!(
+            cancelled.stop_representation(HtmlParseResource::ManagedEdges),
+            ParseStop::Cancelled
+        );
+        assert_eq!(cancelled.stop(), Some(ParseStop::Cancelled));
     }
     #[test]
     fn cap_failure_precedes_later_cancel() {

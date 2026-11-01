@@ -153,26 +153,19 @@ impl Account {
         let work = a
             .work_credits()
             .checked_add(a.closing_work().work_credits())
-            .ok_or_else(|| {
-                c.representation::<()>(crate::HtmlParseResource::WorkCredits)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::WorkCredits))?;
         c.charge(WorkCategory::ProviderCall, work)?;
         c.admit_atomic_layout(a.atomic_bytes())?;
         let base = self
             .live
             .sub(Storage::from(a.transferred().storage()))
-            .ok_or_else(|| c.invalid_associated_facts::<()>().unwrap_err())?;
-        let peak = base.add(Storage::from(a.peak())).ok_or_else(|| {
-            c.representation::<()>(crate::HtmlParseResource::ManagedCapacityBytes)
-                .unwrap_err()
-        })?;
+            .ok_or_else(|| c.stop_invalid_associated_facts())?;
+        let peak = base
+            .add(Storage::from(a.peak()))
+            .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::ManagedCapacityBytes))?;
         let next = base
             .add(Storage::from(a.retained().storage()))
-            .ok_or_else(|| {
-                c.representation::<()>(crate::HtmlParseResource::ManagedCapacityBytes)
-                    .unwrap_err()
-            })?;
+            .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::ManagedCapacityBytes))?;
         // Temporarily admit the declared overlap before the native action.
         let (extra, overlap) = Storage::overlap(self.live, peak, next);
         extra.acquire(c)?;
@@ -187,7 +180,7 @@ impl Account {
         self.live = self
             .live
             .sub(n)
-            .ok_or_else(|| c.invalid_associated_facts::<()>().unwrap_err())?;
+            .ok_or_else(|| c.stop_invalid_associated_facts())?;
         n.release(c);
         Ok(())
     }

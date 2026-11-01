@@ -46,11 +46,9 @@ pub(super) fn construction_error(
         HtmlConstructionError::SharedAllocationAliased => SessionError::Stop(
             control.fail_invariant(crate::parser::control::Invariant::SharedAllocationAliased),
         ),
-        HtmlConstructionError::RepresentationExhausted => SessionError::Stop(
-            control
-                .representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                .unwrap_err(),
-        ),
+        HtmlConstructionError::RepresentationExhausted => {
+            SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
+        }
         _ => SessionError::Stop(
             control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch),
         ),
@@ -349,9 +347,7 @@ impl ConstructionOwner {
                             .checked_add(additional)
                             .map(|planned| planned.max(minimum_capacity))
                             .ok_or_else(|| {
-                                control
-                                    .representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                                    .unwrap_err()
+                                control.stop_representation(HtmlParseResource::ManagedCapacityBytes)
                             })?
                     }
                 };
@@ -360,9 +356,7 @@ impl ConstructionOwner {
                 expected = capacity
                     .checked_mul(snapshot.element_size())
                     .ok_or_else(|| {
-                        control
-                            .representation::<()>(HtmlParseResource::ManagedCapacityBytes)
-                            .unwrap_err()
+                        control.stop_representation(HtmlParseResource::ManagedCapacityBytes)
                     })?;
                 control.prepare_construction_reserve(
                     snapshot,

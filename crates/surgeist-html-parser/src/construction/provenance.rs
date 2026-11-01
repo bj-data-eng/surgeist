@@ -403,8 +403,7 @@ impl GroupLeafCursor {
                         return Err(SessionError::WrongToken);
                     }
                     let right_offset = frame.offset.checked_add(offset).ok_or_else(|| {
-                        c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                            .unwrap_err()
+                        c.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
                     self.frames
                         .as_mut()
@@ -493,14 +492,14 @@ impl GroupOriginCursor {
                 if origin.start >= origin.end || origin.end > leaf.units {
                     return Err(SessionError::WrongToken);
                 }
-                let start = leaf.offset.checked_add(origin.start).ok_or_else(|| {
-                    c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
-                let end = leaf.offset.checked_add(origin.end).ok_or_else(|| {
-                    c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
+                let start = leaf
+                    .offset
+                    .checked_add(origin.start)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
+                let end = leaf
+                    .offset
+                    .checked_add(origin.end)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
                 payload_write::<TextOrigin>(c, 1)?;
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 payload_write::<usize>(c, 1)?;
@@ -692,8 +691,7 @@ impl ParseEvidence {
                         for index in 0..leaf.units {
                             c.charge(WorkCategory::InspectByte, 4)?;
                             let position = leaf.offset.checked_add(index).ok_or_else(|| {
-                                c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                                    .unwrap_err()
+                                c.stop_representation(HtmlParseResource::ManagedUtf16Units)
                             })?;
                             if value.get(position) != text.code_units().get(index) {
                                 equal = false;
@@ -701,10 +699,9 @@ impl ParseEvidence {
                         }
                     }
                 }
-                covered = covered.checked_add(leaf.units).ok_or_else(|| {
-                    c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
+                covered = covered
+                    .checked_add(leaf.units)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             }
             Ok(equal && covered == value.len())
         })();
@@ -796,10 +793,9 @@ impl ParseEvidence {
                         output.extend_units(value.code_units(), c)?;
                     }
                 }
-                covered = covered.checked_add(leaf.units).ok_or_else(|| {
-                    c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
+                covered = covered
+                    .checked_add(leaf.units)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             }
             if covered != self.require_group(group)?.units {
                 return Err(SessionError::WrongToken);

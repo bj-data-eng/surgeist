@@ -231,8 +231,7 @@ impl SessionStorage {
                     }
                     surgeist_html::bounded::HtmlPiPseudoAttributeError::Representation => {
                         SessionError::Stop(
-                            c.representation::<()>(HtmlParseResource::AuxiliaryEntries)
-                                .unwrap_err(),
+                            c.stop_representation(HtmlParseResource::AuxiliaryEntries),
                         )
                     }
                 })?;

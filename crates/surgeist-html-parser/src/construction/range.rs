@@ -220,8 +220,7 @@ impl RangeStaging {
 fn numeric_failure(c: &mut ParseControl, error: RangeNumericError) -> SessionError {
     match error {
         RangeNumericError::Representation => c
-            .representation::<()>(HtmlParseResource::AuxiliaryEntries)
-            .unwrap_err()
+            .stop_representation(HtmlParseResource::AuxiliaryEntries)
             .into(),
         _ => integrity(c),
     }

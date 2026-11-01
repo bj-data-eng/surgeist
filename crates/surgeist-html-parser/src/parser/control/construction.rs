@@ -30,10 +30,9 @@ impl ParseControl {
         {
             let mut addition = 0_u64;
             for &(_, delta) in requests {
-                addition = addition.checked_add(delta).ok_or_else(|| {
-                    self.representation::<()>(HtmlParseResource::ManagedEdges)
-                        .unwrap_err()
-                })?;
+                addition = addition
+                    .checked_add(delta)
+                    .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedEdges))?;
             }
             return self.commit_construction_edges(owner, addition, edge_remove);
         }
@@ -188,11 +187,10 @@ impl ParseControl {
         self.checkpoint()
     }
     pub(crate) fn construction_allocation_failed(&mut self, layout_bytes: usize) -> ParseStop {
-        self.fail::<()>(ParseStop::AllocationFailed {
+        self.latch_stop(ParseStop::AllocationFailed {
             resource: HtmlParseResource::ManagedCapacityBytes,
             layout_bytes: layout_bytes as u64,
         })
-        .unwrap_err()
     }
     pub(crate) fn record_construction_allocation(
         &mut self,

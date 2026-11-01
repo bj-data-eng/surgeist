@@ -3596,11 +3596,10 @@ impl SessionStorage {
             let namespace = literal_string(control, b"http://www.w3.org/1999/xhtml")?;
             let (namespace, namespace_ticket) = self.register_string(control, namespace, None)?;
             control.charge(WorkCategory::RecordVisit, 2)?;
-            let mut units = name.len().checked_add(namespace.len()).ok_or_else(|| {
-                control
-                    .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                    .unwrap_err()
-            })?;
+            let mut units = name
+                .len()
+                .checked_add(namespace.len())
+                .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             let (values, allocation) = control.new_vector()?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
@@ -3635,9 +3634,7 @@ impl SessionStorage {
                     .checked_add(local.len())
                     .and_then(|sum| sum.checked_add(value.len()))
                     .ok_or_else(|| {
-                        control
-                            .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                            .unwrap_err()
+                        control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
                 let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                     values,
@@ -4431,9 +4428,7 @@ impl SessionStorage {
                     StringLocation::AttributeName(
                         destination,
                         start.checked_add(index).ok_or_else(|| {
-                            control
-                                .representation::<()>(HtmlParseResource::ManagedAttributes)
-                                .unwrap_err()
+                            control.stop_representation(HtmlParseResource::ManagedAttributes)
                         })?,
                     )
                 }
@@ -4441,9 +4436,7 @@ impl SessionStorage {
                     StringLocation::AttributeValue(
                         destination,
                         start.checked_add(index).ok_or_else(|| {
-                            control
-                                .representation::<()>(HtmlParseResource::ManagedAttributes)
-                                .unwrap_err()
+                            control.stop_representation(HtmlParseResource::ManagedAttributes)
                         })?,
                     )
                 }
@@ -4451,9 +4444,7 @@ impl SessionStorage {
                     StringLocation::AttributeNamespace(
                         destination,
                         start.checked_add(index).ok_or_else(|| {
-                            control
-                                .representation::<()>(HtmlParseResource::ManagedAttributes)
-                                .unwrap_err()
+                            control.stop_representation(HtmlParseResource::ManagedAttributes)
                         })?,
                     )
                 }
@@ -4461,9 +4452,7 @@ impl SessionStorage {
                     StringLocation::AttributePrefix(
                         destination,
                         start.checked_add(index).ok_or_else(|| {
-                            control
-                                .representation::<()>(HtmlParseResource::ManagedAttributes)
-                                .unwrap_err()
+                            control.stop_representation(HtmlParseResource::ManagedAttributes)
                         })?,
                     )
                 }
@@ -7838,9 +7827,7 @@ impl ParserArenaSession {
                 };
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 units = units.checked_add(value.0.len()).ok_or_else(|| {
-                    control
-                        .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
+                    control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                 })?;
                 payload_write::<Option<(DocumentString, usize)>>(control, 2)?;
                 registered[index] = Some(value);
