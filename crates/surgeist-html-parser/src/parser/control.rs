@@ -2282,6 +2282,8 @@ impl ParseUsage {
 
 #[cfg(test)]
 mod html_value_tests;
+#[cfg(test)]
+mod release_tests;
 
 #[cfg(test)]
 mod tests {

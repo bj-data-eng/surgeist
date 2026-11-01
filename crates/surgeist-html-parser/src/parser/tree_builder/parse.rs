@@ -869,6 +869,33 @@ mod tests {
     }
 
     #[test]
+    fn csp_storage_the_ordinary_controller_never_admitted_is_reported_not_claimed() {
+        let tight = super::super::tests::limits(100)
+            .into_builder()
+            .managed_nodes(4)
+            .finish()
+            .unwrap();
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x</p>"), tight);
+        let mut failed = request.parse().unwrap_err();
+        assert!(matches!(failed.storage, FailureStorage::Ordinary(_)));
+        assert_eq!(failed.cleanup_error(), None);
+        let retained = failed.retained_usage().cloned();
+        // The controller admitted no provider storage, so a return of this
+        // storage could only underflow it.
+        let claimed = failed.claim_csp_storage(crate::meta_csp::Storage {
+            bytes: 8,
+            units: 2,
+            entries: 1,
+        });
+        assert_eq!(claimed, ReturnableCspStorage::NONE);
+        assert_eq!(
+            failed.cleanup_error(),
+            Some(HtmlParseEngineCondition::Cleanup)
+        );
+        assert_eq!(failed.retained_usage().cloned(), retained);
+    }
+
+    #[test]
     fn public_terminal_receiver_exact_and_one_short_preserve_source_first_stop_and_cleanup() {
         // Actual new terminal receiver plus its moved storage/reason/optional
         // cleanup receiver. No tree or token backing is synthesized here.

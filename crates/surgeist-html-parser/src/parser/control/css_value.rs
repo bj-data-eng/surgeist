@@ -391,4 +391,44 @@ mod tests {
             work
         );
     }
+    #[test]
+    fn a_callback_entered_while_another_runs_stops_the_parse_without_panicking() {
+        let mut c = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
+        let stop = ParseStop::InternalInvariant(Invariant::ReentrantProviderCallback);
+        let callbacks = SchemeCallbacks::new(&mut c);
+        {
+            // The parser cannot reach this through the closures it is given:
+            // neither closure calls out while it holds the controller. The
+            // guard stands in for foreign code still running inside one.
+            let _running = callbacks.control.borrow_mut();
+            assert_eq!(callbacks.admit_live(Some((8, 2))), Err(stop));
+            callbacks.release_to((0, 0));
+        }
+        let (c, live, _owner) = callbacks.into_parts();
+        assert_eq!(c.stop(), Some(stop));
+        assert_eq!(live, (0, 0));
+        empty(c);
+    }
+    #[test]
+    fn a_release_larger_than_the_live_storage_stops_the_parse_without_panicking() {
+        let mut c = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
+        let callbacks = SchemeCallbacks::new(&mut c);
+        callbacks.admit_live(Some((10, 4))).unwrap();
+        // The parser reports more remaining storage than it ever admitted.
+        callbacks.release_to((12, 4));
+        let (c, _live, owner) = callbacks.into_parts();
+        assert_eq!(
+            c.stop(),
+            Some(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow))
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current(),
+            10,
+            "nothing is credited for the impossible release"
+        );
+        let _ = c.release_retained_provider(&owner, 10, 4, 0);
+        empty(c);
+    }
 }
