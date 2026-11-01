@@ -375,8 +375,8 @@ mod tests {
     use super::*;
     use crate::HtmlParseCancellation;
 
-    fn control() -> ParseControl {
-        let limits = crate::HtmlParseLimits::builder()
+    fn limits() -> crate::HtmlParseLimits {
+        crate::HtmlParseLimits::builder()
             .source_units(1_000)
             .buffered_utf16_units(1_000)
             .token_attributes(1_000)
@@ -397,8 +397,10 @@ mod tests {
             .atomic_layout_bytes(16_000)
             .work_credits(100_000)
             .finish()
-            .unwrap();
-        ParseControl::new(limits, HtmlParseCancellation::new())
+            .unwrap()
+    }
+    fn control() -> ParseControl {
+        ParseControl::new(limits(), HtmlParseCancellation::new())
     }
     fn layout() -> HtmlCspLayout {
         HtmlCspLayout::processing(
@@ -474,5 +476,25 @@ mod tests {
         shared.release(HtmlCspStorage::default());
         assert!(shared.finish().is_ok());
         assert_eq!(c.stop(), None);
+    }
+
+    #[test]
+    fn dropping_a_failure_whose_owner_cannot_take_the_storage_back_does_not_panic() {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<p>x"), limits());
+        request.cancellation().cancel();
+        let parse = request.parse().unwrap_err();
+        let failure = HtmlParseCspFailure::<()> {
+            parse,
+            native: None,
+            kind: HtmlParseCspFailureKind::Cancelled,
+            storage: Storage {
+                bytes: 8,
+                units: 2,
+                entries: 1,
+            },
+        };
+        assert_eq!(failure.parse_failure().cleanup_error(), None);
+        drop(failure);
     }
 }

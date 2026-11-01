@@ -809,6 +809,33 @@ mod tests {
     use crate::HtmlParseResource;
 
     #[test]
+    fn csp_storage_returned_to_a_failure_without_the_ordinary_driver_is_reported() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        request.cancellation().cancel();
+        let mut failed = request.parse().unwrap_err();
+        assert!(!matches!(failed.storage, FailureStorage::Ordinary(_)));
+        assert_eq!(failed.cleanup_error(), None);
+        let retained = failed.retained_usage().cloned();
+        failed.release_csp_storage(crate::meta_csp::Storage {
+            bytes: 1,
+            units: 1,
+            entries: 1,
+        });
+        assert_eq!(
+            failed.cleanup_error(),
+            Some(HtmlParseEngineCondition::Ownership)
+        );
+        assert_eq!(
+            failed.reason(),
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled)
+        );
+        assert_eq!(failed.retained_usage().cloned(), retained);
+    }
+
+    #[test]
     fn public_terminal_receiver_exact_and_one_short_preserve_source_first_stop_and_cleanup() {
         // Actual new terminal receiver plus its moved storage/reason/optional
         // cleanup receiver. No tree or token backing is synthesized here.
