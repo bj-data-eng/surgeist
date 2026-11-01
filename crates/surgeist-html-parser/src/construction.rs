@@ -1181,6 +1181,11 @@ impl PayloadStorage {
         control.charge(WorkCategory::RecordVisit, 1)?;
         Ok(self.node_joins.get(node).and_then(|cell| cell.get(join)))
     }
+    /// The same join cell without a charge, for a published report, which has
+    /// no controller. The caller checks the row it gets.
+    fn joined_uncharged(&self, node: usize, join: Join) -> Option<usize> {
+        self.node_joins.get(node).and_then(|cell| cell.get(join))
+    }
     /// Registers the row at `slot` under the record it is bound to. Binding a
     /// row and joining it are one infallible step at every binding site; the
     /// test-build check at release compares every join with the registry.

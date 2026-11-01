@@ -405,6 +405,16 @@ impl<'a> PreparedReportStorage<'a> {
                     if element.link_flags().is_none() {
                         return Err(SessionError::WrongToken);
                     }
+                    // Every created node has its node-document row, which the
+                    // link history joins to the parser Document.
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    let slot = storage.payloads.joined(c, node, Join::NodeDocument)?;
+                    if !matches!(
+                        slot.and_then(|slot| storage.payloads.values.get(slot)),
+                        Some(RetainedPayload::NodeDocument { node: Some(owner), .. }) if *owner == node
+                    ) {
+                        return Err(SessionError::NodeDocumentUnavailable);
+                    }
                     if let Some(document) = parser_document {
                         checked_document(storage, document, c)?;
                     }
@@ -1155,7 +1165,11 @@ enum Refs<'a> {
     Image(MetadataImage<'a>),
     Base(MetadataBaseState<'a>),
     FirstBase(Option<HtmlNode<'a>>),
-    Link(Option<MetadataDocument<'a>>),
+    Link {
+        parser_document: Option<MetadataDocument<'a>>,
+        flags: crate::HtmlLinkFlags,
+        history: crate::HtmlLinkHistory,
+    },
     NodeDocument(MetadataDocument<'a>),
     Script(Option<MetadataDocument<'a>>, Option<MetadataDocument<'a>>),
     Template(MetadataTemplate<'a>),
@@ -1250,8 +1264,38 @@ impl<'a> Refs<'a> {
                 Self::FirstBase(r.optional_native(*first)?)
             }
             RetainedPayload::Link {
-                parser_document, ..
-            } => Self::Link(r.optional_document(parser_document.as_ref())?),
+                node: link,
+                parser_document,
+            } => {
+                let HtmlNodeKind::Element(element) = node.kind() else {
+                    return Err(unresolved(read::UnresolvedKind::Node));
+                };
+                let flags = element
+                    .link_flags()
+                    .ok_or(unresolved(read::UnresolvedKind::Node))?;
+                // The row the join names must be this link's own.
+                let link = link.ok_or(unresolved(read::UnresolvedKind::Node))?;
+                let current = match r
+                    .storage
+                    .payloads
+                    .joined_uncharged(link, Join::NodeDocument)
+                    .and_then(|slot| r.storage.payloads.values.get(slot))
+                {
+                    Some(RetainedPayload::NodeDocument {
+                        node: Some(owner),
+                        document,
+                    }) if *owner == link => document,
+                    _ => return Err(unresolved(read::UnresolvedKind::Fact)),
+                };
+                Self::Link {
+                    parser_document: r.optional_document(parser_document.as_ref())?,
+                    flags,
+                    history: crate::HtmlLinkHistory::new(
+                        flags,
+                        parser_document.as_ref() == Some(current),
+                    ),
+                }
+            }
             RetainedPayload::NodeDocument { document, .. } => {
                 Self::NodeDocument(r.document(document)?)
             }
@@ -1275,7 +1319,6 @@ impl<'a> Refs<'a> {
 pub struct MetadataRef<'a> {
     node: HtmlNode<'a>,
     closed_common: bool,
-    storage: &'a FrozenStorage,
     payload: &'a RetainedPayload,
     refs: Refs<'a>,
 }
@@ -1588,7 +1631,6 @@ impl<'a> MetadataRef<'a> {
         Ok(Self {
             node,
             closed_common,
-            storage: resolver.storage,
             payload,
             refs: Refs::resolve(resolver, payload, node)?,
         })
@@ -1680,41 +1722,26 @@ impl<'a> MetadataRef<'a> {
     /// is exposed by its separate canonical NodeDocument metadata record.
     pub fn link_parser_document(&self) -> Option<Option<MetadataDocument<'a>>> {
         match self.refs {
-            Refs::Link(document) => Some(document),
+            Refs::Link {
+                parser_document, ..
+            } => Some(parser_document),
             _ => None,
         }
     }
+    /// The actual flags of a link record; `None` for any other record.
     pub fn link_flags(&self) -> Option<crate::HtmlLinkFlags> {
-        if !matches!(self.payload, RetainedPayload::Link { .. }) {
-            return None;
-        }
-        match self.node().kind() {
-            HtmlNodeKind::Element(e) => e.link_flags(),
+        match self.refs {
+            Refs::Link { flags, .. } => Some(flags),
             _ => None,
         }
     }
     /// Ordinary borrowed readback of actual flags and the current node-document
-    /// join. It scans retained metadata without allocating; it has no separate
-    /// aggregate work/cancellation certificate.
+    /// join, resolved when the record was issued; `None` for any other record.
     pub fn link_history(&self) -> Option<crate::HtmlLinkHistory> {
-        let RetainedPayload::Link {
-            node: Some(node),
-            parser_document,
-        } = self.payload
-        else {
-            return None;
-        };
-        let current = self.storage.payloads.values.iter().find_map(|p| match p {
-            RetainedPayload::NodeDocument {
-                node: Some(owner),
-                document,
-            } if owner == node => Some(document),
+        match self.refs {
+            Refs::Link { history, .. } => Some(history),
             _ => None,
-        })?;
-        Some(crate::HtmlLinkHistory::new(
-            self.link_flags()?,
-            parser_document.as_ref() == Some(current),
-        ))
+        }
     }
     pub fn node(&self) -> HtmlNode<'a> {
         self.node
