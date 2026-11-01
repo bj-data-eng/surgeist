@@ -617,20 +617,26 @@ pub(crate) fn document(
     }
 }
 /// Ends a frozen ordinary execution that could not be sealed: the stopped
-/// parts are cleaned and detached into the failure, or, if either step is
-/// refused, the request-owning carrier reports it.
+/// parts are cleaned and detached into the failure. If either step is refused
+/// the request-owning carrier reports it, a cleanup fault for the cleaning and
+/// an ownership fault for the detaching, as the stopped-driver path does.
 fn detach_frozen_ordinary(
     owner: OrdinaryInitialization,
     reason: HtmlParseFailureReason,
-    parts: FrozenStandaloneParts,
+    mut parts: FrozenStandaloneParts,
 ) -> HtmlParseFailure {
+    let carrier = |owner, fault| HtmlParseFailure {
+        reason,
+        storage: FailureStorage::OrdinaryInitialization(owner),
+        cleanup_error: Some(fault),
+    };
+    // The detach below finds the cleaning done and goes on to the binding.
+    if parts.cleanup_failure().is_err() {
+        return carrier(owner, HtmlParseEngineCondition::Cleanup);
+    }
     match parts.into_detached_failure() {
         Ok(failure) => ordinary_failure(owner, reason, failure),
-        Err(_) => HtmlParseFailure {
-            reason,
-            storage: FailureStorage::OrdinaryInitialization(owner),
-            cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
-        },
+        Err(_) => carrier(owner, HtmlParseEngineCondition::Ownership),
     }
 }
 /// Joins a cleaned failure to the original request. If the join is refused the
@@ -814,15 +820,20 @@ pub(crate) fn fragment(
 pub(super) fn detach_frozen_fragment(
     owner: FragmentInitialization,
     reason: HtmlParseFailureReason,
-    parts: FrozenContextFragmentParts,
+    mut parts: FrozenContextFragmentParts,
 ) -> HtmlParseFailure {
+    let carrier = |owner, fault| HtmlParseFailure {
+        reason,
+        storage: FailureStorage::FragmentInitialization(owner),
+        cleanup_error: Some(fault),
+    };
+    // The detach below finds the cleaning done and goes on to the binding.
+    if parts.cleanup_failure().is_err() {
+        return carrier(owner, HtmlParseEngineCondition::Cleanup);
+    }
     match StoppedFragmentConstruction::from_frozen(parts) {
         Ok(stopped) => fragment_failure(owner, reason, stopped),
-        Err(_) => HtmlParseFailure {
-            reason,
-            storage: FailureStorage::FragmentInitialization(owner),
-            cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
-        },
+        Err(_) => carrier(owner, HtmlParseEngineCondition::Ownership),
     }
 }
 /// Joins a stopped construction to the original request. If either step is
