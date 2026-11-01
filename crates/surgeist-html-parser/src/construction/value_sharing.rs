@@ -1593,4 +1593,380 @@ mod tests {
         // Every other credit was still attempted, so the real admission drained.
         super::super::tests::storage_zero(&c);
     }
+
+    // Impossible registry, protocol and custody states are reported as the
+    // controller's first stop with every owner handed back, never a panic. Each
+    // test forces the state through crate-private access, asserts the exact
+    // typed error, that it is the first stop, and that release drains.
+    fn registry_row() -> ParseStop {
+        ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+    }
+    fn capacity_mismatch() -> ParseStop {
+        ParseStop::InternalInvariant(crate::parser::control::Invariant::CapacityMismatch)
+    }
+    fn control() -> ParseControl {
+        ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        )
+    }
+    /// A parsed document with two paragraphs of equal one-attribute banks,
+    /// frozen and ready for value sharing.
+    fn parsed() -> (ParseControl, FrozenArena) {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<body><p class=k>A</p><p class=k>A</p>"),
+            crate::parser::tree_builder::tests::limits(100),
+        );
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+        loop {
+            match driver.step().unwrap() {
+                crate::parser::tree_builder::head::HeadStep::Consumed => {}
+                crate::parser::tree_builder::head::HeadStep::Complete => break,
+                step => panic!("fixture stopped at {step:?}"),
+            }
+        }
+        let mut input = Some(driver);
+        let (mut c, mut session, _) =
+            crate::parser::tree_builder::StandaloneDocumentDriver::take_standalone_fixture(
+                &mut input,
+            )
+            .unwrap();
+        let arena = session.freeze(&mut c).unwrap();
+        (c, arena)
+    }
+    /// The finalizing owner of a fresh pair.
+    fn finalizing() -> (ParseControl, FrozenArena) {
+        let (mut c, mut arena) = parsed();
+        arena.begin_finalizing(&mut c).unwrap();
+        (c, arena)
+    }
+    fn banks(state: &Finalizing) -> Vec<usize> {
+        (0..state.payloads.values.len())
+            .filter(|&slot| {
+                matches!(
+                    &state.payloads.values[slot],
+                    RetainedPayload::Attributes(Some(AttributeStorage::Frozen { values, .. }))
+                        if values.len() != 0
+                )
+            })
+            .collect()
+    }
+    fn strings(state: &Finalizing) -> Vec<usize> {
+        (0..state.payloads.values.len())
+            .filter(|&slot| matches!(state.payloads.values[slot], RetainedPayload::String { .. }))
+            .collect()
+    }
+    fn element_node(state: &Finalizing) -> usize {
+        (0..state.payloads.values.len() + 8)
+            .find(|&node| {
+                matches!(
+                    state.construction.node_at(node).map(|record| record.kind()),
+                    Some(HtmlNodeKind::Element(_))
+                )
+            })
+            .expect("an element record")
+    }
+    fn attribute_string(state: &Finalizing, bank: usize) -> usize {
+        strings(state)
+            .into_iter()
+            .find(|&slot| {
+                matches!(
+                    state.payloads.values[slot],
+                    RetainedPayload::String { location, .. }
+                        if attribute_location(location).is_some_and(|(owner, _)| owner == bank)
+                )
+            })
+            .expect("an attribute string of the bank")
+    }
+    fn release_and_check(mut arena: FrozenArena, c: &mut ParseControl) {
+        arena.release(c).unwrap();
+        super::super::tests::storage_zero(c);
+    }
+
+    #[test]
+    fn a_join_table_shorter_than_the_registry_reports_the_registry_row() {
+        let (mut c, mut arena) = finalizing();
+        let state = arena.finalizing.as_mut().unwrap();
+        state.make_joins(&mut c).unwrap();
+        let bank = banks(state)[0];
+        state.joins.clear();
+        {
+            let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
+            let pools = sharing.pools.as_mut().unwrap();
+            assert_eq!(
+                state.share_bank(bank, pools, sharing.control),
+                Err(SessionError::Stop(registry_row()))
+            );
+            assert_eq!(sharing.control.stop(), Some(registry_row()));
+        }
+        release_and_check(arena, &mut c);
+    }
+
+    #[test]
+    fn a_string_row_naming_a_container_past_the_registry_reports_the_registry_row() {
+        let (mut c, mut arena) = finalizing();
+        let state = arena.finalizing.as_mut().unwrap();
+        let bank = banks(state)[0];
+        let slot = attribute_string(state, bank);
+        let RetainedPayload::String { location, .. } = &mut state.payloads.values[slot] else {
+            panic!("string row")
+        };
+        let original = *location;
+        *location = StringLocation::AttributeValue(usize::MAX, 0);
+        assert_eq!(
+            state.make_joins(&mut c),
+            Err(SessionError::Stop(registry_row()))
+        );
+        assert_eq!(c.stop(), Some(registry_row()));
+        let RetainedPayload::String { location, .. } = &mut state.payloads.values[slot] else {
+            panic!("string row")
+        };
+        *location = original;
+        release_and_check(arena, &mut c);
+    }
+
+    #[test]
+    fn a_component_ordinal_past_the_selected_bank_reports_the_registry_row() {
+        let (mut c, mut arena) = finalizing();
+        let state = arena.finalizing.as_mut().unwrap();
+        let banks = banks(state);
+        // The second bank equals the first, so its components are updated from
+        // the selected bank and one names an attribute that bank lacks.
+        let slot = attribute_string(state, banks[1]);
+        let RetainedPayload::String { location, .. } = &mut state.payloads.values[slot] else {
+            panic!("string row")
+        };
+        let original = *location;
+        *location = StringLocation::AttributeValue(banks[1], 99);
+        {
+            let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
+            let pools = sharing.pools.as_mut().unwrap();
+            assert_eq!(
+                state.run(pools, sharing.control),
+                Err(SessionError::Stop(registry_row()))
+            );
+            assert_eq!(sharing.control.stop(), Some(registry_row()));
+        }
+        let RetainedPayload::String { location, .. } = &mut state.payloads.values[slot] else {
+            panic!("string row")
+        };
+        *location = original;
+        release_and_check(arena, &mut c);
+    }
+
+    #[test]
+    fn a_joined_slot_that_is_not_a_string_reports_the_registry_row() {
+        let (mut c, mut arena) = finalizing();
+        let state = arena.finalizing.as_mut().unwrap();
+        state.make_joins(&mut c).unwrap();
+        let bank = banks(state)[0];
+        let slot = attribute_string(state, bank);
+        let saved = mem::replace(
+            &mut state.payloads.values[slot],
+            RetainedPayload::Attributes(None),
+        );
+        {
+            let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
+            let pools = sharing.pools.as_mut().unwrap();
+            assert_eq!(
+                state.share_bank(bank, pools, sharing.control),
+                Err(SessionError::Stop(registry_row()))
+            );
+            assert_eq!(sharing.control.stop(), Some(registry_row()));
+        }
+        state.payloads.values[slot] = saved;
+        release_and_check(arena, &mut c);
+    }
+
+    #[test]
+    fn promoting_a_row_that_is_not_a_bank_reports_the_registry_row() {
+        let (mut c, mut arena) = finalizing();
+        let state = arena.finalizing.as_mut().unwrap();
+        state.make_joins(&mut c).unwrap();
+        let slot = strings(state)[0];
+        assert_eq!(
+            state.promote_bank(slot, &mut c),
+            Err(SessionError::Stop(registry_row()))
+        );
+        assert_eq!(c.stop(), Some(registry_row()));
+        release_and_check(arena, &mut c);
+    }
+
+    #[test]
+    fn installing_a_string_at_an_impossible_location_reports_the_registry_row() {
+        let value = DocumentString::from("v");
+        for location in [
+            StringLocation::Detached,
+            StringLocation::Text(usize::MAX),
+            StringLocation::ElementName(0),
+        ] {
+            let (mut c, mut arena) = finalizing();
+            let state = arena.finalizing.as_mut().unwrap();
+            assert_eq!(
+                state.install_string(location, &value, &mut c),
+                Err(SessionError::Stop(registry_row()))
+            );
+            assert_eq!(c.stop(), Some(registry_row()));
+            release_and_check(arena, &mut c);
+        }
+    }
+
+    #[test]
+    fn installing_a_bank_that_names_no_row_or_element_reports_and_releases_its_tickets() {
+        for impossible in ["container", "element"] {
+            let (mut c, mut arena) = finalizing();
+            let state = arena.finalizing.as_mut().unwrap();
+            state.make_joins(&mut c).unwrap();
+            let bank = banks(state)[0];
+            let element = element_node(state);
+            let (container, element) = if impossible == "container" {
+                (strings(state)[0], element)
+            } else {
+                (bank, usize::MAX)
+            };
+            let values = OrderedAttributes::new([Attribute::new(
+                QualifiedName::new(Namespace::none(), None, "class"),
+                "k",
+            )])
+            .unwrap();
+            let tickets = c.final_attribute_tickets(&values).unwrap();
+            assert_eq!(
+                state.install_bank(container, element, values, tickets, &mut c),
+                Err(SessionError::Stop(registry_row()))
+            );
+            assert_eq!(c.stop(), Some(registry_row()));
+            release_and_check(arena, &mut c);
+        }
+    }
+
+    #[test]
+    fn committing_an_update_over_a_row_that_is_not_a_string_reports_and_releases_it() {
+        let (mut c, mut arena) = finalizing();
+        let state = arena.finalizing.as_mut().unwrap();
+        let slot = strings(state)[0];
+        let mut updates = Updates::new(&mut c).unwrap();
+        updates
+            .push(slot, &DocumentString::from("new"), &mut c)
+            .unwrap();
+        let saved = mem::replace(
+            &mut state.payloads.values[slot],
+            RetainedPayload::Attributes(None),
+        );
+        let _ = updates.commit(&mut state.payloads, &mut c);
+        assert_eq!(c.stop(), Some(registry_row()));
+        state.payloads.values[slot] = saved;
+        release_and_check(arena, &mut c);
+    }
+
+    #[test]
+    fn releasing_an_update_the_controller_refuses_latches_instead_of_panicking() {
+        let mut c = control();
+        let mut other = control();
+        let value = DocumentString::from("foreign");
+        let ticket = other.final_string_ticket(&value).unwrap();
+        let mut updates = Updates::new(&mut c).unwrap();
+        c.reserve_vector_geometric(&mut updates.values, &mut updates.allocation, 1)
+            .unwrap();
+        updates.values.push(Update {
+            slot: 0,
+            value,
+            allocation: ticket,
+        });
+        {
+            let _pending = Pending::new(updates, &mut c);
+        }
+        assert_eq!(
+            c.stop(),
+            Some(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::ForeignControl
+            ))
+        );
+        super::super::tests::storage_zero(&c);
+    }
+
+    fn foreign_string_seal() -> HtmlValuePoolSeal {
+        let mut other = HtmlStringPool::new();
+        let root = other.begin_root().expect("fresh pool root");
+        match other.prepare_seal(root) {
+            Ok(seal) => seal,
+            Err((error, _)) => panic!("fresh pool seal: {error:?}"),
+        }
+    }
+
+    #[test]
+    fn committing_a_pair_whose_seal_the_pool_refuses_latches_and_releases() {
+        let mut c = control();
+        let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
+        let pools = sharing.pools.as_mut().unwrap();
+        let open = mem::replace(
+            &mut pools.strings_root,
+            Authority::Prepared(foreign_string_seal()),
+        );
+        drop(open);
+        assert_eq!(sharing.commit(), Err(capacity_mismatch()));
+        assert_eq!(c.stop(), Some(capacity_mismatch()));
+        super::super::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn dropping_a_pair_whose_root_the_pool_refuses_latches_and_releases() {
+        let mut c = control();
+        {
+            let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
+            let pools = sharing.pools.as_mut().unwrap();
+            let mut other = HtmlStringPool::new();
+            let foreign = other.begin_root().expect("fresh pool root");
+            drop(mem::replace(
+                &mut pools.strings_root,
+                Authority::Open(foreign),
+            ));
+        }
+        assert_eq!(c.stop(), Some(capacity_mismatch()));
+        super::super::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn a_pool_extent_the_controller_cannot_credit_reports_instead_of_panicking() {
+        // A string miss, and a string hit whose selected value must be handed
+        // back with its candidate credit.
+        for hit in [false, true] {
+            let mut c = control();
+            let text = DocumentString::from("value");
+            let equal = DocumentString::from("value");
+            {
+                let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
+                let pools = sharing.pools.as_mut().unwrap();
+                if hit {
+                    assert!(pools.string(&text, sharing.control).unwrap().is_none());
+                    let real = pools.strings_usage;
+                    pools.strings_usage = Usage {
+                        bytes: u64::MAX,
+                        units: 0,
+                    };
+                    let refused = pools.string(&equal, sharing.control);
+                    assert!(matches!(
+                        refused,
+                        Err(SessionError::Stop(ParseStop::InternalInvariant(
+                            crate::parser::control::Invariant::ReleaseUnderflow
+                        )))
+                    ));
+                    pools.strings_usage = real;
+                } else {
+                    pools.strings_usage = Usage {
+                        bytes: u64::MAX,
+                        units: 0,
+                    };
+                    assert!(matches!(
+                        pools.string(&text, sharing.control),
+                        Err(SessionError::Stop(ParseStop::InternalInvariant(
+                            crate::parser::control::Invariant::ReleaseUnderflow
+                        )))
+                    ));
+                    pools.strings_usage = Usage::default();
+                }
+            }
+            assert_eq!(c.stop(), Some(UNDERFLOW));
+            super::super::tests::storage_zero(&c);
+        }
+    }
 }
