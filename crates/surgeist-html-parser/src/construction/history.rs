@@ -701,12 +701,16 @@ impl HistoryOrigin<'_> {
     }
 }
 impl FrozenHistory {
-    pub(super) fn native_node(&self, index: usize) -> HtmlNode<'_> {
+    /// The node a stored index names, or the fault.
+    pub(super) fn native_node(
+        &self,
+        index: usize,
+    ) -> Result<HtmlNode<'_>, read::UnresolvedReference> {
         self.storage
             .view
             .node_at(index)
-            .expect("qualified history destination")
-            .as_node()
+            .map(|node| node.as_node())
+            .ok_or(read::UnresolvedReference::new(read::UnresolvedKind::Node))
     }
 }
 
