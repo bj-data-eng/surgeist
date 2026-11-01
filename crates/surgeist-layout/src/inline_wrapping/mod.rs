@@ -66,6 +66,7 @@ pub enum WrappingScopeInput<Node> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum WrappingScopeError {
+    Allocation,
     NodeNotReachable,
     AmbiguousNode,
     EndpointRole,
@@ -140,6 +141,7 @@ pub(crate) struct NativePairProjection<Node> {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NumericWrappingError {
+    Allocation,
     Baseline(crate::InlineBaselineError),
     Group(crate::group_alignment::NumericError),
     Scope(WrappingScopeError),
@@ -164,6 +166,11 @@ pub(crate) fn numeric_wrapping_error<Node, S: crate::LayoutScalar, M>(
     error: NumericWrappingError,
 ) -> crate::LayoutErrorOf<Node, S, M> {
     match error {
+        NumericWrappingError::Allocation => crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::InlineWrapping,
+            crate::LayoutErrorKindOf::Allocation,
+        ),
         NumericWrappingError::Baseline(error) => crate::LayoutErrorOf::new(
             crate::LayoutErrorSiteOf::Node(node),
             crate::LayoutOperation::ChildLayout,

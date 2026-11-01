@@ -247,6 +247,62 @@ pub(crate) fn filled<T: Clone>(ledger: &mut Ledger, count: usize, value: T) -> R
     result.resize(count, value);
     Ok(result)
 }
+/// Geometry scratch has fallible Native storage without acquiring a Scope
+/// quota. An active ledger keeps the same actual admission and release policy.
+pub(crate) fn push_fallible<T>(ledger: &mut Ledger, values: &mut Vec<T>, value: T) -> Result<()> {
+    if ledger.is_some() {
+        push(ledger, values, value)
+    } else {
+        values
+            .try_reserve(1)
+            .map_err(|_| native_geometry_allocation_error())?;
+        values.push(value);
+        Ok(())
+    }
+}
+pub(crate) fn filled_fallible<T: Clone>(
+    ledger: &mut Ledger,
+    count: usize,
+    value: T,
+) -> Result<Vec<T>> {
+    if ledger.is_some() {
+        filled(ledger, count, value)
+    } else {
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(count)
+            .map_err(|_| native_geometry_allocation_error())?;
+        values.resize(count, value);
+        Ok(values)
+    }
+}
+pub(crate) fn collect_fallible<T>(
+    ledger: &mut Ledger,
+    values: impl IntoIterator<Item = T>,
+) -> Result<Vec<T>> {
+    if ledger.is_some() {
+        return collect(ledger, values);
+    }
+    let values = values.into_iter();
+    let mut result = Vec::new();
+    let (lower, upper) = values.size_hint();
+    if upper == Some(lower) {
+        result
+            .try_reserve_exact(lower)
+            .map_err(|_| native_geometry_allocation_error())?;
+    }
+    for value in values {
+        push_fallible(ledger, &mut result, value)?;
+    }
+    Ok(result)
+}
+fn native_geometry_allocation_error() -> crate::Error {
+    crate::Error::new(
+        crate::ErrorCode::LayoutFailed,
+        "native geometry allocation failed",
+    )
+}
+
 pub(crate) fn clone_vec<T: Clone>(ledger: &mut Ledger, values: &[T]) -> Result<Vec<T>> {
     collect(ledger, values.iter().cloned())
 }

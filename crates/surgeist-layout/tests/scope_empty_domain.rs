@@ -192,7 +192,7 @@ fn fixture() -> (
                 display: layout::Display::Block,
                 ..layout::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::new(
+            layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::contribution(
                 layout::InlineBoundaryKind::Start,
                 layout::InlineMetrics::try_new(
                     surgeist_layout::InlineBaselineContext::Physical,
@@ -212,7 +212,7 @@ fn fixture() -> (
             layout::LayoutInput::InlineText(layout::TextParticipation::new(
                 all[2].origin_views().next().unwrap().handle(),
             )),
-            layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::new(
+            layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::contribution(
                 layout::InlineBoundaryKind::End,
                 layout::InlineMetrics::try_new(
                     surgeist_layout::InlineBaselineContext::Physical,

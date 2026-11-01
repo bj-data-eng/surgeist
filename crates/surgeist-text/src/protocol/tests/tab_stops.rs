@@ -950,7 +950,7 @@ fn source_less_zero_tab_replacement_retains_alternative_bounds() {
                     crate::ParagraphControlKind::InlineBoundaryStart
                         | crate::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 occurrence,
                 strut: None,
             }

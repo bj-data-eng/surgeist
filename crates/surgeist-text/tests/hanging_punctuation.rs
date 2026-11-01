@@ -108,7 +108,7 @@ fn request(
                     t::ParagraphControlKind::InlineBoundaryStart
                         | t::ParagraphControlKind::InlineBoundaryEnd
                 )
-                .then_some(t::InlineBoundaryAllocation::ZERO),
+                .then_some(t::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
             }),
             _ => None,
         })
@@ -641,7 +641,7 @@ fn actual_selected_inline_bp_blocks_only_its_edge_and_is_counted_once() {
                 t::ParagraphControlKind::InlineBoundaryEnd => end_bp,
                 _ => unreachable!(),
             };
-            allocation.boundary = Some(t::InlineBoundaryAllocation::try_new(bp).unwrap());
+            allocation.boundary = Some(t::InlineBoundaryAllocation::contribution(bp).unwrap());
         }
         let line = finish(&p, r).unwrap();
         assert_eq!(line.feedback().advance, 10.0 + start_bp + end_bp);
@@ -730,7 +730,7 @@ fn incoming_offselected_joining_context_is_not_used_punctuation_padding() {
     assert!(p.select(r.clone()).is_err());
     r.boundary_context.push(t::InlineBoundaryContextAllocation {
         occurrence: first.clone(),
-        boundary: t::InlineBoundaryAllocation::try_new(5.0).unwrap(),
+        boundary: t::InlineBoundaryAllocation::contribution(5.0).unwrap(),
     });
     assert!(p.boundary_context_demand(&r).unwrap().is_none());
     r.context.formatted_line = t::FormattedLineContext::new(None, Some(true));
@@ -745,7 +745,7 @@ fn incoming_offselected_joining_context_is_not_used_punctuation_padding() {
         &finish(&p, r.clone()).unwrap_err(),
         t::PhaseTwoContext::LastFormattedLine,
     );
-    r.boundary_context[0].boundary = t::InlineBoundaryAllocation::ZERO;
+    r.boundary_context[0].boundary = t::InlineBoundaryAllocation::CONTRIBUTION_ZERO;
     let farther = p.boundary_context_demand(&r).unwrap().unwrap();
     assert_ne!(farther, first);
     assert_eq!(
@@ -754,7 +754,7 @@ fn incoming_offselected_joining_context_is_not_used_punctuation_padding() {
     );
     r.boundary_context.push(t::InlineBoundaryContextAllocation {
         occurrence: farther,
-        boundary: t::InlineBoundaryAllocation::ZERO,
+        boundary: t::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
     });
     assert!(p.boundary_context_demand(&r).unwrap().is_none());
     demand(
@@ -1380,7 +1380,7 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
                 .boundary_context
                 .push(t::InlineBoundaryContextAllocation {
                     occurrence,
-                    boundary: t::InlineBoundaryAllocation::try_new(advance).unwrap(),
+                    boundary: t::InlineBoundaryAllocation::contribution(advance).unwrap(),
                 });
             assert!(first.boundary_context.len() <= 2);
         }
@@ -1405,14 +1405,14 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
         });
         assert_eq!(next.controls.len(), 1);
         assert_eq!(next.controls[0].occurrence, exit);
-        next.controls[0].boundary = Some(t::InlineBoundaryAllocation::try_new(bp).unwrap());
+        next.controls[0].boundary = Some(t::InlineBoundaryAllocation::contribution(bp).unwrap());
         next.context.start = t::LineStart::Continuation;
         while let Some(occurrence) = p.boundary_context_demand(&next).unwrap() {
             assert_eq!(occurrence, entry);
             next.boundary_context
                 .push(t::InlineBoundaryContextAllocation {
                     occurrence,
-                    boundary: t::InlineBoundaryAllocation::ZERO,
+                    boundary: t::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
                 });
             assert!(next.boundary_context.len() <= 1);
         }

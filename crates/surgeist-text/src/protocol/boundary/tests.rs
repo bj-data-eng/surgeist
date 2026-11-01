@@ -197,7 +197,7 @@ fn forced_event_stops_context_before_same_atom_endpoints() {
         .boundary_context
         .push(InlineBoundaryContextAllocation {
             occurrence: unreachable,
-            boundary: InlineBoundaryAllocation::ZERO,
+            boundary: InlineBoundaryAllocation::CONTRIBUTION_ZERO,
         });
     assert!(matches!(
         reason(&prepared.boundary_context_demand(&request).unwrap_err()),
@@ -207,14 +207,16 @@ fn forced_event_stops_context_before_same_atom_endpoints() {
 #[test]
 fn endpoint_allocation_rejects_invalid_numbers_and_normalizes_zero() {
     assert_eq!(
-        InlineBoundaryAllocation::try_new(-0.0)
+        InlineBoundaryAllocation::contribution(-0.0)
             .unwrap()
             .advance()
             .to_bits(),
         0.0_f64.to_bits()
     );
     assert_eq!(
-        InlineBoundaryAllocation::try_new(8.0).unwrap().advance(),
+        InlineBoundaryAllocation::contribution(8.0)
+            .unwrap()
+            .advance(),
         8.0
     );
     for (value, expected) in [
@@ -223,7 +225,7 @@ fn endpoint_allocation_rejects_invalid_numbers_and_normalizes_zero() {
         (f64::INFINITY, TextNumericError::NonFinite),
     ] {
         assert!(
-            matches!(InlineBoundaryAllocation::try_new(value).unwrap_err().detail(), Some(ErrorDetail::InvalidTextNumeric { field: "inline boundary advance", phase: TextNumericPhase::Selection, category, .. }) if *category == expected)
+            matches!(InlineBoundaryAllocation::contribution(value).unwrap_err().detail(), Some(ErrorDetail::InvalidTextNumeric { field: "inline boundary advance", phase: TextNumericPhase::Selection, category, .. }) if *category == expected)
         );
     }
 }
@@ -239,7 +241,7 @@ fn demand_stops_at_positive_context_and_zero_reveals_the_next_endpoint() {
         .boundary_context
         .push(InlineBoundaryContextAllocation {
             occurrence: first.clone(),
-            boundary: InlineBoundaryAllocation::try_new(5.0).unwrap(),
+            boundary: InlineBoundaryAllocation::contribution(5.0).unwrap(),
         });
     assert!(
         prepared
@@ -256,14 +258,14 @@ fn demand_stops_at_positive_context_and_zero_reveals_the_next_endpoint() {
         })
         .unwrap();
     assert_eq!(positive.feedback().advance, 10.0);
-    request.boundary_context[0].boundary = InlineBoundaryAllocation::ZERO;
+    request.boundary_context[0].boundary = InlineBoundaryAllocation::CONTRIBUTION_ZERO;
     let farther = prepared.boundary_context_demand(&request).unwrap().unwrap();
     assert_ne!(farther, first);
     request
         .boundary_context
         .push(InlineBoundaryContextAllocation {
             occurrence: farther.clone(),
-            boundary: InlineBoundaryAllocation::ZERO,
+            boundary: InlineBoundaryAllocation::CONTRIBUTION_ZERO,
         });
     assert!(
         prepared
@@ -284,7 +286,7 @@ fn demand_stops_at_positive_context_and_zero_reveals_the_next_endpoint() {
             .advance,
         10.0
     );
-    request.boundary_context[0].boundary = InlineBoundaryAllocation::try_new(5.0).unwrap();
+    request.boundary_context[0].boundary = InlineBoundaryAllocation::contribution(5.0).unwrap();
     assert!(
         matches!(reason(&prepared.select(request.clone()).unwrap_err()), ProtocolError::UnexpectedBoundaryContext { occurrence } if *occurrence == farther.index)
     );
@@ -314,7 +316,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
             occurrence: control.handle(),
             strut: None,
             boundary: Some(
-                InlineBoundaryAllocation::try_new(
+                InlineBoundaryAllocation::contribution(
                     if *control.kind() == ParagraphControlKind::InlineBoundaryStart {
                         5.0
                     } else {
@@ -336,7 +338,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
         .boundary_context
         .push(InlineBoundaryContextAllocation {
             occurrence: request.controls[0].occurrence.clone(),
-            boundary: InlineBoundaryAllocation::ZERO,
+            boundary: InlineBoundaryAllocation::CONTRIBUTION_ZERO,
         });
     assert!(matches!(
         reason(&prepared.boundary_context_demand(&overlap).unwrap_err()),
@@ -344,7 +346,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
     ));
     let mut overflow = request.clone();
     for control in &mut overflow.controls {
-        control.boundary = Some(InlineBoundaryAllocation::try_new(f64::MAX).unwrap());
+        control.boundary = Some(InlineBoundaryAllocation::contribution(f64::MAX).unwrap());
     }
     let line = prepared
         .select(request)

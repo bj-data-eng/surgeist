@@ -212,6 +212,7 @@ fn decorated_lane<S: LayoutScalar>() {
             metrics,
             InlineControlAlignment::Baseline,
             InlineBoundaryEdgeOf::try_new(n(border), n(padding)).unwrap(),
+            None,
         )
     };
     let start = boundary(17, InlineBoundaryKind::Start, 2.0, 1.0);

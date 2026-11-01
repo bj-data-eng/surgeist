@@ -137,6 +137,63 @@ impl HtmlConstructionOperation {
             Err(_) => Err((HtmlConstructionError::AllocationFailed, Some(snapshot))),
         }
     }
+    /// Grows the parent's actual child order in place. The previous order stays
+    /// intact: nothing is pushed before the atomic commit, and a grown bank
+    /// survives an abort with its new incarnation, like the record bank.
+    pub(super) fn reserve_children(
+        &mut self,
+    ) -> Result<
+        (Phase, Option<HtmlConstructionAllocationSnapshot>),
+        (
+            HtmlConstructionError,
+            Option<HtmlConstructionAllocationSnapshot>,
+        ),
+    > {
+        let parent = self.plan.positions[1];
+        let capacity = self
+            .plan
+            .children_capacity
+            .unwrap_or(self.append_required());
+        checked_layout(capacity, size_of::<usize>()).map_err(|error| (error, None))?;
+        let generation = self
+            .arena()
+            .temporary_generation
+            .checked_add(1)
+            .ok_or((HtmlConstructionError::RepresentationExhausted, None))?;
+        let arena = &mut self
+            .owner
+            .as_mut()
+            .expect("pending storage")
+            .mutable()
+            .arena;
+        let record = arena
+            .records
+            .get_mut(parent)
+            .ok_or((HtmlConstructionError::UnknownNode, None))?;
+        let additional = capacity
+            .checked_sub(record.children.len())
+            .ok_or((HtmlConstructionError::CapacityMismatch, None))?;
+        let result = record.children.try_reserve_exact(additional);
+        if result.is_ok() {
+            record.children_generation = generation;
+            arena.temporary_generation = generation;
+        }
+        let record = arena
+            .records
+            .get(parent)
+            .ok_or((HtmlConstructionError::UnknownNode, None))?;
+        let snapshot = HtmlConstructionAllocationSnapshot::vector(
+            &arena.identity,
+            AllocationRole::Children(parent),
+            record.children_generation,
+            &record.children,
+        )
+        .map_err(|error| (error, None))?;
+        match result {
+            Ok(()) => Ok((Phase::Commit, Some(snapshot))),
+            Err(_) => Err((HtmlConstructionError::AllocationFailed, Some(snapshot))),
+        }
+    }
     pub(super) fn read_order(
         &mut self,
         slot: usize,

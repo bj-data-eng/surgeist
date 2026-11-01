@@ -335,7 +335,7 @@ impl Paragraph {
                                 l::InlineBoundaryKind::End
                             };
                             l::LayoutInputOf::inline_boundary(
-                                l::InlineBoundaryInputOf::new(
+                                l::InlineBoundaryInputOf::contribution(
                                     kind,
                                     metrics,
                                     l::InlineBoundaryEdgeOf::try_new(S::from_f64(edge), S::ZERO)

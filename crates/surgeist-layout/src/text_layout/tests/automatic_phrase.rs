@@ -203,7 +203,7 @@ fn fixture_in_direction(
         tree = tree.children(node, []).input(
             node,
             LayoutInputOf::inline_boundary(
-                InlineBoundaryInputOf::new(
+                InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
                         .unwrap(),
@@ -295,7 +295,7 @@ fn automatic_phrase_equal_anchor_boundaries_cannot_swap_or_cross_the_issued_scop
     rejects(&f.tree, reused, TextBindingError::ControlCoverage);
     let tree = f.tree.clone().input(
         11,
-        LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+        LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
             InlineBoundaryKind::End,
             InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
             crate::InlineBoundaryEdgeOf::ZERO,

@@ -63,7 +63,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
                 },
                 allocation: ControlAllocation {
                     occurrence: row.occurrence.clone(),
-                    boundary: Some(InlineBoundaryAllocation::ZERO),
+                    boundary: Some(InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     strut: Some(ControlStrut {
                         baseline: 8.0,
                         line_extent: 10.0,

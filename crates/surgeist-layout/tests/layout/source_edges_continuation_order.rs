@@ -197,7 +197,7 @@ fn fixture<S: l::LayoutScalar>() -> (
         (1, l::InlineBoundaryKind::Start),
         (5, l::InlineBoundaryKind::End),
     ] {
-        inputs[node] = l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::new(
+        inputs[node] = l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::contribution(
             kind,
             l::InlineMetricsOf::try_new(
                 surgeist_layout::InlineBaselineContext::Physical,

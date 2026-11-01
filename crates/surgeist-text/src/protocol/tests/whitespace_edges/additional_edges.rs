@@ -1077,7 +1077,7 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                                     crate::ParagraphControlKind::InlineBoundaryStart
                                         | crate::ParagraphControlKind::InlineBoundaryEnd
                                 )
-                                .then_some(crate::InlineBoundaryAllocation::ZERO),
+                                .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                                 occurrence,
                                 strut: None,
                             }

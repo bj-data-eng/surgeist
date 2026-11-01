@@ -22,7 +22,7 @@ fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle)
     };
     let boundary = |kind| {
         l::LayoutInputOf::inline_boundary(
-            l::InlineBoundaryInputOf::new(
+            l::InlineBoundaryInputOf::contribution(
                 kind,
                 l::InlineMetricsOf::try_new(
                     surgeist_layout::InlineBaselineContext::Physical,

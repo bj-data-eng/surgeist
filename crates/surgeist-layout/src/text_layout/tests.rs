@@ -2231,3 +2231,6 @@ mod box_incidence;
 mod box_incidence_cases;
 
 mod inter_character;
+
+#[path = "tests/parent_geometry_numeric.rs"]
+mod parent_geometry_numeric;

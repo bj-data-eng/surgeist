@@ -556,6 +556,15 @@ pub enum surgeist_text::Hyphens
 pub surgeist_text::Hyphens::Auto
 pub surgeist_text::Hyphens::Manual
 pub surgeist_text::Hyphens::None
+pub enum surgeist_text::InlineBoxEdgeError
+pub surgeist_text::InlineBoxEdgeError::ForeignCapture
+pub surgeist_text::InlineBoxEdgeError::InconsistentContext
+pub surgeist_text::InlineBoxEdgeError::InvalidOwner
+pub surgeist_text::InlineBoxEdgeError::InvalidPair
+pub surgeist_text::InlineBoxEdgeError::InvalidParent
+pub surgeist_text::InlineBoxEdgeError::MissingCapture
+pub surgeist_text::InlineBoxEdgeError::UnrepresentedIncidence
+pub surgeist_text::InlineBoxEdgeError::WrongDomain
 pub enum surgeist_text::InlineBoxKind
 pub surgeist_text::InlineBoxKind::InFlow
 pub surgeist_text::InlineBoxKind::OutOfFlow
@@ -813,6 +822,7 @@ pub surgeist_text::ProtocolError::IncompleteOriginCoverage::actual: usize
 pub surgeist_text::ProtocolError::IncompleteOriginCoverage::expected: usize
 pub surgeist_text::ProtocolError::IneligibleSpacingSlot
 pub surgeist_text::ProtocolError::IneligibleSpacingSlot::slot: usize
+pub surgeist_text::ProtocolError::InlineBoxEdge(surgeist_text::InlineBoxEdgeError)
 pub surgeist_text::ProtocolError::InvalidAnchorOrder
 pub surgeist_text::ProtocolError::InvalidAnchorOrder::kind: surgeist_text::ProtocolHandleKind
 pub surgeist_text::ProtocolError::InvalidAnchorOrder::occurrence: usize
@@ -2316,9 +2326,11 @@ impl core::default::Default for surgeist_text::Indent
 pub fn surgeist_text::Indent::default() -> Self
 pub struct surgeist_text::InlineBoundaryAllocation
 impl surgeist_text::InlineBoundaryAllocation
-pub const surgeist_text::InlineBoundaryAllocation::ZERO: Self
+pub const surgeist_text::InlineBoundaryAllocation::CONTRIBUTION_ZERO: Self
 pub const fn surgeist_text::InlineBoundaryAllocation::advance(&self) -> f64
-pub fn surgeist_text::InlineBoundaryAllocation::try_new(advance: f64) -> surgeist_text::Result<Self>
+pub const fn surgeist_text::InlineBoundaryAllocation::box_context(&self) -> core::option::Option<&surgeist_text::InlineBoxEdgeContext>
+pub fn surgeist_text::InlineBoundaryAllocation::box_edge(context: surgeist_text::InlineBoxEdgeContext, advance: f64) -> surgeist_text::Result<Self>
+pub fn surgeist_text::InlineBoundaryAllocation::contribution(advance: f64) -> surgeist_text::Result<Self>
 pub struct surgeist_text::InlineBoundaryContextAllocation
 pub surgeist_text::InlineBoundaryContextAllocation::boundary: surgeist_text::InlineBoundaryAllocation
 pub surgeist_text::InlineBoundaryContextAllocation::occurrence: surgeist_text::PreparedControl
@@ -2333,6 +2345,11 @@ pub const fn surgeist_text::InlineBox::size(self) -> surgeist_text::Size
 pub fn surgeist_text::InlineBox::try_with_letter_spacing(self, value: f64) -> surgeist_text::Result<Self>
 pub const fn surgeist_text::InlineBox::vertical_align(self) -> surgeist_text::VerticalAlign
 pub const fn surgeist_text::InlineBox::with_vertical_align(self, vertical_align: surgeist_text::VerticalAlign) -> Self
+pub struct surgeist_text::InlineBoxEdgeContext
+impl surgeist_text::InlineBoxEdgeContext
+pub fn surgeist_text::InlineBoxEdgeContext::owner(&self) -> &surgeist_text::InlineBoxSource
+pub fn surgeist_text::InlineBoxEdgeContext::parent(&self) -> &surgeist_text::InlineBoxSource
+pub const fn surgeist_text::InlineBoxEdgeContext::start_side(&self) -> surgeist_text::LineEdgeSide
 pub struct surgeist_text::InlineBoxMetricFact
 impl surgeist_text::InlineBoxMetricFact
 pub const fn surgeist_text::InlineBoxMetricFact::baseline_shift(self) -> surgeist_text::BaselineShiftFact
@@ -2343,6 +2360,10 @@ pub const fn surgeist_text::InlineBoxMetricFact::line(self) -> usize
 pub const fn surgeist_text::InlineBoxMetricFact::new(id: surgeist_text::Id, kind: surgeist_text::InlineBoxKind, index: usize, rect: surgeist_text::Rect, line: usize, vertical_align: surgeist_text::VerticalAlign, baseline_shift: surgeist_text::BaselineShiftFact) -> Self
 pub const fn surgeist_text::InlineBoxMetricFact::rect(self) -> surgeist_text::Rect
 pub const fn surgeist_text::InlineBoxMetricFact::vertical_align(self) -> surgeist_text::VerticalAlign
+pub struct surgeist_text::InlineBoxSource
+impl surgeist_text::InlineBoxSource
+pub fn surgeist_text::InlineBoxSource::captured(scope: surgeist_text::CapturedScope) -> Self
+pub fn surgeist_text::InlineBoxSource::captured_scope(&self) -> core::option::Option<&surgeist_text::CapturedScope>
 pub struct surgeist_text::InlineMeasure
 impl surgeist_text::InlineMeasure
 pub const fn surgeist_text::InlineMeasure::advance(self) -> f64
@@ -3071,6 +3092,9 @@ pub fn surgeist_text::PreparedText::observe_flow_with_scope_allowance(&self, seg
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::hyphenation_cut_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedHyphenationCutView<'_>>
 pub fn surgeist_text::PreparedText::word_views(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedWordView<'_>>
+impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::inline_box_edge_context(&self, owner: surgeist_text::InlineBoxSource, parent: surgeist_text::InlineBoxSource, start_side: surgeist_text::LineEdgeSide) -> surgeist_text::Result<surgeist_text::InlineBoxEdgeContext>
+pub fn surgeist_text::PreparedText::native_inline_box(&self, start: surgeist_text::CapturedControl, end: surgeist_text::CapturedControl) -> surgeist_text::Result<surgeist_text::InlineBoxSource>
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::line_direction_facts(&self, segment: &surgeist_text::PreparedSourceSegment, start: &surgeist_text::PreparedBoundary, end: &surgeist_text::PreparedBoundary) -> surgeist_text::Result<surgeist_text::LineDirectionFacts>
 impl surgeist_text::PreparedText

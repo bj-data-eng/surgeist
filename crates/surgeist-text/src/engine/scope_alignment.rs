@@ -1726,6 +1726,7 @@ pub(crate) fn select(
         basis,
         request.context.spacing,
         spacing_slots,
+        request,
         &mut budget,
     )?);
     result.usage = Some(budget.usage());

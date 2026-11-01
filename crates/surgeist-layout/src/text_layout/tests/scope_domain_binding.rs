@@ -475,7 +475,7 @@ fn atomic_domain_shape(
     ] {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
                     .unwrap(),
@@ -490,7 +490,7 @@ fn atomic_domain_shape(
         ] {
             tree = tree.children(node, []).input(
                 node,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
                         .unwrap(),
@@ -526,7 +526,7 @@ fn atomic_domain_shape(
         ] {
             tree = tree.children(node, []).input(
                 node,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
                         .unwrap(),

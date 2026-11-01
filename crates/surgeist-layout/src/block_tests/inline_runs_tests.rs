@@ -280,7 +280,7 @@ fn fri06_c03_fixed_metric_break_retains_requested_baseline_both_scalars() {
 fn fri06_c03_fixed_metric_zero_edge_boundary_has_no_formatted_baseline_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         assert_fri06_c03_fixed_metric_participant(
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::from_ascent_descent(
                     crate::InlineBaselineContext::Physical,
@@ -304,7 +304,7 @@ fn fri06_c03_fixed_metric_positive_border_boundary_retains_requested_baseline_bo
         // Unlike the original zero-edge case, this actual inline border makes
         // the line real. Its own 6/10 metrics supply the exported baseline.
         assert_fri06_c03_fixed_metric_participant(
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::from_ascent_descent(
                     crate::InlineBaselineContext::Physical,
@@ -326,7 +326,7 @@ fn fri06_c03_fixed_metric_positive_border_boundary_retains_requested_baseline_bo
 fn fri06_c03_fixed_size_only_control_keeps_early_return_call_accounting_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let (size_only, layout_input_calls, child_compute_calls) = fri06_c03_fixed_size_output(
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::from_ascent_descent(
                     crate::InlineBaselineContext::Physical,
@@ -492,7 +492,7 @@ fn fri08_c07_t01_inline_transition_tree<S: LayoutScalar>(
             .with_style(3, NodeInputOf::non_box())
             .with_layout_input(
                 3,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_ascent_descent(
                         crate::InlineBaselineContext::Physical,
@@ -1382,7 +1382,7 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(
+            InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
@@ -1399,7 +1399,7 @@ fn block_inline_boundaries_are_reported_as_zero_size_inline_controls() {
         )
         .inline_boundary(
             3,
-            InlineBoundaryInput::new(
+            InlineBoundaryInput::contribution(
                 InlineBoundaryKind::End,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
@@ -1463,7 +1463,7 @@ fn block_inline_boundaries_before_overwide_first_inline_block_do_not_create_lead
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(
+            InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
@@ -1520,7 +1520,7 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(
+            InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
@@ -1539,7 +1539,7 @@ fn vertical_block_inline_boundaries_use_parent_flow() {
         )
         .inline_boundary(
             3,
-            InlineBoundaryInput::new(
+            InlineBoundaryInput::contribution(
                 InlineBoundaryKind::End,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
@@ -1592,7 +1592,7 @@ fn vertical_lr_block_inline_boundaries_use_parent_flow() {
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(
+            InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
@@ -1611,7 +1611,7 @@ fn vertical_lr_block_inline_boundaries_use_parent_flow() {
         )
         .inline_boundary(
             3,
-            InlineBoundaryInput::new(
+            InlineBoundaryInput::contribution(
                 InlineBoundaryKind::End,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
@@ -1970,7 +1970,7 @@ fn inline_control_flow_tree<S: LayoutScalar>(
 fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [LayoutInputOf<S>; 3] {
     let boundary = |kind| {
         LayoutInputOf::inline_boundary(
-            InlineBoundaryInputOf::new(
+            InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::from_ascent_descent(
                     crate::InlineBaselineContext::Physical,
@@ -2091,7 +2091,7 @@ fn vertical_parent_rejects_default_inline_boundary_flow_until_input_is_layout_re
         )
         .inline_boundary(
             1,
-            InlineBoundaryInput::new(
+            InlineBoundaryInput::contribution(
                 InlineBoundaryKind::Start,
                 boundary_metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
@@ -4077,7 +4077,7 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
                         .with_layout_input(
                             2,
                             LayoutInputOf::inline_boundary(
-                                InlineBoundaryInputOf::new(kind, metrics, edge)
+                                InlineBoundaryInputOf::contribution(kind, metrics, edge)
                                     .with_direction(direction)
                                     .with_writing_mode(writing_mode),
                             ),
@@ -4199,7 +4199,7 @@ fn finite_endpoint_components_that_overflow_the_numeric_run_refuse_the_batch() {
                 .with_style(node, NodeInputOf::non_box())
                 .with_layout_input(
                     node,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
                             crate::InlineBaselineContext::Physical,
@@ -4285,7 +4285,7 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
                 .with_style(2, NodeInputOf::non_box())
                 .with_layout_input(
                     2,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                         InlineBoundaryKind::Start,
                         InlineMetricsOf::try_new(
                             crate::InlineBaselineContext::Physical,

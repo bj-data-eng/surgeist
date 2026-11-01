@@ -141,7 +141,7 @@ impl<S: l::LayoutScalar> Host<S> {
             non_box: l::NodeInputOf::non_box(),
             children: std::array::from_fn(|i| if i == 0 { (1..=7).collect() } else { vec![] }),
             boundaries: std::array::from_fn(|i| {
-                l::InlineBoundaryInputOf::new(
+                l::InlineBoundaryInputOf::contribution(
                     if i < 2 {
                         l::InlineBoundaryKind::Start
                     } else {
@@ -722,7 +722,10 @@ fn run<S: l::LayoutScalar>(case: Case) {
                         alignment: t::LineBoxAlignment::Baseline
                     })
                 );
-                assert_eq!(allocation.boundary.unwrap().advance(), ADVANCES[ordinal]);
+                assert_eq!(
+                    allocation.boundary.as_ref().unwrap().advance(),
+                    ADVANCES[ordinal]
+                );
                 ordinal
             })
             .collect();

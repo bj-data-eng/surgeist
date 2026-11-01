@@ -918,6 +918,7 @@ pub struct surgeist_html::bounded::HtmlConstructionAction<'a>
 impl<'a> surgeist_html::bounded::HtmlConstructionAction<'a>
 pub fn surgeist_html::bounded::HtmlConstructionAction<'a>::description(&self) -> surgeist_html::bounded::HtmlConstructionActionDescription<'_>
 pub fn surgeist_html::bounded::HtmlConstructionAction<'a>::perform(self) -> core::result::Result<surgeist_html::bounded::HtmlConstructionObservation<'a>, surgeist_html::bounded::HtmlConstructionActionFailure>
+pub fn surgeist_html::bounded::HtmlConstructionAction<'a>::perform_with_capacity(self, capacity: usize) -> core::result::Result<surgeist_html::bounded::HtmlConstructionObservation<'a>, surgeist_html::bounded::HtmlConstructionActionFailure>
 pub fn surgeist_html::bounded::HtmlConstructionAction<'a>::storage_view(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionStorage>
 pub struct surgeist_html::bounded::HtmlConstructionActionFailure
 impl surgeist_html::bounded::HtmlConstructionActionFailure

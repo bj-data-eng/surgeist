@@ -96,7 +96,7 @@ fn finish_at_edges(
         crate::ParagraphBaseDirection::RightToLeft => crate::LineBoxDirection::RightToLeft,
     };
     let edge = |control: &PreparedControl| {
-        crate::InlineBoundaryAllocation::try_new(
+        crate::InlineBoundaryAllocation::contribution(
             if *control.view().kind() == K::InlineBoundaryStart {
                 5.0
             } else {

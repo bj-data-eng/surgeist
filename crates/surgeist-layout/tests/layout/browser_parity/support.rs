@@ -1971,7 +1971,7 @@ impl TestTree {
                 )
                 .map_err(|error| Error::new(format!("invalid neutral metrics: {error:?}")))?;
                 layout::LayoutInput::inline_boundary(
-                    layout::InlineBoundaryInput::new(
+                    layout::InlineBoundaryInput::contribution(
                         kind,
                         metrics,
                         layout::InlineBoundaryEdge::ZERO,
@@ -1992,7 +1992,7 @@ impl TestTree {
                         fixture_inline_metrics(font_size, resolved_line_height)
                     })?;
                     layout::LayoutInput::inline_boundary(
-                        layout::InlineBoundaryInput::new(
+                        layout::InlineBoundaryInput::contribution(
                             kind,
                             metrics,
                             layout::InlineBoundaryEdgeOf::ZERO,
@@ -6022,7 +6022,7 @@ mod tests {
         for row in &line.selected_line().request().controls {
             assert_eq!(
                 row.boundary,
-                Some(surgeist_text::InlineBoundaryAllocation::ZERO)
+                Some(surgeist_text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
             );
             let strut = row.strut.unwrap();
             assert_eq!((strut.baseline, strut.line_extent), (0.0, 0.0));

@@ -84,7 +84,7 @@ fn native<S: LayoutScalar>(
             .unwrap();
         assert_eq!(
             allocation.boundary,
-            Some(text::InlineBoundaryAllocation::ZERO)
+            Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
         );
         assert_eq!(
             allocation.strut,

@@ -23,7 +23,7 @@ fn block(mut base: t::Style, rtl: bool, break_all: bool) -> t::SourceProcessingS
 fn context(p: &t::PreparedText, index: usize, width: f64) -> t::InlineBoundaryContextAllocation {
     t::InlineBoundaryContextAllocation {
         occurrence: p.control_views().nth(index).unwrap().handle(),
-        boundary: t::InlineBoundaryAllocation::try_new(width).unwrap(),
+        boundary: t::InlineBoundaryAllocation::contribution(width).unwrap(),
     }
 }
 
@@ -53,7 +53,7 @@ fn request(
                     boundary: facts
                         .iter()
                         .find(|fact| fact.0 == index)
-                        .map(|fact| t::InlineBoundaryAllocation::try_new(fact.1).unwrap()),
+                        .map(|fact| t::InlineBoundaryAllocation::contribution(fact.1).unwrap()),
                 })
             }
             _ => None,
@@ -117,7 +117,7 @@ fn answer(p: &t::PreparedText, request: &mut t::LineSelectionRequest, facts: &[(
             .boundary_context
             .push(t::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: t::InlineBoundaryAllocation::try_new(width).unwrap(),
+                boundary: t::InlineBoundaryAllocation::contribution(width).unwrap(),
             });
     }
 }
@@ -640,7 +640,7 @@ fn source_indication_preserves_bounded_original_forms_and_selected_presentation_
 #[test]
 fn endpoint_allocation_and_selected_context_roles_refuse_invalid_facts() {
     assert_eq!(
-        t::InlineBoundaryAllocation::try_new(-0.0)
+        t::InlineBoundaryAllocation::contribution(-0.0)
             .unwrap()
             .advance()
             .to_bits(),
@@ -651,7 +651,7 @@ fn endpoint_allocation_and_selected_context_roles_refuse_invalid_facts() {
         (f64::INFINITY, t::TextNumericError::NonFinite),
         (f64::NAN, t::TextNumericError::NonFinite),
     ] {
-        let error = t::InlineBoundaryAllocation::try_new(value).unwrap_err();
+        let error = t::InlineBoundaryAllocation::contribution(value).unwrap_err();
         assert!(
             matches!(error.detail(), Some(t::ErrorDetail::InvalidTextNumeric { phase: t::TextNumericPhase::Selection, category: actual, .. }) if *actual == category)
         );

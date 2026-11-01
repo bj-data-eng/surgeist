@@ -349,6 +349,7 @@ impl ConstructionOwner {
     ) -> Result<bool, SessionError> {
         let mut allocation = None;
         let mut expected = 0;
+        let mut reserved_capacity = None;
         let mut final_action = false;
         match action.description() {
             HtmlConstructionActionDescription::Inspect {
@@ -373,8 +374,9 @@ impl ConstructionOwner {
             HtmlConstructionActionDescription::Reserve {
                 report_provider_calls,
                 allocation: snapshot,
+                required_len,
                 minimum_capacity,
-                ..
+                growth,
             } => {
                 control.charge(WorkCategory::RecordVisit, 2)?;
                 let bank = if let Some(slot) = snapshot.pending_child_order_slot() {
@@ -384,7 +386,30 @@ impl ConstructionOwner {
                         .child_position()
                         .map_or(Bank::Records, Bank::Children)
                 };
-                expected = minimum_capacity
+                // A geometric bank grows by the parser's own amortized plan,
+                // which never reserves spare capacity the limits cannot hold.
+                let capacity = match growth {
+                    HtmlConstructionGrowth::Exact => minimum_capacity,
+                    HtmlConstructionGrowth::Geometric => {
+                        let additional = control.geometric_construction_additional(
+                            self.allocation_slot(bank).as_ref(),
+                            snapshot.initialized_len(),
+                            required_len.saturating_sub(snapshot.initialized_len()),
+                        )?;
+                        snapshot
+                            .initialized_len()
+                            .checked_add(additional)
+                            .map(|planned| planned.max(minimum_capacity))
+                            .ok_or_else(|| {
+                                control
+                                    .representation::<()>(HtmlParseResource::ManagedCapacityBytes)
+                                    .unwrap_err()
+                            })?
+                    }
+                };
+                reserved_capacity =
+                    matches!(growth, HtmlConstructionGrowth::Geometric).then_some(capacity);
+                expected = capacity
                     .checked_mul(snapshot.element_size())
                     .ok_or_else(|| {
                         control
@@ -393,7 +418,7 @@ impl ConstructionOwner {
                     })?;
                 control.prepare_construction_reserve(
                     snapshot,
-                    minimum_capacity,
+                    capacity,
                     self.allocation_slot(bank).as_ref(),
                 )?;
                 ticket_work(control)?;
@@ -523,7 +548,11 @@ impl ConstructionOwner {
                 unreachable!("separate initialization owner")
             }
         }
-        match action.perform() {
+        let performed = match reserved_capacity {
+            Some(capacity) => action.perform_with_capacity(capacity),
+            None => action.perform(),
+        };
+        match performed {
             Ok(observation) => {
                 if let Some(bank) = allocation {
                     let snapshot = observation

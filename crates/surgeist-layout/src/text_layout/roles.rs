@@ -452,7 +452,7 @@ fn observe(
             .controls
             .iter()
             .find(|row| row.occurrence == occurrence)
-            .and_then(|row| row.boundary)
+            .and_then(|row| row.boundary.clone())
             .ok_or_else(invalid_flow)?;
         if request
             .boundary_context

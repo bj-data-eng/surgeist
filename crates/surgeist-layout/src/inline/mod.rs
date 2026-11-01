@@ -16,6 +16,7 @@ use std::ops::Range;
 use surgeist_text::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 
 mod input;
+mod parent_edges;
 
 #[cfg(test)]
 mod baseline_offset_tests;
@@ -159,7 +160,8 @@ pub(super) struct InlineControlSourceOf<S: LayoutScalar = DefaultScalar> {
     pub visual_index: Option<usize>,
 }
 
-/// Actual endpoint components and their own physical-side basis. Its strip
+/// Actual endpoint components and their operation's physical-side basis: the
+/// immediate parent for BoxEdge, the formatter for a Contribution. Its strip
 /// occupies one contribution; a Text interaction fragment is a separate view.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct InlineEndpointOf<S: LayoutScalar> {
@@ -172,7 +174,9 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
     pub(super) fn from_input(input: crate::InlineBoundaryInputOf<S>) -> Self {
         Self {
             kind: input.kind(),
-            axes: FlowAxes::new(input.writing_mode(), input.direction()),
+            axes: input
+                .parent_edge_axes()
+                .unwrap_or(FlowAxes::new(input.writing_mode(), input.direction())),
             edge: input.edge(),
         }
     }
@@ -180,7 +184,9 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
     pub(super) fn from_control(control: InlineBoundaryControlOf<S>) -> Self {
         Self {
             kind: control.kind(),
-            axes: control.flow().flow_axes,
+            axes: control
+                .parent_edge_axes()
+                .unwrap_or(control.flow().flow_axes),
             edge: control.edge(),
         }
     }
@@ -275,17 +281,20 @@ struct InlineLineInput<'a, S: LayoutScalar> {
     participants: &'a [MixedInlineParticipantOf<S>],
     supplied: &'a [SuppliedInlineParticipant],
     descriptor_start: usize,
+    source_start: usize,
 }
 
 impl<'a, S: LayoutScalar> ProjectedInlineRun<'a, S> {
     // A selected range never contains a forced break. The paired cursor skips
     // only those controls, so the two slices have exactly the same ordinal map.
     fn line(self, source: Range<usize>, descriptor_start: usize) -> InlineLineInput<'a, S> {
+        let source_start = source.start;
         let participants = &self.participants[source];
         InlineLineInput {
             participants,
             supplied: &self.supplied[descriptor_start..descriptor_start + participants.len()],
             descriptor_start,
+            source_start,
         }
     }
 }
@@ -361,6 +370,7 @@ struct SelectedInlineLineOf<S: LayoutScalar> {
     indent: S,
     units: Vec<SelectedInlineUnitOf<S>>,
     descriptor_range: Range<usize>,
+    source_start: usize,
     line_break: Option<ForcedLineBreakControlOf<S>>,
     post_line_clear_intent: PostLineClearIntent,
     baseline: S,
@@ -922,6 +932,7 @@ fn selected_from_summary<S: LayoutScalar>(
         indent: S::ZERO,
         units,
         descriptor_range: input.descriptor_start..input.descriptor_start + participants.len(),
+        source_start: input.source_start,
         line_break: summary.line_break,
         post_line_clear_intent: summary.post_line_clear_intent,
         baseline: summary.baseline,
@@ -2178,16 +2189,18 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     text_align: TextAlign,
     direction: Direction,
     insets: surgeist_text::LineAlignmentInsets,
+    wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
 ) -> Result<(S, Vec<usize>, Vec<S>), crate::inline_wrapping::NumericWrappingError> {
     let line_inline_start =
         selected_line_inline_start(line, flow_axes, text_align, direction, insets)?;
     let mut order = vec![0; line.units.len()];
-    let visual_order = SuppliedLine::new(supplied)
+    SuppliedLine::new(supplied)
         .reorder_into(&mut order)
         .expect("selected descriptor range has exactly one slot per selected unit");
+    parent_edges::reorder(line, flow_axes, wrapping, &mut order)?;
     let mut visual_indices = vec![0; line.units.len()];
     let mut inline_starts = vec![S::ZERO; line.units.len()];
-    for (visual_index, (source_index, _)) in visual_order.iter().enumerate() {
+    for (visual_index, &source_index) in order.iter().enumerate() {
         visual_indices[source_index] = visual_index;
     }
     // L2 orders slots from line-left to line-right. A containing RTL flow
@@ -2199,7 +2212,7 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     } else {
         line_inline_start
     };
-    for (source_index, _) in visual_order.iter() {
+    for &source_index in &order {
         let selected = line.units[source_index];
         let selected_inline_extent = if selected.discarded {
             S::ZERO
@@ -3365,6 +3378,7 @@ where
                 line.alignment,
                 line_direction,
                 surgeist_text::LineAlignmentInsets::ZERO,
+                input.wrapping.as_ref(),
             )?;
             for (index, unit) in line.units.into_iter().enumerate() {
                 let MixedInlineParticipantOf::Boundary(control) = unit.participant else {
@@ -3417,6 +3431,7 @@ where
             line.alignment,
             line_direction,
             group_insets,
+            input.wrapping.as_ref(),
         )?;
         if input.groups.is_active()
             && matches!(input.available_inline_extent, AvailableOf::Definite(_))
@@ -3790,6 +3805,7 @@ pub(super) struct InlineBoundaryControlOf<S: LayoutScalar = DefaultScalar> {
     metrics: InlineMetricsOf<S>,
     alignment: InlineControlAlignment<S>,
     edge: InlineBoundaryEdgeOf<S>,
+    parent_edge_axes: Option<FlowAxes>,
 }
 
 impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
@@ -3801,6 +3817,7 @@ impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
         metrics: InlineMetricsOf<S>,
         alignment: InlineControlAlignment<S>,
         edge: InlineBoundaryEdgeOf<S>,
+        parent_edge_axes: Option<FlowAxes>,
     ) -> Self {
         Self {
             source_index,
@@ -3809,6 +3826,7 @@ impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
             metrics,
             alignment,
             edge,
+            parent_edge_axes,
         }
     }
 
@@ -3825,6 +3843,10 @@ impl<S: LayoutScalar> InlineBoundaryControlOf<S> {
     #[must_use]
     pub(super) const fn edge(self) -> InlineBoundaryEdgeOf<S> {
         self.edge
+    }
+
+    pub(super) const fn parent_edge_axes(self) -> Option<FlowAxes> {
+        self.parent_edge_axes
     }
 
     #[must_use]

@@ -9,7 +9,7 @@ fn allocated_endpoint<S: l::LayoutScalar>(
     edge: l::InlineBoundaryEdgeOf<S>,
 ) -> l::LayoutInputOf<S> {
     l::LayoutInputOf::inline_boundary(
-        l::InlineBoundaryInputOf::new(
+        l::InlineBoundaryInputOf::contribution(
             kind,
             l::InlineMetricsOf::try_new(
                 surgeist_layout::InlineBaselineContext::Physical,

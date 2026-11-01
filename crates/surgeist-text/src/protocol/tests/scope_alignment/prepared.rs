@@ -996,3 +996,12 @@ fn glyph_free_parent_scales_only_consumed_font_metrics_not_unused_spacing_or_dec
         assert_eq!(system.stats(), stats);
     }
 }
+
+#[path = "prepared/parent_geometry_admission.rs"]
+mod parent_geometry_admission;
+
+#[path = "prepared/parent_geometry_resources.rs"]
+mod parent_geometry_resources;
+
+#[path = "prepared/parent_atomic_measure.rs"]
+mod parent_atomic_measure;

@@ -1055,7 +1055,7 @@ fn automatic_mixed_directional_occurrences_retain_actual_insertion_side() {
                                 crate::ParagraphControlKind::InlineBoundaryStart
                                     | crate::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }
@@ -1809,7 +1809,7 @@ fn ordinary_word_fallbacks_preserve_transparent_mixed_cut_family() {
                                 crate::ParagraphControlKind::InlineBoundaryStart
                                     | crate::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }
@@ -1908,7 +1908,7 @@ fn before_auto_uses_the_actual_lri_occurrence_in_an_rtl_paragraph() {
                                 crate::ParagraphControlKind::InlineBoundaryStart
                                     | crate::ParagraphControlKind::InlineBoundaryEnd
                             )
-                            .then_some(crate::InlineBoundaryAllocation::ZERO),
+                            .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                             occurrence,
                             strut: None,
                         }

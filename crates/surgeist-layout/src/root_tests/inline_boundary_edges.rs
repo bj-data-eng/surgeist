@@ -36,7 +36,7 @@ fn tree<S: LayoutScalar>(
         let input = if row.node == 22 {
             LayoutInputOf::text_control(TextControlParticipation::new(row.occurrence.clone()))
         } else {
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 if row.node == 20 {
                     InlineBoundaryKind::Start
                 } else {
@@ -96,7 +96,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::from_f64(3.0)).unwrap();
         actual.inputs.insert(
             20,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::try_new(
                     crate::InlineBaselineContext::Physical,
@@ -153,7 +153,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         let overflow = InlineBoundaryEdgeOf::try_new(S::from_f64(largest), S::ZERO).unwrap();
         actual.inputs.insert(
             20,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::try_new(
                     crate::InlineBaselineContext::Physical,
@@ -166,7 +166,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         );
         actual.inputs.insert(
             21,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::End,
                 InlineMetricsOf::try_new(
                     crate::InlineBaselineContext::Physical,
@@ -194,7 +194,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         assert_eq!(actual.retained, retained);
         actual.inputs.insert(
             20,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::try_new(
                     crate::InlineBaselineContext::Physical,
@@ -207,7 +207,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         );
         actual.inputs.insert(
             21,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::End,
                 InlineMetricsOf::try_new(
                     crate::InlineBaselineContext::Physical,
@@ -223,7 +223,7 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         retry.apply_to(&mut actual).unwrap();
         actual.inputs.insert(
             20,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::try_new(
                     crate::InlineBaselineContext::Physical,

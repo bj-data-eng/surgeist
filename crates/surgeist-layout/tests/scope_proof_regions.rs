@@ -455,7 +455,7 @@ fn fixture_with_child_topology(
         };
         inputs.insert(
             10 + ordinal,
-            layout::LayoutInput::inline_boundary(layout::InlineBoundaryInput::new(
+            layout::LayoutInput::inline_boundary(layout::InlineBoundaryInput::contribution(
                 kind,
                 layout::InlineMetrics::try_new(
                     surgeist_layout::InlineBaselineContext::Physical,
