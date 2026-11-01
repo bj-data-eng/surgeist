@@ -4,6 +4,9 @@
 use crate::{ContrastPreference, ReductionPreference};
 use crate::{Theme, UserPreferences};
 
+#[cfg(any(target_os = "windows", test))]
+mod windows_connection_cost;
+
 /// Samples supported preferences at an existing event-loop opportunity.
 /// No notification observer or independent wakeup is installed.
 pub(crate) fn capture(color_scheme: Option<Theme>) -> UserPreferences {
@@ -22,12 +25,13 @@ pub(crate) fn capture(color_scheme: Option<Theme>) -> UserPreferences {
         use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
 
         let ui = UISettings::new().ok();
-        WindowsAccessibilityPreferences {
+        WindowsPreferences {
             animations_enabled: ui.as_ref().and_then(|ui| ui.AnimationsEnabled().ok()),
             transparency_enabled: ui.as_ref().and_then(|ui| ui.AdvancedEffectsEnabled().ok()),
             high_contrast: AccessibilitySettings::new()
                 .and_then(|settings| settings.HighContrast())
                 .ok(),
+            reduced_data: windows_connection_cost::capture(),
         }
         .into_preferences(color_scheme)
     }
@@ -41,14 +45,15 @@ pub(crate) fn capture(color_scheme: Option<Theme>) -> UserPreferences {
 }
 
 #[cfg(any(target_os = "windows", test))]
-struct WindowsAccessibilityPreferences {
+struct WindowsPreferences {
     animations_enabled: Option<bool>,
     transparency_enabled: Option<bool>,
     high_contrast: Option<bool>,
+    reduced_data: Option<ReductionPreference>,
 }
 
 #[cfg(any(target_os = "windows", test))]
-impl WindowsAccessibilityPreferences {
+impl WindowsPreferences {
     fn into_preferences(self, color_scheme: Option<Theme>) -> UserPreferences {
         let reduction = |enabled| {
             if enabled {
@@ -71,7 +76,7 @@ impl WindowsAccessibilityPreferences {
                 }
             }),
             color_scheme,
-            reduced_data: None,
+            reduced_data: self.reduced_data,
         }
     }
 }
@@ -113,6 +118,52 @@ impl AccessibilityPreferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_known_connection_cost_is_captured_as_reduced_data() {
+        use windows::Networking::Connectivity::{NetworkCostType, NetworkInformation};
+
+        // Derive the expected UA policy directly from Windows, independently of
+        // capture. An absent profile, unknown cost or failed read is unavailable.
+        let expected = || -> windows::core::Result<Option<ReductionPreference>> {
+            let cost = NetworkInformation::GetInternetConnectionProfile()?.GetConnectionCost()?;
+            let kind = cost.NetworkCostType()?;
+            if !matches!(
+                kind,
+                NetworkCostType::Unrestricted | NetworkCostType::Fixed | NetworkCostType::Variable
+            ) {
+                return Ok(None);
+            }
+            let roaming = cost.Roaming()?;
+            let over_limit = cost.OverDataLimit()?;
+            let approaching_limit = cost.ApproachingDataLimit()?;
+            Ok(Some(
+                if kind == NetworkCostType::Unrestricted
+                    && !roaming
+                    && !over_limit
+                    && !approaching_limit
+                {
+                    ReductionPreference::NoPreference
+                } else {
+                    ReductionPreference::Reduce
+                },
+            ))
+        };
+        let before = expected().ok().flatten();
+        let captured = capture(Some(Theme::Dark));
+        let after = expected().ok().flatten();
+        if before != after {
+            eprintln!("SKIP reduced-data comparison: native cost changed during capture");
+            return;
+        }
+        eprintln!(
+            "native reduced-data witness={before:?}, captured={:?}",
+            captured.reduced_data
+        );
+        assert_eq!(captured.reduced_data, before);
+        assert_eq!(captured.color_scheme, Some(Theme::Dark));
+    }
 
     #[cfg(target_os = "windows")]
     #[test]
@@ -158,7 +209,6 @@ mod tests {
             })
         );
         assert_eq!(captured.color_scheme, Some(Theme::Dark));
-        assert_eq!(captured.reduced_data, None);
     }
 
     #[test]
@@ -233,11 +283,22 @@ mod tests {
                     (Some(false), Some(ContrastPreference::NoPreference)),
                     (Some(true), Some(ContrastPreference::Custom)),
                 ] {
-                    for theme in [None, Some(Theme::Light), Some(Theme::Dark)] {
-                        let captured = WindowsAccessibilityPreferences {
+                    for (theme, reduced_data) in [None, Some(Theme::Light), Some(Theme::Dark)]
+                        .into_iter()
+                        .flat_map(|theme| {
+                            [
+                                None,
+                                Some(ReductionPreference::NoPreference),
+                                Some(ReductionPreference::Reduce),
+                            ]
+                            .map(|data| (theme, data))
+                        })
+                    {
+                        let captured = WindowsPreferences {
                             animations_enabled: animations,
                             transparency_enabled: transparency,
                             high_contrast: contrast,
+                            reduced_data,
                         }
                         .into_preferences(theme);
                         assert_eq!(
@@ -247,7 +308,7 @@ mod tests {
                                 reduced_transparency: reduction,
                                 contrast: expected_contrast,
                                 color_scheme: theme,
-                                reduced_data: None,
+                                reduced_data,
                             }
                         );
                     }

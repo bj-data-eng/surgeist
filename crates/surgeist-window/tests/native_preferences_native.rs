@@ -211,6 +211,7 @@ fn main() {
         DisplayManager, DisplayManagerOptions, DisplayManagerResult, DisplayWireFormatPixelEncoding,
     };
     use windows::Devices::Input::{PointerDevice, PointerDeviceType};
+    use windows::Networking::Connectivity::{NetworkCostType, NetworkInformation};
     use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
 
     if std::env::var("SURGEIST_RUN_NATIVE_PREFERENCES_PROBE").as_deref() != Ok("1") {
@@ -227,6 +228,34 @@ fn main() {
         dpi: u32,
         input: std::result::Result<InputCapabilities, String>,
         color: std::result::Result<Option<u32>, String>,
+        reduced_data: Option<ReductionPreference>,
+    }
+    fn expected_reduced_data() -> Option<ReductionPreference> {
+        let observe = || -> windows::core::Result<Option<ReductionPreference>> {
+            let cost = NetworkInformation::GetInternetConnectionProfile()?.GetConnectionCost()?;
+            let kind = cost.NetworkCostType()?;
+            if !matches!(
+                kind,
+                NetworkCostType::Unrestricted | NetworkCostType::Fixed | NetworkCostType::Variable
+            ) {
+                return Ok(None);
+            }
+            let roaming = cost.Roaming()?;
+            let over_limit = cost.OverDataLimit()?;
+            let approaching_limit = cost.ApproachingDataLimit()?;
+            Ok(Some(
+                if kind == NetworkCostType::Unrestricted
+                    && !roaming
+                    && !over_limit
+                    && !approaching_limit
+                {
+                    ReductionPreference::NoPreference
+                } else {
+                    ReductionPreference::Reduce
+                },
+            ))
+        };
+        observe().ok().flatten()
     }
     fn expected_input() -> std::result::Result<InputCapabilities, String> {
         let devices = PointerDevice::GetPointerDevices().map_err(|error| error.to_string())?;
@@ -389,6 +418,7 @@ fn main() {
             dpi: window.dpi().map_err(|error| error.to_string())?,
             input: expected_input(),
             color,
+            reduced_data: expected_reduced_data(),
         })
     }
     struct Capture {
@@ -540,7 +570,13 @@ fn main() {
             ContrastPreference::NoPreference
         })
     );
-    assert_eq!(captured.reduced_data, None);
+    let after = expected_reduced_data();
+    if witness.reduced_data == after {
+        println!("native reduced-data witness={after:?}");
+        assert_eq!(captured.reduced_data, after);
+    } else {
+        eprintln!("SKIP reduced-data comparison: native cost changed during probe");
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]

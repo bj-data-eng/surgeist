@@ -30,7 +30,11 @@ Remove-Item Env:SURGEIST_RUN_NATIVE_PREFERENCES_PROBE
 
 The Windows probe opens an invisible window through the production loop and
 compares its `Ready` preference snapshot with Windows Runtime animation,
-transparency and contrast-theme observations. It independently locates that
+transparency, contrast-theme and preferred-connection-cost observations. The
+cost comparison checks the documented reduced-data host policy; a missing
+profile, unknown cost or failed required read expects an unavailable value.
+It skips that comparison if direct witnesses differ during the probe.
+It independently locates that
 process-owned native window, obtains its current monitor directly, and compares
 the captured screen, work area, client origin, DPI scale and fixed viewport
 variants with observations from the safe typed Windows bridge. A complete

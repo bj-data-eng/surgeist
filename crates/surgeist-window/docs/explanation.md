@@ -201,7 +201,7 @@ An unavailable observation is distinct from a known absent device or a known
 `no-preference` value. The winit adapter supplies monitor and client geometry,
 display scale and the system theme where its platform API supports them. It does
 not infer primary pointer capabilities from the most recent input event or guess
-navigation, reduced-data or output-blending facts. Those remain unavailable
+navigation or output-blending facts. Those remain unavailable
 until a host supplies them. Windows supplies the native input observations
 described below. CSS matching, document activity,
 origin preference overlays and coherent downstream publication remain with
@@ -244,8 +244,23 @@ to `NoPreference`. An active contrast theme maps to `Custom`: this observer does
 not classify the selected palette as particularly high or low contrast. An
 inactive contrast theme maps to `NoPreference`. Each failed observation remains
 independently unavailable, preserving successfully sampled siblings and the
-separately supplied system color scheme. These APIs do not establish reduced-data
-preferences. Other platforms retain unavailable values for these observations.
+separately supplied system color scheme. Other platforms retain unavailable
+values for these observations.
+
+Windows also reads the fresh preferred connection profile through
+[`NetworkInformation.GetInternetConnectionProfile`](https://learn.microsoft.com/en-us/uwp/api/windows.networking.connectivity.networkinformation.getinternetconnectionprofile)
+and its connection cost. The native host infers `Reduce` from a known fixed or
+variable cost, or from a known unrestricted cost with roaming, over-limit or
+approaching-limit status. A known unrestricted cost with all three flags false
+maps to `NoPreference`. This is a UA policy allowed by the selected
+[Media Queries source](../../../references/mediaqueries-5--WD-mediaqueries-5-20260219--9e761f96f6a9.md#auto-pref),
+not a Windows CSS preference. Missing profiles, unknown or future cost values,
+and any required read failure leave reduced data unavailable while preserving
+other preferences. The preferred profile is the interface Windows considers
+most likely to carry internet traffic; it need not have internet access and
+does not establish every request's route. The observer reads no network names
+and changes no network settings. Other platforms retain unavailable reduced-data
+observations.
 
 The complete preference baseline is sampled at resume, native/user events,
 command application and idle opportunities. Changed facts commit before their
