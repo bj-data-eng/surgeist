@@ -388,19 +388,6 @@ pub(super) struct CollectedScope {
     pub(super) start: SourceLocation,
 }
 
-/// Collects the components of the scope of the native parser `input`.
-pub(super) fn collect_native_scope<'i>(
-    input: &mut cssparser::Parser<'i, '_>,
-    snapshot: &CssSourceSnapshot,
-) -> Result<CollectedScope, ParseError<'i, CssError>> {
-    parse_scope(input, snapshot, |stream, numeric| {
-        let start = location(numeric, stream.site());
-        let values = collect_scope(stream, numeric);
-        consume_remaining(stream);
-        Ok(CollectedScope { values, start })
-    })
-}
-
 /// Whether the comma just consumed ends the stream, so that it adds no member
 /// to a comma-separated list (Syntax 3 section 5.4.10). A whitespace token
 /// after it is a token; a comment is not.
@@ -780,6 +767,30 @@ pub(super) fn parse_scope<'i, T>(
         .map_or(end, surgeist_css_parser::Offset::value);
     advance_native_to(input, consumed);
     Ok(value)
+}
+
+/// Runs a value grammar over the stream `input` from where it stands: the scope
+/// the parser crate's driver delimited for the grammar.
+pub(super) fn read_scope<'i, T>(
+    input: &mut Stream<'i>,
+    snapshot: &CssSourceSnapshot,
+    parse: impl FnOnce(&mut Stream<'i>, &NumericInputContext<'_>) -> Value<'i, T>,
+) -> Result<T, NativeError<'i>> {
+    let numeric = NumericInputContext::parsed(snapshot);
+    parse(input, &numeric).map_err(|error| native(&numeric, &error))
+}
+
+/// The components of the rest of the stream `input`, which is consumed, or the
+/// fault that kept them from being collected and where it is reported.
+pub(super) fn collect_stream_scope(
+    input: &mut Stream<'_>,
+    snapshot: &CssSourceSnapshot,
+) -> CollectedScope {
+    let numeric = NumericInputContext::parsed(snapshot);
+    let start = location(&numeric, input.site());
+    let values = collect_scope(input, &numeric);
+    consume_remaining(input);
+    CollectedScope { values, start }
 }
 
 /// The position of a declaration at the byte `offset` of the source.

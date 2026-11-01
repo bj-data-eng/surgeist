@@ -272,24 +272,48 @@ impl<'a> SelectorRecovery<'a> {
         let snapshot = self.state.source_snapshot().clone();
         parse_scope(input, &snapshot, |stream, _| parse(stream, self))
     }
+
+    /// Reads the stream `input` the driver delimited with `parse`, from where
+    /// it stands.
+    fn read_stream<'i, T>(
+        &mut self,
+        input: &mut Stream<'i>,
+        parse: impl FnOnce(&mut Stream<'i>, &mut Self) -> Value<'i, T>,
+    ) -> Result<T, ParseError<'i, CssError>> {
+        let snapshot = self.state.source_snapshot().clone();
+        let numeric = crate::numeric::expression::NumericInputContext::parsed(&snapshot);
+        parse(input, self).map_err(|error| native(&numeric, &error))
+    }
 }
 
 pub(crate) fn parse_rule_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<Vec<CssSelector>, ParseError<'i, CssError>> {
-    recovery.read(input, |input, recovery| {
-        recovery.check_depth(input)?;
-        let mut selectors = Vec::new();
-        loop {
-            selectors.push(read_rule_selector(input, recovery)?);
-            if input.attempt(Stream::consume_comma).is_err() {
-                break;
-            }
+    recovery.read(input, rule_selector_list)
+}
+
+pub(crate) fn parse_rule_selector_list_stream<'i>(
+    input: &mut Stream<'i>,
+    recovery: &mut SelectorRecovery<'_>,
+) -> std::result::Result<Vec<CssSelector>, ParseError<'i, CssError>> {
+    recovery.read_stream(input, rule_selector_list)
+}
+
+fn rule_selector_list<'i>(
+    input: &mut Stream<'i>,
+    recovery: &mut SelectorRecovery<'_>,
+) -> Value<'i, Vec<CssSelector>> {
+    recovery.check_depth(input)?;
+    let mut selectors = Vec::new();
+    loop {
+        selectors.push(read_rule_selector(input, recovery)?);
+        if input.attempt(Stream::consume_comma).is_err() {
+            break;
         }
-        expect_exhausted(input, recovery)?;
-        Ok(selectors)
-    })
+    }
+    expect_exhausted(input, recovery)?;
+    Ok(selectors)
 }
 
 /// Requires that only whitespace remains, as a selector failure that names the
@@ -301,83 +325,104 @@ fn expect_exhausted<'i>(
     super::descriptor_stream::expect_exhausted(input).map_err(|error| recovery.basic(error))
 }
 
-pub(crate) fn parse_scope_boundary_selector_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+/// The selector list of a `@scope` boundary, in place in the boundary's block.
+pub(crate) fn scope_boundary_selector_list<'i>(
+    input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
     anchors: SelectorAnchorMode,
     allow_relative: bool,
-) -> std::result::Result<CssScopeSelectorList, ParseError<'i, CssError>> {
-    recovery.read(input, |input, recovery| {
-        recovery
-            .state
-            .check_component_contents_from(
-                recovery.source,
-                offset_of(input.site()),
-                "baseline.selector.complex",
-            )
-            .map_err(|error| SyntaxError::custom(input.site(), error))?;
-        let options = SelectorParseOptions::scope_boundary(anchors);
-        let mut selectors = Vec::new();
-        loop {
-            let member = if allow_relative {
-                parse_style_selector_with_options(input, options, recovery)?
-            } else {
-                CssStyleSelector::Selector(parse_rule_selector_with_options(
-                    input, options, recovery,
-                )?)
-            };
-            selectors.push(member);
-            if input.attempt(Stream::consume_comma).is_err() {
-                break;
-            }
+) -> Value<'i, CssScopeSelectorList> {
+    recovery
+        .state
+        .check_component_contents_from(
+            recovery.source,
+            offset_of(input.site()),
+            "baseline.selector.complex",
+        )
+        .map_err(|error| SyntaxError::custom(input.site(), error))?;
+    let options = SelectorParseOptions::scope_boundary(anchors);
+    let mut selectors = Vec::new();
+    loop {
+        let member = if allow_relative {
+            parse_style_selector_with_options(input, options, recovery)?
+        } else {
+            CssStyleSelector::Selector(parse_rule_selector_with_options(input, options, recovery)?)
+        };
+        selectors.push(member);
+        if input.attempt(Stream::consume_comma).is_err() {
+            break;
         }
-        expect_exhausted(input, recovery)?;
-        CssScopeSelectorList::try_new(selectors).ok_or_else(|| recovery.invalid(input.site()))
-    })
+    }
+    expect_exhausted(input, recovery)?;
+    CssScopeSelectorList::try_new(selectors).ok_or_else(|| recovery.invalid(input.site()))
 }
 
 pub(crate) fn parse_scoped_style_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssStyleSelectorList, ParseError<'i, CssError>> {
-    recovery.read(input, |input, recovery| {
-        recovery.check_depth(input)?;
-        let mut selectors = Vec::new();
-        loop {
-            selectors.push(parse_style_selector_with_options(
-                input,
-                SelectorParseOptions::scoped_style(),
-                recovery,
-            )?);
-            if input.attempt(Stream::consume_comma).is_err() {
-                break;
-            }
+    recovery.read(input, scoped_style_selector_list)
+}
+
+pub(crate) fn parse_scoped_style_selector_list_stream<'i>(
+    input: &mut Stream<'i>,
+    recovery: &mut SelectorRecovery<'_>,
+) -> std::result::Result<CssStyleSelectorList, ParseError<'i, CssError>> {
+    recovery.read_stream(input, scoped_style_selector_list)
+}
+
+fn scoped_style_selector_list<'i>(
+    input: &mut Stream<'i>,
+    recovery: &mut SelectorRecovery<'_>,
+) -> Value<'i, CssStyleSelectorList> {
+    recovery.check_depth(input)?;
+    let mut selectors = Vec::new();
+    loop {
+        selectors.push(parse_style_selector_with_options(
+            input,
+            SelectorParseOptions::scoped_style(),
+            recovery,
+        )?);
+        if input.attempt(Stream::consume_comma).is_err() {
+            break;
         }
-        expect_exhausted(input, recovery)?;
-        CssStyleSelectorList::try_new(selectors).ok_or_else(|| recovery.invalid(input.site()))
-    })
+    }
+    expect_exhausted(input, recovery)?;
+    CssStyleSelectorList::try_new(selectors).ok_or_else(|| recovery.invalid(input.site()))
 }
 
 pub(super) fn parse_nested_style_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<Vec<CssStyleSelector>, ParseError<'i, CssError>> {
-    recovery.read(input, |input, recovery| {
-        recovery.check_depth(input)?;
-        let mut selectors = Vec::new();
-        loop {
-            selectors.push(parse_style_selector_with_options(
-                input,
-                SelectorParseOptions::nested_style(),
-                recovery,
-            )?);
-            if input.attempt(Stream::consume_comma).is_err() {
-                break;
-            }
+    recovery.read(input, nested_style_selector_list)
+}
+
+pub(super) fn parse_nested_style_selector_list_stream<'i>(
+    input: &mut Stream<'i>,
+    recovery: &mut SelectorRecovery<'_>,
+) -> std::result::Result<Vec<CssStyleSelector>, ParseError<'i, CssError>> {
+    recovery.read_stream(input, nested_style_selector_list)
+}
+
+fn nested_style_selector_list<'i>(
+    input: &mut Stream<'i>,
+    recovery: &mut SelectorRecovery<'_>,
+) -> Value<'i, Vec<CssStyleSelector>> {
+    recovery.check_depth(input)?;
+    let mut selectors = Vec::new();
+    loop {
+        selectors.push(parse_style_selector_with_options(
+            input,
+            SelectorParseOptions::nested_style(),
+            recovery,
+        )?);
+        if input.attempt(Stream::consume_comma).is_err() {
+            break;
         }
-        expect_exhausted(input, recovery)?;
-        Ok(selectors)
-    })
+    }
+    expect_exhausted(input, recovery)?;
+    Ok(selectors)
 }
 
 fn parse_style_selector_with_options<'i>(

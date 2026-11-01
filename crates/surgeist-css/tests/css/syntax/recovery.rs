@@ -1,5 +1,6 @@
 //! Browser recovery and end-of-file handling.
 
+mod custom_property_look_alike_rule;
 mod deep_qualified_punctuation;
 mod deep_rule_list_context;
 mod deep_statement_eof;

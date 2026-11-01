@@ -446,29 +446,34 @@ impl<'i> StreamExt<'i> for Stream<'i> {
         })?;
         self.discard_whitespace();
         let site = self.site();
-        let Ok(component) = self.consume_component_value() else {
-            // No component at the end of source text is an absent one, at the end.
-            let absent = site
-                .offset()
-                .filter(|_| site.node().is_none())
-                .and_then(|offset| {
-                    use crate::syntax_consumption::DocumentExt as _;
-                    let snapshot = site.document().snapshot()?;
-                    CssParsedOrigin::from_range(snapshot, offset.value()..offset.value())
-                })
-                .map(CssValueOrigin::Parsed);
-            let origin = match (absent, site.origin()) {
-                (Some(origin), _) => origin,
-                (
-                    _,
-                    CssSerializedOrigin::End(Some(origin)) | CssSerializedOrigin::Token(origin),
-                ) => origin,
-                _ => CssValueOrigin::Programmatic,
-            };
-            return Err(CssComponentValueError::new(
-                CssComponentValueErrorKind::InvalidToken,
-                origin,
-            ));
+        let component = match self.consume_component_value() {
+            Ok(component) => component,
+            Err(error) => {
+                // No component at the end of source text is an absent one, at the end.
+                // A stream the driver bounded ends before the node that follows it.
+                let at_end = error.is_end_of_stream();
+                let absent = site
+                    .offset()
+                    .filter(|_| at_end || site.node().is_none())
+                    .and_then(|offset| {
+                        use crate::syntax_consumption::DocumentExt as _;
+                        let snapshot = site.document().snapshot()?;
+                        CssParsedOrigin::from_range(snapshot, offset.value()..offset.value())
+                    })
+                    .map(CssValueOrigin::Parsed);
+                let origin = match (absent, site.origin()) {
+                    (Some(origin), _) => origin,
+                    (
+                        _,
+                        CssSerializedOrigin::End(Some(origin)) | CssSerializedOrigin::Token(origin),
+                    ) => origin,
+                    _ => CssValueOrigin::Programmatic,
+                };
+                return Err(CssComponentValueError::new(
+                    CssComponentValueErrorKind::InvalidToken,
+                    origin,
+                ));
+            }
         };
         let node = component.node();
         if let Some(Attached::Component(component)) = component.payload() {
@@ -535,38 +540,6 @@ impl<'i> StreamExt<'i> for Stream<'i> {
     }
 }
 
-/// Runs a stream grammar over the whole scope the native parser `input` was
-/// handed, to its end: the contents of a rule block or the value of a
-/// declaration, as the source text `source` holds, and leaves `input` after what
-/// the grammar consumed. Only the native `AtRuleParser`, `QualifiedRuleParser`
-/// and `DeclarationParser` methods whose grammar has not been ported enter a
-/// ported grammar this way.
-pub(crate) fn adapt_native<'s, T, F>(
-    input: &mut cssparser::Parser<'s, '_>,
-    source: &crate::source::CssSourceSnapshot,
-    parse: F,
-) -> Result<T, cssparser::ParseError<'s, crate::diagnostic::CssError>>
-where
-    F: for<'i> FnOnce(
-        &mut Stream<'i>,
-    ) -> Result<T, SyntaxError<'i, crate::diagnostic::error::property::Error>>,
-{
-    use crate::diagnostic::error::property::SyntaxErrorExt;
-    use crate::syntax_consumption::source_scope_document;
-    let start = input.position().byte_index();
-    let end = native_scope_end(input);
-    let document = source_scope_document(source, start..end).map_err(|detail| {
-        crate::diagnostic::error::invalid_component_value(input.current_source_location(), detail)
-    })?;
-    let mut parser = document.root();
-    let result = parse(&mut parser);
-    let consumed = document
-        .boundary(document.root_list(), parser.site().index())
-        .offset
-        .expect("source cursor boundary");
-    advance_native_to(input, consumed);
-    result.map_err(SyntaxErrorExt::into_native_source)
-}
 fn advance_native_component(input: &mut cssparser::Parser<'_, '_>) -> Result<(), ()> {
     use cssparser::Token as Native;
     let nested = matches!(
@@ -742,29 +715,5 @@ mod tests {
         assert_eq!(input.site().lexeme(), Some(";"));
         input.consume_semicolon().unwrap();
         assert_eq!(input.consume_ident().unwrap(), "tail");
-    }
-}
-
-#[cfg(test)]
-mod native_adapter_tests {
-    use super::*;
-    use crate::source::CssSourceSnapshot;
-
-    #[test]
-    fn a_scope_grammar_leaves_the_native_parser_after_what_it_consumed() {
-        let source = CssSourceSnapshot::new("f(a) tail");
-        let mut storage = cssparser::ParserInput::new(source.as_str());
-        let mut native = cssparser::Parser::new(&mut storage);
-        let value = adapt_native(&mut native, &source, |input| {
-            input.consume_function_named("f")?;
-            input.within_block(|nested| {
-                nested.consume_keyword("a")?;
-                Ok::<_, SyntaxError<'_, crate::diagnostic::error::property::Error>>(42)
-            })
-        })
-        .unwrap();
-        assert_eq!(value, 42);
-        assert_eq!(native.position().byte_index(), 4);
-        assert_eq!(native.expect_ident().unwrap().as_ref(), "tail");
     }
 }

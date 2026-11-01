@@ -38,38 +38,60 @@ pub(crate) fn parse_keyframe_rule_with_context(
     fragments::bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
             .with_parser_context(context);
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
-        let mut diagnostics = Vec::new();
-        let result = (|| {
-            let (block, recovered) =
-                keyframes::parse_detached_rule(source, &mut input, state.clone())?;
-            diagnostics = recovered;
-            let start = block.position().byte_offset().value();
-            // The generic single-rule driver consumes trailing trivia. The
-            // source arena supplies the exact admitted rule's end boundary.
-            let document = state.syntax_document(source).map_err(|error| {
-                crate::diagnostic::error::invalid_component_value(
-                    input.current_source_location(),
-                    error,
+        let snapshot = state.source_snapshot().clone();
+        let document = match state.syntax_document(source) {
+            Ok(document) => document,
+            Err(error) => {
+                return finish::<CssParsedKeyframeRule>(
+                    source,
+                    Err(crate::diagnostic::error::invalid_component_value(
+                        crate::parser::block_units::location_at(&snapshot, 0),
+                        error,
+                    )),
+                    Vec::new(),
+                    &state,
+                );
+            }
+        };
+        let mut grammar = keyframes::detached_grammar(source, state.clone());
+        let result = document
+            .root()
+            .parse_rule(&mut grammar)
+            .map_err(|failed| {
+                if failed.rule_end().is_none() && failed.error().is_end_of_stream() {
+                    // Nothing but trivia: the failure is where the source begins.
+                    crate::diagnostic::error::unexpected_syntax_end(
+                        crate::parser::block_units::location_at(&snapshot, 0),
+                    )
+                } else {
+                    crate::parser::block_units::native_error(&snapshot, failed.error())
+                }
+            })
+            .and_then(|block| {
+                let start = block.position().byte_offset().value();
+                let unexpected = || {
+                    crate::diagnostic::error::unexpected_syntax_end(
+                        crate::parser::block_units::location_at(&snapshot, start),
+                    )
+                };
+                // The generic single-rule driver consumes trailing trivia. The
+                // source arena supplies the exact admitted rule's end boundary.
+                let selected = crate::syntax_consumption::consume_one_rule(
+                    &mut document.cursor(document.root_list()),
                 )
-            })?;
-            let selected = crate::syntax_consumption::consume_one_rule(
-                &mut document.cursor(document.root_list()),
-            )
-            .expect("admitted exactly one rule");
-            let crate::syntax_consumption::GenericRule::Qualified(rule) = selected else {
-                unreachable!("keyframe grammar admits only qualified rules")
-            };
-            let end = document
-                .boundary(rule.range.list, rule.range.end)
-                .offset
-                .expect("original rule boundary");
-            let origin = CssParsedOrigin::from_range(state.source_snapshot(), start..end)
-                .expect("admitted original keyframe rule range");
-            Ok(CssParsedKeyframeRule { block, origin })
-        })();
+                .map_err(|_| unexpected())?;
+                let crate::syntax_consumption::GenericRule::Qualified(rule) = selected else {
+                    unreachable!("keyframe grammar admits only qualified rules")
+                };
+                let end = document
+                    .boundary(rule.range.list, rule.range.end)
+                    .offset
+                    .ok_or_else(unexpected)?;
+                let origin = CssParsedOrigin::from_range(state.source_snapshot(), start..end)
+                    .ok_or_else(unexpected)?;
+                Ok(CssParsedKeyframeRule { block, origin })
+            });
+        let diagnostics = std::mem::take(&mut grammar.diagnostics);
         finish(source, result, diagnostics, &state)
     })
 }

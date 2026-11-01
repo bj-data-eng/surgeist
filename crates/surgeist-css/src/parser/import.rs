@@ -2,7 +2,7 @@
 
 use super::descriptor_stream::{
     Value, ValueError, byte_offset, collect_scope, consume_remaining, expect_exhausted, location,
-    native, parse_scope,
+    native, read_scope,
 };
 use super::property_input::StreamExt as _;
 use super::recovery::{RecoveryState, StyleContextCaptures};
@@ -23,7 +23,7 @@ use crate::rule::{
 };
 use crate::selector::CssNamespaceContext;
 use crate::source::CssParsedOrigin;
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 use surgeist_css_parser::stream::StopToken;
 
 pub(crate) struct CssImportPrelude {
@@ -319,13 +319,12 @@ fn construct_import_media(
     Ok(Some(CssMediaQueryList::with_comma_origins(queries, commas)))
 }
 
-pub(crate) fn parse_import_prelude<'i, 't>(
-    source: &'i str,
-    input: &mut Parser<'i, 't>,
-    _diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+pub(crate) fn parse_import_prelude<'i>(
+    source: &str,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
 ) -> Result<CssImportPrelude, ParseError<'i, CssError>> {
-    parse_scope(input, recovery.source_snapshot(), |stream, numeric| {
+    read_scope(input, recovery.source_snapshot(), |stream, numeric| {
         import_prelude(source, stream, numeric, recovery)
     })
 }

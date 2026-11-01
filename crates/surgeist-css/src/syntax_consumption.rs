@@ -116,31 +116,6 @@ pub(crate) fn rule_dispatch(kind: TokenKind<'_>) -> GenericRuleDispatch {
     }
 }
 
-/// The selected Syntax 3 (CRD 2026-10-01) consumer of a list of rules.
-///
-/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents>
-/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents>
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RuleListSyntax {
-    /// §5.5.1: CDO/CDC are discarded and anything else, including `;`,
-    /// begins a qualified rule without a stop token. A custom-property-shaped
-    /// prelude consumes its block and returns nothing (§5.5.3).
-    Stylesheet,
-    /// §5.5.5 within a rule-only grammar: `;` is discarded, at-rules are
-    /// nested, and a qualified rule stops at `;`. A declaration attempt is
-    /// never valid in such a grammar, so it is always reconsumed as a rule.
-    BlockContents,
-}
-
-fn ignored_rule_list_prefix(kind: TokenKind<'_>, list: RuleListSyntax) -> bool {
-    match kind {
-        TokenKind::Whitespace | TokenKind::Comment => true,
-        TokenKind::Cdo | TokenKind::Cdc => list == RuleListSyntax::Stylesheet,
-        TokenKind::Semicolon => list == RuleListSyntax::BlockContents,
-        _ => false,
-    }
-}
-
 pub(crate) fn semicolon_terminates_rule(dispatch: GenericRuleDispatch) -> bool {
     matches!(dispatch, GenericRuleDispatch::At)
 }
@@ -736,8 +711,6 @@ pub(crate) trait DocumentExt {
     fn boundary(&self, list: ListId, index: usize) -> SyntaxBoundary;
     fn cursor(&self, list: ListId) -> SyntaxCursor<'_>;
     fn cursor_range(&self, range: &SyntaxRange) -> SyntaxCursor<'_>;
-    fn cursor_at_source(&self, offset: usize) -> Option<SyntaxCursor<'_>>;
-    fn list_at_source_start(&self, offset: usize) -> Option<ListId>;
 }
 
 impl DocumentExt for Document<'_> {
@@ -860,8 +833,6 @@ impl DocumentExt for Document<'_> {
             list,
             next: 0,
             end: self.list(list).len(),
-            current: None,
-            reconsume: false,
         }
     }
 
@@ -872,50 +843,7 @@ impl DocumentExt for Document<'_> {
             list: range.list,
             next: range.start,
             end: range.end,
-            current: None,
-            reconsume: false,
         }
-    }
-
-    fn cursor_at_source(&self, offset: usize) -> Option<SyntaxCursor<'_>> {
-        let site = self.node_at_offset(Offset::new(offset))?;
-        if site.is_closing() {
-            return None;
-        }
-        Some(SyntaxCursor {
-            document: self,
-            list: site.list(),
-            next: site.index(),
-            end: self.list(site.list()).len(),
-            current: None,
-            reconsume: false,
-        })
-    }
-
-    fn list_at_source_start(&self, offset: usize) -> Option<ListId> {
-        let start = self
-            .list_end(self.root_list())?
-            .value()
-            .checked_sub(self.source().map_or(0, str::len))?;
-        if start == offset {
-            return Some(self.root_list());
-        }
-        // The contents of a group start where its opening token ends.
-        let mut pending = vec![self.root_list()];
-        while let Some(list) = pending.pop() {
-            for &node in self.list(list) {
-                let Some(children) = self.children(node) else {
-                    continue;
-                };
-                if let (Some(range), Some(spelling)) = (self.range(node), self.spelling(node))
-                    && range.start.value() + spelling.len() == offset
-                {
-                    return Some(children);
-                }
-                pending.push(children);
-            }
-        }
-        None
     }
 }
 
@@ -931,16 +859,10 @@ pub(crate) struct SyntaxCursor<'a> {
     pub(crate) list: ListId,
     next: usize,
     end: usize,
-    current: Option<usize>,
-    reconsume: bool,
 }
 impl SyntaxCursor<'_> {
     pub(crate) fn position(&self) -> usize {
-        if self.reconsume {
-            self.current.unwrap_or(self.next)
-        } else {
-            self.next
-        }
+        self.next
     }
     pub(crate) fn peek(&self) -> CursorItem {
         self.document
@@ -956,22 +878,9 @@ impl SyntaxCursor<'_> {
     pub(crate) fn consume(&mut self) -> CursorItem {
         let item = self.peek();
         if matches!(item, CursorItem::Node(_)) {
-            if self.reconsume {
-                self.reconsume = false;
-            } else {
-                self.current = Some(self.next);
-                self.next += 1;
-            }
-        } else {
-            self.current = Some(self.next);
-            self.reconsume = false;
+            self.next += 1;
         }
         item
-    }
-    pub(crate) fn reconsume_current(&mut self) {
-        if self.current.is_some() {
-            self.reconsume = true;
-        }
     }
     pub(crate) fn skip_trivia(&mut self) {
         while let CursorItem::Node(node) = self.peek() {
@@ -999,9 +908,6 @@ pub(crate) enum GenericFaultKind {
     /// A nested qualified rule reached its `<semicolon-token>` stop token,
     /// which remains unconsumed for the enclosing block's contents.
     QualifiedRuleStopToken,
-    /// A nested qualified-rule prelude began like a custom property, so its
-    /// range is the remnants of a bad declaration, ending before `;`.
-    CustomPropertyRule,
     EmptyInput,
     TrailingInput,
     InvalidDeclaration,
@@ -1016,7 +922,7 @@ pub(crate) struct GenericSyntaxFault {
 pub(crate) enum RuleTermination {
     Semicolon(NodeId),
     Block,
-    EndOfInput(SyntaxBoundary),
+    EndOfInput,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct GenericAtRule {
@@ -1129,15 +1035,15 @@ pub(crate) fn consume_at_rule_context(
     let (termination, block, problem) = loop {
         if nested && block_contents_end(cursor) {
             break (
-                RuleTermination::EndOfInput(cursor.boundary()),
+                RuleTermination::EndOfInput,
                 None,
                 Some(fault(cursor, start, GenericFaultKind::AtRuleEndOfInput)),
             );
         }
         match cursor.consume() {
-            CursorItem::EndOfInput(at) => {
+            CursorItem::EndOfInput(_) => {
                 break (
-                    RuleTermination::EndOfInput(at),
+                    RuleTermination::EndOfInput,
                     None,
                     Some(fault(cursor, start, GenericFaultKind::AtRuleEndOfInput)),
                 );
@@ -1222,73 +1128,6 @@ pub(crate) fn consume_qualified_rule_context(
 }
 fn next_is_semicolon(cursor: &SyntaxCursor<'_>) -> bool {
     matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.kind(node) == TokenKind::Semicolon)
-}
-
-/// Selects every rule unit of one list, in source order.
-///
-/// A [`RuleListSyntax::BlockContents`] qualified unit that ends at its `;`
-/// stop token, or at the block's end, is an `Err` fault whose range excludes
-/// the delimiter; the following `;` is then discarded as block contents.
-pub(crate) fn consume_rules(
-    cursor: &mut SyntaxCursor<'_>,
-    list: RuleListSyntax,
-) -> Vec<GenericRuleResult> {
-    let nested = list == RuleListSyntax::BlockContents;
-    let mut rules = Vec::new();
-    loop {
-        cursor.skip_trivia();
-        let CursorItem::Node(node) = cursor.consume() else {
-            break;
-        };
-        let kind = cursor.document.kind(node);
-        if ignored_rule_list_prefix(kind, list) {
-            continue;
-        }
-        cursor.reconsume_current();
-        match rule_dispatch(kind) {
-            GenericRuleDispatch::At => {
-                rules.push(Ok(GenericRule::At(consume_at_rule_context(cursor, nested))))
-            }
-            GenericRuleDispatch::Qualified if nested => {
-                rules.push(consume_nested_qualified_rule(cursor).map(GenericRule::Qualified))
-            }
-            GenericRuleDispatch::Qualified => {
-                rules.push(consume_stylesheet_qualified_rule(cursor).map(GenericRule::Qualified))
-            }
-        }
-    }
-    rules
-}
-
-// Syntax 3 (2026 CRD) §5.5.3 without `nested`: a prelude that begins like a
-// custom property has already consumed its block and returns nothing, even
-// when the prelude would otherwise be a valid selector.
-fn consume_stylesheet_qualified_rule(
-    cursor: &mut SyntaxCursor<'_>,
-) -> Result<GenericQualifiedRule, GenericSyntaxFault> {
-    let start = cursor.position();
-    let rule = consume_qualified_rule(cursor)?;
-    if custom_property_rule_prelude(cursor.document, &rule.prelude) {
-        return Err(fault(cursor, start, GenericFaultKind::CustomPropertyRule));
-    }
-    Ok(rule)
-}
-
-// Syntax 3 (2026 CRD) §5.5.3 with `nested` and a `;` stop token. A prelude
-// that begins like a custom property consumes the remnants of a bad
-// declaration: everything up to the next `;` or the end of the block.
-fn consume_nested_qualified_rule(
-    cursor: &mut SyntaxCursor<'_>,
-) -> Result<GenericQualifiedRule, GenericSyntaxFault> {
-    let start = cursor.position();
-    let rule = consume_qualified_rule_context(cursor, true)?;
-    if !custom_property_rule_prelude(cursor.document, &rule.prelude) {
-        return Ok(rule);
-    }
-    while !block_contents_end(cursor) && !next_is_semicolon(cursor) {
-        cursor.consume();
-    }
-    Err(fault(cursor, start, GenericFaultKind::CustomPropertyRule))
 }
 pub(crate) fn consume_one_rule(cursor: &mut SyntaxCursor<'_>) -> GenericRuleResult {
     cursor.skip_trivia();
@@ -1396,33 +1235,6 @@ pub(crate) fn consume_declaration(
     })
 }
 
-// Selected block-contents Syntax §5.5.6 step 8, after importance removal.
-// Keep this separate from `consume_declaration`: only the selected
-// block-contents caller applies this value-shape restriction.
-pub(crate) fn consume_block_declaration(
-    cursor: &mut SyntaxCursor<'_>,
-) -> Result<GenericDeclaration, GenericSyntaxFault> {
-    let start = cursor.position();
-    let declaration = consume_declaration(cursor)?;
-    let custom = matches!(cursor.document.kind(declaration.name), TokenKind::Ident(name) if name.starts_with("--"));
-    if !custom {
-        let mut components = 0_usize;
-        let mut has_curly_block = false;
-        for node in &declaration.value {
-            if cursor.document.is_trivia(*node) {
-                continue;
-            }
-            components += 1;
-            has_curly_block |=
-                cursor.document.kind(*node) == TokenKind::Opening(CssBlockKind::CurlyBracket);
-        }
-        if has_curly_block && components > 1 {
-            return Err(fault(cursor, start, GenericFaultKind::InvalidDeclaration));
-        }
-    }
-    Ok(declaration)
-}
-
 // Syntax's declaration-list attempt is bounded by a root semicolon, including
 // error nodes and complete nested groups. The delimiter remains outside it.
 pub(crate) fn consume_declaration_candidate(cursor: &mut SyntaxCursor<'_>) -> SyntaxRange {
@@ -1447,22 +1259,6 @@ pub(crate) fn block_contents_end(cursor: &SyntaxCursor<'_>) -> bool {
         CursorItem::Node(node) => {
             cursor.document.kind(node) == TokenKind::Closing(CssBlockKind::CurlyBracket)
         }
-    }
-}
-
-pub(crate) fn consume_block_declaration_candidate(cursor: &mut SyntaxCursor<'_>) -> SyntaxRange {
-    let start = cursor.position();
-    while !block_contents_end(cursor) {
-        if matches!(cursor.peek(), CursorItem::Node(node) if cursor.document.kind(node) == TokenKind::Semicolon)
-        {
-            break;
-        }
-        cursor.consume();
-    }
-    SyntaxRange {
-        list: cursor.list,
-        start,
-        end: cursor.position(),
     }
 }
 

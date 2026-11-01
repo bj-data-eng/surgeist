@@ -101,14 +101,16 @@ pub(super) static IMPLEMENTED_CONTAINER_EXTENSIONS: &[CssFeatureId] = &[
     CssFeatureId::new("baseline.container.size-feature"),
 ];
 
-pub(crate) fn parse_media_query_list<'i, 't>(
+pub(crate) fn parse_media_query_list<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
 ) -> std::result::Result<CssMediaQueryList, ParseError<'i, CssError>> {
-    parse_media_query_list_with_closures(source, input, diagnostics, recovery)
-        .map(|parsed| parsed.queries)
+    super::descriptor_stream::read_scope(input, recovery.source_snapshot(), |stream, numeric| {
+        media_query_list(source, stream, numeric, diagnostics, recovery)
+    })
+    .map(|parsed| parsed.queries)
 }
 
 /// Query syntax and tentative EOF closures, before the owning rule survives.

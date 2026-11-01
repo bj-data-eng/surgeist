@@ -3,23 +3,17 @@ use crate::CssParseReport;
 use crate::component::{CssComponentValueLimits, CssValueOrigin};
 use crate::diagnostic::error::invalid_syntax;
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use crate::parser::nesting::admit_one_rule;
 use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
 use crate::parser::rule_list::RuleParser;
-use crate::parser::{ScopedBodyKind, fragments, nesting, recovery, syntax_bridge};
+use crate::parser::{ScopedBodyKind, fragments, recovery, syntax_bridge};
 use crate::rule::CssRule;
 use crate::rule::CssStyleAncestor;
 use crate::rule::{CssRuleAdmissionContext, CssRuleSyntax};
 use crate::source::CssParsedOrigin;
 use crate::syntax_consumption::DocumentExt;
-use crate::syntax_consumption::{self as syntax, GenericRule, RuleTermination};
-use cssparser::{Parser, ParserInput};
+use crate::syntax_consumption::{self as syntax, GenericRule};
 use surgeist_css_parser::document::Fault;
-
-#[derive(Clone, Debug)]
-pub(crate) struct RuleEnvelope {
-    pub(super) start: usize,
-    pub(super) at_termination: Option<RuleTermination>,
-}
 
 #[must_use]
 pub(crate) fn classify_rule_syntax_with_limits(
@@ -72,7 +66,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
             );
         }
     };
-    let (range, name, termination, at_eof) = match rule {
+    let (range, name, at_eof) = match rule {
         GenericRule::At(rule) => {
             let syntax::TokenKind::AtKeyword(name) = document.kind(rule.name) else {
                 unreachable!("at dispatch")
@@ -80,11 +74,10 @@ pub(crate) fn classify_rule_syntax_with_limits(
             (
                 rule.range,
                 Some(Box::<str>::from(name)),
-                Some(rule.termination),
                 rule.fault.is_some(),
             )
         }
-        GenericRule::Qualified(rule) => (rule.range, None, None, false),
+        GenericRule::Qualified(rule) => (rule.range, None, false),
     };
     let start = document
         .boundary(range.list, range.start)
@@ -149,10 +142,6 @@ pub(crate) fn classify_rule_syntax_with_limits(
     let candidate = CssRuleSyntax {
         origin: CssParsedOrigin::from_range(&snapshot, start..end).expect("generic source range"),
         name,
-        envelope: RuleEnvelope {
-            start,
-            at_termination: termination,
-        },
         limits,
         metrics: document.metrics(),
         diagnostics: diagnostics.clone(),
@@ -163,54 +152,35 @@ pub(crate) fn classify_rule_syntax_with_limits(
 pub(super) fn admit_inner(
     source: &str,
     state: RecoveryState,
-    envelope: &RuleEnvelope,
     context: CssRuleAdmissionContext,
 ) -> CssParseReport<Option<CssRule>> {
-    let working_source = crate::tokenization::prepare(source);
-    let mut parser_input = ParserInput::new(&working_source);
-    let mut input = Parser::new(&mut parser_input);
     let (result, mut diagnostics) = match context {
-        CssRuleAdmissionContext::Stylesheet | CssRuleAdmissionContext::Group => {
-            let mut parser = if context == CssRuleAdmissionContext::Stylesheet {
-                RuleParser::top_level(source, state.clone())
-            } else {
-                RuleParser::group(source, state.clone())
-            };
-            let result =
-                syntax_bridge::admit_envelope(source, &mut input, &mut parser, &state, envelope)
-                    .map(|item| {
-                        let [rule]: [CssRule; 1] =
-                            item.into_rules().try_into().expect("one ordinary rule");
-                        rule
-                    });
-            (result, parser.diagnostics)
-        }
+        CssRuleAdmissionContext::Stylesheet => admit_one_rule(source, &state, |source, state| {
+            RuleParser::top_level(source, state)
+        }),
+        CssRuleAdmissionContext::Group => admit_one_rule(source, &state, |source, state| {
+            RuleParser::group(source, state)
+        }),
         CssRuleAdmissionContext::Style => {
-            nesting::admit_detached(source, &mut input, state.clone(), envelope)
+            state.record_style_context(0);
+            admit_one_rule(source, &state, |source, state| {
+                RuleParser::style(source, state)
+            })
         }
         CssRuleAdmissionContext::Scope(ancestor)
         | CssRuleAdmissionContext::ScopedGroup(ancestor) => {
-            let mut parser = RuleParser::scoped(
-                source,
-                state.clone(),
-                ancestor == CssStyleAncestor::Present,
-                if matches!(context, CssRuleAdmissionContext::Scope(_)) {
-                    ScopedBodyKind::Scope
-                } else {
-                    ScopedBodyKind::OrdinaryGroup
-                },
-            );
-            if ancestor == CssStyleAncestor::Present {
+            let body = if matches!(context, CssRuleAdmissionContext::Scope(_)) {
+                ScopedBodyKind::Scope
+            } else {
+                ScopedBodyKind::OrdinaryGroup
+            };
+            let style_ancestor = ancestor == CssStyleAncestor::Present;
+            if style_ancestor {
                 state.record_style_context(0);
             }
-            let result =
-                syntax_bridge::admit_envelope(source, &mut input, &mut parser, &state, envelope)
-                    .map(|item| {
-                        let [rule]: [CssRule; 1] =
-                            item.into_rules().try_into().expect("one scoped rule");
-                        rule
-                    });
-            (result, parser.diagnostics)
+            admit_one_rule(source, &state, move |source, state| {
+                RuleParser::scoped(source, state, style_ancestor, body)
+            })
         }
     };
     match result {
@@ -218,13 +188,6 @@ pub(super) fn admit_inner(
             diagnostics.extend(state.take_implicit_closure_diagnostics(source));
             CssParseReport::new(Some(rule), diagnostics)
         }
-        Err(error) => CssParseReport::new(
-            None,
-            vec![fragments::reject(
-                source,
-                error,
-                CssRecoveryAction::RejectInput,
-            )],
-        ),
+        Err(diagnostic) => CssParseReport::new(None, vec![diagnostic]),
     }
 }

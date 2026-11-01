@@ -110,6 +110,7 @@ impl CssSourcePosition {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn from_cssparser(
         position: cssparser::SourcePosition,
         location: cssparser::SourceLocation,

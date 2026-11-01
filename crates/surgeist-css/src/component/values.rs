@@ -822,13 +822,6 @@ impl CssComponentValue {
         true
     }
 
-    pub(crate) fn collect_from_parser(
-        input: &mut cssparser::Parser<'_, '_>,
-        source: &CssSourceSnapshot,
-    ) -> Result<Self, CssComponentValueError> {
-        parse::collect_one(input, source)
-    }
-
     pub(crate) const fn parsed_origin(&self) -> Option<&CssParsedOrigin> {
         self.parsed.as_ref()
     }

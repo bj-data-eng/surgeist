@@ -159,7 +159,7 @@ fn independent_mixed_equal_text_snapshots_have_no_invented_source() {
 }
 
 #[test]
-fn independent_bounded_source_and_child_eof_reconsume_keep_their_actual_end_sites() {
+fn independent_bounded_source_and_child_eof_keep_their_actual_end_sites() {
     let text = "/*😀*/f(a)tail";
     let snapshot = CssSourceSnapshot::new(text);
     let document = build_source(
@@ -193,11 +193,10 @@ fn independent_bounded_source_and_child_eof_reconsume_keep_their_actual_end_site
         panic!("bounded child EOF")
     };
     independent_site(boundary, 11);
-    child.reconsume_current();
     assert_eq!(
         child.consume(),
         child_eof,
-        "reconsuming conceptual EOF cannot resurrect argument a"
+        "conceptual EOF repeats and cannot resurrect argument a"
     );
     assert_eq!(child.consume(), child_eof);
     let parent_eof = parent.consume();
@@ -205,11 +204,10 @@ fn independent_bounded_source_and_child_eof_reconsume_keep_their_actual_end_site
         panic!("bounded root EOF")
     };
     independent_site(boundary, 12);
-    parent.reconsume_current();
     assert_eq!(
         parent.consume(),
         parent_eof,
-        "reconsuming EOF cannot resurrect the function"
+        "EOF repeats and cannot resurrect the function"
     );
     independent_price(&document, 2, 1, 4);
     assert_eq!(snapshot.as_str(), text);
@@ -243,10 +241,7 @@ fn independent_child_list_eof_and_at_rule_fault_belong_to_their_own_child() {
     let rule = consume_at_rule(&mut child);
     assert_eq!(original.kind(rule.name), TokenKind::AtKeyword("x"));
     independent_origin(&original.origin(rule.name), &snapshot, 8, 10);
-    let RuleTermination::EndOfInput(end) = &rule.termination else {
-        panic!("child at-rule EOF")
-    };
-    assert_eq!(end, &at);
+    assert!(matches!(rule.termination, RuleTermination::EndOfInput));
     let fault = rule.fault.unwrap();
     assert_eq!(fault.kind, GenericFaultKind::AtRuleEndOfInput);
     assert_eq!(&fault.at, &at);
@@ -259,7 +254,6 @@ fn independent_child_list_eof_and_at_rule_fault_belong_to_their_own_child() {
         }
     );
     assert_eq!(child.consume(), CursorItem::EndOfInput(at.clone()));
-    child.reconsume_current();
     assert_eq!(child.consume(), CursorItem::EndOfInput(at.clone()));
 }
 

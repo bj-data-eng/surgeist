@@ -1,4 +1,4 @@
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 
 use super::boolean_condition::{
     BooleanModel, BooleanNode, BooleanNodeKind, ComponentOperands, ConditionFailure,
@@ -9,6 +9,7 @@ use super::query_components::{
     media_literal_number, negative_literal, query_plain_range, query_range_chain,
 };
 use super::recovery::RecoveryState;
+use super::syntax_types::Stream;
 use crate::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin, CssValueTokenRef,
@@ -484,12 +485,15 @@ fn container_orientation(
 /// production's shared depth check, before any semantic classification.
 pub(crate) fn collect_container_components<'i>(
     source: &str,
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
 ) -> Result<(CssComponentValues, Vec<usize>), ParseError<'i, CssError>> {
-    let implicit =
-        recovery.check_specialized_components(source, input, "baseline.rule.container")?;
-    let values = super::descriptor_stream::collect_native_scope(input, recovery.source_snapshot())?
+    let implicit = recovery.check_specialized_components_from(
+        source,
+        super::block_units::offset_of(input.site()),
+        "baseline.rule.container",
+    )?;
+    let values = super::descriptor_stream::collect_stream_scope(input, recovery.source_snapshot())
         .values
         .map_err(|(error, at)| crate::diagnostic::error::invalid_component_value(at, error))?;
     Ok((values, implicit))

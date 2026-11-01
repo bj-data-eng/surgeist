@@ -4,31 +4,29 @@ use super::block_units::{
 };
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
 use super::descriptor_stream::{
-    Value, ValueError, byte_offset, collect_scope, consume_remaining, expect_exhausted, fail,
-    from_component, from_here, location, parse_scope,
+    DescriptorGrammar, Value, ValueError, byte_offset, collect_scope, consume_remaining,
+    drive_block_items, expect_exhausted, fail, from_component, from_here, location, native,
+    parse_scope,
 };
 use super::property_input::StreamExt;
 use super::syntax_types::{Attached, Site, Stream, SyntaxError};
-use cssparser::{
-    AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser,
-};
+use cssparser::{ParseError, Parser};
 use surgeist_css_parser::grammar::{
     AtRule, BlockGrammar, QualifiedRule, RuleEnd, RuleGrammar, UnitKind,
 };
-use surgeist_css_parser::{Token, match_ignore_ascii_case};
+use surgeist_css_parser::{Offset, Token, match_ignore_ascii_case};
 
-use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
+use super::recovery::RecoveryState;
 use super::{
-    DeclarationMode, block_item_diagnostic, is_declaration_recovery_unit, parse_declaration_core,
+    DeclarationMode, block_item_diagnostic, is_declaration_recovery_unit,
     top_level_only_at_rule_placement,
 };
 use crate::component::{CssComponentValueRef, CssValueTokenRef};
 use crate::declaration::CssDeclarationBody;
 use crate::declaration::syntax::DeclarationContext;
 use crate::diagnostic::error::{
-    basic, invalid_at_rule_body, invalid_at_rule_body_at, property_name_error, unexpected_at,
-    unexpected_syntax_end, unexpected_syntax_token, with_property_context,
+    invalid_at_rule_body_at, property_name_error, unexpected_at, unexpected_syntax_end,
+    unexpected_syntax_token, with_property_context,
 };
 use crate::diagnostic::{CssError, CssFeatureId};
 use crate::numeric::expression::NumericInputContext;
@@ -54,6 +52,16 @@ pub(crate) fn parse_page_selector<'i, 't>(
     snapshot: &crate::source::CssSourceSnapshot,
 ) -> Result<CssPageSelectorList, ParseError<'i, CssError>> {
     super::descriptor_stream::parse_scope(input, snapshot, |stream, numeric| {
+        page_selector_list(stream, numeric, snapshot)
+    })
+}
+
+/// The selector list of a `@page` rule that the stream `input` holds.
+pub(crate) fn read_page_selector<'i>(
+    input: &mut Stream<'i>,
+    snapshot: &crate::source::CssSourceSnapshot,
+) -> Result<CssPageSelectorList, NativeError<'i>> {
+    super::descriptor_stream::read_scope(input, snapshot, |stream, numeric| {
         page_selector_list(stream, numeric, snapshot)
     })
 }
@@ -134,66 +142,54 @@ fn page_selector<'i>(
     Ok(CssPageSelector::from_parsed(name, pseudos, origin))
 }
 
-pub(crate) fn parse_page_rule<'i, 't>(
-    source: &'i str,
+pub(crate) fn parse_page_rule<'i>(
+    source: &str,
     selector: CssPageSelectorList,
-    input: &mut Parser<'i, 't>,
-    start: &ParserState,
+    contents: &mut Stream<'i>,
+    position: crate::source::CssSourcePosition,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssPageRule, ParseError<'i, CssError>> {
-    let declarations = parse_body(source, input, diagnostics, recovery);
-    Ok(CssPageRule::new(
-        selector,
-        declarations,
-        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
-    ))
+) -> CssPageRule {
+    let declarations = parse_body(source, contents, diagnostics, recovery);
+    CssPageRule::new(selector, declarations, position)
 }
 
+/// The declarations and margin rules of the block `contents` holds.
 pub(super) fn parse_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> CssPageBody {
-    let mut declarations = Vec::new();
-    let mut margin_rules = Vec::new();
-    let mut parser = PageBodyParser {
+    let mut grammar = PageBodyParser {
         source,
-        recovery,
+        recovery: recovery.clone(),
         diagnostics: Vec::new(),
     };
-    let mut items = RuleBodyParser::new(input, &mut parser);
-    loop {
-        let progress = RecoveryProgress::record(items.input);
-        let Some(item) = items.next() else {
-            break;
-        };
-        let retained = item.is_ok();
-        let progress_outcome = progress.finish(items.input, retained);
-        let unit_end = items.input.position().byte_index();
+    let mut readmit = PageBodyParser {
+        source,
+        recovery: recovery.clone(),
+        diagnostics: Vec::new(),
+    };
+    let (items, mut dropped) = drive_block_items(
+        contents,
+        &mut grammar,
+        &mut readmit,
+        source,
+        &recovery,
+        crate::diagnostic::CssRecoveryAction::DropDeclaration,
+    );
+    diagnostics.append(&mut dropped);
+    diagnostics.append(&mut grammar.diagnostics);
+    diagnostics.append(&mut readmit.diagnostics);
+    let mut declarations = Vec::new();
+    let mut margin_rules = Vec::new();
+    for item in items {
         match item {
-            Ok(PageBodyItem::Declaration(declaration)) => declarations.push(declaration),
-            Ok(PageBodyItem::Margin(rule)) => margin_rules.push(rule),
-            Err((error, failed_unit)) => {
-                let action = if is_declaration_recovery_unit(failed_unit) {
-                    crate::diagnostic::CssRecoveryAction::DropDeclaration
-                } else {
-                    crate::diagnostic::CssRecoveryAction::DropAtRule
-                };
-                if let Some(diagnostic) =
-                    block_item_diagnostic(source, error, failed_unit, unit_end, action)
-                {
-                    diagnostics.push(diagnostic);
-                }
-            }
-        }
-        if progress_outcome == RecoveryLoopOutcome::Terminated {
-            break;
+            PageBodyItem::Declaration(declaration) => declarations.push(declaration),
+            PageBodyItem::Margin(rule) => margin_rules.push(rule),
         }
     }
-
-    diagnostics.append(&mut items.parser.diagnostics);
     CssPageBody::new(
         CssPageDeclarationBlock::from_parsed(declarations),
         margin_rules,
@@ -204,22 +200,6 @@ struct PageBodyParser<'s> {
     source: &'s str,
     recovery: RecoveryState,
     diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
-}
-
-/// The declarations of a margin box's block, from the native callback that was
-/// handed the block: the contents of the block are the scope.
-pub(super) fn parse_margin_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
-    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
-    recovery: RecoveryState,
-) -> Result<CssMarginDeclarationBlock, ParseError<'i, CssError>> {
-    let (declarations, mut recovered) =
-        super::property_input::adapt_native(input, recovery.source_snapshot(), |contents| {
-            Ok(drive_margin_body(contents, source, &recovery))
-        })?;
-    diagnostics.append(&mut recovered);
-    Ok(declarations)
 }
 
 /// Consumes the declarations of a margin box's block. A unit that is not a
@@ -538,7 +518,7 @@ impl DetachedMarginParser<'_> {
         let opening = offset_of(block.start_site()).saturating_sub(1);
         let mut depth =
             self.recovery
-                .enter_rule_block_at(self.source, opening, "later.rule.page")?;
+                .enter_rule_block(self.source, Offset::new(opening), "later.rule.page")?;
         let (declarations, mut recovered) =
             drive_margin_body(&mut block, self.source, &self.recovery);
         self.diagnostics.append(&mut recovered);
@@ -546,10 +526,7 @@ impl DetachedMarginParser<'_> {
         Ok(CssMarginRule::from_parsed(
             margin,
             declarations,
-            crate::source::CssSourcePosition::from_byte_offset_in(
-                snapshot.as_str(),
-                offset_of(rule.start()),
-            ),
+            self.recovery.source_position(offset_of(rule.start())),
         ))
     }
 }
@@ -626,17 +603,13 @@ impl super::declaration_block::Receiver for PageBodyParser<'_> {
             page_property_name(name, location).map(|_| ())
         }
     }
-    fn parse_value<'i>(
+    fn admit<'i>(
         &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, '_>,
-        start: &ParserState,
+        name: &str,
+        text: &DeclarationText,
         _recovery: &RecoveryState,
-    ) -> Result<CssPageDeclaration, ParseError<'i, CssError>>
-    where
-        Self: 'i,
-    {
-        DeclarationParser::parse_value(self, name, input, start).map(|item| match item {
+    ) -> Result<CssPageDeclaration, ParseError<'i, CssError>> {
+        PageBodyParser::admit(self, name, text).map(|item| match item {
             PageBodyItem::Declaration(declaration) => declaration,
             PageBodyItem::Margin(_) => {
                 unreachable!("declaration callback cannot emit a margin rule")
@@ -665,156 +638,110 @@ enum PageBodyItem {
     Margin(CssMarginRule),
 }
 
-enum PageBodyAtRulePrelude<'i> {
-    MarginBox(CssMarginBox),
-    TopLevelOnly(CowRcStr<'i>, cssparser::SourceLocation),
-    Other,
-}
+impl<'i> RuleGrammar<'i, Attached<'i>> for PageBodyParser<'_> {
+    type Item = PageBodyItem;
+    type Error = NativeError<'i>;
 
-impl<'i> AtRuleParser<'i> for PageBodyParser<'i> {
-    type Prelude = PageBodyAtRulePrelude<'i>;
-    type AtRule = PageBodyItem;
-    type Error = CssError;
-
-    fn parse_prelude<'t>(
-        &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        let location = input.current_source_location();
-        if let Some(margin) = CssMarginBox::from_name(name.as_ref()) {
-            input.expect_exhausted().map_err(basic)?;
-            return Ok(PageBodyAtRulePrelude::MarginBox(margin));
+    // A margin box is the one at-rule a page body admits.
+    fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        let name = rule.name();
+        let location = location_at(snapshot, offset_of(rule.prelude().start_site()));
+        let fail = |error| grammar_error(rule.start(), error);
+        // The prelude of a margin box's name has to be empty; any other is
+        // read to its end. A rejected prelude is reported as the stream
+        // failure itself, which tells it from a rejected block: the block of
+        // the first was never entered, and the unit ends before it.
+        let margin = CssMarginBox::from_name(name);
+        if margin.is_some() {
+            rule.prelude().require_empty()?;
         }
-        while input.next_including_whitespace_and_comments().is_ok() {}
-        if name.eq_ignore_ascii_case("counter-style") || name.eq_ignore_ascii_case("page") {
-            return Ok(PageBodyAtRulePrelude::TopLevelOnly(name, location));
-        }
-        Ok(PageBodyAtRulePrelude::Other)
-    }
-
-    fn rule_without_block(
-        &mut self,
-        _prelude: Self::Prelude,
-        _start: &ParserState,
-    ) -> Result<Self::AtRule, ()> {
-        Err(())
-    }
-
-    fn parse_block<'t>(
-        &mut self,
-        prelude: Self::Prelude,
-        start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::AtRule, ParseError<'i, Self::Error>> {
-        match prelude {
-            PageBodyAtRulePrelude::MarginBox(name) => {
-                let mut depth =
-                    self.recovery
-                        .enter_rule_block(self.source, input, "later.rule.page")?;
-                let declarations = parse_margin_body(
-                    self.source,
-                    input,
-                    &mut self.diagnostics,
-                    self.recovery.clone(),
-                )?;
-                depth.retain();
-                Ok(PageBodyItem::Margin(CssMarginRule::from_parsed(
-                    name,
-                    declarations,
-                    crate::source::CssSourcePosition::from_cssparser(
-                        start.position(),
-                        start.source_location(),
-                    ),
-                )))
+        let Some(mut block) = rule.block() else {
+            return Err(fail(unexpected_syntax_token(
+                location_at(snapshot, offset_of(rule.end())),
+                Token::Semicolon,
+            )));
+        };
+        let Some(margin) = margin else {
+            if name.eq_ignore_ascii_case("counter-style") || name.eq_ignore_ascii_case("page") {
+                return Err(fail(top_level_only_at_rule_placement(location, name)));
             }
-            PageBodyAtRulePrelude::TopLevelOnly(name, location) => {
-                Err(top_level_only_at_rule_placement(location, name.as_ref()))
-            }
-            PageBodyAtRulePrelude::Other => Err(invalid_at_rule_body(
-                input,
-                "page",
-                "later.rule.page",
-                "page-context margin declarations",
-            )),
-        }
+            return Err(fail(page_margin_body_error(
+                snapshot,
+                offset_of(block.start_site()),
+            )));
+        };
+        let opening = offset_of(block.start_site()).saturating_sub(1);
+        let mut depth = self
+            .recovery
+            .enter_rule_block(self.source, Offset::new(opening), "later.rule.page")
+            .map_err(fail)?;
+        let (declarations, mut recovered) =
+            drive_margin_body(&mut block, self.source, &self.recovery);
+        self.diagnostics.append(&mut recovered);
+        depth.retain();
+        Ok(PageBodyItem::Margin(CssMarginRule::from_parsed(
+            margin,
+            declarations,
+            self.recovery.source_position(offset_of(rule.start())),
+        )))
     }
-}
 
-impl<'i> QualifiedRuleParser<'i> for PageBodyParser<'i> {
-    type Prelude = ();
-    type QualifiedRule = PageBodyItem;
-    type Error = CssError;
-
-    fn parse_prelude<'t>(
+    // A page body admits no qualified rule.
+    fn qualified_rule(
         &mut self,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        Err(invalid_at_rule_body(
-            input,
-            "page",
-            "later.rule.page",
-            "page-context margin declarations",
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        Err(grammar_error(
+            rule.start(),
+            page_margin_body_error(snapshot, offset_of(rule.prelude().start_site())),
         ))
     }
 }
 
-impl<'i> RuleBodyItemParser<'i, PageBodyItem, CssError> for PageBodyParser<'i> {
-    fn parse_declarations(&self) -> bool {
-        true
-    }
-
-    fn parse_qualified(&self) -> bool {
-        true
+impl<'i> BlockGrammar<'i, Attached<'i>> for PageBodyParser<'_> {
+    fn declaration(
+        &mut self,
+        declaration: DeclarationUnit<'i>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let at = declaration.start();
+        self.admit(declaration.name(), &DeclarationText::of(&declaration))
+            .map_err(|error| grammar_error(at, error))
     }
 }
 
-impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
-    type Declaration = PageBodyItem;
-    type Error = CssError;
-
-    fn parse_value<'t>(
+impl<'i> DescriptorGrammar<'i, PageBodyItem> for PageBodyParser<'_> {
+    fn readmit(
         &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-        declaration_start: &ParserState,
-    ) -> Result<Self::Declaration, ParseError<'i, Self::Error>> {
-        let implicit_closures =
-            self.recovery
-                .check_component_values(self.source, input, "css.declaration")?;
-        if let Some(kind) = CssPageDescriptorKind::from_name(name.as_ref()) {
-            let value_start = input.state();
-            input.reset(declaration_start);
-            input.expect_ident().map_err(basic)?;
-            let name_origin = crate::source::CssParsedOrigin::from_range(
-                self.recovery.source_snapshot(),
-                declaration_start.position().byte_index()..input.position().byte_index(),
-            )
-            .expect("real descriptor name");
-            input.reset(&value_start);
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<PageBodyItem, NativeError<'i>> {
+        self.admit(name, text)
+    }
+}
+
+impl PageBodyParser<'_> {
+    /// Admits the declaration named `name` that lies at `text`.
+    fn admit<'i>(
+        &mut self,
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<PageBodyItem, NativeError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        let implicit_closures = self.recovery.check_component_values_from(
+            self.source,
+            text.value_start,
+            "css.declaration",
+        )?;
+        let declaration_start = location_at(snapshot, text.name_start());
+        if let Some(kind) = CssPageDescriptorKind::from_name(name) {
+            let name_origin =
+                crate::source::CssParsedOrigin::from_range(snapshot, text.name_range())
+                    .expect("real descriptor name");
             // Page descriptors admit importance; a malformed annotation
             // reports its own first unexpected token.
-            let (value, importance) = super::parse_importance_boundary(
-                input,
-                true,
-                |_, malformed| basic(malformed.expect("an admitted annotation fails on a token")),
-                |input| {
-                    super::collect_declaration_value(
-                        input,
-                        self.recovery.source_snapshot(),
-                        |input| {
-                            parse_descriptor_value(input, kind, self.recovery.source_snapshot())
-                        },
-                    )
-                },
-            )
-            .map(|((data, components, origin), importance)| {
-                (
-                    CssPageDescriptorValue::from_parsed(kind, data, components, origin),
-                    importance,
-                )
-            })
-            .map_err(|error| {
+            let (value, importance) = descriptor_value(snapshot, text, kind).map_err(|error| {
                 crate::diagnostic::error::with_descriptor_context(error, "page", kind.as_str())
             })?;
             self.recovery.retain_component_closures(implicit_closures);
@@ -822,28 +749,26 @@ impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
                 CssPageDescriptor::from_parsed(value, importance, name_origin),
             )));
         }
-        let property = page_property_name(name.as_ref(), declaration_start.source_location())?;
+        let property = page_property_name(name, declaration_start)?;
         if property.is_some_and(|property| !is_page_margin_property(property)) {
             return Err(with_property_context(
-                unexpected_at(input.current_source_location()),
-                name.as_ref(),
+                unexpected_at(location_at(snapshot, text.value_start)),
+                name,
             ));
         }
-
-        let parsed = parse_declaration_core(
+        let parsed = parse_declaration_unit(
             DeclarationMode::Ordinary,
-            name.clone(),
-            input,
-            declaration_start,
-            self.recovery.source_snapshot(),
+            name,
+            text,
+            snapshot,
             self.recovery.parser_context(),
         )?;
         if let Some(violation) = page_declaration_violation(&parsed.body, &parsed.components) {
             return Err(page_violation_error(
                 &violation,
                 &parsed.components,
-                name.as_ref(),
-                input.current_source_location(),
+                name,
+                location_at(snapshot, text.end),
             ));
         }
         self.recovery.retain_component_closures(implicit_closures);
@@ -851,6 +776,42 @@ impl<'i, 's: 'i> DeclarationParser<'i> for PageBodyParser<'s> {
             parsed.into_declaration_in_context(DeclarationContext::Page),
         )))
     }
+}
+
+/// The value of the page descriptor `kind` that lies at `text`, and its
+/// importance.
+fn descriptor_value<'i>(
+    snapshot: &crate::source::CssSourceSnapshot,
+    text: &DeclarationText,
+    kind: CssPageDescriptorKind,
+) -> Result<(CssPageDescriptorValue, crate::declaration::CssImportance), NativeError<'i>> {
+    let numeric = NumericInputContext::parsed(snapshot);
+    let range = text.value_start..text.value_end();
+    let failed_at = |error| {
+        crate::diagnostic::error::invalid_component_value(location_at(snapshot, range.end), error)
+    };
+    let document = crate::syntax_consumption::source_window_document(snapshot, range.clone())
+        .map_err(failed_at)?;
+    let data = read_descriptor_value(&mut document.root(), kind, &numeric)
+        .map_err(|error| native(&numeric, &error))?;
+    let components =
+        crate::component::values::parse::promote_window(&document).map_err(failed_at)?;
+    let origin = crate::source::CssParsedOrigin::from_range(snapshot, range.clone())
+        .expect("parser value boundaries belong to the original source");
+    let importance = match &text.annotation {
+        None => crate::declaration::CssImportance::Normal,
+        Some(annotation) if annotation.complete => crate::declaration::CssImportance::Important,
+        Some(annotation) => {
+            return Err(annotation
+                .malformed
+                .clone()
+                .expect("an incomplete annotation has its malformed token"));
+        }
+    };
+    Ok((
+        CssPageDescriptorValue::from_parsed(kind, data, components, origin),
+        importance,
+    ))
 }
 
 /// Paged Media 3 Appendix A membership only. Shared property metadata/grammar stays authoritative.

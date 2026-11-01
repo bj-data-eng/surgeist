@@ -11,8 +11,9 @@ use crate::diagnostic::CssError;
 use crate::diagnostic::error::invalid_component_value;
 use crate::diagnostic::error::{from_parse_error, invalid_syntax, with_at_rule_prelude_context};
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use crate::parser::block_units::{location_at, offset_of};
 use crate::parser::recovery::RecoveryState;
-use crate::parser::syntax_types::Document;
+use crate::parser::syntax_types::{Document, Site, Stream};
 use crate::parser::{fragments, recovery, syntax_bridge};
 use crate::query::supports::CssSupportsConstructionError;
 use crate::query::supports::named_supports::retained_component_recovery;
@@ -26,7 +27,7 @@ use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::{
     self as syntax, CursorItem, DocumentExt, SyntaxCursor, SyntaxRange, TokenKind,
 };
-use cssparser::{ParseError, Parser, ParserState};
+use cssparser::ParseError;
 use surgeist_css_parser::document::{BlockKind, Component, Fault, GroupEnd, ListId, NodeId};
 
 enum PartitionIssue {
@@ -53,12 +54,12 @@ pub(crate) struct NamedSupportsPrelude {
     pub(super) name: CssSupportsConditionName,
 }
 
-pub(super) fn parse_prelude<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_prelude<'i>(
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
 ) -> Result<NamedSupportsPrelude, ParseError<'i, CssError>> {
     let collected =
-        super::descriptor_stream::collect_native_scope(input, recovery.source_snapshot())?;
+        super::descriptor_stream::collect_stream_scope(input, recovery.source_snapshot());
     let at = collected.start;
     let values = collected
         .values
@@ -88,26 +89,29 @@ pub(super) fn parse_prelude<'i, 't>(
     Ok(NamedSupportsPrelude { name })
 }
 
-pub(super) fn parse_rule<'i, 't>(
-    source: &'i str,
+pub(super) fn parse_rule<'i>(
+    source: &str,
     prelude: NamedSupportsPrelude,
-    start: &ParserState,
-    input: &mut Parser<'i, 't>,
+    start: Site<'i>,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
 ) -> Result<CssSupportsConditionRule, ParseError<'i, CssError>> {
-    let (body, opening, closing) = parse_body(source, input, diagnostics, recovery)?;
-    let document = recovery
-        .syntax_document(source)
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
-    let mut at_cursor = document
-        .cursor_at_source(start.position().byte_index())
-        .expect("named at-keyword");
-    let CursorItem::Node(at_node) = at_cursor.consume() else {
-        unreachable!("named at-keyword node");
+    let (body, opening, closing) = parse_body(source, contents, diagnostics, recovery)?;
+    let snapshot = recovery.source_snapshot();
+    let Some(at_node) = start.node() else {
+        return Err(invalid_component_value(
+            location_at(snapshot, offset_of(contents.site())),
+            CssComponentValueError::new(
+                CssComponentValueErrorKind::InvalidToken,
+                CssValueOrigin::Programmatic,
+            ),
+        ));
     };
-    let at_keyword = promote(&document, &[at_node])
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?
+    let at_keyword = promote(start.document(), &[at_node])
+        .map_err(|error| {
+            invalid_component_value(location_at(snapshot, offset_of(contents.site())), error)
+        })?
         .items()[0]
         .origin()
         .clone();
@@ -120,24 +124,22 @@ pub(super) fn parse_rule<'i, 't>(
     ))
 }
 
-pub(super) fn parse_body<'i, 't>(
-    source: &'i str,
-    input: &mut Parser<'i, 't>,
+/// The body of the block `contents` holds, with the origins of its braces.
+pub(super) fn parse_body<'i>(
+    source: &str,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
 ) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), ParseError<'i, CssError>> {
-    let body_start = input.position().byte_index();
+    let body_start = offset_of(contents.start_site());
     // Arena preparation may omit resource-invalid components. Actual current
     // source admission must therefore precede checked promotion of this body.
-    recovery.check_entered_curly_contents(source, input, "ext.rule.supports-condition")?;
-    let document = recovery
-        .syntax_document(source)
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
-    let list = document
-        .list_at_source_start(body_start)
-        .expect("named body list");
-    while input.next_including_whitespace_and_comments().is_ok() {}
-    let end = input.position().byte_index();
+    recovery.check_entered_curly_contents(source, body_start, "ext.rule.supports-condition")?;
+    let document = contents.start_site().document();
+    let list = contents.start_site().list();
+    let end = offset_of(contents.end_site());
+    super::descriptor_stream::consume_remaining(contents);
+    let at_end = || location_at(recovery.source_snapshot(), end);
     let opening = parsed_delimiter(
         recovery.source_snapshot(),
         body_start.saturating_sub(1),
@@ -158,8 +160,8 @@ pub(super) fn parse_body<'i, 't>(
         CssValueOrigin::Programmatic
     };
     let mut issues = Vec::new();
-    let body = partition(&document, list, Some(closing.clone()), true, &mut issues)
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
+    let body = partition(document, list, Some(closing.clone()), true, &mut issues)
+        .map_err(|error| invalid_component_value(at_end(), error))?;
     for issue in issues {
         if let Some(diagnostic) = issue_diagnostic(source, issue) {
             diagnostics.push(diagnostic);
@@ -177,10 +179,8 @@ pub(super) fn parse_body<'i, 't>(
             }
         } else if document.component(node).fault().is_none() {
             implicit.extend(
-                promote(&document, &[node])
-                    .map_err(|error| {
-                        invalid_component_value(input.current_source_location(), error)
-                    })?
+                promote(document, &[node])
+                    .map_err(|error| invalid_component_value(at_end(), error))?
                     .implicit_opening_offsets(),
             );
         }
