@@ -5689,7 +5689,7 @@ impl SessionStorage {
             self.construction.abort_pending(control, pending)?;
             return Err(error);
         }
-        self.construction.finish_pending(control, pending)?;
+        self.construction.finish_pending(pending);
         if form_effects.is_some() {
             self.effects.form = form_effects;
         }
@@ -27431,135 +27431,156 @@ mod tests {
             )
             .unwrap()
     }
-    fn stage_test_order_body(
-        c: &mut ParseControl,
-        owner: &mut ConstructionOwner,
-        pending: &mut construction_owner::PendingConstruction,
-    ) {
-        loop {
-            let edges = pending.before_edges();
-            let action = pending.action(c).unwrap().unwrap();
-            if matches!(
-                action.description(),
-                bounded::HtmlConstructionActionDescription::CopyChildOrderSource { .. }
-            ) {
-                return;
-            }
-            assert!(!owner.perform_action(c, action, &[], edges).unwrap());
-        }
+    /// Roomy limits for work comparisons across fanouts.
+    fn roomy_limits() -> HtmlParseLimits {
+        limits()
+            .into_builder()
+            .auxiliary_entries(1_000_000)
+            .managed_nodes(1_000_000)
+            .managed_edges(1_000_000)
+            .managed_capacity_bytes(1_000_000_000)
+            .peak_transient_bytes(2_000_000_000)
+            .atomic_layout_bytes(1_000_000_000)
+            .work_credits(100_000_000_000)
+            .finish()
+            .unwrap()
     }
-    fn drive_test_order_body(
-        c: &mut ParseControl,
-        owner: &mut ConstructionOwner,
-        pending: &mut construction_owner::PendingConstruction,
-    ) {
-        loop {
-            let edges = pending.before_edges();
-            let action = pending.action(c).unwrap().unwrap();
-            if matches!(
-                action.description(),
-                bounded::HtmlConstructionActionDescription::PrepareChildOrderTransfers { .. }
-            ) {
-                return;
+
+    /// Work a child-order change charged, by category; provider calls and
+    /// reservations are capacity growth, which depends on the order's spare room.
+    const ORDER_MEASURED: [WorkCategory; 6] = [
+        WorkCategory::InputUnitRead,
+        WorkCategory::InspectByte,
+        WorkCategory::CopyByte,
+        WorkCategory::StateStep,
+        WorkCategory::RecordVisit,
+        WorkCategory::RecordWrite,
+    ];
+
+    #[test]
+    fn child_order_changes_charge_the_same_work_at_every_fanout() {
+        // Under `fanout` children, insert before the last child, move the last
+        // child before its predecessor, move it to the end, detach it, and move
+        // it into another parent.
+        let measure = |fanout: usize| {
+            let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
+            let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+            let root = session.root(&mut c).unwrap();
+            let other = session
+                .allocate_element(&mut c, element(Namespace::none(), "other"))
+                .unwrap();
+            session.insert(&mut c, &root, &other, None, None).unwrap();
+            let mut children = Vec::new();
+            for _ in 0..fanout {
+                let child = session
+                    .allocate_element(&mut c, element(Namespace::none(), "x"))
+                    .unwrap();
+                session.insert(&mut c, &root, &child, None, None).unwrap();
+                children.push(child);
             }
-            assert!(!owner.perform_action(c, action, &[], edges).unwrap());
+            let fresh = session
+                .allocate_element(&mut c, element(Namespace::none(), "fresh"))
+                .unwrap();
+            let last = children.last().unwrap();
+            let previous = &children[fanout - 2];
+            let auxiliary = c.usage().resource(HtmlParseResource::AuxiliaryEntries);
+            let before = ORDER_MEASURED.map(|category| c.usage().work(category));
+            session
+                .insert(&mut c, &root, &fresh, Some(last), None)
+                .unwrap();
+            session
+                .insert(&mut c, &root, last, Some(previous), None)
+                .unwrap();
+            session.insert(&mut c, &root, last, None, None).unwrap();
+            session.insert(&mut c, &other, last, None, None).unwrap();
+            session.remove(&mut c, last, None).unwrap();
+            assert_eq!(
+                c.usage().resource(HtmlParseResource::AuxiliaryEntries),
+                auxiliary,
+                "no change acquires scratch entries"
+            );
+            let after = ORDER_MEASURED.map(|category| c.usage().work(category));
+            session.release(&mut c).unwrap();
+            assert_eq!(c.usage().actual_capacity_bytes, 0);
+            std::array::from_fn::<u64, 6, _>(|i| after[i] - before[i])
+        };
+        let narrow = measure(8);
+        for fanout in [64, 512] {
+            assert_eq!(
+                measure(fanout),
+                narrow,
+                "changes among {fanout} children charged different work than among 8"
+            );
         }
     }
 
     #[test]
-    fn empty_end_and_before_sibling_preparations_charge_each_inserted_index_copy() {
-        let word = mem::size_of::<usize>() as u64;
-        let mut c = control();
+    fn child_order_changes_leave_the_order_the_dom_steps_define() {
+        let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let root = session.root(&mut c).unwrap();
-        let a = session
-            .allocate_element(&mut c, element(Namespace::none(), "a"))
+        let other = session
+            .allocate_element(&mut c, element(Namespace::none(), "other"))
             .unwrap();
-        let scratch_before = c
-            .usage()
-            .resource(HtmlParseResource::AuxiliaryEntries)
-            .current;
-        let owner = &mut session.active_mut().unwrap().construction;
-        let mut pending = start_test_insert(&mut c, owner, &root, &a, None);
-        // An append is one push onto the parent's own order at the atomic
-        // commit: no index is copied or pushed through a scratch slot.
-        loop {
-            let edges = pending.before_edges();
-            let action = pending.action(&mut c).unwrap().unwrap();
-            assert!(!matches!(
-                action.description(),
-                bounded::HtmlConstructionActionDescription::CopyChildOrderSource { .. }
-                    | bounded::HtmlConstructionActionDescription::PushChildOrder { .. }
-                    | bounded::HtmlConstructionActionDescription::InitializeChildOrder { .. }
-            ));
-            assert_eq!(
-                c.usage()
-                    .resource(HtmlParseResource::AuxiliaryEntries)
-                    .current,
-                scratch_before
-            );
-            if owner
-                .perform_action(
-                    &mut c,
-                    action,
-                    &[(HtmlParseResource::ManagedEdges, 1)],
-                    edges,
-                )
-                .unwrap()
-            {
-                break;
-            }
+        session.insert(&mut c, &root, &other, None, None).unwrap();
+        let mut nodes = Vec::new();
+        for name in ["a", "b", "c", "d"] {
+            let node = session
+                .allocate_element(&mut c, element(Namespace::none(), name))
+                .unwrap();
+            session.insert(&mut c, &root, &node, None, None).unwrap();
+            nodes.push(node);
         }
-        owner.finish_pending(&mut c, pending).unwrap();
-        assert_eq!(
-            owner
-                .node_at(root.index)
+        let [a, b, cc, d] = nodes.as_slice() else {
+            panic!("four fixtures")
+        };
+        let order = |session: &ParserArenaSession, parent: &ParserNode| {
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(parent.index)
                 .unwrap()
                 .children()
-                .map(bounded::HtmlConstructionNode::position)
-                .collect::<Vec<_>>(),
-            [a.index]
-        );
+                .map(|node| node.position())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            c.usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
-            scratch_before
+            order(&session, &root),
+            [other.index, a.index, b.index, cc.index, d.index]
         );
-        let b = session
-            .allocate_element(&mut c, element(Namespace::none(), "b"))
-            .unwrap();
-        let owner = &mut session.active_mut().unwrap().construction;
-        let mut pending = start_test_insert(&mut c, owner, &root, &b, Some(&a));
-        stage_test_order_body(&mut c, owner, &mut pending);
-        let before = c.usage().work(WorkCategory::CopyByte);
-        drive_test_order_body(&mut c, owner, &mut pending);
-        // Reading the existing child and inserting before it copy separate words.
-        assert_eq!(c.usage().work(WorkCategory::CopyByte) - before, 2 * word);
+        // Forward move within a parent: before the node after its own place.
+        session.insert(&mut c, &root, a, Some(d), None).unwrap();
         assert_eq!(
-            c.usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
-            8
+            order(&session, &root),
+            [other.index, b.index, cc.index, a.index, d.index]
         );
-        let committed = owner
-            .continue_pending(&mut c, pending, &[(HtmlParseResource::ManagedEdges, 1)])
-            .unwrap();
-        owner.adopt_mutation(&mut c, committed).unwrap();
+        // Backward move, then a move to the end.
+        session.insert(&mut c, &root, d, Some(b), None).unwrap();
+        session.insert(&mut c, &root, &other, None, None).unwrap();
         assert_eq!(
-            owner
-                .node_at(root.index)
+            order(&session, &root),
+            [d.index, b.index, cc.index, a.index, other.index]
+        );
+        // Across parents, then detach from the middle.
+        session.insert(&mut c, &other, b, None, None).unwrap();
+        session.insert(&mut c, &other, cc, Some(b), None).unwrap();
+        session.remove(&mut c, a, None).unwrap();
+        assert_eq!(order(&session, &root), [d.index, other.index]);
+        assert_eq!(order(&session, &other), [cc.index, b.index]);
+        assert!(
+            session
+                .active()
                 .unwrap()
-                .children()
-                .map(bounded::HtmlConstructionNode::position)
-                .collect::<Vec<_>>(),
-            [b.index, a.index]
+                .construction
+                .node_at(a.index)
+                .unwrap()
+                .parent()
+                .is_none()
         );
         assert_eq!(
-            c.usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
-            6
+            c.usage().resource(HtmlParseResource::ManagedEdges).current,
+            4
         );
         session.release(&mut c).unwrap();
         assert_eq!(c.usage().actual_capacity_bytes, 0);
@@ -27681,7 +27702,7 @@ mod tests {
     }
 
     #[test]
-    fn inserted_index_copy_work_boundary_stops_before_any_scratch_slot_is_initialized() {
+    fn work_limit_stop_before_an_insert_before_commit_leaves_the_order_and_the_stop_intact() {
         let selected = limits();
         let work_limit = selected.work_credits();
         let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
@@ -27694,45 +27715,38 @@ mod tests {
         let a = session
             .allocate_element(&mut c, element(Namespace::none(), "a"))
             .unwrap();
-        let capacity_before = c.usage().actual_capacity_bytes;
-        let scratch_before = c
-            .usage()
-            .resource(HtmlParseResource::AuxiliaryEntries)
-            .current;
         let owner = &mut session.active_mut().unwrap().construction;
         let mut pending = start_test_insert(&mut c, owner, &root, &a, Some(&b));
-        loop {
+        let copied = loop {
             let edges = pending.before_edges();
             let action = pending.action(&mut c).unwrap().unwrap();
-            if matches!(
-                action.description(),
-                bounded::HtmlConstructionActionDescription::PushChildOrder { .. }
-            ) {
-                let word = mem::size_of::<usize>() as u64;
+            if let bounded::HtmlConstructionActionDescription::Commit { copied_bytes, .. } =
+                action.description()
+            {
+                // Leave one credit too few for the commit's described writes.
                 let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
-                c.charge(WorkCategory::StateStep, work_limit - before - (word - 1))
-                    .unwrap();
+                c.charge(
+                    WorkCategory::StateStep,
+                    work_limit - before - (copied_bytes as u64 - 1),
+                )
+                .unwrap();
                 let copied = c.usage().work(WorkCategory::CopyByte);
                 assert!(
-                    matches!(owner.perform_action(&mut c,action,&[],edges),Err(SessionError::Stop(ParseStop::LimitExceeded{resource:HtmlParseResource::WorkCredits,requested_delta,..})) if requested_delta==word)
+                    matches!(owner.perform_action(&mut c, action, &[], edges), Err(SessionError::Stop(ParseStop::LimitExceeded { resource: HtmlParseResource::WorkCredits, requested_delta, .. })) if requested_delta == copied_bytes as u64)
                 );
-                assert_eq!(c.usage().work(WorkCategory::CopyByte), copied);
-                assert_eq!(
-                    c.usage()
-                        .resource(HtmlParseResource::AuxiliaryEntries)
-                        .current,
-                    scratch_before
-                );
-                break;
+                break copied;
             }
             assert!(!owner.perform_action(&mut c, action, &[], edges).unwrap());
-        }
+        };
+        assert_eq!(c.usage().work(WorkCategory::CopyByte), copied);
+        // The order was grown for the push before the stop; nothing was written.
+        let capacity_at_stop = c.usage().actual_capacity_bytes;
         let first = c.stop();
         let work = c.usage().resource(HtmlParseResource::WorkCredits);
         owner.abort_pending(&mut c, pending).unwrap();
         assert_eq!(c.stop(), first);
         assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
-        assert_eq!(c.usage().actual_capacity_bytes, capacity_before);
+        assert_eq!(c.usage().actual_capacity_bytes, capacity_at_stop);
         assert_eq!(
             owner
                 .node_at(root.index)
@@ -27787,335 +27801,147 @@ mod tests {
         assert_eq!(control.usage().actual_capacity_bytes, 0);
     }
 
-    #[test]
-    fn one_scratch_slot_exact_limit_succeeds_and_one_short_preserves_topology() {
-        for (auxiliary_limit, succeeds) in [(8, true), (7, false)] {
-            let mut selected = limits();
-            selected = selected
-                .into_builder()
-                .auxiliary_entries(auxiliary_limit)
-                .finish()
-                .unwrap();
-            let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
-            let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
-            let root = session.root(&mut control).unwrap();
-            let sibling = session
-                .allocate_element(&mut control, element(Namespace::none(), "y"))
-                .unwrap();
+    /// Builds `root` holding `a`, `b`, `e` and `other` holding `d`, then
+    /// moves `c` before `d`, moves `b` before `a`, detaches `e`, and returns
+    /// the usage mark before the changes and after them, or the first stop.
+    fn order_scenario(
+        selected: HtmlParseLimits,
+    ) -> Result<([u64; 2], [u64; 2]), (SessionError, Vec<usize>)> {
+        let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
+        let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
+        let root = session.root(&mut control).unwrap();
+        let other = session
+            .allocate_element(&mut control, element(Namespace::none(), "other"))
+            .unwrap();
+        session
+            .insert(&mut control, &root, &other, None, None)
+            .unwrap();
+        let mut nodes = Vec::new();
+        for name in ["a", "b", "c", "d", "e"] {
+            nodes.push(
+                session
+                    .allocate_element(&mut control, element(Namespace::none(), name))
+                    .unwrap(),
+            );
+        }
+        let [a, b, c, d, e] = nodes.as_slice() else {
+            panic!("expected five fixture handles")
+        };
+        for node in [a, b, e, c] {
             session
-                .insert(&mut control, &root, &sibling, None, None)
+                .insert(&mut control, &root, node, None, None)
                 .unwrap();
-            let child = session
-                .allocate_element(&mut control, element(Namespace::none(), "x"))
-                .unwrap();
-            let result = session.insert(&mut control, &root, &child, Some(&sibling), None);
-            if succeeds {
-                result.unwrap();
-                assert_eq!(
-                    session
-                        .active()
-                        .unwrap()
-                        .construction
-                        .node_at(0)
-                        .expect("retained construction position")
-                        .children()
-                        .map(|node| node.position())
-                        .collect::<Vec<_>>(),
-                    [child.index, sibling.index]
-                );
-                assert_eq!(
-                    control
-                        .usage()
-                        .resource(HtmlParseResource::ManagedEdges)
-                        .current,
-                    2
-                );
-                assert_eq!(
-                    control
-                        .usage()
-                        .resource(HtmlParseResource::AuxiliaryEntries)
-                        .high_water,
-                    8
-                );
-            } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::AuxiliaryEntries,
-                        current: 7,
-                        requested_delta: 1,
-                        ..
-                    }))
-                ));
-                assert!(
-                    session
-                        .active()
-                        .unwrap()
-                        .construction
-                        .node_at(0)
-                        .expect("retained construction position")
-                        .children()
-                        .map(|node| node.position())
-                        .eq([sibling.index])
-                );
-                assert!(
-                    session
-                        .active()
-                        .unwrap()
-                        .construction
-                        .node_at(child.index)
-                        .expect("retained construction position")
-                        .parent()
-                        .map(|node| node.position())
-                        .is_none()
-                );
-                assert_eq!(
-                    control
-                        .usage()
-                        .resource(HtmlParseResource::ManagedEdges)
-                        .current,
-                    1
-                );
-            }
-            assert_eq!(
-                control
-                    .usage()
-                    .resource(HtmlParseResource::AuxiliaryEntries)
-                    .current,
-                6
-            );
-            session.release(&mut control).unwrap();
-            assert_eq!(
-                control
-                    .usage()
-                    .resource(HtmlParseResource::AuxiliaryEntries)
-                    .current,
-                0
-            );
-            assert_eq!(
-                control
-                    .usage()
-                    .resource(HtmlParseResource::ManagedNodes)
-                    .current,
-                3
-            );
-            assert_eq!(control.usage().actual_capacity_bytes, 0);
         }
-    }
-
-    #[test]
-    fn simultaneous_cross_parent_orders_require_both_live_scratch_sequences() {
-        for (auxiliary_limit, succeeds) in [(15, true), (14, false)] {
-            let mut selected = limits();
-            selected = selected
-                .into_builder()
-                .auxiliary_entries(auxiliary_limit)
-                .finish()
-                .unwrap();
-            let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
-            let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
-            let root = session.root(&mut control).unwrap();
-            let mut nodes = Vec::new();
-            for name in ["a", "b", "c", "d", "e"] {
-                nodes.push(
-                    session
-                        .allocate_element(&mut control, element(Namespace::none(), name))
-                        .unwrap(),
-                );
-            }
-            let [a, b, c, d, e] = nodes.as_slice() else {
-                panic!("expected five fixture handles")
-            };
-            session.insert(&mut control, &root, a, None, None).unwrap();
-            session.insert(&mut control, &root, b, None, None).unwrap();
-            session.insert(&mut control, a, c, None, None).unwrap();
-            session.insert(&mut control, a, e, None, None).unwrap();
-            session.insert(&mut control, b, d, None, None).unwrap();
-            let capacity_before = control.usage().actual_capacity_bytes;
-            let result = session.insert(&mut control, b, c, Some(d), None);
-            if succeeds {
-                result.unwrap();
-                assert_eq!(
-                    session
-                        .active()
-                        .unwrap()
-                        .construction
-                        .node_at(a.index)
-                        .expect("retained construction position")
-                        .children()
-                        .map(|node| node.position())
-                        .collect::<Vec<_>>(),
-                    [e.index]
-                );
-                assert_eq!(
-                    session
-                        .active()
-                        .unwrap()
-                        .construction
-                        .node_at(b.index)
-                        .expect("retained construction position")
-                        .children()
-                        .map(|node| node.position())
-                        .collect::<Vec<_>>(),
-                    [c.index, d.index]
-                );
-                assert_eq!(
-                    control
-                        .usage()
-                        .resource(HtmlParseResource::AuxiliaryEntries)
-                        .high_water,
-                    15
-                );
-            } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::AuxiliaryEntries,
-                        current: 14,
-                        requested_delta: 1,
-                        ..
-                    }))
-                ));
-                assert_eq!(
-                    session
-                        .active()
-                        .unwrap()
-                        .construction
-                        .node_at(a.index)
-                        .expect("retained construction position")
-                        .children()
-                        .map(|node| node.position())
-                        .collect::<Vec<_>>(),
-                    [c.index, e.index]
-                );
-                assert_eq!(
-                    session
-                        .active()
-                        .unwrap()
-                        .construction
-                        .node_at(b.index)
-                        .expect("retained construction position")
-                        .children()
-                        .map(|node| node.position())
-                        .collect::<Vec<_>>(),
-                    [d.index]
-                );
-                assert_eq!(control.usage().actual_capacity_bytes, capacity_before);
-                assert!(control.usage().actual_capacity_high_water > capacity_before);
-            }
-            assert_eq!(
+        session.insert(&mut control, &other, d, None, None).unwrap();
+        let mark = |control: &ParseControl| {
+            [
                 control
                     .usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
-                    .current,
-                12
-            );
-            assert_eq!(
-                control
-                    .usage()
-                    .resource(HtmlParseResource::ManagedEdges)
-                    .current,
-                5
-            );
-            assert_eq!(
-                control
-                    .usage()
-                    .resource(HtmlParseResource::ManagedNodes)
-                    .current,
-                6
-            );
-            let stop = control.stop();
-            let work = control.usage().resource(HtmlParseResource::WorkCredits);
-            session.release(&mut control).unwrap();
-            assert_eq!(control.stop(), stop);
-            assert_eq!(
-                control.usage().resource(HtmlParseResource::WorkCredits),
-                work
-            );
-            assert_eq!(
-                control
-                    .usage()
-                    .resource(HtmlParseResource::AuxiliaryEntries)
-                    .current,
-                0
-            );
-            assert_eq!(control.usage().actual_capacity_bytes, 0);
-        }
-    }
-
-    #[test]
-    fn partially_initialized_order_cap_stop_releases_only_its_one_admitted_entry() {
-        let selected = limits()
-            .into_builder()
-            .auxiliary_entries(9)
-            .finish()
-            .unwrap();
-        let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
-        let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
-        let root = session.root(&mut c).unwrap();
-        let a = session
-            .allocate_element(&mut c, element(Namespace::none(), "a"))
-            .unwrap();
-        session.insert(&mut c, &root, &a, None, None).unwrap();
-        let b = session
-            .allocate_element(&mut c, element(Namespace::none(), "b"))
-            .unwrap();
-        session.insert(&mut c, &root, &b, None, None).unwrap();
-        let candidate = session
-            .allocate_element(&mut c, element(Namespace::none(), "c"))
-            .unwrap();
-        let capacity_before = c.usage().actual_capacity_bytes;
-        let owner = &mut session.active_mut().unwrap().construction;
-        let mut pending = start_test_insert(&mut c, owner, &root, &candidate, Some(&a));
-        loop {
-            let edges = pending.before_edges();
-            let action = pending.action(&mut c).unwrap().unwrap();
-            match owner.perform_action(&mut c, action, &[], edges) {
-                Ok(done) => assert!(!done),
-                Err(error) => {
-                    assert!(matches!(
-                        error,
-                        SessionError::Stop(ParseStop::LimitExceeded {
-                            resource: HtmlParseResource::AuxiliaryEntries,
-                            current: 9,
-                            requested_delta: 1,
-                            ..
-                        })
-                    ));
-                    break;
-                }
+                    .high_water,
+                control.usage().actual_capacity_high_water,
+            ]
+        };
+        let before = mark(&control);
+        let steps: [(&ParserNode, &ParserNode, Option<&ParserNode>); 2] =
+            [(&other, c, Some(d)), (&root, b, Some(a))];
+        for (parent, node, reference) in steps {
+            if let Err(error) = session.insert(&mut control, parent, node, reference, None) {
+                let orders = session
+                    .active()
+                    .unwrap()
+                    .construction
+                    .node_at(root.index)
+                    .unwrap()
+                    .children()
+                    .map(|node| node.position())
+                    .collect();
+                return Err((error, orders));
             }
         }
-        assert_eq!(
-            c.usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
-            9
-        );
-        let first = c.stop();
-        let work = c.usage().resource(HtmlParseResource::WorkCredits);
-        owner.abort_pending(&mut c, pending).unwrap();
-        assert_eq!(
-            c.usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
-            8
-        );
-        assert_eq!(c.usage().actual_capacity_bytes, capacity_before);
-        assert_eq!(c.stop(), first);
-        assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
-        assert_eq!(
-            owner
-                .node_at(root.index)
+        session.remove(&mut control, e, None).unwrap();
+        let after = mark(&control);
+        let order = |parent: &ParserNode| {
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(parent.index)
                 .unwrap()
                 .children()
-                .map(bounded::HtmlConstructionNode::position)
-                .collect::<Vec<_>>(),
-            [a.index, b.index]
+                .map(|node| node.position())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(order(&root), [other.index, b.index, a.index]);
+        assert_eq!(order(&other), [c.index, d.index]);
+        assert!(
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(e.index)
+                .unwrap()
+                .parent()
+                .is_none()
         );
-        assert!(owner.node_at(candidate.index).unwrap().parent().is_none());
-        session.release(&mut c).unwrap();
-        assert_eq!(c.usage().actual_capacity_bytes, 0);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedEdges)
+                .current,
+            5
+        );
+        session.release(&mut control).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            0
+        );
+        Ok((before, after))
+    }
+
+    #[test]
+    fn child_order_changes_acquire_no_auxiliary_entries() {
+        let (before, after) = order_scenario(roomy_limits()).unwrap_or_else(|_| panic!());
+        assert_eq!(after[0], before[0]);
+        // The exact observed high water is enough for the whole scenario.
+        let exact = roomy_limits()
+            .into_builder()
+            .auxiliary_entries(after[0])
+            .finish()
+            .unwrap();
+        order_scenario(exact).unwrap_or_else(|_| panic!());
+    }
+
+    #[test]
+    fn growing_a_parents_order_for_a_move_stops_at_the_capacity_limit_with_the_order_intact() {
+        let (before, after) = order_scenario(roomy_limits()).unwrap_or_else(|_| panic!());
+        assert!(after[1] > before[1], "the moves grow an order");
+        let exact = roomy_limits()
+            .into_builder()
+            .managed_capacity_bytes(after[1])
+            .finish()
+            .unwrap();
+        order_scenario(exact).unwrap_or_else(|_| panic!());
+        let short = roomy_limits()
+            .into_builder()
+            .managed_capacity_bytes(after[1] - 1)
+            .finish()
+            .unwrap();
+        let (error, root_order) = order_scenario(short).err().expect("one byte short");
+        assert!(matches!(
+            error,
+            SessionError::Stop(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedCapacityBytes,
+                ..
+            })
+        ));
+        // The first move needs `other`'s order to grow, and the stop leaves
+        // `root` holding [other, a, b, e, c] as it did.
+        assert_eq!(root_order, [1, 2, 3, 6, 4]);
     }
 
     #[test]

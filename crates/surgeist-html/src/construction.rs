@@ -959,27 +959,16 @@ impl Builder {
             Ok::<_, HtmlConstructionError>(())
         })();
         if let Err(error) = result {
-            let (storage, _, _, mut orders) = operation
+            let (storage, _, _) = operation
                 .take()
                 .expect("refused operation retained")
                 .abort()
                 .into_parts();
-            while let Some(action) = orders.next_action() {
-                action.perform();
-            }
             self.storage = Some(storage);
             return Err(error);
         }
         match bounded::HtmlConstructionOperation::try_ready(&mut operation)?.commit() {
-            bounded::HtmlConstructionCommit::Changed {
-                storage,
-                created,
-                mut retired_orders,
-                ..
-            } => {
-                while let Some(action) = retired_orders.next_action() {
-                    action.perform();
-                }
+            bounded::HtmlConstructionCommit::Changed { storage, created } => {
                 self.storage = Some(storage);
                 Ok(created)
             }

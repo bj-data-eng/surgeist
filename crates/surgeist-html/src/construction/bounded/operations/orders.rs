@@ -1,141 +1,103 @@
-//! Actual pending child orders, not another construction result or tree.
+//! Child-order edits of insert, move and detach.
+//!
+//! The parent's actual child order is edited in place by the atomic commit, so
+//! nothing is written before it: a refused or aborted operation leaves the old
+//! order untouched, and the work an operation does is the work of the entries
+//! it shifts. Planning finds each position by walking the order from its end,
+//! one entry per action, so locating a position costs the entries behind it,
+//! which the edit shifts anyway.
 use super::*;
 
-#[derive(Debug)]
-pub struct HtmlConstructionChildOrderTransfer {
-    position: usize,
-    source: HtmlConstructionAllocationSnapshot,
-    target: HtmlConstructionAllocationSnapshot,
-}
-impl HtmlConstructionChildOrderTransfer {
-    pub fn into_parts(
-        self,
-    ) -> (
-        usize,
-        HtmlConstructionAllocationSnapshot,
-        HtmlConstructionAllocationSnapshot,
-    ) {
-        (self.position, self.source, self.target)
-    }
-    pub fn position(&self) -> usize {
-        self.position
-    }
-    pub fn source(&self) -> &HtmlConstructionAllocationSnapshot {
-        &self.source
-    }
-    pub fn target(&self) -> &HtmlConstructionAllocationSnapshot {
-        &self.target
-    }
-}
-#[derive(Debug)]
-struct RetiringOrder {
-    values: Vec<usize>,
-    snapshot: HtmlConstructionAllocationSnapshot,
-}
-/// Actual flat pending/retired banks, including their initialized stop prefix.
-#[derive(Debug, Default)]
-pub struct HtmlConstructionOrderRetirement {
-    orders: [Option<RetiringOrder>; 2],
-}
-pub struct HtmlConstructionOrderRetirementAction<'a> {
-    owner: &'a mut HtmlConstructionOrderRetirement,
-    slot: usize,
-}
-impl HtmlConstructionOrderRetirement {
-    pub fn next_action(&mut self) -> Option<HtmlConstructionOrderRetirementAction<'_>> {
-        (0..2)
-            .find(|&slot| self.orders[slot].is_some())
-            .map(|slot| HtmlConstructionOrderRetirementAction { owner: self, slot })
-    }
-}
-impl HtmlConstructionOrderRetirementAction<'_> {
-    pub fn allocation(&self) -> &HtmlConstructionAllocationSnapshot {
-        &self.owner.orders[self.slot]
-            .as_ref()
-            .expect("retained actual order")
-            .snapshot
-    }
-    pub fn perform(self) -> HtmlConstructionRetired {
-        let RetiringOrder { values, snapshot } = self.owner.orders[self.slot]
-            .take()
-            .expect("retained actual order");
-        drop(values);
-        HtmlConstructionRetired { snapshot }
-    }
-}
-
 impl HtmlConstructionOperation {
-    pub(super) fn initialize_order(
+    /// One backward step of the walk that finds the moving node's old place in
+    /// its old parent (`old`), or the reference sibling's place in the new
+    /// parent. `remaining` entries have not been examined; the next one is the
+    /// last of them.
+    pub(super) fn locate_order(
         &mut self,
-        slot: usize,
-    ) -> Result<
-        (Phase, Option<HtmlConstructionAllocationSnapshot>),
-        (
-            HtmlConstructionError,
-            Option<HtmlConstructionAllocationSnapshot>,
-        ),
-    > {
-        let parent = self.plan.order_parents[slot];
-        let storage = self.owner.as_mut().expect("pending storage").mutable();
-        let generation = storage
-            .arena
-            .temporary_generation
-            .checked_add(1)
-            .ok_or((HtmlConstructionError::RepresentationExhausted, None))?;
-        storage.arena.temporary_generation = generation;
-        let snapshot = HtmlConstructionAllocationSnapshot::vector(
-            &storage.arena.identity,
-            AllocationRole::PendingChildOrder { slot, parent },
-            generation,
-            &self.plan.orders[slot],
-        )
-        .map_err(|error| (error, None))?;
-        self.plan.order_snapshots[slot] = Some(snapshot.clone());
-        Ok((Phase::ReserveOrder(slot), Some(snapshot)))
-    }
-    pub(super) fn reserve_order(
-        &mut self,
-        slot: usize,
-    ) -> Result<
-        (Phase, Option<HtmlConstructionAllocationSnapshot>),
-        (
-            HtmlConstructionError,
-            Option<HtmlConstructionAllocationSnapshot>,
-        ),
-    > {
-        let required = self.plan.order_required[slot];
-        checked_layout(required, size_of::<usize>()).map_err(|error| (error, None))?;
-        let generation = self
+        parent: usize,
+        remaining: usize,
+        old: bool,
+    ) -> Result<Phase, HtmlConstructionError> {
+        let wanted = if old {
+            self.plan.positions[0]
+        } else {
+            self.plan.positions[2]
+        };
+        let Some(index) = remaining.checked_sub(1) else {
+            return Err(if old {
+                HtmlConstructionError::ParentChildConflict
+            } else {
+                HtmlConstructionError::WrongSibling
+            });
+        };
+        let found = self
             .arena()
-            .temporary_generation
-            .checked_add(1)
-            .ok_or((HtmlConstructionError::RepresentationExhausted, None))?;
-        let order = &mut self.plan.orders[slot];
-        let result = order.try_reserve_exact(required - order.len());
-        let snapshot = self.plan.order_snapshots[slot]
-            .as_mut()
-            .expect("initialized actual order bank");
-        if result.is_ok() {
-            snapshot.id.generation = generation;
+            .records
+            .get(parent)
+            .ok_or(HtmlConstructionError::UnknownNode)?
+            .children
+            .get(index)
+            == Some(&wanted);
+        if !found {
+            return Ok(Phase::Order {
+                parent,
+                remaining: index,
+                old,
+            });
         }
-        snapshot.capacity = order.capacity();
-        snapshot.payload_bytes = order
-            .capacity()
-            .checked_mul(size_of::<usize>())
-            .ok_or((HtmlConstructionError::RepresentationExhausted, None))?;
-        let snapshot = snapshot.clone();
-        if result.is_ok() {
-            self.owner
-                .as_mut()
-                .expect("pending storage")
-                .mutable()
-                .arena
-                .temporary_generation = generation;
+        if old {
+            self.plan.old_position = index;
+            self.after_old_place()
+        } else {
+            self.plan.insertion_position = index;
+            self.after_new_place()
         }
-        match result {
-            Ok(()) => Ok((Phase::CopyOrder { slot, offset: 0 }, Some(snapshot))),
-            Err(_) => Err((HtmlConstructionError::AllocationFailed, Some(snapshot))),
+    }
+    /// Continues once the moving node's place in its old parent is known.
+    pub(super) fn after_old_place(&mut self) -> Result<Phase, HtmlConstructionError> {
+        if !matches!(self.command(), HtmlConstructionCommand::Insert { .. }) {
+            let mut plan = std::mem::take(&mut self.plan);
+            let result = self.after_topology(&mut plan);
+            self.plan = plan;
+            return result;
         }
+        self.locate_new_place()
+    }
+    /// Starts finding the place in the new parent: before the reference
+    /// sibling, or last when there is none.
+    pub(super) fn locate_new_place(&mut self) -> Result<Phase, HtmlConstructionError> {
+        let parent = self.plan.positions[1];
+        if self.command().operand(2).is_some() {
+            let remaining = self
+                .arena()
+                .records
+                .get(parent)
+                .ok_or(HtmlConstructionError::UnknownNode)?
+                .children
+                .len();
+            return Ok(Phase::Order {
+                parent,
+                remaining,
+                old: false,
+            });
+        }
+        self.after_new_place()
+    }
+    /// Continues once the place in the new parent is known. The place counts
+    /// entries of the order before the node leaves its old place.
+    fn after_new_place(&mut self) -> Result<Phase, HtmlConstructionError> {
+        let parent = self.plan.positions[1];
+        if self.plan.old_parent == Some(parent)
+            && self.plan.old_position < self.plan.insertion_position
+        {
+            self.plan.insertion_position = self.plan.insertion_position.saturating_sub(1);
+        }
+        Ok(Phase::Cycle {
+            cursor: Some(parent),
+            target: self.plan.positions[0],
+            steps: 0,
+        })
     }
     /// Grows the parent's actual child order in place. The previous order stays
     /// intact: nothing is pushed before the atomic commit, and a grown bank
@@ -150,10 +112,7 @@ impl HtmlConstructionOperation {
         ),
     > {
         let parent = self.plan.positions[1];
-        let capacity = self
-            .plan
-            .children_capacity
-            .unwrap_or(self.append_required());
+        let capacity = self.plan.children_capacity.unwrap_or(self.push_required());
         checked_layout(capacity, size_of::<usize>()).map_err(|error| (error, None))?;
         let generation = self
             .arena()
@@ -194,162 +153,101 @@ impl HtmlConstructionOperation {
             Err(_) => Err((HtmlConstructionError::AllocationFailed, Some(snapshot))),
         }
     }
-    pub(super) fn read_order(
-        &mut self,
-        slot: usize,
-        offset: usize,
-    ) -> Result<Phase, HtmlConstructionError> {
-        let parent = self.plan.order_parents[slot];
-        let children = &self.arena().records[parent].children;
-        if let Some(&child) = children.get(offset) {
-            if child == self.plan.positions[0] {
-                return Ok(Phase::CopyOrder {
-                    slot,
-                    offset: offset + 1,
-                });
-            }
-            if slot == 0
-                && matches!(self.command(), HtmlConstructionCommand::Insert { .. })
-                && self.command().operand(2).is_some()
-                && child == self.plan.positions[2]
-            {
-                return Ok(Phase::PushInserted {
-                    slot,
-                    offset,
-                    following: Some(child),
-                });
-            }
-            Ok(Phase::PushExisting {
-                slot,
-                offset,
-                child,
-            })
-        } else if slot == 0
-            && matches!(self.command(), HtmlConstructionCommand::Insert { .. })
-            && !self.plan.order_inserted[slot]
-        {
-            if self.command().operand(2).is_some() {
-                return Err(HtmlConstructionError::WrongSibling);
-            }
-            Ok(Phase::PushInserted {
-                slot,
-                offset,
-                following: None,
-            })
-        } else {
-            Ok(self.after_order(slot))
-        }
-    }
-    fn after_order(&self, slot: usize) -> Phase {
-        if slot + 1 < self.plan.order_count {
-            Phase::InitializeOrder(slot + 1)
-        } else {
-            Phase::TransferOrders
-        }
-    }
-    pub(super) fn push_order(&mut self, slot: usize, value: usize) {
-        self.plan.orders[slot].push(value);
-        self.plan.order_snapshots[slot]
-            .as_mut()
-            .expect("initialized order bank")
-            .initialized_len = self.plan.orders[slot].len();
-    }
-    pub(super) fn push_inserted(
-        &mut self,
-        slot: usize,
-        offset: usize,
-        following: Option<usize>,
-    ) -> Phase {
-        self.push_order(slot, self.plan.positions[0]);
-        self.plan.order_inserted[slot] = true;
-        if let Some(child) = following {
-            Phase::PushExisting {
-                slot,
-                offset,
-                child,
-            }
-        } else {
-            self.after_order(slot)
-        }
-    }
-    pub(super) fn prepare_order_transfers(&mut self) -> Result<Phase, HtmlConstructionError> {
-        let mut entries = 0;
-        for slot in 0..self.plan.order_count {
-            let parent = self.plan.order_parents[slot];
-            let record = &self.arena().records[parent];
-            let generation = self
-                .arena()
-                .temporary_generation
-                .checked_add(1)
-                .ok_or(HtmlConstructionError::RepresentationExhausted)?;
-            let mut retired = HtmlConstructionAllocationSnapshot::vector(
-                &self.arena().identity,
-                AllocationRole::Children(parent),
-                record.children_generation,
-                &record.children,
-            )?;
-            retired.initialized_len = 0;
-            let target = HtmlConstructionAllocationSnapshot::vector(
-                &self.arena().identity,
-                AllocationRole::Children(parent),
-                generation,
-                &self.plan.orders[slot],
-            )?;
-            entries = add(entries, target.initialized_len())?;
-            self.owner
-                .as_mut()
-                .expect("pending owner")
-                .mutable()
-                .arena
-                .temporary_generation = generation;
-            self.plan.order_retired_snapshots[slot] = Some(retired);
-            self.plan.transfers[slot] = Some(HtmlConstructionChildOrderTransfer {
-                position: parent,
-                source: self.plan.order_snapshots[slot]
-                    .as_ref()
-                    .expect("actual pending order")
-                    .clone(),
-                target,
-            });
-        }
-        self.plan.scratch_entries = entries;
-        Ok(Phase::Commit)
-    }
-    pub(super) fn abort_orders(&mut self) -> HtmlConstructionOrderRetirement {
-        let mut orders = HtmlConstructionOrderRetirement::default();
-        for slot in 0..2 {
-            if let Some(snapshot) = self.plan.order_snapshots[slot].take() {
-                orders.orders[slot] = Some(RetiringOrder {
-                    values: std::mem::take(&mut self.plan.orders[slot]),
-                    snapshot,
-                });
-            }
-        }
-        orders
-    }
 }
+
 impl Plan {
-    pub(super) fn commit_orders(&mut self, arena: &mut Arena) -> HtmlConstructionOrderRetirement {
-        let mut orders = HtmlConstructionOrderRetirement::default();
-        for slot in 0..self.order_count {
-            let parent = self.order_parents[slot];
-            let record = &mut arena.records[parent];
-            let mut values =
-                std::mem::replace(&mut record.children, std::mem::take(&mut self.orders[slot]));
-            values.clear();
-            record.children_generation = self.transfers[slot]
-                .as_ref()
-                .expect("real prepared transfer")
-                .target
-                .id
-                .generation;
-            orders.orders[slot] = Some(RetiringOrder {
-                values,
-                snapshot: self.order_retired_snapshots[slot]
-                    .take()
-                    .expect("actual old bank snapshot"),
-            });
+    /// The entries the commit's in-place edits write: the node's parent link,
+    /// the removed and inserted entries, and every entry moved to close or
+    /// open their places.
+    pub(super) fn order_writes(&self, arena: &Arena) -> Result<usize, HtmlConstructionError> {
+        let length = |parent: usize| {
+            arena
+                .records
+                .get(parent)
+                .map(|record| record.children.len())
+                .ok_or(HtmlConstructionError::UnknownNode)
+        };
+        let parent = self.positions[1];
+        let mut writes = 1usize;
+        let mut target = if self.inserts { length(parent)? } else { 0 };
+        if let Some(old) = self.old_parent {
+            let old_length = length(old)?;
+            let moved = old_length.saturating_sub(self.old_position.saturating_add(1));
+            writes = add(add(writes, 1)?, moved)?;
+            if old == parent {
+                target = old_length.saturating_sub(1);
+            }
         }
-        orders
+        if self.inserts {
+            let moved = target.saturating_sub(self.insertion_position);
+            writes = add(add(writes, 1)?, moved)?;
+        }
+        Ok(writes)
+    }
+    /// Whether the planned edits apply to `arena` exactly as located: every
+    /// entry is where planning found it and the push cannot reallocate.
+    pub(super) fn check_order_edits(&self, arena: &Arena) -> Result<(), HtmlConstructionError> {
+        let [node, parent, before] = self.positions;
+        if arena.records.get(node).is_none() {
+            return Err(HtmlConstructionError::CapacityMismatch);
+        }
+        let mut removed_before = None;
+        if let Some(old) = self.old_parent {
+            let children = &arena
+                .records
+                .get(old)
+                .ok_or(HtmlConstructionError::ParentChildConflict)?
+                .children;
+            if children.get(self.old_position) != Some(&node) {
+                return Err(HtmlConstructionError::ParentChildConflict);
+            }
+            removed_before = (old == parent).then_some(self.old_position);
+        }
+        if !self.inserts {
+            return Ok(());
+        }
+        let record = arena
+            .records
+            .get(parent)
+            .ok_or(HtmlConstructionError::CapacityMismatch)?;
+        let length = record
+            .children
+            .len()
+            .saturating_sub(usize::from(removed_before.is_some()));
+        if length >= record.children.capacity() {
+            return Err(HtmlConstructionError::CapacityMismatch);
+        }
+        let reference = self.has_before.then(|| {
+            // The entry's place before the node leaves its own.
+            match removed_before {
+                Some(old) if self.insertion_position >= old => {
+                    self.insertion_position.saturating_add(1)
+                }
+                _ => self.insertion_position,
+            }
+        });
+        match reference {
+            Some(place) if record.children.get(place) == Some(&before) => Ok(()),
+            None if self.insertion_position == length => Ok(()),
+            _ => Err(HtmlConstructionError::ParentChildConflict),
+        }
+    }
+    /// Applies the edits `check_order_edits` accepted. Each guard repeats what
+    /// that check proved, so no edit can reach outside an order or reallocate.
+    pub(super) fn apply_order_edits(&self, arena: &mut Arena) {
+        let [node, parent, _] = self.positions;
+        if let Some(old) = self.old_parent
+            && let Some(record) = arena.records.get_mut(old)
+            && self.old_position < record.children.len()
+        {
+            record.children.remove(self.old_position);
+        }
+        if self.inserts
+            && let Some(record) = arena.records.get_mut(parent)
+            && self.insertion_position <= record.children.len()
+            && record.children.len() < record.children.capacity()
+        {
+            record.children.insert(self.insertion_position, node);
+        }
     }
 }

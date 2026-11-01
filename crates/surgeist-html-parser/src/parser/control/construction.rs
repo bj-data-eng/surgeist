@@ -23,7 +23,6 @@ impl ParseControl {
         owner: &ControlIdentity,
         requests: &[(HtmlParseResource, u64)],
         edge_remove: u64,
-        scratch_entries: u64,
     ) -> Result<(), ParseStop> {
         if requests
             .iter()
@@ -36,7 +35,7 @@ impl ParseControl {
                         .unwrap_err()
                 })?;
             }
-            return self.commit_construction_edges(owner, scratch_entries, addition, edge_remove);
+            return self.commit_construction_edges(owner, addition, edge_remove);
         }
         self.require_identity(owner)?;
         let mut values = self.plan_storage(requests)?;
@@ -45,69 +44,12 @@ impl ParseControl {
             return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
         };
         values[HtmlParseResource::ManagedEdges as usize] = edges;
-        let Some(auxiliary) =
-            values[HtmlParseResource::AuxiliaryEntries as usize].checked_sub(scratch_entries)
-        else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
-        };
-        values[HtmlParseResource::AuxiliaryEntries as usize] = auxiliary;
         for resource in RESOURCES {
             if resource.storage() {
                 self.set(resource, values[resource as usize]);
             }
         }
         Ok(())
-    }
-    pub(crate) fn adopt_construction_order(
-        &mut self,
-        ticket: ConstructionAllocation,
-        transfer: crate::bounded::HtmlConstructionChildOrderTransfer,
-    ) -> ConstructionAllocation {
-        self.require_construction_snapshot(transfer.source(), Some(&ticket))
-            .expect("ready transfer retains the original control's actual pending bank");
-        let (_, _, snapshot) = transfer.into_parts();
-        ConstructionAllocation {
-            owner: ticket.owner,
-            snapshot,
-        }
-    }
-    pub(crate) fn require_order_retirement(
-        &mut self,
-        ticket: &ConstructionAllocation,
-        snapshot: &Snapshot,
-    ) -> Result<(), ParseStop> {
-        self.require_construction_retirement(ticket, snapshot)?;
-        let entries = if snapshot.pending_child_order_slot().is_some() {
-            snapshot.initialized_len() as u64
-        } else {
-            0
-        };
-        if self
-            .usage
-            .resource(HtmlParseResource::AuxiliaryEntries)
-            .current
-            < entries
-        {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
-        }
-        Ok(())
-    }
-    pub(crate) fn retire_order_allocation(
-        &mut self,
-        ticket: ConstructionAllocation,
-        receipt: HtmlConstructionRetired,
-    ) -> Result<(), ParseStop> {
-        self.require_order_retirement(&ticket, receipt.allocation())?;
-        let entries = if receipt.allocation().pending_child_order_slot().is_some() {
-            receipt.allocation().initialized_len() as u64
-        } else {
-            0
-        };
-        self.cleanup_storage(
-            HtmlParseResource::AuxiliaryEntries,
-            entries,
-            receipt.allocation().payload_bytes() as u64,
-        )
     }
     /// Preflight the precise old/new reserve overlap before its HTML provider call.
     pub(crate) fn prepare_construction_reserve(
