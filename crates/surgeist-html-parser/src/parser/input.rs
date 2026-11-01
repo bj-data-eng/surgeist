@@ -2358,4 +2358,40 @@ mod tests {
             assert_eq!(cursor.processed_through, 0);
         }
     }
+
+    #[test]
+    fn a_frontier_beyond_the_source_stops_instead_of_indexing_past_the_end() {
+        for source in [
+            HtmlSource::utf8("ab"),
+            HtmlSource::utf16(DocumentString::from_utf16(vec![0x61, 0x62])),
+        ] {
+            let mut control = control(&source);
+            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
+            cursor.make_available(source.len(), &mut control).unwrap();
+            for _ in 0..2 {
+                ready_character(cursor.poll_consume(&mut control).unwrap());
+            }
+            // The private frontier claims more input than the source holds.
+            let InputAvailability::Progressive { through, .. } = &mut cursor.availability else {
+                panic!("progressive cursor");
+            };
+            *through = source.len() + 98;
+            let stop = ParseStop::InternalInvariant(Invariant::InputCursorState);
+            assert_eq!(cursor.poll_consume(&mut control), Err(stop));
+            assert_eq!(control.stop(), Some(stop));
+            assert_eq!(cursor.position, 2);
+            for resource in [
+                HtmlParseResource::BufferedUtf16Units,
+                HtmlParseResource::AuxiliaryEntries,
+                HtmlParseResource::SourceMapEntries,
+                HtmlParseResource::ManagedCapacityBytes,
+            ] {
+                assert_eq!(
+                    control.usage().resource(resource).current,
+                    0,
+                    "{resource:?}"
+                );
+            }
+        }
+    }
 }

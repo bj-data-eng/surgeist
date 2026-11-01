@@ -3967,4 +3967,156 @@ fn progressive_attribute_named_reference_waits_for_actual_equal_sign_exception()
     }
 }
 
+fn first_invariant_stop() -> ParseStop {
+    ParseStop::InternalInvariant(Invariant::InputCursorState)
+}
+
+fn fixture_with_event(raw: &str) -> (HtmlSource, ParseControl) {
+    let source = HtmlSource::utf8(raw);
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(&source).unwrap();
+    (source, c)
+}
+
+#[test]
+fn a_queued_length_over_an_empty_slot_stops_instead_of_unwrapping() {
+    let (source, mut c) = fixture_with_event("a");
+    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    lexer.pending_len = 1;
+    let stop = lexer.next(&mut c, false).err().unwrap();
+    assert_eq!(stop, first_invariant_stop());
+    assert_eq!(c.stop(), Some(stop));
+    lexer.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
+#[test]
+fn a_queued_length_beyond_the_slots_stops_when_pulling_and_queueing() {
+    let (source, mut c) = fixture_with_event("a");
+    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    lexer.pending_len = lexer.pending.len() + 1;
+    let stop = lexer.next(&mut c, false).err().unwrap();
+    assert_eq!(stop, first_invariant_stop());
+    assert_eq!(c.stop(), Some(stop));
+    lexer.pending_len = 0;
+    lexer.release(&mut c).unwrap();
+    assert_storage_released(&c);
+
+    let (source, mut c) = fixture_with_event("a");
+    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let event = lexer.next(&mut c, false).unwrap().unwrap();
+    lexer.pending_len = lexer.pending.len() + 1;
+    let usage = c
+        .usage()
+        .resource(HtmlParseResource::AuxiliaryEntries)
+        .current;
+    assert!(usage > 0, "the pulled event owns a record slot");
+    let stop = lexer.queue(event, &mut c).unwrap_err();
+    assert_eq!(stop, first_invariant_stop());
+    assert_eq!(c.stop(), Some(stop));
+    lexer.pending_len = 0;
+    lexer.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
+#[test]
+fn text_buffers_of_unequal_length_stop_instead_of_indexing() {
+    for comment in [false, true] {
+        let (source, mut c) = fixture_with_event("a");
+        let mut fixture = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        // A unit with no origin row: the two parallel buffers disagree.
+        fixture
+            .lexer
+            .temporary
+            .value
+            .extend_units(&[0x41], &mut c)
+            .unwrap();
+        let stop = if comment {
+            fixture.lexer.pi_comment(&mut c, &mut fixture.evidence)
+        } else {
+            fixture.lexer.raw_fallback(&mut c, &mut fixture.evidence)
+        }
+        .unwrap_err();
+        assert_eq!(stop, first_invariant_stop());
+        assert_eq!(c.stop(), Some(stop));
+        fixture.release(&mut c).unwrap();
+        assert_storage_released(&c);
+    }
+}
+
+/// Pauses a progressive tokenizer inside a named reference, with the retained
+/// continuation in its actual slot.
+fn paused_in_reference<'a>(
+    source: &'a HtmlSource,
+    cut: usize,
+) -> (ParseControl, ParseEvidence, Tokenizer<'a>) {
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    c.admit_source(source).unwrap();
+    let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+    let mut lexer = Tokenizer::progressive(source, State::Data, None, &mut c).unwrap();
+    lexer.make_available(cut, &mut c).unwrap();
+    assert!(matches!(
+        lexer.next(&mut c, false, &mut evidence).unwrap(),
+        TokenizerPull::NeedInput
+    ));
+    assert!(lexer.reference.is_some());
+    (c, evidence, lexer)
+}
+
+#[test]
+fn a_literal_scan_without_its_draft_owner_stops_instead_of_unwrapping() {
+    // Next input is a letter (extend the literal) or a semicolon (finish it).
+    for (raw, cut) in [("&notin;", 4), ("&not;", 4)] {
+        let source = HtmlSource::utf8(raw);
+        let (mut c, mut evidence, mut lexer) = paused_in_reference(&source, cut);
+        lexer
+            .reference
+            .as_mut()
+            .unwrap()
+            .force_ambiguous_without_literal();
+        lexer.make_available(source.len(), &mut c).unwrap();
+        let stop = lexer.next(&mut c, false, &mut evidence).err().unwrap();
+        assert_eq!(stop, first_invariant_stop(), "{raw}");
+        assert_eq!(c.stop(), Some(stop));
+        lexer.release(&mut c).unwrap();
+        evidence.release(&mut c).unwrap();
+        assert_storage_released(&c);
+    }
+}
+
+#[test]
+fn a_longest_match_without_its_value_stops_instead_of_unwrapping() {
+    let source = HtmlSource::utf8("&notin;");
+    let (mut c, mut evidence, mut lexer) = paused_in_reference(&source, 4);
+    lexer
+        .reference
+        .as_mut()
+        .unwrap()
+        .force_follow_without_replacement();
+    lexer.make_available(source.len(), &mut c).unwrap();
+    let stop = lexer.next(&mut c, false, &mut evidence).err().unwrap();
+    assert_eq!(stop, first_invariant_stop());
+    assert_eq!(c.stop(), Some(stop));
+    lexer.release(&mut c).unwrap();
+    evidence.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
+#[test]
+fn a_token_event_without_its_token_stops_instead_of_indexing() {
+    let (source, mut c) = fixture_with_event("a");
+    let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    let Event::Token(event) = lexer.next(&mut c, false).unwrap().unwrap() else {
+        panic!("a letter is a text token");
+    };
+    let Ok(token) = event.into_token(&mut c) else {
+        panic!("the pulled event owns its token");
+    };
+    let emptied = TokenEvent::emptied(token, &mut c).unwrap();
+    let _ = emptied.token();
+    emptied.release(&mut c).unwrap();
+    lexer.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
 mod html5lib;

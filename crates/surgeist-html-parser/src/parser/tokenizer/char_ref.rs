@@ -66,6 +66,21 @@ impl ReferenceContinuation {
         Ok(())
     }
 }
+#[cfg(test)]
+impl ReferenceContinuation {
+    /// Test hook: a literal scan is under way, but its draft owner is absent.
+    pub(super) fn force_ambiguous_without_literal(&mut self) {
+        self.phase = ReferencePhase::Ambiguous;
+        self.attribute = false;
+    }
+    /// Test hook: a longest match is being applied, but none was recorded.
+    pub(super) fn force_follow_without_replacement(&mut self) {
+        self.phase = ReferencePhase::Follow;
+        self.attribute = false;
+        self.semicolon = true;
+        self.replacement = None;
+    }
+}
 impl Tokenizer<'_> {
     fn reference_mark(&self, c: &mut ParseControl) -> Result<ReferenceMark, ParseStop> {
         #[cfg(test)]

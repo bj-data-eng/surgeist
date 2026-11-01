@@ -390,6 +390,15 @@ impl TokenEvent {
     pub(crate) fn token(&self) -> &Token {
         &self.record.as_slice()[0]
     }
+    /// Test hook: the owner no longer holds its token, which is released.
+    #[cfg(test)]
+    pub(crate) fn emptied(token: Token, c: &mut ParseControl) -> Result<Self, ParseStop> {
+        let mut event = Self::new(token, c)?;
+        if let Some(token) = event.record.try_pop(c)? {
+            token.release(c)?;
+        }
+        Ok(event)
+    }
     pub(crate) fn into_token(mut self, c: &mut ParseControl) -> Result<Token, ParseStop> {
         match self.record.try_pop(c) {
             Ok(Some(token)) => {

@@ -262,6 +262,19 @@ mod tests {
     }
 
     #[test]
+    fn a_table_index_beyond_the_table_stops_instead_of_indexing() {
+        let mut control = control();
+        let stop = record(data::NAMED_REFERENCES.len(), &mut control)
+            .err()
+            .unwrap();
+        assert_eq!(
+            stop,
+            ParseStop::InternalInvariant(super::super::control::Invariant::InputCursorState)
+        );
+        assert_eq!(control.stop(), Some(stop));
+    }
+
+    #[test]
     fn exact_values_match_independent_normative_rows() {
         // HTML named-character-reference table: literal expectations, not
         // values read back from the generated implementation.
