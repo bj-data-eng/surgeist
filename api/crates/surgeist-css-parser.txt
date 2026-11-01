@@ -32,6 +32,7 @@ pub fn surgeist_css_parser::anb::AnPlusBError<'_, P>::fmt(&self, formatter: &mut
 impl<P> core::fmt::Display for surgeist_css_parser::anb::AnPlusBError<'_, P>
 pub fn surgeist_css_parser::anb::AnPlusBError<'_, P>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub fn surgeist_css_parser::anb::parse<'i, P>(stream: &mut surgeist_css_parser::Stream<'i, P>) -> core::result::Result<surgeist_css_parser::anb::AnPlusB, surgeist_css_parser::anb::AnPlusBError<'i, P>>
+pub fn surgeist_css_parser::anb::parse_saturating<'i, P>(stream: &mut surgeist_css_parser::Stream<'i, P>) -> core::result::Result<surgeist_css_parser::anb::AnPlusB, surgeist_css_parser::anb::AnPlusBError<'i, P>>
 pub mod surgeist_css_parser::document
 pub enum surgeist_css_parser::document::BlockKind
 pub surgeist_css_parser::document::BlockKind::Curly
@@ -759,6 +760,7 @@ pub fn surgeist_css_parser::Stream<'i, P>::is_empty(&self) -> bool
 pub fn surgeist_css_parser::Stream<'i, P>::is_refused(&self) -> bool
 pub const fn surgeist_css_parser::Stream<'i, P>::mark(&self) -> surgeist_css_parser::stream::Mark<'i, P>
 pub fn surgeist_css_parser::Stream<'i, P>::meter(&self) -> core::option::Option<&'i dyn surgeist_css_parser::limits::Meter>
+pub fn surgeist_css_parser::Stream<'i, P>::next_site(&self) -> surgeist_css_parser::Site<'i, P>
 pub fn surgeist_css_parser::Stream<'i, P>::next_token(&self) -> core::option::Option<surgeist_css_parser::Token<'i>>
 pub fn surgeist_css_parser::Stream<'i, P>::offset(&self) -> core::option::Option<surgeist_css_parser::Offset>
 pub fn surgeist_css_parser::Stream<'i, P>::only_whitespace_remains(&self) -> bool

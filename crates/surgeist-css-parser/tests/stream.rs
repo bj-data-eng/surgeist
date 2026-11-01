@@ -951,3 +951,19 @@ fn the_error_a_grammar_returns_stays_small_however_large_its_own_error_is() {
     assert_eq!(small, large);
     assert!(small <= 128, "{small} bytes");
 }
+
+#[test]
+fn the_next_site_is_where_the_next_token_starts_with_comments_passed_over() {
+    let document = parse("a/**/b/**/");
+    let mut stream = document.root();
+    stream.consume_ident().unwrap();
+    // The boundary after `a` is before the comment; the next token starts after it.
+    assert_eq!(stream.site().offset(), Some(Offset::new(1)));
+    assert_eq!(stream.next_site().offset(), Some(Offset::new(5)));
+    assert_eq!(stream.next_site().spelling(), Some("b"));
+    stream.consume_ident().unwrap();
+    // Nothing but a comment remains: the next boundary is the end.
+    assert_eq!(stream.site().offset(), Some(Offset::new(6)));
+    assert_eq!(stream.next_site().offset(), Some(Offset::new(10)));
+    assert_eq!(stream.next_site(), stream.end_site());
+}

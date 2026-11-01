@@ -11,6 +11,7 @@
 mod common;
 
 use common::tree::{Call, Recording};
+use surgeist_css_parser::anb;
 use surgeist_css_parser::document::{BuildError, GroupEnd};
 use surgeist_css_parser::limits::Limits;
 use surgeist_css_parser::{Document, Stream, SyntaxError, Token};
@@ -628,4 +629,36 @@ fn a_document_finished_after_a_refused_build_step_reports_the_refusal() {
     let root = builder.root();
     builder.leaf(root, Token::Ident("a"), None, None).unwrap();
     assert!(!builder.finish(None).is_refused());
+}
+
+#[test]
+fn a_recognized_plus_n_notation_takes_the_steps_of_its_tokens_only() {
+    use Token::{Comment, Delim, Ident};
+    // `+n`: discarding whitespace examines `+` (1), consuming it examines it
+    // again (1), `n` is examined once (1), and the look for a `B` examines the
+    // end of the stream (1). A comment between the two is one more node.
+    for (tokens, expected) in [
+        (&[Delim('+'), Ident("n")][..], 4),
+        (&[Delim('+'), Comment, Ident("n")][..], 5),
+    ] {
+        let meter = Recording::admitting();
+        let document = metered(&meter, tokens);
+        let mut stream = document.root();
+        let value = anb::parse(&mut stream).unwrap();
+        assert_eq!((value.a(), value.b()), (1, 0));
+        assert_eq!(meter.calls(), steps(expected), "{tokens:?}");
+    }
+}
+
+#[test]
+fn the_next_site_takes_a_step_for_each_node_it_examines() {
+    use Token::{Comment, Ident};
+    let meter = Recording::admitting();
+    let document = metered(&meter, &[Ident("a"), Comment, Comment, Ident("b")]);
+    let mut stream = document.root();
+    stream.consume_ident().unwrap();
+    meter.forget();
+    // Two comments passed over and the token stopped at.
+    let _ = stream.next_site();
+    assert_eq!(meter.calls(), steps(3));
 }
