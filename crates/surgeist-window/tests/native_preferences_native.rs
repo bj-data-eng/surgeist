@@ -202,6 +202,7 @@ fn main() {
 #[cfg(target_os = "windows")]
 fn main() {
     use std::{cell::RefCell, rc::Rc};
+    use surgeist_typed_winsafe as native;
     use surgeist_window::{
         ContrastPreference, Handler, InputCapabilities, Point, PointerAccuracy, PointerCapability,
         Ready, Rect, ReductionPreference, Result, Size, WindowSnapshot, app, open,
@@ -220,9 +221,9 @@ fn main() {
     }
 
     struct NativeWitness {
-        monitor: winsafe::MONITORINFOEX,
-        client: winsafe::RECT,
-        client_origin: winsafe::POINT,
+        monitor: native::Monitor,
+        client: native::Rect,
+        client_origin: native::Point,
         dpi: u32,
         input: std::result::Result<InputCapabilities, String>,
         color: std::result::Result<Option<u32>, String>,
@@ -306,23 +307,14 @@ fn main() {
             }
             // The snapshot's freshness interval must include the independent
             // HWND monitor mapping. Do not interleave WinRT calls with this
-            // complete WinSafe enumeration, which consults the error slot.
-            let mut interfaces = Vec::new();
-            let mut devices = winsafe::EnumDisplayDevices(
-                Some(device_name),
-                Some(winsafe::co::EDD::GET_DEVICE_INTERFACE_NAME),
-            );
-            loop {
-                winsafe::SetLastError(winsafe::co::ERROR::SUCCESS);
-                match devices.next() {
-                    None => break,
-                    Some(Ok(device)) => interfaces.push(device.DeviceID()),
-                    Some(Err(error)) => {
-                        eprintln!("Native color witness interface read failed: {error}");
-                        return Ok(None);
-                    }
+            // complete bridge enumeration, which owns the native error slot.
+            let interfaces = match native::display_interfaces(device_name) {
+                Ok(interfaces) => interfaces,
+                Err(error) => {
+                    eprintln!("Native color witness interface read failed: {error}");
+                    return Ok(None);
                 }
-            }
+            };
             let [interface] = interfaces.as_slice() else {
                 return Ok(None);
             };
@@ -372,15 +364,13 @@ fn main() {
     }
     fn native_witness(title: &str) -> std::result::Result<NativeWitness, String> {
         let mut matches = Vec::new();
-        winsafe::EnumWindows(|window| {
-            if window.GetWindowThreadProcessId().1 == std::process::id()
-                && window.GetWindowText().is_ok_and(|text| text == title)
+        for window in native::top_level_windows().map_err(|error| error.to_string())? {
+            if window.process_id().is_ok_and(|id| id == std::process::id())
+                && window.title().is_ok_and(|text| text == title)
             {
                 matches.push(window);
             }
-            true
-        })
-        .map_err(|error| error.to_string())?;
+        }
         let [window] = matches.as_slice() else {
             return Err(format!(
                 "expected one process-owned probe window, found {}",
@@ -388,17 +378,15 @@ fn main() {
             ));
         };
         let monitor = window
-            .MonitorFromWindow(winsafe::co::MONITOR::DEFAULTTONULL)
-            .GetMonitorInfo()
-            .map_err(|error| error.to_string())?;
-        let color = expected_color(&monitor.szDevice());
+            .monitor()
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "probe window has no containing monitor".to_owned())?;
+        let color = expected_color(&monitor.device_name);
         Ok(NativeWitness {
             monitor,
-            client: window.GetClientRect().map_err(|error| error.to_string())?,
-            client_origin: window
-                .ClientToScreen(winsafe::POINT::default())
-                .map_err(|error| error.to_string())?,
-            dpi: window.GetDpiForWindow(),
+            client: window.client_rect().map_err(|error| error.to_string())?,
+            client_origin: window.client_origin().map_err(|error| error.to_string())?,
+            dpi: window.dpi().map_err(|error| error.to_string())?,
             input: expected_input(),
             color,
         })
@@ -434,7 +422,7 @@ fn main() {
     let Capture { snapshot, witness } = capture.borrow_mut().take().expect("Ready captured state");
     let witness = witness.expect("native window geometry capture");
     let scale = snapshot.metrics().scale_factor();
-    let logical_rect = |rect: winsafe::RECT| Rect {
+    let logical_rect = |rect: native::Rect| Rect {
         origin: Point {
             x: f64::from(rect.left) / scale,
             y: f64::from(rect.top) / scale,
@@ -465,10 +453,10 @@ fn main() {
             );
         }
     };
-    assert_rect_close(screen.area(), logical_rect(witness.monitor.rcMonitor));
+    assert_rect_close(screen.area(), logical_rect(witness.monitor.frame));
     assert_rect_close(
         screen.available_area().expect("captured native work area"),
-        logical_rect(witness.monitor.rcWork),
+        logical_rect(witness.monitor.work_area),
     );
     assert_eq!(scale, f64::from(witness.dpi) / 96.0);
     let client = snapshot
@@ -514,7 +502,7 @@ fn main() {
     }
     println!(
         "native monitor {}: screen={screen:?}, client={client:?}, scale={scale}",
-        witness.monitor.szDevice()
+        witness.monitor.device_name
     );
     let captured = &snapshot.environment().preferences;
     let ui = UISettings::new().expect("native UI settings");

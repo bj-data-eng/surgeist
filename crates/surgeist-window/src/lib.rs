@@ -266,8 +266,8 @@ pub use planning::HostCommandPlan;
 pub use pointer_coordinates::NativePointerCoordinates;
 pub use registry::{Access, Handle, Instance, Proxy, Ref, Registry};
 pub use system_fonts::{
-    SystemFont, SystemFontEnvironment, SystemFontError, SystemFontMetrics, SystemFontRole,
-    SystemFontTraits, SystemFontWeight,
+    AppKitFontMetrics, AppKitFontTraits, AppKitFontWeight, AppKitSystemFont, SystemFont,
+    SystemFontEnvironment, SystemFontError, SystemFontRole, WindowsSystemFont,
 };
 pub use transition::{MetricsEvent, NativeEventTransition, WindowStatePatch};
 
