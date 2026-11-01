@@ -1046,6 +1046,21 @@ impl ParseEvidence {
             rows.release(c).unwrap();
         }
     }
+    /// Takes the source out, as a fault in a published report would.
+    #[cfg(test)]
+    pub(super) fn take_source_for_test(&mut self) -> Option<crate::HtmlSource> {
+        self.native.source.take()
+    }
+    /// Puts back a source taken by [`Self::take_source_for_test`].
+    #[cfg(test)]
+    pub(super) fn restore_source_for_test(&mut self, source: crate::HtmlSource) {
+        self.native.source = Some(source);
+    }
+    /// Whether the complete projection is still held.
+    #[cfg(test)]
+    pub(super) fn holds_projection_for_test(&self) -> bool {
+        self.native.projection.is_some()
+    }
     pub(super) fn history_data(&self) -> Result<HistoryData<'_>, SessionError> {
         // Do not mint an immutable history lender from a native-only projection
         // or an unfinished lexical prefix.

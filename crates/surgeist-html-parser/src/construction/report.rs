@@ -2147,4 +2147,23 @@ mod tests {
         frozen.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
     }
+
+    #[test]
+    fn a_publish_fault_reports_a_stop_as_it_is_and_latches_a_custody_fault_first() {
+        let mut c = ParseControl::new(super::super::tests::limits(), HtmlParseCancellation::new());
+        // A stop is already the controller's first; reporting it latches nothing.
+        let stop = ParseStop::Cancelled;
+        assert_eq!(
+            PublishFault::from(stop).latch(&mut c),
+            SessionError::Stop(stop)
+        );
+        assert_eq!(c.stop(), None);
+        // A prepared history without custody has no stop yet: the registry row
+        // becomes the first one.
+        assert_eq!(
+            PublishFault::from(Unpublishable).latch(&mut c),
+            SessionError::Stop(registry_row())
+        );
+        assert_eq!(c.stop(), Some(registry_row()));
+    }
 }

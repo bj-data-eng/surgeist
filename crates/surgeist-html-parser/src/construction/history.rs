@@ -970,6 +970,79 @@ mod tests {
     }
 
     #[test]
+    fn a_prepared_history_without_arena_storage_is_unpublishable_and_keeps_the_arena() {
+        let source = crate::HtmlSource::utf8("AB");
+        let (mut c, mut session, _) = projected(&source);
+        let mut slot = Some(session.freeze(&mut c).unwrap());
+        let mut prepared = PreparedHistory::prepare(&mut slot, &mut c).unwrap();
+        let storage = prepared.arena_for_test().unwrap().storage.take().unwrap();
+        assert_eq!(prepared.commit().err(), Some(Unpublishable));
+        let arena = slot.as_mut().expect("the arena stays where it was");
+        assert!(arena.storage.is_none());
+        arena.storage = Some(storage);
+        slot.take().unwrap().release(&mut c).unwrap();
+        zero(&c);
+    }
+
+    #[test]
+    fn a_prepared_history_without_evidence_is_unpublishable_and_puts_the_storage_back() {
+        let source = crate::HtmlSource::utf8("AB");
+        let (mut c, mut session, _) = projected(&source);
+        let mut slot = Some(session.freeze(&mut c).unwrap());
+        let mut prepared = PreparedHistory::prepare(&mut slot, &mut c).unwrap();
+        let evidence = prepared
+            .arena_for_test()
+            .unwrap()
+            .storage
+            .as_mut()
+            .unwrap()
+            .evidence
+            .take()
+            .unwrap();
+        assert_eq!(prepared.commit().err(), Some(Unpublishable));
+        let arena = slot.as_mut().expect("the arena stays where it was");
+        let storage = arena.storage.as_mut().expect("the storage was put back");
+        assert!(storage.evidence.is_none());
+        storage.evidence = Some(evidence);
+        slot.take().unwrap().release(&mut c).unwrap();
+        zero(&c);
+    }
+
+    #[test]
+    fn a_prepared_history_without_its_source_is_unpublishable_and_puts_everything_back() {
+        let source = crate::HtmlSource::utf8("AB");
+        let (mut c, mut session, _) = projected(&source);
+        let mut slot = Some(session.freeze(&mut c).unwrap());
+        let mut prepared = PreparedHistory::prepare(&mut slot, &mut c).unwrap();
+        let held = prepared
+            .arena_for_test()
+            .unwrap()
+            .storage
+            .as_mut()
+            .unwrap()
+            .evidence
+            .as_mut()
+            .unwrap()
+            .take_source_for_test()
+            .unwrap();
+        assert_eq!(prepared.commit().err(), Some(Unpublishable));
+        let arena = slot.as_mut().expect("the arena stays where it was");
+        let evidence = arena
+            .storage
+            .as_mut()
+            .expect("the storage was put back")
+            .evidence
+            .as_mut()
+            .expect("the evidence was put back");
+        // The refusal took nothing else out, so the projection is still there.
+        assert!(evidence.holds_projection_for_test());
+        assert!(evidence.take_source_for_test().is_none());
+        evidence.restore_source_for_test(held);
+        slot.take().unwrap().release(&mut c).unwrap();
+        zero(&c);
+    }
+
+    #[test]
     fn immutable_history_foreign_scope_and_small_scratch_leave_caller_storage_untouched() {
         let source = crate::HtmlSource::utf8("AB");
         let (mut c, mut session, group) = projected(&source);
