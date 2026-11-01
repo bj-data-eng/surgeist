@@ -88,6 +88,12 @@ fn qualify_inline_margin(
     placed: &PlacedLine,
     anchor: &crate::engine::layout::data::FinalizedAnchor,
 ) -> Result<()> {
+    if matches!(
+        anchor.geometry,
+        crate::engine::layout::data::AnchorGeometry::Ordinary { .. }
+    ) {
+        return Ok(());
+    }
     let selected = &placed.finalized.selected;
     let boundary = super::boundary::facts(selected.presentation_input(), anchor.unit);
     let Some(components) = boundary
