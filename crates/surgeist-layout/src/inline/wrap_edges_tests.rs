@@ -1332,3 +1332,6 @@ fn edge_forces_stay_in_their_own_numeric_run_across_a_real_block_separator() {
     separated_numeric_runs::<f32>();
     separated_numeric_runs::<f64>();
 }
+
+#[path = "wrap_edges_tests/bidi_metadata.rs"]
+mod bidi_metadata;
