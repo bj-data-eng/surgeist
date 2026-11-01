@@ -417,8 +417,10 @@ impl<'a> PreparedReportStorage<'a> {
                     if element.link_flags().is_none() {
                         return Err(SessionError::WrongToken);
                     }
-                    // Every created node has its node-document row, which the
-                    // link history joins to the parser Document.
+                    // A link's node-document row joins its history to the parser
+                    // Document, so publication requires one. Not every node has
+                    // one: nodes created without a document, such as implied
+                    // and text nodes of a fragment, get none.
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     let slot = storage.payloads.joined(c, node, Join::NodeDocument)?;
                     if !matches!(

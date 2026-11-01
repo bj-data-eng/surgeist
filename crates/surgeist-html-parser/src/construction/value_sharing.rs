@@ -1438,8 +1438,10 @@ impl Finalizing {
         }
         output.ticket = Some(c.final_string_ticket(&output.selected.value)?);
         self.install_string(location, &output.selected.value, c)?;
-        // No admission, provider call or other fallible step separates the
-        // native commit from its exact occurrence-ticket transfer.
+        // No admission or provider call separates the native commit from its
+        // exact occurrence-ticket transfer. The lookups below are registry
+        // checks of states that sequencing makes impossible; one that fails
+        // latches the registry row and the output guard releases the tickets.
         let (value, allocation) = string_row_mut(&mut self.payloads, c, slot)?;
         let Some(new_ticket) = output.ticket.take() else {
             return Err(latch_registry_row(c));
