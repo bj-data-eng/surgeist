@@ -3520,11 +3520,14 @@ impl SessionStorage {
                 .construction
                 .node_at(parent_index)
                 .ok_or_else(|| latch_registry_row(control))?;
-            preceding = parent
-                .child_count()
-                .checked_sub(1)
-                .and_then(|last| parent.child_at(last))
-                .map(|child| child.position());
+            if let Some(last) = parent.child_count().checked_sub(1) {
+                preceding = Some(
+                    parent
+                        .child_at(last)
+                        .ok_or_else(|| latch_registry_row(control))?
+                        .position(),
+                );
+            }
         } else {
             for position in 0..self
                 .construction
