@@ -7,7 +7,7 @@
 use super::css_color::Banks;
 use super::css_color::{action_layout, frame, numerical_layout};
 use super::*;
-use provenance::{ColorComputation, ColorValueSource, InputValueComputation};
+use provenance::{ColorComputation, ColorOperandTable, ColorValueSource, InputValueComputation};
 use surgeist_css::color::controlled::{
     CssColorOperationOwner, CssColorParseOutcome, CssColorTransform, CssUsedColorCheckpoint,
 };
@@ -332,7 +332,7 @@ impl SessionStorage {
         let computation = InputValueComputation::Color(ColorComputation {
             source,
             original,
-            operands: [alpha_edge, space_edge],
+            operands: ColorOperandTable::new([alpha_edge, space_edge]),
             space,
             standard_failure: failure,
             environment: environment_identity(),

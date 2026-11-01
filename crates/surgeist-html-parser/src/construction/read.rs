@@ -514,7 +514,7 @@ impl<'a> HtmlParseRangeComputation<'a> {
     pub fn operand(&self, role: provenance::RangeOperandRole) -> HtmlParseRangeOperand<'a> {
         HtmlParseRangeOperand {
             history: self.history,
-            value: self.value.operands[role.index()],
+            value: self.value.operands.copy(role),
         }
     }
     pub fn minimum_origin(&self) -> Option<crate::HtmlInputNumericBoundOrigin> {
@@ -549,7 +549,10 @@ impl<'a> HtmlParseColorComputation<'a> {
         self.value.space
     }
     pub fn alpha_present(&self) -> bool {
-        self.value.operands[0].is_some()
+        self.value
+            .operands
+            .get(provenance::ColorOperandRole::Alpha)
+            .is_some()
     }
     pub fn standard_failure(&self) -> Option<surgeist_css::color::CssColorStandardFailure> {
         self.value.standard_failure
@@ -569,7 +572,7 @@ impl<'a> HtmlParseColorComputation<'a> {
         })
     }
     pub fn operand_group(&self, role: provenance::ColorOperandRole) -> Option<HistoryGroup<'a>> {
-        self.value.operands[role.index()].and_then(|edge| {
+        self.value.operands.copy(role).and_then(|edge| {
             self.history
                 .view()
                 .expect("qualified history")

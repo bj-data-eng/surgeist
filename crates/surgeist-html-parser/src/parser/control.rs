@@ -1,7 +1,8 @@
 //! Private accounting owner for parsing. Counts describe admitted physical work
 //! and owned storage, not CPU instructions, elapsed time, allocator metadata or RSS.
 
-use crate::settings::{RESOURCE_COUNT, RESOURCES};
+use crate::keyed::{Table, slots};
+use crate::settings::{RESOURCES, ResourceTable};
 use crate::{
     HtmlParseCancellation, HtmlParseLimits, HtmlParseResource, HtmlSource, HtmlSourceCoordinates,
     HtmlSourceId,
@@ -26,6 +27,8 @@ mod text_append;
 pub(crate) use construction::ConstructionAllocation;
 
 const WORK_COUNT: usize = 8;
+/// One value per [`WorkCategory`]; a lookup cannot be out of range.
+type WorkTable<T> = Table<WorkCategory, T, WORK_COUNT>;
 pub(crate) const WORK_QUANTUM: usize = 256;
 
 /// Each category has weight one; units are physical bytes or individual events.
@@ -41,6 +44,16 @@ pub enum WorkCategory {
     ReserveByte,
     ProviderCall,
 }
+slots!(WorkCategory, WORK_COUNT, {
+    InputUnitRead => 0,
+    InspectByte => 1,
+    CopyByte => 2,
+    StateStep => 3,
+    RecordVisit => 4,
+    RecordWrite => 5,
+    ReserveByte => 6,
+    ProviderCall => 7,
+});
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Invariant {
@@ -155,8 +168,8 @@ pub struct ResourceUsage {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseUsage {
-    resources: [ResourceUsage; RESOURCE_COUNT],
-    work: [u64; WORK_COUNT],
+    resources: ResourceTable<ResourceUsage>,
+    work: WorkTable<u64>,
     /// Actual capacities can exceed requested layouts. This is observed after
     /// allocation; no promise is made about preventing allocator overshoot.
     pub(crate) actual_capacity_bytes: u64,
@@ -166,16 +179,16 @@ pub struct ParseUsage {
 }
 impl ParseUsage {
     pub fn resource(&self, resource: HtmlParseResource) -> ResourceUsage {
-        self.resources[resource as usize]
+        self.resources.copy(resource)
     }
     pub fn work(&self, category: WorkCategory) -> u64 {
-        self.work[category as usize]
+        self.work.copy(category)
     }
 }
 
 /// Exclusively mutable owner. Only the cancellation handle can be cloned.
 pub(crate) struct ParseControl {
-    limits: [u64; RESOURCE_COUNT],
+    limits: ResourceTable<u64>,
     usage: ParseUsage,
     cancellation: HtmlParseCancellation,
     terminal: Option<ParseStop>,
@@ -222,8 +235,8 @@ impl ParseControl {
         Self {
             limits,
             usage: ParseUsage {
-                resources: [ResourceUsage::default(); RESOURCE_COUNT],
-                work: [0; WORK_COUNT],
+                resources: ResourceTable::filled(ResourceUsage::default()),
+                work: WorkTable::filled(0),
                 actual_capacity_bytes: 0,
                 actual_capacity_high_water: 0,
                 largest_atomic_layout: 0,
@@ -458,7 +471,7 @@ impl ParseControl {
         value: u64,
         delta: u64,
     ) -> Result<(), ParseStop> {
-        let limit = self.limits[resource as usize];
+        let limit = self.limits.copy(resource);
         if value > limit {
             return self.fail(ParseStop::LimitExceeded {
                 resource,
@@ -470,7 +483,7 @@ impl ParseControl {
         Ok(())
     }
     fn set(&mut self, resource: HtmlParseResource, value: u64) {
-        let usage = &mut self.usage.resources[resource as usize];
+        let usage = self.usage.resources.get_mut(resource);
         usage.current = value;
         usage.high_water = usage.high_water.max(value);
     }
@@ -531,12 +544,12 @@ impl ParseControl {
         let mut increment = 0_u64;
         for &(category, units) in charges {
             let (Some(next), Some(total)) = (
-                work[category as usize].checked_add(units),
+                work.copy(category).checked_add(units),
                 increment.checked_add(units),
             ) else {
                 return self.representation(HtmlParseResource::WorkCredits);
             };
-            work[category as usize] = next;
+            *work.get_mut(category) = next;
             increment = total;
         }
         let Some(total) = self
@@ -567,30 +580,26 @@ impl ParseControl {
     fn plan_storage(
         &mut self,
         requests: &[(HtmlParseResource, u64)],
-    ) -> Result<[u64; RESOURCE_COUNT], ParseStop> {
+    ) -> Result<ResourceTable<u64>, ParseStop> {
         self.checkpoint()?;
         let mut values = self.usage.resources.map(|usage| usage.current);
-        let mut deltas = [0_u64; RESOURCE_COUNT];
+        let mut deltas = ResourceTable::filled(0_u64);
         for &(resource, delta) in requests {
             if !resource.storage() {
                 return self.fail(ParseStop::InternalInvariant(Invariant::NonStorageResource));
             }
             let (Some(value), Some(sum)) = (
-                values[resource as usize].checked_add(delta),
-                deltas[resource as usize].checked_add(delta),
+                values.copy(resource).checked_add(delta),
+                deltas.copy(resource).checked_add(delta),
             ) else {
                 return self.representation(resource);
             };
-            values[resource as usize] = value;
-            deltas[resource as usize] = sum;
+            *values.get_mut(resource) = value;
+            *deltas.get_mut(resource) = sum;
         }
         for resource in RESOURCES {
             if resource.storage() {
-                self.check_value(
-                    resource,
-                    values[resource as usize],
-                    deltas[resource as usize],
-                )?;
+                self.check_value(resource, values.copy(resource), deltas.copy(resource))?;
             }
         }
         Ok(values)
@@ -610,7 +619,7 @@ impl ParseControl {
         let values = self.plan_storage(requests)?;
         for resource in RESOURCES {
             if resource.storage() {
-                self.set(resource, values[resource as usize]);
+                self.set(resource, values.copy(resource));
             }
         }
         Ok(())
@@ -640,7 +649,7 @@ impl ParseControl {
         self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
         for resource in RESOURCES {
             if resource.storage() {
-                self.set(resource, values[resource as usize]);
+                self.set(resource, values.copy(resource));
             }
         }
         self.set(HtmlParseResource::ManagedCapacityBytes, total);
@@ -871,13 +880,16 @@ impl ParseControl {
             .ok_or(ParseStop::InternalInvariant(Invariant::CapacityMismatch))?;
         let ceiling = (isize::MAX as u64)
             .min(
-                self.limits[HtmlParseResource::ManagedCapacityBytes as usize]
+                self.limits
+                    .copy(HtmlParseResource::ManagedCapacityBytes)
                     .saturating_sub(without_old),
             )
             .min(
-                self.limits[HtmlParseResource::PeakTransientBytes as usize].saturating_sub(current),
+                self.limits
+                    .copy(HtmlParseResource::PeakTransientBytes)
+                    .saturating_sub(current),
             )
-            .min(self.limits[HtmlParseResource::AtomicLayoutBytes as usize]);
+            .min(self.limits.copy(HtmlParseResource::AtomicLayoutBytes));
         // A required layout that cannot fit is submitted to the existing
         // reserve gate, preserving its concrete limit precedence and stop.
         if exact.new_bytes > ceiling {
@@ -1988,11 +2000,15 @@ impl<T> OwnedVec<T> {
                         .current
                         .checked_sub(plan.old_bytes)
                         .expect("the geometric plan proved the existing allocation");
-                    let ceiling = control.limits[HtmlParseResource::ManagedCapacityBytes as usize]
+                    let ceiling = control
+                        .limits
+                        .copy(HtmlParseResource::ManagedCapacityBytes)
                         .saturating_sub(without_old)
                         .saturating_sub(required.new_bytes - required.old_bytes)
                         .min(
-                            control.limits[HtmlParseResource::PeakTransientBytes as usize]
+                            control
+                                .limits
+                                .copy(HtmlParseResource::PeakTransientBytes)
                                 .saturating_sub(without_old)
                                 .saturating_sub(required.new_bytes),
                         );
@@ -2994,7 +3010,7 @@ mod tests {
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current;
             if let Some(additional) = additional {
-                c.limits[HtmlParseResource::AuxiliaryEntries as usize] = slots + additional;
+                *c.limits.get_mut(HtmlParseResource::AuxiliaryEntries) = slots + additional;
             }
             let result = session.allocate_input_for_creation(
                 &mut c,
@@ -3272,7 +3288,7 @@ mod tests {
             .finish()
             .unwrap();
         assert_eq!(
-            limits.values(),
+            limits.values().into_array(),
             [
                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
             ]
@@ -3427,6 +3443,35 @@ mod tests {
             ParseStop::Cancelled
         );
         assert_eq!(cancelled.stop(), Some(ParseStop::Cancelled));
+    }
+    #[test]
+    fn resource_and_work_tables_hold_each_key_at_its_discriminant() {
+        let mut resources = ResourceTable::filled(u64::MAX);
+        for resource in RESOURCES {
+            *resources.get_mut(resource) = resource as u64;
+        }
+        assert_eq!(
+            resources.into_array(),
+            std::array::from_fn::<u64, { crate::settings::RESOURCE_COUNT }, _>(|index| index as u64)
+        );
+        let categories = [
+            WorkCategory::InputUnitRead,
+            WorkCategory::InspectByte,
+            WorkCategory::CopyByte,
+            WorkCategory::StateStep,
+            WorkCategory::RecordVisit,
+            WorkCategory::RecordWrite,
+            WorkCategory::ReserveByte,
+            WorkCategory::ProviderCall,
+        ];
+        let mut work = WorkTable::filled(u64::MAX);
+        for category in categories {
+            *work.get_mut(category) = category as u64;
+        }
+        assert_eq!(
+            work.into_array(),
+            std::array::from_fn::<u64, WORK_COUNT, _>(|index| index as u64)
+        );
     }
     #[test]
     fn cap_failure_precedes_later_cancel() {
@@ -3946,7 +3991,7 @@ mod tests {
     fn every_storage_cap_rejects_its_own_growth() {
         for resource in RESOURCES.into_iter().filter(|resource| resource.storage()) {
             let mut control = control();
-            control.limits[resource as usize] = 0;
+            *control.limits.get_mut(resource) = 0;
             assert_eq!(
                 control.acquire(resource, 1),
                 Err(ParseStop::LimitExceeded {
@@ -4054,7 +4099,7 @@ mod tests {
             .usage()
             .resource(HtmlParseResource::WorkCredits)
             .current;
-        control.limits[HtmlParseResource::WorkCredits as usize] = previous + 4;
+        *control.limits.get_mut(HtmlParseResource::WorkCredits) = previous + 4;
         let stop = buffer.clear(&mut control).unwrap_err();
         assert_eq!(buffer.as_slice(), &[1, 2]);
         assert_eq!(

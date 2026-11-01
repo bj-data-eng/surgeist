@@ -420,11 +420,14 @@ impl ParseEvidence {
                     )?;
                     let operands = match computation {
                         InputValueComputation::Range(range) => {
-                            range.operands.map(RangeOperand::edge)
+                            range.operands.map(RangeOperand::edge).into_array()
                         }
-                        InputValueComputation::Color(color) => {
-                            [color.operands[0], color.operands[1], None, None]
-                        }
+                        InputValueComputation::Color(color) => [
+                            color.operands.copy(ColorOperandRole::Alpha),
+                            color.operands.copy(ColorOperandRole::Colorspace),
+                            None,
+                            None,
+                        ],
                     };
                     for edge in operands {
                         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -679,7 +682,7 @@ impl ParseEvidence {
                         RangeOperandRole::ValueContent,
                     ] {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        if let Some(edge) = range.operands[role.index()].edge() {
+                        if let Some(edge) = range.operands.get(role).edge() {
                             self.push_spatial_group(
                                 c,
                                 &mut pending,
@@ -695,7 +698,7 @@ impl ParseEvidence {
                     payload_write::<ColorComputation>(c, 1)?;
                     for role in [ColorOperandRole::Alpha, ColorOperandRole::Colorspace] {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        if let Some(edge) = color.operands[role.index()] {
+                        if let Some(edge) = color.operands.copy(role) {
                             self.push_spatial_group(
                                 c,
                                 &mut pending,

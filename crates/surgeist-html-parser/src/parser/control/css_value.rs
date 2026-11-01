@@ -58,7 +58,9 @@ impl CssSchemeValue {
 impl ParseControl {
     fn remaining_css(&mut self, resource: HtmlParseResource) -> Result<usize, ParseStop> {
         self.checkpoint()?;
-        let remaining = self.limits[resource as usize]
+        let remaining = self
+            .limits
+            .copy(resource)
             .checked_sub(self.usage.resource(resource).current)
             .ok_or_else(|| self.fail_invariant(Invariant::ReleaseUnderflow))?;
         Ok(usize::try_from(remaining).unwrap_or(usize::MAX))
@@ -73,7 +75,7 @@ impl ParseControl {
         let work = self.remaining_css(HtmlParseResource::WorkCredits)?;
         let entries = self.remaining_css(HtmlParseResource::AuxiliaryEntries)?;
         // AtomicLayoutBytes observes a maximum, rather than a consumed extent.
-        let scratch = usize::try_from(self.limits[HtmlParseResource::AtomicLayoutBytes as usize])
+        let scratch = usize::try_from(self.limits.copy(HtmlParseResource::AtomicLayoutBytes))
             .unwrap_or(usize::MAX);
         let syntax = CssComponentValueLimits::try_new(
             u32::try_from(entries.min(256)).expect("bounded CSS depth"),

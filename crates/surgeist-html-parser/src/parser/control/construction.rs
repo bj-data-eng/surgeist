@@ -38,14 +38,16 @@ impl ParseControl {
         }
         self.require_identity(owner)?;
         let mut values = self.plan_storage(requests)?;
-        let Some(edges) = values[HtmlParseResource::ManagedEdges as usize].checked_sub(edge_remove)
+        let Some(edges) = values
+            .copy(HtmlParseResource::ManagedEdges)
+            .checked_sub(edge_remove)
         else {
             return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
         };
-        values[HtmlParseResource::ManagedEdges as usize] = edges;
+        *values.get_mut(HtmlParseResource::ManagedEdges) = edges;
         for resource in RESOURCES {
             if resource.storage() {
-                self.set(resource, values[resource as usize]);
+                self.set(resource, values.copy(resource));
             }
         }
         Ok(())

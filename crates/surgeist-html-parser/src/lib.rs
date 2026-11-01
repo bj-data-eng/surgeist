@@ -6,6 +6,7 @@ use surgeist_html::bounded;
 use surgeist_html::*;
 use surgeist_html_semantics::*;
 mod construction;
+mod keyed;
 mod meta_csp;
 mod parser;
 pub use meta_csp::{HtmlParseCspFailure, HtmlParseCspFailureKind};

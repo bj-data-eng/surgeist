@@ -6,7 +6,7 @@ use crate::bounded::{
 impl ParseControl {
     #[cfg(test)]
     pub(crate) fn test_limit(&mut self, resource: HtmlParseResource, limit: u64) {
-        self.limits[resource as usize] = limit;
+        *self.limits.get_mut(resource) = limit;
     }
     #[cfg(test)]
     pub(crate) fn observe_construction_attribute_append(&mut self) {

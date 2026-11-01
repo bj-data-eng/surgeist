@@ -1,6 +1,7 @@
 //! Native field facts owned by the source evidence issuer, not another tree.
 
 use super::*;
+use crate::keyed::{Table, slots};
 #[path = "lexical.rs"]
 mod lexical;
 #[path = "reverse.rs"]
@@ -64,14 +65,18 @@ pub enum RangeOperandRole {
     Step,
     ValueContent,
 }
+slots!(RangeOperandRole, RANGE_OPERAND_COUNT, {
+    Minimum => 0,
+    Maximum => 1,
+    Step => 2,
+    ValueContent => 3,
+});
+const RANGE_OPERAND_COUNT: usize = 4;
+/// One value per [`RangeOperandRole`]; a lookup cannot be out of range.
+pub(crate) type RangeOperandTable<T> = Table<RangeOperandRole, T, RANGE_OPERAND_COUNT>;
 impl RangeOperandRole {
     pub(crate) fn index(self) -> usize {
-        match self {
-            Self::Minimum => 0,
-            Self::Maximum => 1,
-            Self::Step => 2,
-            Self::ValueContent => 3,
-        }
+        self as usize
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -123,7 +128,7 @@ impl RangeOperand {
 pub(crate) struct RangeComputation {
     pub(crate) branch: RangeBranch,
     pub(crate) original: RangeOriginal,
-    pub(crate) operands: [RangeOperand; 4],
+    pub(crate) operands: RangeOperandTable<RangeOperand>,
     pub(crate) minimum: Option<crate::HtmlInputNumericBoundOrigin>,
     pub(crate) maximum: Option<crate::HtmlInputNumericBoundOrigin>,
     pub(crate) step: Option<crate::HtmlInputNumericStepOrigin>,
@@ -136,10 +141,10 @@ impl RangeComputation {
                 RangeOriginal::FreshEmpty => None,
                 RangeOriginal::Group(edge) => Some(edge),
             },
-            self.operands[0].edge(),
-            self.operands[1].edge(),
-            self.operands[2].edge(),
-            self.operands[3].edge(),
+            self.operands.get(RangeOperandRole::Minimum).edge(),
+            self.operands.get(RangeOperandRole::Maximum).edge(),
+            self.operands.get(RangeOperandRole::Step).edge(),
+            self.operands.get(RangeOperandRole::ValueContent).edge(),
         ]
     }
 }
@@ -157,19 +162,23 @@ pub enum ColorOperandRole {
     Alpha,
     Colorspace,
 }
+slots!(ColorOperandRole, COLOR_OPERAND_COUNT, {
+    Alpha => 0,
+    Colorspace => 1,
+});
+const COLOR_OPERAND_COUNT: usize = 2;
+/// One value per [`ColorOperandRole`]; a lookup cannot be out of range.
+pub(crate) type ColorOperandTable<T> = Table<ColorOperandRole, T, COLOR_OPERAND_COUNT>;
 impl ColorOperandRole {
     pub(crate) fn index(self) -> usize {
-        match self {
-            Self::Alpha => 0,
-            Self::Colorspace => 1,
-        }
+        self as usize
     }
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ColorComputation {
     pub(crate) source: ColorValueSource,
     pub(crate) original: Option<RangeEdge>,
-    pub(crate) operands: [Option<RangeEdge>; 2],
+    pub(crate) operands: ColorOperandTable<Option<RangeEdge>>,
     pub(crate) space: crate::HtmlInputColorSpace,
     pub(crate) standard_failure: Option<surgeist_css::color::CssColorStandardFailure>,
     pub(crate) environment: surgeist_css::color::CssColorFactIdentity,
@@ -196,8 +205,8 @@ impl InputValueComputation {
             Self::Range(value) => value.edges(),
             Self::Color(value) => [
                 value.original,
-                value.operands[0],
-                value.operands[1],
+                value.operands.copy(ColorOperandRole::Alpha),
+                value.operands.copy(ColorOperandRole::Colorspace),
                 None,
                 None,
             ],
@@ -1961,10 +1970,16 @@ pub(super) fn validate_range_computation(
     {
         return Err(SessionError::WrongToken);
     }
-    if matches!(value.operands[0], RangeOperand::Any(_))
-        || matches!(value.operands[1], RangeOperand::Any(_))
-        || matches!(value.operands[3], RangeOperand::Any(_))
-    {
+    if matches!(
+        value.operands.get(RangeOperandRole::Minimum),
+        RangeOperand::Any(_)
+    ) || matches!(
+        value.operands.get(RangeOperandRole::Maximum),
+        RangeOperand::Any(_)
+    ) || matches!(
+        value.operands.get(RangeOperandRole::ValueContent),
+        RangeOperand::Any(_)
+    ) {
         return Err(SessionError::WrongToken);
     }
     for edge in value.edges() {
@@ -2003,7 +2018,11 @@ pub(super) fn validate_input_computation(
             {
                 return Err(SessionError::WrongToken);
             }
-            for edge in [color.original, color.operands[0], color.operands[1]] {
+            for edge in [
+                color.original,
+                color.operands.copy(ColorOperandRole::Alpha),
+                color.operands.copy(ColorOperandRole::Colorspace),
+            ] {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if let Some(edge) = edge {
                     c.charge(

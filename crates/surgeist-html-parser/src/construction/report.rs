@@ -519,7 +519,7 @@ impl<'a> PreparedReportStorage<'a> {
                     let mut earliest = None;
                     for domain in meta::MetaDomain::ALL {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        if let Some(gap) = meta.gaps[domain.index()] {
+                        if let Some(gap) = meta.gaps.copy(domain) {
                             let Some(RetainedPayload::MetaMissing {
                                 document: owner,
                                 kind,
@@ -1016,7 +1016,9 @@ pub struct MetadataDocumentMeta<'a> {
 impl<'a> MetadataDocumentMeta<'a> {
     /// Exact original construction policy; absent means no protocol qualification.
     pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
-        self.meta.gaps[meta::MetaDomain::Csp.index()]
+        self.meta
+            .gaps
+            .get(meta::MetaDomain::Csp)
             .is_none()
             .then_some(())?;
         let slot = self.meta.csp?;
@@ -1056,7 +1058,7 @@ impl<'a> MetadataDocumentMeta<'a> {
     }
     /// Last completed original-controller selection, or its reached missing dependency.
     pub fn theme_color(&self) -> Result<Option<surgeist_color::Color>, MetadataMetaMissing<'a>> {
-        match self.meta.gaps[meta::MetaDomain::ThemeColor.index()] {
+        match self.meta.gaps.copy(meta::MetaDomain::ThemeColor) {
             Some(slot) => Err(self.missing(slot)),
             None => Ok(self.meta.theme),
         }
@@ -1082,21 +1084,21 @@ impl<'a> MetadataDocumentMeta<'a> {
         }
     }
     pub fn refresh(&self) -> MetadataMetaRefresh<'a> {
-        match self.meta.gaps[meta::MetaDomain::Refresh.index()] {
+        match self.meta.gaps.copy(meta::MetaDomain::Refresh) {
             Some(slot) => MetadataMetaRefresh::Unavailable(self.missing(slot)),
             None => MetadataMetaRefresh::Known(self.meta.refresh),
         }
     }
     pub fn disposition(&self, domain: meta::MetaDomain) -> MetadataMetaDisposition<'a> {
-        match self.meta.gaps[domain.index()] {
+        match self.meta.gaps.copy(domain) {
             Some(slot) => MetadataMetaDisposition::Unavailable(self.missing(slot)),
             None => MetadataMetaDisposition::Complete,
         }
     }
     pub fn first_missing(&self) -> Option<MetadataMetaMissing<'a>> {
-        self.meta.first.map(|domain| {
-            self.missing(self.meta.gaps[domain.index()].expect("qualified first gap"))
-        })
+        self.meta
+            .first
+            .map(|domain| self.missing(self.meta.gaps.copy(domain).expect("qualified first gap")))
     }
 }
 pub struct MetadataBase<'a> {
