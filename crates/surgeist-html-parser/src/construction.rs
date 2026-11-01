@@ -27515,6 +27515,42 @@ mod tests {
     }
 
     #[test]
+    fn inserting_text_before_a_sibling_charges_the_same_work_at_every_fanout() {
+        // Text inserted before the last child finds its preceding sibling
+        // without walking the children in front of it.
+        let measure = |fanout: usize| {
+            let source = crate::HtmlSource::utf8(format!("<output>{}", "x".repeat(8)));
+            let (mut c, mut session, output, mut lexer) = output_owner(&source, roomy_limits());
+            let mut last = None;
+            for _ in 0..fanout {
+                let span = session.allocate_element(&mut c, html("span")).unwrap();
+                session.insert(&mut c, &output, &span, None, None).unwrap();
+                last = Some(span);
+            }
+            let last = last.unwrap();
+            let mut text = next_text(&mut lexer, &mut c);
+            let before = ORDER_MEASURED.map(|category| c.usage().work(category));
+            session
+                .insert_text(&mut c, &output, Some(&last), &mut text, None)
+                .unwrap();
+            let after = ORDER_MEASURED.map(|category| c.usage().work(category));
+            let owner = &session.active().unwrap().construction;
+            let children = owner.node_at(output.index).unwrap().child_count();
+            assert_eq!(children, fanout + 1);
+            session.release(&mut c).unwrap();
+            std::array::from_fn::<u64, 6, _>(|i| after[i] - before[i])
+        };
+        let narrow = measure(5);
+        for fanout in [37, 300] {
+            assert_eq!(
+                measure(fanout),
+                narrow,
+                "text before the last of {fanout} children charged different work than of 5"
+            );
+        }
+    }
+
+    #[test]
     fn child_order_changes_leave_the_order_the_dom_steps_define() {
         let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
