@@ -719,3 +719,28 @@ mod completion_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod owner_loss_tests {
+    use super::*;
+
+    #[test]
+    fn taking_before_head_without_the_whitespace_owner_keeps_every_owner() {
+        let source = HtmlSource::utf8("");
+        let mut c = ParseControl::new(
+            super::super::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        c.admit_source(&source).unwrap();
+        let mut prologue = DocumentPrologue::new(&source, &mut c).unwrap();
+        prologue.mode = PrologueMode::BeforeHead;
+        // Private-state fault injection: the whitespace owner is gone before the
+        // hand-off, released through its own vector.
+        prologue.whitespace.take().unwrap().release(&mut c).unwrap();
+        let error = prologue.take_before_head(&mut c).err().unwrap();
+        assert!(matches!(error, PrologueError::Consumed), "{error:?}");
+        assert!(prologue.kernel.is_some(), "the refusal took the kernel");
+        prologue.release(&mut c).unwrap();
+        super::super::tests::assert_released(&c);
+    }
+}

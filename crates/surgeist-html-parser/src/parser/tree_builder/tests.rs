@@ -1048,6 +1048,31 @@ fn a_failed_stack_release_takes_the_templates_and_clears_the_root_target() {
 }
 
 #[test]
+fn a_frozen_stack_release_without_the_open_elements_reports_consumed_and_takes_the_rest() {
+    let source = HtmlSource::utf8("<html><template>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    assert_eq!(kernel.template_indices(), [1]);
+    // Private-state fault injection: the open-element storage is already gone,
+    // released through its own owner, while the listings are still retained.
+    kernel.open.take().unwrap().release(&mut c).unwrap();
+    assert!(matches!(
+        kernel.release_frozen_stack(&mut c),
+        Err(KernelError::Consumed)
+    ));
+    assert!(kernel.templates.is_none());
+    assert!(kernel.root_target.is_none());
+    tokenizer.release(&mut c).unwrap();
+    kernel.session.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
 fn empty_wrong_kind_duplicate_and_foreign_handles_preserve_stack() {
     let source = HtmlSource::utf8("<html><body>");
     let mut c = control(100);
@@ -19809,4 +19834,23 @@ mod complete_hostile_scan {
             }
         }
     }
+}
+
+#[test]
+fn the_fresh_head_transition_without_retained_lexical_evidence_reports_consumed() {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<html>"), limits(100));
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    // Private-state fault injection: the driver's lexical evidence owner is gone
+    // before the one step that hands the owners to the head stage.
+    driver
+        .lexical
+        .take()
+        .unwrap()
+        .release(&mut driver.control)
+        .unwrap();
+    let error = driver.step().err().unwrap();
+    assert!(matches!(error, StandaloneError::Consumed), "{error:?}");
+    assert!(driver.control.stop().is_none());
+    driver.release().unwrap();
+    assert_released(&driver.control);
 }
