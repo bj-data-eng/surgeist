@@ -131,7 +131,7 @@ fn aborted_constructor_does_not_change_existing_owner_and_retirement_still_compl
             mode: HtmlDocumentMode::NoQuirks,
         },
     );
-    let (owner, _, _, _) = abandoned.abort().into_parts();
+    let (owner, _, _) = abandoned.abort().into_parts();
     assert_eq!(owner.usage(), before);
     assert_eq!(
         owner

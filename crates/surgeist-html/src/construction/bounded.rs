@@ -18,7 +18,6 @@ pub enum HtmlConstructionAllocationRole {
     Identity,
     Records,
     Children,
-    PendingChildOrder { slot: usize, parent_position: usize },
     AttributePlan,
     ArenaWrapper,
 }
@@ -28,7 +27,6 @@ enum AllocationRole {
     Identity,
     Records,
     Children(usize),
-    PendingChildOrder { slot: usize, parent: usize },
     AttributePlan(usize),
     ArenaWrapper,
 }
@@ -76,21 +74,8 @@ impl HtmlConstructionAllocationSnapshot {
             AllocationRole::Identity => HtmlConstructionAllocationRole::Identity,
             AllocationRole::Records => HtmlConstructionAllocationRole::Records,
             AllocationRole::Children(_) => HtmlConstructionAllocationRole::Children,
-            AllocationRole::PendingChildOrder { slot, parent } => {
-                HtmlConstructionAllocationRole::PendingChildOrder {
-                    slot,
-                    parent_position: parent,
-                }
-            }
             AllocationRole::AttributePlan(_) => HtmlConstructionAllocationRole::AttributePlan,
             AllocationRole::ArenaWrapper => HtmlConstructionAllocationRole::ArenaWrapper,
-        }
-    }
-    /// Actual bounded pending-order bank slot; it grants no release authority.
-    pub fn pending_child_order_slot(&self) -> Option<usize> {
-        match self.id.role {
-            AllocationRole::PendingChildOrder { slot, .. } => Some(slot),
-            _ => None,
         }
     }
     /// The Children bank's owner-local dense record ordinal, including a
@@ -436,15 +421,16 @@ impl HtmlConstructionStorage {
         HtmlConstructionRetirement::new(self)
     }
     pub(super) fn native_depth(&self, position: usize) -> usize {
-        assert!(
-            self.arena.depths_valid,
-            "native operations preserve their depth cache"
-        );
         self.arena.records[position].depth
     }
     // Native append composes creation and insertion before its fresh handle escapes.
     // Only an uncommitted insertion may reach this rollback; previous topology is intact.
     pub(super) fn rollback_native_append(&mut self, len: usize, usage: HtmlConstructionUsage) {
+        for index in (len..self.arena.records.len()).rev() {
+            if let Some(depth) = self.arena.records.get(index).map(|record| record.depth) {
+                self.arena.unpopulate(depth);
+            }
+        }
         self.arena.records.truncate(len);
         self.arena.usage = usage;
     }
@@ -576,7 +562,6 @@ impl HtmlConstructionReadyInitialization {
                 usage: HtmlConstructionUsage::default(),
                 records_generation: 0,
                 wrapper_generation: 0,
-                depths_valid: true,
                 temporary_generation: 0,
             },
         }

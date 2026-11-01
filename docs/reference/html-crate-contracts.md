@@ -501,26 +501,41 @@ command operands, never mutable arena fields.
 
 Insert validates storage-qualified handles, parent kind, movable node and
 reference-child membership before its structural shortcut. An already-last
-append or insertion immediately before the current successor retains the real
-shared child-order preparation, resource admission and bank replacement.
-Depth and edge preflight still precede scratch providers. Native and controlled
-callers use that same operation; parser form/nonce hooks remain parser-owned.
+append or insertion immediately before the current successor is ordinary
+insertion: it edits the parent's actual child order like any other placement,
+so unchanged logical order does not skip depth and edge preflight or the
+commit's described writes. Native and controlled callers use that same
+operation; parser form/nonce hooks remain parser-owned.
 This follows the [unchanged-order determination in #1174](https://github.com/bj-data-eng/surgeist/issues/1174).
 It does not change Detach or other explicitly specified no-op cases.
 
-A detached node inserted with `before: None` is a plain append. Placing it
-needs no walk over the parent's existing children, and it prepares no pending
-child-order bank: the atomic commit pushes one index onto the parent's actual
-`Children` bank and sets the node's parent. If that bank has no spare capacity,
-a `PrepareAllocationReport` and a `Reserve` action on it (`growth: Geometric`)
-follow depth and edge preflight, where the scratch providers used to; otherwise
-neither is described. Nothing is pushed before the commit, so a refused or
-interrupted reserve leaves the order and every logical fact unchanged, and the
-grown bank, with a fresh allocation incarnation, is retained on abort like the
-record bank. Appending therefore describes work independent of the parent's
-child count, apart from that amortized reserve. Insertion before a sibling,
-insertion of an attached node (a move) and Detach still prepare scratch child
-orders and describe work proportional to the affected parents' child counts.
+Insert, move and Detach edit the parents' actual `Children` banks in place at
+the atomic commit, and nothing is written to a child order before it. A refused
+or aborted operation therefore leaves every order, parent link and logical fact
+unchanged, and no pending child-order bank exists. Planning finds each place by
+walking the order backward from its end, one entry per `Inspect` action: the
+moving node's place in its old parent, then the reference sibling's place in the
+new parent (`before: None` needs no walk). A walk costs the entries from the end
+of the order back to its target, and the commit shifts the entries behind the
+target: all of them for an insertion, all but the removed entry for a removal.
+Its `Commit` description counts the parent link, the removed and inserted
+entries and every shifted entry as `record_writes` of one word each in
+`copied_bytes`, besides the depth work.
+A change among any number of unrelated leading siblings therefore describes the
+same work as one among none, and appending, which shifts nothing, describes work
+independent of the parent's child count.
+
+Only a push into a full order allocates. When the new parent's `Children` bank
+has no spare capacity, a `PrepareAllocationReport` and a `Reserve` action on it
+(`growth: Geometric`) follow depth and edge preflight; otherwise neither is
+described. A move within one parent needs no growth, because the node leaves the
+order before it returns, and Detach never grows an order. A refused or
+interrupted reserve leaves the order unchanged, and the grown bank, with a fresh
+allocation incarnation, is retained on abort like the record bank. The `Commit`
+action refuses with `ParentChildConflict` any edit whose planned place no longer
+holds the entry planning found, and with `CapacityMismatch` a push that would
+reallocate or name a missing node or parent; the ready commit then applies
+nothing, so a parent link and its list cannot diverge.
 
 Publish checks that every ordinary child appears exactly once in its parent's
 child list with work linear in the records and child entries, not in each
@@ -676,9 +691,7 @@ retain their existing implementation. This is a specialized adaptation of
 
 HTML issues `HtmlConstructionAllocationId` with private fields identifying one
 storage identity, role and generation. Roles are `Identity`, `Records`,
-`Children`, `PendingChildOrder`, `ArenaWrapper` and `AttributePlan`.
-`PendingChildOrder` reports only its scratch slot and parent position; these
-ordinals cannot issue handles or retirement authority. The last role identifies
+`Children`, `ArenaWrapper` and `AttributePlan`. The last role identifies
 the complete attribute group's actual decision/name-plan allocation. Equality is identity
 equality; IDs have no public numeric or
 pointer conversion, constructor or arithmetic. Reallocation advances the
@@ -697,13 +710,13 @@ can allocate its child bank before committing a record; aborting it leaves that
 record position available for a later creation. Issuing a handle from the bank's
 position would let it escape before commit and then identify the later node.
 `Children` therefore classifies only the allocation role. Its read-only
-`child_position()` is an owner-local accounting join, like pending-order slot
-metadata; it cannot mint an identity or authorize a mutation or retirement.
+`child_position()` is an owner-local accounting join; it cannot mint an
+identity or authorize a mutation or retirement.
 Checked committed-node views remain the authority for issuing node handles.
 Each newly created bank also receives a fresh checked allocation incarnation,
 including when it reuses a position left by an aborted operation. A retained
 report from the retired bank cannot identify the replacement or authorize its
-retirement. Reallocation and actual bank replacement preserve this distinction.
+retirement. Reallocation preserves this distinction.
 `HtmlConstructionAllocationId::same_owner_role` compares the issuing storage and
 bank role while deliberately ignoring generation. It supports observing a
 provider's updated report only after the old exact ID has been qualified against

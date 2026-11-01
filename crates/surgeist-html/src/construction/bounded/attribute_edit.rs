@@ -1371,20 +1371,13 @@ mod tests {
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
-        let HtmlConstructionCommit::Changed {
-            storage,
-            created,
-            mut retired_orders,
-            ..
-        } = HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        let HtmlConstructionCommit::Changed { storage, created } =
+            HtmlConstructionOperation::try_ready(&mut operation)
+                .unwrap()
+                .commit()
         else {
             panic!("create")
         };
-        while let Some(action) = retired_orders.next_action() {
-            action.perform();
-        }
         (storage, created.unwrap())
     }
     fn make_edit(

@@ -177,3 +177,73 @@ fn work_added_by_each_doubling_of_one_parents_children_is_near_double_the_previo
         ],
     );
 }
+
+#[test]
+fn work_added_by_each_doubling_of_repeated_adoption_agency_misnesting_is_near_double() {
+    // Each `</b>` finds a formatting element with a furthest block, so the
+    // adoption agency algorithm moves a subtree. Once any subtree has moved,
+    // a later insertion must not recompute every record's depth.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| format!("<!doctype html>{}", "<b><p><i>x</b>".repeat(repeats)),
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_sibling_formatting_elements_is_near_double() {
+    // The control for the misnesting document: well-nested formatting elements
+    // never move a subtree.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| format!("<!doctype html>{}", "<b>x</b>".repeat(repeats)),
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_repeated_foster_parented_text_is_near_double() {
+    // Each text inside a table is foster parented: it is inserted before the
+    // table, which sits last under the growing body, so inserting before a
+    // sibling must cost what shifting the entries behind it costs, never the
+    // body's whole child order.
+    assert_doublings_add_near_double(
+        [200, 400, 800, 1600],
+        |repeats| {
+            format!(
+                "<!doctype html><body>{}",
+                "<table>x</table>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+            ("reservation work", |work| work.reserved),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_repeated_tables_with_cells_is_near_double() {
+    // The control for foster parenting: nothing is inserted before a sibling.
+    assert_doublings_add_near_double(
+        [200, 400, 800, 1600],
+        |repeats| {
+            format!(
+                "<!doctype html><body>{}",
+                "<table><tr><td>x</td></tr></table>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+            ("reservation work", |work| work.reserved),
+        ],
+    );
+}
