@@ -1053,49 +1053,23 @@ impl ParseControl {
         self.set(HtmlParseResource::PeakTransientBytes, capacity);
         self.usage.actual_capacity_bytes = capacity;
     }
-    /// Builds an actual fixed shared payload, then polls before returning it.
+    /// Builds an actual fixed shared payload after admission and a final poll.
     /// Nested vectors keep their own tickets. Arc headers/allocator metadata and
     /// infallible Arc setup are opaque provider limits; zero-sized identity is
-    /// valid and still charges the provider call. Failure returns owned payload.
+    /// valid and still charges the provider call. The last poll precedes the
+    /// only `Arc`, so every failure returns the owned payload and no `Arc`
+    /// exists to be aliased.
     pub(crate) fn share_owned<T>(
         &mut self,
         payload: T,
     ) -> Result<(Arc<T>, SharedAllocation<T>), (ParseStop, T)> {
-        let admission = (|| {
-            self.checkpoint()?;
-            let Ok(bytes) = u64::try_from(size_of::<T>()) else {
-                return self.representation(HtmlParseResource::AtomicLayoutBytes);
-            };
-            self.charge_many(&[
-                (WorkCategory::ReserveByte, bytes),
-                (WorkCategory::ProviderCall, 1),
-                (WorkCategory::CopyByte, bytes),
-                (WorkCategory::RecordWrite, 1),
-            ])?;
-            let Some(total) = self
-                .usage
-                .resource(HtmlParseResource::ManagedCapacityBytes)
-                .current
-                .checked_add(bytes)
-            else {
-                return self.representation(HtmlParseResource::ManagedCapacityBytes);
-            };
-            self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
-            self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
-            self.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-            self.set(HtmlParseResource::ManagedCapacityBytes, total);
-            self.set(HtmlParseResource::PeakTransientBytes, total);
-            self.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-            self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(bytes);
-            self.usage.actual_capacity_bytes = total;
-            self.usage.actual_capacity_high_water =
-                self.usage.actual_capacity_high_water.max(total);
-            Ok(bytes)
-        })();
-        let bytes = match admission {
+        let bytes = match self.admit_shared_layout::<T>() {
             Ok(bytes) => bytes,
             Err(stop) => return Err((stop, payload)),
         };
+        if let Err(stop) = self.confirm_shared_admission(bytes) {
+            return Err((stop, payload));
+        }
         let shared = Arc::new(payload);
         let allocation = SharedAllocation {
             owner: self.identity.clone(),
@@ -1104,31 +1078,50 @@ impl ParseControl {
             element: PhantomData,
             finalized: false,
         };
-        self.finish_shared(shared, allocation)
+        Ok((shared, allocation))
     }
-    fn finish_shared<T>(
-        &mut self,
-        shared: Arc<T>,
-        allocation: SharedAllocation<T>,
-    ) -> Result<(Arc<T>, SharedAllocation<T>), (ParseStop, T)> {
+    /// Charges and records the layout of one shared `T`; returns its bytes.
+    fn admit_shared_layout<T>(&mut self) -> Result<u64, ParseStop> {
+        self.checkpoint()?;
+        let Ok(bytes) = u64::try_from(size_of::<T>()) else {
+            return self.representation(HtmlParseResource::AtomicLayoutBytes);
+        };
+        self.charge_many(&[
+            (WorkCategory::ReserveByte, bytes),
+            (WorkCategory::ProviderCall, 1),
+            (WorkCategory::CopyByte, bytes),
+            (WorkCategory::RecordWrite, 1),
+        ])?;
+        let Some(total) = self
+            .usage
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current
+            .checked_add(bytes)
+        else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
+        self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
+        self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
+        self.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
+        self.set(HtmlParseResource::ManagedCapacityBytes, total);
+        self.set(HtmlParseResource::PeakTransientBytes, total);
+        self.set(HtmlParseResource::AtomicLayoutBytes, bytes);
+        self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(bytes);
+        self.usage.actual_capacity_bytes = total;
+        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
+        Ok(bytes)
+    }
+    /// Polls once more after [`Self::admit_shared_layout`]; a stop refunds the
+    /// capacity just charged. Admission proved that capacity and no other
+    /// storage mutation precedes this refund. Were it refused anyway, the first
+    /// stop is already latched, so the skipped credit is what that stop reports.
+    fn confirm_shared_admission(&mut self, bytes: u64) -> Result<(), ParseStop> {
         match self.checkpoint() {
-            Ok(()) => Ok((shared, allocation)),
-            Err(stop) => match Arc::try_unwrap(shared) {
-                Ok(payload) => {
-                    // Admission proved the capacity just charged; no other
-                    // storage mutation precedes this refund. Were it refused
-                    // anyway, the first stop is already latched and the payload
-                    // is still returned, so the skipped credit is what that
-                    // stop reports.
-                    let _ = self.cleanup_capacity(allocation.bytes);
-                    Err((stop, payload))
-                }
-                // `share_owned` passes the only Arc it made, so this is out of
-                // reach. An aliased Arc has no payload to return, so the caller
-                // keeps the Arc and its ticket, with the admission intact; the
-                // stop is latched and the next checkpoint reports it.
-                Err(shared) => Ok((shared, allocation)),
-            },
+            Ok(()) => Ok(()),
+            Err(stop) => {
+                let _ = self.cleanup_capacity(bytes);
+                Err(stop)
+            }
         }
     }
     /// Recovers the unique payload and releases only its known shared layout.
@@ -5051,15 +5044,17 @@ mod tests {
         );
     }
     #[test]
-    fn shared_post_construction_checkpoint_recovers_actual_owned_payload() {
+    fn a_stop_after_shared_admission_refunds_the_charge_before_any_arc_exists() {
         let mut control = control();
-        let (shared, ticket) = control.share_owned(77_u32).unwrap();
+        let bytes = control.admit_shared_layout::<u32>().unwrap();
         let work = control.usage().resource(HtmlParseResource::WorkCredits);
+        assert_eq!(control.usage().actual_capacity_bytes, bytes);
         control.cancellation.cancel();
         assert_eq!(
-            control.finish_shared(shared, ticket).unwrap_err(),
-            (ParseStop::Cancelled, 77)
+            control.confirm_shared_admission(bytes),
+            Err(ParseStop::Cancelled)
         );
+        assert_eq!(control.stop(), Some(ParseStop::Cancelled));
         assert_eq!(control.usage().actual_capacity_bytes, 0);
         assert_eq!(control.usage().actual_capacity_high_water, 4);
         assert_eq!(

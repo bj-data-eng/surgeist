@@ -352,30 +352,11 @@ fn a_shared_release_beyond_the_admitted_capacity_hands_back_the_arc_and_ticket()
 }
 
 #[test]
-fn a_new_shared_payload_whose_charge_vanished_is_still_returned_after_a_post_poll_stop() {
+fn a_shared_admission_whose_charge_vanished_still_reports_the_post_poll_stop() {
     let mut c = control();
-    let (shared, ticket) = c.share_owned(77_u32).unwrap();
+    let bytes = c.admit_shared_layout::<u32>().unwrap();
     c.set(HtmlParseResource::ManagedCapacityBytes, 0);
     c.cancellation.cancel();
-    assert_eq!(
-        c.finish_shared(shared, ticket).unwrap_err(),
-        (ParseStop::Cancelled, 77)
-    );
+    assert_eq!(c.confirm_shared_admission(bytes), Err(ParseStop::Cancelled));
     assert_eq!(c.stop(), Some(ParseStop::Cancelled));
-}
-
-#[test]
-fn an_aliased_new_shared_payload_is_kept_by_the_caller_after_a_post_poll_stop() {
-    let mut c = control();
-    let (shared, ticket) = c.share_owned(77_u32).unwrap();
-    let alias = shared.clone();
-    c.cancellation.cancel();
-    // The payload cannot be taken out of an aliased Arc, so the Arc and its
-    // ticket stay with the caller and the latched stop is reported next.
-    let (shared, ticket) = c.finish_shared(shared, ticket).unwrap();
-    assert_eq!(c.checkpoint(), Err(ParseStop::Cancelled));
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
-    drop(alias);
-    assert_eq!(c.release_shared(shared, ticket).unwrap(), 77);
-    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
 }
