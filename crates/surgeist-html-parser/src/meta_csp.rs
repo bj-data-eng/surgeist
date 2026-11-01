@@ -97,6 +97,28 @@ impl Storage {
             entries: self.entries.checked_sub(b.entries)?,
         })
     }
+    fn max(self, b: Self) -> Self {
+        Self {
+            bytes: self.bytes.max(b.bytes),
+            units: self.units.max(b.units),
+            entries: self.entries.max(b.entries),
+        }
+    }
+    fn saturating_sub(self, b: Self) -> Self {
+        Self {
+            bytes: self.bytes.saturating_sub(b.bytes),
+            units: self.units.saturating_sub(b.units),
+            entries: self.entries.saturating_sub(b.entries),
+        }
+    }
+    /// The extra storage to admit for a call and the part of it that overlaps
+    /// the retained result. Admission rises to the largest of the live,
+    /// peak and retained aggregates in every dimension, so the overlap is
+    /// that rise minus the retained aggregate and neither step can underflow.
+    fn overlap(live: Self, peak: Self, next: Self) -> (Self, Self) {
+        let admitted = live.max(peak).max(next);
+        (admitted.saturating_sub(live), admitted.saturating_sub(next))
+    }
     pub fn acquire(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         c.acquire_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
     }
@@ -149,23 +171,9 @@ impl Account {
                     .unwrap_err()
             })?;
         // Temporarily admit the declared overlap before the native action.
-        let extra = Storage {
-            bytes: peak
-                .bytes
-                .saturating_sub(self.live.bytes)
-                .max(next.bytes.saturating_sub(self.live.bytes)),
-            units: peak
-                .units
-                .saturating_sub(self.live.units)
-                .max(next.units.saturating_sub(self.live.units)),
-            entries: peak
-                .entries
-                .saturating_sub(self.live.entries)
-                .max(next.entries.saturating_sub(self.live.entries)),
-        };
+        let (extra, overlap) = Storage::overlap(self.live, peak, next);
         extra.acquire(c)?;
-        let admitted = self.live.add(extra).expect("checked admitted aggregate");
-        self.overlap = admitted.sub(next).expect("peak covers returned custody");
+        self.overlap = overlap;
         self.live = next;
         self.last = Storage::from(a.retained().storage());
         Ok(())
@@ -314,5 +322,38 @@ pub(crate) fn parse<P: HtmlMetaCspProcessor>(
                 storage: adapter.storage,
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn storage(bytes: usize, units: usize, entries: usize) -> Storage {
+        Storage {
+            bytes,
+            units,
+            entries,
+        }
+    }
+
+    #[test]
+    fn overlap_admits_the_largest_aggregate_per_dimension_and_keeps_the_excess_over_the_result() {
+        // Hand-computed per dimension: admitted = max(live, peak, next).
+        // bytes: 30, units: 9, entries: 2.
+        let (extra, overlap) =
+            Storage::overlap(storage(10, 5, 2), storage(30, 4, 2), storage(20, 9, 1));
+        assert_eq!(extra, storage(20, 4, 0));
+        assert_eq!(overlap, storage(10, 0, 1));
+        // A result larger than the peak is admitted and leaves no overlap.
+        let (extra, overlap) =
+            Storage::overlap(storage(1, 1, 1), storage(2, 2, 2), storage(7, 7, 7));
+        assert_eq!(extra, storage(6, 6, 6));
+        assert_eq!(overlap, Storage::ZERO);
+        // Nothing beyond the live aggregate is admitted when it already covers both.
+        let (extra, overlap) =
+            Storage::overlap(storage(9, 9, 9), storage(3, 3, 3), storage(4, 4, 4));
+        assert_eq!(extra, Storage::ZERO);
+        assert_eq!(overlap, storage(5, 5, 5));
     }
 }
