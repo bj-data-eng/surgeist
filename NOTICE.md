@@ -531,6 +531,7 @@ transitive binary-release inventory.
 | surgeist-template | [NOTICE.md](crates/surgeist-template/NOTICE.md) |
 | surgeist-test | [NOTICE.md](crates/surgeist-test/NOTICE.md) |
 | surgeist-text | [NOTICE.md](crates/surgeist-text/NOTICE.md) |
+| surgeist-typed-winsafe | [NOTICE.md](crates/surgeist-typed-winsafe/NOTICE.md) |
 | surgeist-window | [NOTICE.md](crates/surgeist-window/NOTICE.md) |
 
 ## HTML parser research references

@@ -271,8 +271,8 @@ total estimate without inventing a positive RGB media-feature bound; unknown
 color-space semantics retain the public fallback. This estimate does not certify
 renderer formats, HDR, or the complete media-device capability environment.
 
-On Windows, safe WinSafe APIs enumerate native monitors and match the selected
-winit monitor's device name exactly against `MONITORINFOEX.szDevice`.
+On Windows, the safe typed Windows bridge enumerates native monitors. It matches
+the selected winit monitor's device name exactly against `MONITORINFOEX.szDevice`.
 [`GetMonitorInfo`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmonitorinfow)
 supplies that monitor's screen and work rectangles in virtual-desktop units.
 An empty, missing or ambiguous device identity, an incomplete native read, or
@@ -353,12 +353,30 @@ are needed separately for complete CSSOM View page and offset coordinates.
 
 ## Native UI fonts
 
-`SystemFontEnvironment::capture` observes actual macOS UI fonts on the main
-thread through safe AppKit APIs. The result retains family and face names, native
-weight and traits, point size and vertical metrics. Unsupported platforms and
-wrong-thread calls have explicit errors. Consumers own CSS-pixel conversion,
-CSS shorthand resolution and selecting the matching text font resource; native
-metrics do not replace shaped-text metrics.
+`SystemFontEnvironment::capture` returns an owned observation of all six native
+UI font roles. Each `SystemFont` identifies which platform supplied its facts.
+The `AppKit` payload retains family and PostScript names, native weight and
+traits, point size and vertical metrics. Capturing AppKit fonts requires the
+application's main thread.
+
+The `Windows` payload retains the logical font preference from
+[`SystemParametersInfoForDpi`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfofordpi)
+at an explicit reference DPI of 96. Caption, small-caption, menu, status-bar and
+message-box roles come from the corresponding nonclient metric fonts; icon
+comes from the icon-title font. Its typeface name, signed logical height and
+width, native weight, orientation, escapement and selection bytes retain their
+[`LOGFONTW`](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-logfontw)
+meaning. A positive height requests cell height, a negative height requests
+character height, and zero retains the native default. Zero weight and empty
+typeface names also retain native selection defaults. No physical face is
+selected, and Windows preferences do not claim a PostScript name or font
+metrics. This provider requires Windows 10 version 1607 or newer.
+
+Unsupported platforms, native query failures and wrong-thread AppKit calls have
+explicit errors. Consumers own CSS-pixel conversion, CSS shorthand resolution
+and selecting the matching text font resource; native AppKit metrics do not
+replace shaped-text metrics. Capture neither subscribes to changes nor promises
+an atomic operating-system snapshot.
 
 The selected macOS role policy uses the system UI font for caption, icon and
 message-box roles; the menu font for menu; the small system size for small

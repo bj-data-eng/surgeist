@@ -33,8 +33,9 @@ compares its `Ready` preference snapshot with Windows Runtime animation,
 transparency and contrast-theme observations. It independently locates that
 process-owned native window, obtains its current monitor directly, and compares
 the captured screen, work area, client origin, DPI scale and fixed viewport
-variants with WinSafe observations. A complete Windows Runtime pointer-device
-sample independently checks the host's primary and union input capabilities;
+variants with observations from the safe typed Windows bridge. A complete
+Windows Runtime pointer-device sample independently checks the host's primary
+and union input capabilities;
 unavailable native input remains explicit. It works with multiple monitors without
 selecting a device by screen geometry or enumeration order. Keep settings and
 monitor configuration and input devices stable during the probe. It reads facts without changing
@@ -48,6 +49,27 @@ precision, HDR behavior, notification wakeups or rendering.
 
 See [host observations](explanation.md#host-observations-and-consumer-inputs) for
 the supported values, sampling opportunities and unavailable observations.
+
+## Verify native UI font preferences
+
+In a Windows desktop session, explicitly enable the native font probe:
+
+```powershell
+$env:SURGEIST_RUN_NATIVE_FONT_PROBE = '1'
+cargo test --offline --locked -j 1 -p surgeist-window --test system_fonts_native
+Remove-Item Env:SURGEIST_RUN_NATIVE_FONT_PROBE
+```
+
+The probe compares every public Windows logical-font field for all six roles
+with a fresh safe native query at 96 DPI. Keep UI font settings stable while it
+runs. It reads preferences without selecting a physical font or changing host
+settings. Ordinary Windows test runs print an explicit skip for this probe.
+
+On macOS, run the same test target on the process main thread without an opt-in
+variable. It checks AppKit names, native weight and metric validity, and compares
+the selected role sizes with independent AppKit defaults. Other platforms check
+the explicit unsupported-platform result. See [native UI fonts](explanation.md#native-ui-fonts)
+for the platform-specific observation contracts.
 
 ## Verify the platform clock
 
