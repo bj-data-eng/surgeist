@@ -206,3 +206,17 @@ fn prepared_transparent_inline_profile_preserves_or_refuses_actual_context() {
         json!({"helperSource":TEST_HELPER_SOURCE, "fontBytes": include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf").as_slice()}),
     );
 }
+
+#[test]
+fn prepared_atomic_br_profile_preserves_vertical_source_and_rejects_unrepresented_context() {
+    // Original atomic/control occurrences and computed styles are supplied to
+    // the actual helper. DOM Range replies are controlled observation records;
+    // this test makes no browser layout or FontFace-loading claim.
+    let observed = run_node(
+        include_str!("prepared_capture_tests.js"),
+        json!({"suite":"atomic-br", "helperSource":TEST_HELPER_SOURCE, "fontBytes":include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf").as_slice()}),
+    );
+    assert!(observed.as_array().unwrap().iter().any(|row| {
+        row["writingMode"] == "vertical-lr" && row["direction"] == "ltr" && row["admitted"] == true
+    }));
+}
