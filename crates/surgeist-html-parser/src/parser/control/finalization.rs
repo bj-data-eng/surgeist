@@ -386,3 +386,96 @@ impl<T> FinalReleaseError<T> {
         stop
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn control() -> ParseControl {
+        ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        )
+    }
+
+    #[test]
+    fn selected_string_ticket_admits_actual_spare_capacity_exactly_before_weak_retention() {
+        for one_short in [true, false] {
+            let mut vector = Vec::with_capacity(37);
+            vector.extend([0xd800, 65]);
+            let value = DocumentString::from_utf16(vector);
+            let bytes = (value.shared_code_units().capacity() * size_of::<u16>()
+                + size_of::<Vec<u16>>()) as u64;
+            let mut c = control();
+            c.test_limit(
+                HtmlParseResource::ManagedCapacityBytes,
+                bytes - u64::from(one_short),
+            );
+            let result = c.final_string_ticket(&value);
+            if one_short {
+                assert!(
+                    matches!(result, Err(ParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, current: 0, requested_delta, .. }) if requested_delta == bytes)
+                );
+                assert_eq!(Arc::weak_count(value.shared_code_units()), 0);
+                assert_eq!(c.usage().actual_capacity_bytes(), 0);
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedUtf16Units)
+                        .current,
+                    0
+                );
+            } else {
+                let ticket = result.unwrap();
+                assert_eq!(c.usage().actual_capacity_bytes(), bytes);
+                assert_eq!(
+                    c.usage()
+                        .resource(HtmlParseResource::ManagedUtf16Units)
+                        .current,
+                    2
+                );
+                c.require_document_string(&ticket, &value).unwrap();
+                let held = value.clone();
+                drop(value);
+                c.release_document_string(ticket).unwrap();
+                assert_eq!(held.code_units(), &[0xd800, 65]);
+                assert_eq!(c.usage().actual_capacity_bytes(), 0);
+                assert_eq!(Arc::weak_count(held.shared_code_units()), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn selected_attribute_ticket_keeps_capacity_and_cannot_reenter_mutable_editing() {
+        let values = OrderedAttributes::new([Attribute::new(
+            crate::QualifiedName::new(crate::Namespace::none(), None, "class"),
+            "k",
+        )])
+        .unwrap();
+        let mut c = control();
+        let (vector, shared) = c.final_attribute_tickets(&values).unwrap();
+        let bytes = (values.shared_attributes().capacity() * size_of::<Attribute>()
+            + size_of::<Vec<Attribute>>()) as u64;
+        assert_eq!(c.usage().actual_capacity_bytes(), bytes);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedAttributes)
+                .current,
+            1
+        );
+        assert!(matches!(
+            c.prepare_attribute_edit(values.shared_attributes(), &shared, &vector),
+            Err(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
+        ));
+        let held = values.clone();
+        c.release_final_attributes(values, vector, shared).unwrap();
+        assert_eq!(held.as_slice()[0].value().code_units(), &[107]);
+        assert_eq!(Arc::weak_count(held.shared_attributes()), 0);
+        assert_eq!(c.usage().actual_capacity_bytes(), 0);
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::ManagedAttributes)
+                .current,
+            0
+        );
+    }
+}
