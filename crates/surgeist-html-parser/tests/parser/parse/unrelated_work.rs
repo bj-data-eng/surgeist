@@ -6,8 +6,9 @@
 //! element, its ancestors and the state it keeps, so the visits one more
 //! element adds cannot depend on a sibling subtree it has no relation to.
 //! Every measure is the visits one extra element adds to a document whose
-//! unrelated filler holds `filler` spans: that marginal cost is the same for
-//! any filler size, whatever the filler's fanout adds to both documents.
+//! unrelated filler holds `filler` elements: that marginal cost is the same for
+//! any filler size, whatever the filler's fanout adds to both documents. It is
+//! exactly equal for most elements; `POOL_PROBE_SLACK` explains the rest.
 
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseWorkCategory, HtmlSource};
 
@@ -36,15 +37,40 @@ fn visits_added_after(unit: &str, filler: usize, element: &str) -> i64 {
     record_visits(page(element)) as i64 - record_visits(page("")) as i64
 }
 
-/// Requires the visits `element` adds to be at most 5% (and eight visits) more
-/// with 400 unrelated `unit`s than with 50.
-fn assert_independent_of_unrelated(unit: &str, element: &str) {
-    let few = visits_added_after(unit, 50, element);
-    let many = visits_added_after(unit, 400, element);
-    assert!(
-        many <= few + few / 20 + 8,
-        "{element} added {few} record visits after 50 unrelated {unit} but {many} after 400"
+/// The filler sizes every measure is taken at.
+const SIZES: [usize; 3] = [50, 200, 800];
+
+/// Requires the measures taken at `SIZES` to differ by at most `slack`.
+fn assert_flat(what: &str, unit: &str, measures: [i64; 3], slack: i64) {
+    let (least, most) = (
+        measures.iter().min().copied().unwrap_or(0),
+        measures.iter().max().copied().unwrap_or(0),
     );
+    assert!(
+        most - least <= slack,
+        "{what} added {measures:?} record visits after {SIZES:?} unrelated {unit}"
+    );
+}
+
+/// Requires the visits `element` adds to be the same with 50, 200 and 800
+/// unrelated `unit`s, within `slack` visits.
+fn assert_independent_of_unrelated_within(unit: &str, element: &str, slack: i64) {
+    let measures = SIZES.map(|filler| visits_added_after(unit, filler, element));
+    assert_flat(element, unit, measures, slack);
+}
+
+/// Slack for an element whose strings are new to the value pool the final
+/// sharing pass probes. A probe scans one bucket of at most four candidates
+/// (`CANDIDATES` in surgeist-html `values/sharing/policy.rs`) and charges one
+/// visit per slot scanned (`record_visits = 1 + scanned`), so the bucket's
+/// occupancy, which the filler's pooled values change, moves each probe by at
+/// most four visits. An anchor and a style element probe about eight values
+/// each; the largest spread seen over filler sizes 1 to 130, 190 to 210 and
+/// 790 to 810 was 29 visits.
+const POOL_PROBE_SLACK: i64 = 32;
+
+fn assert_independent_of_unrelated(unit: &str, element: &str) {
+    assert_independent_of_unrelated_within(unit, element, 0);
 }
 
 #[test]
@@ -64,7 +90,7 @@ fn a_details_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
 
 #[test]
 fn an_anchor_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
-    assert_independent_of_unrelated(SPAN, "<a href=x>t</a>");
+    assert_independent_of_unrelated_within(SPAN, "<a href=x>t</a>", POOL_PROBE_SLACK);
 }
 
 #[test]
@@ -79,14 +105,18 @@ fn a_dialog_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
 
 #[test]
 fn a_style_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
-    assert_independent_of_unrelated(SPAN, "<style>a{}</style>");
+    assert_independent_of_unrelated_within(SPAN, "<style>a{}</style>", POOL_PROBE_SLACK);
 }
 
 #[test]
 fn a_style_adds_the_same_visits_whatever_other_style_elements_precede_it() {
     // The sheet order the style records names the earlier style elements, but
     // one more entry is all that a later style adds to it.
-    assert_independent_of_unrelated("<style>b{}</style>", "<style>a{}</style>");
+    assert_independent_of_unrelated_within(
+        "<style>b{}</style>",
+        "<style>a{}</style>",
+        POOL_PROBE_SLACK,
+    );
 }
 
 /// One form control that registers a form association.
@@ -123,19 +153,20 @@ fn visits_added_by_last_option(container: &str, option: &str, options: usize) ->
     record_visits(page(options)) as i64 - record_visits(page(options - 1)) as i64
 }
 
-/// Requires a select to add at most 5% (and eight visits) more per option than
-/// the same options in a div add, with 400 options as with 50. The div pays the
-/// same insertion, creation and registry costs but runs no selectedness
-/// setting, so the difference is the select algorithm's own work.
+/// Requires a select to add the same visits per option as the same options in
+/// a div add, with 50, 200 and 800 options before it. The div pays the same
+/// insertion, creation and registry costs but runs no selectedness setting, so
+/// the difference is the select algorithm's own work.
 fn assert_selectedness_work_independent_of_other_options(option: &str) {
     let excess = |options: usize| {
         visits_added_by_last_option("select", option, options)
             - visits_added_by_last_option("div", option, options)
     };
-    let (few, many) = (excess(50), excess(400));
-    assert!(
-        many <= few + few.abs() / 20 + 8,
-        "{option} in a select added {few} visits over a div after 50 options but {many} after 400"
+    assert_flat(
+        &format!("{option} in a select over a div"),
+        "options",
+        SIZES.map(excess),
+        0,
     );
 }
 
