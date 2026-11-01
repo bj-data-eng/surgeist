@@ -185,3 +185,89 @@ fn numeric_gap_known_cross_formatter_group_refuses_as_invalid_anchor_f32() {
 fn numeric_gap_known_cross_formatter_group_refuses_as_invalid_anchor_f64() {
     mixed_formatter_group::<f64>();
 }
+
+fn filtered_metadata_inside_actual_run<S: LayoutScalar>(trailing: bool) {
+    let mut f = Fixture::<S>::new(Direction::Ltr, 100.0);
+    append_empty_box(&mut f, 20, 21);
+    f.atomic(
+        10,
+        WrapEdges::AUTO,
+        InlineBreakOpportunity::Prohibited,
+        false,
+    );
+    f.tree.insert_input(
+        30,
+        LayoutInputOf::box_input(NodeInputOf {
+            display: crate::Display::Block,
+            position: crate::Position::Absolute,
+            size: Size::new(PreferredSizeOf::px(n(1.0)), PreferredSizeOf::px(n(1.0))),
+            ..NodeInputOf::default()
+        }),
+    );
+    let absolute = GeneratedChildBoxInput {
+        box_: GeneratedBoxRef::Node(30),
+        participation: GeneratedBoxParticipation::OutOfFlow,
+    };
+    let mut raw = f.nodes.clone();
+    let root_children = if trailing {
+        raw.push(30);
+        vec![
+            child(pair(20, 21)),
+            child(GeneratedBoxRef::Node(10)),
+            absolute,
+        ]
+    } else {
+        raw.insert(1, 30);
+        f.wrapping.child_order[0].children.push(absolute);
+        vec![child(pair(20, 21)), child(GeneratedBoxRef::Node(10))]
+    };
+    f.wrapping
+        .child_order
+        .insert(0, order(GeneratedBoxRef::Node(0), root_children));
+    f.finish();
+    f.tree.insert_children(0, raw);
+    // These metadata occurrences are included by the actual raw run after its
+    // genuine Start control. Filtering them must not erase the available edge.
+    let baseline = f.compute();
+    assert_eq!(output(&baseline, 30).size, Size::splat(n(1.0)));
+    f.wrapping.gaps.push(InlineGapGroupInput {
+        anchor: InlineGapAnchor::Formatter {
+            node: 0,
+            edge: if trailing {
+                InlineFormatterEdge::End
+            } else {
+                InlineFormatterEdge::Start
+            },
+        },
+        boxes: vec![InlineBoxRef::NativePair { start: 20, end: 21 }],
+    });
+    let batch = f.compute();
+    let (start, atom) = if trailing { (10.0, 0.0) } else { (0.0, 8.0) };
+    assert_eq!(output(&batch, 20).location.x, n(start));
+    assert_eq!(output(&batch, 21).location.x, n(start + 3.0));
+    assert_eq!(output(&batch, 10).location.x, n(atom));
+    assert_eq!(output(&batch, 20).size.width, n(3.0));
+    assert_eq!(output(&batch, 21).size.width, n(5.0));
+    assert!(batch.placed_text().is_empty());
+    assert_eq!(
+        layout_mixed_inline_run(f.numeric()).unwrap().inline_extent,
+        n(18.0)
+    );
+}
+
+#[test]
+fn numeric_gap_start_keeps_filtered_absolute_inside_actual_run_f32() {
+    filtered_metadata_inside_actual_run::<f32>(false);
+}
+#[test]
+fn numeric_gap_start_keeps_filtered_absolute_inside_actual_run_f64() {
+    filtered_metadata_inside_actual_run::<f64>(false);
+}
+#[test]
+fn numeric_gap_end_keeps_filtered_absolute_inside_actual_run_f32() {
+    filtered_metadata_inside_actual_run::<f32>(true);
+}
+#[test]
+fn numeric_gap_end_keeps_filtered_absolute_inside_actual_run_f64() {
+    filtered_metadata_inside_actual_run::<f64>(true);
+}

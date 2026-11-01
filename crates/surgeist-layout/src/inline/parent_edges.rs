@@ -2,7 +2,8 @@ use super::{
     FlowAxes, InlineLineInput, LayoutScalar, MixedInlineParticipantOf, SelectedInlineLineOf,
 };
 use crate::inline_wrapping::{
-    NativeOrderingProjection, NumericWrapping, NumericWrappingError, WrappingScopeError,
+    NativeOrderingProjection, NativeOrderingSelection, NumericWrapping, NumericWrappingError,
+    WrappingScopeError,
 };
 use std::{ops::Range, sync::Arc};
 use surgeist_text::SuppliedLine;
@@ -91,10 +92,8 @@ pub(super) fn canonical_flow<S: LayoutScalar>(
         .source_start()
         .checked_add(line.len())
         .ok_or_else(invalid)?;
-    let ranks = context
-        .ranks
-        .get(line.source_start()..after)
-        .ok_or_else(invalid)?;
+    let selection = context.selection(line.source_start()..after)?;
+    let ranks = selection.ranks;
     let mut descriptors = buffer(line.len())?;
     let mut logical = buffer(line.len())?;
     let mut body = None;
@@ -131,7 +130,7 @@ pub(super) fn canonical_flow<S: LayoutScalar>(
         &line,
         axes,
         wrapping,
-        ranks,
+        &selection,
         body.ok_or_else(invalid)?,
         &payload,
     )?;
@@ -192,11 +191,12 @@ fn schedule<S: LayoutScalar>(
     line: &Line<'_, S>,
     axes: FlowAxes,
     wrapping: &NumericWrapping,
-    ranks: &[usize],
+    selection: &NativeOrderingSelection<'_>,
     body: usize,
     payload: &[usize],
 ) -> Result<Vec<usize>, NumericWrappingError> {
     let context = wrapping.ordering().ok_or_else(invalid)?;
+    let ranks = selection.ranks;
     let mut edges = buffer(line.len())?;
     let positive_side = FlowAxes::new(axes.writing_mode(), crate::Direction::Ltr).inline_start();
     for unit in 0..line.len() {
@@ -234,7 +234,7 @@ fn schedule<S: LayoutScalar>(
         let gap = if let Some((first, last)) = extent {
             if left { first } else { last + 1 }
         } else {
-            context.profile.gap(ancestry, body, ranks, payload)?
+            context.profile.gap(ancestry, body, selection, payload)?
         };
         edges.push(Edge {
             unit,
@@ -264,7 +264,7 @@ fn schedule<S: LayoutScalar>(
             })
         } else if let Some(before) = context
             .profile
-            .tie_before(aa, bb, body, ranks, payload, a.gap)?
+            .tie_before(aa, bb, body, selection, payload, a.gap)?
         {
             Ok(before)
         } else if !a.empty && !b.empty && a.left != b.left {

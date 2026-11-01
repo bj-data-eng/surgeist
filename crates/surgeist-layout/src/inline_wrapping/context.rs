@@ -310,18 +310,24 @@ pub(super) fn native_span_with<Node: Copy + Eq>(
 fn ordered_ranks<Node: Copy + Eq>(
     graph: &ValidationGraph<Node>,
     owner: usize,
+    domain: std::ops::Range<usize>,
     nodes: &[Node],
 ) -> Result<Vec<usize>, WrappingScopeError> {
     let children = &graph.children[owner];
-    let mut cursor = 0;
+    let search = children
+        .get(domain.clone())
+        .ok_or(WrappingScopeError::InconsistentIncidence)?;
+    let mut cursor = domain.start;
     let mut ranks = Vec::with_capacity(nodes.len());
     for &node in nodes {
-        let Some(offset) = children[cursor..]
+        let Some(offset) = children[cursor..domain.end]
             .iter()
             .position(|&i| graph.nodes[i] == node)
         else {
-            return Err(if children.iter().any(|&i| graph.nodes[i] == node) {
+            return Err(if search.iter().any(|&i| graph.nodes[i] == node) {
                 WrappingScopeError::EndpointOrder
+            } else if children.iter().any(|&i| graph.nodes[i] == node) {
+                WrappingScopeError::InconsistentIncidence
             } else {
                 WrappingScopeError::DifferentFlow
             });
@@ -858,12 +864,14 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         &self,
         graph: &ValidationGraph<Node>,
         flow: Node,
+        source: super::NativeRunSource<'_, Node>,
         nodes: &[Node],
     ) -> Result<NumericWrapping, WrappingScopeError> {
         let owner = graph
             .index(flow)
             .ok_or(WrappingScopeError::NodeNotReachable)?;
-        let ranks = ordered_ranks(graph, owner, nodes)?;
+        let raw_range = source.validate(graph, owner)?;
+        let ranks = ordered_ranks(graph, owner, raw_range.clone(), nodes)?;
         let requested: Vec<_> = self
             .rows
             .iter()
@@ -1027,11 +1035,16 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             .iter()
             .find(|profile| profile.flow == flow)
             .map(|profile| {
-                Arc::new(super::ordering::NativeOrderingProjection {
+                if source.nodes.is_empty() {
+                    return Err(WrappingScopeError::UnsupportedIncidence);
+                }
+                Ok(Arc::new(super::ordering::NativeOrderingProjection {
                     profile: Arc::clone(&profile.data),
                     ranks,
-                })
-            });
+                    raw_range,
+                }))
+            })
+            .transpose()?;
         Ok(NumericWrapping {
             ordering,
             boxes,
@@ -1057,7 +1070,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 .position(|&i| graph.nodes[i] == node)
                 .ok_or(WrappingScopeError::DifferentFlow)
         };
-        let ranks = ordered_ranks(graph, owner, nodes)?;
+        let ranks = ordered_ranks(graph, owner, 0..graph.children[owner].len(), nodes)?;
         if ranks.is_empty() {
             return Err(WrappingScopeError::EndpointOrder);
         }

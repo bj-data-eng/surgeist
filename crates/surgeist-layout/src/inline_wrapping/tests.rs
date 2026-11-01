@@ -1,5 +1,77 @@
 use super::*;
 
+#[test]
+fn raw_numeric_run_admits_its_actual_repeated_acyclic_occurrence() {
+    use crate::test_support::layout_tree::PublicLayoutTreeOf;
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1, 2, 1])
+        .style(
+            0,
+            crate::NodeInputOf {
+                display: crate::Display::Block,
+                ..Default::default()
+            },
+        )
+        .style(
+            1,
+            crate::NodeInputOf {
+                display: crate::Display::InlineBlock,
+                atomic_inline_participation: Some(crate::AtomicInlineParticipation::new(
+                    surgeist_text::BidiLevel::try_new(0).unwrap(),
+                    crate::InlineBreakOpportunity::Prohibited,
+                )),
+                ..Default::default()
+            },
+        )
+        .style(
+            2,
+            crate::NodeInputOf {
+                display: crate::Display::Block,
+                float: crate::Float::Left,
+                ..Default::default()
+            },
+        );
+    let (graph, _) =
+        crate::engine::validation::validate_layout_request_with_text_graph(&tree, 0, &[], &[])
+            .unwrap();
+    let context = WrappingContext::new(&tree, &graph, &[], &[], &[], &[]).unwrap();
+    // The actual post-float run is the second occurrence of1. An earlier
+    // occurrence outside this checked raw slice supplies no substitute rank.
+    context
+        .numeric_projection(
+            &graph,
+            0,
+            NativeRunSource {
+                nodes: &[1],
+                start: 2,
+            },
+            &[1],
+        )
+        .expect(
+            "a valid emitted subsequence must be resolved inside its authenticated raw occurrence",
+        );
+    for (nodes, expected) in [
+        (&[1, 1][..], WrappingScopeError::EndpointOrder),
+        (&[2][..], WrappingScopeError::InconsistentIncidence),
+        (&[99][..], WrappingScopeError::DifferentFlow),
+    ] {
+        let error = context
+            .numeric_projection(
+                &graph,
+                0,
+                NativeRunSource {
+                    nodes: &[1],
+                    start: 2,
+                },
+                nodes,
+            )
+            .expect_err(
+                "consumed, outside-window and foreign members retain their separate causes",
+            );
+        assert_eq!(error, expected);
+    }
+}
+
 fn class(ancestry: &Arc<Ancestry>, scope: Option<usize>) -> AvoidClass {
     AvoidClass {
         ancestry: Arc::clone(ancestry),

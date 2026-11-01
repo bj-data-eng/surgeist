@@ -26,7 +26,7 @@ pub(crate) use canonical_order::{
 };
 mod edge_plan;
 mod ordering;
-pub(crate) use ordering::NativeOrderingProjection;
+pub(crate) use ordering::{NativeOrderingProjection, NativeOrderingSelection, NativeRunSource};
 mod source;
 pub(crate) use crate::error::wrapping_error;
 pub(crate) use context::{

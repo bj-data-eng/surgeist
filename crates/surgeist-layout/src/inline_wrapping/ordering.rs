@@ -43,7 +43,6 @@ struct Slot {
 #[derive(Debug)]
 struct Body {
     range: Range<usize>,
-    members: Option<(usize, usize)>,
     visual: Vec<usize>,
     prepared: bool,
 }
@@ -223,7 +222,6 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
                     &mut bodies,
                     Body {
                         range: start..rank,
-                        members: None,
                         visual: Vec::new(),
                         prepared: false,
                     },
@@ -236,7 +234,6 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
             &mut bodies,
             Body {
                 range: start..children.len(),
-                members: None,
                 visual: Vec::new(),
                 prepared: false,
             },
@@ -257,16 +254,6 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
                     }
                     Role::Prepared => actual.prepared = true,
                     _ => {}
-                }
-                if matches!(
-                    slots[rank].role,
-                    Role::Operand(_) | Role::Structural | Role::Prepared
-                ) {
-                    actual.members = Some(
-                        actual
-                            .members
-                            .map_or((rank, rank), |(first, _)| (first, rank)),
-                    );
                 }
             }
             let mut next = None;
@@ -332,10 +319,19 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
             let mut owners = buffer(input.boxes.len())?;
             for reference in &input.boxes {
                 let owner = resolve_box(reference)?;
-                if rows[owner].flow != flow || owners.contains(&owner) {
+                if rows[owner].flow != flow {
+                    return Err(WrappingScopeError::InvalidGapAnchor);
+                }
+                if owners.contains(&owner) {
                     return Err(WrappingScopeError::ConflictingGap);
                 }
                 owners.push(owner);
+            }
+            // Native gap capabilities apply to this formatter's numeric path.
+            // Prepared participation elsewhere in an opaque descendant belongs
+            // to that descendant; only this actual formatter inventory matters.
+            if data.bodies.iter().any(|body| body.prepared) {
+                return Err(WrappingScopeError::UnsupportedIncidence);
             }
             let (body, anchor) = match &input.anchor {
                 InlineGapAnchor::Neighbor { node, affinity } => {
@@ -598,7 +594,7 @@ impl NativeOrderingData {
         a: usize,
         b: usize,
         body: usize,
-        ranks: &[usize],
+        selection: &NativeOrderingSelection<'_>,
         payload: &[usize],
         gap: usize,
     ) -> Result<Option<bool>> {
@@ -609,7 +605,7 @@ impl NativeOrderingData {
         };
         let mut result = None;
         for group in self.groups.iter().filter(|row| row.body == body) {
-            let actual = match self.project_anchor(group.anchor, body, ranks, payload) {
+            let actual = match self.project_anchor(group.anchor, body, selection, payload) {
                 Ok(actual) => actual,
                 Err(WrappingScopeError::GapOutsideSelection) => continue,
                 Err(error) => return Err(error),
@@ -762,17 +758,17 @@ impl NativeOrderingData {
         &self,
         anchor: Anchor,
         body: usize,
-        ranks: &[usize],
+        selection: &NativeOrderingSelection<'_>,
         payload: &[usize],
     ) -> Result<usize> {
         match anchor {
-            Anchor::Explicit(witness) => self.project_witness(witness, body, ranks, payload),
+            Anchor::Explicit(witness) => self.project_witness(witness, body, selection, payload),
             Anchor::Derived {
                 preceding,
                 following,
             } => {
-                let before = self.project_witness(preceding, body, ranks, payload);
-                let after = self.project_witness(following, body, ranks, payload);
+                let before = self.project_witness(preceding, body, selection, payload);
+                let after = self.project_witness(following, body, selection, payload);
                 match (before, after) {
                     (Err(error), _) if error != WrappingScopeError::GapOutsideSelection => {
                         Err(error)
@@ -799,29 +795,23 @@ impl NativeOrderingData {
         &self,
         witness: Witness,
         body: usize,
-        ranks: &[usize],
+        selection: &NativeOrderingSelection<'_>,
         payload: &[usize],
     ) -> Result<usize> {
         match witness {
             Witness::Neighbor { rank, affinity } => payload
                 .iter()
-                .position(|&unit| ranks[unit] == rank)
+                .position(|&unit| selection.ranks[unit] == rank)
                 .map(|position| position + usize::from(affinity == InlineGapAffinity::After))
                 .ok_or(WrappingScopeError::GapOutsideSelection),
             Witness::Start | Witness::End => {
                 let actual = &self.bodies[body];
-                let selected = match witness {
-                    Witness::Start => ranks.first(),
-                    _ => ranks.last(),
+                let (selected, expected) = if matches!(witness, Witness::Start) {
+                    (selection.raw_fences.start, actual.range.start)
+                } else {
+                    (selection.raw_fences.end, actual.range.end)
                 };
-                let expected = actual.members.map(|(first, last)| {
-                    if matches!(witness, Witness::Start) {
-                        first
-                    } else {
-                        last
-                    }
-                });
-                if selected.copied() != expected {
+                if selected != expected {
                     return Err(WrappingScopeError::GapOutsideSelection);
                 }
                 let left = matches!(witness, Witness::Start) == (self.direction == Direction::Ltr);
@@ -833,7 +823,7 @@ impl NativeOrderingData {
         &self,
         owner: usize,
         body: usize,
-        ranks: &[usize],
+        selection: &NativeOrderingSelection<'_>,
         payload: &[usize],
     ) -> Result<usize> {
         if let Some(group) = self
@@ -841,7 +831,7 @@ impl NativeOrderingData {
             .iter()
             .find(|group| group.body == body && group.owners.contains(&owner))
         {
-            return self.project_anchor(group.anchor, body, ranks, payload);
+            return self.project_anchor(group.anchor, body, selection, payload);
         }
         let range = self.box_row(owner)?.range.clone();
         let actual = &self.bodies[body];
@@ -859,7 +849,7 @@ impl NativeOrderingData {
                 return Err(WrappingScopeError::GapOutsideSelection);
             }
         }
-        self.project_anchor(self.derive_gap(range, body)?, body, ranks, payload)
+        self.project_anchor(self.derive_gap(range, body)?, body, selection, payload)
     }
 }
 
@@ -868,9 +858,77 @@ impl NativeOrderingData {
 pub(crate) struct NativeOrderingProjection {
     pub(crate) profile: Arc<NativeOrderingData>,
     pub(crate) ranks: Vec<usize>,
+    pub(super) raw_range: Range<usize>,
 }
 impl PartialEq for NativeOrderingProjection {
     fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.profile, &other.profile) && self.ranks == other.ranks
+        Arc::ptr_eq(&self.profile, &other.profile)
+            && self.ranks == other.ranks
+            && self.raw_range == other.raw_range
+    }
+}
+
+/// The source slice and child ordinal issued by the real run transition.
+/// Its source occurrence is checked against the same immutable graph before use.
+#[derive(Clone, Copy)]
+pub(crate) struct NativeRunSource<'a, Node> {
+    pub(crate) nodes: &'a [Node],
+    pub(crate) start: usize,
+}
+impl<Node: Copy + Eq> NativeRunSource<'_, Node> {
+    pub(super) fn validate(
+        self,
+        graph: &ValidationGraph<Node>,
+        owner: usize,
+    ) -> Result<Range<usize>> {
+        let after = self
+            .start
+            .checked_add(self.nodes.len())
+            .ok_or(WrappingScopeError::InconsistentIncidence)?;
+        let children = graph.children[owner]
+            .get(self.start..after)
+            .ok_or(WrappingScopeError::InconsistentIncidence)?;
+        if children
+            .iter()
+            .zip(self.nodes)
+            .any(|(&index, &node)| graph.nodes[index] != node)
+        {
+            return Err(WrappingScopeError::InconsistentIncidence);
+        }
+        Ok(self.start..after)
+    }
+}
+/// Borrowed emitted incidence and raw source fences of one actual candidate.
+/// Filtered metadata between emissions can be covered by both adjacent fences;
+/// these are edge capabilities, not exclusive metadata ownership/readback.
+pub(crate) struct NativeOrderingSelection<'a> {
+    pub(crate) ranks: &'a [usize],
+    raw_fences: Range<usize>,
+}
+impl NativeOrderingProjection {
+    pub(crate) fn selection(&self, emitted: Range<usize>) -> Result<NativeOrderingSelection<'_>> {
+        let ranks = self
+            .ranks
+            .get(emitted.clone())
+            .ok_or(WrappingScopeError::InconsistentIncidence)?;
+        let first = if emitted.start == 0 {
+            self.raw_range.start
+        } else {
+            self.ranks[emitted.start - 1]
+                .checked_add(1)
+                .ok_or(WrappingScopeError::InconsistentIncidence)?
+        };
+        let after = if emitted.end == self.ranks.len() {
+            self.raw_range.end
+        } else {
+            self.ranks[emitted.end]
+        };
+        if first < self.raw_range.start || self.raw_range.end < after || after < first {
+            return Err(WrappingScopeError::InconsistentIncidence);
+        }
+        Ok(NativeOrderingSelection {
+            ranks,
+            raw_fences: first..after,
+        })
     }
 }

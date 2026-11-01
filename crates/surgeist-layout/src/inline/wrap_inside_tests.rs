@@ -103,7 +103,15 @@ fn exercise<S: LayoutScalar>(
     )
     .unwrap();
     let projection = context
-        .numeric_projection(&graph, 100, &[1, 2, 3, 4, 5])
+        .numeric_projection(
+            &graph,
+            100,
+            crate::inline_wrapping::NativeRunSource {
+                nodes: &[1, 2, 3, 4, 5],
+                start: 0,
+            },
+            &[1, 2, 3, 4, 5],
+        )
         .unwrap();
     let atomic = |source_index, following| MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {

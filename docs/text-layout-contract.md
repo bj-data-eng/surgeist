@@ -753,6 +753,9 @@ Contributions remain operands, including zero or unpaired occurrences. A wrappin
 NativePair declaration alone grants no transparent ordering role.
 
 `WrappingInput::gaps` supplies resolved attachments for ordering-empty boxes.
+This capability requires a font-free numeric formatter. Actual Prepared-backed
+participation in the target formatter refuses `UnsupportedIncidence`; the Text
+adapter does not silently ignore a requested native gap group.
 Each `InlineGapGroupInput` names an anchor and the explicit physical order of
 unrelated boxes at that gap; nested boxes retain their admitted ancestry.
 `InlineGapAnchor::Neighbor` uses a genuine ordering occurrence and physical
@@ -778,6 +781,9 @@ Reject conflicting or cyclic authority. A body-valid
 attachment must also belong to the actual selected cut: never clamp its rank or
 move the operation across a line. Only `GapOutsideSelection` permits continuing
 the finite candidate search; other failures retain their original meaning.
+Retain the actual raw source-run boundaries through filtering. Its first and
+last emitted participants cannot certify source edges beyond a real float or
+other excluded source entry outside that run.
 Candidate fitting and selected physical execution consume the same successful
 ordering receipt. Complete-body fragment readback described below belongs to
 the PreparedText family capability.
