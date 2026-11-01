@@ -10565,22 +10565,26 @@ fn select_option_appends_agree_with_the_full_selectedness_algorithm_over_every_s
             .collect();
         sequences.extend(layer.iter().cloned());
     }
-    for attributes in ["", "size=0", "size=2", "multiple"] {
-        for sequence in &sequences {
-            let request = crate::HtmlDocumentParseRequest::offline(
-                HtmlSource::utf8(format!(
-                    "<!doctype html><select {attributes}>{sequence}</select>"
-                )),
-                limits(100),
-            );
-            let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-            assert_eq!(
-                standalone_boundary(&mut driver),
-                super::head::HeadStep::Complete
-            );
-            let (mut c, mut frozen) = body_document(driver);
-            frozen.release(&mut c).unwrap();
-            assert_released(&c);
+    // The second wrapper has the adoption agency move a div of options out of a
+    // datalist into the select, connecting every option in one insertion.
+    for (open, close) in [("", ""), ("<b><datalist><div>", "</b>")] {
+        for attributes in ["", "size=0", "size=2", "multiple"] {
+            for sequence in &sequences {
+                let request = crate::HtmlDocumentParseRequest::offline(
+                    HtmlSource::utf8(format!(
+                        "<!doctype html><select {attributes}>{open}{sequence}{close}</select>"
+                    )),
+                    limits(100),
+                );
+                let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+                assert_eq!(
+                    standalone_boundary(&mut driver),
+                    super::head::HeadStep::Complete
+                );
+                let (mut c, mut frozen) = body_document(driver);
+                frozen.release(&mut c).unwrap();
+                assert_released(&c);
+            }
         }
     }
 }
