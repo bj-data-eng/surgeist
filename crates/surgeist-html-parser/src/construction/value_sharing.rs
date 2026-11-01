@@ -38,8 +38,8 @@ impl Usage {
         c.acquire_retained_provider(self.bytes, self.units, 0)?;
         Ok(())
     }
-    fn release(self, c: &mut ParseControl) {
-        c.release_retained_provider(&c.identity(), self.bytes, self.units, 0);
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        c.release_retained_provider(&c.identity(), self.bytes, self.units, 0)
     }
     fn grow(&mut self, target: Self, c: &mut ParseControl) -> Result<(), SessionError> {
         self.adjust(
@@ -62,7 +62,7 @@ impl Usage {
             bytes: self.bytes.saturating_sub(target.bytes),
             units: self.units.saturating_sub(target.units),
         };
-        removed.release(c);
+        removed.release(c)?;
         *self = target;
         Ok(())
     }
@@ -71,7 +71,13 @@ impl Usage {
 /// The disjoint borrow lets useful work observe the value while Drop retains
 /// exclusive cleanup authority on both refusal and unwind.
 trait Temporary {
-    fn release(self, c: &mut ParseControl);
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop>;
+}
+/// Teardown that runs on `Drop`, which has no result. A refused credit is
+/// already latched on the controller, whose next checkpoint reports it, and the
+/// refused ticket is dropped with its value.
+fn latched(result: Result<(), ParseStop>) {
+    let _ = result;
 }
 struct Pending<'c, T: Temporary> {
     value: Option<T>,
@@ -94,7 +100,7 @@ impl<'c, T: Temporary> Pending<'c, T> {
 impl<T: Temporary> Drop for Pending<'_, T> {
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
-            value.release(self.control);
+            latched(value.release(self.control));
         }
     }
 }
@@ -103,10 +109,10 @@ struct Selected<T> {
     usage: Usage,
 }
 impl<T> Temporary for Selected<T> {
-    fn release(self, c: &mut ParseControl) {
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         let Self { value, usage } = self;
         drop(value);
-        usage.release(c);
+        usage.release(c)
     }
 }
 // Authority is affine and remains inside the same controller-borrowing guard
@@ -145,10 +151,10 @@ impl<'c> Sharing<'c> {
         );
         self.control
     }
-    pub(super) fn commit(mut self) {
+    pub(super) fn commit(mut self) -> Result<(), ParseStop> {
         let mut pools = self.pools.take().expect("prepared pair");
         pools.seal();
-        pools.release(self.control);
+        pools.release(self.control)
     }
 }
 impl Drop for Sharing<'_> {
@@ -157,7 +163,7 @@ impl Drop for Sharing<'_> {
             pools.abort();
             // Pools release their actual data before each matching credit.
             // Disposal/root/action closing work was admitted before retention.
-            pools.release(self.control);
+            latched(pools.release(self.control));
         }
     }
 }
@@ -216,7 +222,7 @@ macro_rules! drive {
                     }
                     .map_err(|e| pool_error(control, e))?;
                     if progress == HtmlValuePoolProgress::CandidateReleased {
-                        candidate.release(control);
+                        candidate.release(control)?;
                         *candidate = Usage::default();
                     }
                 }
@@ -252,9 +258,9 @@ struct StringOperation<'a> {
     candidate: Usage,
 }
 impl Temporary for StringOperation<'_> {
-    fn release(self, c: &mut ParseControl) {
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         drop(self.owner);
-        self.candidate.release(c);
+        self.candidate.release(c)
     }
 }
 struct AttributeOperation<'a> {
@@ -262,9 +268,9 @@ struct AttributeOperation<'a> {
     candidate: Usage,
 }
 impl Temporary for AttributeOperation<'_> {
-    fn release(self, c: &mut ParseControl) {
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         drop(self.owner);
-        self.candidate.release(c);
+        self.candidate.release(c)
     }
 }
 impl Pools {
@@ -337,7 +343,7 @@ impl Pools {
             return Ok(());
         }
         if let Some(hit) = self.drive_attributes(input, true, c)? {
-            hit.release(c);
+            hit.release(c)?;
         }
         Ok(())
     }
@@ -471,7 +477,7 @@ impl Pools {
             Authority::Closed => {}
         }
     }
-    fn release(self, c: &mut ParseControl) {
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         let Self {
             strings,
             attributes,
@@ -481,13 +487,15 @@ impl Pools {
         } = self;
         drop(strings);
         drop(attributes);
-        strings_usage.release(c);
-        attributes_usage.release(c);
-        Usage {
+        // Every credit is attempted; the first refusal is reported.
+        let strings = strings_usage.release(c);
+        let attributes = attributes_usage.release(c);
+        let envelope = Usage {
             bytes: mem::size_of::<Self>() as u64,
             units: 0,
         }
         .release(c);
+        strings.and(attributes).and(envelope)
     }
 }
 
@@ -578,14 +586,15 @@ impl Updates {
     }
 }
 impl Temporary for Updates {
-    fn release(self, c: &mut ParseControl) {
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         Updates::release(self, c);
+        Ok(())
     }
 }
 struct Parts(OwnedVec<[Option<usize>; 4]>);
 impl Temporary for Parts {
-    fn release(self, c: &mut ParseControl) {
-        self.0.release(c).expect("owned component map");
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        self.0.release(c)
     }
 }
 // One temporary owner follows vector -> shared backing -> validated bank. Every
@@ -627,16 +636,24 @@ impl BankOutput {
     }
 }
 impl Temporary for BankOutput {
-    fn release(self, c: &mut ParseControl) {
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         drop(self.values);
         drop(self.backing);
         drop(self.vector);
-        if let Some(shared) = self.shared {
-            c.release_final_shared(shared);
-        }
-        if let Some(vector) = self.vector_ticket {
-            c.release_final_vector(vector, self.attributes);
-        }
+        // Both credits are attempted; the first refusal is reported.
+        let shared = match self.shared {
+            Some(shared) => c
+                .release_final_shared(shared)
+                .map_err(FinalReleaseError::discard),
+            None => Ok(()),
+        };
+        let vector = match self.vector_ticket {
+            Some(vector) => c
+                .release_final_vector(vector, self.attributes)
+                .map_err(FinalReleaseError::discard),
+            None => Ok(()),
+        };
+        shared.and(vector)
     }
 }
 struct StringOutput {
@@ -644,12 +661,12 @@ struct StringOutput {
     ticket: Option<DocumentStringAllocation>,
 }
 impl Temporary for StringOutput {
-    fn release(self, c: &mut ParseControl) {
-        if let Some(ticket) = self.ticket {
-            c.release_document_string(ticket)
-                .expect("owned selected output ticket");
-        }
-        self.selected.release(c);
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        let ticket = match self.ticket {
+            Some(ticket) => c.release_document_string(ticket),
+            None => Ok(()),
+        };
+        ticket.and(self.selected.release(c))
     }
 }
 struct Content {
@@ -657,9 +674,9 @@ struct Content {
     usage: Usage,
 }
 impl Temporary for Content {
-    fn release(self, c: &mut ParseControl) {
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         drop(self.value);
-        self.usage.release(c);
+        self.usage.release(c)
     }
 }
 impl Finalizing {
@@ -1051,14 +1068,16 @@ impl Finalizing {
         let old_vector = mem::replace(allocation, tickets.0);
         let old_shared = mem::replace(shared, tickets.1);
         if old_shared.finalized() {
-            c.release_final_attributes(old, old_vector, old_shared);
+            c.release_final_attributes(old, old_vector, old_shared)
+                .map_err(FinalReleaseError::discard)?;
         } else {
             let vector = c
                 .release_shared(old.into_shared_attributes(), old_shared)
                 .unwrap_or_else(|_| unreachable!("checked original bank"));
             let count = vector.len() as u64;
             drop(vector);
-            c.release_final_vector(old_vector, count);
+            c.release_final_vector(old_vector, count)
+                .map_err(FinalReleaseError::discard)?;
         }
         Ok(())
     }
@@ -1439,7 +1458,7 @@ mod tests {
             for chunk in selected.value.code_units().as_chunks::<4>().0 {
                 assert_eq!(chunk, &[65, 0xd800, 0, 0xdc00]);
             }
-            selected.release(sharing.control);
+            selected.release(sharing.control).unwrap();
             inspected
         };
         // This is the same original controller and real paired-root Drop,

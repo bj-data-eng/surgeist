@@ -80,7 +80,11 @@ impl<E: std::error::Error + 'static> std::error::Error for HtmlParseCspFailure<E
 impl<E> Drop for HtmlParseCspFailure<E> {
     fn drop(&mut self) {
         drop(self.native.take());
-        self.parse.return_csp_storage(self.storage);
+        // `new` claimed this storage only after the failure's controller was
+        // seen to hold it, and nothing reaches that controller through the
+        // envelope afterwards, so the credit is accepted. Were it not, the
+        // refusal would be latched on a controller dropped with the failure.
+        let _ = self.parse.return_csp_storage(self.storage);
     }
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -141,14 +145,18 @@ impl Storage {
     pub fn acquire(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         c.acquire_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
     }
-    pub fn release(self, c: &mut ParseControl) {
+    /// Whether `c` holds this much admitted provider storage to credit.
+    pub fn fits(self, c: &ParseControl) -> bool {
+        c.can_release_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
+    }
+    pub fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         let owner = c.identity();
         c.release_retained_provider(
             &owner,
             self.bytes as u64,
             self.units as u64,
             self.entries as u64,
-        );
+        )
     }
 }
 /// Complete protocol-owned aggregate. Transferred occurrences already have a
@@ -160,12 +168,13 @@ pub(crate) struct Account {
     pub last: Storage,
 }
 impl Account {
-    pub fn settle(&mut self, c: &mut ParseControl) {
-        self.overlap.release(c);
+    pub fn settle(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        self.overlap.release(c)?;
         self.overlap = Storage::ZERO;
+        Ok(())
     }
     pub fn admit(&mut self, c: &mut ParseControl, a: HtmlCspLayout) -> Result<(), ParseStop> {
-        self.settle(c);
+        self.settle(c)?;
         let work = a
             .work_credits()
             .checked_add(a.closing_work().work_credits())
@@ -191,13 +200,13 @@ impl Account {
         Ok(())
     }
     pub fn release(&mut self, c: &mut ParseControl, v: HtmlCspStorage) -> Result<(), ParseStop> {
-        self.settle(c);
+        self.settle(c)?;
         let n = Storage::from(v);
         self.live = self
             .live
             .sub(n)
             .ok_or_else(|| c.stop_invalid_associated_facts())?;
-        n.release(c);
+        n.release(c)?;
         Ok(())
     }
 }
@@ -295,7 +304,7 @@ impl<P: HtmlMetaCspProcessor> Service for Adapter<'_, P> {
                 shared.release(s)
             });
         let (c, account) = shared.finish()?;
-        account.settle(c);
+        account.settle(c)?;
         let refused = matches!(&result, Ok(HtmlMetaCspOutcome::Refused(_)));
         match result {
             Ok(HtmlMetaCspOutcome::Completed(p)) => Ok(Outcome::Completed(p)),
@@ -532,5 +541,37 @@ mod tests {
         );
         assert_eq!(failure.parse_failure().cleanup_error(), None);
         assert_eq!(failure.storage, ReturnableCspStorage::NONE);
+    }
+
+    #[test]
+    fn storage_the_controller_never_admitted_is_reported_and_dropping_the_envelope_is_safe() {
+        let tight = crate::parser::tree_builder::tests::limits(100)
+            .into_builder()
+            .managed_nodes(4)
+            .finish()
+            .unwrap();
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<p>x</p>"), tight);
+        let parse = request.parse().unwrap_err();
+        let retained = parse.retained_usage().cloned();
+        let failure = HtmlParseCspFailure::<()>::new(
+            parse,
+            None,
+            HtmlParseCspFailureKind::Cancelled,
+            Storage {
+                bytes: 8,
+                units: 2,
+                entries: 1,
+            },
+        );
+        // The caller can read why the storage was not released, and the
+        // envelope holds nothing for its drop to hand back.
+        assert_eq!(
+            failure.parse_failure().cleanup_error(),
+            Some(crate::HtmlParseEngineCondition::Cleanup)
+        );
+        assert_eq!(failure.storage, ReturnableCspStorage::NONE);
+        assert_eq!(failure.parse_failure().retained_usage().cloned(), retained);
+        drop(failure);
     }
 }

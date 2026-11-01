@@ -576,7 +576,7 @@ impl SessionStorage {
         let value = value.clone();
         if let Err(error) = self.prepare_payload_slot_owned(c) {
             drop(value);
-            usage.release(c, &self.control);
+            usage.release(c, &self.control)?;
             return Err(error);
         }
         let index = self.payloads.values.len();

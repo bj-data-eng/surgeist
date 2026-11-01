@@ -22,9 +22,9 @@ impl SharedReportStorage<'_, '_> {
     pub(crate) fn control(&mut self) -> &mut ParseControl {
         self.sharing.control()
     }
-    pub(crate) fn commit(self) -> ReportStorage {
-        self.sharing.commit();
-        self.storage.commit()
+    pub(crate) fn commit(self) -> Result<ReportStorage, ParseStop> {
+        self.sharing.commit()?;
+        Ok(self.storage.commit())
     }
 }
 impl<'a> PreparedReportStorage<'a> {
@@ -730,7 +730,10 @@ fn metadata_node(payload: &RetainedPayload) -> Option<usize> {
     }
 }
 impl ReportStorage {
-    pub(crate) fn release_execution_inputs(&mut self, c: &mut ParseControl) {
+    pub(crate) fn release_execution_inputs(
+        &mut self,
+        c: &mut ParseControl,
+    ) -> Result<(), ParseStop> {
         if let Some(slot) = self.associated_slot.take() {
             let storage = self
                 .history
@@ -745,8 +748,9 @@ impl ReportStorage {
             };
             let resources = usage.resources();
             drop(payload);
-            c.commit_prepared_release(&resources);
+            c.commit_prepared_release(&resources)?;
         }
+        Ok(())
     }
     pub(crate) fn fragment_parser_document<'a>(
         &'a self,

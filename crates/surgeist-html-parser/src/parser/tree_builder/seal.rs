@@ -310,7 +310,13 @@ pub(crate) struct OwnedOrdinaryFailure {
     failure: super::terminal::DetachedStandaloneFailure,
 }
 impl OwnedOrdinaryFailure {
-    pub(crate) fn release_csp_storage(&mut self, storage: crate::meta_csp::Storage) {
+    pub(crate) fn csp_storage_fits(&self, storage: crate::meta_csp::Storage) -> bool {
+        self.failure.csp_storage_fits(storage)
+    }
+    pub(crate) fn release_csp_storage(
+        &mut self,
+        storage: crate::meta_csp::Storage,
+    ) -> Result<(), super::super::control::ParseStop> {
         self.failure.release_csp_storage(storage)
     }
     pub(super) fn original_request(&self) -> &DocumentRequestParts {

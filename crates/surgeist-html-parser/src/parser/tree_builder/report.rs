@@ -88,9 +88,9 @@ impl ImmutableParseReport {
             c,
         )?;
         c.checkpoint()?;
-        let mut storage = storage.commit();
+        let mut storage = storage.commit()?;
         let c = &mut sealed.parts.control;
-        storage.release_execution_inputs(c);
+        storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
         let sealed = input.take().expect("qualified original document seal");
@@ -137,9 +137,9 @@ impl ImmutableParseReport {
             c,
         )?;
         c.checkpoint()?;
-        let mut storage = storage.commit();
+        let mut storage = storage.commit()?;
         let c = &mut sealed.parts.control;
-        storage.release_execution_inputs(c);
+        storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
         let sealed = input.take().expect("qualified original fragment seal");

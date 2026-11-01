@@ -17,8 +17,8 @@ struct ProviderReceipt {
     units: u64,
 }
 impl ProviderReceipt {
-    fn release(self, c: &mut ParseControl) {
-        c.release_retained_provider(&self.owner, self.bytes, self.units, 0);
+    fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        c.release_retained_provider(&self.owner, self.bytes, self.units, 0)
     }
 }
 
@@ -49,20 +49,33 @@ impl CssSchemeValue {
         }
         Ok(())
     }
-    pub(crate) fn release(self, c: &mut ParseControl) {
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
         let Self { report, receipt } = self;
         drop(report);
-        receipt.release(c);
+        receipt.release(c)
     }
 }
 
 /// The controller and live-storage cell the CSS parser's admission and release
 /// callbacks act on. The two callbacks are separate closures, so they share
-/// this state through one cell.
+/// this state through one cell. A callback that finds the state in use, or a
+/// release the ledger cannot honour, cannot reach the controller to latch the
+/// stop; it records it for [`Self::finish`].
 struct SchemeCallbacks<'c> {
     control: RefCell<&'c mut ParseControl>,
     live: Cell<(u64, u64)>,
     owner: ControlIdentity,
+    reentered: Cell<bool>,
+    release_error: Cell<Option<ParseStop>>,
+}
+/// What the callbacks leave behind once the parser has returned.
+struct Finished<'c> {
+    control: &'c mut ParseControl,
+    /// The storage still admitted for the parser's retained graph.
+    live: (u64, u64),
+    owner: ControlIdentity,
+    /// The first refusal of a callback, already latched on `control`.
+    refusal: Option<ParseStop>,
 }
 impl<'c> SchemeCallbacks<'c> {
     fn new(control: &'c mut ParseControl) -> Self {
@@ -71,7 +84,16 @@ impl<'c> SchemeCallbacks<'c> {
             control: RefCell::new(control),
             live: Cell::new((0, 0)),
             owner,
+            reentered: Cell::new(false),
+            release_error: Cell::new(None),
         }
+    }
+    /// The stop handed to a parser that entered a callback while another still
+    /// held the controller. The controller is out of reach there, so `finish`
+    /// latches it once the parser has returned.
+    fn refuse_reentry(&self) -> ParseStop {
+        self.reentered.set(true);
+        ParseStop::InternalInvariant(Invariant::ReentrantProviderCallback)
     }
     fn admit(&self, event: Admission) -> Result<(), ParseStop> {
         let live = if let Admission::Live(next) = event {
@@ -84,7 +106,9 @@ impl<'c> SchemeCallbacks<'c> {
     /// One admission event: its step, and for a live-storage observation the
     /// growth over the storage already admitted.
     fn admit_live(&self, next: Option<(u64, u64)>) -> Result<(), ParseStop> {
-        let mut c = self.control.borrow_mut();
+        let Ok(mut c) = self.control.try_borrow_mut() else {
+            return Err(self.refuse_reentry());
+        };
         c.charge(WorkCategory::StateStep, 1)?;
         if let Some(next) = next {
             let old = self.live.get();
@@ -104,24 +128,45 @@ impl<'c> SchemeCallbacks<'c> {
     fn release(&self, remaining: Storage) {
         self.release_to((remaining.bytes() as u64, remaining.utf16_units() as u64));
     }
-    /// Credits the storage the parser dropped, leaving `next` live.
+    /// Credits the storage the parser dropped, leaving `next` live. The parser
+    /// has no way to take a refusal back, so it is kept for `finish`; the
+    /// ledger is left as it was.
     fn release_to(&self, next: (u64, u64)) {
-        let old = self.live.replace(next);
-        self.control.borrow_mut().release_retained_provider(
-            &self.owner,
-            old.0
-                .checked_sub(next.0)
-                .expect("CSS releases actual bytes"),
-            old.1
-                .checked_sub(next.1)
-                .expect("CSS releases actual units"),
-            0,
-        );
+        let Ok(mut c) = self.control.try_borrow_mut() else {
+            self.refuse_reentry();
+            return;
+        };
+        let old = self.live.get();
+        let released = match old.0.checked_sub(next.0).zip(old.1.checked_sub(next.1)) {
+            Some((bytes, units)) => c.release_retained_provider(&self.owner, bytes, units, 0),
+            None => c.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow)),
+        };
+        match released {
+            Ok(()) => self.live.set(next),
+            Err(stop) => {
+                self.release_error
+                    .set(self.release_error.get().or(Some(stop)));
+            }
+        }
     }
-    /// Hands the controller, the live storage and the owner back once the
-    /// parser has returned.
-    fn into_parts(self) -> (&'c mut ParseControl, (u64, u64), ControlIdentity) {
-        (self.control.into_inner(), self.live.get(), self.owner)
+    /// Hands the controller back once the parser has returned, latching a
+    /// reentry the callbacks could not.
+    fn finish(self) -> Finished<'c> {
+        let reentered = self.reentered.get();
+        let release_error = self.release_error.get();
+        let live = self.live.get();
+        let control = self.control.into_inner();
+        let refusal = if reentered {
+            Some(control.fail_invariant(Invariant::ReentrantProviderCallback))
+        } else {
+            release_error
+        };
+        Finished {
+            control,
+            live,
+            owner: self.owner,
+            refusal,
+        }
     }
 }
 
@@ -147,12 +192,12 @@ impl ParseControl {
         // AtomicLayoutBytes observes a maximum, rather than a consumed extent.
         let scratch = usize::try_from(self.limits.copy(HtmlParseResource::AtomicLayoutBytes))
             .unwrap_or(usize::MAX);
-        let syntax = CssComponentValueLimits::try_new(
-            u32::try_from(entries.min(256)).expect("bounded CSS depth"),
-            entries,
-            bytes,
-        )
-        .expect("CSS's fixed maximum depth is preserved");
+        // CSS caps nesting at 256 levels; a depth within it is always accepted.
+        const DEPTH_CEILING: u32 = 256;
+        let depth = u32::try_from(entries.min(DEPTH_CEILING as usize)).unwrap_or(DEPTH_CEILING);
+        let Some(syntax) = CssComponentValueLimits::try_new(depth, entries, bytes) else {
+            return Err(self.fail_invariant(Invariant::CapacityMismatch));
+        };
         let limits = CssUtf16PropertyValueLimits {
             input: CssUtf16InputLimits {
                 max_input_units: units,
@@ -203,7 +248,16 @@ impl ParseControl {
         let (text, allocation) = frozen.into_parts();
         let input = text.shared_code_units().clone();
         drop(text);
-        self.commit_prepared_release(&[(allocation.resource, allocation.units)]);
+        if let Err(stop) = self.commit_prepared_release(&[(allocation.resource, allocation.units)])
+        {
+            // The ticket was qualified above, so this refusal needs a ledger
+            // that no longer matches it. Withdraw the units acquired for the
+            // receipt; the stop is latched.
+            drop(allocation);
+            drop(input);
+            let _ = self.commit_prepared_release(&[(HtmlParseResource::ManagedUtf16Units, units)]);
+            return Err(stop);
+        }
         drop(allocation); // The exact original debit moves into this receipt.
         Ok((
             input,
@@ -237,7 +291,20 @@ impl ParseControl {
                 |event| callbacks.admit(event),
                 |remaining| callbacks.release(remaining),
             );
-            let (c, live, original) = callbacks.into_parts();
+            let Finished {
+                control: c,
+                live,
+                owner: original,
+                refusal,
+            } = callbacks.finish();
+            if let Some(stop) = refusal {
+                // A callback was refused while the parser ran. Drop its
+                // result and credit what is still admitted for it; the stop
+                // is latched, so a refusal here changes nothing.
+                drop(result);
+                let _ = c.release_retained_provider(&original, live.0, live.1, 0);
+                return Err(stop);
+            }
             let report = match result {
                 Ok(report) => report,
                 Err(error) => {
@@ -256,7 +323,13 @@ impl ParseControl {
                 }
             };
             let usage = report.retained_storage();
-            assert_eq!(live, (usage.bytes() as u64, usage.utf16_units() as u64));
+            if live != (usage.bytes() as u64, usage.utf16_units() as u64) {
+                // The parser returns exactly the storage it kept admitted.
+                drop(report);
+                let stop = c.fail_invariant(Invariant::CapacityMismatch);
+                let _ = c.release_retained_provider(&original, live.0, live.1, 0);
+                return Err(stop);
+            }
             // Admit the heap report body while the inline report is still live.
             let header = size_of::<CssColorSchemeParseReport>() as u64;
             if let Err(stop) = c
@@ -264,7 +337,8 @@ impl ParseControl {
                 .and_then(|()| c.acquire_retained_provider(header, 0, 0))
             {
                 drop(report);
-                c.release_retained_provider(
+                // The stop is latched; a refused credit here changes nothing.
+                let _ = c.release_retained_provider(
                     &original,
                     usage.bytes() as u64,
                     usage.utf16_units() as u64,
@@ -273,7 +347,16 @@ impl ParseControl {
                 return Err(stop);
             }
             let report = Arc::new(report);
-            c.release_retained_provider(&original, header, 0, 0);
+            if let Err(stop) = c.release_retained_provider(&original, header, 0, 0) {
+                drop(report);
+                let _ = c.release_retained_provider(
+                    &original,
+                    usage.bytes() as u64,
+                    usage.utf16_units() as u64,
+                    0,
+                );
+                return Err(stop);
+            }
             Ok(CssSchemeValue {
                 report,
                 receipt: ProviderReceipt {
@@ -284,8 +367,15 @@ impl ParseControl {
             })
         })();
         drop(input);
-        input_receipt.release(self);
-        result
+        match (result, input_receipt.release(self)) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(stop), _) => Err(stop),
+            (Ok(value), Err(stop)) => {
+                // The stop is latched; the value's own refusal would add nothing.
+                let _ = value.release(self);
+                Err(stop)
+            }
+        }
     }
 }
 
@@ -335,7 +425,7 @@ mod tests {
                 .current(),
             0
         );
-        value.release(&mut c);
+        value.release(&mut c).unwrap();
         empty(&c);
         assert!(c.usage().resource(HtmlParseResource::WorkCredits).current() > 0);
     }
@@ -347,7 +437,7 @@ mod tests {
             .parse_meta_color_scheme(&raw, crate::HtmlDocumentMode::NoQuirks)
             .unwrap();
         let peak = baseline.usage().actual_capacity_high_water();
-        value.release(&mut baseline);
+        value.release(&mut baseline).unwrap();
         empty(&baseline);
         let bounded = limits()
             .into_builder()
@@ -359,7 +449,7 @@ mod tests {
         let error = match c.parse_meta_color_scheme(&raw, crate::HtmlDocumentMode::NoQuirks) {
             Err(error) => error,
             Ok(value) => {
-                value.release(&mut c);
+                value.release(&mut c).unwrap();
                 panic!("one short of the real peak");
             }
         };
@@ -383,7 +473,7 @@ mod tests {
         c.cancellation.cancel();
         assert_eq!(c.checkpoint(), Err(ParseStop::Cancelled));
         let work = c.usage().resource(HtmlParseResource::WorkCredits).current();
-        value.release(&mut c);
+        value.release(&mut c).unwrap();
         empty(&c);
         assert_eq!(c.stop(), Some(ParseStop::Cancelled));
         assert_eq!(
@@ -404,10 +494,11 @@ mod tests {
             assert_eq!(callbacks.admit_live(Some((8, 2))), Err(stop));
             callbacks.release_to((0, 0));
         }
-        let (c, live, _owner) = callbacks.into_parts();
-        assert_eq!(c.stop(), Some(stop));
-        assert_eq!(live, (0, 0));
-        empty(c);
+        let finished = callbacks.finish();
+        assert_eq!(finished.refusal, Some(stop));
+        assert_eq!(finished.control.stop(), Some(stop));
+        assert_eq!(finished.live, (0, 0));
+        empty(finished.control);
     }
     #[test]
     fn a_release_larger_than_the_live_storage_stops_the_parse_without_panicking() {
@@ -416,11 +507,16 @@ mod tests {
         callbacks.admit_live(Some((10, 4))).unwrap();
         // The parser reports more remaining storage than it ever admitted.
         callbacks.release_to((12, 4));
-        let (c, _live, owner) = callbacks.into_parts();
-        assert_eq!(
-            c.stop(),
-            Some(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow))
-        );
+        let Finished {
+            control: c,
+            live,
+            owner,
+            refusal,
+        } = callbacks.finish();
+        let underflow = ParseStop::InternalInvariant(Invariant::ReleaseUnderflow);
+        assert_eq!(refusal, Some(underflow));
+        assert_eq!(c.stop(), Some(underflow));
+        assert_eq!(live, (10, 4), "the ledger is left as it was");
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedCapacityBytes)
@@ -428,7 +524,8 @@ mod tests {
             10,
             "nothing is credited for the impossible release"
         );
-        let _ = c.release_retained_provider(&owner, 10, 4, 0);
+        c.release_retained_provider(&owner, live.0, live.1, 0)
+            .unwrap();
         empty(c);
     }
 }

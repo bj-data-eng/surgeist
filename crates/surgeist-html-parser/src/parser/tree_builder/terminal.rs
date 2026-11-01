@@ -694,8 +694,14 @@ pub(crate) struct DetachedStandaloneFailure {
     evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
 }
 impl DetachedStandaloneFailure {
-    pub(crate) fn release_csp_storage(&mut self, storage: crate::meta_csp::Storage) {
-        storage.release(&mut self.control);
+    pub(crate) fn csp_storage_fits(&self, storage: crate::meta_csp::Storage) -> bool {
+        storage.fits(&self.control)
+    }
+    pub(crate) fn release_csp_storage(
+        &mut self,
+        storage: crate::meta_csp::Storage,
+    ) -> Result<(), ParseStop> {
+        storage.release(&mut self.control)
     }
     pub(super) fn owns_request(&self, cancellation: &crate::HtmlParseCancellation) -> bool {
         self.control.owns_request(cancellation)

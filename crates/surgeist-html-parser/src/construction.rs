@@ -23,8 +23,8 @@
 
 use crate::bounded::{HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError};
 use crate::parser::control::{
-    ControlIdentity, DocumentStringAllocation, OwnedVec, ParseControl, ParseStop, SharedAllocation,
-    StandaloneUnsupported, VectorCapacity, WorkCategory,
+    ControlIdentity, DocumentStringAllocation, FinalReleaseError, OwnedVec, ParseControl,
+    ParseStop, SharedAllocation, StandaloneUnsupported, VectorCapacity, WorkCategory,
 };
 use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
@@ -1539,7 +1539,14 @@ impl PayloadStorage {
                         ..
                     } => {
                         if shared.finalized() {
-                            control.release_final_attributes(values, allocation, shared);
+                            // A refused bank and tickets are dropped with the
+                            // payload; the latched stop reports the skipped credit.
+                            keep_first(
+                                &mut refused,
+                                control
+                                    .release_final_attributes(values, allocation, shared)
+                                    .map_err(FinalReleaseError::discard),
+                            );
                             continue;
                         }
                         let backing = values.into_shared_attributes();
@@ -1578,7 +1585,7 @@ impl PayloadStorage {
             };
             if let Some(usage) = associated_usage {
                 drop(payload);
-                usage.release(control, owner);
+                keep_first(&mut refused, usage.release(control, owner));
                 continue;
             }
             if let RetainedPayload::CspState(value) = payload {
@@ -1590,7 +1597,7 @@ impl PayloadStorage {
             }
             if let RetainedPayload::Document { mut meta, .. } = payload {
                 if let Some(scheme) = meta.scheme.take() {
-                    scheme.release(control);
+                    keep_first(&mut refused, scheme.release(control));
                 }
                 continue;
             }
@@ -1636,7 +1643,7 @@ impl PayloadStorage {
                 drop(origins);
             }
         }
-        csp_storage.release(control);
+        keep_first(&mut refused, csp_storage.release(control));
         keep_first(&mut refused, release_vector(control, values, allocation));
         keep_first(
             &mut refused,

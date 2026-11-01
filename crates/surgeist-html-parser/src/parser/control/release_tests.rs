@@ -18,6 +18,9 @@ fn control() -> ParseControl {
 fn current(c: &ParseControl, resource: HtmlParseResource) -> u64 {
     c.usage().resource(resource).current()
 }
+fn current_of(usage: &ParseUsage, resource: HtmlParseResource) -> u64 {
+    usage.resource(resource).current()
+}
 fn bank() -> OrderedAttributes {
     OrderedAttributes::new([Attribute::new(
         QualifiedName::new(Namespace::none(), None, "class"),
@@ -32,11 +35,14 @@ fn provider_release_for_another_controller_latches_foreign_control_and_credits_n
     let other = control();
     c.acquire_retained_provider(8, 2, 1).unwrap();
     let before = c.usage().clone();
-    let _ = c.release_retained_provider(&other.identity(), 8, 2, 1);
+    assert_eq!(
+        c.release_retained_provider(&other.identity(), 8, 2, 1),
+        Err(FOREIGN)
+    );
     assert_eq!(c.stop(), Some(FOREIGN));
     assert_eq!(c.usage(), &before);
     let owner = c.identity();
-    let _ = c.release_retained_provider(&owner, 8, 2, 1);
+    assert_eq!(c.release_retained_provider(&owner, 8, 2, 1), Ok(()));
     for resource in [
         HtmlParseResource::ManagedCapacityBytes,
         HtmlParseResource::PeakTransientBytes,
@@ -53,12 +59,23 @@ fn prepared_release_beyond_the_admitted_amount_latches_underflow_and_credits_not
     let mut c = control();
     c.acquire_retained_provider(8, 2, 1).unwrap();
     let before = c.usage().clone();
-    let _ = c.commit_prepared_release(&[
-        (HtmlParseResource::AuxiliaryEntries, 1),
-        (HtmlParseResource::ManagedUtf16Units, 3),
-    ]);
+    assert_eq!(
+        c.commit_prepared_release(&[
+            (HtmlParseResource::AuxiliaryEntries, 1),
+            (HtmlParseResource::ManagedUtf16Units, 3),
+        ]),
+        Err(UNDERFLOW)
+    );
     assert_eq!(c.stop(), Some(UNDERFLOW));
     assert_eq!(c.usage(), &before, "no partial credit");
+    assert_eq!(
+        c.commit_prepared_release(&[
+            (HtmlParseResource::AuxiliaryEntries, 1),
+            (HtmlParseResource::ManagedUtf16Units, 2),
+        ]),
+        Ok(())
+    );
+    assert_eq!(current(&c, HtmlParseResource::AuxiliaryEntries), 0);
 }
 
 #[test]
@@ -67,9 +84,12 @@ fn final_vector_release_of_another_controllers_ticket_is_refused_and_credits_not
     let mut other = control();
     let (_vector, ticket) = other.new_vector::<Attribute>().unwrap();
     let before = c.usage().clone();
-    let _ = c.release_final_vector(ticket, 0);
+    let (stop, ticket) = c.release_final_vector(ticket, 0).unwrap_err().into_parts();
+    assert_eq!(stop, FOREIGN);
     assert_eq!(c.stop(), Some(FOREIGN));
     assert_eq!(c.usage(), &before);
+    // The ticket comes back intact for its own controller.
+    assert!(other.release_final_vector(ticket, 0).is_ok());
 }
 
 #[test]
@@ -77,10 +97,13 @@ fn final_shared_release_of_an_unfinalized_ticket_is_refused_and_credits_nothing(
     let mut c = control();
     let (shared, ticket) = c.share_owned(7_u32).unwrap();
     let before = c.usage().clone();
-    let _ = c.release_final_shared(ticket);
+    let (stop, ticket) = c.release_final_shared(ticket).unwrap_err().into_parts();
+    assert_eq!(stop, MISMATCH);
     assert_eq!(c.stop(), Some(MISMATCH));
     assert_eq!(c.usage(), &before);
-    drop(shared);
+    // The ticket comes back intact for the ordinary shared release.
+    assert_eq!(c.release_shared(shared, ticket).unwrap(), 7);
+    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
 }
 
 #[test]
@@ -90,9 +113,11 @@ fn final_shared_release_of_another_controllers_ticket_is_refused_and_credits_not
     let values = bank();
     let (_vector, ticket) = other.final_attribute_tickets(&values).unwrap();
     let before = c.usage().clone();
-    let _ = c.release_final_shared(ticket);
+    let (stop, ticket) = c.release_final_shared(ticket).unwrap_err().into_parts();
+    assert_eq!(stop, FOREIGN);
     assert_eq!(c.stop(), Some(FOREIGN));
     assert_eq!(c.usage(), &before);
+    assert!(other.release_final_shared(ticket).is_ok());
 }
 
 #[test]
@@ -102,9 +127,20 @@ fn final_attribute_release_of_another_controllers_tickets_is_refused() {
     let values = bank();
     let (vector, shared) = other.final_attribute_tickets(&values).unwrap();
     let before = c.usage().clone();
-    let _ = c.release_final_attributes(values, vector, shared);
+    let (stop, (values, vector, shared)) = c
+        .release_final_attributes(values, vector, shared)
+        .unwrap_err()
+        .into_parts();
+    assert_eq!(stop, FOREIGN);
     assert_eq!(c.stop(), Some(FOREIGN));
     assert_eq!(c.usage(), &before);
+    // The bank and both tickets come back intact for their own controller.
+    assert!(
+        other
+            .release_final_attributes(values, vector, shared)
+            .is_ok()
+    );
+    assert_eq!(current(&other, HtmlParseResource::ManagedAttributes), 0);
 }
 
 #[test]
@@ -113,10 +149,15 @@ fn final_attribute_release_of_a_different_bank_is_refused() {
     let values = bank();
     let (vector, shared) = c.final_attribute_tickets(&values).unwrap();
     let before = c.usage().clone();
-    let _ = c.release_final_attributes(bank(), vector, shared);
+    let (stop, (_other_bank, vector, shared)) = c
+        .release_final_attributes(bank(), vector, shared)
+        .unwrap_err()
+        .into_parts();
+    assert_eq!(stop, MISMATCH);
     assert_eq!(c.stop(), Some(MISMATCH));
     assert_eq!(c.usage(), &before);
-    drop(values);
+    assert!(c.release_final_attributes(values, vector, shared).is_ok());
+    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
 }
 
 #[test]
@@ -126,9 +167,16 @@ fn final_attribute_release_with_a_forged_capacity_is_refused() {
     let (mut vector, shared) = c.final_attribute_tickets(&values).unwrap();
     vector.capacity += 1;
     let before = c.usage().clone();
-    let _ = c.release_final_attributes(values, vector, shared);
+    let (stop, (values, mut vector, shared)) = c
+        .release_final_attributes(values, vector, shared)
+        .unwrap_err()
+        .into_parts();
+    assert_eq!(stop, MISMATCH);
     assert_eq!(c.stop(), Some(MISMATCH));
     assert_eq!(c.usage(), &before);
+    vector.capacity -= 1;
+    assert!(c.release_final_attributes(values, vector, shared).is_ok());
+    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
 }
 
 fn text(units: &[u16]) -> crate::DocumentString {
@@ -150,7 +198,10 @@ fn restoring_another_controllers_text_ticket_is_refused() {
     let value = text(&[65]);
     let mut ticket = ticket_for(&mut other, &value);
     let before = c.usage().clone();
-    let _ = c.restore_text_append_ticket(&mut ticket, &value);
+    assert_eq!(
+        c.restore_text_append_ticket(&mut ticket, &value),
+        Err(FOREIGN)
+    );
     assert_eq!(c.stop(), Some(FOREIGN));
     assert_eq!(c.usage(), &before);
     assert!(ticket.backing.is_none(), "the ticket is left as it was");
@@ -163,7 +214,10 @@ fn restoring_a_text_ticket_that_already_has_backing_is_refused() {
     let mut ticket = ticket_for(&mut c, &value);
     ticket.backing = Some(Arc::downgrade(value.shared_code_units()));
     let before = c.usage().clone();
-    let _ = c.restore_text_append_ticket(&mut ticket, &value);
+    assert_eq!(
+        c.restore_text_append_ticket(&mut ticket, &value),
+        Err(MISMATCH)
+    );
     assert_eq!(c.stop(), Some(MISMATCH));
     assert_eq!(c.usage(), &before);
 }
@@ -175,7 +229,10 @@ fn restoring_a_text_ticket_with_fewer_units_than_the_value_is_refused() {
     let mut ticket = ticket_for(&mut c, &value);
     ticket.units = 0;
     let before = c.usage().clone();
-    let _ = c.restore_text_append_ticket(&mut ticket, &value);
+    assert_eq!(
+        c.restore_text_append_ticket(&mut ticket, &value),
+        Err(UNDERFLOW)
+    );
     assert_eq!(c.stop(), Some(UNDERFLOW));
     assert_eq!(c.usage(), &before);
     assert!(ticket.backing.is_none());
@@ -188,7 +245,10 @@ fn restoring_more_discarded_units_than_are_admitted_is_refused() {
     let mut ticket = ticket_for(&mut c, &value);
     ticket.units = 5;
     let before = c.usage().clone();
-    let _ = c.restore_text_append_ticket(&mut ticket, &value);
+    assert_eq!(
+        c.restore_text_append_ticket(&mut ticket, &value),
+        Err(UNDERFLOW)
+    );
     assert_eq!(c.stop(), Some(UNDERFLOW));
     assert_eq!(c.usage(), &before);
     assert!(ticket.backing.is_none());
@@ -201,7 +261,10 @@ fn restoring_a_text_ticket_whose_capacity_differs_from_the_value_is_refused() {
     let mut ticket = ticket_for(&mut c, &value);
     ticket.vector_capacity += 1;
     let before = c.usage().clone();
-    let _ = c.restore_text_append_ticket(&mut ticket, &value);
+    assert_eq!(
+        c.restore_text_append_ticket(&mut ticket, &value),
+        Err(MISMATCH)
+    );
     assert_eq!(c.stop(), Some(MISMATCH));
     assert_eq!(c.usage(), &before);
     assert!(ticket.backing.is_none());
@@ -214,7 +277,10 @@ fn retaining_a_failed_text_ticket_bound_to_other_backing_is_refused() {
     let other = text(&[66]);
     let mut ticket = ticket_for(&mut c, &value);
     ticket.backing = Some(Arc::downgrade(other.shared_code_units()));
-    let _ = c.retain_failed_text_append_ticket(&mut ticket, &value);
+    assert_eq!(
+        c.retain_failed_text_append_ticket(&mut ticket, &value),
+        Err(MISMATCH)
+    );
     assert_eq!(c.stop(), Some(MISMATCH));
 }
 
@@ -224,7 +290,7 @@ fn text_domain_commit_beyond_the_buffered_amount_latches_underflow_and_changes_n
     let mut ticket = c.prepare_text_append_allocation().unwrap();
     ticket.units = 3;
     let before = c.usage().clone();
-    let _ = c.commit_text_append_domain(&mut ticket);
+    assert_eq!(c.commit_text_append_domain(&mut ticket), Err(UNDERFLOW));
     assert_eq!(c.stop(), Some(UNDERFLOW));
     assert_eq!(c.usage(), &before);
     assert_eq!(ticket.resource, HtmlParseResource::BufferedUtf16Units);
@@ -235,13 +301,18 @@ fn text_unit_admission_that_overflows_the_ticket_count_is_a_representation_stop(
     let mut c = control();
     let mut ticket = c.prepare_text_append_allocation().unwrap();
     ticket.units = u64::MAX;
-    let _ = c.prepare_text_append_units(&mut ticket, 1);
+    let exhausted = ParseStop::RepresentationExhausted {
+        resource: HtmlParseResource::BufferedUtf16Units,
+    };
+    let before = c.usage().clone();
+    assert_eq!(c.prepare_text_append_units(&mut ticket, 1), Err(exhausted));
+    assert_eq!(c.stop(), Some(exhausted));
     assert_eq!(
-        c.stop(),
-        Some(ParseStop::RepresentationExhausted {
-            resource: HtmlParseResource::BufferedUtf16Units
-        })
+        current(&c, HtmlParseResource::BufferedUtf16Units),
+        current_of(&before, HtmlParseResource::BufferedUtf16Units),
+        "nothing is admitted for the overflowing count"
     );
+    assert_eq!(ticket.units, u64::MAX);
 }
 
 #[test]
@@ -255,8 +326,56 @@ fn reserving_a_plan_that_shrinks_the_allocation_is_refused_before_any_change() {
         old_bytes: 10,
         new_bytes: 5,
     };
-    let _ = c.reserve(&mut vector, plan);
+    assert_eq!(c.reserve(&mut vector, plan), Err(MISMATCH));
     assert_eq!(c.stop(), Some(MISMATCH));
     assert_eq!(c.usage(), &before);
     assert_eq!(vector.capacity(), 0);
+}
+
+#[test]
+fn a_shared_release_beyond_the_admitted_capacity_hands_back_the_arc_and_ticket() {
+    let mut c = control();
+    let (shared, ticket) = c.share_owned(7_u32).unwrap();
+    let bytes = ticket.payload_bytes();
+    c.set(HtmlParseResource::ManagedCapacityBytes, bytes - 1);
+    let (stop, shared, ticket) = c.release_shared(shared, ticket).unwrap_err().into_parts();
+    assert_eq!(stop, UNDERFLOW);
+    assert_eq!(c.stop(), Some(UNDERFLOW));
+    assert_eq!(
+        current(&c, HtmlParseResource::ManagedCapacityBytes),
+        bytes - 1
+    );
+    // With the ledger restored, the same Arc and ticket are accepted.
+    c.set(HtmlParseResource::ManagedCapacityBytes, bytes);
+    assert_eq!(c.release_shared(shared, ticket).unwrap(), 7);
+    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
+}
+
+#[test]
+fn a_new_shared_payload_whose_charge_vanished_is_still_returned_after_a_post_poll_stop() {
+    let mut c = control();
+    let (shared, ticket) = c.share_owned(77_u32).unwrap();
+    c.set(HtmlParseResource::ManagedCapacityBytes, 0);
+    c.cancellation.cancel();
+    assert_eq!(
+        c.finish_shared(shared, ticket).unwrap_err(),
+        (ParseStop::Cancelled, 77)
+    );
+    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+}
+
+#[test]
+fn an_aliased_new_shared_payload_is_kept_by_the_caller_after_a_post_poll_stop() {
+    let mut c = control();
+    let (shared, ticket) = c.share_owned(77_u32).unwrap();
+    let alias = shared.clone();
+    c.cancellation.cancel();
+    // The payload cannot be taken out of an aliased Arc, so the Arc and its
+    // ticket stay with the caller and the latched stop is reported next.
+    let (shared, ticket) = c.finish_shared(shared, ticket).unwrap();
+    assert_eq!(c.checkpoint(), Err(ParseStop::Cancelled));
+    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    drop(alias);
+    assert_eq!(c.release_shared(shared, ticket).unwrap(), 77);
+    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
 }

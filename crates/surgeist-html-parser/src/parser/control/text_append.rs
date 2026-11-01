@@ -94,10 +94,14 @@ impl ParseControl {
         required: usize,
     ) -> Result<usize, ParseStop> {
         self.require_suspended_text_append(allocation, before)?;
+        // HTML requests a capacity that holds the initialized units.
+        let Some(additional) = required.checked_sub(before.initialized_len()) else {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        };
         let Some(plan) = self.geometric_capacity::<u16>(
             before.initialized_len(),
             before.capacity(),
-            required - before.initialized_len(),
+            additional,
         )?
         else {
             return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
@@ -185,12 +189,21 @@ impl ParseControl {
         allocation: &mut DocumentStringAllocation,
         units: usize,
     ) -> Result<(), ParseStop> {
+        let total = u64::try_from(units).ok().and_then(|units| {
+            allocation
+                .units
+                .checked_add(units)
+                .map(|total| (units, total))
+        });
+        let Some((units, total)) = total else {
+            return self.representation(allocation.resource);
+        };
         self.charge_many(&[
             (WorkCategory::CopyByte, size_of::<u64>() as u64),
             (WorkCategory::RecordWrite, 1),
         ])?;
-        self.acquire(allocation.resource, units as u64)?;
-        allocation.units += units as u64;
+        self.acquire(allocation.resource, units)?;
+        allocation.units = total;
         Ok(())
     }
     /// Final domain admission before native publication; no provider follows.
@@ -216,50 +229,56 @@ impl ParseControl {
                 total,
                 allocation.units,
             )?;
-            self.set(
-                HtmlParseResource::BufferedUtf16Units,
-                buffered
-                    .checked_sub(allocation.units)
-                    .expect("actual buffered append units"),
-            );
+            // The appended units were admitted as buffered text.
+            let Some(buffered) = buffered.checked_sub(allocation.units) else {
+                return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+            };
+            self.set(HtmlParseResource::BufferedUtf16Units, buffered);
             self.set(HtmlParseResource::ManagedUtf16Units, total);
             allocation.resource = HtmlParseResource::ManagedUtf16Units;
         }
         Ok(())
     }
+    /// Keeps a failed append's ticket for terminal disposal: an unbound ticket
+    /// is restored to the value it describes, a bound one is checked against
+    /// it. A refusal latches its stop and leaves the ticket with the caller.
     pub(crate) fn retain_failed_text_append_ticket(
         &mut self,
         allocation: &mut DocumentStringAllocation,
         value: &crate::DocumentString,
-    ) {
+    ) -> Result<(), ParseStop> {
         if allocation.backing.is_none() {
-            self.restore_text_append_ticket(allocation, value);
+            self.restore_text_append_ticket(allocation, value)
         } else {
             self.validate_document_string(allocation, value)
-                .expect("actual pending backing already bound before stop");
         }
     }
     /// Prepaid commit/recovery restoration. Release only discarded initialized
     /// tail units; retain capacity growth, work and immutable first-stop usage.
+    /// Every precondition is checked before anything changes: a refusal latches
+    /// its stop, credits nothing and leaves the ticket with the caller.
     pub(crate) fn restore_text_append_ticket(
         &mut self,
         allocation: &mut DocumentStringAllocation,
         value: &crate::DocumentString,
-    ) {
-        assert!(Arc::ptr_eq(&allocation.owner, &self.identity));
-        assert!(allocation.backing.is_none());
-        let discarded = allocation
-            .units
-            .checked_sub(value.len() as u64)
-            .expect("append initialized admitted units");
-        self.cleanup_storage(allocation.resource, discarded, 0)
-            .expect("actual rolled-back tail");
-        allocation.units = value.len() as u64;
-        assert_eq!(
-            allocation.vector_capacity,
-            value.shared_code_units().capacity()
-        );
+    ) -> Result<(), ParseStop> {
+        if !Arc::ptr_eq(&allocation.owner, &self.identity) {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        if allocation.backing.is_some() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        let kept = value.len() as u64;
+        let Some(discarded) = allocation.units.checked_sub(kept) else {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+        };
+        if allocation.vector_capacity != value.shared_code_units().capacity() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
+        self.cleanup_storage(allocation.resource, discarded, 0)?;
+        allocation.units = kept;
         allocation.data_pointer = value.code_units().as_ptr() as usize;
         allocation.backing = Some(Arc::downgrade(value.shared_code_units()));
+        Ok(())
     }
 }

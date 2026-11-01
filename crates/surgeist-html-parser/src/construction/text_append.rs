@@ -308,7 +308,7 @@ impl SessionStorage {
                         HtmlNodeKind::Text(value) => value,
                         _ => unreachable!(),
                     };
-                    control.restore_text_append_ticket(&mut allocation, value);
+                    control.restore_text_append_ticket(&mut allocation, value)?;
                     drop(discarded);
                     if let Some(old) = original_allocation.take() {
                         control.release_document_string(old)?;
@@ -327,7 +327,7 @@ impl SessionStorage {
                         HtmlNodeKind::Text(value) => value,
                         _ => unreachable!(),
                     };
-                    control.restore_text_append_ticket(&mut allocation, value);
+                    control.restore_text_append_ticket(&mut allocation, value)?;
                     allocation
                 };
                 let value = match self
@@ -372,9 +372,15 @@ impl SessionStorage {
                 })
             }
             Err(error) => {
+                // A refused ticket restoration is latched and reported in place
+                // of the failure that led here; the refused tickets stay with
+                // their owners below.
+                let mut refused = None;
                 if let Some(mut allocation) = pending_allocation {
                     let value = discarded.expect("actual initialized pending append backing");
-                    control.retain_failed_text_append_ticket(&mut allocation, &value);
+                    refused = control
+                        .retain_failed_text_append_ticket(&mut allocation, &value)
+                        .err();
                     assert!(
                         self.failed_text_append.is_none(),
                         "one terminal append owner"
@@ -393,7 +399,9 @@ impl SessionStorage {
                         HtmlNodeKind::Text(value) => value,
                         _ => unreachable!(),
                     };
-                    control.restore_text_append_ticket(&mut allocation, value);
+                    refused = refused.or(control
+                        .restore_text_append_ticket(&mut allocation, value)
+                        .err());
                     let value = value.clone();
                     let origins = match mem::replace(
                         &mut self.payloads.values[old_slot],
@@ -410,7 +418,7 @@ impl SessionStorage {
                         location: StringLocation::Text(index),
                     };
                 }
-                Err(error)
+                Err(refused.map_or(error, SessionError::from))
             }
         }
     }

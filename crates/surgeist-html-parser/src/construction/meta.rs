@@ -513,14 +513,15 @@ impl SessionStorage {
                         };
                         let candidate = c.parse_meta_color_scheme(content.code_units(), *mode)?;
                         if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
-                            candidate.release(c);
+                            // The stop is latched; a refusal here would be a later one.
+                            let _ = candidate.release(c);
                             return Err(stop.into());
                         }
                         if candidate.report().result().is_ok() {
                             selected_scheme = Some(candidate);
                             break;
                         }
-                        candidate.release(c);
+                        candidate.release(c)?;
                     }
                 }
                 next = self.next_view_node(c, document, node, detached)?;
@@ -547,7 +548,8 @@ impl SessionStorage {
                     payload_write::<Option<crate::parser::control::CssSchemeValue>>(c, 1)
                 {
                     if let Some(candidate) = selected_scheme {
-                        candidate.release(c);
+                        // The stop is latched; a refusal here would be a later one.
+                        let _ = candidate.release(c);
                     }
                     return Err(stop);
                 }
@@ -568,7 +570,7 @@ impl SessionStorage {
                     after_commit(CancelPoint::Scheme);
                 }
                 if let Some(old) = old {
-                    old.release(c);
+                    old.release(c)?;
                 }
             }
         }

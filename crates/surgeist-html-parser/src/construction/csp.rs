@@ -82,7 +82,12 @@ impl SessionStorage {
         };
         let mut value = value.take().ok_or(SessionError::WrongToken)?;
         let result = f(self, c, &mut value);
-        value.account.settle(c);
+        let settled = value.account.settle(c);
+        let result = match (result, settled) {
+            (Ok(out), Ok(())) => Ok(out),
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(stop)) => Err(stop.into()),
+        };
         // Native temporaries have now actually dropped. Reconcile the receipt
         // to the complete graph still retained by original payloads.
         let result = result.and_then(|out| {
@@ -186,7 +191,7 @@ impl SessionStorage {
             .live
             .sub(live)
             .ok_or(SessionError::WrongToken)?;
-        retired.release(c);
+        retired.release(c)?;
         state.account.live = live;
         Ok(())
     }
@@ -240,7 +245,7 @@ impl SessionStorage {
                 .ok_or(SessionError::WrongToken)?
                 .initial_document_with(&mut |a| state.account.admit(c, a))
                 .map_err(|e| protocol(c, e))?;
-            state.account.settle(c);
+            state.account.settle(c)?;
             if document == 0 {
                 payload_write::<Option<(HtmlCspPolicyId, HtmlCspPolicyRevision)>>(c, 1)?;
                 c.charge(WorkCategory::ProviderCall, 1)?;

@@ -71,8 +71,12 @@ impl AssociatedStorageUsage {
         c.acquire_retained_provider(self.bytes, self.units, self.entries)?;
         Ok(())
     }
-    pub(super) fn release(self, c: &mut ParseControl, owner: &ControlIdentity) {
-        c.release_retained_provider(owner, self.bytes, self.units, self.entries);
+    pub(super) fn release(
+        self,
+        c: &mut ParseControl,
+        owner: &ControlIdentity,
+    ) -> Result<(), ParseStop> {
+        c.release_retained_provider(owner, self.bytes, self.units, self.entries)
     }
 }
 
@@ -665,7 +669,7 @@ impl SessionStorage {
                     let old = mem::replace(&mut state.value, HyperlinkValue::Absent);
                     let old_usage = mem::take(&mut state.usage);
                     drop(old);
-                    old_usage.release(c, &self.control);
+                    old_usage.release(c, &self.control)?;
                     Reply::Applied
                 }
                 Action::ReadHref => Reply::HrefPresent(raw.is_some()),
@@ -731,7 +735,7 @@ impl SessionStorage {
         );
         let old_usage = old.usage;
         drop(old);
-        old_usage.release(c, &self.control);
+        old_usage.release(c, &self.control)?;
         Ok(())
     }
     fn image_document_activity(
