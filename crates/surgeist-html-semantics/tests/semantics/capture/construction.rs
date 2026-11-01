@@ -674,17 +674,7 @@ fn change(
     request: bounded::HtmlConstructionCommand,
 ) -> (bounded::HtmlConstructionStorage, Option<HtmlBuilderNode>) {
     match command(storage, request) {
-        bounded::HtmlConstructionCommit::Changed {
-            storage,
-            created,
-            mut retired_orders,
-            ..
-        } => {
-            while let Some(action) = retired_orders.next_action() {
-                action.perform();
-            }
-            (storage, created)
-        }
+        bounded::HtmlConstructionCommit::Changed { storage, created } => (storage, created),
         _ => panic!("change"),
     }
 }
