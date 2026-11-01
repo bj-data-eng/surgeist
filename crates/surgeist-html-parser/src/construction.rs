@@ -88,6 +88,8 @@ pub(crate) mod read;
 pub(crate) mod report;
 mod value_sharing;
 use provenance::{FieldCopy, OriginGroupRef};
+#[cfg(test)]
+mod no_panic_tests;
 mod select;
 mod svg;
 mod template;
@@ -13052,7 +13054,7 @@ mod tests {
     use crate::{Attribute, HtmlParseResource};
     use crate::{HtmlParseCancellation, HtmlParseLimits};
 
-    fn body_lexical_value(source: &crate::HtmlSource, c: &mut ParseControl) -> Text {
+    pub(super) fn body_lexical_value(source: &crate::HtmlSource, c: &mut ParseControl) -> Text {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         c.admit_source(source).unwrap();
         let mut tokenizer = LexerFixture::new(source, State::Data, None, c).unwrap();

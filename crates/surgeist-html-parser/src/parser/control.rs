@@ -210,6 +210,9 @@ pub(crate) struct ParseControl {
     finalization_transfer_observation: Option<FinalizationTransferObservation>,
     #[cfg(test)]
     css_scheme_fault: Option<css_value::SchemeFault>,
+    /// Refuses the next `release_shared` as if its payload were aliased.
+    #[cfg(test)]
+    shared_release_fault: bool,
 }
 
 /// Fixed-size diagnostic metadata for actual execution between real polls.
@@ -262,6 +265,8 @@ impl ParseControl {
             finalization_transfer_observation: None,
             #[cfg(test)]
             css_scheme_fault: None,
+            #[cfg(test)]
+            shared_release_fault: false,
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
@@ -398,6 +403,12 @@ impl ParseControl {
             return self.fail(ParseStop::Cancelled);
         }
         Ok(())
+    }
+    /// Forces the next `release_shared` to refuse, returning the payload and
+    /// its ticket unchanged, as an aliased payload would.
+    #[cfg(test)]
+    pub(crate) fn refuse_next_shared_release(&mut self) {
+        self.shared_release_fault = true;
     }
     #[cfg(test)]
     pub(crate) fn clear_owned_span_observation(&mut self) {
@@ -1137,6 +1148,17 @@ impl ParseControl {
         shared: Arc<T>,
         allocation: SharedAllocation<T>,
     ) -> Result<T, SharedReleaseError<T>> {
+        #[cfg(test)]
+        if std::mem::take(&mut self.shared_release_fault) {
+            let stop = self.latch_stop(ParseStop::InternalInvariant(
+                Invariant::SharedAllocationAliased,
+            ));
+            return Err(SharedReleaseError {
+                stop,
+                shared,
+                allocation,
+            });
+        }
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
             let stop = self.latch_stop(ParseStop::InternalInvariant(Invariant::ForeignControl));
             return Err(SharedReleaseError {
