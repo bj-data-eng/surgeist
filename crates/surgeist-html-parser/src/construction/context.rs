@@ -90,6 +90,12 @@ pub(super) struct FragmentContextStorage {
     pub(super) allow_shadow: bool,
     pub(super) output: Option<usize>,
     pub(super) effects: OwnedVec<ContextEffect>,
+    /// How many effects were retained before the record they bind existed (a
+    /// template cache without its inert document, an attachment without its
+    /// shadow contents) and are still unbound. A stop between retaining and
+    /// binding leaves one, and no node may be read while one remains, so the
+    /// readiness check reads this count instead of visiting every effect.
+    unbound_effects: usize,
     pub(super) source_entries: u64,
 }
 
@@ -235,15 +241,19 @@ impl SessionStorage {
         c.charge(WorkCategory::ProviderCall, 1)?;
         payload_write::<crate::HtmlCaptureDocumentId>(c, 1)?;
         let document = document.clone();
-        let effects = &mut self.fragment.as_mut().expect("qualified context").effects;
-        let effect = effects.len();
-        effects.try_push(
+        let fragment = self
+            .fragment
+            .as_mut()
+            .ok_or(SessionError::ContextUnavailable)?;
+        let effect = fragment.effects.len();
+        fragment.effects.try_push(
             c,
             ContextEffect::TemplateCache {
                 document,
                 inert: None,
             },
         )?;
+        fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
         self.prepare_payload_slot_owned(c)?;
         let fact = self.payloads.values.len();
         self.payloads
@@ -289,10 +299,8 @@ impl SessionStorage {
         self.payloads
             .join_row(binding)
             .map_err(|_| latch_registry_row(c))?;
-        let ContextEffect::TemplateCache { inert, .. } = self
-            .fragment
-            .as_mut()
-            .expect("retained context")
+        let fragment = self.fragment.as_mut().expect("retained context");
+        let ContextEffect::TemplateCache { inert, .. } = fragment
             .effects
             .get_mut(effect, c)?
             .expect("retained cache effect")
@@ -300,6 +308,7 @@ impl SessionStorage {
             unreachable!()
         };
         *inert = Some(node.index);
+        fragment.unbound_effects = fragment.unbound_effects.saturating_sub(1);
         self.bind_template_base(c, node.index)?;
         Ok(DocumentRef::Owned(node.index))
     }
@@ -404,6 +413,7 @@ impl ParserArenaSession {
             allow_shadow: request.allow_declarative_shadow_roots(),
             output: None,
             effects,
+            unbound_effects: 0,
             source_entries: 0,
         });
         let root = self.allocate_implicit_html(c)?;
@@ -1374,6 +1384,7 @@ impl ParserArenaSession {
             return Err(stop.into());
         }
         fragment.source_entries += 1;
+        fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
         let result = (|| {
             storage.prepare_payload_slot_owned(c)?;
             let shadow_slot = storage.payloads.values.len();
@@ -1471,12 +1482,16 @@ impl ParserArenaSession {
             *declarative = true;
             *available_to_internals = true;
             *keep_registry_null = keep_null;
+            if let Some(fragment) = storage.fragment.as_mut() {
+                fragment.unbound_effects = fragment.unbound_effects.saturating_sub(1);
+            }
             let Some(RetainedPayload::Template { state, .. }) =
                 storage.payloads.values.get_mut(template_slot)
             else {
                 return Err(latch_registry_row(c));
             };
             state.contents = root.index;
+            state.shadow_effect = Some(slot);
             Ok::<(), SessionError>(())
         })();
         if let Err(error) = result {
@@ -1605,24 +1620,27 @@ impl SessionStorage {
             }
         }
     }
+    /// Whether the effect at `effect`, the slot the template's metadata
+    /// records, attached exactly this template's `contents` as a shadow root.
     pub(super) fn shadow_template_contents(
         &self,
         c: &mut ParseControl,
         template: usize,
         contents: usize,
+        effect: Option<usize>,
     ) -> Result<bool, SessionError> {
-        let Some(fragment) = &self.fragment else {
+        let (Some(fragment), Some(effect)) = (&self.fragment, effect) else {
             return Ok(false);
         };
-        for effect in fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(effect,ContextEffect::AttachShadow{template:actual,contents:Some(root),..}
-                if *actual==template && *root==contents)
-            {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        c.charge(WorkCategory::RecordVisit, 1)?;
+        Ok(matches!(
+            fragment.effects.as_slice().get(effect),
+            Some(ContextEffect::AttachShadow {
+                template: actual,
+                contents: Some(root),
+                ..
+            }) if *actual == template && *root == contents
+        ))
     }
 }
 
@@ -1643,16 +1661,9 @@ impl SessionStorage {
         let Some(fragment) = &self.fragment else {
             return Ok(());
         };
-        for effect in fragment.effects.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(
-                effect,
-                ContextEffect::TemplateCache { inert: None, .. }
-                    | ContextEffect::AttachShadow { contents: None, .. }
-            ) {
-                c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-                return Err(SessionError::ContextUnavailable);
-            }
+        if fragment.unbound_effects != 0 {
+            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+            return Err(SessionError::ContextUnavailable);
         }
         Ok(())
     }

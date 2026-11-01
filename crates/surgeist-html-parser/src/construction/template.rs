@@ -41,6 +41,9 @@ pub(super) struct TemplateMetadata {
     pub(super) target: Option<usize>,
     pub(super) start: Option<usize>,
     pub(super) end: Option<usize>,
+    /// The slot of the fragment context effect that attached `contents` as a
+    /// shadow root, set exactly when the native contents are a shadow reference.
+    pub(super) shadow_effect: Option<usize>,
 }
 impl TemplateMetadata {
     fn fresh(contents: usize, insertion: HtmlTemplateFreshInsertionState) -> Self {
@@ -50,6 +53,7 @@ impl TemplateMetadata {
                 target: None,
                 start: None,
                 end: None,
+                shadow_effect: None,
             },
         }
     }
@@ -363,7 +367,12 @@ impl SessionStorage {
                 if view.template_contents().map(|node| node.position()) != Some(state.contents)
                     || (view.template_contents_kind()
                         == Some(HtmlTemplateContentsKind::ShadowReference)
-                        && !self.shadow_template_contents(c, node, state.contents)?)
+                        && !self.shadow_template_contents(
+                            c,
+                            node,
+                            state.contents,
+                            state.shadow_effect,
+                        )?)
                 {
                     return Err(SessionError::TemplateMetadataUnavailable);
                 }
