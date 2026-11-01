@@ -531,3 +531,6 @@ mod capture_admission;
 
 #[path = "parent_geometry/signed_tab.rs"]
 mod signed_tab;
+
+#[path = "parent_geometry/signed_physical_fold.rs"]
+mod signed_physical_fold;

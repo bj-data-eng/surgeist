@@ -453,3 +453,6 @@ mod admission;
 
 #[path = "parent_geometry_numeric/signed.rs"]
 mod signed;
+
+#[path = "parent_geometry_numeric/signed_native_fold.rs"]
+mod signed_native_fold;
