@@ -113,7 +113,8 @@ A/Area and Meta with exact source-time base, encoding and independent full revis
 Missing URL facts leave refresh explicitly unavailable, and an unknown prior flag
 cannot be treated as false. Theme-color and authored color-scheme selection use
 the CSS owner under the original parser's finite admission and retain immutable
-per-Document results. Missing media/CSS facts and reached CSP requirements remain
+per-Document results. Only a meta with the exact name and a content attribute is a
+candidate, so inserting or removing any other meta does not recompute a selection. Missing media/CSS facts and reached CSP requirements remain
 explicit; structural parse success does not certify those obligations. Language and referrer updates
 continue where their own inputs are qualified. `document_meta()` lends these
 actual Document-qualified values and the first missing operation without replay.
