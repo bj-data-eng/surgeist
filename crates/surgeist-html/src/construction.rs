@@ -563,6 +563,10 @@ struct Record {
     shadow: Option<ShadowAssociation>,
     shadow_properties: Option<HtmlShadowRootProperties>,
     owner: Option<HtmlFragmentOwner>,
+    /// Scratch count of this record's entries in its parent's child list,
+    /// saturating at two. Only a publication check writes it: reset, then
+    /// counted, then read, so a stale value is never trusted.
+    publish_found: u8,
 }
 impl Record {
     fn new(kind: HtmlNodeKind, parent: Option<usize>, depth: usize) -> Self {
@@ -579,6 +583,7 @@ impl Record {
             shadow: None,
             shadow_properties: None,
             owner: None,
+            publish_found: 0,
         }
     }
 }

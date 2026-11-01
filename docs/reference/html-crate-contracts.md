@@ -522,6 +522,16 @@ child count, apart from that amortized reserve. Insertion before a sibling,
 insertion of an attached node (a move) and Detach still prepare scratch child
 orders and describe work proportional to the affected parents' child counts.
 
+Publish checks that every ordinary child appears exactly once in its parent's
+child list with work linear in the records and child entries, not in each
+parent's fanout. Three passes of `Inspect` actions, each describing two record
+visits per step, reset a private one-byte count in every record, add one count
+for each list entry naming its list's owner as parent, and then validate the
+records in index order, where each record with a parent must have a count of
+exactly one (`ParentChildConflict` otherwise). The count lives in the already
+admitted record layout, so it needs no allocation, and a stale count is reset
+before it is read. Failures keep the order of the earlier per-record scan.
+
 Template association creation is owned by `Create`; lookup returns its issued
 contents handle. Cloning a template clones its element through `Create` and
 fills that new contents fragment. Moving a whole contents association uses
