@@ -386,6 +386,7 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
             0,
             vec![fixture.binding.clone()],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

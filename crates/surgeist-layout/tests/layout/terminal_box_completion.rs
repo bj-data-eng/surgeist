@@ -276,6 +276,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let s = l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(self.scopes[0].clone()));
         let inner = l::GeneratedBoxRef::Inline(l::InlineBoxRef::Scope(self.scopes[1].clone()));
         l::WrappingInput {
+            gaps: Vec::new(),
             scopes: self
                 .scopes
                 .iter()

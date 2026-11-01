@@ -247,6 +247,7 @@ fn signed<S: LayoutScalar>(adjustment: f64) {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -323,6 +324,7 @@ fn future<S: LayoutScalar>() {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

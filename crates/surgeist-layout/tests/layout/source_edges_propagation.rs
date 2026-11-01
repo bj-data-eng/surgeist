@@ -243,6 +243,7 @@ impl<S: l::LayoutScalar> Host<S> {
             ),
         };
         l::WrappingInput {
+            gaps: Vec::new(),
             scopes: self
                 .declarations
                 .iter()

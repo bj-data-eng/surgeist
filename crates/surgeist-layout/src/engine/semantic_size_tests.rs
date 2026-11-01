@@ -133,6 +133,7 @@ fn fixture<S: LayoutScalar>(
         formatting_context: 0,
     };
     let inventory = WrappingInput {
+        gaps: Vec::new(),
         scopes: scopes
             .iter()
             .zip([(16.0, 20.0), (12.0, 30.0)])

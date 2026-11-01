@@ -434,6 +434,7 @@ fn compute<S: LayoutScalar>(
         0,
         vec![fixture.binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -994,6 +995,7 @@ fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1036,6 +1038,7 @@ fn missing_metrics<S: LayoutScalar>() {
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1074,6 +1077,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![foreign],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1098,6 +1102,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![next.binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1120,6 +1125,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![absent],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1142,6 +1148,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![absent],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1184,6 +1191,7 @@ fn after_float<S: LayoutScalar>() {
         0,
         vec![neutral.binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1236,6 +1244,7 @@ fn after_float<S: LayoutScalar>() {
             0,
             vec![f.binding.clone()],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: vec![],
                 child_order: Vec::new(),
             },
@@ -1454,6 +1463,7 @@ fn cached_compute<S: LayoutScalar>(
         1000,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1506,6 +1516,7 @@ fn unproved_float<S: LayoutScalar>() {
         0,
         vec![neutral.binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1550,6 +1561,7 @@ fn unproved_float<S: LayoutScalar>() {
         0,
         vec![requested.binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },

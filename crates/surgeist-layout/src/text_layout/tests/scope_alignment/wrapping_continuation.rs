@@ -229,6 +229,7 @@ fn continuation<S: LayoutScalar>() {
     }
     let tree = case.tree::<S>(20.0, VerticalAlignOf::Baseline);
     let wrapping = || WrappingInput {
+        gaps: Vec::new(),
         scopes: vec![
             // Parent20/21 are genuine zero-metric boundaries, not absence. Its
             // continuation also needs that truthful0/0 witness when neither is selected.

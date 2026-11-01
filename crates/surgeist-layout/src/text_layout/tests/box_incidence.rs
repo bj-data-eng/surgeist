@@ -237,6 +237,7 @@ impl EmptyBox {
             0,
             vec![self.binding.clone()],
             WrappingInput {
+                gaps: Vec::new(),
                 scopes: vec![WrappingScopeInput::Captured {
                     scope: self.scope.clone(),
                     wrap_inside: WrapInside::Auto,

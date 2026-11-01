@@ -273,9 +273,29 @@ pub enum surgeist_layout::InlineBreakOpportunity
 pub surgeist_layout::InlineBreakOpportunity::Allowed
 pub surgeist_layout::InlineBreakOpportunity::Mandatory
 pub surgeist_layout::InlineBreakOpportunity::Prohibited
+pub enum surgeist_layout::InlineDelimiterSide
+pub surgeist_layout::InlineDelimiterSide::After
+pub surgeist_layout::InlineDelimiterSide::Before
+pub enum surgeist_layout::InlineFormatterEdge
+pub surgeist_layout::InlineFormatterEdge::End
+pub surgeist_layout::InlineFormatterEdge::Start
 pub enum surgeist_layout::InlineFragmentOwner<Node>
 pub surgeist_layout::InlineFragmentOwner::Node(Node)
 pub surgeist_layout::InlineFragmentOwner::Scope(surgeist_layout::TextScopeBinding<Node>)
+pub enum surgeist_layout::InlineGapAffinity
+pub surgeist_layout::InlineGapAffinity::After
+pub surgeist_layout::InlineGapAffinity::Before
+pub enum surgeist_layout::InlineGapAnchor<Node>
+pub surgeist_layout::InlineGapAnchor::Delimiter
+pub surgeist_layout::InlineGapAnchor::Delimiter::node: Node
+pub surgeist_layout::InlineGapAnchor::Delimiter::side: surgeist_layout::InlineDelimiterSide
+pub surgeist_layout::InlineGapAnchor::EmptyParent(surgeist_layout::GeneratedBoxRef<Node>)
+pub surgeist_layout::InlineGapAnchor::Formatter
+pub surgeist_layout::InlineGapAnchor::Formatter::edge: surgeist_layout::InlineFormatterEdge
+pub surgeist_layout::InlineGapAnchor::Formatter::node: Node
+pub surgeist_layout::InlineGapAnchor::Neighbor
+pub surgeist_layout::InlineGapAnchor::Neighbor::affinity: surgeist_layout::InlineGapAffinity
+pub surgeist_layout::InlineGapAnchor::Neighbor::node: Node
 pub enum surgeist_layout::InlineMetricsError<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::InlineMetricsError::BaselineExceedsLineExtent
 pub surgeist_layout::InlineMetricsError::BaselineExceedsLineExtent::baseline: S
@@ -913,22 +933,28 @@ pub surgeist_layout::WrapInside::Auto
 pub surgeist_layout::WrapInside::Avoid
 #[non_exhaustive] pub enum surgeist_layout::WrappingScopeError
 pub surgeist_layout::WrappingScopeError::Allocation
+pub surgeist_layout::WrappingScopeError::AmbiguousGap
 pub surgeist_layout::WrappingScopeError::AmbiguousNode
 pub surgeist_layout::WrappingScopeError::CaptureAssociation
 pub surgeist_layout::WrappingScopeError::ChildOrder
 pub surgeist_layout::WrappingScopeError::ConflictingBoxMetrics
+pub surgeist_layout::WrappingScopeError::ConflictingGap
 pub surgeist_layout::WrappingScopeError::ConflictingScope
 pub surgeist_layout::WrappingScopeError::CrossingScopes
+pub surgeist_layout::WrappingScopeError::CyclicGap
 pub surgeist_layout::WrappingScopeError::DifferentFlow
 pub surgeist_layout::WrappingScopeError::DuplicateScope
 pub surgeist_layout::WrappingScopeError::EndpointOrder
 pub surgeist_layout::WrappingScopeError::EndpointRole
 pub surgeist_layout::WrappingScopeError::ForeignCapture
+pub surgeist_layout::WrappingScopeError::GapOutsideSelection
 pub surgeist_layout::WrappingScopeError::InconsistentIncidence
 pub surgeist_layout::WrappingScopeError::InvalidBoxMetrics
+pub surgeist_layout::WrappingScopeError::InvalidGapAnchor
 pub surgeist_layout::WrappingScopeError::MissingBoxMetrics
 pub surgeist_layout::WrappingScopeError::MissingCapture
 pub surgeist_layout::WrappingScopeError::MissingChildOrder
+pub surgeist_layout::WrappingScopeError::MissingGap
 pub surgeist_layout::WrappingScopeError::NodeNotReachable
 pub surgeist_layout::WrappingScopeError::NonInlineScope
 pub surgeist_layout::WrappingScopeError::PlanMismatch
@@ -1276,6 +1302,9 @@ pub const fn surgeist_layout::InlineFragmentOutputOf<S>::baseline(&self) -> surg
 pub fn surgeist_layout::InlineFragmentOutputOf<S>::finalized_fragment(&self) -> &surgeist_text::protocol::FinalizedFragment
 pub const fn surgeist_layout::InlineFragmentOutputOf<S>::line_index(&self) -> usize
 pub const fn surgeist_layout::InlineFragmentOutputOf<S>::rect(&self) -> core::option::Option<surgeist_layout::ScrollRectOf<S>>
+pub struct surgeist_layout::InlineGapGroupInput<Node>
+pub surgeist_layout::InlineGapGroupInput::anchor: surgeist_layout::InlineGapAnchor<Node>
+pub surgeist_layout::InlineGapGroupInput::boxes: alloc::vec::Vec<surgeist_layout::InlineBoxRef<Node>>
 pub struct surgeist_layout::InlineMetricsOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineMetricsOf<S>
 pub fn surgeist_layout::InlineMetricsOf<S>::after_baseline(self) -> S
@@ -1913,6 +1942,7 @@ impl surgeist_layout::WrapEdges
 pub const surgeist_layout::WrapEdges::AUTO: Self
 pub struct surgeist_layout::WrappingInput<Node>
 pub surgeist_layout::WrappingInput::child_order: alloc::vec::Vec<surgeist_layout::InlineChildOrderInput<Node>>
+pub surgeist_layout::WrappingInput::gaps: alloc::vec::Vec<surgeist_layout::InlineGapGroupInput<Node>>
 pub surgeist_layout::WrappingInput::scopes: alloc::vec::Vec<surgeist_layout::WrappingScopeInput<Node>>
 impl<Node> core::default::Default for surgeist_layout::WrappingInput<Node>
 pub fn surgeist_layout::WrappingInput<Node>::default() -> Self

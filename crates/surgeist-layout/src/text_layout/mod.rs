@@ -755,6 +755,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             &wrapping_input.scopes,
             &resolved.wrapping,
             &wrapping_input.child_order,
+            &wrapping_input.gaps,
         )
         .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
         if !source_validated

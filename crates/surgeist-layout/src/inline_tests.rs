@@ -292,6 +292,7 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

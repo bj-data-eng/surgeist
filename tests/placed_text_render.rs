@@ -220,6 +220,7 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
             line_strut: None,
         }],
         surgeist_layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -459,6 +460,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             line_strut: None,
         }],
         surgeist_layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -782,6 +784,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             line_strut: None,
         }],
         surgeist_layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1199,6 +1202,7 @@ mod kana_transform {
                 line_strut: None,
             }],
             surgeist_layout::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

@@ -295,6 +295,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
         0,
         parents.clone(),
         surgeist_layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -329,6 +330,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
         0,
         complete,
         surgeist_layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -385,6 +387,7 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
         0,
         parents,
         surgeist_layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -503,6 +506,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         0,
         vec![binding],
         surgeist_layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

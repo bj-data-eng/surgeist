@@ -708,6 +708,7 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 line_strut: None,
             }],
             surgeist_layout::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

@@ -315,6 +315,7 @@ fn capture() -> (
         0,
         bindings,
         surgeist_layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

@@ -90,6 +90,7 @@ fn family(p: &TextParagraphBinding<u32>) -> WrappingInput<u32> {
         );
     }
     WrappingInput {
+        gaps: Vec::new(),
         scopes: scopes
             .into_iter()
             .map(|scope| WrappingScopeInput::Captured {

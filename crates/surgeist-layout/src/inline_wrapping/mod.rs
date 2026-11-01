@@ -12,8 +12,9 @@ pub(crate) mod quality;
 pub(crate) mod tail;
 pub use declarations::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
-    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges,
-    WrappingInput,
+    InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, InlineDelimiterSide,
+    InlineFormatterEdge, InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput, WrapEdge,
+    WrapEdges, WrappingInput,
 };
 pub(crate) use declarations::{EdgeEffect, EdgePreferences, WrappingMode};
 
@@ -24,6 +25,8 @@ pub(crate) use canonical_order::{
     CanonicalBox, CanonicalCoverage, CanonicalOrderBindings, CanonicalOrderInventory,
 };
 mod edge_plan;
+mod ordering;
+pub(crate) use ordering::NativeOrderingProjection;
 mod source;
 pub(crate) use crate::error::wrapping_error;
 pub(crate) use context::{
@@ -89,6 +92,12 @@ pub enum WrappingScopeError {
     MissingBoxMetrics,
     InvalidBoxMetrics,
     ConflictingBoxMetrics,
+    MissingGap,
+    AmbiguousGap,
+    InvalidGapAnchor,
+    ConflictingGap,
+    CyclicGap,
+    GapOutsideSelection,
 }
 
 #[derive(Debug, Default)]

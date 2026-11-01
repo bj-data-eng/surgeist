@@ -141,6 +141,7 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
         0,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

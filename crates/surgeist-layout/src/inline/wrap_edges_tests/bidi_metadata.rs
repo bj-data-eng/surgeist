@@ -1,7 +1,7 @@
 //! Physical box edges preserve the real supplied atomic content order.
 use super::*;
 
-fn split_box_fixture<S: LayoutScalar>() -> Fixture<S> {
+pub(super) fn split_box_fixture<S: LayoutScalar>() -> Fixture<S> {
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let mut f = Fixture::new(Direction::Ltr, 100.0);
     for index in 0..6u32 {
@@ -90,6 +90,7 @@ fn split_box_fixture<S: LayoutScalar>() -> Fixture<S> {
         );
     }
     f.wrapping = WrappingInput {
+        gaps: Vec::new(),
         scopes: vec![WrappingScopeInput::NativePair {
             start: 20,
             end: 21,

@@ -406,6 +406,7 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
         0,
         vec![],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![crate::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 2,
@@ -520,6 +521,7 @@ fn scoped_metric_witness<S: LayoutScalar>(
         0,
         vec![],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![crate::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 2,

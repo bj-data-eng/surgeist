@@ -485,13 +485,22 @@ containing Block formatter and retain `InlineFlowMismatch` validation;
 its parent's endpoint formatter fields establish the parent's own used axes.
 
 Layout authenticates the actual captured scope/native pair and parent relation,
-then lowers checked Text contexts or uses the genuine numeric family. Selected
-BoxEdges surround their actual indivisible packet or authentic empty gap on the
+then lowers checked Text contexts or uses the genuine numeric occurrence proof.
+Selected BoxEdges surround their actual indivisible packet or authentic empty gap on the
 assigned sides. Flattened native containment, equal source cuts and bidi parity
 do not establish this ownership. Original levels and non-edge payload order stay
 unchanged; context-only controls add no flow. A failed BoxEdge request refuses
 without becoming a Contribution. Captured Contribution controls remain genuine
 Contribution operations, including zero.
+
+The numeric formatter excludes actual BoxEdge operations from content L2 before
+ordering and retains their physical allocation. Ordinary Contributions remain
+supplied operands, including zero. `WrappingInput::gaps` carries resolved
+neighbor/formatter/delimiter/empty-parent attachments when actual facts cannot
+determine an ordering-empty box's gap uniquely. Attachments must remain valid for
+the actual selected cut; a body-valid neighbor on another line supplies no gap.
+See the [numeric ordering contract](../../../docs/text-layout-contract.md#numeric-physical-edge-ordering)
+for anchor sides, physical tie order and precise refusals.
 
 The strip footprint stays nonnegative even when margin makes flow negative or
 zero. On a formatted line, its zero-block-extent node sits at the actual control

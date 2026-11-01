@@ -110,7 +110,7 @@ pub(crate) struct ScopeRow<Node> {
     pub(crate) policy: WrapInside,
     pub(crate) edges: WrapEdges,
     pub(crate) metric_contribution: Option<InlineBoxMetricContribution>,
-    parent_edge_axes: Option<crate::FlowAxes>,
+    pub(super) parent_edge_axes: Option<crate::FlowAxes>,
     geometry_only: bool,
     source: Option<SourceExtent>,
 }
@@ -127,6 +127,7 @@ pub(crate) struct WrappingContext<Node> {
     ancestry: Arc<Ancestry>,
     has_avoid: bool,
     pub(crate) edge_plan: super::edge_plan::EdgePlan<Node>,
+    ordering: Vec<super::ordering::NativeOrderingProfile<Node>>,
 }
 impl<Node> PartialEq for WrappingContext<Node> {
     fn eq(&self, other: &Self) -> bool {
@@ -138,6 +139,7 @@ impl<Node> Default for WrappingContext<Node> {
     fn default() -> Self {
         Self {
             rows: Vec::new(),
+            ordering: Vec::new(),
             ancestry: Arc::default(),
             has_avoid: false,
             edge_plan: super::edge_plan::EdgePlan {
@@ -337,11 +339,13 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         inputs: &[WrappingScopeInput<Node>],
         proofs: &[WrappingScopeProof<Node>],
         child_order: &[InlineChildOrderInput<Node>],
+        gaps: &[InlineGapGroupInput<Node>],
     ) -> Result<Self, WrappingScopeError> {
         let box_edges = graph.nodes.iter().any(|node| matches!(tree.layout_input(*node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()));
         if !box_edges
             && inputs.is_empty()
             && child_order.is_empty()
+            && gaps.is_empty()
             && graph
                 .nodes
                 .iter()
@@ -679,7 +683,13 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         } else {
             super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order, proofs)?
         };
+        let ordering = if box_edges || !gaps.is_empty() {
+            super::ordering::prepare(tree, graph, &rows, gaps)?
+        } else {
+            Vec::new()
+        };
         Ok(Self {
+            ordering,
             rows,
             ancestry: Arc::new(Ancestry { intervals }),
             has_avoid,
@@ -1012,7 +1022,18 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 ancestry,
             });
         }
+        let ordering = self
+            .ordering
+            .iter()
+            .find(|profile| profile.flow == flow)
+            .map(|profile| {
+                Arc::new(super::ordering::NativeOrderingProjection {
+                    profile: Arc::clone(&profile.data),
+                    ranks,
+                })
+            });
         Ok(NumericWrapping {
+            ordering,
             boxes,
             metrics,
             forced,
@@ -1098,6 +1119,7 @@ pub(crate) struct NumericWrapping {
     forced: Vec<bool>,
     metrics: Vec<NumericBoxMetrics>,
     boxes: Vec<NumericBoxEdges>,
+    ordering: Option<Arc<super::ordering::NativeOrderingProjection>>,
 }
 impl PartialEq for NumericWrapping {
     fn eq(&self, other: &Self) -> bool {
@@ -1106,9 +1128,13 @@ impl PartialEq for NumericWrapping {
             && self.forced == other.forced
             && self.metrics == other.metrics
             && self.boxes == other.boxes
+            && self.ordering == other.ordering
     }
 }
 impl NumericWrapping {
+    pub(crate) fn ordering(&self) -> Option<&Arc<super::ordering::NativeOrderingProjection>> {
+        self.ordering.as_ref()
+    }
     pub(crate) fn boxes(&self) -> &[NumericBoxEdges] {
         &self.boxes
     }

@@ -466,6 +466,7 @@ impl Fixture {
             0,
             vec![self.binding.clone()],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

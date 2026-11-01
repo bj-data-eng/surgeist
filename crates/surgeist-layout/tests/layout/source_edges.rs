@@ -150,6 +150,7 @@ impl<S: layout::LayoutScalar> Host<S> {
             }
         };
         layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: self
                 .declarations
                 .iter()

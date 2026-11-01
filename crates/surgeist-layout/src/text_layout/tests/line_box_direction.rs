@@ -139,6 +139,7 @@ fn compute<S: LayoutScalar>(
         0,
         vec![p.binding(0)],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -354,6 +355,7 @@ fn chronology<S: LayoutScalar>() {
             0,
             vec![first.binding(0), child.binding(2), last.binding(0)],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -481,6 +483,7 @@ fn intrinsic<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -756,6 +759,7 @@ fn numeric_overflow_cases<S: LayoutScalar>(
                 0,
                 vec![p.binding(0)],
                 crate::WrappingInput {
+                    gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },

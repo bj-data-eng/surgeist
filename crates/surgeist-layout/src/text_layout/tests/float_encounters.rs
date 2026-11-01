@@ -73,6 +73,7 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
         2,
         vec![binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -177,6 +178,7 @@ fn assert_ordinary<S: LayoutScalar>(rtl: bool, side: Float) {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -241,6 +243,7 @@ impl<S: LayoutScalar> CachedHost<S> {
             2,
             vec![binding.clone()],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -488,6 +491,7 @@ fn leading_empty_origin_float_keeps_its_encounter_while_text_avoids_its_band() {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -524,6 +528,7 @@ fn assert_soft_replay<S: LayoutScalar>() {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -585,6 +590,7 @@ fn assert_clear<S: LayoutScalar>() {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -684,6 +690,7 @@ fn assert_signed<S: LayoutScalar>(adjustment: f64) {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -749,6 +756,7 @@ fn preceding_unbreakable_content_keeps_its_line_and_defers_the_encountered_float
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -786,6 +794,7 @@ fn assert_discarded_prefix<S: LayoutScalar>() {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -866,6 +875,7 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -953,6 +963,7 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1034,6 +1045,7 @@ fn assert_retained_zero_prefix<S: LayoutScalar>() {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1106,6 +1118,7 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
             2,
             vec![outer.clone(), inner.clone()],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -1271,6 +1284,7 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
         2,
         vec![binding.clone()],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1285,6 +1299,7 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1354,6 +1369,7 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1452,6 +1468,7 @@ fn assert_max_float_cohort<S: LayoutScalar>(
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1590,6 +1607,7 @@ fn expired_captured_max_cohorts<S: LayoutScalar>() -> f64 {
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1659,6 +1677,7 @@ fn source_ordered_clear_tops<S: LayoutScalar>(mirror: bool, capture_all: bool) -
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1742,6 +1761,7 @@ fn transparent_leading_capture<S: LayoutScalar>(
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1900,6 +1920,7 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
         2,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -2082,6 +2103,7 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
             2,
             vec![binding.clone()],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -2161,6 +2183,7 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
             2,
             vec![binding.clone()],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

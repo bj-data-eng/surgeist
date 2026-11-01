@@ -742,6 +742,46 @@ Zero BoxEdge still needs this context; zero Contribution needs no invented paren
 Capture does not promote a Contribution, and failed BoxEdge admission never
 downgrades it to Contribution.
 
+#### Numeric physical edge ordering
+
+Layout's font-free numeric formatter projects actual BoxEdge operations outside
+content L2. Their source occurrences, components, owner and parent-directed
+physical sides remain available to fitting and placement. Text's generic
+`SuppliedLine` orders every supplied slot; Layout supplies actual operands to it,
+then schedules the physical operations around the reordered content. Ordinary
+Contributions remain operands, including zero or unpaired occurrences. A wrapping
+NativePair declaration alone grants no transparent ordering role.
+
+`WrappingInput::gaps` supplies resolved attachments for ordering-empty boxes.
+Each `InlineGapGroupInput` names an anchor and the explicit physical order of
+unrelated boxes at that gap; nested boxes retain their admitted ancestry.
+`InlineGapAnchor::Neighbor` uses a genuine ordering occurrence and physical
+`InlineGapAffinity::Before` or `After`. `Formatter` uses the actual source Start
+or End and its adjoining body. `Delimiter` uses the source side of a genuine
+visible break or in-flow block interruption. These source sides are separate
+from physical affinity. Formatter edges include operand-empty bodies.
+`EmptyParent` names an actual ordering-empty parent; positive border/padding or
+metrics do not create an ordering operand or determine a gap.
+
+Retain the formatter-wide role, body and gap facts before partitioning fitting
+runs. Derive an attachment only when those facts determine a unique gap;
+otherwise require a resolved attachment. `MissingGap` reports its absence when
+source-adjacent operands bound different physical gaps. `AmbiguousGap` reports
+multiple eligible empty-parent bodies or unresolved physical ties between
+unrelated boxes. An absent referenced node retains `NodeNotReachable`; a known
+node with an incompatible role or context yields `InvalidGapAnchor`.
+When two authentic adjacent or body-edge witnesses prove the same derived gap,
+retain both. Projection checks each against the actual selected cut and uses a
+valid witness, cross-checking both when present. An explicit caller anchor keeps
+its exact stated authority.
+Reject conflicting or cyclic authority. A body-valid
+attachment must also belong to the actual selected cut: never clamp its rank or
+move the operation across a line. Only `GapOutsideSelection` permits continuing
+the finite candidate search; other failures retain their original meaning.
+Candidate fitting and selected physical execution consume the same successful
+ordering receipt. Complete-body fragment readback described below belongs to
+the PreparedText family capability.
+
 #### Complete-body bidi fragments
 
 `PreparedText::inline_box_family` issues a capability for one authentic
@@ -760,9 +800,10 @@ Finite wrapping cannot merge their identities, and level changes alone cannot
 split a box. Parent links and nearest-common-ancestor queries describe fragment
 ancestry. Text reuses completed bidi analysis and full-body L1/L2; it does not
 repeat contextual analysis or shaping. A genuine empty Inline remains a box
-without an ink, advance or decoration threshold. Native empty-box ordering uses
-its actual opening gap, borrowing the following nonopaque resolved level or the
-body's paragraph level before L2. That is an explicit Native policy informed by
+without an ink, advance or decoration threshold. For this PreparedText family,
+empty native-pair ordering uses its actual opening gap, borrowing the following
+nonopaque resolved level or the body's paragraph level before L2. That is an
+explicit captured-family policy informed by
 [pinned Blink's opaque-row ordering](https://github.com/chromium/chromium/blob/79051446b0be39cd65045025894b32da4d49a804/third_party/blink/renderer/core/layout/inline/logical_line_builder.cc#L655),
 not a claim that Blink retains this global family. A finite-line fallback cannot
 change the family's unwrapped classification.

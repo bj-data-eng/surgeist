@@ -582,6 +582,7 @@ fn earlier_same_anchor_atomic_accepts_its_own_content_domain_and_computes_phrase
         0,
         bindings.clone(),
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -624,6 +625,7 @@ fn later_same_anchor_atomic_rejects_the_earlier_atomics_content_domain() {
         0,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -650,6 +652,7 @@ fn out_of_flow_content_domain_keeps_its_exact_same_anchor_atomic_custody() {
         0,
         bindings.clone(),
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -664,6 +667,7 @@ fn out_of_flow_content_domain_keeps_its_exact_same_anchor_atomic_custody() {
         0,
         wrong,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -689,6 +693,7 @@ fn parent_atomic_order_is_not_replaced_by_content_domain_schedule() {
         0,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -714,6 +719,7 @@ fn deferred_child_content_cannot_reverse_its_actual_boundary_controls() {
         0,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -740,6 +746,7 @@ fn several_deferred_atomic_content_domains_keep_independent_actual_flows() {
             0,
             bindings.clone(),
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -774,6 +781,7 @@ fn deferred_entry_cannot_donate_a_later_inline_parent_to_an_earlier_atomic() {
         0,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -808,6 +816,7 @@ fn deferred_content_can_follow_its_nominated_atomics_parent_paragraph_exit() {
         0,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -835,6 +844,7 @@ fn plain_block_subtree_root_keeps_its_own_flow_without_an_outside_parent_associa
         50,
         vec![child],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -860,6 +870,7 @@ fn atomic_content_root_cannot_guess_its_missing_nominated_atomic_binding() {
         A0,
         vec![child],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -884,6 +895,7 @@ fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
         0,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -937,6 +949,7 @@ fn plain_block_definition_cannot_reuse_an_actual_prepared_atomic_container() {
         0,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

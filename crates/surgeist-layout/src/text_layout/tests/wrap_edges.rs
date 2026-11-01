@@ -293,6 +293,7 @@ impl Fixture {
             0,
             vec![self.binding.clone()],
             WrappingInput {
+                gaps: Vec::new(),
                 scopes: self.policies(edges, form),
                 child_order: Vec::new(),
             },
@@ -629,6 +630,7 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                     0,
                     vec![fixture.binding.clone()],
                     WrappingInput {
+                        gaps: Vec::new(),
                         scopes: fixture.policies(WrapEdges::AUTO, form),
                         child_order: Vec::new(),
                     },

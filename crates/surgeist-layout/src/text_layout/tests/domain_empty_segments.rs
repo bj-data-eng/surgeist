@@ -334,6 +334,7 @@ fn assert_empty<S: LayoutScalar>(empty: Empty) {
         ROOT,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: vec![],
         },
