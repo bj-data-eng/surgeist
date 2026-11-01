@@ -1,3 +1,4 @@
+mod depth;
 mod focus;
 use std::sync::Arc;
 use surgeist_html::{
@@ -147,13 +148,24 @@ fn driven_insert(
     parent: &HtmlBuilderNode,
     before: Option<&HtmlBuilderNode>,
 ) -> (HtmlConstructionStorage, DescribedWork) {
+    driven(
+        storage,
+        HtmlConstructionCommand::Insert {
+            node: node.clone(),
+            parent: parent.clone(),
+            before: before.cloned(),
+        },
+    )
+}
+
+/// Performs every action of `command` and returns the steady work it described.
+fn driven(
+    storage: HtmlConstructionStorage,
+    command: HtmlConstructionCommand,
+) -> (HtmlConstructionStorage, DescribedWork) {
     let mut operation = Some(
         storage
-            .prepare(HtmlConstructionCommand::Insert {
-                node: node.clone(),
-                parent: parent.clone(),
-                before: before.cloned(),
-            })
+            .prepare(command)
             .unwrap_or_else(|_| panic!("preparation")),
     );
     let mut work = DescribedWork::default();
@@ -180,10 +192,11 @@ fn driven_insert(
                 initialized_bytes, ..
             } => (0, initialized_bytes, 0, false),
             HtmlConstructionActionDescription::Commit {
+                record_visits,
                 record_writes,
                 copied_bytes,
                 ..
-            } => (0, copied_bytes, record_writes, false),
+            } => (record_visits, copied_bytes, record_writes, false),
             // Reserving and reporting a bank's capacity is amortized growth.
             HtmlConstructionActionDescription::Reserve { .. }
             | HtmlConstructionActionDescription::PrepareAllocationReport { .. } => (0, 0, 0, true),

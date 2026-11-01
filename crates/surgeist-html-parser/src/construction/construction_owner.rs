@@ -523,6 +523,7 @@ impl ConstructionOwner {
             }
             HtmlConstructionActionDescription::Commit {
                 depth_observation,
+                record_visits,
                 record_writes,
                 copied_bytes,
                 initialized_bytes,
@@ -534,6 +535,7 @@ impl ConstructionOwner {
                 }
                 control.admit_atomic_layout(initialized_bytes)?;
                 control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
+                control.charge(WorkCategory::RecordVisit, record_visits as u64)?;
                 control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
                 before_commit(control)?;
                 control.commit_construction_logical(

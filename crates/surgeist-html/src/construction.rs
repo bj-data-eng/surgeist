@@ -558,7 +558,21 @@ struct Record {
     parent: Option<usize>,
     children: Vec<usize>,
     children_generation: u64,
+    /// Depth of this record within its own tree, counting association edges;
+    /// the root of every tree, attached or detached, is at zero. Every
+    /// admitted change keeps it exact.
     depth: usize,
+    /// How many records of the arena have a depth equal to this record's
+    /// *index*. The depth histogram needs no allocation of its own: a record
+    /// at depth `d` implies a chain of `d + 1` records, so index `d` exists
+    /// whenever the bucket for `d` is nonempty. Only depth placement writes it.
+    population: usize,
+    /// Scratch: next edge a subtree walk takes from this record. A walk sets it
+    /// on entry, so a stale value is never trusted.
+    walk_cursor: usize,
+    /// Scratch: how many records of the walked subtree sit at a level equal to
+    /// this record's *index*. A walk initializes a level on first reaching it.
+    level_count: usize,
     template_contents: Option<TemplateContents>,
     shadow: Option<ShadowAssociation>,
     shadow_properties: Option<HtmlShadowRootProperties>,
@@ -579,6 +593,9 @@ impl Record {
             children: Vec::new(),
             children_generation: 0,
             depth,
+            population: 0,
+            walk_cursor: 0,
+            level_count: 0,
             template_contents: None,
             shadow: None,
             shadow_properties: None,
@@ -594,12 +611,38 @@ struct Arena {
     usage: HtmlConstructionUsage,
     records_generation: u64,
     wrapper_generation: u64,
-    depths_valid: bool,
     // Shared never-reused namespace for child-bank incarnations and temporary
     // banks, including every successful reallocation or child-bank replacement.
     temporary_generation: u64,
 }
 impl Arena {
+    /// How many records have exactly this depth.
+    fn population(&self, depth: usize) -> usize {
+        self.records
+            .get(depth)
+            .map_or(0, |bucket| bucket.population)
+    }
+    /// Counts one more record at `depth`. The bucket lives in the record at
+    /// that index, which exists whenever a record sits at `depth`.
+    fn populate(&mut self, depth: usize) {
+        if let Some(bucket) = self.records.get_mut(depth) {
+            bucket.population = bucket.population.saturating_add(1);
+        }
+    }
+    fn unpopulate(&mut self, depth: usize) {
+        if let Some(bucket) = self.records.get_mut(depth) {
+            bucket.population = bucket.population.saturating_sub(1);
+        }
+    }
+    /// Gives the record a new depth and moves it between histogram buckets.
+    fn place(&mut self, index: usize, depth: usize) {
+        let Some(record) = self.records.get_mut(index) else {
+            return;
+        };
+        let old = std::mem::replace(&mut record.depth, depth);
+        self.unpopulate(old);
+        self.populate(depth);
+    }
     fn id(&self, index: usize) -> HtmlNodeId {
         HtmlNodeId {
             identity: self.identity.clone(),
@@ -1208,7 +1251,6 @@ mod tests {
             usage: HtmlConstructionUsage::default(),
             records_generation: 0,
             wrapper_generation: 0,
-            depths_valid: true,
             temporary_generation: 0,
         };
         let node = HtmlNode {

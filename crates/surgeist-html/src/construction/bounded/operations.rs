@@ -1,6 +1,8 @@
 use super::*;
+mod depth;
 mod orders;
 use crate::{Attribute, bounded::HtmlValidatedAttributes};
+use depth::{DepthPlan, owning_parent};
 pub use orders::*;
 
 /// Closed generic changes; parser policy and source evidence are not operands.
@@ -208,6 +210,8 @@ pub enum HtmlConstructionActionDescription<'a> {
     Commit {
         /// Commands without an earlier usage boundary observe depth here.
         depth_observation: Option<usize>,
+        /// Records the commit's depth walk reads.
+        record_visits: usize,
         record_writes: usize,
         copied_bytes: usize,
         initialized_bytes: usize,
@@ -260,11 +264,24 @@ enum Phase {
         parent: usize,
         offset: usize,
     },
-    Depth {
-        node: usize,
+    /// Planning walk up the host's owners after the change, which has climbed
+    /// `depth` levels from the host.
+    Host {
         cursor: usize,
         depth: usize,
         steps: usize,
+    },
+    /// Planning walk over one moved subtree, which entered `node` at `level`
+    /// below the subtree's root.
+    Shift {
+        slot: usize,
+        node: usize,
+        level: usize,
+        steps: usize,
+    },
+    /// Scan for the deepest record outside the moved subtrees.
+    Settle {
+        level: usize,
     },
     Topology,
     PrepareRecordsReport,
@@ -305,7 +322,8 @@ struct Plan {
     positions: [usize; 3],
     template: bool,
     output_document: bool,
-    fast_depth: Option<usize>,
+    /// How the commit updates the cached depths.
+    depth: DepthPlan,
     link: bool,
     local_expected: &'static [u8],
     usage: HtmlConstructionUsage,
@@ -319,11 +337,11 @@ struct Plan {
     before_found: bool,
     old_found: bool,
     old_contents: Option<usize>,
-    max_depth: usize,
     no_op: bool,
     record_count: usize,
     copied_bytes: usize,
     initialized_bytes: usize,
+    record_visits: usize,
     record_writes: usize,
     reserve_required: usize,
     references: usize,
@@ -721,6 +739,7 @@ impl<'a> HtmlConstructionAction<'a> {
                     HtmlConstructionCommand::Insert { .. }
                 ))
                 .then_some(operation.plan.usage.depth),
+                record_visits: operation.plan.record_visits,
                 record_writes: operation.plan.record_writes,
                 copied_bytes: operation.plan.copied_bytes,
                 initialized_bytes: operation.plan.initialized_bytes,
@@ -762,12 +781,13 @@ impl<'a> HtmlConstructionAction<'a> {
                 record_visits: 12,
                 inspected_bytes: 0,
             },
-            Phase::Depth { .. } | Phase::PublishChild { .. } => {
-                HtmlConstructionActionDescription::Inspect {
-                    record_visits: 2,
-                    inspected_bytes: 0,
-                }
-            }
+            Phase::PublishChild { .. }
+            | Phase::Host { .. }
+            | Phase::Shift { .. }
+            | Phase::Settle { .. } => HtmlConstructionActionDescription::Inspect {
+                record_visits: 2,
+                inspected_bytes: 0,
+            },
             _ => HtmlConstructionActionDescription::Inspect {
                 record_visits: 1,
                 inspected_bytes: 0,
@@ -890,13 +910,7 @@ pub(in crate::construction) fn created_usage(
     Ok((element.attributes().len(), units))
 }
 fn structural_parent(arena: &Arena, index: usize) -> Option<usize> {
-    let record = &arena.records[index];
-    record.parent.or(match &record.owner {
-        Some(HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) => {
-            Some(owner.index)
-        }
-        None => None,
-    })
+    arena.records.get(index).and_then(owning_parent)
 }
 fn ordinary_owned_contents(arena: &Arena, template: usize) -> Result<usize, HtmlConstructionError> {
     let record = &arena.records[template];
@@ -1251,51 +1265,6 @@ impl HtmlConstructionOperation {
             Ok(Phase::Layout)
         }
     }
-    fn topology(&mut self) -> Result<Phase, HtmlConstructionError> {
-        use HtmlConstructionCommand as Command;
-        let arena = self.arena();
-        let p = self.plan.positions;
-        if arena.depths_valid {
-            if matches!(self.command(), Command::Publish { .. }) {
-                return Ok(Phase::Layout);
-            }
-            let indices = match self.command() {
-                Command::Insert { .. } if self.plan.old_parent.is_none() => Some((p[0], p[1])),
-                Command::AttachShadow { .. } => Some((p[1], p[0])),
-                _ => None,
-            };
-            if let Some((node, parent)) = indices {
-                let record = &arena.records[node];
-                let contents = record.template_contents.and_then(|value| match value {
-                    TemplateContents::Owned(index) => Some(index),
-                    TemplateContents::ShadowReference(_) => None,
-                });
-                let shallow = record.children.is_empty()
-                    && record.shadow.is_none()
-                    && contents.is_none_or(|index| {
-                        let contents = &arena.records[index];
-                        contents.children.is_empty() && contents.shadow.is_none()
-                    });
-                if shallow {
-                    let depth = add(arena.records[parent].depth, 1)?;
-                    self.plan.usage.depth = self
-                        .plan
-                        .usage
-                        .depth
-                        .max(add(depth, usize::from(contents.is_some()))?);
-                    self.plan.fast_depth = Some(depth);
-                    return self.before_writes();
-                }
-            }
-        }
-        self.plan.max_depth = 0;
-        Ok(Phase::Depth {
-            node: 0,
-            cursor: 0,
-            depth: 0,
-            steps: 0,
-        })
-    }
     fn before_writes(&self) -> Result<Phase, HtmlConstructionError> {
         Ok(
             if matches!(self.command(), HtmlConstructionCommand::Insert { .. }) {
@@ -1311,21 +1280,8 @@ impl HtmlConstructionOperation {
         let result = (|| {
             match self.command() {
                 Command::Insert { .. } if plan.append => {
-                    let node = self
-                        .arena()
-                        .records
-                        .get(plan.positions[0])
-                        .ok_or(HtmlConstructionError::UnknownNode)?;
-                    // Usage, the child push, the parent link and the depth cache.
-                    let depth_writes = if plan.fast_depth.is_some() {
-                        1 + usize::from(matches!(
-                            node.template_contents,
-                            Some(TemplateContents::Owned(_))
-                        ))
-                    } else {
-                        1
-                    };
-                    plan.record_writes = add(plan.record_writes, add(2, depth_writes)?)?;
+                    // Usage, the child push and the parent link.
+                    plan.record_writes = add(plan.record_writes, 2)?;
                     plan.copied_bytes = add(plan.copied_bytes, 2 * size_of::<usize>())?;
                 }
                 Command::Insert { .. } | Command::Detach { .. } => {
@@ -1392,13 +1348,24 @@ impl HtmlConstructionOperation {
                 }
                 _ => {}
             }
+            // The depth cache's visits and writes, for the records it places.
+            let (visits, writes) = plan.depth.commit_work()?;
+            plan.record_visits = add(plan.record_visits, visits)?;
+            plan.record_writes = add(plan.record_writes, writes)?;
+            plan.copied_bytes = add(
+                plan.copied_bytes,
+                writes
+                    .checked_mul(size_of::<usize>())
+                    .ok_or(HtmlConstructionError::RepresentationExhausted)?,
+            )?;
             if self.command().creates() {
                 plan.initialized_bytes = plan
                     .record_count
                     .checked_mul(size_of::<Record>())
                     .ok_or(HtmlConstructionError::RepresentationExhausted)?;
                 plan.copied_bytes = add(plan.copied_bytes, plan.initialized_bytes)?;
-                plan.record_writes = add(plan.record_writes, plan.record_count)?;
+                // Each record, and the histogram count of its depth.
+                plan.record_writes = add(plan.record_writes, 2 * plan.record_count)?;
                 plan.references = 1 + usize::from(plan.template);
                 plan.reserve_required = add(self.arena().records.len(), plan.record_count)?;
                 Ok(if plan.reserve_required > self.arena().records.capacity() {
@@ -1436,21 +1403,6 @@ impl HtmlConstructionOperation {
         })();
         self.plan = plan;
         result
-    }
-    fn virtual_parent(&self, index: usize) -> Option<usize> {
-        use HtmlConstructionCommand as Command;
-        let p = self.plan.positions;
-        if Some(index) == self.plan.old_contents {
-            return None;
-        }
-        match self.command() {
-            Command::Insert { .. } if index == p[0] => Some(p[1]),
-            Command::Detach { .. } if index == p[0] => None,
-            Command::AttachShadow { .. } if index == p[1] => Some(p[0]),
-            Command::AttachTemplateShadow { .. } if index == p[2] => Some(p[1]),
-            Command::ReassignTemplateContents { .. } if index == p[1] => Some(p[0]),
-            _ => structural_parent(self.arena(), index),
-        }
     }
 }
 
@@ -1690,6 +1642,18 @@ impl HtmlConstructionOperation {
             Phase::Command => self.command_phase(),
             Phase::Layout => self.layout(),
             Phase::Topology => self.topology(),
+            Phase::Host {
+                cursor,
+                depth,
+                steps,
+            } => self.host_step(cursor, depth, steps),
+            Phase::Shift {
+                slot,
+                node,
+                level,
+                steps,
+            } => self.shift_step(slot, node, level, steps),
+            Phase::Settle { level } => self.settle_step(level),
             Phase::CopyOrder { slot, offset } => self.read_order(slot, offset),
             Phase::PushInserted {
                 slot,
@@ -1967,40 +1931,6 @@ impl HtmlConstructionOperation {
                     Ok(Phase::PublishNode(parent + 1))
                 }
             }
-            Phase::Depth {
-                node,
-                cursor,
-                depth,
-                steps,
-            } => {
-                if steps >= self.arena().records.len() {
-                    return Err(HtmlConstructionError::Cycle);
-                }
-                if let Some(parent) = self.virtual_parent(cursor) {
-                    if parent >= self.arena().records.len() {
-                        return Err(HtmlConstructionError::UnknownNode);
-                    }
-                    Ok(Phase::Depth {
-                        node,
-                        cursor: parent,
-                        depth: add(depth, 1)?,
-                        steps: steps + 1,
-                    })
-                } else {
-                    self.plan.max_depth = self.plan.max_depth.max(depth);
-                    if node + 1 < self.arena().records.len() {
-                        Ok(Phase::Depth {
-                            node: node + 1,
-                            cursor: node + 1,
-                            depth: 0,
-                            steps: 0,
-                        })
-                    } else {
-                        self.plan.usage.depth = self.plan.max_depth;
-                        self.before_writes()
-                    }
-                }
-            }
             Phase::Preflight => Ok(Phase::Layout),
             Phase::Commit => {
                 if self.plan.append && !self.plan.no_op {
@@ -2165,17 +2095,6 @@ impl HtmlConstructionReadyOperation {
             },
             command => command,
         };
-        let attach_shadow = matches!(command, Command::AttachShadow { .. });
-        let changes_topology = matches!(
-            command,
-            Command::Insert { .. }
-                | Command::Detach { .. }
-                | Command::AttachShadow { .. }
-                | Command::AttachTemplateShadow { .. }
-                | Command::DetachShadow { .. }
-                | Command::SetTemplateShadowContents { .. }
-                | Command::ReassignTemplateContents { .. }
-        );
         let plan = &mut operation.plan;
         let p = plan.positions;
         let mut retired_orders = HtmlConstructionOrderRetirement::default();
@@ -2191,6 +2110,8 @@ impl HtmlConstructionReadyOperation {
         }
         if !plan.no_op {
             let arena = &mut storage.arena;
+            // Depths move while the edges are the ones planning walked.
+            plan.commit_depths(arena);
             match command {
                 Command::CreateElement { .. } => unreachable!("element operands formed at Ready"),
                 Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. } => {}
@@ -2211,6 +2132,10 @@ impl HtmlConstructionReadyOperation {
                         ));
                         arena.records.push(contents);
                     }
+                    arena.populate(0);
+                    if plan.template {
+                        arena.populate(1);
+                    }
                 }
                 Command::CreateDocument { mode } => {
                     let mut record = Record::new(HtmlNodeKind::Document(mode), None, 0);
@@ -2221,6 +2146,7 @@ impl HtmlConstructionReadyOperation {
                     record.children = std::mem::take(&mut plan.new_children[0]);
                     record.children_generation = plan.new_children_generations[0];
                     arena.records.push(record);
+                    arena.populate(0);
                 }
                 Command::CreateFragment | Command::CreateShadowContents { .. } => {
                     let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
@@ -2230,6 +2156,7 @@ impl HtmlConstructionReadyOperation {
                         record.shadow_properties = Some(properties);
                     }
                     arena.records.push(record);
+                    arena.populate(0);
                 }
                 Command::Insert { .. } => {
                     if plan.append {
@@ -2323,17 +2250,6 @@ impl HtmlConstructionReadyOperation {
                     element.link_flags = Some(flags);
                 }
                 Command::Publish { .. } => unreachable!("publication handled separately"),
-            }
-            if let Some(depth) = plan.fast_depth {
-                let index = if attach_shadow { p[1] } else { p[0] };
-                arena.records[index].depth = depth;
-                if let Some(TemplateContents::Owned(contents)) =
-                    arena.records[index].template_contents
-                {
-                    arena.records[contents].depth = depth + 1;
-                }
-            } else if changes_topology {
-                arena.depths_valid = false;
             }
             arena.usage = plan.usage;
         }

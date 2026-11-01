@@ -79,6 +79,7 @@ pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::auxiliary
 pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::copied_bytes: usize
 pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::depth_observation: core::option::Option<usize>
 pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::initialized_bytes: usize
+pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::record_visits: usize
 pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::record_writes: usize
 pub surgeist_html::bounded::HtmlConstructionActionDescription::Commit::usage: surgeist_html::HtmlConstructionUsage
 pub surgeist_html::bounded::HtmlConstructionActionDescription::Compare
