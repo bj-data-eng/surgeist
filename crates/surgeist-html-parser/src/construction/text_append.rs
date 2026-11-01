@@ -429,7 +429,9 @@ impl SessionStorage {
                     // A test makes the backing fail: it was never created, so
                     // the action goes unperformed and the operation reports it.
                     #[cfg(test)]
-                    Description::InitializeBacking(_) if control.take_text_append_backing_fault() => {
+                    Description::InitializeBacking(_)
+                        if control.take_text_append_backing_fault() =>
+                    {
                         Err(HtmlConstructionError::AllocationFailed)
                     }
                     _ => action.perform(minimum),
