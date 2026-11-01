@@ -1097,7 +1097,9 @@ impl StandaloneError {
             Self::Consumed | Self::TokenizerExhausted => true,
             Self::Prologue(error) => error.invariant_fault(),
             Self::Head(error) => error.invariant_fault(),
-            _ => false,
+            Self::UnsupportedDocumentInitialization
+            | Self::UnsupportedExecutionProfile
+            | Self::Stop(_) => false,
         }
     }
 }
@@ -1197,7 +1199,17 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     SessionError::CompletionMetadataUnavailable
                     | SessionError::CompletionIncomplete,
                 ))) => StandaloneUnsupported::Completion,
-                _ => StandaloneUnsupported::InvalidNesting,
+                // Every other error a document or a limit can lead to. A stop
+                // is already the controller's first, so naming it changes
+                // nothing. A fault of the parser's own sequencing returned
+                // above.
+                StandaloneError::Stop(_)
+                | StandaloneError::Prologue(_)
+                | StandaloneError::Head(_)
+                | StandaloneError::UnsupportedDocumentInitialization
+                | StandaloneError::UnsupportedExecutionProfile
+                | StandaloneError::Consumed
+                | StandaloneError::TokenizerExhausted => StandaloneUnsupported::InvalidNesting,
             };
             self.control.stop_unsupported_standalone(reason);
         }

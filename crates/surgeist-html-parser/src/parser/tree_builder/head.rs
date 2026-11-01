@@ -147,8 +147,16 @@ pub(crate) enum HeadError {
 impl HeadError {
     /// The error names a state the stage's own sequencing cannot produce: an
     /// owner, slot or mode it keeps is gone, or a token, formatting entry,
-    /// script nesting or tokenizer state is one it never creates. No input
-    /// reaches these; they are faults of the parser, not unsupported documents.
+    /// script nesting or tokenizer state is one it never creates, or a driver
+    /// steps a stage that waits at a boundary. No input reaches these; they are
+    /// faults of the parser, not unsupported documents.
+    ///
+    /// `AlreadyAtBoundary` is among them because the parse functions stop at
+    /// the first boundary a stage returns and the driver consumes the
+    /// after-head boundary itself. The other errors are not proven unreachable
+    /// from input and stay as they are: a tokenizer handoff that is refused
+    /// (queued events behind the first token are not excluded), the stack and
+    /// node errors of the kernel, and the session errors, which many sites share.
     pub(super) fn invariant_fault(&self) -> bool {
         match self {
             Self::Consumed
@@ -158,10 +166,18 @@ impl HeadError {
             | Self::InvalidFormattingState
             | Self::InvalidTextToken
             | Self::InvalidScriptNesting
+            | Self::AlreadyAtBoundary
             | Self::TokenizerExhausted => true,
             Self::Kernel(KernelError::Consumed) => true,
             Self::Prologue(error) => error.invariant_fault(),
-            _ => false,
+            Self::Kernel(_)
+            | Self::Handoff(_)
+            | Self::ConstructionCapabilityUnavailable
+            | Self::UnsupportedScriptPause
+            | Self::UnsupportedPendingScript
+            | Self::IncompleteCompletion => false,
+            #[cfg(test)]
+            Self::NotAtBoundary => false,
         }
     }
 }

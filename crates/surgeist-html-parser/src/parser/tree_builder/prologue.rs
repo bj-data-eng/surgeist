@@ -55,12 +55,19 @@ pub(crate) enum PrologueError {
     Consumed,
 }
 impl PrologueError {
-    /// A prologue owner its driver keeps is gone.
+    /// A prologue owner its driver keeps is gone, or the driver processed or
+    /// took a prologue out of order. The driver takes the prologue's before-head
+    /// state in the same step that reports it and a failure ends the driver, so
+    /// no input leads to either order fault.
     pub(super) fn invariant_fault(&self) -> bool {
-        matches!(
-            self,
-            Self::Consumed | Self::MissingInput | Self::Kernel(KernelError::Consumed)
-        )
+        match self {
+            Self::Consumed
+            | Self::MissingInput
+            | Self::AlreadyAtBeforeHead
+            | Self::PendingInput => true,
+            Self::Kernel(KernelError::Consumed) => true,
+            Self::Kernel(_) => false,
+        }
     }
 }
 impl From<KernelError> for PrologueError {
