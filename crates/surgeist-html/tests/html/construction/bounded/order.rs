@@ -372,3 +372,166 @@ fn child_orders_match_the_reference_model_through_a_long_sequence_of_changes() {
         }
     }
 }
+
+/// Containers: the root (0), two elements (1, 2) and the contents of two
+/// templates (3, 4). Nodes: the two container elements (0, 1), the two
+/// template elements (2, 3) and two leaves (4, 5).
+struct TreeModel {
+    containers: Vec<Vec<usize>>,
+}
+
+impl TreeModel {
+    /// The node a container belongs to: an element is its own container, and a
+    /// template owns its contents; the root belongs to no node.
+    fn node_of_container(container: usize) -> Option<usize> {
+        match container {
+            1..=4 => Some(container - 1),
+            _ => None,
+        }
+    }
+    fn parent_of(&self, node: usize) -> Option<usize> {
+        self.containers
+            .iter()
+            .position(|children| children.contains(&node))
+    }
+    /// Whether placing `node` in `container` would put it inside itself,
+    /// following parents and template ownership upward.
+    fn cycle(&self, node: usize, container: usize) -> bool {
+        let mut cursor = Some(container);
+        while let Some(current) = cursor {
+            match Self::node_of_container(current) {
+                Some(owner) if owner == node => return true,
+                Some(owner) => cursor = self.parent_of(owner),
+                None => return false,
+            }
+        }
+        false
+    }
+    fn remove(&mut self, node: usize) {
+        if let Some(parent) = self.parent_of(node) {
+            self.containers[parent].retain(|&child| child != node);
+        }
+    }
+    fn insert(&mut self, node: usize, container: usize, before: Option<usize>) {
+        self.remove(node);
+        let at = before.map_or(self.containers[container].len(), |before| {
+            self.containers[container]
+                .iter()
+                .position(|&child| child == before)
+                .unwrap()
+        });
+        self.containers[container].insert(at, node);
+    }
+}
+
+#[test]
+fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
+    let mut owner = storage();
+    let (next, root) = fragment(owner);
+    owner = next;
+    let mut nodes = Vec::new();
+    for local in ["e", "e", "template", "template", "leaf", "leaf"] {
+        let (next, node) = create(owner, element(local));
+        owner = next;
+        nodes.push(node);
+    }
+    let contents = |owner: &HtmlConstructionStorage, template: &HtmlBuilderNode| {
+        owner
+            .node(template)
+            .unwrap()
+            .template_contents()
+            .expect("an HTML template owns contents")
+            .handle()
+    };
+    let containers = vec![
+        root,
+        nodes[0].clone(),
+        nodes[1].clone(),
+        contents(&owner, &nodes[2]),
+        contents(&owner, &nodes[3]),
+    ];
+    let mut model = TreeModel {
+        containers: vec![Vec::new(); containers.len()],
+    };
+    let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+    let mut next = move |bound: usize| {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed % bound as u64) as usize
+    };
+    let (mut cycles, mut templates, mut strangers, mut moves) = (0, 0, 0, 0);
+    for step in 0..1500 {
+        let node = next(nodes.len());
+        if next(6) == 0 {
+            owner = change(
+                owner,
+                HtmlConstructionCommand::Detach {
+                    node: nodes[node].clone(),
+                },
+            )
+            .0;
+            model.remove(node);
+        } else if next(12) == 0 {
+            // A template element is not a parent: its contents are.
+            let template = 2 + next(2);
+            owner = refuse(
+                owner,
+                HtmlConstructionCommand::Insert {
+                    node: nodes[node].clone(),
+                    parent: nodes[template].clone(),
+                    before: None,
+                },
+                HtmlConstructionError::TemplateContentsRequired,
+            );
+            templates += 1;
+        } else {
+            let container = next(containers.len());
+            let before = match next(4) {
+                0 => None,
+                1 => Some(next(nodes.len())),
+                _ => {
+                    let children = &model.containers[container];
+                    (!children.is_empty()).then(|| children[next(children.len())])
+                }
+            };
+            let command = HtmlConstructionCommand::Insert {
+                node: nodes[node].clone(),
+                parent: containers[container].clone(),
+                before: before.map(|before| nodes[before].clone()),
+            };
+            let stranger = before.is_some_and(|b| model.parent_of(b) != Some(container));
+            if stranger {
+                owner = refuse(owner, command, HtmlConstructionError::WrongSibling);
+                strangers += 1;
+            } else if before == Some(node) {
+                owner = change(owner, command).0;
+            } else if model.cycle(node, container) {
+                owner = refuse(owner, command, HtmlConstructionError::Cycle);
+                cycles += 1;
+            } else {
+                moves += usize::from(model.parent_of(node).is_some());
+                owner = change(owner, command).0;
+                model.insert(node, container, before);
+            }
+        }
+        for (index, container) in containers.iter().enumerate() {
+            let expected: Vec<_> = model.containers[index]
+                .iter()
+                .map(|&child| nodes[child].clone())
+                .collect();
+            assert_eq!(children_of(&owner, container), expected, "step {step}");
+        }
+        for (index, node) in nodes.iter().enumerate() {
+            let actual = owner.node(node).unwrap().parent().map(|parent| {
+                containers
+                    .iter()
+                    .position(|c| *c == parent.handle())
+                    .unwrap()
+            });
+            assert_eq!(actual, model.parent_of(index), "step {step}");
+        }
+    }
+    // The sequence reached every refusal and many reparenting moves.
+    assert!(cycles > 20 && templates > 20 && strangers > 20 && moves > 100);
+}
