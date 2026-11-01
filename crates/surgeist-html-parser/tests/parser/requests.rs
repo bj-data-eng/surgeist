@@ -568,8 +568,8 @@ fn request_image_support_is_the_selected_documents_parser_creation_fact() {
         .unwrap();
         assert_eq!(request.image_support(), support);
         let context = HtmlFragmentContext::element(&capture, &element).unwrap();
-        let request = HtmlFragmentParseRequest::new(HtmlSource::utf8("x"), context, limits(0))
-            .unwrap();
+        let request =
+            HtmlFragmentParseRequest::new(HtmlSource::utf8("x"), context, limits(0)).unwrap();
         assert_eq!(request.image_support(), support);
     }
     let offline = HtmlDocumentParseRequest::offline(HtmlSource::utf8("x"), limits(0));

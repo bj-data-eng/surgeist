@@ -3,8 +3,8 @@
 
 use crate::{
     HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureFact, HtmlCaptureSubjectKind,
-    HtmlCapturedDocument, HtmlCapturedNodeKind, HtmlFragmentContext, HtmlParseCancellation, HtmlParseLimits, HtmlParserScriptingMode,
-    HtmlScriptingStatus, HtmlSource,
+    HtmlCapturedDocument, HtmlCapturedNodeKind, HtmlFragmentContext, HtmlParseCancellation,
+    HtmlParseLimits, HtmlParserScriptingMode, HtmlScriptingStatus, HtmlSource,
 };
 use std::{error::Error, fmt};
 
@@ -79,9 +79,9 @@ fn document_facts<'a>(
         HtmlCapturedNodeKind::Fragment(_) => Err(not_a_document(HtmlCaptureSubjectKind::Fragment)),
         HtmlCapturedNodeKind::Text(_) => Err(not_a_document(HtmlCaptureSubjectKind::Text)),
         HtmlCapturedNodeKind::Comment(_) => Err(not_a_document(HtmlCaptureSubjectKind::Comment)),
-        HtmlCapturedNodeKind::ProcessingInstruction(_) => {
-            Err(not_a_document(HtmlCaptureSubjectKind::ProcessingInstruction))
-        }
+        HtmlCapturedNodeKind::ProcessingInstruction(_) => Err(not_a_document(
+            HtmlCaptureSubjectKind::ProcessingInstruction,
+        )),
         HtmlCapturedNodeKind::Doctype(_) => Err(not_a_document(HtmlCaptureSubjectKind::Doctype)),
     }
 }
@@ -462,9 +462,8 @@ impl HtmlFragmentParseRequest {
         allow_declarative_shadow_roots: bool,
     ) -> Result<Self, HtmlParseRequestError> {
         let effective = context.resolve_scripting_mode(requested)?;
-        let image_support =
-            document_facts(context.capture(), context.target_document())?
-                .parser_creation_image_support();
+        let image_support = document_facts(context.capture(), context.target_document())?
+            .parser_creation_image_support();
         Ok(Self {
             source,
             limits,
