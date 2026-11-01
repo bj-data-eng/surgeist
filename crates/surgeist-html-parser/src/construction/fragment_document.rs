@@ -115,3 +115,71 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
     // that actual Document; no final-tree inference issues its creation proof.
     Ok(())
 }
+
+#[cfg(test)]
+pub(super) mod tests {
+    use crate::*;
+
+    /// A complete fragment report whose context element is a `div`.
+    pub(in crate::construction) fn fragment_report(literal: &str) -> HtmlParseReport {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder
+            .establish_document_template_facts(
+                &document,
+                HtmlDocumentClass::Html,
+                HtmlTemplateDocumentRole::Ordinary,
+                HtmlCaptureTemplateCacheInput::Absent,
+            )
+            .unwrap();
+        let div = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_root(&div).unwrap();
+        builder.establish_no_shadow_root(&div).unwrap();
+        let capture = builder.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap();
+        HtmlFragmentParseRequest::new(
+            HtmlSource::utf8(literal),
+            context,
+            crate::construction::tests::limits(),
+        )
+        .unwrap()
+        .parse()
+        .unwrap()
+    }
+
+    // The auxiliary Document is lent only when everything its readers answer
+    // from is in the report: a report whose completion row is gone issues none
+    // instead of lending a Document that cannot say how it completed.
+    #[test]
+    fn a_completion_row_that_is_gone_issues_no_parser_document() {
+        let mut report = fragment_report("<p>a</p>");
+        let storage = report
+            .storage_mut()
+            .history_mut()
+            .arena_mut()
+            .storage
+            .as_mut()
+            .unwrap();
+        let completion = storage.fragment.as_ref().unwrap().completion;
+        storage.payloads.values[completion] = crate::construction::RetainedPayload::Retired;
+        assert!(report.fragment_parser_document().is_none());
+    }
+}

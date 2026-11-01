@@ -235,6 +235,14 @@ pub(crate) struct ParseControl {
     walk_refusals: [usize; 3],
     #[cfg(test)]
     walk_refusals_issued: usize,
+    /// Extra steps the next registry walk takes past the registry's end, as a
+    /// registry that shrank during the walk would.
+    #[cfg(test)]
+    registry_walk_overshoot: usize,
+    /// Extra units the next space-separated token reaches past its value, as
+    /// a cursor out of step with its value would.
+    #[cfg(test)]
+    space_token_overshoot: usize,
 }
 
 /// A cleanup walk that keeps going after a refusal, so tests can make one of
@@ -313,6 +321,10 @@ impl ParseControl {
             walk_refusals: [0; 3],
             #[cfg(test)]
             walk_refusals_issued: 0,
+            #[cfg(test)]
+            registry_walk_overshoot: 0,
+            #[cfg(test)]
+            space_token_overshoot: 0,
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
@@ -507,6 +519,22 @@ impl ParseControl {
         let issued = self.walk_refusals_issued;
         self.walk_refusals_issued = issued.saturating_add(1);
         Some(issued)
+    }
+    #[cfg(test)]
+    pub(crate) fn overshoot_next_registry_walk(&mut self, steps: usize) {
+        self.registry_walk_overshoot = steps;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_registry_walk_overshoot(&mut self) -> usize {
+        std::mem::take(&mut self.registry_walk_overshoot)
+    }
+    #[cfg(test)]
+    pub(crate) fn overshoot_next_space_token(&mut self, units: usize) {
+        self.space_token_overshoot = units;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_space_token_overshoot(&mut self) -> usize {
+        std::mem::take(&mut self.space_token_overshoot)
     }
     #[cfg(test)]
     pub(crate) fn take_text_append_backing_fault(&mut self) -> bool {
@@ -1979,6 +2007,11 @@ impl<T> OwnedVec<T> {
     }
     pub(crate) fn as_slice(&self) -> &[T] {
         &self.vector
+    }
+    /// The entries for editing, for tests that corrupt what a report holds.
+    #[cfg(test)]
+    pub(crate) fn as_mut_slice_for_test(&mut self) -> &mut [T] {
+        &mut self.vector
     }
     pub(crate) fn len(&self) -> usize {
         self.vector.len()

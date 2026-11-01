@@ -761,6 +761,11 @@ impl ReportStorage {
     pub(crate) fn history(&self) -> &FrozenHistory {
         &self.history
     }
+    /// The retained history, for tests that corrupt what a report holds.
+    #[cfg(test)]
+    pub(crate) fn history_mut(&mut self) -> &mut FrozenHistory {
+        &mut self.history
+    }
     pub(crate) fn evidence(&self) -> Result<&ParseEvidence, SessionError> {
         self.history.arena().retained_evidence()
     }

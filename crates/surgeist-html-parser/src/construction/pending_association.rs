@@ -1069,6 +1069,8 @@ impl SessionStorage {
             return Ok(());
         }
         let extent = self.payloads.values.len();
+        #[cfg(test)]
+        let extent = extent.saturating_add(c.take_registry_walk_overshoot());
         for index in 0..extent {
             c.charge(WorkCategory::RecordVisit, 1)?;
             let document = match &self.payloads.values[index] {
@@ -1113,6 +1115,8 @@ impl SessionStorage {
                 bounded::HtmlSpaceTokenStep::Continue => {}
                 bounded::HtmlSpaceTokenStep::Done => break,
                 bounded::HtmlSpaceTokenStep::Token { start, end } => {
+                    #[cfg(test)]
+                    let end = end.saturating_add(c.take_space_token_overshoot());
                     struct Meter<'a>(&'a mut ParseControl);
                     impl bounded::HtmlRelMeter for Meter<'_> {
                         type Error = SessionError;
@@ -2065,5 +2069,433 @@ mod tests {
         session.release(&mut c).unwrap();
         assert_eq!(c.stop(), Some(first));
         super::super::tests::storage_zero(&c);
+    }
+    // Impossible states met while recording associations are reported as the
+    // controller's first stop, never as a panic. Each test forces the state
+    // through a controller hook, asserts the exact typed error and that the
+    // stop is latched first, and that the session's own release drains.
+    fn registry_row() -> ParseStop {
+        ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+    }
+    #[test]
+    fn a_registry_walk_past_the_end_reports_the_registry_row() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(""),
+            super::super::tests::limits(),
+        );
+        let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
+        // The walk may add rows as it goes, so it must overshoot them all.
+        c.overshoot_next_registry_walk(1_000);
+        let result = session
+            .active_mut()
+            .unwrap()
+            .prepare_association_documents(&mut c);
+        assert_eq!(result, Err(SessionError::Stop(registry_row())));
+        assert_eq!(c.stop(), Some(registry_row()));
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+    #[test]
+    fn a_stylesheet_token_reaching_past_its_relation_reports_the_registry_row() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<link rel=stylesheet href=a>"),
+            super::super::tests::limits(),
+        );
+        let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let root = session.root(&mut c).unwrap();
+        let link = lexical_node(&mut session, &mut c, &mut lexer);
+        session
+            .insert(&mut c, &root, &link, None, Some(&capability))
+            .unwrap();
+        c.overshoot_next_space_token(1);
+        let result = session
+            .active_mut()
+            .unwrap()
+            .association_link(&mut c, link.index);
+        assert_eq!(result, Err(SessionError::Stop(registry_row())));
+        assert_eq!(c.stop(), Some(registry_row()));
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+    fn forged_occurrence(inputs: Option<Inputs>) -> Occurrence {
+        Occurrence {
+            subject: 0,
+            document: DocumentRef::Owned(0),
+            root: 0,
+            previous_document: None,
+            prior_document: None,
+            prior_style: None,
+            cause: None,
+            kind: OccurrenceKind::StyleCreated,
+            inputs,
+            preferred: None,
+            base_changed_input: None,
+            context: Context {
+                input_document: 0,
+                mode: HtmlDocumentMode::NoQuirks,
+                class: crate::HtmlDocumentClass::Html,
+                body: false,
+                base_document: None,
+                first_base: None,
+                base_input: None,
+                base_observation: None,
+                captured: None,
+                policy_missing: false,
+                csp: None,
+                missing: false,
+            },
+            requires_processing: false,
+            may_have_sheet: false,
+        }
+    }
+    fn foreign_stop() -> ParseStop {
+        ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl)
+    }
+    #[test]
+    fn releasing_occurrences_to_a_foreign_controller_stops_instead_of_panicking() {
+        let mut owner = super::super::tests::control();
+        let mut foreign = super::super::tests::control();
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        values
+            .try_push_geometric(&mut owner, forged_occurrence(None))
+            .unwrap();
+        release_occurrence(values, &mut foreign);
+        assert_eq!(foreign.stop(), Some(foreign_stop()));
+    }
+    #[test]
+    fn releasing_an_occurrence_whose_text_inputs_are_foreign_stops_and_still_releases_the_rest() {
+        let mut owner = super::super::tests::control();
+        let mut foreign = super::super::tests::control();
+        // An empty vector bound to the other controller by an empty pop.
+        let mut text = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        assert!(text.try_pop(&mut foreign).unwrap().is_none());
+        let inputs = Inputs {
+            state: surgeist_html::HtmlStyleState::default(),
+            parser_document: None,
+            connected: false,
+            type_eligible: false,
+            document_tree: false,
+            attributes: [None, None, None, None, None],
+            text,
+            order: None,
+        };
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        values
+            .try_push_geometric(&mut owner, forged_occurrence(Some(inputs)))
+            .unwrap();
+        release_occurrence(values, &mut owner);
+        assert_eq!(owner.stop(), Some(foreign_stop()));
+        // The receiver itself was released although its inputs were refused.
+        assert_eq!(
+            owner
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            0
+        );
+    }
+
+    // Readers answer from a published report, where no controller exists, so a
+    // reference that cannot be resolved there is not an error to report but a
+    // row or value the report cannot present. Each test corrupts one reference
+    // a published report holds and requires the cursor to skip the row it
+    // would make unanswerable, or the reader to read the value as absent.
+    fn styled_report() -> crate::HtmlParseReport {
+        crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<!doctype html><style title=a>b{}</style><p>c"),
+            super::super::tests::limits(),
+        )
+        .parse()
+        .unwrap()
+    }
+    fn frozen(report: &mut crate::HtmlParseReport) -> &mut FrozenStorage {
+        report
+            .storage_mut()
+            .history_mut()
+            .arena_mut()
+            .storage
+            .as_mut()
+            .unwrap()
+    }
+    /// Edits the first style occurrence a report holds that the filter accepts.
+    fn corrupt_style_occurrence(
+        report: &mut crate::HtmlParseReport,
+        select: impl Fn(&Occurrence) -> bool,
+        edit: impl FnOnce(&mut Occurrence),
+    ) {
+        let row = frozen(report)
+            .payloads
+            .values
+            .iter_mut()
+            .find_map(|row| match row {
+                RetainedPayload::AssociationOccurrence(values)
+                    if values.as_slice()[0].inputs.is_some() && select(&values.as_slice()[0]) =>
+                {
+                    Some(&mut values.as_mut_slice_for_test()[0])
+                }
+                _ => None,
+            })
+            .unwrap();
+        edit(row);
+    }
+    fn presented_occurrences(report: &crate::HtmlParseReport) -> usize {
+        let mut cursor = report.pending_associations();
+        let mut count = 0;
+        loop {
+            match cursor.advance() {
+                Step::Occurrence(_) => count += 1,
+                Step::Complete => return count,
+                _ => {}
+            }
+        }
+    }
+    /// Asks every presented occurrence for everything it can answer.
+    fn answer_everything(report: &crate::HtmlParseReport) {
+        let mut cursor = report.pending_associations();
+        loop {
+            match cursor.advance() {
+                Step::Occurrence(view) => {
+                    let context = view.context();
+                    let _ = (
+                        view.id(),
+                        view.subject(),
+                        view.root(),
+                        view.document(),
+                        view.previous_document(),
+                        view.next_document(),
+                        view.prior_document(),
+                        view.prior_style(),
+                        view.cause(),
+                        view.preferred_name(),
+                        view.base_changed_input(),
+                        context.epoch(),
+                        context.first_base(),
+                        context.requirement(ContextRole::Encoding),
+                        context.slot(ContextRole::DocumentUrl),
+                        context.selected_base(),
+                    );
+                    if let Some(style) = view.style() {
+                        let _ = (style.creating_parser_document(), style.sheet_order(0));
+                    }
+                }
+                Step::Document(view) => {
+                    let _ = (
+                        view.document(),
+                        view.last_occurrence(),
+                        view.first_missing(),
+                    );
+                }
+                Step::Skipped => {}
+                Step::Complete => return,
+            }
+        }
+    }
+    #[test]
+    fn a_report_without_its_storage_presents_no_associations() {
+        let mut report = styled_report();
+        frozen(&mut report);
+        report.storage_mut().history_mut().arena_mut().storage = None;
+        assert!(matches!(
+            report.pending_associations().advance(),
+            Step::Complete
+        ));
+    }
+    #[test]
+    fn an_occurrence_whose_subject_is_missing_is_not_presented() {
+        let mut report = styled_report();
+        let before = presented_occurrences(&report);
+        corrupt_style_occurrence(&mut report, |_| true, |row| row.subject = usize::MAX);
+        assert_eq!(presented_occurrences(&report), before - 1);
+        answer_everything(&report);
+    }
+    #[test]
+    fn an_occurrence_whose_root_is_missing_is_not_presented() {
+        let mut report = styled_report();
+        let before = presented_occurrences(&report);
+        corrupt_style_occurrence(&mut report, |_| true, |row| row.root = usize::MAX);
+        assert_eq!(presented_occurrences(&report), before - 1);
+        answer_everything(&report);
+    }
+    #[test]
+    fn an_occurrence_whose_document_is_missing_is_not_presented() {
+        let mut report = styled_report();
+        let before = presented_occurrences(&report);
+        corrupt_style_occurrence(
+            &mut report,
+            |_| true,
+            |row| {
+                row.document = DocumentRef::Owned(usize::MAX);
+            },
+        );
+        assert_eq!(presented_occurrences(&report), before - 1);
+        answer_everything(&report);
+    }
+    #[test]
+    fn an_occurrence_whose_previous_document_is_missing_is_not_presented() {
+        let mut report = styled_report();
+        let before = presented_occurrences(&report);
+        corrupt_style_occurrence(
+            &mut report,
+            |_| true,
+            |row| {
+                row.previous_document = Some(DocumentRef::Owned(usize::MAX));
+            },
+        );
+        assert_eq!(presented_occurrences(&report), before - 1);
+        answer_everything(&report);
+    }
+    #[test]
+    fn an_occurrence_whose_creating_parser_document_is_missing_is_not_presented() {
+        let mut report = styled_report();
+        let before = presented_occurrences(&report);
+        corrupt_style_occurrence(
+            &mut report,
+            |_| true,
+            |row| {
+                row.inputs.as_mut().unwrap().parser_document = Some(DocumentRef::Owned(usize::MAX));
+            },
+        );
+        assert_eq!(presented_occurrences(&report), before - 1);
+        answer_everything(&report);
+    }
+    #[test]
+    fn a_text_group_that_is_missing_reads_as_absent() {
+        let mut report = styled_report();
+        let with_text = |row: &Occurrence| row.inputs.as_ref().is_some_and(|i| i.text.len() != 0);
+        corrupt_style_occurrence(&mut report, with_text, |row| {
+            let text = row.inputs.as_mut().unwrap().text.as_mut_slice_for_test();
+            text[0].index = usize::MAX;
+        });
+        let mut cursor = report.pending_associations();
+        let mut checked = false;
+        loop {
+            match cursor.advance() {
+                Step::Occurrence(view) => {
+                    if let Some(style) = view.style()
+                        && style.text_len() != 0
+                    {
+                        assert!(style.text(0).is_none());
+                        checked = true;
+                    }
+                }
+                Step::Complete => break,
+                _ => {}
+            }
+        }
+        assert!(checked);
+    }
+    #[test]
+    fn a_sheet_order_entry_that_is_missing_reads_as_absent() {
+        let mut report = styled_report();
+        let storage = frozen(&mut report);
+        let slot = storage
+            .payloads
+            .values
+            .iter()
+            .position(|row| matches!(row, RetainedPayload::StyleOrder(_)))
+            .unwrap();
+        let RetainedPayload::StyleOrder(list) = &mut storage.payloads.values[slot] else {
+            unreachable!()
+        };
+        list.as_mut_slice_for_test()[0] = usize::MAX;
+        let mut cursor = report.pending_associations();
+        let mut checked = false;
+        loop {
+            match cursor.advance() {
+                Step::Occurrence(view) => {
+                    if let Some(style) = view.style()
+                        && style.sheet_order_len() != 0
+                    {
+                        assert!(style.sheet_order(0).is_none());
+                        checked = true;
+                    }
+                }
+                Step::Complete => break,
+                _ => {}
+            }
+        }
+        assert!(checked);
+    }
+    #[test]
+    fn documents_whose_capture_is_missing_are_not_presented() {
+        let mut report =
+            super::super::fragment_document::tests::fragment_report("<style>a</style>");
+        let captured = |report: &crate::HtmlParseReport| {
+            let mut cursor = report.pending_associations();
+            let mut count = 0;
+            loop {
+                match cursor.advance() {
+                    Step::Document(view)
+                        if matches!(view.document(), report::MetadataDocument::Captured(_)) =>
+                    {
+                        count += 1;
+                    }
+                    Step::Complete => return count,
+                    _ => {}
+                }
+            }
+        };
+        assert_ne!(captured(&report), 0);
+        frozen(&mut report).fragment = None;
+        assert_eq!(captured(&report), 0);
+        answer_everything(&report);
+    }
+    #[test]
+    fn a_base_observation_that_is_missing_reads_as_a_missing_frozen_base() {
+        let mut report =
+            super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
+                .parse()
+                .unwrap();
+        let with_base = |row: &Occurrence| {
+            row.context.base_document.is_some()
+                && row.context.first_base.is_some()
+                && row.context.base_observation.is_some()
+        };
+        corrupt_style_occurrence(&mut report, with_base, |row| {
+            row.context.base_observation = Some(usize::MAX);
+        });
+        let mut cursor = report.pending_associations();
+        let mut checked = false;
+        loop {
+            match cursor.advance() {
+                Step::Occurrence(view) if view.context().base_observation() == Some(usize::MAX) => {
+                    assert_eq!(
+                        view.context().selected_base().err(),
+                        Some(crate::HtmlBaseMissing::FrozenBase)
+                    );
+                    checked = true;
+                }
+                Step::Complete => break,
+                _ => {}
+            }
+        }
+        assert!(checked);
+    }
+    #[test]
+    fn a_first_base_that_is_missing_reads_as_absent() {
+        let mut report =
+            super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
+                .parse()
+                .unwrap();
+        let with_base = |row: &Occurrence| row.context.first_base.is_some();
+        corrupt_style_occurrence(&mut report, with_base, |row| {
+            row.context.first_base = Some(usize::MAX);
+        });
+        let mut cursor = report.pending_associations();
+        let mut checked = false;
+        loop {
+            match cursor.advance() {
+                Step::Occurrence(view) if view.context().base_observation().is_some() => {
+                    if view.context().first_base().is_none() {
+                        checked = true;
+                    }
+                }
+                Step::Complete => break,
+                _ => {}
+            }
+        }
+        assert!(checked);
     }
 }

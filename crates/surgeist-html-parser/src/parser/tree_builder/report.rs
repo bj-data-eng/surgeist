@@ -43,6 +43,11 @@ impl ImmutableParseReport {
             .resource(crate::HtmlParseResource::ManagedUtf16Units)
             .current()
     }
+    /// The retained storage, for tests that corrupt what a report holds.
+    #[cfg(test)]
+    pub(crate) fn storage_mut(&mut self) -> &mut ReportStorage {
+        &mut self.storage
+    }
     /// Original pending operations and sealed per-Document capture qualification.
     /// This does not execute or certify any CSSOM association.
     pub fn pending_associations(&self) -> crate::construction::pending_association::Cursor<'_> {

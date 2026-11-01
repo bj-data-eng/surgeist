@@ -459,11 +459,11 @@ impl SessionStorage {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
 
-    fn request(text: &str) -> crate::HtmlDocumentParseRequest {
+    pub(in crate::construction) fn request(text: &str) -> crate::HtmlDocumentParseRequest {
         let revision =
             crate::HtmlBaseFactsRevision::new(crate::HtmlBaseProducerId::fresh(), 1, 1, 1);
         let fallback = crate::HtmlBaseUrlRecord::observed(
