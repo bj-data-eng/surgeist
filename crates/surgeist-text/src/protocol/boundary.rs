@@ -87,88 +87,105 @@ fn incidences(prepared: &PreparedData) -> Vec<Incidence> {
         .collect()
 }
 
-fn control_allocation<'a>(
+/// One visit's actual admitted endpoint facts. The private paired borrow keeps
+/// its allocation and original role together; subsequent observations do not
+/// search the control inventory again.
+#[derive(Clone, Copy)]
+pub(crate) struct BoundaryFacts<'a> {
+    allocated: Option<(
+        &'a super::InlineBoundaryAllocation,
+        &'a ParagraphControlKind,
+    )>,
+}
+
+pub(crate) fn facts<'a>(
     selected: super::input::PresentationInput<'a>,
     unit: usize,
-) -> Option<&'a super::ControlAllocation> {
+) -> BoundaryFacts<'a> {
     let PresentationUnitKind::Control { occurrence } = selected.presentation.units[unit].kind
     else {
-        return None;
+        return BoundaryFacts { allocated: None };
     };
-    Some(
-        selected
-            .controls
-            .iter()
-            .find(|row| {
-                selected.prepared.tables.controls[row.occurrence.index].occurrence == occurrence
-            })
-            .expect("complete admitted control inventory"),
-    )
-}
-pub(crate) fn allocation<'a>(
-    selected: super::input::PresentationInput<'a>,
-    unit: usize,
-) -> Option<&'a super::InlineBoundaryAllocation> {
-    control_allocation(selected, unit)?.boundary.as_ref()
-}
-pub(crate) fn advance(selected: super::input::PresentationInput<'_>, unit: usize) -> f64 {
-    allocation(selected, unit).map_or(0.0, super::InlineBoundaryAllocation::advance)
-}
-pub(crate) fn component_side(
-    selected: super::input::PresentationInput<'_>,
-    unit: usize,
-) -> Result<Option<super::LineEdgeSide>> {
-    let Some(context) =
-        allocation(selected, unit).and_then(super::InlineBoundaryAllocation::box_context)
-    else {
-        return Ok(None);
-    };
-    let PresentationUnitKind::Control { occurrence } = selected.presentation.units[unit].kind
-    else {
-        return Err(super::inline_box::invalid(
-            super::InlineBoxEdgeError::InvalidOwner,
-        ));
-    };
-    match selected.prepared.analyzed.paragraph.controls[occurrence].kind {
-        ParagraphControlKind::InlineBoundaryStart => Ok(Some(context.start_side())),
-        ParagraphControlKind::InlineBoundaryEnd => Ok(Some(match context.start_side() {
-            super::LineEdgeSide::Start => super::LineEdgeSide::End,
-            super::LineEdgeSide::End => super::LineEdgeSide::Start,
-        })),
-        _ => Err(super::inline_box::invalid(
-            super::InlineBoxEdgeError::InvalidOwner,
-        )),
-    }
-}
-pub(crate) fn execute(
-    selected: super::input::PresentationInput<'_>,
-    unit: usize,
-    pen: f64,
-    phase: crate::TextNumericPhase,
-) -> Result<super::inline_box::EdgeExecution> {
-    let Some(control) = control_allocation(selected, unit) else {
-        return Ok(super::inline_box::EdgeExecution {
-            flow: (pen, pen),
-            strip: (pen, pen),
-        });
-    };
-    let Some(edge) = control.boundary.as_ref() else {
-        return Ok(super::inline_box::EdgeExecution {
-            flow: (pen, pen),
-            strip: (pen, pen),
-        });
-    };
-    if let Some(components) = edge.box_components() {
-        let side =
-            component_side(selected, unit)?.expect("a component edge retains its checked context");
-        components.evaluate(pen, side, phase)
-    } else {
-        let end = crate::engine::layout::add("inline boundary end", phase, pen, edge.advance())?;
-        Ok(super::inline_box::EdgeExecution {
-            flow: (pen, end),
-            strip: (pen, end),
+    // This is the existing scalar observation's single inventory lookup. The
+    // selection owner has already rejected missing or foreign allocations.
+    let control = selected
+        .controls
+        .iter()
+        .find(|row| {
+            selected.prepared.tables.controls[row.occurrence.index].occurrence == occurrence
         })
+        .expect("complete admitted control inventory");
+    let kind = &selected.prepared.analyzed.paragraph.controls[occurrence].kind;
+    if is_endpoint(kind) {
+        control
+            .boundary
+            .as_ref()
+            .expect("admitted endpoint retains its required boundary geometry");
     }
+    BoundaryFacts {
+        allocated: control.boundary.as_ref().map(|edge| (edge, kind)),
+    }
+}
+
+impl<'a> BoundaryFacts<'a> {
+    pub(crate) fn allocation(self) -> Option<&'a super::InlineBoundaryAllocation> {
+        self.allocated.map(|(edge, _)| edge)
+    }
+
+    pub(crate) fn advance(self) -> f64 {
+        self.allocation()
+            .map_or(0.0, super::InlineBoundaryAllocation::advance)
+    }
+
+    pub(crate) fn component_side(self) -> Result<Option<super::LineEdgeSide>> {
+        let Some((edge, kind)) = self.allocated else {
+            return Ok(None);
+        };
+        let Some(context) = edge.box_context() else {
+            return Ok(None);
+        };
+        match kind {
+            ParagraphControlKind::InlineBoundaryStart => Ok(Some(context.start_side())),
+            ParagraphControlKind::InlineBoundaryEnd => Ok(Some(match context.start_side() {
+                super::LineEdgeSide::Start => super::LineEdgeSide::End,
+                super::LineEdgeSide::End => super::LineEdgeSide::Start,
+            })),
+            _ => Err(super::inline_box::invalid(
+                super::InlineBoxEdgeError::InvalidOwner,
+            )),
+        }
+    }
+
+    pub(crate) fn execute(
+        self,
+        pen: f64,
+        phase: crate::TextNumericPhase,
+    ) -> Result<super::inline_box::EdgeExecution> {
+        let Some(edge) = self.allocation() else {
+            return Ok(super::inline_box::EdgeExecution {
+                flow: (pen, pen),
+                strip: (pen, pen),
+            });
+        };
+        if let Some(components) = edge.box_components() {
+            let side = self
+                .component_side()?
+                .expect("a component edge retains its checked context");
+            components.evaluate(pen, side, phase)
+        } else {
+            let end =
+                crate::engine::layout::add("inline boundary end", phase, pen, edge.advance())?;
+            Ok(super::inline_box::EdgeExecution {
+                flow: (pen, end),
+                strip: (pen, end),
+            })
+        }
+    }
+}
+
+/// Scalar-only consumers retain the same single admitted inventory lookup.
+pub(crate) fn advance(selected: super::input::PresentationInput<'_>, unit: usize) -> f64 {
+    facts(selected, unit).advance()
 }
 
 pub(crate) fn groups_accounted(

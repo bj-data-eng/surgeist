@@ -439,7 +439,10 @@ fn execute(
         &selected,
         &shaped,
         &atomics,
-        &order,
+        phase_two::MeasurementOrder {
+            order: &order,
+            box_edges: boxed_execution.as_ref(),
+        },
         natural,
         &mut metrics,
         &mut ledger,
@@ -570,18 +573,14 @@ fn execute(
                 last_run = None;
             }
             ShapedItem::Anchor { unit, .. } => {
-                let advance =
-                    crate::protocol::boundary::advance(selected.presentation_input(), unit);
-                let executed = crate::protocol::boundary::execute(
-                    selected.presentation_input(),
-                    unit,
-                    pen,
-                    TextNumericPhase::Finalization,
-                )?;
+                let boundary =
+                    crate::protocol::boundary::facts(selected.presentation_input(), unit);
+                let advance = boundary.advance();
+                let executed = boundary.execute(pen, TextNumericPhase::Finalization)?;
                 let inline_end = executed.flow.1;
-                let component_edge =
-                    crate::protocol::boundary::allocation(selected.presentation_input(), unit)
-                        .is_some_and(|edge| edge.box_components().is_some());
+                let component_edge = boundary
+                    .allocation()
+                    .is_some_and(|edge| edge.box_components().is_some());
                 let endpoint_offset = endpoint_offsets
                     .as_ref()
                     .and_then(|geometry| geometry.offsets[unit]);
@@ -3054,7 +3053,8 @@ fn classify_trailing(
     for item in shaped.items.iter().rev() {
         match *item {
             ShapedItem::Anchor { unit } => {
-                if crate::protocol::boundary::allocation(selected.presentation_input(), unit)
+                if crate::protocol::boundary::facts(selected.presentation_input(), unit)
+                    .allocation()
                     .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
                 {
                     break;

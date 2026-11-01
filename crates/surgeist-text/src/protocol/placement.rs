@@ -89,7 +89,9 @@ fn qualify_inline_margin(
     anchor: &crate::engine::layout::data::FinalizedAnchor,
 ) -> Result<()> {
     let selected = &placed.finalized.selected;
-    let Some(components) = super::boundary::allocation(selected.presentation_input(), anchor.unit)
+    let boundary = super::boundary::facts(selected.presentation_input(), anchor.unit);
+    let Some(components) = boundary
+        .allocation()
         .and_then(super::InlineBoundaryAllocation::box_components)
     else {
         return Ok(());
@@ -100,13 +102,13 @@ fn qualify_inline_margin(
     }
     let flow = anchor.flow_interval();
     let strip = anchor.strip_interval();
-    let (before, after) =
-        match super::boundary::component_side(selected.presentation_input(), anchor.unit)?
-            .expect("component edge has an actual assigned side")
-        {
-            super::LineEdgeSide::Start => (flow.0, strip.0),
-            super::LineEdgeSide::End => (strip.1, flow.1),
-        };
+    let (before, after) = match boundary
+        .component_side()?
+        .expect("component edge has an actual assigned side")
+    {
+        super::LineEdgeSide::Start => (flow.0, strip.0),
+        super::LineEdgeSide::End => (strip.1, flow.1),
+    };
     let before = crate::layout::inline_coordinate(
         placed.orientation,
         crate::layout::line_point(placed, Point::new(before, anchor.slot.y)),

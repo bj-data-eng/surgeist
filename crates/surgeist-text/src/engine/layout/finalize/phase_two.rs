@@ -169,14 +169,12 @@ fn positions(
                 )?
             }
             ShapedItem::Anchor { unit } => {
-                pen = crate::protocol::boundary::execute(
-                    selected.presentation_input(),
-                    unit,
-                    pen,
-                    TextNumericPhase::Finalization,
-                )?
-                .flow
-                .1;
+                let boundary =
+                    crate::protocol::boundary::facts(selected.presentation_input(), unit);
+                pen = boundary
+                    .execute(pen, TextNumericPhase::Finalization)?
+                    .flow
+                    .1;
                 continue;
             }
         };
@@ -249,7 +247,8 @@ fn raw_trailing(
     for item in shaped.items.iter().rev() {
         match *item {
             ShapedItem::Anchor { unit } => {
-                if crate::protocol::boundary::allocation(selected.presentation_input(), unit)
+                if crate::protocol::boundary::facts(selected.presentation_input(), unit)
+                    .allocation()
                     .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
                 {
                     break;
@@ -355,7 +354,8 @@ pub(super) fn natural(
         for &ordinal in &visual {
             let row = match shaped.items[ordinal] {
                 ShapedItem::Anchor { unit } => {
-                    if crate::protocol::boundary::allocation(selected.presentation_input(), unit)
+                    if crate::protocol::boundary::facts(selected.presentation_input(), unit)
+                        .allocation()
                         .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
                     {
                         break;
@@ -633,11 +633,19 @@ struct Baseline {
     raw_advance: Option<f64>,
     fit_anchor: bool,
 }
+/// The actual order and its selected-only BoxEdge authority. Context-only
+/// declarations do not produce a plan; zero-valued selected BoxEdges do.
+pub(super) struct MeasurementOrder<'order, 'source, 'scratch> {
+    pub(super) order: &'order crate::SuppliedVisualOrder<'source, 'scratch>,
+    pub(super) box_edges: Option<&'order crate::protocol::inline_box::execution::ExecutionPlan>,
+}
+
 /// Cluster positions and the actual admitted execution that produced them.
 /// Exclusion purposes vary; none may restore the selection's former traversal.
 struct MeasurementExecution<'positions, 'source, 'scratch> {
     positions: &'positions [(f64, f64)],
     order: &'positions crate::SuppliedVisualOrder<'source, 'scratch>,
+    box_edges: Option<&'positions crate::protocol::inline_box::execution::ExecutionPlan>,
 }
 fn measure(
     selected: &SelectedData,
@@ -653,7 +661,7 @@ fn measure(
     let mut advance = baseline.raw_advance.unwrap_or(0.0);
     let mut bounds = None;
     let mut anchor = 0.0;
-    let mut css_composed = false;
+    let mut css_composed = execution.box_edges.is_some();
     for item in &shaped.items {
         let contribution = match *item {
             ShapedItem::Cell(cell) => {
@@ -709,9 +717,8 @@ fn measure(
                 }
             }
             ShapedItem::Anchor { unit } => {
-                css_composed |=
-                    crate::protocol::boundary::allocation(selected.presentation_input(), unit)
-                        .is_some_and(|edge| edge.box_components().is_some());
+                // The raw-profile branch had no scalar lookup. Authority comes
+                // from the already-admitted selected execution, not a new scan.
                 if baseline.raw_advance.is_some() {
                     0.0
                 } else {
@@ -788,21 +795,16 @@ fn measure(
                 )?
             }
             ShapedItem::Anchor { unit } => {
-                let edge = crate::protocol::boundary::execute(
-                    selected.presentation_input(),
-                    unit,
-                    pen,
-                    TextNumericPhase::Finalization,
-                )?;
-                if crate::protocol::boundary::allocation(selected.presentation_input(), unit)
-                    .is_some_and(|allocation| {
-                        allocation.box_components().is_some() || allocation.strip_advance() != 0.0
-                    })
-                {
+                let boundary =
+                    crate::protocol::boundary::facts(selected.presentation_input(), unit);
+                let edge = boundary.execute(pen, TextNumericPhase::Finalization)?;
+                if boundary.allocation().is_some_and(|allocation| {
+                    allocation.box_components().is_some() || allocation.strip_advance() != 0.0
+                }) {
                     include(&mut bounds, edge.strip.0, edge.strip.1);
                 }
                 executed_end = Some(edge.flow.1);
-                crate::protocol::boundary::advance(selected.presentation_input(), unit)
+                boundary.advance()
             }
         };
         if css_composed {
@@ -935,11 +937,12 @@ pub(super) fn allocated(
     selected: &SelectedData,
     shaped: &ShapedData,
     atomics: &OrdinalMap<&AtomicAllocation>,
-    order: &crate::SuppliedVisualOrder<'_, '_>,
+    execution_order: MeasurementOrder<'_, '_, '_>,
     natural: Natural,
     metrics: &mut LineMetrics,
     ledger: &mut Ledger,
 ) -> Result<AllocatedMeasurements> {
+    let order = execution_order.order;
     for (i, cause) in natural.deferred.iter().enumerate() {
         if let Some((cause, _)) = cause
             && shaped.clusters[i].advance != 0.0
@@ -1139,6 +1142,7 @@ pub(super) fn allocated(
     let execution = MeasurementExecution {
         positions: &positions,
         order,
+        box_edges: execution_order.box_edges,
     };
     let (fit, margin_fit) = measure(
         selected,
