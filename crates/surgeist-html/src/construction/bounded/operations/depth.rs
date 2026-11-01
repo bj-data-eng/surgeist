@@ -1,22 +1,22 @@
 //! Exact node depths across topology changes.
 //!
 //! Every record caches its depth within its own tree, and the arena's usage
-//! depth is the greatest cached depth. A topology change moves exactly one
-//! subtree to a new depth, so only that subtree's cache changes: planning walks
-//! the subtree once, one action per step, and the commit places each of its
-//! records at the new depth. The other association changes recompute every
-//! record, as a full depth pass always did, and leave the cache exact too.
+//! depth is the greatest cached depth. A topology change moves at most two
+//! subtrees to new depths, so only their caches change: planning walks each
+//! subtree once, one action per step, and the commit places each of its records
+//! at the new depth before the structural writes, so both see the same edges.
 //!
-//! The usage depth after a move is the greater of the moved subtree's new
-//! depth and the greatest depth of every other record. The latter is the old
-//! usage depth unless the moved subtree held the deepest record and moved
-//! shallower, when a scan down the arena's depth histogram, less the subtree's
-//! own count at each level, finds it. The scan is bounded by the depth.
+//! The usage depth after the change is the greater of the moved subtrees' new
+//! depths and the greatest depth of every other record. The latter is the old
+//! usage depth unless a moved subtree held the deepest record and moved
+//! shallower, when a scan down the arena's depth histogram, less the moved
+//! subtrees' own counts at each level, finds it. The scan is bounded by the
+//! depth.
 use super::*;
 
-/// The subtree one topology change moves, and what planning learned of it.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct Shift {
+/// One subtree a topology change moves, and what planning learned of it.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct Move {
     root: usize,
     /// The root's cached depth before the change.
     from: usize,
@@ -26,7 +26,84 @@ pub(super) struct Shift {
     height: usize,
     /// Records reached so far, including the root.
     size: usize,
+    /// Edge lookups the walk made, which the commit's walk repeats.
+    calls: usize,
 }
+
+impl Move {
+    /// Whether the move changes any depth.
+    fn walked(&self) -> bool {
+        self.from != self.to
+    }
+    fn top(&self) -> usize {
+        self.from.saturating_add(self.height)
+    }
+    fn new_top(&self) -> usize {
+        self.to.saturating_add(self.height)
+    }
+    /// Whether the walk counted records at the old depth `level`.
+    fn counted(&self, level: usize) -> bool {
+        self.walked() && level >= self.from && level <= self.top()
+    }
+}
+
+/// How a topology change updates the cached depths.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) enum DepthPlan {
+    /// No depth changes.
+    #[default]
+    Unchanged,
+    /// A fresh leaf, or a template with only its empty contents, joins at one
+    /// known depth and cannot lower any other record's.
+    Fast {
+        node: usize,
+        depth: usize,
+        /// The node, and its contents when it is a template.
+        records: usize,
+    },
+    /// Up to two subtrees move: one detached from its owner and one attached.
+    Moves { moves: [Move; 2], count: usize },
+}
+
+impl DepthPlan {
+    fn moves(&self) -> impl Iterator<Item = &Move> {
+        let (moves, count) = match self {
+            Self::Moves { moves, count } => (&moves[..], *count),
+            _ => (&[][..], 0),
+        };
+        moves.iter().take(count)
+    }
+    fn mov(&mut self, slot: usize) -> Result<&mut Move, HtmlConstructionError> {
+        match self {
+            Self::Moves { moves, count } if slot < *count => moves
+                .get_mut(slot)
+                .ok_or(HtmlConstructionError::OperationNotReady),
+            _ => Err(HtmlConstructionError::OperationNotReady),
+        }
+    }
+    /// The record visits and writes the commit's depth work performs: per
+    /// edge lookup two visits and one cursor write, and per placed record a
+    /// cursor reset, its depth, and the two histogram counts it leaves and joins.
+    pub(super) fn commit_work(&self) -> Result<(usize, usize), HtmlConstructionError> {
+        match self {
+            Self::Unchanged => Ok((0, 0)),
+            Self::Fast { records, .. } => Ok((0, records.checked_mul(3).ok_or(OVERFLOW)?)),
+            Self::Moves { .. } => {
+                let (mut visits, mut writes) = (0usize, 0usize);
+                for mov in self.moves().filter(|mov| mov.walked()) {
+                    visits = add(visits, mov.calls.checked_mul(2).ok_or(OVERFLOW)?)?;
+                    writes = add(
+                        add(writes, mov.calls)?,
+                        mov.size.checked_mul(4).ok_or(OVERFLOW)?,
+                    )?;
+                }
+                Ok((visits, writes))
+            }
+        }
+    }
+}
+
+const OVERFLOW: HtmlConstructionError = HtmlConstructionError::RepresentationExhausted;
 
 /// The most steps a walk of an arena of `records` can take: each record is
 /// entered and left once, and a record names at most three kinds of edge.
@@ -47,39 +124,46 @@ pub(super) fn owning_parent(record: &Record) -> Option<usize> {
 
 /// The next record below `node` that its walk has not entered: ordinary
 /// children in order, then the shadow contents, then the owned template
-/// contents. Advances the node's cursor past every edge it reports or skips.
-fn next_edge(arena: &mut Arena, node: usize) -> Result<Option<usize>, HtmlConstructionError> {
+/// contents, except `skip`. Advances the node's cursor past every edge it
+/// reports or skips, with one write.
+fn next_edge(
+    arena: &mut Arena,
+    node: usize,
+    skip: Option<usize>,
+) -> Result<Option<usize>, HtmlConstructionError> {
     let record = arena
         .records
         .get_mut(node)
         .ok_or(HtmlConstructionError::UnknownNode)?;
-    loop {
-        let cursor = record.walk_cursor;
-        let children = record.children.len();
-        let edge = if cursor < children {
+    let children = record.children.len();
+    let mut cursor = record.walk_cursor;
+    let edge = loop {
+        let candidate = if cursor < children {
             record.children.get(cursor).copied()
         } else if cursor == children {
             record.shadow.as_ref().map(|shadow| shadow.contents.index)
         } else if cursor == children.saturating_add(1) {
             match record.template_contents {
-                Some(TemplateContents::Owned(contents)) => Some(contents),
+                Some(TemplateContents::Owned(contents)) if Some(contents) != skip => Some(contents),
                 _ => None,
             }
         } else {
-            return Ok(None);
+            break None;
         };
-        record.walk_cursor = cursor.saturating_add(1);
-        if let Some(edge) = edge {
-            return Ok(Some(edge));
+        cursor = cursor.saturating_add(1);
+        if candidate.is_some() {
+            break candidate;
         }
-    }
+    };
+    record.walk_cursor = cursor;
+    Ok(edge)
 }
 
 impl Arena {
-    /// Places the subtree rooted at `root` so that the root sits at depth `to`.
-    /// The walk was planned, so it cannot fail; an inconsistent arena only
-    /// ends it early.
-    pub(super) fn relocate_subtree(&mut self, root: usize, to: usize) {
+    /// Places the subtree rooted at `root` so that the root sits at depth `to`,
+    /// leaving out the template contents `skip`. The walk was planned, so it
+    /// cannot fail; an inconsistent arena only ends it early.
+    pub(super) fn relocate_subtree(&mut self, root: usize, to: usize, skip: Option<usize>) {
         let budget = walk_budget(self.records.len());
         let Some(record) = self.records.get_mut(root) else {
             return;
@@ -88,7 +172,7 @@ impl Arena {
         self.place(root, to);
         let (mut node, mut level) = (root, 0usize);
         for _ in 0..budget {
-            match next_edge(self, node) {
+            match next_edge(self, node, skip) {
                 Ok(Some(child)) => {
                     let Some(record) = self.records.get_mut(child) else {
                         return;
@@ -110,18 +194,6 @@ impl Arena {
             }
         }
     }
-    /// Adopts the depth every record was planned at and rebuilds the histogram.
-    pub(super) fn adopt_planned_depths(&mut self) {
-        for record in &mut self.records {
-            record.depth = record.planned_depth;
-            record.population = 0;
-        }
-        for index in 0..self.records.len() {
-            if let Some(depth) = self.records.get(index).map(|record| record.depth) {
-                self.populate(depth);
-            }
-        }
-    }
 }
 
 impl HtmlConstructionOperation {
@@ -130,41 +202,89 @@ impl HtmlConstructionOperation {
     pub(super) fn topology(&mut self) -> Result<Phase, HtmlConstructionError> {
         use HtmlConstructionCommand as Command;
         let p = self.plan.positions;
-        let (node, parent) = match self.command() {
+        let old = self.plan.old_contents;
+        let missing = HtmlConstructionError::InvalidTemplateAssociation;
+        // The roots to move and where each goes: below a record, or detached.
+        let (detached, attached): (Option<usize>, Option<(usize, usize)>) = match self.command() {
             Command::Publish { .. } => return Ok(Phase::Layout),
-            Command::Insert { .. } => (p[0], Some(p[1])),
-            Command::Detach { .. } => (p[0], None),
-            Command::AttachShadow { .. } => (p[1], Some(p[0])),
-            // The other association changes can detach one fragment and attach
-            // another, and nest one moved subtree inside the other.
-            _ => {
-                self.plan.rebuild = true;
-                self.plan.max_depth = 0;
-                return Ok(Phase::Depth {
-                    node: 0,
-                    cursor: 0,
-                    depth: 0,
-                    steps: 0,
-                });
+            Command::Insert { .. } => (None, Some((p[0], p[1]))),
+            Command::Detach { .. } => (Some(p[0]), None),
+            Command::AttachShadow { .. } => (None, Some((p[1], p[0]))),
+            Command::DetachShadow { .. } | Command::SetTemplateShadowContents { .. } => {
+                (Some(old.ok_or(missing)?), None)
             }
+            Command::ReassignTemplateContents { .. } => (old, Some((p[1], p[0]))),
+            Command::AttachTemplateShadow { .. } => (Some(old.ok_or(missing)?), Some((p[2], p[1]))),
+            _ => return Ok(Phase::Layout),
         };
+        if let (Some((node, parent)), None) = (attached, detached)
+            && let Some(fast) = self.fast_depth(node, parent)?
+        {
+            return Ok(fast);
+        }
+        let arena = self.arena();
+        let root_move = |root: usize, to: usize| -> Result<Move, HtmlConstructionError> {
+            Ok(Move {
+                root,
+                from: arena
+                    .records
+                    .get(root)
+                    .ok_or(HtmlConstructionError::UnknownNode)?
+                    .depth,
+                to,
+                height: 0,
+                size: 1,
+                calls: 0,
+            })
+        };
+        let depth_of = |index: usize| {
+            arena
+                .records
+                .get(index)
+                .map(|record| record.depth)
+                .ok_or(HtmlConstructionError::UnknownNode)
+        };
+        let first = detached.map(|root| root_move(root, 0)).transpose()?;
+        // The host of a template shadow may sit inside the contents the template
+        // gives up, so its depth is measured after the change, by a walk.
+        let host = match self.command() {
+            Command::AttachTemplateShadow { .. } => attached.map(|(_, host)| host),
+            _ => None,
+        };
+        let second = match attached {
+            Some((root, _)) if host.is_some() => Some(root_move(root, 0)?),
+            Some((root, parent)) => Some(root_move(root, add(depth_of(parent)?, 1)?)?),
+            None => None,
+        };
+        let (moves, count) = match (first, second) {
+            (Some(first), Some(second)) => ([first, second], 2),
+            (Some(only), None) | (None, Some(only)) => ([only, Move::default()], 1),
+            (None, None) => ([Move::default(); 2], 0),
+        };
+        self.plan.depth = DepthPlan::Moves { moves, count };
+        match host {
+            Some(host) => Ok(Phase::Host {
+                cursor: host,
+                depth: 0,
+                steps: 0,
+            }),
+            None => self.begin_moves(0),
+        }
+    }
+    /// The fresh-leaf case: a shallow node joins below `parent` at one depth.
+    fn fast_depth(
+        &mut self,
+        node: usize,
+        parent: usize,
+    ) -> Result<Option<Phase>, HtmlConstructionError> {
+        if self.plan.old_parent.is_some() {
+            return Ok(None);
+        }
         let arena = self.arena();
         let record = arena
             .records
             .get(node)
             .ok_or(HtmlConstructionError::UnknownNode)?;
-        let from = record.depth;
-        let to = match parent {
-            Some(parent) => add(
-                arena
-                    .records
-                    .get(parent)
-                    .ok_or(HtmlConstructionError::UnknownNode)?
-                    .depth,
-                1,
-            )?,
-            None => 0,
-        };
         let contents = record.template_contents.and_then(|value| match value {
             TemplateContents::Owned(index) => Some(index),
             TemplateContents::ShadowReference(_) => None,
@@ -176,64 +296,109 @@ impl HtmlConstructionOperation {
                     contents.children.is_empty() && contents.shadow.is_none()
                 })
             });
-        if parent.is_some() && self.plan.old_parent.is_none() && shallow {
-            // A fresh leaf, or a template with only its empty contents, joins
-            // at one known depth and cannot lower any other record's.
-            self.plan.usage.depth = self
-                .plan
-                .usage
-                .depth
-                .max(add(to, usize::from(contents.is_some()))?);
-            self.plan.fast_depth = Some(to);
-            return self.before_writes();
+        if !shallow {
+            return Ok(None);
         }
-        if from == to {
-            // Every depth, and so the usage depth, is unchanged.
-            return self.before_writes();
-        }
-        self.plan.shift = Some(Shift {
-            root: node,
-            from,
-            to,
-            height: 0,
-            size: 1,
-        });
-        let arena = self.arena_mut()?;
-        arena
-            .records
-            .get_mut(node)
-            .ok_or(HtmlConstructionError::UnknownNode)?
-            .walk_cursor = 0;
-        arena
-            .records
-            .first_mut()
-            .ok_or(HtmlConstructionError::UnknownNode)?
-            .level_count = 1;
-        Ok(Phase::Shift {
+        let depth = add(
+            arena
+                .records
+                .get(parent)
+                .ok_or(HtmlConstructionError::UnknownNode)?
+                .depth,
+            1,
+        )?;
+        let template = usize::from(contents.is_some());
+        let records = 1 + template;
+        self.plan.usage.depth = self.plan.usage.depth.max(add(depth, template)?);
+        self.plan.depth = DepthPlan::Fast {
             node,
-            level: 0,
-            steps: 0,
-        })
+            depth,
+            records,
+        };
+        self.before_writes().map(Some)
     }
-    /// One step of the planning walk over the moved subtree: counts the records
-    /// at each level below the root and its height.
+    /// One step up the host's chain of owners, as it stands after the change.
+    pub(super) fn host_step(
+        &mut self,
+        cursor: usize,
+        depth: usize,
+        steps: usize,
+    ) -> Result<Phase, HtmlConstructionError> {
+        let records = self.arena().records.len();
+        if cursor >= records {
+            return Err(HtmlConstructionError::UnknownNode);
+        }
+        if steps >= records {
+            return Err(HtmlConstructionError::Cycle);
+        }
+        // The contents the template gives up stop being owned by it.
+        let parent = if Some(cursor) == self.plan.old_contents {
+            None
+        } else {
+            structural_parent(self.arena(), cursor)
+        };
+        match parent {
+            Some(parent) => Ok(Phase::Host {
+                cursor: parent,
+                depth: add(depth, 1)?,
+                steps: steps + 1,
+            }),
+            None => {
+                let mov = self.plan.depth.mov(1)?;
+                mov.to = add(depth, 1)?;
+                self.begin_moves(0)
+            }
+        }
+    }
+    /// Starts walking the first move from `slot` on that changes a depth, or
+    /// settles the usage depth when no move remains.
+    fn begin_moves(&mut self, slot: usize) -> Result<Phase, HtmlConstructionError> {
+        for slot in slot..2 {
+            let Ok(mov) = self.plan.depth.mov(slot).copied() else {
+                break;
+            };
+            if !mov.walked() {
+                continue;
+            }
+            let arena = self.arena_mut()?;
+            let root = arena
+                .records
+                .get_mut(mov.root)
+                .ok_or(HtmlConstructionError::UnknownNode)?;
+            root.walk_cursor = 0;
+            arena
+                .records
+                .get_mut(mov.from)
+                .ok_or(HtmlConstructionError::UnknownNode)?
+                .level_count = 1;
+            return Ok(Phase::Shift {
+                slot,
+                node: mov.root,
+                level: 0,
+                steps: 0,
+            });
+        }
+        self.settle_depth()
+    }
+    /// One step of the planning walk over a moved subtree: counts the records
+    /// at each old depth below the root and its height.
     pub(super) fn shift_step(
         &mut self,
+        slot: usize,
         node: usize,
         level: usize,
         steps: usize,
     ) -> Result<Phase, HtmlConstructionError> {
-        let mut shift = self
-            .plan
-            .shift
-            .ok_or(HtmlConstructionError::OperationNotReady)?;
+        let mut mov = *self.plan.depth.mov(slot)?;
         if steps > walk_budget(self.arena().records.len()) {
             return Err(HtmlConstructionError::Cycle);
         }
-        let edge = next_edge(self.arena_mut()?, node)?;
+        let skip = self.plan.old_contents;
+        let edge = next_edge(self.arena_mut()?, node, skip)?;
         let Some(child) = edge else {
-            if node == shift.root {
-                return self.settle_depth(shift);
+            if node == mov.root {
+                self.plan.depth.mov(slot)?.calls = add(steps, 1)?;
+                return self.begin_moves(slot + 1);
             }
             let up = self
                 .arena()
@@ -242,6 +407,7 @@ impl HtmlConstructionOperation {
                 .and_then(owning_parent)
                 .ok_or(HtmlConstructionError::ParentChildConflict)?;
             return Ok(Phase::Shift {
+                slot,
                 node: up,
                 level: level
                     .checked_sub(1)
@@ -249,68 +415,85 @@ impl HtmlConstructionOperation {
                 steps: add(steps, 1)?,
             });
         };
+        let level = add(level, 1)?;
+        let absolute = add(mov.from, level)?;
+        // A walk descends one level at a time, so a deeper level is new.
+        let fresh = level > mov.height;
+        if fresh {
+            mov.height = level;
+        }
         let arena = self.arena_mut()?;
         arena
             .records
             .get_mut(child)
             .ok_or(HtmlConstructionError::UnknownNode)?
             .walk_cursor = 0;
-        // A walk descends one level at a time, so a deeper level is new.
-        let level = add(level, 1)?;
-        if level > shift.height {
-            shift.height = level;
-            arena
-                .records
-                .get_mut(level)
-                .ok_or(HtmlConstructionError::UnknownNode)?
-                .level_count = 0;
-        }
         let bucket = arena
             .records
-            .get_mut(level)
+            .get_mut(absolute)
             .ok_or(HtmlConstructionError::UnknownNode)?;
+        if fresh {
+            bucket.level_count = 0;
+        }
         bucket.level_count = add(bucket.level_count, 1)?;
-        shift.size = add(shift.size, 1)?;
-        self.plan.shift = Some(shift);
+        mov.size = add(mov.size, 1)?;
+        *self.plan.depth.mov(slot)? = mov;
         Ok(Phase::Shift {
+            slot,
             node: child,
             level,
             steps: add(steps, 1)?,
         })
     }
-    /// The walk is complete: settles the usage depth, or scans for it.
-    fn settle_depth(&mut self, shift: Shift) -> Result<Phase, HtmlConstructionError> {
-        self.plan.depth_writes = shift.size;
+    /// Every walk is complete: settles the usage depth, or scans for it.
+    fn settle_depth(&mut self) -> Result<Phase, HtmlConstructionError> {
         let current = self.plan.usage.depth;
-        let top = add(shift.from, shift.height)?;
-        let new_top = add(shift.to, shift.height)?;
-        if top < current || new_top >= current {
-            // Some record outside the subtree is as deep as the old usage
-            // depth, or the subtree itself reaches the new one.
+        let moves = || self.plan.depth.moves().filter(|mov| mov.walked());
+        let new_top = moves().map(Move::new_top).max();
+        let Some(new_top) = new_top else {
+            return self.before_writes();
+        };
+        if new_top >= current || moves().all(|mov| mov.top() < current) {
+            // Some record outside the moved subtrees is as deep as the old
+            // usage depth, or a moved subtree itself reaches the new one.
             self.plan.usage.depth = current.max(new_top);
             return self.before_writes();
         }
-        // The subtree held the deepest record and moves shallower: the depth
-        // is the deepest level that holds a record outside the subtree.
+        // A moved subtree held the deepest record and every one moves
+        // shallower: the depth is the deepest level that holds a record
+        // outside them.
         Ok(Phase::Settle { level: current })
     }
-    /// One level of the scan for the deepest record outside the moved subtree.
+    /// One level of the scan for the deepest record outside the moved subtrees.
+    ///
+    /// Each level's count of moved records lives in the record at that index. A
+    /// second walk may overwrite the first's counts, but only at levels no
+    /// deeper than its own new top: it starts at a fresh root, depth zero, and
+    /// moves deeper, so every level it counts is at most that top. The scan
+    /// reads only levels deeper than the greatest new top, which no overwrite
+    /// reaches.
     pub(super) fn settle_step(&mut self, level: usize) -> Result<Phase, HtmlConstructionError> {
-        let shift = self
+        let new_top = self
             .plan
-            .shift
-            .ok_or(HtmlConstructionError::OperationNotReady)?;
-        let new_top = add(shift.to, shift.height)?;
+            .depth
+            .moves()
+            .filter(|mov| mov.walked())
+            .map(Move::new_top)
+            .max()
+            .unwrap_or(0);
         if level <= new_top {
             self.plan.usage.depth = new_top;
             return self.before_writes();
         }
         let arena = self.arena();
-        let inside = level
-            .checked_sub(shift.from)
-            .filter(|relative| *relative <= shift.height)
-            .and_then(|relative| arena.records.get(relative))
-            .map_or(0, |bucket| bucket.level_count);
+        let inside = if self.plan.depth.moves().any(|mov| mov.counted(level)) {
+            arena
+                .records
+                .get(level)
+                .map_or(0, |bucket| bucket.level_count)
+        } else {
+            0
+        };
         if arena.population(level) > inside {
             self.plan.usage.depth = level;
             return self.before_writes();
@@ -322,23 +505,26 @@ impl HtmlConstructionOperation {
 }
 
 impl Plan {
-    /// The depth work the commit performs after its structural writes.
-    pub(super) fn commit_depths(&self, arena: &mut Arena, attach_shadow: bool) {
-        let p = self.positions;
-        if let Some(depth) = self.fast_depth {
-            let index = if attach_shadow { p[1] } else { p[0] };
-            arena.place(index, depth);
-            if let Some(TemplateContents::Owned(contents)) = arena
-                .records
-                .get(index)
-                .and_then(|record| record.template_contents)
-            {
-                arena.place(contents, depth.saturating_add(1));
+    /// The depth work the commit performs, before its structural writes so
+    /// that it sees the edges planning walked.
+    pub(super) fn commit_depths(&self, arena: &mut Arena) {
+        match &self.depth {
+            DepthPlan::Unchanged => {}
+            DepthPlan::Fast { node, depth, .. } => {
+                arena.place(*node, *depth);
+                if let Some(TemplateContents::Owned(contents)) = arena
+                    .records
+                    .get(*node)
+                    .and_then(|record| record.template_contents)
+                {
+                    arena.place(contents, depth.saturating_add(1));
+                }
             }
-        } else if let Some(shift) = self.shift {
-            arena.relocate_subtree(shift.root, shift.to);
-        } else if self.rebuild {
-            arena.adopt_planned_depths();
+            plan @ DepthPlan::Moves { .. } => {
+                for mov in plan.moves().filter(|mov| mov.walked()) {
+                    arena.relocate_subtree(mov.root, mov.to, self.old_contents);
+                }
+            }
         }
     }
 }
@@ -419,5 +605,211 @@ mod tests {
         assert_eq!(storage.len(), len);
         assert!(histogram_is_exact(&storage.arena));
         assert_eq!(storage.arena.population(0), 1);
+    }
+
+    /// Drives `command`; a refused command is aborted and leaves the storage as it was.
+    fn attempt(
+        storage: HtmlConstructionStorage,
+        command: HtmlConstructionCommand,
+    ) -> (HtmlConstructionStorage, bool) {
+        let mut operation = Some(
+            storage
+                .prepare(command)
+                .unwrap_or_else(|_| panic!("retained command")),
+        );
+        let mut refused = false;
+        loop {
+            match operation.as_mut().unwrap().next_action() {
+                Ok(Some(action)) => match action.perform() {
+                    Ok(observation) => observation.accept(),
+                    Err(_) => {
+                        refused = true;
+                        break;
+                    }
+                },
+                Ok(None) => break,
+                Err(_) => {
+                    refused = true;
+                    break;
+                }
+            }
+        }
+        if refused {
+            let (storage, _, _, mut orders) = operation.take().unwrap().abort().into_parts();
+            while let Some(action) = orders.next_action() {
+                action.perform();
+            }
+            return (storage, false);
+        }
+        let HtmlConstructionCommit::Changed {
+            storage,
+            mut retired_orders,
+            ..
+        } = HtmlConstructionOperation::try_ready(&mut operation)
+            .unwrap()
+            .commit()
+        else {
+            panic!("mutation published")
+        };
+        while let Some(action) = retired_orders.next_action() {
+            action.perform();
+        }
+        (storage, true)
+    }
+
+    /// Checks every cached depth, the usage depth and the histogram against
+    /// depths recounted from each record's own parent or owner.
+    fn assert_exact(arena: &Arena, context: &str) {
+        let recount = |start: usize| {
+            let (mut index, mut depth) = (start, 0usize);
+            while let Some(parent) = arena.records.get(index).and_then(owning_parent) {
+                index = parent;
+                depth += 1;
+                assert!(depth <= arena.records.len(), "{context}: owner cycle");
+            }
+            depth
+        };
+        let mut deepest = 0;
+        for (index, record) in arena.records.iter().enumerate() {
+            let expected = recount(index);
+            assert_eq!(record.depth, expected, "{context}: depth of record {index}");
+            deepest = deepest.max(expected);
+        }
+        assert_eq!(arena.usage.depth, deepest, "{context}: usage depth");
+        assert!(histogram_is_exact(arena), "{context}: histogram");
+    }
+
+    /// A deterministic pseudo-random sequence; the seed is the only input.
+    struct Sequence(u64);
+
+    impl Sequence {
+        fn next(&mut self, bound: usize) -> usize {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((self.0 >> 33) as usize) % bound
+        }
+    }
+
+    #[test]
+    fn every_topology_command_keeps_depths_usage_and_histogram_exact_under_random_use() {
+        use crate::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
+        const KINDS: usize = 8;
+        let properties = || {
+            HtmlShadowRootProperties::new(
+                HtmlShadowRootMode::Closed,
+                HtmlSlotAssignment::Manual,
+                true,
+                true,
+                true,
+            )
+        };
+        let mut successes = [0usize; KINDS];
+        for seed in [1, 2, 3, 4, 5, 6] {
+            let mut sequence = Sequence(seed);
+            let mut storage = storage();
+            let create = |storage: HtmlConstructionStorage, command| {
+                let (storage, created) = drive(storage, command);
+                (storage, created.unwrap())
+            };
+            let (mut elements, mut templates, mut shadows, mut fragments) =
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+            for _ in 0..8 {
+                let (next, node) = create(storage, element("e"));
+                storage = next;
+                elements.push(node);
+            }
+            for _ in 0..4 {
+                let (next, node) = create(storage, element("template"));
+                storage = next;
+                templates.push(node);
+            }
+            for _ in 0..3 {
+                let (next, node) = create(
+                    storage,
+                    HtmlConstructionCommand::CreateShadowContents {
+                        properties: properties(),
+                    },
+                );
+                storage = next;
+                shadows.push(node);
+                let (next, node) = create(storage, HtmlConstructionCommand::CreateFragment);
+                storage = next;
+                fragments.push(node);
+            }
+            let contents: Vec<HtmlBuilderNode> = templates
+                .iter()
+                .map(|template| {
+                    storage
+                        .node(template)
+                        .unwrap()
+                        .template_contents()
+                        .unwrap()
+                        .handle()
+                })
+                .collect();
+            // Everything that may hold children, host a shadow root or move.
+            let movable: Vec<HtmlBuilderNode> =
+                elements.iter().chain(&templates).cloned().collect();
+            let parents: Vec<HtmlBuilderNode> = elements
+                .iter()
+                .chain(&fragments)
+                .chain(&shadows)
+                .chain(&contents)
+                .cloned()
+                .collect();
+            let sources: Vec<HtmlBuilderNode> =
+                fragments.iter().chain(&contents).cloned().collect();
+            assert_exact(&storage.arena, "initial");
+            for step in 0..3000 {
+                let pick = |sequence: &mut Sequence, from: &[HtmlBuilderNode]| {
+                    from[sequence.next(from.len())].clone()
+                };
+                let kind = sequence.next(KINDS);
+                let command = match kind {
+                    0 | 1 => HtmlConstructionCommand::Insert {
+                        node: pick(&mut sequence, &movable),
+                        parent: pick(&mut sequence, &parents),
+                        before: None,
+                    },
+                    2 => HtmlConstructionCommand::Detach {
+                        node: pick(&mut sequence, &movable),
+                    },
+                    3 => HtmlConstructionCommand::AttachShadow {
+                        host: pick(&mut sequence, &movable),
+                        contents: pick(&mut sequence, &shadows),
+                    },
+                    4 => HtmlConstructionCommand::DetachShadow {
+                        host: pick(&mut sequence, &movable),
+                    },
+                    5 => HtmlConstructionCommand::AttachTemplateShadow {
+                        template: pick(&mut sequence, &templates),
+                        host: pick(&mut sequence, &movable),
+                        contents: pick(&mut sequence, &shadows),
+                    },
+                    6 => HtmlConstructionCommand::SetTemplateShadowContents {
+                        template: pick(&mut sequence, &templates),
+                        contents: pick(&mut sequence, &shadows),
+                    },
+                    _ => HtmlConstructionCommand::ReassignTemplateContents {
+                        template: pick(&mut sequence, &templates),
+                        contents: pick(&mut sequence, &sources),
+                    },
+                };
+                let (next, accepted) = attempt(storage, command);
+                storage = next;
+                successes[kind] += usize::from(accepted);
+                assert_exact(
+                    &storage.arena,
+                    &format!("seed {seed}, step {step}, kind {kind}"),
+                );
+            }
+        }
+        // Every command must have been accepted often enough to matter.
+        assert!(
+            successes.iter().all(|count| *count > 50),
+            "accepted commands per kind: {successes:?}"
+        );
     }
 }

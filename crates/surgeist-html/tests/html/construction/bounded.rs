@@ -192,10 +192,11 @@ fn driven(
                 initialized_bytes, ..
             } => (0, initialized_bytes, 0, false),
             HtmlConstructionActionDescription::Commit {
+                record_visits,
                 record_writes,
                 copied_bytes,
                 ..
-            } => (0, copied_bytes, record_writes, false),
+            } => (record_visits, copied_bytes, record_writes, false),
             // Reserving and reporting a bank's capacity is amortized growth.
             HtmlConstructionActionDescription::Reserve { .. }
             | HtmlConstructionActionDescription::PrepareAllocationReport { .. } => (0, 0, 0, true),

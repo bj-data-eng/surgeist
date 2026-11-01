@@ -573,9 +573,6 @@ struct Record {
     /// Scratch: how many records of the walked subtree sit at a level equal to
     /// this record's *index*. A walk initializes a level on first reaching it.
     level_count: usize,
-    /// Scratch: the depth a full recomputation assigned; it becomes `depth`
-    /// at commit and is meaningless otherwise.
-    planned_depth: usize,
     template_contents: Option<TemplateContents>,
     shadow: Option<ShadowAssociation>,
     shadow_properties: Option<HtmlShadowRootProperties>,
@@ -599,7 +596,6 @@ impl Record {
             population: 0,
             walk_cursor: 0,
             level_count: 0,
-            planned_depth: 0,
             template_contents: None,
             shadow: None,
             shadow_properties: None,

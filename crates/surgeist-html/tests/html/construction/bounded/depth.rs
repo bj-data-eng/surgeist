@@ -442,29 +442,45 @@ fn chain(
     (storage, top)
 }
 
+/// The work described by moving a chain of `length` elements one level deeper.
+fn described_chain_move(length: usize) -> DescribedWork {
+    let (owner, from) = create(storage(), element("from"));
+    let (owner, below) = create(owner, element("below"));
+    let (owner, to) = create(owner, element("to"));
+    let owner = append(owner, &to, &below);
+    let (owner, top) = chain(owner, length);
+    let owner = append(owner, &top, &from);
+    // The chain moves one level deeper, below `to` rather than `from`.
+    driven_insert(owner, &top, &to, None).1
+}
+
 #[test]
 fn moving_a_subtree_describes_at_least_three_writes_per_record_it_moves() {
     // Each moved record's depth and the two histogram counts it leaves and
     // joins are three writes, so the described writes grow by at least that
     // for every record a longer chain adds to the move.
-    let mut writes = Vec::new();
-    for length in [4usize, 36] {
-        let (owner, from) = create(storage(), element("from"));
-        let (owner, below) = create(owner, element("below"));
-        let (owner, to) = create(owner, element("to"));
-        let owner = append(owner, &to, &below);
-        let (owner, top) = chain(owner, length);
-        let owner = append(owner, &top, &from);
-        // The chain moves one level deeper, below `to` rather than `from`.
-        let (_, work) = driven_insert(owner, &top, &to, None);
-        writes.push((length, work.record_writes));
-    }
-    let (short, short_writes) = writes[0];
-    let (long, long_writes) = writes[1];
+    let (short, long) = (4usize, 36usize);
+    let (short_work, long_work) = (described_chain_move(short), described_chain_move(long));
     assert!(
-        long_writes >= short_writes + 3 * (long - short),
-        "moving {long} records described {long_writes} writes, moving {short} described \
-         {short_writes}"
+        long_work.record_writes >= short_work.record_writes + 3 * (long - short),
+        "moving {long} records described {} writes, moving {short} described {}",
+        long_work.record_writes,
+        short_work.record_writes
+    );
+}
+
+#[test]
+fn moving_a_subtree_describes_a_visit_for_every_record_the_commit_walk_reads() {
+    // The commit walks the moved subtree again to place each record, entering
+    // and leaving every record, so the described visits grow by at least one
+    // per record a longer chain adds.
+    let (short, long) = (4usize, 36usize);
+    let (short_work, long_work) = (described_chain_move(short), described_chain_move(long));
+    assert!(
+        long_work.record_visits >= short_work.record_visits + 2 * (long - short),
+        "moving {long} records described {} visits, moving {short} described {}",
+        long_work.record_visits,
+        short_work.record_visits
     );
 }
 
