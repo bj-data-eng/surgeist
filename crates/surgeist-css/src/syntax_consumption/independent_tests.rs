@@ -345,9 +345,9 @@ fn independent_base_depth_ceiling_is_distinct_from_the_nesting_limit() {
         max_components: 1,
         max_known_spelling_bytes: 3,
     };
-    // The tree counts depth from its own root: one level below the base.
+    // The tree counts the base depth it starts at: one level below it.
     let at_ceiling = build_source("f()", 0, &snapshot, limits, 255).unwrap();
-    independent_price(&at_ceiling, 1, 1, 3);
+    independent_price(&at_ceiling, 1, 256, 3);
     assert_eq!(
         build_source("f()", 0, &snapshot, limits, 256)
             .err()
@@ -374,10 +374,11 @@ fn independent_base_depth_ceiling_is_distinct_from_the_nesting_limit() {
     independent_price(
         &build_source("f()", 0, &snapshot, limits, 255).unwrap(),
         1,
-        1,
+        256,
         3,
     );
-    // A checked build counts the base depth in the depth it reports.
+    // A checked build counts the base depth in the depth it reports, as does a
+    // build from source text.
     let parsed = crate::component::values::parse_component_values("f()").unwrap();
     independent_price(
         &checked_document(parsed.items(), limits, 255).unwrap(),

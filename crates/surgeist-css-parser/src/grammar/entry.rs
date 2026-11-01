@@ -63,7 +63,7 @@ impl<'i, P> Stream<'i, P> {
     ///     }
     /// }
     /// let document: Document =
-    ///     Document::parse("@a; b {}", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("@a; b {}", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let mut grammar = Count;
     /// let items: Vec<_> = document
     ///     .root()
@@ -134,7 +134,7 @@ impl<'i, P> Stream<'i, P> {
     /// }
     /// let parse = |text: &str| -> bool {
     ///     let document: Document =
-    ///         Document::parse(text, &Options::default(), Limits::default(), DepthExcess::Fail).unwrap();
+    ///         Document::parse(text, &Options::default(), Limits::default(), 0, DepthExcess::Fail).unwrap();
     ///     document.root().parse_rule(&mut Names).is_ok()
     /// };
     /// assert!(parse("  @media a {}  "));
@@ -252,7 +252,7 @@ impl<'i, P> Stream<'i, P> {
     ///     }
     /// }
     /// let document: Document =
-    ///     Document::parse(" color: red", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse(" color: red", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// assert_eq!(document.root().parse_declaration(&mut Names).unwrap(), "color");
     /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
     /// ```
@@ -295,7 +295,7 @@ impl<'i, P> Stream<'i, P> {
     /// use surgeist_css_parser::Document;
     ///
     /// let document: Document =
-    ///     Document::parse("f(a b) c", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("f(a b) c", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let mut stream = document.root();
     /// // The function and its contents are one component value.
     /// assert!(matches!(stream.consume_component_value().unwrap(), Component::Function { .. }));
@@ -336,7 +336,7 @@ impl<'i, P> Stream<'i, P> {
     ///
     /// let value = |text: &str| {
     ///     let document: Document =
-    ///         Document::parse(text, &Options::default(), Limits::default(), DepthExcess::Fail).unwrap();
+    ///         Document::parse(text, &Options::default(), Limits::default(), 0, DepthExcess::Fail).unwrap();
     ///     document.root().parse_component_value().is_ok()
     /// };
     /// assert!(value("  f(a b)  "));
@@ -377,7 +377,7 @@ impl<'i, P> Stream<'i, P> {
     /// use surgeist_css_parser::Document;
     ///
     /// let document: Document =
-    ///     Document::parse("a f(b) }", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("a f(b) }", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let values = document.root().parse_list_of_component_values().unwrap();
     /// assert_eq!(values.len(), 5); // a, whitespace, f(b), whitespace, }
     /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
@@ -421,7 +421,7 @@ impl<'i, P> Stream<'i, P> {
     /// use surgeist_css_parser::Document;
     ///
     /// let document: Document =
-    ///     Document::parse("a, f(b, c),", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("a, f(b, c),", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let groups = document.root().parse_comma_separated_component_values().unwrap();
     /// assert_eq!(groups.len(), 2); // `a` and ` f(b, c)`; the final comma adds none
     /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
@@ -492,7 +492,7 @@ impl<'i, P> Stream<'i, P> {
     /// use surgeist_css_parser::{Document, SyntaxError};
     ///
     /// let document: Document =
-    ///     Document::parse("a, 1, b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("a, 1, b", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let list = document.root().parse_comma_separated_list(|group| {
     ///     Ok::<_, SyntaxError<'_, ()>>(group.consume_ident()?)
     /// }).unwrap();

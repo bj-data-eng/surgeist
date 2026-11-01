@@ -171,12 +171,12 @@ impl Default for SyntaxInputLimits {
     }
 }
 impl SyntaxInputLimits {
-    /// The parser crate's limits for a build that starts `base_depth` deep: it
-    /// counts depth from zero, so the room left under the ceiling is what it
-    /// is given.
-    fn limits(self, base_depth: u32) -> Limits {
+    /// The parser crate's limits for a build. A build that starts deeper than
+    /// zero is told so by its caller (`base_depth`); the ceiling stays the
+    /// whole one.
+    fn limits(self) -> Limits {
         Limits::new(
-            self.max_depth.min(256).saturating_sub(base_depth),
+            self.max_depth.min(256),
             self.max_components,
             self.max_known_spelling_bytes,
         )
@@ -254,9 +254,14 @@ fn build_source<'a>(
         return Err(too_long(text.len()));
     }
     let options = Options::default().origin(Offset::new(window));
-    let mut document =
-        Document::parse(text, &options, limits.limits(base_depth), DepthExcess::Fail)
-            .map_err(|error| source_failure(&error, text, window, original))?;
+    let mut document = Document::parse(
+        text,
+        &options,
+        limits.limits(),
+        base_depth,
+        DepthExcess::Fail,
+    )
+    .map_err(|error| source_failure(&error, text, window, original))?;
     document.attach(Host::source(original).into_attached());
     Ok(document)
 }
@@ -300,7 +305,7 @@ pub(crate) fn unicode_range_document(
     let mut document = surgeist_css_parser::unicode_range::consume_value(
         text,
         Offset::new(range.start),
-        limits.limits(0),
+        limits.limits(),
     )
     .map_err(|error| source_failure(&error, text, range.start, original))?;
     document.attach(Host::source(original).into_attached());
@@ -316,7 +321,7 @@ pub(crate) fn unicode_range_text_document(
     if text.len() > limits.max_known_spelling_bytes {
         return Err(too_long(text.len()));
     }
-    surgeist_css_parser::unicode_range::consume_value(text, Offset::new(0), limits.limits(0))
+    surgeist_css_parser::unicode_range::consume_value(text, Offset::new(0), limits.limits())
         .map_err(|error| {
             CssComponentValueError::new(failure_kind(&error), CssValueOrigin::Programmatic)
         })
@@ -346,6 +351,7 @@ pub(crate) fn source_scope_document(
         text,
         &options,
         Limits::new(u32::MAX, usize::MAX, usize::MAX),
+        0,
         DepthExcess::Fail,
     )
     .map_err(|error| source_failure(&error, text, range.start, original))?;
@@ -379,6 +385,7 @@ pub(crate) fn source_prefix_unlimited(
         window,
         &Options::default(),
         Limits::new(u32::MAX, usize::MAX, usize::MAX),
+        0,
         DepthExcess::Fail,
     )
     .map_err(|error| source_failure(&error, window, 0, original))?;
@@ -443,7 +450,8 @@ pub(crate) fn recovery_source_document(
     let mut document = Document::parse_owned(
         text,
         &Options::default(),
-        limits.limits(base_depth),
+        limits.limits(),
+        base_depth,
         DepthExcess::DenyBlock,
     )
     .map_err(|error| source_failure(&error, original.as_str(), 0, original))?;
@@ -533,7 +541,7 @@ fn build_checked<'a>(
     };
     // The builder counts the base depth itself, so the ceiling is the whole one.
     let mut builder: TreeBuilder<'a> = Document::builder(
-        limits.limits(0),
+        limits.limits(),
         base_depth,
         meter.map(|control| control as &dyn Meter),
     )

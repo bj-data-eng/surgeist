@@ -32,7 +32,7 @@ fn parse_with<'a>(
     limits: Limits,
     excess: DepthExcess,
 ) -> Result<Document<'a>, BuildError> {
-    Document::parse(text, options, limits, excess)
+    Document::parse(text, options, limits, 0, excess)
 }
 
 fn only(document: &Document<'_>) -> NodeId {
@@ -786,6 +786,141 @@ fn deny_block_denies_only_curly_blocks_and_a_denied_block_without_a_closer_ends_
     );
 }
 
+/// Builds `text` so that it starts `base` levels deep, the way a host that
+/// builds a part of a larger source does.
+fn parse_at(
+    text: &str,
+    limits: Limits,
+    base: u32,
+    excess: DepthExcess,
+) -> Result<Document<'_>, BuildError> {
+    Document::parse(text, &Options::default(), limits, base, excess)
+}
+
+#[test]
+fn the_base_depth_of_a_parsed_text_counts_against_the_depth_limit_as_a_builders_does() {
+    // `(x)` is one deep. Started at base depth 255 it reaches the limit of 256
+    // (the `(` is charged at 255 + 1); started at 256 it exceeds it, at the
+    // opening parenthesis, which is byte 0.
+    let limits = Limits::new(256, usize::MAX, usize::MAX);
+    assert!(parse_at("(x)", limits, 255, DepthExcess::Fail).is_ok());
+    let error = parse_at("(x)", limits, 256, DepthExcess::Fail).unwrap_err();
+    assert!(error.is_depth_limit());
+    assert_eq!(error.offset(), Some(Offset::new(0)));
+    // Two levels of nesting reach the limit from base 254 and pass it from 255,
+    // at the second opening parenthesis.
+    assert!(parse_at("((x))", limits, 254, DepthExcess::Fail).is_ok());
+    let error = parse_at("((x))", limits, 255, DepthExcess::Fail).unwrap_err();
+    assert!(error.is_depth_limit());
+    assert_eq!(error.offset(), Some(Offset::new(1)));
+    // A text with no group sits at its base: its tokens are charged there.
+    assert!(parse_at("x", limits, 256, DepthExcess::Fail).is_ok());
+    assert!(
+        parse_at("x", limits, 257, DepthExcess::Fail)
+            .unwrap_err()
+            .is_depth_limit()
+    );
+    // A base that overflows the counter is a capacity error, not a wrap.
+    let unbounded = Limits::new(u32::MAX, usize::MAX, usize::MAX);
+    assert!(
+        parse_at("(x)", unbounded, u32::MAX, DepthExcess::Fail)
+            .unwrap_err()
+            .is_capacity_overflow()
+    );
+}
+
+#[test]
+fn deny_block_denies_a_curly_block_at_the_same_total_depth_for_any_base_depth() {
+    // With the limit at 3, a `{}`-block is kept up to a total depth of 3 and
+    // denied past it, however the total is made up of the base and the text.
+    let limits = Limits::new(3, usize::MAX, usize::MAX);
+    let text = "{{a}} b";
+    let denied = |document: &Document<'_>, node: NodeId| {
+        matches!(document.component(node), Component::Denied { .. })
+    };
+    // The outer block is at total depth base + 1 and the inner one at base + 2.
+    for (base, outer_denied, inner_denied) in [
+        (0_u32, false, false),
+        (1, false, false),
+        (2, false, true),
+        (3, true, false),
+    ] {
+        let document = parse_at(text, limits, base, DepthExcess::DenyBlock).unwrap();
+        let outer = root_nodes(&document)[0];
+        assert_eq!(denied(&document, outer), outer_denied, "outer, base {base}");
+        if let Some(children) = document.children(outer) {
+            let [inner] = document.list(children)[..] else {
+                panic!("the inner block");
+            };
+            assert_eq!(denied(&document, inner), inner_denied, "inner, base {base}");
+        }
+    }
+    // Fail refuses what DenyBlock keeps opaque.
+    assert!(
+        parse_at(text, limits, 2, DepthExcess::Fail)
+            .unwrap_err()
+            .is_depth_limit()
+    );
+    // Only a `{}`-block is denied: a function at the same total depth still
+    // fails.
+    assert!(
+        parse_at(
+            "f(a)",
+            Limits::new(2, usize::MAX, usize::MAX),
+            2,
+            DepthExcess::DenyBlock
+        )
+        .unwrap_err()
+        .is_depth_limit()
+    );
+}
+
+#[test]
+fn the_base_depth_is_in_the_maximum_depth_of_a_parsed_text() {
+    let limits = Limits::new(256, usize::MAX, usize::MAX);
+    // `f(a)` is one deep: from base 5 the deepest level reached is 6.
+    let document = parse_at("f(a)", limits, 5, DepthExcess::Fail).unwrap();
+    assert_eq!(document.maximum_depth(), 6);
+    assert_eq!(document.metrics().maximum_depth(), 6);
+    // A text of leaves only is charged at its base.
+    let document = parse_at("a b", limits, 5, DepthExcess::Fail).unwrap();
+    assert_eq!(document.maximum_depth(), 5);
+    // From base zero nothing changes.
+    let document = parse_at("f(a)", limits, 0, DepthExcess::Fail).unwrap();
+    assert_eq!(document.maximum_depth(), 1);
+    // A denied block is charged at its parent's depth, base included.
+    let tight = Limits::new(4, usize::MAX, usize::MAX);
+    let document = parse_at("{ a }", tight, 4, DepthExcess::DenyBlock).unwrap();
+    assert_eq!(document.maximum_depth(), 4);
+}
+
+#[test]
+fn an_owned_document_takes_the_base_depth_as_a_borrowed_one_does() {
+    let limits = Limits::new(3, usize::MAX, usize::MAX);
+    let text = "{ { a } } b";
+    for base in 0..4 {
+        for excess in [DepthExcess::Fail, DepthExcess::DenyBlock] {
+            let owned =
+                Document::<()>::parse_owned(text, &Options::default(), limits, base, excess);
+            let borrowed = parse_at(text, limits, base, excess);
+            match (owned, borrowed) {
+                (Ok(owned), Ok(borrowed)) => {
+                    assert_eq!(
+                        outline(&owned, owned.root_list()),
+                        outline(&borrowed, borrowed.root_list())
+                    );
+                    assert_eq!(owned.metrics(), borrowed.metrics());
+                }
+                (Err(owned), Err(borrowed)) => {
+                    assert_eq!(owned.is_depth_limit(), borrowed.is_depth_limit());
+                    assert_eq!(owned.offset(), borrowed.offset());
+                }
+                _ => panic!("base {base}, {excess:?}: owned and borrowed disagree"),
+            }
+        }
+    }
+}
+
 #[test]
 fn limits_on_components_and_bytes_refuse_exactly_one_past_them() {
     let text = "@x;/*c*/@y;"; // five tokens, eleven bytes
@@ -1504,6 +1639,7 @@ fn a_document_that_owns_its_text_reads_as_one_over_borrowed_text() {
                 copy,
                 &Options::default(),
                 Limits::default(),
+                0,
                 DepthExcess::Fail,
             )
             .expect("the default limits admit the text")
@@ -1540,7 +1676,7 @@ fn an_owned_document_keeps_the_depth_policy_of_a_borrowed_one() {
     let limits = Limits::new(2, usize::MAX, usize::MAX);
     let text = "{ { { a } } } b";
     let owned =
-        Document::<()>::parse_owned(text, &Options::default(), limits, DepthExcess::DenyBlock)
+        Document::<()>::parse_owned(text, &Options::default(), limits, 0, DepthExcess::DenyBlock)
             .unwrap();
     let borrowed = parse_with(text, &Options::default(), limits, DepthExcess::DenyBlock).unwrap();
     assert_eq!(
@@ -1548,7 +1684,8 @@ fn an_owned_document_keeps_the_depth_policy_of_a_borrowed_one() {
         outline(&borrowed, borrowed.root_list())
     );
     assert_eq!(owned.metrics(), borrowed.metrics());
-    let refused = Document::<()>::parse_owned(text, &Options::default(), limits, DepthExcess::Fail);
+    let refused =
+        Document::<()>::parse_owned(text, &Options::default(), limits, 0, DepthExcess::Fail);
     assert!(refused.is_err_and(|error| error.is_depth_limit()));
 }
 
@@ -1560,6 +1697,7 @@ fn a_payload_attached_to_the_document_is_reachable_from_any_site() {
         "a f(b)",
         &Options::default(),
         Limits::default(),
+        0,
         DepthExcess::Fail,
     )
     .unwrap();
@@ -1700,6 +1838,7 @@ fn an_owned_document_keeps_the_allocation_of_a_text_that_needs_no_decoding() {
         text,
         &Options::default(),
         Limits::default(),
+        0,
         DepthExcess::Fail,
     )
     .unwrap();
@@ -1711,6 +1850,7 @@ fn an_owned_document_keeps_the_allocation_of_a_text_that_needs_no_decoding() {
         "\\66 oo(b)",
         &Options::default(),
         Limits::default(),
+        0,
         DepthExcess::Fail,
     )
     .unwrap();

@@ -80,7 +80,7 @@
 //!
 //! // Parse `a{b:1px}`: an ident, then a `{}`-block of three tokens.
 //! let document: Document =
-//!     Document::parse("a{b:1px}", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+//!     Document::parse("a{b:1px}", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 //! let mut stream = document.root();
 //! assert_eq!(stream.consume_ident().ok(), Some("a"));
 //! stream.consume_token().unwrap(); // the `{`; its block is waiting to be entered

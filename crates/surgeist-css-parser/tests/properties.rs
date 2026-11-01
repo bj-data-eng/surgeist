@@ -374,6 +374,7 @@ fn round_trip(text: &str) -> std::result::Result<(), String> {
             text,
             &Options::default(),
             Limits::default(),
+            0,
             DepthExcess::Fail,
         )
     }
@@ -624,6 +625,7 @@ fn the_properties_detect_a_wrong_lexer_result() {
         "(a b)",
         &Options::default(),
         Limits::default(),
+        0,
         DepthExcess::Fail,
     )
     .unwrap();
@@ -631,6 +633,7 @@ fn the_properties_detect_a_wrong_lexer_result() {
         "(a) b",
         &Options::default(),
         Limits::default(),
+        0,
         DepthExcess::Fail,
     )
     .unwrap();

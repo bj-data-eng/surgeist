@@ -28,7 +28,7 @@ use crate::{Document, Offset, Token};
 /// use surgeist_css_parser::Document;
 ///
 /// let document: Document =
-///     Document::parse("a b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("a b", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let mut stream = document.root();
 /// let before = stream.site();
 /// stream.consume_ident().unwrap();

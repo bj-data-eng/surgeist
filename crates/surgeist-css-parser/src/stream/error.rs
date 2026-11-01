@@ -33,7 +33,7 @@ pub(super) enum StreamErrorKind<'i> {
 /// use surgeist_css_parser::{Document, Token};
 ///
 /// let document: Document =
-///     Document::parse("1", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("1", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let mut stream = document.root();
 /// let error = stream.consume_ident().unwrap_err();
 /// assert!(error.is_unexpected_token());

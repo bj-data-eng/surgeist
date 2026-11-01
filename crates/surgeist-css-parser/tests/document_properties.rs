@@ -203,6 +203,7 @@ fn parse(text: &str) -> std::result::Result<Document<'_>, String> {
         text,
         &Options::default(),
         Limits::new(u32::MAX, usize::MAX, usize::MAX),
+        0,
         DepthExcess::Fail,
     )
     .map_err(|error| format!("{text:?}: the build failed: {error}"))
@@ -509,6 +510,7 @@ fn check_depth(text: &str) -> std::result::Result<(), String> {
             text,
             &Options::default(),
             Limits::new(limit, usize::MAX, usize::MAX),
+            0,
             excess,
         )
     };
@@ -563,7 +565,7 @@ fn check_total(text: &str) -> std::result::Result<(), String> {
     ] {
         let limits = Limits::new(limit, usize::MAX, usize::MAX);
         catch_unwind(AssertUnwindSafe(|| {
-            let _ = Document::<()>::parse(text, &Options::default(), limits, excess);
+            let _ = Document::<()>::parse(text, &Options::default(), limits, 0, excess);
         }))
         .map_err(|_| format!("{text:?}: parse panicked at limit {limit}"))?;
     }

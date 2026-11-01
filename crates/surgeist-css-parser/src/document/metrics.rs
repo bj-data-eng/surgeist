@@ -14,7 +14,7 @@
 /// use surgeist_css_parser::limits::{DepthExcess, Limits};
 ///
 /// let document: Document =
-///     Document::parse("f(a)", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("f(a)", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let metrics = document.metrics();
 /// assert_eq!(metrics.components(), 2); // the function and `a`
 /// assert_eq!(metrics.maximum_depth(), 1);

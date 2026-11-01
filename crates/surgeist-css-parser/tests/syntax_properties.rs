@@ -147,6 +147,7 @@ fn parse_text(text: &str) -> std::result::Result<Document<'_>, String> {
         text,
         &Options::default(),
         Limits::default(),
+        0,
         DepthExcess::Fail,
     )
     .map_err(|error| format!("{text:?}: {error}"))

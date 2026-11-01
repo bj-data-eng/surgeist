@@ -20,6 +20,7 @@ pub fn parse(text: &str) -> Document<'_> {
         text,
         &Options::default(),
         Limits::default(),
+        0,
         DepthExcess::Fail,
     )
     .expect("the default limits admit the text")

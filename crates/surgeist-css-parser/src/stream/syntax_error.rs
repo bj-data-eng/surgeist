@@ -40,7 +40,7 @@ enum Kind<'i, E, P> {
 /// }
 ///
 /// let document: Document =
-///     Document::parse("bold normal", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("bold normal", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let mut stream = document.root();
 /// assert!(bold(&mut stream).is_ok());
 /// let error = bold(&mut stream).unwrap_err();
