@@ -314,6 +314,7 @@ impl SessionStorage {
                 stage,
                 start,
                 count: 1,
+                earlier: [Some(name_slot), Some(value_slot), None, None],
             },
         )?;
         Ok(())

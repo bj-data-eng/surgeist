@@ -641,6 +641,12 @@ impl SessionStorage {
                     stage,
                     start: position,
                     count: 0,
+                    earlier: [
+                        Some(name_slot),
+                        Some(value_slot),
+                        namespace_slot,
+                        prefix_slot,
+                    ],
                 },
             )?;
         }
