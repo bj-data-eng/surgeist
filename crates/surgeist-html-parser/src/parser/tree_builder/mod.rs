@@ -1092,7 +1092,7 @@ impl StandaloneError {
     }
     /// The error names an owner that the driver's own sequencing keeps present
     /// and that is gone, rather than a document or a limit.
-    fn lost_owner(&self) -> bool {
+    pub(super) fn lost_owner(&self) -> bool {
         match self {
             Self::Consumed => true,
             Self::Prologue(error) => error.lost_owner(),

@@ -326,9 +326,11 @@ impl<'source> FragmentEntry<'source> {
     }
 }
 
-/// The original source/capture/options and one preexisting stopped-carrier slot.
-pub(crate) struct FragmentInitializationOwner {
-    request: Option<HtmlFragmentParseRequest>,
+/// The original source/capture/options and one preexisting stopped-carrier
+/// slot. The carrier owns the request by construction: only a consuming
+/// transfer moves it out, so no state of the carrier lacks it.
+pub(crate) struct FragmentInitialization {
+    request: HtmlFragmentParseRequest,
     stopped: Option<StoppedFragmentConstruction>,
     begun: bool,
 }
@@ -336,15 +338,13 @@ pub(crate) struct FragmentInitializationAttempt<'owner> {
     entry: FragmentEntry<'owner>,
     stopped: &'owner mut Option<StoppedFragmentConstruction>,
 }
-impl FragmentInitializationOwner {
-    pub(in crate::parser::tree_builder) fn original_request(
-        &self,
-    ) -> Option<&HtmlFragmentParseRequest> {
-        self.request.as_ref()
+impl FragmentInitialization {
+    pub(in crate::parser::tree_builder) fn original_request(&self) -> &HtmlFragmentParseRequest {
+        &self.request
     }
     pub(crate) fn new(request: HtmlFragmentParseRequest) -> Self {
         Self {
-            request: Some(request.share_associated_inputs()),
+            request: request.share_associated_inputs(),
             stopped: None,
             begun: false,
         }
@@ -369,49 +369,173 @@ impl FragmentInitializationOwner {
         }
         self.begun = true;
         Ok(FragmentInitializationAttempt {
-            entry: FragmentEntry::new(
-                self.request.as_ref().ok_or(InitializationState::Consumed)?,
-                target,
-            ),
+            entry: FragmentEntry::new(&self.request, target),
             stopped: &mut self.stopped,
         })
     }
-    pub(crate) fn source(&self) -> Option<&crate::HtmlSource> {
-        self.request.as_ref().map(|r| r.source())
+    pub(crate) fn source(&self) -> &crate::HtmlSource {
+        self.request.source()
     }
     pub(crate) fn failure(&self) -> Option<&StoppedFragmentConstruction> {
         self.stopped.as_ref()
     }
+    /// The same request-owned terminal slot is filled, never reconstructed. A
+    /// refusal hands back the carrier and the stopped construction.
+    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn retain_stopped(
+        mut self,
+        stopped: StoppedFragmentConstruction,
+    ) -> Result<Self, (FragmentExecutionError, Self, StoppedFragmentConstruction)> {
+        if self.stopped.is_some() || !stopped.qualifies(&self.request) {
+            return Err((FragmentExecutionError::Consumed, self, stopped));
+        }
+        self.stopped = Some(stopped);
+        Ok(self)
+    }
+    /// Joins the retained stopped construction to the original request. A
+    /// refusal hands the carrier back with both still in place.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_failure(
+        mut self,
+    ) -> Result<OwnedFragmentFailure, (FragmentExecutionError, Self)> {
+        let Some(stopped) = self.stopped.take() else {
+            return Err((FragmentExecutionError::Consumed, self));
+        };
+        let Self {
+            request,
+            stopped: _,
+            begun,
+        } = self;
+        match OwnedFragmentFailure::join(request, stopped) {
+            Ok(joined) => Ok(joined),
+            Err((error, request, stopped)) => Err((
+                error,
+                Self {
+                    request,
+                    stopped: Some(stopped),
+                    begun,
+                },
+            )),
+        }
+    }
+    /// Seals the frozen construction with the original request. A refusal hands
+    /// back the carrier and the parts.
+    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_sealed(
+        self,
+        parts: FrozenContextFragmentParts,
+    ) -> Result<
+        SealedFragmentConstruction,
+        (FragmentExecutionError, Self, FrozenContextFragmentParts),
+    > {
+        if self.stopped.is_some() {
+            return Err((FragmentExecutionError::Consumed, self, parts));
+        }
+        let Self {
+            request,
+            stopped,
+            begun,
+        } = self;
+        match SealedFragmentConstruction::join(request, parts) {
+            Ok(sealed) => Ok(sealed),
+            Err((error, request, parts)) => Err((
+                error,
+                Self {
+                    request,
+                    stopped,
+                    begun,
+                },
+                parts,
+            )),
+        }
+    }
+}
+/// The slot-style view of a carrier that tests drive: the request leaves it
+/// once, after which the carrier is gone.
+#[cfg(test)]
+pub(crate) struct FragmentInitializationOwner {
+    held: Option<FragmentInitialization>,
+}
+#[cfg(test)]
+impl FragmentInitializationOwner {
+    pub(crate) fn new(request: HtmlFragmentParseRequest) -> Self {
+        Self {
+            held: Some(FragmentInitialization::new(request)),
+        }
+    }
+    pub(crate) fn begin(
+        &mut self,
+    ) -> Result<FragmentInitializationAttempt<'_>, InitializationState> {
+        self.held
+            .as_mut()
+            .ok_or(InitializationState::Consumed)?
+            .begin()
+    }
+    pub(crate) fn source(&self) -> Option<&crate::HtmlSource> {
+        self.held.as_ref().map(|held| held.source())
+    }
+    pub(crate) fn failure(&self) -> Option<&StoppedFragmentConstruction> {
+        self.held.as_ref()?.failure()
+    }
     pub(crate) fn take_failure(&mut self) -> Result<OwnedFragmentFailure, FragmentExecutionError> {
-        OwnedFragmentFailure::take(&mut self.request, &mut self.stopped)
+        let held = self.held.take().ok_or(FragmentExecutionError::Consumed)?;
+        match held.into_failure() {
+            Ok(failure) => Ok(failure),
+            Err((error, held)) => {
+                self.held = Some(held);
+                Err(error)
+            }
+        }
     }
     pub(crate) fn retain_execution_failure(
         &mut self,
         stopped: &mut Option<StoppedFragmentConstruction>,
     ) -> Result<(), FragmentExecutionError> {
-        if self.stopped.is_some() {
+        let held = self.held.take().ok_or(FragmentExecutionError::Consumed)?;
+        let Some(failed) = stopped.take() else {
+            self.held = Some(held);
             return Err(FragmentExecutionError::Consumed);
+        };
+        match held.retain_stopped(failed) {
+            Ok(held) => {
+                self.held = Some(held);
+                Ok(())
+            }
+            Err((error, held, failed)) => {
+                self.held = Some(held);
+                *stopped = Some(failed);
+                Err(error)
+            }
         }
-        let original = self
-            .request
-            .as_ref()
-            .ok_or(FragmentExecutionError::Consumed)?;
-        let failed = stopped.as_ref().ok_or(FragmentExecutionError::Consumed)?;
-        if !failed.qualifies(original) {
-            return Err(FragmentExecutionError::Consumed);
-        }
-        // The same request-owned terminal slot is moved, never reconstructed.
-        self.stopped = stopped.take();
-        Ok(())
     }
     pub(crate) fn seal(
         &mut self,
         parts: &mut Option<FrozenContextFragmentParts>,
     ) -> Result<SealedFragmentConstruction, FragmentExecutionError> {
-        if self.stopped.is_some() {
+        let held = self.held.take().ok_or(FragmentExecutionError::Consumed)?;
+        let Some(frozen) = parts.take() else {
+            self.held = Some(held);
             return Err(FragmentExecutionError::Consumed);
+        };
+        match held.into_sealed(frozen) {
+            Ok(sealed) => Ok(sealed),
+            Err((error, held, frozen)) => {
+                self.held = Some(held);
+                *parts = Some(frozen);
+                Err(error)
+            }
         }
-        SealedFragmentConstruction::take(&mut self.request, parts)
     }
 }
 impl<'owner> FragmentInitializationAttempt<'owner> {
@@ -659,27 +783,33 @@ impl OwnedFragmentFailure {
     pub(in crate::parser::tree_builder) fn original_request(&self) -> &FragmentRequestParts {
         &self.request
     }
-    fn take(
-        request: &mut Option<HtmlFragmentParseRequest>,
-        stopped: &mut Option<StoppedFragmentConstruction>,
-    ) -> Result<Self, FragmentExecutionError> {
-        let original = request.take().ok_or(FragmentExecutionError::Consumed)?;
-        let Some(failed) = stopped.take() else {
-            *request = Some(original);
-            return Err(FragmentExecutionError::Consumed);
-        };
-        if !failed.control.owns_request(original.cancellation())
-            || failed.binding.as_ref().is_some_and(|(id, basis)| {
-                id != original.source().identity() || *basis != original.source().coordinates()
+    /// A refusal hands both owners back unchanged.
+    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    fn join(
+        request: HtmlFragmentParseRequest,
+        failure: StoppedFragmentConstruction,
+    ) -> Result<
+        Self,
+        (
+            FragmentExecutionError,
+            HtmlFragmentParseRequest,
+            StoppedFragmentConstruction,
+        ),
+    > {
+        if !failure.control.owns_request(request.cancellation())
+            || failure.binding.as_ref().is_some_and(|(id, basis)| {
+                id != request.source().identity() || *basis != request.source().coordinates()
             })
         {
-            *request = Some(original);
-            *stopped = Some(failed);
-            return Err(FragmentExecutionError::Consumed);
+            return Err((FragmentExecutionError::Consumed, request, failure));
         }
         Ok(Self {
-            request: original.into_parts(),
-            failure: failed,
+            request: request.into_parts(),
+            failure,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {
@@ -721,23 +851,29 @@ pub(crate) struct SealedFragmentConstruction {
     pub(in crate::parser::tree_builder) parts: FrozenContextFragmentParts,
 }
 impl SealedFragmentConstruction {
-    fn take(
-        request: &mut Option<HtmlFragmentParseRequest>,
-        parts: &mut Option<FrozenContextFragmentParts>,
-    ) -> Result<Self, FragmentExecutionError> {
-        let original = request.take().ok_or(FragmentExecutionError::Consumed)?;
-        let Some(mut frozen) = parts.take() else {
-            *request = Some(original);
-            return Err(FragmentExecutionError::Consumed);
-        };
-        if let Err(error) = frozen.prepare_seal(&original) {
-            *request = Some(original);
-            *parts = Some(frozen);
-            return Err(error);
+    /// A refusal hands both owners back unchanged.
+    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    fn join(
+        request: HtmlFragmentParseRequest,
+        mut parts: FrozenContextFragmentParts,
+    ) -> Result<
+        Self,
+        (
+            FragmentExecutionError,
+            HtmlFragmentParseRequest,
+            FrozenContextFragmentParts,
+        ),
+    > {
+        if let Err(error) = parts.prepare_seal(&request) {
+            return Err((error, request, parts));
         }
         Ok(Self {
-            request: original.into_parts(),
-            parts: frozen,
+            request: request.into_parts(),
+            parts,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {

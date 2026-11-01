@@ -13,34 +13,35 @@ enum InitializationPhase {
     Executing,
     Stopped,
     Transferred,
-    Consumed,
 }
 
 /// Fixed source-owning bootstrap carrier. Its request and failure slot exist
 /// before the first admission; no source-owning envelope is allocated after a
 /// pre-source stop. The control/Arc bootstrap remains the existing documented
 /// provider limitation. The native-only seal and full lexical D1 remain separate.
-pub(crate) struct OrdinaryInitializationOwner {
-    request: Option<HtmlDocumentParseRequest>,
+/// The carrier owns the request by construction: only a consuming transfer
+/// moves it out, so no state of the carrier lacks it.
+pub(crate) struct OrdinaryInitialization {
+    request: HtmlDocumentParseRequest,
     failure: Option<super::entry::StoppedInitialization>,
     phase: InitializationPhase,
 }
-impl OrdinaryInitializationOwner {
+impl OrdinaryInitialization {
     pub(crate) fn new(request: HtmlDocumentParseRequest) -> Self {
         let request = request.share_associated_inputs();
         let phase = super::entry::EntryRejection::for_request(&request)
             .map_or(InitializationPhase::Fresh, InitializationPhase::Rejected);
         Self {
-            request: Some(request),
+            request,
             failure: None,
             phase,
         }
     }
-    pub(crate) fn source(&self) -> Option<&crate::HtmlSource> {
-        self.request.as_ref().map(|request| request.source())
+    pub(crate) fn source(&self) -> &crate::HtmlSource {
+        self.request.source()
     }
-    pub(crate) fn request(&self) -> Option<&HtmlDocumentParseRequest> {
-        self.request.as_ref()
+    pub(crate) fn request(&self) -> &HtmlDocumentParseRequest {
+        &self.request
     }
     /// The attempt retains every real borrowed prefix on refusal. It must be
     /// explicitly transferred or cleaned before dropping; no infallible Drop
@@ -72,8 +73,8 @@ impl OrdinaryInitializationOwner {
             InitializationPhase::Fresh => {}
             _ => return Err(StandaloneError::Consumed),
         }
-        let request = self.request.as_ref().ok_or(StandaloneError::Consumed)?;
         self.phase = InitializationPhase::Executing;
+        let request = &self.request;
         Ok(InitializationAttempt {
             entry: {
                 #[cfg(test)]
@@ -134,24 +135,170 @@ impl OrdinaryInitializationOwner {
     pub(crate) fn release_failure(&mut self) -> Result<(), StandaloneError> {
         match self.phase {
             InitializationPhase::Rejected(_) => Ok(()),
-            InitializationPhase::Stopped => self
-                .failure
-                .as_mut()
-                .expect("actual stopped owner")
-                .release(),
+            InitializationPhase::Stopped => match self.failure.as_mut() {
+                Some(failure) => failure.release(),
+                None => Err(StandaloneError::Consumed),
+            },
             _ => Err(StandaloneError::Consumed),
         }
     }
+    #[cfg(test)]
     /// A ready actual driver no longer borrows the carrier once its execution
     /// scope ends. Move the same original request to the existing final seal.
-    pub(crate) fn take_request(&mut self) -> Result<HtmlDocumentParseRequest, StandaloneError> {
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_request(self) -> Result<HtmlDocumentParseRequest, (StandaloneError, Self)> {
         match self.phase {
-            InitializationPhase::Fresh | InitializationPhase::Transferred => {}
-            _ => return Err(StandaloneError::Consumed),
+            InitializationPhase::Fresh | InitializationPhase::Transferred => Ok(self.request),
+            _ => Err((StandaloneError::Consumed, self)),
         }
-        let request = self.request.take().ok_or(StandaloneError::Consumed)?;
-        self.phase = InitializationPhase::Consumed;
-        Ok(request)
+    }
+    /// Joins the cleaned failure of the execution this carrier ran to the
+    /// original request. A refusal hands back the carrier and the failure.
+    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_failure(
+        self,
+        failure: super::terminal::DetachedStandaloneFailure,
+    ) -> Result<
+        OwnedOrdinaryFailure,
+        (
+            StandaloneError,
+            Self,
+            super::terminal::DetachedStandaloneFailure,
+        ),
+    > {
+        if !matches!(
+            self.phase,
+            InitializationPhase::Fresh | InitializationPhase::Transferred
+        ) {
+            return Err((StandaloneError::Consumed, self, failure));
+        }
+        let Self {
+            request,
+            failure: slot,
+            phase,
+        } = self;
+        match OwnedOrdinaryFailure::join(request, failure) {
+            Ok(joined) => Ok(joined),
+            Err((error, request, failure)) => Err((
+                error,
+                Self {
+                    request,
+                    failure: slot,
+                    phase,
+                },
+                failure,
+            )),
+        }
+    }
+    /// Seals the frozen construction of the execution this carrier ran with the
+    /// original request. A refusal hands back the carrier and the parts.
+    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_sealed(
+        self,
+        parts: FrozenStandaloneParts,
+    ) -> Result<SealedOrdinaryConstruction, (StandaloneError, Self, FrozenStandaloneParts)> {
+        if !matches!(
+            self.phase,
+            InitializationPhase::Fresh | InitializationPhase::Transferred
+        ) {
+            return Err((StandaloneError::Consumed, self, parts));
+        }
+        let Self {
+            request,
+            failure: slot,
+            phase,
+        } = self;
+        match SealedOrdinaryConstruction::join(request, parts) {
+            Ok(sealed) => Ok(sealed),
+            Err((error, request, parts)) => Err((
+                error,
+                Self {
+                    request,
+                    failure: slot,
+                    phase,
+                },
+                parts,
+            )),
+        }
+    }
+}
+
+/// The slot-style view of a carrier that tests drive: the request can be taken
+/// once, after which the carrier is gone.
+#[cfg(test)]
+pub(crate) struct OrdinaryInitializationOwner {
+    held: Option<OrdinaryInitialization>,
+}
+#[cfg(test)]
+impl OrdinaryInitializationOwner {
+    pub(crate) fn new(request: HtmlDocumentParseRequest) -> Self {
+        Self {
+            held: Some(OrdinaryInitialization::new(request)),
+        }
+    }
+    pub(crate) fn source(&self) -> Option<&crate::HtmlSource> {
+        self.held.as_ref().map(|held| held.source())
+    }
+    pub(crate) fn request(&self) -> Option<&HtmlDocumentParseRequest> {
+        self.held.as_ref().map(|held| held.request())
+    }
+    pub(crate) fn begin(&mut self) -> Result<InitializationAttempt<'_>, StandaloneError> {
+        self.held.as_mut().ok_or(StandaloneError::Consumed)?.begin()
+    }
+    pub(crate) fn begin_progressive(
+        &mut self,
+    ) -> Result<InitializationAttempt<'_>, StandaloneError> {
+        self.held
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?
+            .begin_progressive()
+    }
+    pub(crate) fn failure(&self) -> Option<super::entry::InitializationFailure> {
+        self.held.as_ref()?.failure()
+    }
+    pub(crate) fn source_admitted(&self) -> Option<bool> {
+        self.held.as_ref()?.source_admitted()
+    }
+    pub(crate) fn at_stop(&self) -> Option<&crate::parser::control::ParseUsage> {
+        self.held.as_ref()?.at_stop()
+    }
+    pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::ParseUsage> {
+        self.held.as_ref()?.after_cleanup()
+    }
+    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::ParseUsage> {
+        self.held.as_ref()?.retained_usage()
+    }
+    pub(crate) fn diagnostics(
+        &self,
+    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+        self.held.as_ref()?.diagnostics()
+    }
+    pub(crate) fn release_failure(&mut self) -> Result<(), StandaloneError> {
+        self.held
+            .as_mut()
+            .ok_or(StandaloneError::Consumed)?
+            .release_failure()
+    }
+    pub(crate) fn take_request(&mut self) -> Result<HtmlDocumentParseRequest, StandaloneError> {
+        let held = self.held.take().ok_or(StandaloneError::Consumed)?;
+        match held.into_request() {
+            Ok(request) => Ok(request),
+            Err((error, held)) => {
+                self.held = Some(held);
+                Err(error)
+            }
+        }
     }
 }
 
@@ -195,7 +342,7 @@ pub(super) const fn initialization_bootstrap_layout() -> (usize, usize) {
         let (bytes, writes) = super::entry::initialization_transfer_layout();
         (
             bytes
-                + size_of::<OrdinaryInitializationOwner>()
+                + size_of::<OrdinaryInitialization>()
                 + size_of::<InitializationAttempt>()
                 + 3 * size_of::<InitializationPhase>()
                 + size_of::<Option<HtmlDocumentParseRequest>>(),
@@ -246,6 +393,7 @@ pub(crate) struct SealedOrdinaryConstruction {
     pub(super) parts: FrozenStandaloneParts,
 }
 impl SealedOrdinaryConstruction {
+    #[cfg(test)]
     /// Both original owning slots survive every admission/qualification error.
     /// No fallible operation follows the two already-admitted moves.
     pub(crate) fn take(
@@ -253,18 +401,41 @@ impl SealedOrdinaryConstruction {
         parts: &mut Option<FrozenStandaloneParts>,
     ) -> Result<Self, StandaloneError> {
         let original = request.take().ok_or(StandaloneError::Consumed)?;
-        let Some(mut frozen) = parts.take() else {
+        let Some(frozen) = parts.take() else {
             *request = Some(original);
             return Err(StandaloneError::Consumed);
         };
-        if let Err(error) = frozen.prepare_seal(&original) {
-            *request = Some(original);
-            *parts = Some(frozen);
-            return Err(error);
+        match Self::join(original, frozen) {
+            Ok(sealed) => Ok(sealed),
+            Err((error, original, frozen)) => {
+                *request = Some(original);
+                *parts = Some(frozen);
+                Err(error)
+            }
+        }
+    }
+    /// A refusal hands both owners back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn join(
+        request: HtmlDocumentParseRequest,
+        mut parts: FrozenStandaloneParts,
+    ) -> Result<
+        Self,
+        (
+            StandaloneError,
+            HtmlDocumentParseRequest,
+            FrozenStandaloneParts,
+        ),
+    > {
+        if let Err(error) = parts.prepare_seal(&request) {
+            return Err((error, request, parts));
         }
         Ok(Self {
-            request: original.into_parts(),
-            parts: frozen,
+            request: request.into_parts(),
+            parts,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {
@@ -323,6 +494,7 @@ impl OwnedOrdinaryFailure {
     pub(super) fn original_request(&self) -> &DocumentRequestParts {
         &self.request
     }
+    #[cfg(test)]
     pub(crate) fn take(
         request: &mut Option<HtmlDocumentParseRequest>,
         failure: &mut Option<super::terminal::DetachedStandaloneFailure>,
@@ -332,20 +504,44 @@ impl OwnedOrdinaryFailure {
             *request = Some(original);
             return Err(StandaloneError::Consumed);
         };
-        if original.capture().is_some()
-            || original.document().is_some()
-            || !failed.owns_request(original.cancellation())
-            || &failed.binding.0 != original.source().identity()
-            || failed.binding.1 != original.source().coordinates()
+        match Self::join(original, failed) {
+            Ok(joined) => Ok(joined),
+            Err((error, original, failed)) => {
+                *request = Some(original);
+                *failure = Some(failed);
+                Err(error)
+            }
+        }
+    }
+    /// A refusal hands both owners back unchanged.
+    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn join(
+        request: HtmlDocumentParseRequest,
+        failure: super::terminal::DetachedStandaloneFailure,
+    ) -> Result<
+        Self,
+        (
+            StandaloneError,
+            HtmlDocumentParseRequest,
+            super::terminal::DetachedStandaloneFailure,
+        ),
+    > {
+        if request.capture().is_some()
+            || request.document().is_some()
+            || !failure.owns_request(request.cancellation())
+            || &failure.binding.0 != request.source().identity()
+            || failure.binding.1 != request.source().coordinates()
         {
-            *request = Some(original);
-            *failure = Some(failed);
-            return Err(StandaloneError::Consumed);
+            return Err((StandaloneError::Consumed, request, failure));
         }
         // Fixed envelope moves were admitted before the first source pull.
         Ok(Self {
-            request: original.into_parts(),
-            failure: failed,
+            request: request.into_parts(),
+            failure,
         })
     }
     pub(crate) fn source(&self) -> &crate::HtmlSource {
@@ -450,7 +646,7 @@ mod tests {
         let mut owner = OrdinaryInitializationOwner::new(request());
         // Private-state fault injection: the phase names a stopped owner that
         // the carrier no longer holds.
-        owner.phase = InitializationPhase::Stopped;
+        owner.held.as_mut().unwrap().phase = InitializationPhase::Stopped;
         assert!(owner.failure().is_none());
         assert_eq!(owner.source_admitted(), None);
         assert!(owner.at_stop().is_none());

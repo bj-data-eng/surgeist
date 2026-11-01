@@ -28,7 +28,7 @@ impl FragmentExecutionError {
     }
     /// The error names an owner that the driver's own sequencing keeps present
     /// and that is gone, rather than a document or a limit.
-    fn lost_owner(&self) -> bool {
+    pub(super) fn lost_owner(&self) -> bool {
         match self {
             Self::Consumed => true,
             Self::Head(error) => error.lost_owner(),
@@ -139,23 +139,64 @@ pub(super) fn parser_insertion_mode(mode: crate::HtmlFragmentInsertionMode) -> I
 }
 
 impl<'source> ContextFragmentDriver<'source> {
-    pub(super) fn stop_for_public_failure(&mut self) {
-        self.control
-            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+    /// Latches the stop a public failure reports: a lost owner is an invariant
+    /// and anything else is the provenance boundary. A stop already latched
+    /// stays the first one.
+    pub(super) fn stop_for_public_failure(&mut self, lost_owner: bool) {
+        if lost_owner {
+            FragmentExecutionError::owner_lost(&mut self.control);
+        } else {
+            self.control
+                .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+        }
     }
+    #[cfg(test)]
     pub(crate) fn take_completed(
         input: &mut Option<Self>,
     ) -> Result<CompletedContextFragment<'source>, FragmentExecutionError> {
-        let driver = input.as_mut().ok_or(FragmentExecutionError::Consumed)?;
-        driver.control.require_source(driver.request.source())?;
-        let state = driver
+        let driver = input.take().ok_or(FragmentExecutionError::Consumed)?;
+        match driver.into_completed() {
+            Ok(completed) => Ok(completed),
+            Err((error, driver)) => {
+                *input = Some(driver);
+                Err(error)
+            }
+        }
+    }
+    /// A refusal hands the driver back; one that names a lost owner has latched
+    /// the invariant on the controller first.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_completed(
+        mut self,
+    ) -> Result<CompletedContextFragment<'source>, (FragmentExecutionError, Self)> {
+        match self.qualify_completed_driver() {
+            Ok(()) => Ok(CompletedContextFragment {
+                driver: Some(self),
+                frozen: None,
+            }),
+            Err(error) => {
+                // A driver that has not reached its head stage is not complete
+                // yet; one that has reached it must still hold its owners.
+                if self.head.is_some() && error.lost_owner() {
+                    FragmentExecutionError::owner_lost(&mut self.control);
+                }
+                Err((error, self))
+            }
+        }
+    }
+    fn qualify_completed_driver(&mut self) -> Result<(), FragmentExecutionError> {
+        self.control.require_source(self.request.source())?;
+        let state = self
             .head
             .as_ref()
             .ok_or(FragmentExecutionError::Consumed)?
             .state
             .as_ref()
             .ok_or(FragmentExecutionError::Consumed)?;
-        state.qualify_completed(&mut driver.control)?;
+        state.qualify_completed(&mut self.control)?;
         write(
             const {
                 size_of::<CompletedContextFragment>()
@@ -163,12 +204,9 @@ impl<'source> ContextFragmentDriver<'source> {
                     + size_of::<Option<Self>>()
             },
             2,
-            &mut driver.control,
+            &mut self.control,
         )?;
-        Ok(CompletedContextFragment {
-            driver: input.take(),
-            frozen: None,
-        })
+        Ok(())
     }
     /// Actual fixture-only borrow; no new public mutation or entry capability.
     #[cfg(test)]
@@ -260,20 +298,33 @@ impl<'source> ContextFragmentDriver<'source> {
     pub(crate) fn take_failed(
         input: &mut Option<Self>,
     ) -> Result<FailedContextFragment<'source>, FragmentExecutionError> {
-        let mut driver = input.take().ok_or(FragmentExecutionError::Consumed)?;
-        match driver.reclaim_failed() {
-            Ok((stop, at_stop)) => Ok(FailedContextFragment {
-                request: driver.request,
-                stop,
-                at_stop,
-                after_cleanup: driver.control.usage().clone(),
-                control: driver.control,
-                evidence: driver.failed_evidence,
-            }),
-            Err(error) => {
+        let driver = input.take().ok_or(FragmentExecutionError::Consumed)?;
+        match driver.into_failed() {
+            Ok(failed) => Ok(failed),
+            Err((error, driver)) => {
                 *input = Some(driver);
                 Err(error)
             }
+        }
+    }
+    /// A cleanup refusal hands the driver back with its detached evidence.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_failed(
+        mut self,
+    ) -> Result<FailedContextFragment<'source>, (FragmentExecutionError, Self)> {
+        match self.reclaim_failed() {
+            Ok((stop, at_stop)) => Ok(FailedContextFragment {
+                request: self.request,
+                stop,
+                at_stop,
+                after_cleanup: self.control.usage().clone(),
+                control: self.control,
+                evidence: self.failed_evidence,
+            }),
+            Err(error) => Err((error, self)),
         }
     }
     fn reclaim_failed(
@@ -541,9 +592,9 @@ impl FrozenContextFragmentParts {
 }
 
 impl<'source> CompletedContextFragment<'source> {
-    pub(super) fn stop_for_public_failure(&mut self) {
+    pub(super) fn stop_for_public_failure(&mut self, lost_owner: bool) {
         if let Some(d) = &mut self.driver {
-            d.stop_for_public_failure();
+            d.stop_for_public_failure(lost_owner);
         }
     }
     pub(crate) fn take_failed(

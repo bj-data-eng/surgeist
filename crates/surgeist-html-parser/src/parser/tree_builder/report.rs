@@ -53,12 +53,52 @@ impl ImmutableParseReport {
     pub fn pending_associations(&self) -> crate::construction::pending_association::Cursor<'_> {
         crate::construction::pending_association::Cursor::new(self.storage.history())
     }
-    /// Refusal retains the same source-owning native seal. Generic native-only
-    /// completion cannot supply the actual D1/history proof required here.
+    /// The slot form that tests drive: the seal stays in its slot while the
+    /// report is committed, so even an unwind during the commit leaves it there.
+    #[cfg(test)]
     pub(crate) fn take_document(
         input: &mut Option<SealedOrdinaryConstruction>,
     ) -> Result<Self, SessionError> {
-        let sealed = input.as_mut().ok_or(SessionError::Consumed)?;
+        let (state, storage, usage) =
+            Self::commit_document(input.as_mut().ok_or(SessionError::Consumed)?)?;
+        let sealed = input.take().ok_or(SessionError::Consumed)?;
+        Ok(Self {
+            context: ReportContext::Document {
+                request: sealed.request,
+                state,
+            },
+            storage,
+            usage,
+        })
+    }
+    /// A refusal hands back the same source-owning seal.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn publish_document(
+        mut sealed: SealedOrdinaryConstruction,
+    ) -> Result<Self, (SessionError, SealedOrdinaryConstruction)> {
+        match Self::commit_document(&mut sealed) {
+            Ok((state, storage, usage)) => {
+                // The remaining source binding and execution control are consumed
+                // here; no useful work, release/refund or cancellation check
+                // follows snapshot.
+                Ok(Self {
+                    context: ReportContext::Document {
+                        request: sealed.request,
+                        state,
+                    },
+                    storage,
+                    usage,
+                })
+            }
+            Err(error) => Err((error, sealed)),
+        }
+    }
+    fn commit_document(
+        sealed: &mut SealedOrdinaryConstruction,
+    ) -> Result<(StandaloneDocumentState, ReportStorage, ParseUsage), SessionError> {
         sealed
             .parts
             .arena
@@ -100,26 +140,42 @@ impl ImmutableParseReport {
         storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        // The seal is still held, and the controller went with it, so there is
-        // none to latch a refusal on.
-        let Some(sealed) = input.take() else {
-            return Err(SessionError::registry_row());
-        };
-        // The remaining source binding and execution control are consumed here;
-        // no useful work, release/refund or cancellation check follows snapshot.
+        Ok((state, storage, usage))
+    }
+    /// The slot form that tests drive, as for the Document seal.
+    #[cfg(test)]
+    pub(crate) fn take_fragment(
+        input: &mut Option<SealedFragmentConstruction>,
+    ) -> Result<Self, SessionError> {
+        let (storage, usage) =
+            Self::commit_fragment(input.as_mut().ok_or(SessionError::Consumed)?)?;
+        let sealed = input.take().ok_or(SessionError::Consumed)?;
         Ok(Self {
-            context: ReportContext::Document {
-                request: sealed.request,
-                state,
-            },
+            context: ReportContext::Fragment(sealed.request),
             storage,
             usage,
         })
     }
-    pub(crate) fn take_fragment(
-        input: &mut Option<SealedFragmentConstruction>,
-    ) -> Result<Self, SessionError> {
-        let sealed = input.as_mut().ok_or(SessionError::Consumed)?;
+    /// A refusal hands back the same source-owning seal.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn publish_fragment(
+        mut sealed: SealedFragmentConstruction,
+    ) -> Result<Self, (SessionError, SealedFragmentConstruction)> {
+        match Self::commit_fragment(&mut sealed) {
+            Ok((storage, usage)) => Ok(Self {
+                context: ReportContext::Fragment(sealed.request),
+                storage,
+                usage,
+            }),
+            Err(error) => Err((error, sealed)),
+        }
+    }
+    fn commit_fragment(
+        sealed: &mut SealedFragmentConstruction,
+    ) -> Result<(ReportStorage, ParseUsage), SessionError> {
         sealed
             .parts
             .arena
@@ -155,15 +211,7 @@ impl ImmutableParseReport {
         storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        // As for the Document seal, there is no controller left to latch on.
-        let Some(sealed) = input.take() else {
-            return Err(SessionError::registry_row());
-        };
-        Ok(Self {
-            context: ReportContext::Fragment(sealed.request),
-            storage,
-            usage,
-        })
+        Ok((storage, usage))
     }
     pub fn document_base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {
         match &self.context {

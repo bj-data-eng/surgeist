@@ -15,31 +15,67 @@ pub(crate) struct CompletedStandaloneDocument<'source> {
     cancel_after_freeze: Option<crate::HtmlParseCancellation>,
 }
 impl<'source> StandaloneDocumentDriver<'source> {
+    #[cfg(test)]
     pub(crate) fn take_completed(
         input: &mut Option<Self>,
     ) -> Result<CompletedStandaloneDocument<'source>, StandaloneError> {
-        let driver = input.as_mut().ok_or(StandaloneError::Consumed)?;
-        driver.control.require_source(driver.source)?;
-        let head = driver.head.as_ref().ok_or(StandaloneError::Consumed)?;
-        head.require(&mut driver.control)?;
+        let driver = input.take().ok_or(StandaloneError::Consumed)?;
+        match driver.into_completed() {
+            Ok(completed) => Ok(completed),
+            Err((error, driver)) => {
+                *input = Some(driver);
+                Err(error)
+            }
+        }
+    }
+    /// A refusal hands the driver back; one that names a lost owner has latched
+    /// the invariant on the controller first.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_completed(
+        mut self,
+    ) -> Result<CompletedStandaloneDocument<'source>, (StandaloneError, Self)> {
+        match self.qualify_completed_driver() {
+            Ok(()) => Ok(CompletedStandaloneDocument {
+                driver: Some(self),
+                frozen: None,
+                after_cleanup: None,
+                #[cfg(test)]
+                cancel_after_freeze: None,
+            }),
+            Err(error) => {
+                // A driver that has not reached its head stage is not complete
+                // yet; one that has reached it must still hold its owners.
+                if self.head.is_some() && error.lost_owner() {
+                    StandaloneError::owner_lost(&mut self.control);
+                }
+                Err((error, self))
+            }
+        }
+    }
+    fn qualify_completed_driver(&mut self) -> Result<(), StandaloneError> {
+        self.control.require_source(self.source)?;
+        let head = self.head.as_ref().ok_or(StandaloneError::Consumed)?;
+        head.require(&mut self.control)?;
         head.state
             .as_ref()
             .ok_or(StandaloneError::Consumed)?
-            .qualify_completed(&mut driver.control)?;
-        driver.control.charge(WorkCategory::RecordVisit, 6)?;
-        if driver.prologue.is_some()
-            || driver.before.is_some()
-            || driver.tokenizer.is_some()
-            || driver.token.is_some()
-            || driver.event.is_some()
+            .qualify_completed(&mut self.control)?;
+        self.control.charge(WorkCategory::RecordVisit, 6)?;
+        if self.prologue.is_some()
+            || self.before.is_some()
+            || self.tokenizer.is_some()
+            || self.token.is_some()
+            || self.event.is_some()
         {
             return Err(head::HeadError::IncompleteCompletion.into());
         }
-        driver
-            .lexical
+        self.lexical
             .as_mut()
             .ok_or(StandaloneError::Consumed)?
-            .require_owner(&mut driver.control)?;
+            .require_owner(&mut self.control)?;
         write(
             const {
                 size_of::<CompletedStandaloneDocument>()
@@ -47,23 +83,24 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     + size_of::<Option<Self>>()
             },
             const { 4 + cfg!(test) as usize },
-            &mut driver.control,
+            &mut self.control,
         )?;
-        driver.control.require_source(driver.source)?;
-        Ok(CompletedStandaloneDocument {
-            driver: input.take(),
-            frozen: None,
-            after_cleanup: None,
-            #[cfg(test)]
-            cancel_after_freeze: None,
-        })
+        self.control.require_source(self.source)?;
+        Ok(())
     }
 }
 impl<'source> CompletedStandaloneDocument<'source> {
-    pub(super) fn stop_for_public_failure(&mut self) {
+    /// Latches the stop a public failure reports: a lost owner is an invariant
+    /// and anything else is the provenance boundary. A stop already latched
+    /// stays the first one.
+    pub(super) fn stop_for_public_failure(&mut self, lost_owner: bool) {
         if let Some(d) = &mut self.driver {
-            d.control
-                .stop_unsupported_standalone(super::StandaloneUnsupported::Provenance);
+            if lost_owner {
+                StandaloneError::owner_lost(&mut d.control);
+            } else {
+                d.control
+                    .stop_unsupported_standalone(super::StandaloneUnsupported::Provenance);
+            }
         }
     }
     pub(super) fn take_public_failure(
@@ -71,12 +108,14 @@ impl<'source> CompletedStandaloneDocument<'source> {
     ) -> Result<FailedStandaloneDocument<'source>, StandaloneError> {
         self.cleanup_failure()?;
         let driver = self.driver.take().ok_or(StandaloneError::Consumed)?;
-        let stop = driver.control.stop().ok_or(StandaloneError::Consumed)?;
-        let at_stop = driver
+        let Some((stop, at_stop)) = driver
             .control
-            .first_stop_usage()
-            .ok_or(StandaloneError::Consumed)?
-            .clone();
+            .stopped()
+            .map(|(stop, usage)| (stop, usage.clone()))
+        else {
+            self.driver = Some(driver);
+            return Err(StandaloneError::Consumed);
+        };
         Ok(FailedStandaloneDocument {
             _source: driver.source,
             after_cleanup: driver.control.usage().clone(),
@@ -504,24 +543,38 @@ impl FrozenStandaloneParts {
         }
         Ok(())
     }
+    #[cfg(test)]
     /// Consumes only a successfully reclaimed stopped frozen owner. A cleanup
     /// refusal preserves the input slot, actual binding and safe evidence.
     pub(crate) fn detach_failure(
         input: &mut Option<Self>,
     ) -> Result<DetachedStandaloneFailure, StandaloneError> {
-        let mut parts = input.take().ok_or(StandaloneError::Consumed)?;
-        match parts.detach_cleaned() {
-            Ok((stop, binding, after_cleanup)) => Ok(DetachedStandaloneFailure {
-                binding,
-                control: parts.control,
-                stop,
-                after_cleanup,
-                evidence: parts.failed_evidence,
-            }),
-            Err(error) => {
+        let parts = input.take().ok_or(StandaloneError::Consumed)?;
+        match parts.into_detached_failure() {
+            Ok(detached) => Ok(detached),
+            Err((error, parts)) => {
                 *input = Some(parts);
                 Err(error)
             }
+        }
+    }
+    /// A cleanup refusal hands the owner back with its binding and evidence.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_detached_failure(
+        mut self,
+    ) -> Result<DetachedStandaloneFailure, (StandaloneError, Self)> {
+        match self.detach_cleaned() {
+            Ok((stop, binding, after_cleanup)) => Ok(DetachedStandaloneFailure {
+                binding,
+                control: self.control,
+                stop,
+                after_cleanup,
+                evidence: self.failed_evidence,
+            }),
+            Err(error) => Err((error, self)),
         }
     }
     /// Cleans the stopped owner, then moves its cleanup observation and source
@@ -767,25 +820,39 @@ impl DetachedStandaloneFailure {
     }
 }
 impl<'source> StandaloneDocumentDriver<'source> {
+    #[cfg(test)]
     pub(crate) fn take_failed(
         input: &mut Option<Self>,
     ) -> Result<FailedStandaloneDocument<'source>, StandaloneError> {
         // A cleanup refusal keeps the driver and detached committed evidence in
         // the caller's original owning slot. A retry cannot lose or re-copy it.
-        let mut driver = input.take().ok_or(StandaloneError::Consumed)?;
-        match driver.reclaim_failed() {
-            Ok((stop, at_stop)) => Ok(FailedStandaloneDocument {
-                _source: driver.source,
-                after_cleanup: driver.control.usage().clone(),
-                control: driver.control,
-                stop,
-                _at_stop: at_stop,
-                evidence: driver.failed_evidence,
-            }),
-            Err(error) => {
+        let driver = input.take().ok_or(StandaloneError::Consumed)?;
+        match driver.into_failed() {
+            Ok(failed) => Ok(failed),
+            Err((error, driver)) => {
                 *input = Some(driver);
                 Err(error)
             }
+        }
+    }
+    /// A cleanup refusal hands the driver back with its detached evidence.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_failed(
+        mut self,
+    ) -> Result<FailedStandaloneDocument<'source>, (StandaloneError, Self)> {
+        match self.reclaim_failed() {
+            Ok((stop, at_stop)) => Ok(FailedStandaloneDocument {
+                _source: self.source,
+                after_cleanup: self.control.usage().clone(),
+                control: self.control,
+                stop,
+                _at_stop: at_stop,
+                evidence: self.failed_evidence,
+            }),
+            Err(error) => Err((error, self)),
         }
     }
     fn reclaim_failed(
@@ -831,25 +898,39 @@ impl<'source> StandaloneDocumentDriver<'source> {
     }
 }
 impl FailedStandaloneDocument<'_> {
+    #[cfg(test)]
     /// The constructor of this owner already completed cleanup before moving
     /// out the driver. All storage left is committed diagnostic retention.
     pub(crate) fn detach(
         input: &mut Option<Self>,
     ) -> Result<DetachedStandaloneFailure, StandaloneError> {
-        let mut failed = input.take().ok_or(StandaloneError::Consumed)?;
-        let binding = match failed.control.take_stopped_source_binding() {
-            Ok(binding) => binding,
-            Err(stop) => {
+        let failed = input.take().ok_or(StandaloneError::Consumed)?;
+        match failed.into_detached() {
+            Ok(detached) => Ok(detached),
+            Err((error, failed)) => {
                 *input = Some(failed);
-                return Err(stop.into());
+                Err(error)
             }
+        }
+    }
+    /// A refusal hands the cleaned failure back with its binding intact.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_detached(
+        mut self,
+    ) -> Result<DetachedStandaloneFailure, (StandaloneError, Self)> {
+        let binding = match self.control.take_stopped_source_binding() {
+            Ok(binding) => binding,
+            Err(stop) => return Err((stop.into(), self)),
         };
         Ok(DetachedStandaloneFailure {
             binding,
-            control: failed.control,
-            stop: failed.stop,
-            after_cleanup: failed.after_cleanup,
-            evidence: failed.evidence,
+            control: self.control,
+            stop: self.stop,
+            after_cleanup: self.after_cleanup,
+            evidence: self.evidence,
         })
     }
     #[cfg(test)]

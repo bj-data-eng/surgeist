@@ -145,10 +145,12 @@ pub(crate) enum HeadError {
     IncompleteCompletion,
 }
 impl HeadError {
-    /// A stage, kernel or prologue owner its driver keeps is gone.
+    /// A stage, kernel or prologue owner its driver keeps is gone, or the
+    /// formatting list holds a state its own sequencing cannot produce.
     pub(super) fn lost_owner(&self) -> bool {
         match self {
             Self::Consumed | Self::MissingInput | Self::MissingTokenizer => true,
+            Self::InvalidFormattingState => true,
             Self::Kernel(KernelError::Consumed) => true,
             Self::Prologue(error) => error.lost_owner(),
             _ => false,
