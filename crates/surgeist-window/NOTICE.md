@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-This notice covers the eleven direct production dependencies and the
+This notice covers the twelve direct production dependencies and the
 `accesskit_consumer` development dependency pinned in [Cargo.toml](Cargo.toml),
 including the optional `accessibility` feature and dependency material for all
 declared platforms. The maintained consumer is bundled under
@@ -122,3 +122,12 @@ Krieger:
 * License: [Apache-2.0](licenses/winit/LICENSE)
 * Additional material: [W3C license and source attribution notices](licenses/winit/NOTICE.md)
 * Homepage: [winit](https://github.com/rust-windowing/winit)
+
+### winsafe 0.0.29
+
+This product depends on winsafe, distributed by Rodrigo Cesar de Freitas Dias.
+It is a Windows-only direct dependency for safe native monitor enumeration and
+work-area observations; its `user` feature is enabled.
+
+* License: [MIT](licenses/winsafe/LICENSE.md)
+* Homepage: [WinSafe](https://github.com/rodrigocfd/winsafe)

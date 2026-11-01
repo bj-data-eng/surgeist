@@ -247,8 +247,24 @@ total estimate without inventing a positive RGB media-feature bound; unknown
 color-space semantics retain the public fallback. This estimate does not certify
 renderer formats, HDR, or the complete media-device capability environment.
 
+On Windows, safe WinSafe APIs enumerate native monitors and match the selected
+winit monitor's device name exactly against `MONITORINFOEX.szDevice`.
+[`GetMonitorInfo`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmonitorinfow)
+supplies that monitor's screen and work rectangles in virtual-desktop units.
+An empty, missing or ambiguous device identity, an incomplete native read, or
+invalid work bounds leaves the observation unavailable. No primary-monitor,
+enumeration-order or geometry-based fallback chooses a device.
+
+Windows work rectangles already use top-left/right/down axes. Their offsets
+within the selected monitor are divided by the committed display scale and
+added to the captured logical screen origin. This preserves negative desktop
+origins and each window's scale. Work bounds must be finite, nonnegative and
+contained in a positive-area selected screen. Pixel-storage depth is not treated
+as color precision: Windows color estimates remain unavailable rather than counting
+alpha or storage padding as color bits.
+
 Raw native event captures retain the existing basic geometry but defer these
-new monitor facts. At `about_to_wait`, after queued metric transitions have
+monitor facts. At `about_to_wait`, after queued metric transitions have
 committed, the adapter samples preferences once and captures each live window's
 complete native environment. One changed callback per window carries combined
 preference/output changes; equal samples are suppressed. Input, navigation and
