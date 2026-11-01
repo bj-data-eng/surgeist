@@ -4044,6 +4044,22 @@ fn text_buffers_of_unequal_length_stop_instead_of_indexing() {
     }
 }
 
+#[test]
+fn resuming_an_absent_reference_continuation_stops_instead_of_unwrapping() {
+    let (source, mut c) = fixture_with_event("&#x41;");
+    let mut fixture = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+    assert!(fixture.lexer.reference.is_none());
+    let stop = fixture
+        .lexer
+        .resume_reference(&mut c, &mut fixture.evidence)
+        .err()
+        .unwrap();
+    assert_eq!(stop, first_invariant_stop());
+    assert_eq!(c.stop(), Some(stop));
+    fixture.release(&mut c).unwrap();
+    assert_storage_released(&c);
+}
+
 /// Pauses a progressive tokenizer inside a named reference, with the retained
 /// continuation in its actual slot.
 fn paused_in_reference<'a>(
