@@ -277,7 +277,9 @@ impl HtmlDocumentParseRequest {
         let inputs = self.associated.get_or_insert_with(|| {
             std::sync::Arc::new(crate::construction::associated::Inputs::default())
         });
-        std::sync::Arc::get_mut(inputs).expect("unexecuted non-Clone request owns its input bank")
+        // Only execution shares the bank, and it consumes the request first, so
+        // this never copies; if it ever were shared the request still edits its own.
+        std::sync::Arc::make_mut(inputs)
     }
     pub(crate) fn associated_inputs(
         &self,
@@ -519,7 +521,9 @@ impl HtmlFragmentParseRequest {
         let inputs = self.associated.get_or_insert_with(|| {
             std::sync::Arc::new(crate::construction::associated::Inputs::default())
         });
-        std::sync::Arc::get_mut(inputs).expect("unexecuted non-Clone request owns its inputs")
+        // Only execution shares the bank, and it consumes the request first, so
+        // this never copies; if it ever were shared the request still edits its own.
+        std::sync::Arc::make_mut(inputs)
     }
     pub(crate) fn associated_inputs(
         &self,
