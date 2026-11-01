@@ -5,7 +5,7 @@ use crate::{
     InlineGapGroupInput,
 };
 
-fn replace_boundary<S: LayoutScalar>(
+pub(super) fn replace_boundary<S: LayoutScalar>(
     f: &mut Fixture<S>,
     node: u32,
     boundary: InlineBoundaryInputOf<S>,
@@ -140,7 +140,7 @@ fn numeric_empty_box_retains_resolved_physical_neighbor_gap_f64() {
     resolved_neighbor_gap::<f64>();
 }
 
-fn append_empty_box<S: LayoutScalar>(f: &mut Fixture<S>, start: u32, end: u32) {
+pub(super) fn append_empty_box<S: LayoutScalar>(f: &mut Fixture<S>, start: u32, end: u32) {
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     for (node, kind, width) in [
         (start, InlineBoundaryKind::Start, 3.0),
