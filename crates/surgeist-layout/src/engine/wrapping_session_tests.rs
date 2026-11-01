@@ -41,7 +41,7 @@ fn tree<S: LayoutScalar>(float: bool) -> PublicLayoutTreeOf<S> {
     for (node, kind) in [(1, InlineBoundaryKind::Start), (3, InlineBoundaryKind::End)] {
         tree = tree.input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::try_new(
                     crate::InlineBaselineContext::Physical,

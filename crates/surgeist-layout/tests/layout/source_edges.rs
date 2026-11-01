@@ -1113,13 +1113,13 @@ impl<S: layout::LayoutScalar> PairedEarly<S> {
             S::ZERO,
         )
         .unwrap();
-        let start = layout::InlineBoundaryInputOf::new(
+        let start = layout::InlineBoundaryInputOf::contribution(
             layout::InlineBoundaryKind::Start,
             metrics,
             layout::InlineBoundaryEdgeOf::ZERO,
         )
         .with_direction(direction);
-        let end = layout::InlineBoundaryInputOf::new(
+        let end = layout::InlineBoundaryInputOf::contribution(
             layout::InlineBoundaryKind::End,
             metrics,
             layout::InlineBoundaryEdgeOf::ZERO,

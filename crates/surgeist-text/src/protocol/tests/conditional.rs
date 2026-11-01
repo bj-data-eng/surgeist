@@ -111,7 +111,7 @@ fn selection(
                         crate::ParagraphControlKind::InlineBoundaryStart
                             | crate::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -773,7 +773,7 @@ fn ordinary_receipt(
                         crate::ParagraphControlKind::InlineBoundaryStart
                             | crate::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }

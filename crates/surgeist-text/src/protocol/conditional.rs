@@ -728,7 +728,7 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
     for allocation in request.controls {
         values.push(allocation.occurrence.index as u64);
         values.push(u64::from(allocation.boundary.is_some()));
-        if let Some(boundary) = allocation.boundary {
+        if let Some(boundary) = &allocation.boundary {
             number(&mut values, boundary.advance());
         }
         values.push(u64::from(allocation.strut.is_some()));
@@ -763,11 +763,19 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
 struct PolicyContext {
     native: Vec<u64>,
     source_segment: Option<super::PreparedSourceSegment>,
-    scope_frame: Option<FinalizedLine>,
+    frame: Option<FinalizedLine>,
 }
 impl PolicyContext {
+    fn box_contexts(
+        &self,
+    ) -> impl Iterator<Item = (bool, &super::PreparedControl, &super::InlineBoxEdgeContext)> {
+        self.frame.iter().flat_map(|frame| {
+            let request = &frame.inner.selected.request;
+            super::inline_box::context_identity(&request.controls, &request.boundary_context)
+        })
+    }
     fn scopes(&self) -> &[crate::ScopeFrameAllocation] {
-        self.scope_frame
+        self.frame
             .as_ref()
             .map_or(&[], |frame| frame.scope_allocations())
     }
@@ -777,6 +785,7 @@ impl PartialEq for PolicyContext {
         self.native == other.native
             && self.source_segment == other.source_segment
             && self.scopes() == other.scopes()
+            && self.box_contexts().eq(other.box_contexts())
     }
 }
 impl Eq for PolicyContext {}
@@ -784,6 +793,9 @@ impl Hash for PolicyContext {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.native.hash(state);
         self.source_segment.hash(state);
+        for context in self.box_contexts() {
+            context.hash(state);
+        }
         self.scopes().len().hash(state);
         for row in self.scopes() {
             row.scope.hash(state);
@@ -803,7 +815,14 @@ fn policy_context(line: &FinalizedLine) -> PolicyContext {
     PolicyContext {
         native: values,
         source_segment: Some(selected.request().segment.clone()),
-        scope_frame: (!line.scope_allocations().is_empty()).then(|| line.clone()),
+        frame: (!line.scope_allocations().is_empty()
+            || super::inline_box::contexts(
+                &selected.request().controls,
+                &selected.request().boundary_context,
+            )
+            .next()
+            .is_some())
+        .then(|| line.clone()),
     }
 }
 
@@ -817,7 +836,15 @@ fn visit_scope_policy<'a>(
     emit: &mut dyn FnMut(ScopeProofVisit<'a>) -> crate::Result<()>,
 ) -> crate::Result<()> {
     emit(ScopeProofVisit::Work(1))?;
-    if let Some(frame) = &context.scope_frame {
+    if let Some(frame) = &context.frame {
+        let request = &frame.inner.selected.request;
+        if super::inline_box::contexts(&request.controls, &request.boundary_context)
+            .next()
+            .is_some()
+        {
+            emit(ScopeProofVisit::Work(request.controls.len()))?;
+            emit(ScopeProofVisit::Work(request.boundary_context.len()))?;
+        }
         emit(ScopeProofVisit::Frame(frame))?;
     }
     Ok(())

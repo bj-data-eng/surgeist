@@ -585,7 +585,7 @@ impl Case {
                         .with_vertical_align(edge),
                 )
             } else {
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                     if matches!(
                         control.occurrence.view().kind(),
                         ParagraphControlKind::InlineBoundaryStart

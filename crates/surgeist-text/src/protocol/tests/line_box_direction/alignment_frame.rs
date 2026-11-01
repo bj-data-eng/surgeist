@@ -470,7 +470,7 @@ fn real_atomic_and_positive_endpoint_allocations_follow_the_same_alignment_trans
                     line_extent: 10.0,
                     alignment: LineBoxAlignment::Baseline,
                 }),
-                boundary: Some(InlineBoundaryAllocation::try_new(advance).unwrap()),
+                boundary: Some(InlineBoundaryAllocation::contribution(advance).unwrap()),
             })
             .collect();
         let line = finish(&p, r);

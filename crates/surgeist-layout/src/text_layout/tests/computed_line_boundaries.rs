@@ -377,7 +377,7 @@ fn tree<S: LayoutScalar>(fixture: &Fixture, rtl: bool) -> PublicLayoutTreeOf<S> 
         tree = tree.children(row.node, []).input(
             row.node,
             LayoutInputOf::inline_boundary(
-                InlineBoundaryInputOf::new(
+                InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(
                         crate::InlineBaselineContext::Physical,

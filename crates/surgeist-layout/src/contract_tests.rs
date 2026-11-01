@@ -615,7 +615,7 @@ fn fri06_mr01_non_box_line_break_precedence_is_exact_in_both_scalar_lanes() {
 fn fri06_mr01_non_box_inline_boundary_precedence_is_exact_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
         assert_fri06_mr01_non_box_precedence(LayoutInputOf::inline_boundary(
-            InlineBoundaryInputOf::<S>::new(
+            InlineBoundaryInputOf::<S>::contribution(
                 InlineBoundaryKind::Start,
                 InlineMetricsOf::default(),
                 InlineBoundaryEdgeOf::ZERO,
@@ -1383,7 +1383,7 @@ fn inline_boundary_input_requires_explicit_metrics() {
         20.0,
     )
     .unwrap();
-    let input = InlineBoundaryInput::new(
+    let input = InlineBoundaryInput::contribution(
         InlineBoundaryKind::Start,
         metrics,
         crate::InlineBoundaryEdgeOf::ZERO,
@@ -1407,7 +1407,7 @@ fn inline_boundary_input_supports_f64_metrics() {
         30.0,
     )
     .unwrap();
-    let input = InlineBoundaryInputOf::<f64>::new(
+    let input = InlineBoundaryInputOf::<f64>::contribution(
         InlineBoundaryKind::End,
         metrics,
         InlineBoundaryEdgeOf::ZERO,
@@ -1493,7 +1493,7 @@ fn layout_input_distinguishes_inline_boundary_from_boxes_and_breaks() {
         14.0,
     )
     .unwrap();
-    let boundary = InlineBoundaryInput::new(
+    let boundary = InlineBoundaryInput::contribution(
         InlineBoundaryKind::Start,
         metrics,
         crate::InlineBoundaryEdgeOf::ZERO,
@@ -1773,7 +1773,7 @@ fn borrowed_input_views_reuse_validated_backing_in_both_scalar_lanes() {
             .clone();
         let origin = text.origin().clone();
         let line_break = LineBreakInputOf::new().with_metrics(metrics);
-        let boundary = InlineBoundaryInputOf::new(
+        let boundary = InlineBoundaryInputOf::contribution(
             InlineBoundaryKind::Start,
             metrics,
             crate::InlineBoundaryEdgeOf::ZERO,
@@ -1923,7 +1923,7 @@ fn inline_boundary_edge_exposes_the_used_scalar_sum_without_widened_resummation(
         f64::from(edge.advance()),
         f64::from(edge.border()) + f64::from(edge.padding())
     );
-    let input = InlineBoundaryInputOf::new(
+    let input = InlineBoundaryInputOf::contribution(
         InlineBoundaryKind::End,
         InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
         edge,

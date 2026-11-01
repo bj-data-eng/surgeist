@@ -537,13 +537,22 @@ pub struct InlineBoundaryInputOf<S: LayoutScalar = DefaultScalar> {
     vertical_align: VerticalAlignOf<S>,
     metrics: InlineMetricsOf<S>,
     edge: InlineBoundaryEdgeOf<S>,
+    operation: InlineBoundaryOperation,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum InlineBoundaryOperation {
+    Contribution,
+    BoxEdge { parent_axes: crate::FlowAxes },
 }
 
 pub type InlineBoundaryInput = InlineBoundaryInputOf<DefaultScalar>;
 
 impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
+    /// Contribute actual border/padding advance and metrics without requesting
+    /// paired physical box geometry. Unpaired and zero-valued controls remain valid.
     #[must_use]
-    pub const fn new(
+    pub const fn contribution(
         kind: InlineBoundaryKind,
         metrics: InlineMetricsOf<S>,
         edge: InlineBoundaryEdgeOf<S>,
@@ -555,15 +564,42 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
             vertical_align: VerticalAlignOf::Baseline,
             metrics,
             edge,
+            operation: InlineBoundaryOperation::Contribution,
         }
     }
 
+    /// Request physical box-edge placement with the actual immediate parent's
+    /// used basis. The containing formatter frame remains independently checked.
+    #[must_use]
+    pub const fn box_edge(
+        kind: InlineBoundaryKind,
+        metrics: InlineMetricsOf<S>,
+        edge: InlineBoundaryEdgeOf<S>,
+        parent_axes: crate::FlowAxes,
+    ) -> Self {
+        let mut value = Self::contribution(kind, metrics, edge);
+        value.operation = InlineBoundaryOperation::BoxEdge { parent_axes };
+        value
+    }
+
+    /// The actual immediate parent basis for this explicit BoxEdge operation.
+    /// A contribution carries no parent-side claim.
+    #[must_use]
+    pub const fn parent_edge_axes(self) -> Option<crate::FlowAxes> {
+        match self.operation {
+            InlineBoundaryOperation::Contribution => None,
+            InlineBoundaryOperation::BoxEdge { parent_axes } => Some(parent_axes),
+        }
+    }
+
+    /// Set the containing block formatter frame, independently of parent edges.
     #[must_use]
     pub const fn with_writing_mode(mut self, writing_mode: WritingMode) -> Self {
         self.writing_mode = writing_mode;
         self
     }
 
+    /// Set the containing block formatter direction, independently of parent edges.
     #[must_use]
     pub const fn with_direction(mut self, direction: Direction) -> Self {
         self.direction = direction;

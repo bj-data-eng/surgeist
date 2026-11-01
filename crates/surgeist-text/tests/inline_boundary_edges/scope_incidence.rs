@@ -856,7 +856,7 @@ fn computed_before_indication_keeps_the_actual_original_scope_exit() {
     while let Some(occurrence) = p.boundary_context_demand(&r).unwrap() {
         r.boundary_context.push(t::InlineBoundaryContextAllocation {
             occurrence,
-            boundary: t::InlineBoundaryAllocation::ZERO,
+            boundary: t::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
         });
     }
     let line = p

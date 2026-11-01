@@ -10,6 +10,8 @@ use crate::engine::PreparedData;
 use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
 use selection::SelectedData;
 
+pub(crate) mod inline_box;
+pub use inline_box::{InlineBoxEdgeContext, InlineBoxEdgeError, InlineBoxSource};
 mod atomic_fit;
 pub use atomic_fit::{AtomicFitAllocation, CssMarginBoxFit};
 
@@ -475,14 +477,26 @@ pub struct ControlAllocation {
 }
 
 /// One endpoint's actual used inline advance, already resolved by its consumer.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct InlineBoundaryAllocation {
-    advance: f64,
+    data: InlineBoundaryData,
+}
+#[derive(Clone, Debug, PartialEq)]
+enum InlineBoundaryData {
+    Contribution {
+        advance: f64,
+    },
+    BoxEdge {
+        advance: f64,
+        context: InlineBoxEdgeContext,
+    },
 }
 impl InlineBoundaryAllocation {
-    pub const ZERO: Self = Self { advance: 0.0 };
-
-    pub fn try_new(advance: f64) -> Result<Self> {
+    /// A genuine zero-flow Native contribution, without a box claim.
+    pub const CONTRIBUTION_ZERO: Self = Self {
+        data: InlineBoundaryData::Contribution { advance: 0.0 },
+    };
+    pub fn contribution(advance: f64) -> Result<Self> {
         let category = if !advance.is_finite() {
             Some(crate::TextNumericError::NonFinite)
         } else if advance < 0.0 {
@@ -499,13 +513,32 @@ impl InlineBoundaryAllocation {
             ));
         }
         Ok(Self {
-            advance: if advance == 0.0 { 0.0 } else { advance },
+            data: InlineBoundaryData::Contribution {
+                advance: if advance == 0.0 { 0.0 } else { advance },
+            },
+        })
+    }
+
+    pub fn box_edge(context: InlineBoxEdgeContext, advance: f64) -> Result<Self> {
+        let advance = Self::contribution(advance)?.advance();
+        Ok(Self {
+            data: InlineBoundaryData::BoxEdge { advance, context },
         })
     }
 
     #[must_use]
     pub const fn advance(&self) -> f64 {
-        self.advance
+        match self.data {
+            InlineBoundaryData::Contribution { advance }
+            | InlineBoundaryData::BoxEdge { advance, .. } => advance,
+        }
+    }
+    #[must_use]
+    pub const fn box_context(&self) -> Option<&InlineBoxEdgeContext> {
+        match &self.data {
+            InlineBoundaryData::BoxEdge { context, .. } => Some(context),
+            InlineBoundaryData::Contribution { .. } => None,
+        }
     }
 }
 
@@ -966,6 +999,7 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    InlineBoxEdge(InlineBoxEdgeError),
     InvalidSourceSegment {
         segment: usize,
     },

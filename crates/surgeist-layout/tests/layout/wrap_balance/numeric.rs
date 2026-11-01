@@ -47,7 +47,7 @@ fn numeric_boundary<S: l::LayoutScalar>(
     kind: l::InlineBoundaryKind,
 ) -> l::LayoutInputOf<S> {
     l::LayoutInputOf::inline_boundary(
-        l::InlineBoundaryInputOf::new(
+        l::InlineBoundaryInputOf::contribution(
             kind,
             l::InlineMetricsOf::try_new(
                 surgeist_layout::InlineBaselineContext::Physical,

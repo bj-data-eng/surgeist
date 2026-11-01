@@ -231,7 +231,7 @@ impl Fixture {
             tree = tree.children(control.node, []).input(
                 control.node,
                 LayoutInputOf::inline_boundary(
-                    InlineBoundaryInputOf::new(
+                    InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
                             crate::InlineBaselineContext::Physical,

@@ -67,6 +67,14 @@ impl PartialEq for FlowObservation {
             && self.retained == other.retained
             && self.in_flow_content == other.in_flow_content
             && self.identity == other.identity
+            && super::inline_box::context_identity(
+                &self.request.controls,
+                &self.request.boundary_context,
+            )
+            .eq(super::inline_box::context_identity(
+                &other.request.controls,
+                &other.request.boundary_context,
+            ))
     }
 }
 impl Eq for FlowObservation {}
@@ -77,6 +85,12 @@ impl Hash for FlowObservation {
         self.retained.hash(state);
         self.in_flow_content.hash(state);
         self.identity.hash(state);
+        for context in super::inline_box::context_identity(
+            &self.request.controls,
+            &self.request.boundary_context,
+        ) {
+            context.hash(state);
+        }
     }
 }
 impl FlowObservation {

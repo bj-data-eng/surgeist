@@ -2524,7 +2524,7 @@ fn sizing_demand_host<S: l::LayoutScalar>(
             );
             host.push(
                 Some(4),
-                l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::new(
+                l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::contribution(
                     l::InlineBoundaryKind::Start,
                     metrics,
                     l::InlineBoundaryEdgeOf::try_new(n(1.0), S::ZERO).unwrap(),
@@ -2532,7 +2532,7 @@ fn sizing_demand_host<S: l::LayoutScalar>(
             );
             host.push(
                 Some(4),
-                l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::new(
+                l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::contribution(
                     l::InlineBoundaryKind::End,
                     metrics,
                     l::InlineBoundaryEdgeOf::ZERO,

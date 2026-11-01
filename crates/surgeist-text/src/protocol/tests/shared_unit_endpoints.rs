@@ -165,7 +165,7 @@ fn finish(p: &PreparedText, mut input: LineSelectionRequest, edges: [f64; 2]) ->
                 occurrence: control.clone(),
                 strut: None,
                 boundary: Some(
-                    crate::InlineBoundaryAllocation::try_new(
+                    crate::InlineBoundaryAllocation::contribution(
                         if *control.view().kind() == ParagraphControlKind::InlineBoundaryStart {
                             edges[0]
                         } else {
@@ -188,7 +188,7 @@ fn finish(p: &PreparedText, mut input: LineSelectionRequest, edges: [f64; 2]) ->
             .boundary_context
             .push(crate::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: crate::InlineBoundaryAllocation::try_new(advance).unwrap(),
+                boundary: crate::InlineBoundaryAllocation::contribution(advance).unwrap(),
             });
     }
     p.select(input)
@@ -1042,3 +1042,7 @@ fn odd_shared_unit_keeps_each_nested_end_interval_on_its_actual_visual_side() {
         assert_eq!(slot.inline_bounds(), bounds);
     }
 }
+
+#[cfg(feature = "text-accessibility")]
+#[path = "parent_geometry_ax.rs"]
+mod parent_geometry_ax;

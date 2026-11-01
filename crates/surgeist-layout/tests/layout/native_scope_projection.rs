@@ -62,7 +62,7 @@ fn fixture<S: LayoutScalar>(hidden: bool, width: f64) -> NativeRun<S> {
         })
     };
     let boundary = |kind| {
-        LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+        LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
             kind,
             InlineMetricsOf::from_line_height_and_baseline(
                 surgeist_layout::InlineBaselineContext::Physical,

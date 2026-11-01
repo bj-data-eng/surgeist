@@ -976,7 +976,7 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
                             crate::ParagraphControlKind::InlineBoundaryStart
                                 | crate::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }
@@ -1227,7 +1227,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
                             crate::ParagraphControlKind::InlineBoundaryStart
                                 | crate::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }
@@ -1350,7 +1350,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
                             crate::ParagraphControlKind::InlineBoundaryStart
                                 | crate::ParagraphControlKind::InlineBoundaryEnd
                         )
-                        .then_some(crate::InlineBoundaryAllocation::ZERO),
+                        .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                         occurrence,
                         strut: None,
                     }

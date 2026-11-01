@@ -104,7 +104,8 @@ impl<S: LayoutScalar> Fixture<S> {
         self.tree.insert_input(
             node,
             LayoutInputOf::inline_boundary(
-                InlineBoundaryInputOf::new(kind, metrics(), edge).with_direction(self.direction),
+                InlineBoundaryInputOf::contribution(kind, metrics(), edge)
+                    .with_direction(self.direction),
             ),
         );
         self.nodes.push(node);
@@ -120,6 +121,7 @@ impl<S: LayoutScalar> Fixture<S> {
                 metrics(),
                 InlineControlAlignment::Baseline,
                 edge,
+                None,
             ),
         ));
     }

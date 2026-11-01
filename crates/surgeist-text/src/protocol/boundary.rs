@@ -100,6 +100,7 @@ pub(crate) fn advance(selected: super::input::PresentationInput<'_>, unit: usize
         })
         .expect("complete admitted control inventory")
         .boundary
+        .as_ref()
         .map_or(0.0, |edge| edge.advance())
 }
 
@@ -110,7 +111,7 @@ pub(crate) fn groups_accounted(
 ) -> Result<Vec<Range<usize>>> {
     use crate::engine::scope_alignment::accounting as account;
     let count = selected.presentation.projection.atoms.len();
-    let mut ends = account::collect(ledger, 1..=count)?;
+    let mut ends = account::collect_fallible(ledger, 1..=count)?;
     for unit in &selected.presentation.units {
         account::work(ledger, 1)?;
         if matches!(unit.kind, PresentationUnitKind::Cell { .. }) && !unit.atoms.is_empty() {
@@ -138,7 +139,7 @@ pub(crate) fn groups_accounted(
             end = end.max(ends[atom]);
             atom += 1;
         }
-        account::push(ledger, &mut result, start..end)?;
+        account::push_fallible(ledger, &mut result, start..end)?;
     }
     account::drop_vec(ledger, ends)?;
     Ok(result)
@@ -433,6 +434,7 @@ pub(crate) fn resolve(
         .iter()
         .filter_map(|row| {
             row.boundary
+                .as_ref()
                 .map(|value| (row.occurrence.index, value.advance()))
         })
         .collect();

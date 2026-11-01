@@ -30,7 +30,7 @@ fn qualify_ahem() {
     assert_eq!(bounds, [0, -200, 1000, 800]);
 }
 
-fn captured_pair(system: &mut text::System) -> text::PreparedText {
+fn captured_pair(system: &mut text::System, nested: bool) -> text::PreparedText {
     use text::SourceProcessingEvent as E;
     let source = text::Source::identified(text::Text::from("AA"), text::Id::from_u64(640725), 1);
     let base = text::Style {
@@ -40,97 +40,98 @@ fn captured_pair(system: &mut text::System) -> text::PreparedText {
         wrap: text::Wrap::Word,
         ..style()
     };
-    let processed = Arc::new(
-        text::process_contextual_source(text::ContextualSourceInput {
-            joint_flows: Vec::new(),
-            scope_alignment_limits: None,
-            computed_line_boundaries: vec![],
-            source: source.clone(),
-            segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
-            envelope: text::SourceProcessingEnvelope::Complete,
-            origins: [(0, 1), (1, 2)]
-                .into_iter()
-                .map(|(start, end)| text::ParagraphOrigin {
-                    text_node: None,
-                    source: source.clone(),
-                    local: text::Range::new(start, end),
-                    aggregate: text::Range::new(start, end),
-                    kind: text::ParagraphOriginKind::Authored,
-                })
-                .collect(),
-            connections: vec![text::SourceProcessingConnection {
-                before_origin: 0,
-                after_origin: 1,
-                kind: text::ParagraphConnectionKind::Continuous,
-            }],
-            controls: vec![
-                text::ParagraphControl {
-                    at: 1,
-                    kind: text::ParagraphControlKind::InlineBoundaryStart,
-                },
-                text::ParagraphControl {
-                    at: 2,
-                    kind: text::ParagraphControlKind::InlineBoundaryEnd,
-                },
-            ],
-            boundary_policies: vec![text::ParagraphBoundaryPolicy {
-                definition: text::ParagraphBoundaryDefinition::Connection(0),
-                preceding_wrap: text::Wrap::Word,
-                following_wrap: text::Wrap::Word,
-                ancestor_wrap: text::Wrap::Word,
-            }],
-            replacements: vec![],
-            scopes: vec![
-                text::SourceProcessingScope::Block {
-                    writing_axis: None,
-                    horizontal_inner_direction: None,
-                    font_reference: None,
-                    topology: text::SourceProcessingTopology::Complete,
-                    trim: text::WhiteSpaceTrim::default(),
-                    base_style: base.clone(),
-                    used_direction: text::ParagraphBaseDirection::LeftToRight,
-                },
-                text::SourceProcessingScope::Inline {
-                    horizontal_inner_direction: None,
-                    alignment_boundary: None,
-                    font_reference: None,
-                    trim: text::WhiteSpaceTrim::default(),
-                    style: Some(base),
-                    boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
-                },
-            ],
-            paragraphs: vec![text::SourceProcessingParagraph {
-                base_direction: text::ParagraphBaseDirection::LeftToRight,
-                paragraph_strut: text::ParagraphStrut::DefaultFont,
-            }],
-            events: vec![
-                E::EnterScope(0),
-                E::EnterParagraph(0),
-                E::Origin {
-                    origin: 0,
-                    affinity: text::Affinity::After,
-                },
-                E::Connection(0),
-                E::EnterScope(1),
-                E::Control {
-                    control: 0,
-                    affinity: text::Affinity::After,
-                },
-                E::Origin {
-                    origin: 1,
-                    affinity: text::Affinity::After,
-                },
-                E::Control {
-                    control: 1,
-                    affinity: text::Affinity::After,
-                },
-                E::ExitScope(1),
-                E::ExitParagraph(0),
-                E::ExitScope(0),
-            ],
-        })
-        .unwrap(),
-    );
+    let mut input = text::ContextualSourceInput {
+        joint_flows: Vec::new(),
+        scope_alignment_limits: None,
+        computed_line_boundaries: vec![],
+        source: source.clone(),
+        segment_breaks: text::DocumentSegmentBreaks::LineFeedDefault,
+        envelope: text::SourceProcessingEnvelope::Complete,
+        origins: [(0, 1), (1, 2)]
+            .into_iter()
+            .map(|(start, end)| text::ParagraphOrigin {
+                text_node: None,
+                source: source.clone(),
+                local: text::Range::new(start, end),
+                aggregate: text::Range::new(start, end),
+                kind: text::ParagraphOriginKind::Authored,
+            })
+            .collect(),
+        connections: vec![text::SourceProcessingConnection {
+            before_origin: 0,
+            after_origin: 1,
+            kind: text::ParagraphConnectionKind::Continuous,
+        }],
+        controls: vec![
+            text::ParagraphControl {
+                at: 1,
+                kind: text::ParagraphControlKind::InlineBoundaryStart,
+            },
+            text::ParagraphControl {
+                at: 2,
+                kind: text::ParagraphControlKind::InlineBoundaryEnd,
+            },
+        ],
+        boundary_policies: vec![text::ParagraphBoundaryPolicy {
+            definition: text::ParagraphBoundaryDefinition::Connection(0),
+            preceding_wrap: text::Wrap::Word,
+            following_wrap: text::Wrap::Word,
+            ancestor_wrap: text::Wrap::Word,
+        }],
+        replacements: vec![],
+        scopes: vec![
+            text::SourceProcessingScope::Block {
+                writing_axis: None,
+                horizontal_inner_direction: None,
+                font_reference: None,
+                topology: text::SourceProcessingTopology::Complete,
+                trim: text::WhiteSpaceTrim::default(),
+                base_style: base.clone(),
+                used_direction: text::ParagraphBaseDirection::LeftToRight,
+            },
+            text::SourceProcessingScope::Inline {
+                horizontal_inner_direction: None,
+                alignment_boundary: None,
+                font_reference: None,
+                trim: text::WhiteSpaceTrim::default(),
+                style: Some(base),
+                boundaries: Some(text::SourceProcessingScopeBoundaries { start: 0, end: 1 }),
+            },
+        ],
+        paragraphs: vec![text::SourceProcessingParagraph {
+            base_direction: text::ParagraphBaseDirection::LeftToRight,
+            paragraph_strut: text::ParagraphStrut::DefaultFont,
+        }],
+        events: vec![
+            E::EnterScope(0),
+            E::EnterParagraph(0),
+            E::Origin {
+                origin: 0,
+                affinity: text::Affinity::After,
+            },
+            E::Connection(0),
+            E::EnterScope(1),
+            E::Control {
+                control: 0,
+                affinity: text::Affinity::After,
+            },
+            E::Origin {
+                origin: 1,
+                affinity: text::Affinity::After,
+            },
+            E::Control {
+                control: 1,
+                affinity: text::Affinity::After,
+            },
+            E::ExitScope(1),
+            E::ExitParagraph(0),
+            E::ExitScope(0),
+        ],
+    };
+    if nested {
+        parent_geometry_paint::nest_pair_input(&mut input);
+    }
+    let processed = Arc::new(text::process_contextual_source(input).unwrap());
     assert_eq!(processed.source(), &source);
     assert_eq!(processed.processed_text(), &text::Text::from("AA"));
     let analyzed = text::AnalyzedSource::from_processed_paragraph(
@@ -150,7 +151,7 @@ fn captured_pair(system: &mut text::System) -> text::PreparedText {
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
-    assert_eq!(prepared.control_views().count(), 2);
+    assert_eq!(prepared.control_views().count(), if nested { 4 } else { 2 });
     assert!(
         prepared
             .control_views()
@@ -166,9 +167,11 @@ fn endpoint_width(
 ) -> Option<text::InlineBoundaryAllocation> {
     match control.view().kind() {
         text::ParagraphControlKind::InlineBoundaryStart => {
-            Some(text::InlineBoundaryAllocation::try_new(opening).unwrap())
+            Some(text::InlineBoundaryAllocation::contribution(opening).unwrap())
         }
-        text::ParagraphControlKind::InlineBoundaryEnd => Some(text::InlineBoundaryAllocation::ZERO),
+        text::ParagraphControlKind::InlineBoundaryEnd => {
+            Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
+        }
         _ => None,
     }
 }
@@ -321,7 +324,7 @@ fn pixel(pixels: &[u8], x: usize, y: usize) -> &[u8] {
 fn positive_inline_endpoint_displaces_only_the_second_real_ahem_cell_without_paint() {
     qualify_ahem();
     let mut system = system(AHEM.to_vec());
-    let prepared = captured_pair(&mut system);
+    let prepared = captured_pair(&mut system, false);
     let layouts = [placed_pair(&prepared, 0.0), placed_pair(&prepared, 5.0)];
     let publication = layouts[0]
         .run_views()
@@ -430,3 +433,6 @@ fn positive_inline_endpoint_displaces_only_the_second_real_ahem_cell_without_pai
         }
     }
 }
+
+#[path = "parent_geometry_paint.rs"]
+mod parent_geometry_paint;

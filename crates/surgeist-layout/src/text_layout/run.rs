@@ -1598,7 +1598,7 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
             Ok(surgeist_text::ControlAllocation {
                 occurrence: allocation.occurrence.clone(),
                 strut,
-                boundary: original.allocation.boundary,
+                boundary: original.allocation.boundary.clone(),
             })
         })
         .collect()

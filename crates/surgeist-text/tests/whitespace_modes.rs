@@ -169,7 +169,7 @@ fn finish(
                         surgeist_text::ParagraphControlKind::InlineBoundaryStart
                             | surgeist_text::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(surgeist_text::InlineBoundaryAllocation::ZERO),
+                    .then_some(surgeist_text::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }

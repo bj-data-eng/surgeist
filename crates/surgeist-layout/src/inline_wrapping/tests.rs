@@ -59,7 +59,7 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         LayoutInputOf, NodeInputOf,
     };
     let boundary = |kind| {
-        LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+        LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
             kind,
             InlineMetricsOf::from_line_height_and_baseline(
                 crate::InlineBaselineContext::Physical,

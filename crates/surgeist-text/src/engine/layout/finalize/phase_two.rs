@@ -622,15 +622,22 @@ struct Baseline {
     raw_advance: Option<f64>,
     fit_anchor: bool,
 }
+/// Cluster positions and the actual admitted execution that produced them.
+/// Exclusion purposes vary; none may restore the selection's former traversal.
+struct MeasurementExecution<'positions, 'source, 'scratch> {
+    positions: &'positions [(f64, f64)],
+    order: &'positions crate::SuppliedVisualOrder<'source, 'scratch>,
+}
 fn measure(
     selected: &SelectedData,
     shaped: &ShapedData,
     atomics: &OrdinalMap<&AtomicAllocation>,
-    positions: &[(f64, f64)],
+    execution: &MeasurementExecution<'_, '_, '_>,
     exclusions: &[Exclusion],
     baseline: Baseline,
     ledger: &mut Ledger,
 ) -> Result<(InlineMeasure, crate::MarginEdgeFit)> {
+    let positions = execution.positions;
     account::work(ledger, shaped.items.len())?;
     let mut advance = baseline.raw_advance.unwrap_or(0.0);
     let mut bounds = None;
@@ -712,9 +719,8 @@ fn measure(
     let mut pen = 0.0;
     let mut fit_flow = 0.0;
     let mut opaque = None;
-    // Finalization has already admitted this exact selected permutation. A
-    // measurement view changes exclusions, never the retained traversal.
-    for &ordinal in &selected.basis.order {
+    // Every purpose uses the same admitted order as actual positioning.
+    for (ordinal, _) in execution.order.iter() {
         let contribution = match shaped.items[ordinal] {
             ShapedItem::Cell(cell) => {
                 let extent = shaped.cells[cell].extent;
@@ -1105,11 +1111,15 @@ pub(super) fn allocated(
         },
         fit_anchor: false,
     };
+    let execution = MeasurementExecution {
+        positions: &positions,
+        order,
+    };
     let (fit, margin_fit) = measure(
         selected,
         shaped,
         atomics,
-        &positions,
+        &execution,
         &plans[FIT],
         Baseline {
             fit_anchor: !native,
@@ -1121,7 +1131,7 @@ pub(super) fn allocated(
         selected,
         shaped,
         atomics,
-        &positions,
+        &execution,
         &plans[MIN],
         baseline,
         ledger,
@@ -1130,7 +1140,7 @@ pub(super) fn allocated(
         selected,
         shaped,
         atomics,
-        &positions,
+        &execution,
         &plans[MAX],
         baseline,
         ledger,
@@ -1139,7 +1149,7 @@ pub(super) fn allocated(
         selected,
         shaped,
         atomics,
-        &positions,
+        &execution,
         &plans[ALIGN],
         baseline,
         ledger,
