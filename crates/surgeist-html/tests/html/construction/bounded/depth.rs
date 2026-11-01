@@ -708,3 +708,154 @@ fn reassigning_template_contents_describes_the_same_work_at_every_unrelated_reco
         .1
     });
 }
+
+/// The record visits and record writes the Commit action of `command` describes.
+fn commit_description(
+    storage: HtmlConstructionStorage,
+    command: HtmlConstructionCommand,
+) -> (usize, usize) {
+    let mut operation = Some(
+        storage
+            .prepare(command)
+            .unwrap_or_else(|_| panic!("preparation")),
+    );
+    let mut described = None;
+    while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+        if let HtmlConstructionActionDescription::Commit {
+            record_visits,
+            record_writes,
+            ..
+        } = action.description()
+        {
+            described = Some((record_visits, record_writes));
+        }
+        action.perform().unwrap().accept();
+    }
+    drop(operation);
+    described.expect("every operation ends in a Commit action")
+}
+
+// The commit's cost model: a depth walk makes one edge lookup per step, each
+// costing 2 record visits and 1 cursor write; each placed record costs 4 writes
+// (cursor reset, its depth, and the two histogram counts it leaves and joins);
+// a fast-path record costs 3 writes (its depth and the two histogram counts).
+// An append also writes the usage, the child push and the parent link.
+
+#[test]
+fn appending_a_leaf_describes_the_fast_path_commit_work() {
+    // 1 usage + 1 child push + 1 parent link, and 3 for the one fast-path leaf;
+    // a fast path walks nothing, so no visits.
+    let (owner, root) = fragment(storage());
+    let (owner, leaf) = create(owner, element("leaf"));
+    let command = HtmlConstructionCommand::Insert {
+        node: leaf,
+        parent: root,
+        before: None,
+    };
+    assert_eq!(commit_description(owner, command), (0, 1 + 1 + 1 + 3));
+}
+
+#[test]
+fn appending_a_template_describes_the_fast_path_commit_work_of_both_records() {
+    // As a leaf, but the template and its empty contents are two fast-path
+    // records: 3 fixed writes and 2 * 3.
+    let (owner, root) = fragment(storage());
+    let (owner, template) = create(owner, element("template"));
+    let command = HtmlConstructionCommand::Insert {
+        node: template,
+        parent: root,
+        before: None,
+    };
+    assert_eq!(commit_description(owner, command), (0, 1 + 1 + 1 + 2 * 3));
+}
+
+#[test]
+fn moving_a_two_record_subtree_describes_its_walk_and_placements() {
+    // The same move under a parent at the same depth walks nothing, so its
+    // description is the fixed part; subtracting it leaves the depth work of
+    // moving `moved` and its one child one level deeper.
+    //
+    // The walk from `moved` makes 3 edge lookups: `moved` yields its child, the
+    // child yields nothing, and `moved` again yields nothing. That is 3 * 2 = 6
+    // visits. The writes are 3 cursor writes plus 4 for each of the 2 placed
+    // records: 3 + 2 * 4 = 11.
+    let measure = |deeper: bool| {
+        let (owner, from) = create(storage(), element("from"));
+        let (owner, to) = create(owner, element("to"));
+        let owner = if deeper {
+            let (owner, above) = create(owner, element("above"));
+            append(owner, &to, &above)
+        } else {
+            owner
+        };
+        let (owner, moved) = create(owner, element("moved"));
+        let (owner, child) = create(owner, element("child"));
+        let owner = append(owner, &child, &moved);
+        let owner = append(owner, &moved, &from);
+        commit_description(
+            owner,
+            HtmlConstructionCommand::Insert {
+                node: moved,
+                parent: to,
+                before: None,
+            },
+        )
+    };
+    let (flat_visits, flat_writes) = measure(false);
+    let (deeper_visits, deeper_writes) = measure(true);
+    assert_eq!(flat_visits, 0);
+    assert_eq!(
+        (deeper_visits - flat_visits, deeper_writes - flat_writes),
+        (6, 11)
+    );
+}
+
+#[test]
+fn giving_a_template_a_shadow_host_describes_both_moved_subtrees() {
+    // Two subtrees move: the template's old contents, detached to depth zero,
+    // and the shadow contents, attached below the host. Each holds `children`
+    // elements. Subtracting the commit of the empty shape from that of the
+    // shape with one child in each leaves the work the children add.
+    //
+    // Each child adds, to its subtree's walk, one lookup that enters it and one
+    // that returns: 2 more lookups, so 2 * 2 = 4 more visits and 2 more cursor
+    // writes, and 1 more placed record, so 4 more writes: 2 + 4 = 6 writes.
+    // Two subtrees double both: 8 visits and 12 writes.
+    let measure = |children: usize| {
+        let (owner, template) = create(storage(), element("template"));
+        let contents = owner
+            .node(&template)
+            .unwrap()
+            .template_contents()
+            .unwrap()
+            .handle();
+        let (owner, host) = create(owner, element("host"));
+        let (owner, shadow) = create(
+            owner,
+            HtmlConstructionCommand::CreateShadowContents {
+                properties: properties(),
+            },
+        );
+        let mut owner = owner;
+        for parent in [&contents, &shadow] {
+            for _ in 0..children {
+                let (next, child) = create(owner, element("child"));
+                owner = append(next, &child, parent);
+            }
+        }
+        commit_description(
+            owner,
+            HtmlConstructionCommand::AttachTemplateShadow {
+                template,
+                host,
+                contents: shadow,
+            },
+        )
+    };
+    let (empty_visits, empty_writes) = measure(0);
+    let (full_visits, full_writes) = measure(1);
+    assert_eq!(
+        (full_visits - empty_visits, full_writes - empty_writes),
+        (8, 12)
+    );
+}
