@@ -8,7 +8,7 @@ use super::block_units::{
     DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, offset_of,
 };
 use super::declaration_unit::DeclarationText;
-use super::descriptor_stream::{DescriptorGrammar, DescriptorRecovery, drive_descriptors};
+use super::descriptor_stream::{DescriptorRecovery, drive_descriptors};
 use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 use surgeist_css_parser::stream::StopToken;
@@ -106,15 +106,9 @@ pub(super) fn parse_body<'i>(
         recovery: recovery.clone(),
         diagnostics: Rc::clone(&shared),
     };
-    let mut readmit = FontFaceDescriptorParser {
-        source,
-        recovery: recovery.clone(),
-        diagnostics: Rc::clone(&shared),
-    };
     let (descriptors, mut dropped) = drive_descriptors(
         contents,
         &mut grammar,
-        &mut readmit,
         &DescriptorRecovery {
             source,
             recovery: &recovery,
@@ -124,7 +118,7 @@ pub(super) fn parse_body<'i>(
         },
     );
     diagnostics.append(&mut dropped);
-    drop((grammar, readmit));
+    drop(grammar);
     diagnostics.extend(shared.take());
     CssFontFaceDescriptors::new(descriptors)
 }
@@ -236,16 +230,6 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for FontFaceDescriptorParser<'_> {
     }
 }
 
-impl<'i> DescriptorGrammar<'i, CssFontFaceDescriptor> for FontFaceDescriptorParser<'_> {
-    fn readmit(
-        &mut self,
-        name: &str,
-        text: &DeclarationText,
-    ) -> Result<CssFontFaceDescriptor, NativeError<'i>> {
-        self.admit(name, text)
-    }
-}
-
 impl FontFaceDescriptorParser<'_> {
     /// Admits the descriptor named `name` that lies at `text`.
     fn admit<'i>(
@@ -293,8 +277,9 @@ impl FontFaceDescriptorParser<'_> {
         Ok(CssFontFaceDescriptor::new(value).with_position(position))
     }
 
-    /// The value of the descriptor `kind` at `text`, whose whole text up to the
-    /// end of the declaration is the scope the value grammar reads.
+    /// The value of the descriptor `kind` at `text`, whose text up to the
+    /// annotation is the scope the value grammar reads. No descriptor admits
+    /// an annotation: it is judged once the value has been read.
     fn read_value(
         &self,
         text: &DeclarationText,
@@ -304,23 +289,33 @@ impl FontFaceDescriptorParser<'_> {
     ) -> Result<CssAuthoredFontFaceDescriptorValue, NativeValueError> {
         let snapshot = self.recovery.source_snapshot();
         let numeric = NumericInputContext::parsed(snapshot);
-        let document =
-            crate::syntax_consumption::source_scope_document(snapshot, text.value_start..text.end)
-                .map_err(|error| {
-                    crate::diagnostic::error::invalid_component_value(
-                        location_at(snapshot, text.value_start),
-                        error,
-                    )
-                })?;
+        let document = crate::syntax_consumption::source_scope_document(
+            snapshot,
+            text.value_start..text.value_end(),
+        )
+        .map_err(|error| {
+            crate::diagnostic::error::invalid_component_value(
+                location_at(snapshot, text.value_start),
+                error,
+            )
+        })?;
         let mut value = document.root();
-        read_authored_value(
+        let read = read_authored_value(
             self.source,
             &mut value,
             kind,
             &numeric,
             member_diagnostics,
             implicit_closures,
-        )
+        )?;
+        match text.bang() {
+            Some(bang) => Err(crate::diagnostic::error::invalid_descriptor_annotation(
+                location_at(snapshot, bang),
+                "font-face",
+                kind.as_str(),
+            )),
+            None => Ok(read),
+        }
     }
 }
 

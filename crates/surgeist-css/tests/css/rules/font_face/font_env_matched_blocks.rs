@@ -6,7 +6,7 @@
 use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
 use surgeist_css::CssParser;
 use surgeist_css::component::{CssComponentValues, CssValueOrigin};
-use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
 use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as FaceValue;
 use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as FaceKind;
 use surgeist_css::rule::font_face::{CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptors};
@@ -105,8 +105,30 @@ fn checked_font_face_width_defers_matched_root_blocks_without_losing_provenance(
     }
 }
 
+// Syntax 3 CRD 2026-10-01 §5.5.6 step 8: as a declaration, a value that holds
+// a block beside another value returns nothing, whatever env() could defer.
+// The blocks stay data in the value fronts above.
+//
+// §5.5.5 then reads the same text as a qualified rule that ends at its block: a
+// value that ends with the block is one dropped unit, and a value with
+// something after the block leaves that something as a unit of its own, which
+// a `;` stops.
+fn dropped_for_its_block<T: std::fmt::Debug>(
+    report: &surgeist_css::CssParseReport<T>,
+    source: &str,
+    value: &str,
+) {
+    let units = if value.ends_with('}') { 1 } else { 2 };
+    assert_eq!(report.diagnostics().len(), units, "{source}: {report:?}");
+    assert_eq!(
+        report.diagnostics()[0].error().code(),
+        CssErrorCode::UnexpectedToken,
+        "{source}"
+    );
+}
+
 #[test]
-fn font_face_body_retains_pending_width_with_matched_blocks_and_ordinary_neighbor() {
+fn font_face_body_drops_width_with_a_block_beside_a_value_and_keeps_the_ordinary_neighbor() {
     for value in FACE_VALUES {
         let source = format!("{{font-width:{value};font-display:swap;}}");
         let report = CssBlockFragment::<CssFontFaceDescriptors>::parse(
@@ -114,37 +136,26 @@ fn font_face_body_retains_pending_width_with_matched_blocks_and_ordinary_neighbo
             &source,
             &CssBlockContext::default(),
         );
-        assert!(report.is_clean(), "{source}: {report:?}");
+        dropped_for_its_block(&report, &source, value);
         let descriptors = report.syntax().as_ref().unwrap().body();
-        assert_eq!(descriptors.occurrences().len(), 2);
-        pending_face(
-            descriptors.effective(FaceKind::FontWidth).unwrap().value(),
-            value,
-            &source,
-        );
+        assert_eq!(descriptors.occurrences().len(), 1);
+        assert!(descriptors.effective(FaceKind::FontWidth).is_none());
         assert!(descriptors.effective(FaceKind::FontDisplay).is_some());
     }
 }
 
 #[test]
-fn font_face_rule_retains_pending_width_with_matched_blocks_and_following_rule() {
+fn font_face_rule_drops_width_with_a_block_beside_a_value_and_keeps_the_following_rule() {
     for value in FACE_VALUES {
         let source =
             format!("@font-face{{font-width:{value};font-display:swap;}} .after{{color:red;}}");
         let report = CssParser::default().parse_sheet(&source);
-        assert!(report.is_clean(), "{source}: {report:?}");
+        dropped_for_its_block(&report, &source, value);
         let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("font-face and following rule must survive");
         };
-        assert_eq!(face.descriptors().occurrences().len(), 2);
-        pending_face(
-            face.descriptors()
-                .effective(FaceKind::FontWidth)
-                .unwrap()
-                .value(),
-            value,
-            &source,
-        );
+        assert_eq!(face.descriptors().occurrences().len(), 1);
+        assert!(face.descriptors().effective(FaceKind::FontWidth).is_none());
     }
 }
 
@@ -173,7 +184,7 @@ fn checked_palette_descriptors_defer_matched_root_blocks_without_losing_provenan
 }
 
 #[test]
-fn palette_body_retains_pending_matched_blocks_and_real_family_neighbor() {
+fn palette_body_drops_a_block_beside_a_value_and_keeps_the_real_family_neighbor() {
     for kind in PALETTE_KINDS {
         for value in PALETTE_VALUES {
             let source = format!("{{font-family:Demo;{}:{value};}}", kind.as_str());
@@ -182,16 +193,15 @@ fn palette_body_retains_pending_matched_blocks_and_real_family_neighbor() {
                 &source,
                 &CssBlockContext::default(),
             );
-            assert!(report.is_clean(), "{source}: {report:?}");
+            dropped_for_its_block(&report, &source, value);
             let descriptors = report.syntax().as_ref().unwrap().body();
-            assert_eq!(descriptors.len(), 2);
-            pending_palette(descriptors[1].value(), kind, value, &source);
+            assert_eq!(descriptors.len(), 1);
         }
     }
 }
 
 #[test]
-fn palette_rule_retains_pending_matched_blocks_and_following_rule() {
+fn palette_rule_drops_a_block_beside_a_value_and_keeps_the_following_rule() {
     for kind in PALETTE_KINDS {
         for value in PALETTE_VALUES {
             let source = format!(
@@ -199,13 +209,12 @@ fn palette_rule_retains_pending_matched_blocks_and_following_rule() {
                 kind.as_str()
             );
             let report = CssParser::default().parse_sheet(&source);
-            assert!(report.is_clean(), "{source}: {report:?}");
+            dropped_for_its_block(&report, &source, value);
             let [CssRule::FontPaletteValues(palette), CssRule::Style(_)] = report.syntax().rules()
             else {
                 panic!("palette and following rule must survive");
             };
-            assert_eq!(palette.descriptors().len(), 2);
-            pending_palette(palette.descriptors()[1].value(), kind, value, &source);
+            assert_eq!(palette.descriptors().len(), 1);
         }
     }
 }

@@ -15,14 +15,16 @@ use surgeist_css_parser::grammar::{BlockGrammar, UnitKind};
 use surgeist_css_parser::stream::StopToken;
 
 use super::block_units::{
-    Failure, NativeError, drive_units, dropped_unit, location_at, offset_of, refused_declaration,
+    Failure, NativeError, drive_units, dropped_unit, location_at, offset_of, refusal_diagnostic,
+    refused_error,
 };
-use super::declaration_unit::DeclarationText;
 use super::property_input::StreamExt as _;
 use super::property_input::{SiteExt, advance_native_to, native_scope_end};
 use super::recovery::RecoveryState;
 use super::syntax_types::{Attached, Document, Site, Stream, StreamError, SyntaxError};
-use super::{block_item_diagnostic, is_declaration_recovery_unit, structural_rule_diagnostic};
+use super::{
+    block_item_diagnostic_from_start, is_declaration_recovery_unit, structural_rule_diagnostic,
+};
 use crate::component::{CssComponentValues, CssSerializedValue};
 use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{
@@ -138,6 +140,10 @@ pub(super) fn native(
         return native.clone();
     }
     let at = location(numeric, error.at());
+    if error.is_refused() {
+        // The meter refused a step: a resource failure, never the end of the input.
+        return refused_error(at);
+    }
     match error.unexpected_token() {
         // The whitespace is named as it was written.
         Some(token @ Token::Whitespace) => {
@@ -209,6 +215,10 @@ pub(super) fn from_window<'i, T>(
             let _ = probe.consume_token_with_comments();
         }
         Span::Remaining => while probe.consume_token_with_comments().is_ok() {},
+    }
+    if probe.is_refused() {
+        // The probe stopped at a refusal, not at the end of the components.
+        return Err(fail(numeric, first, refused_error));
     }
     let last = probe.site();
     match numeric.ordinary() {
@@ -392,7 +402,9 @@ pub(super) struct CollectedScope {
 /// to a comma-separated list (Syntax 3 section 5.4.10). A whitespace token
 /// after it is a token; a comment is not.
 pub(super) fn at_final_comma(input: &Stream<'_>) -> bool {
-    input.clone().consume_token().is_err()
+    let mut probe = input.clone();
+    // A refusal is no end: the grammar goes on and meets it.
+    probe.consume_token().is_err() && !probe.is_refused()
 }
 
 /// Requires that only whitespace remains, and reports what remains where the
@@ -404,6 +416,8 @@ pub(super) fn expect_exhausted<'i, E>(input: &mut Stream<'i>) -> Result<(), Synt
         .require_empty()
         .map_err(|error| match error.unexpected_token() {
             Some(token) => at.unexpected(token),
+            // The end of the input, or the refusal that stopped the scan, which
+            // stays a refusal.
             None => SyntaxError::from(error),
         });
     input.restore(mark);
@@ -434,7 +448,10 @@ pub(super) fn inside_consumed<'i>(site: Site<'i>) -> Site<'i> {
         .unwrap_or(site)
 }
 
-/// Consumes the rest of the stream, nested blocks included.
+/// Consumes the rest of the stream, nested blocks included. A refusal of the
+/// meter ends it as the end of the stream does, and stays latched on the
+/// document: the next step of any stream over it, and
+/// [`is_refused`](Stream::is_refused), report it.
 pub(super) fn consume_remaining(input: &mut Stream<'_>) {
     // A group is one node of its list, so consuming its opening token moves
     // past its contents; comments are tokens of the list like any other.
@@ -454,6 +471,7 @@ pub(super) fn validate_root<'i>(
         let at = input.site();
         let token = match input.consume_token_with_comments() {
             Ok(token) => token,
+            Err(error) if error.is_refused() => return Err(error.into()),
             Err(error) if error.unexpected_token().is_none() => break,
             Err(error) => return Err(error.into()),
         };
@@ -505,7 +523,10 @@ impl Boundary {
     /// Whether the root of the value is admitted before its components are
     /// collected.
     const fn validates_value(self) -> bool {
-        matches!(self, Self::ValidatedValue | Self::ValidatedText)
+        matches!(
+            self,
+            Self::Whole | Self::ValidatedValue | Self::ValidatedText
+        )
     }
 
     /// Whether the value ends at the first `!`, which is then an annotation no
@@ -515,15 +536,69 @@ impl Boundary {
     }
 }
 
-/// Parses the value of a descriptor whose text is `value_start..end` of the
-/// source: the value is what precedes the first `!`, and any `!` is an
-/// annotation no descriptor admits (Syntax 3 section 5.5.6), judged once the
-/// value has been read. `parse` reads the value from a stream of its own and
-/// gets the components it holds.
+/// Parses the value of a descriptor from the bare value text `value_start..end`
+/// of the source, as the text fronts read it: the text is no declaration (it
+/// has no name and no colon), so it is not handed through the parser crate's
+/// declaration step. The value is what precedes the first `!` of the text, and
+/// a `!` is an annotation no descriptor admits, judged once the value has been
+/// read. The value of a declaration is read by [`parse_descriptor_range`].
+/// `parse` reads the value from a stream of its own and gets the components it
+/// holds.
 pub(super) fn parse_descriptor_text<T>(
     snapshot: &CssSourceSnapshot,
     value_start: usize,
     end: usize,
+    owner: &str,
+    descriptor: &str,
+    boundary: Boundary,
+    parse: impl for<'d> FnOnce(
+        &mut Stream<'d>,
+        CssComponentValues,
+        &NumericInputContext<'_>,
+        Range<usize>,
+    ) -> Value<'d, T>,
+) -> Result<T, NativeValueError> {
+    let numeric = NumericInputContext::parsed(snapshot);
+    // The whole text is read only to admit its root or to find the annotation.
+    let scope = if boundary.validates_scope() || boundary.splits_annotation() {
+        Some(
+            crate::syntax_consumption::source_scope_document(snapshot, value_start..end)
+                .map_err(|error| invalid_component_value(location_at(snapshot, end), error))?,
+        )
+    } else {
+        None
+    };
+    if boundary.validates_scope()
+        && let Some(scope) = &scope
+    {
+        validate_root(&mut scope.root(), &numeric, owner, descriptor)
+            .map_err(|error| native(&numeric, &error))?;
+    }
+    let bang = scope
+        .as_ref()
+        .filter(|_| boundary.splits_annotation())
+        .and_then(first_bang);
+    parse_descriptor_range(
+        snapshot,
+        value_start..bang.unwrap_or(end),
+        bang,
+        owner,
+        descriptor,
+        boundary,
+        parse,
+    )
+}
+
+/// Parses the value of a descriptor that is the text `range` of the source: the
+/// value of a declaration, which the driver has taken the `!important` off
+/// (Syntax 3 section 5.5.6 step 6). `bang` is where the `!` of that
+/// annotation is: no descriptor admits one, and it is judged once the value has
+/// been read. `parse` reads the value from a stream of its own and gets the
+/// components it holds.
+pub(super) fn parse_descriptor_range<T>(
+    snapshot: &CssSourceSnapshot,
+    range: Range<usize>,
+    bang: Option<usize>,
     owner: &str,
     descriptor: &str,
     boundary: Boundary,
@@ -540,26 +615,7 @@ pub(super) fn parse_descriptor_text<T>(
             invalid_component_value(location_at(snapshot, end), error)
         }
     };
-    // The whole text is read only to admit its root or to find the annotation.
-    let scope = if boundary.validates_scope() || boundary.splits_annotation() {
-        Some(
-            crate::syntax_consumption::source_scope_document(snapshot, value_start..end)
-                .map_err(failed_at(end))?,
-        )
-    } else {
-        None
-    };
-    if boundary.validates_scope()
-        && let Some(scope) = &scope
-    {
-        validate_root(&mut scope.root(), &numeric, owner, descriptor)
-            .map_err(|error| native(&numeric, &error))?;
-    }
-    let bang = scope
-        .as_ref()
-        .filter(|_| boundary.splits_annotation())
-        .and_then(first_bang);
-    let value_end = bang.unwrap_or(end);
+    let (value_start, value_end) = (range.start, range.end);
     let value = crate::syntax_consumption::source_window_document(snapshot, value_start..value_end)
         .map_err(failed_at(value_end))?;
     if boundary.validates_value() {
@@ -608,15 +664,6 @@ pub(super) fn parse_descriptor_checked<'i, T>(
     ))
 }
 
-/// The grammar of the descriptors of a block, driven by the parser crate.
-pub(super) trait DescriptorGrammar<'i, Item>:
-    BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError<'i>>
-{
-    /// Admits the declaration named `name` at `text` once more: the one a block
-    /// reads to its `;` although Syntax 3 section 5.5.6 step 8 refuses it.
-    fn readmit(&mut self, name: &str, text: &DeclarationText) -> Result<Item, NativeError<'i>>;
-}
-
 /// What the recovery of a descriptor block reads.
 pub(super) struct DescriptorRecovery<'a> {
     pub(super) source: &'a str,
@@ -630,42 +677,19 @@ pub(super) struct DescriptorRecovery<'a> {
     pub(super) at_rule_first: bool,
 }
 
-/// Admits once more the declaration that Syntax 3 section 5.5.6 step 8 refuses
-/// and the driver did not show to the grammar: its block reads it to its `;`
-/// all the same, and reports the grammar's verdict on it (until the declaration
-/// paths follow step 8, in step 12). Returns the item and the node of the list
-/// where the declaration ends, or the verdict; `None` when the failed unit is no
-/// such declaration.
-fn readmit_refused<'i, Item, G>(
-    failed: &Failure<'i>,
-    readmit: &mut G,
-) -> Option<Result<(Item, usize), NativeError<'i>>>
-where
-    G: DescriptorGrammar<'i, Item>,
-{
-    let (start, end) = refused_declaration(failed)?;
-    let text = DeclarationText::read(start, end);
-    let name = match start.token() {
-        Some(Token::Ident(name)) => name,
-        _ => "",
-    };
-    Some(readmit.readmit(name, &text).map(|item| (item, end)))
-}
-
 /// Drives the units of the block `contents` through `grammar`: a valid unit is
 /// retained, and every other is dropped with the recovery diagnostic of
 /// Syntax 3 section 7.1.
 pub(super) fn drive_descriptors<'i, Item, G>(
     contents: &mut Stream<'i>,
     grammar: &mut G,
-    readmit: &mut G,
     context: &DescriptorRecovery<'_>,
 ) -> (Vec<Item>, Vec<CssRecoveryDiagnostic>)
 where
-    G: DescriptorGrammar<'i, Item>,
+    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError<'i>>,
 {
     let diagnostics = RefCell::new(Vec::new());
-    let items = drive_descriptors_into(contents, grammar, readmit, context, &diagnostics);
+    let items = drive_descriptors_into(contents, grammar, context, &diagnostics);
     (items, diagnostics.into_inner())
 }
 
@@ -675,32 +699,23 @@ where
 pub(super) fn drive_descriptors_into<'i, Item, G>(
     contents: &mut Stream<'i>,
     grammar: &mut G,
-    readmit: &mut G,
     context: &DescriptorRecovery<'_>,
     sink: &RefCell<Vec<CssRecoveryDiagnostic>>,
 ) -> Vec<Item>
 where
-    G: DescriptorGrammar<'i, Item>,
+    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError<'i>>,
 {
     let snapshot = context.recovery.source_snapshot();
     let mut items = Vec::new();
-    drive_units(contents, grammar, |unit: Result<Item, Failure<'i>>| {
+    let refused = drive_units(contents, grammar, |unit: Result<Item, Failure<'i>>| {
         let failed = match unit {
             Ok(item) => {
                 items.push(item);
-                return None;
+                return;
             }
             Err(failed) => failed,
         };
-        let mut dropped = dropped_unit(snapshot, context.source, &failed);
-        match readmit_refused(&failed, readmit) {
-            Some(Ok((item, end))) => {
-                items.push(item);
-                return Some(end);
-            }
-            Some(Err(error)) => dropped.error = error,
-            None => {}
-        }
+        let dropped = dropped_unit(snapshot, context.source, &failed);
         // An at-rule whose prelude was rejected (a stream failure, or an error
         // reported at the prelude's start) ends before the `;` or `{` that
         // ended it; one whose block was rejected is dropped whole.
@@ -742,8 +757,11 @@ where
         ) {
             sink.borrow_mut().push(diagnostic);
         }
-        None
     });
+    if refused && let Some(diagnostic) = refusal_diagnostic(snapshot, contents, context.declaration)
+    {
+        sink.borrow_mut().push(diagnostic);
+    }
     items
 }
 
@@ -810,34 +828,25 @@ pub(super) fn declaration_position(
 pub(super) fn drive_block_items<'i, Item, G>(
     contents: &mut Stream<'i>,
     grammar: &mut G,
-    readmit: &mut G,
     source: &str,
     recovery: &RecoveryState,
     declaration: CssRecoveryAction,
 ) -> (Vec<Item>, Vec<CssRecoveryDiagnostic>)
 where
-    G: DescriptorGrammar<'i, Item>,
+    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError<'i>>,
 {
     let snapshot = recovery.source_snapshot();
     let mut items = Vec::new();
     let mut diagnostics = Vec::new();
-    drive_units(contents, grammar, |unit: Result<Item, Failure<'i>>| {
+    let refused = drive_units(contents, grammar, |unit: Result<Item, Failure<'i>>| {
         let failed = match unit {
             Ok(item) => {
                 items.push(item);
-                return None;
+                return;
             }
             Err(failed) => failed,
         };
-        let mut dropped = dropped_unit(snapshot, source, &failed);
-        match readmit_refused(&failed, readmit) {
-            Some(Ok((item, end))) => {
-                items.push(item);
-                return Some(end);
-            }
-            Some(Err(error)) => dropped.error = error,
-            None => {}
-        }
+        let dropped = dropped_unit(snapshot, source, &failed);
         // The dropped unit of a failed rule ends after its block's opening
         // token; the block is skipped with the unit. An at-rule whose prelude
         // was accepted had its block entered and is dropped whole; one whose
@@ -855,11 +864,17 @@ where
         } else {
             CssRecoveryAction::DropAtRule
         };
-        if let Some(diagnostic) = block_item_diagnostic(source, dropped.error, text, end, action) {
+        // The span starts where the dropped unit does, whatever part of it the
+        // text names.
+        if let Some(diagnostic) =
+            block_item_diagnostic_from_start(source, dropped.error, dropped.start, end, action)
+        {
             diagnostics.push(diagnostic);
         }
-        None
     });
+    if refused && let Some(diagnostic) = refusal_diagnostic(snapshot, contents, declaration) {
+        diagnostics.push(diagnostic);
+    }
     (items, diagnostics)
 }
 
@@ -1000,5 +1015,216 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    /// A meter that admits `left` steps and refuses every one after them.
+    struct After(std::cell::Cell<usize>);
+
+    impl surgeist_css_parser::limits::Meter for After {
+        fn step(&self) -> Result<(), surgeist_css_parser::limits::Refused> {
+            match self.0.get() {
+                0 => Err(surgeist_css_parser::limits::Refused),
+                left => {
+                    self.0.set(left - 1);
+                    Ok(())
+                }
+            }
+        }
+
+        fn add(&self, _: usize) -> Result<(), surgeist_css_parser::limits::Refused> {
+            Ok(())
+        }
+
+        fn released(&self, _: usize) {}
+
+        fn note(
+            &self,
+            _: surgeist_css_parser::limits::Failure,
+        ) -> surgeist_css_parser::limits::Refused {
+            surgeist_css_parser::limits::Refused
+        }
+    }
+
+    /// The tokens `a b c` of a document that `meter` meters.
+    fn metered(meter: &After) -> Document<'_> {
+        let mut builder: crate::parser::syntax_types::TreeBuilder<'_> = Document::builder(
+            surgeist_css_parser::limits::Limits::default(),
+            0,
+            Some(meter as &dyn surgeist_css_parser::limits::Meter),
+        )
+        .unwrap();
+        let root = builder.root();
+        for (index, word) in ["a", "b", "c"].into_iter().enumerate() {
+            if index > 0 {
+                builder.leaf(root, Token::Whitespace, None, None).unwrap();
+            }
+            builder.leaf(root, Token::Ident(word), None, None).unwrap();
+        }
+        builder.finish(None)
+    }
+
+    // A refused step is a resource failure. Reading it as the end of the input
+    // would accept a prefix of the value the meter cut short.
+    #[test]
+    fn a_refused_step_is_a_refusal_in_every_scan_of_a_value() {
+        let (snapshot, _) = document("");
+        let numeric = NumericInputContext::parsed(&snapshot);
+        let meter = After(std::cell::Cell::new(usize::MAX));
+        let document = metered(&meter);
+        // The document is built; two steps are admitted to its streams.
+        meter.0.set(2);
+
+        let mut input = document.root();
+        let error = validate_root(&mut input, &numeric, "face", "src").unwrap_err();
+        assert!(error.is_refused(), "{error:?}");
+        assert!(input.is_refused());
+        // The scan that cannot report a failure falls back to the end, and the
+        // comma test does not take that for a final comma.
+        assert!(!at_final_comma(&document.root()));
+        let mut rest = document.root();
+        consume_remaining(&mut rest);
+        assert!(rest.is_refused());
+        // Mapped to the error the declaration reports, it is a resource
+        // failure and no unexpected end.
+        let native = crate::parser::block_units::native_error_located(&error, |_| SourceLocation {
+            line: 0,
+            column: 1,
+        });
+        assert!(crate::diagnostic::error::is_resource_parse_error(&native));
+        assert!(!matches!(
+            native.kind,
+            cssparser::ParseErrorKind::Custom(CssError {
+                kind: crate::diagnostic::error::ErrorKind::UnexpectedEnd(_),
+                ..
+            })
+        ));
+        let exhausted = expect_exhausted::<()>(&mut document.root()).unwrap_err();
+        assert!(exhausted.is_refused());
+    }
+
+    /// A document of `text` whose tokens `tokens` (with their intervals of the
+    /// text) `meter` meters.
+    fn metered_source<'a>(
+        meter: &'a After,
+        text: &'a str,
+        tokens: &[(Token<'a>, Range<usize>)],
+    ) -> Document<'a> {
+        let mut builder: crate::parser::syntax_types::TreeBuilder<'a> = Document::builder(
+            surgeist_css_parser::limits::Limits::default(),
+            0,
+            Some(meter as &dyn surgeist_css_parser::limits::Meter),
+        )
+        .unwrap();
+        let root = builder.root();
+        for (token, range) in tokens {
+            let range = surgeist_css_parser::Offset::new(range.start)
+                ..surgeist_css_parser::Offset::new(range.end);
+            builder.leaf(root, *token, Some(range), None).unwrap();
+        }
+        builder.finish(Some(text))
+    }
+
+    // The probe that sizes the window a property grammar reads stops at a
+    // refusal, which is not the end of the components.
+    #[test]
+    fn the_window_probe_reports_a_refusal_not_the_end_of_the_components() {
+        let text = "a b c";
+        let (snapshot, _) = document(text);
+        let numeric = NumericInputContext::parsed(&snapshot);
+        let meter = After(std::cell::Cell::new(usize::MAX));
+        let tokens = [
+            (Token::Ident("a"), 0..1),
+            (Token::Whitespace, 1..2),
+            (Token::Ident("b"), 2..3),
+            (Token::Whitespace, 3..4),
+            (Token::Ident("c"), 4..5),
+        ];
+        let document = metered_source(&meter, text, &tokens);
+        meter.0.set(2);
+        let mut input = document.root();
+        let error = from_window(&numeric, &mut input, Span::Remaining, |_| {
+            Ok::<(), SyntaxError<'_, crate::diagnostic::error::property::Error>>(())
+        })
+        .unwrap_err();
+        let native = native(&numeric, &error);
+        assert!(crate::diagnostic::error::is_resource_parse_error(&native));
+        assert!(!matches!(
+            native.kind,
+            cssparser::ParseErrorKind::Custom(CssError {
+                kind: crate::diagnostic::error::ErrorKind::UnexpectedEnd(_),
+                ..
+            })
+        ));
+        // The same text without a refusal is read to its end.
+        let free = After(std::cell::Cell::new(usize::MAX));
+        let document = metered_source(&free, text, &tokens);
+        let mut input = document.root();
+        from_window(&numeric, &mut input, Span::Remaining, |window| {
+            window.consume_ident()?;
+            Ok::<(), SyntaxError<'_, crate::diagnostic::error::property::Error>>(())
+        })
+        .unwrap();
+    }
+
+    // A descriptor body whose stream the meter refuses in the middle of a
+    // declaration drops what the refusal cut short with a resource failure,
+    // and never reports the end of the input.
+    #[test]
+    fn a_descriptor_body_refused_mid_declaration_reports_a_resource_failure() {
+        let text = "font-display:swap;font-display:fallback";
+        let snapshot = CssSourceSnapshot::new(text);
+        let tokens = [
+            (Token::Ident("font-display"), 0..12),
+            (Token::Colon, 12..13),
+            (Token::Ident("swap"), 13..17),
+            (Token::Semicolon, 17..18),
+            (Token::Ident("font-display"), 18..30),
+            (Token::Colon, 30..31),
+            (Token::Ident("fallback"), 31..39),
+        ];
+        let mut refused_somewhere = false;
+        let mut saw_diagnostic = false;
+        for admitted in 0..24 {
+            let meter = After(std::cell::Cell::new(usize::MAX));
+            let document = metered_source(&meter, text, &tokens);
+            meter.0.set(admitted);
+            let mut contents = document.root();
+            let recovery = RecoveryState::at_depth_with_snapshot(
+                text,
+                0,
+                crate::parser::recovery::StyleContextCaptures::default(),
+                snapshot.clone(),
+            );
+            let mut diagnostics = Vec::new();
+            let descriptors = crate::parser::font_face::parse_body(
+                text,
+                &mut contents,
+                &mut diagnostics,
+                recovery,
+            );
+            if !contents.is_refused() {
+                assert!(diagnostics.is_empty(), "{admitted}: {diagnostics:?}");
+                assert_eq!(descriptors.occurrences().len(), 2);
+                continue;
+            }
+            refused_somewhere = true;
+            for diagnostic in &diagnostics {
+                saw_diagnostic = true;
+                assert!(
+                    diagnostic.error().is_resource_refusal(),
+                    "{admitted}: {diagnostic:?}"
+                );
+                assert_ne!(
+                    diagnostic.error().code(),
+                    crate::diagnostic::CssErrorCode::UnexpectedEnd,
+                    "{admitted}: {diagnostic:?}"
+                );
+            }
+            // A prefix the meter cut short is never published as the whole.
+            if !diagnostics.is_empty() {
+                assert!(descriptors.occurrences().len() < 2, "{admitted}");
+            }
+        }
+        assert!(refused_somewhere && saw_diagnostic);
     }
 }

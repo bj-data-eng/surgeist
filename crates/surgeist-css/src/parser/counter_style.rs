@@ -8,8 +8,8 @@ use super::block_units::{
 };
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
-    Boundary, DescriptorGrammar, Value, consume_remaining, drive_block_items, expect_exhausted,
-    fail, from_component, native, parse_descriptor_checked, parse_descriptor_text, read_scope,
+    Boundary, Value, consume_remaining, drive_block_items, expect_exhausted, fail, from_component,
+    native, parse_descriptor_checked, parse_descriptor_range, parse_descriptor_text, read_scope,
     validate_root,
 };
 use super::property_input::StreamExt;
@@ -105,14 +105,9 @@ fn drive_body<'i>(
         source,
         recovery: recovery.clone(),
     };
-    let mut readmit = CounterStyleDescriptorParser {
-        source,
-        recovery: recovery.clone(),
-    };
     drive_block_items(
         contents,
         &mut grammar,
-        &mut readmit,
         source,
         recovery,
         CssRecoveryAction::DropDescriptor,
@@ -170,16 +165,6 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for CounterStyleDescriptorParser<'_> {
     }
 }
 
-impl<'i> DescriptorGrammar<'i, CssCounterStyleDescriptor> for CounterStyleDescriptorParser<'_> {
-    fn readmit(
-        &mut self,
-        name: &str,
-        text: &DeclarationText,
-    ) -> Result<CssCounterStyleDescriptor, NativeError<'i>> {
-        self.admit(name, text)
-    }
-}
-
 impl CounterStyleDescriptorParser<'_> {
     /// Admits the descriptor named `name` that lies at `text`.
     fn admit<'i>(
@@ -234,10 +219,10 @@ fn parse_occurrence(
     name_origin: &crate::source::CssParsedOrigin,
     descriptor: CssCounterStyleDescriptorKind,
 ) -> Result<CssCounterStyleDescriptor, ParseError<'static, CssError>> {
-    parse_descriptor_text(
+    parse_descriptor_range(
         source_snapshot,
-        text.value_start,
-        text.end,
+        text.value_start..text.value_end(),
+        text.bang(),
         "counter-style",
         descriptor.as_str(),
         Boundary::ValidatedValue,

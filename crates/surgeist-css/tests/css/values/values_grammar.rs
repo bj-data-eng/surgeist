@@ -43,7 +43,7 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
     ));
 
     let components = CssParser::default().parse_block_contents(
-        r#"--stream: token fn([x]) {y} "z"; width: 2px; --bad: one ! two; height: 3px"#,
+        r#"--stream: token fn([x]) {y} "z"; width: 2px; --bad: one ) two; height: 3px"#,
     );
     assert_eq!(components.syntax().len(), 3);
     assert_eq!(
@@ -59,9 +59,11 @@ fn shared_value_grammars_are_typed_with_feature_provenance() {
     let [declaration_value_recovery] = components.diagnostics() else {
         panic!("expected one declaration-value rejection");
     };
+    // `<declaration-value>` admits no unmatched `)`; the bang of the previous
+    // form of this input ends no value and is part of a custom property's.
     assert_eq!(
         declaration_value_recovery.error().code(),
-        CssErrorCode::InvalidDeclarationAnnotation
+        CssErrorCode::UnexpectedToken
     );
     assert_eq!(
         declaration_value_recovery.action(),
