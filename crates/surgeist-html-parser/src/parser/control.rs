@@ -254,6 +254,7 @@ pub(crate) struct ParseControl {
 
 /// A cleanup walk that keeps going after a refusal, so tests can make one of
 /// its steps refuse.
+#[cfg(test)]
 #[derive(Clone, Copy)]
 pub(crate) enum WalkSite {
     /// The credit of each bank the construction owner retires.

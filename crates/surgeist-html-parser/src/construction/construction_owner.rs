@@ -779,12 +779,9 @@ impl ConstructionOwner {
                     Ok(slot) => match slot.take() {
                         Some(ticket) => {
                             let credited = control.retire_construction_allocation(ticket, receipt);
-                            keep_first_step(
-                                control,
-                                WalkSite::ConstructionBank,
-                                &mut refused,
-                                credited,
-                            );
+                            #[cfg(test)]
+                            inject_walk_refusal(control, WalkSite::ConstructionBank, &mut refused);
+                            keep_first(&mut refused, credited);
                         }
                         None => keep_first(&mut refused, Err(latch_registry_row(control))),
                     },

@@ -23,9 +23,11 @@
 
 use crate::bounded::{HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError};
 use crate::keyed::{Table, slots};
+#[cfg(test)]
+use crate::parser::control::WalkSite;
 use crate::parser::control::{
     ControlIdentity, DocumentStringAllocation, FinalReleaseError, OwnedVec, ParseControl,
-    ParseStop, SharedAllocation, StandaloneUnsupported, VectorCapacity, WalkSite, WorkCategory,
+    ParseStop, SharedAllocation, StandaloneUnsupported, VectorCapacity, WorkCategory,
 };
 use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
@@ -2026,23 +2028,13 @@ fn keep_first<E: Into<SessionError>>(refused: &mut Option<SessionError>, result:
         refused.get_or_insert(error.into());
     }
 }
-/// [`keep_first`] for one step of a cleanup walk. Tests can make the step
-/// refuse after it did its work, as a reported refusal would.
-#[cfg(not(test))]
-fn keep_first_step<E: Into<SessionError>>(
-    _control: &mut ParseControl,
-    _site: WalkSite,
-    refused: &mut Option<SessionError>,
-    result: Result<(), E>,
-) {
-    keep_first(refused, result);
-}
+/// Lets a test make one step of a cleanup walk refuse after it did its work, as
+/// a reported refusal would. Call it before [`keep_first`] for that step.
 #[cfg(test)]
-fn keep_first_step<E: Into<SessionError>>(
+fn inject_walk_refusal(
     control: &mut ParseControl,
     site: WalkSite,
     refused: &mut Option<SessionError>,
-    result: Result<(), E>,
 ) {
     if let Some(issued) = control.take_walk_refusal(site) {
         let injected = if issued == 0 {
@@ -2052,7 +2044,6 @@ fn keep_first_step<E: Into<SessionError>>(
         };
         refused.get_or_insert(injected);
     }
-    keep_first(refused, result);
 }
 fn release_logical(
     control: &mut ParseControl,
@@ -9028,17 +9019,25 @@ impl FrozenArena {
         // could refuse, so the owner below can still be retired.
         let mut refused = None;
         let recovered = construction.recovered(control, recovery);
-        keep_first_step(control, WalkSite::FrozenOwner, &mut refused, recovered);
+        #[cfg(test)]
+        inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+        keep_first(&mut refused, recovered);
         if let Some(fragment) = fragment {
             let released = fragment.release(control, &owner);
-            keep_first_step(control, WalkSite::FrozenOwner, &mut refused, released);
+            #[cfg(test)]
+            inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+            keep_first(&mut refused, released);
         }
         if let Some(evidence) = evidence {
             let released = evidence.release(control);
-            keep_first_step(control, WalkSite::FrozenOwner, &mut refused, released);
+            #[cfg(test)]
+            inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+            keep_first(&mut refused, released);
         }
         let released = effects.release(control);
-        keep_first_step(control, WalkSite::FrozenOwner, &mut refused, released);
+        #[cfg(test)]
+        inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+        keep_first(&mut refused, released);
         let released = release_parts(
             control,
             &owner,
@@ -9047,7 +9046,9 @@ impl FrozenArena {
                 payloads,
             },
         );
-        keep_first_step(control, WalkSite::FrozenOwner, &mut refused, released);
+        #[cfg(test)]
+        inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+        keep_first(&mut refused, released);
         refused.map_or(Ok(()), Err)
     }
 }
