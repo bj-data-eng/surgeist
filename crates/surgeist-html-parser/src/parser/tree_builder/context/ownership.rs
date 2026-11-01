@@ -1454,8 +1454,9 @@ mod tests {
         drop(names);
         measured_parts.release().unwrap();
         // One request-authority call, eleven comparisons, their actual fixed
-        // envelopes, then seven request fields/one clear/two joined fields
-        // and one final usage snapshot. Source qualification only polls.
+        // envelopes, then seven request fields, two joined fields and one
+        // final usage snapshot. Source qualification only polls. The parts
+        // move into the join by value, so no option slot is cleared.
         let reads = 2 * size_of::<crate::HtmlFragmentContext>()
             + 2 * size_of::<crate::HtmlSourceId>()
             + 2 * size_of::<crate::HtmlSourceCoordinates>()
@@ -1464,9 +1465,8 @@ mod tests {
             + 2 * size_of::<bool>();
         let moves = size_of::<SealedFragmentConstruction>()
             + size_of::<FragmentRequestParts>()
-            + size_of::<Option<FrozenContextFragmentParts>>()
             + size_of::<ParseUsage>();
-        let tail = 1 + 11 + reads as u64 + effect_qualification + moves as u64 + 11;
+        let tail = 1 + 11 + reads as u64 + effect_qualification + moves as u64 + 10;
         for missing in [0, 1] {
             let mut owner = FragmentInitializationOwner::new(with_limits(
                 literal,

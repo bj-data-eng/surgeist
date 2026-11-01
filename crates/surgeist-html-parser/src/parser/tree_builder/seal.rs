@@ -1112,13 +1112,12 @@ mod tests {
             .resource(HtmlParseResource::WorkCredits)
             .current;
         let bytes = std::mem::size_of::<SealedOrdinaryConstruction>()
-            + std::mem::size_of::<Option<FrozenStandaloneParts>>()
             + std::mem::size_of::<DocumentRequestParts>()
             + std::mem::size_of::<crate::parser::control::ParseUsage>();
         measured.release().unwrap();
         let mut request = Some(HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<!doctype html><p>A&amp;B"),
-            work_limits(before + bytes as u64 + 1 + 5 + 8 - 1),
+            work_limits(before + bytes as u64 + 1 + 5 + 7 - 1),
         ));
         let mut parts = Some(frozen(request.as_ref().unwrap()));
         assert_eq!(
@@ -1135,7 +1134,7 @@ mod tests {
             Err(StandaloneError::Stop(
                 crate::parser::control::ParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
-                    requested_delta: 8,
+                    requested_delta: 7,
                     ..
                 }
             ))
