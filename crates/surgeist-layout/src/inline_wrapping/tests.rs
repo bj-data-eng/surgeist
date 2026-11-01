@@ -59,16 +59,19 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         LayoutInputOf, NodeInputOf,
     };
     let boundary = |kind| {
-        LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-            kind,
-            InlineMetricsOf::from_line_height_and_baseline(
-                crate::InlineBaselineContext::Physical,
-                10.0f64,
-                10.0,
+        LayoutInputOf::inline_boundary(
+            InlineBoundaryInputOf::contribution(
+                kind,
+                InlineMetricsOf::from_line_height_and_baseline(
+                    crate::InlineBaselineContext::Physical,
+                    10.0f64,
+                    10.0,
+                )
+                .unwrap(),
+                InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
-            InlineBoundaryEdgeOf::ZERO,
-        ))
+        )
     };
     let tree = PublicLayoutTreeOf::<f64>::new()
         .children(0, [1, 2, 3, 4])

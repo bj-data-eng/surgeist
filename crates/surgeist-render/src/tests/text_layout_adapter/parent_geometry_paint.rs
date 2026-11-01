@@ -132,10 +132,11 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
     .map(|(control, amount, context)| text::ControlAllocation {
         occurrence: control.clone(),
         strut: None,
-        boundary: Some(
-            text::InlineBoundaryAllocation::box_edge(context, if positive { amount } else { 0.0 })
+        boundary: Some(text::InlineBoundaryAllocation::box_edge(
+            context,
+            text::InlineBoxEdgeComponents::from_f64(0.0, if positive { amount } else { 0.0 }, 0.0)
                 .unwrap(),
-        ),
+        )),
     })
     .collect();
     let mut segments = prepared.source_segments();
@@ -231,7 +232,7 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
             line.control_slots()
                 .find(|slot| slot.control() == *control)
                 .unwrap()
-                .inline_bounds(),
+                .strip_interval(),
             bounds
         );
     }

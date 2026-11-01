@@ -424,6 +424,7 @@ impl Fixture {
                         .unwrap(),
                         edge,
                     )
+                    .unwrap()
                     .with_direction(if rtl {
                         Direction::Rtl
                     } else {

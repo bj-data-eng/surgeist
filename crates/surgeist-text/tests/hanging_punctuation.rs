@@ -652,11 +652,11 @@ fn actual_selected_inline_bp_blocks_only_its_edge_and_is_counted_once() {
         let slots = line.control_slots().collect::<Vec<_>>();
         assert_eq!(slots.len(), 2);
         assert_eq!(
-            slots[0].inline_bounds().1 - slots[0].inline_bounds().0,
+            slots[0].strip_interval().1 - slots[0].strip_interval().0,
             start_bp
         );
         assert_eq!(
-            slots[1].inline_bounds().1 - slots[1].inline_bounds().0,
+            slots[1].strip_interval().1 - slots[1].strip_interval().0,
             end_bp
         );
     }

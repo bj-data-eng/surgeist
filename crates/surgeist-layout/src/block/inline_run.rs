@@ -1013,7 +1013,7 @@ where
                 };
                 let boundary = endpoint
                     .map(|endpoint| {
-                        let advance = endpoint.edge.advance().to_f64();
+                        let advance = endpoint.edge.border_padding_advance().to_f64();
                         let crate::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node) else { unreachable!("an endpoint retains its normalized input"); };
                         let Some(parent_axes) = input.parent_edge_axes() else {
                             return surgeist_text::InlineBoundaryAllocation::contribution(advance)
@@ -1056,8 +1056,8 @@ where
                         };
                         let context = text_binding.expect("the actual Text branch retains its binding").prepared.inline_box_edge_context(owner, parent, side)
                             .map_err(|error| text_run_error(container, error.into()))?;
-                        surgeist_text::InlineBoundaryAllocation::box_edge(context, advance)
-                            .map_err(|error| text_run_error(container, error.into()))
+                        let components = crate::text_layout::edge_components::from_native(endpoint.edge).map_err(|error| text_run_error(container, error.into()))?;
+                        Ok(surgeist_text::InlineBoundaryAllocation::box_edge(context, components))
                     })
                     .transpose()?;
                 Ok(crate::text_layout::run::Control {
@@ -1755,19 +1755,25 @@ where
             .map(|source| (source.control.source_index(), source))
             .collect::<BTreeMap<_, _>>();
         for (child, source_index, _) in control_children {
-            let (position, inline_extent, endpoint) =
+            let (position, inline_extent, endpoint, margin_flow) =
                 if let Some(source) = control_sources.get(&source_index) {
-                    (source.position, source.inline_extent, source.endpoint)
+                    (
+                        source.position,
+                        source.inline_extent,
+                        source.endpoint,
+                        source.margin_flow,
+                    )
                 } else if let Some(source) = nonformatted_controls.get(&source_index) {
                     (
                         InlineSourcePositionOf::Logical(LogicalPointOf::new(
                             source.inline_start,
                             source.block_start,
                         )),
-                        source.control.edge().advance(),
+                        source.control.edge().border_padding_advance(),
                         Some(crate::inline::InlineEndpointOf::from_control(
                             source.control,
                         )),
+                        None,
                     )
                 } else {
                     continue;
@@ -1777,17 +1783,78 @@ where
             let (border, padding) = endpoint.map_or((Edges::ZERO, Edges::ZERO), |endpoint| {
                 endpoint.physical_components()
             });
+            let location = shifted_control_locations
+                .get(&source_index)
+                .copied()
+                .unwrap_or_else(|| project_source(position, logical_size));
+            if let Some((before_flow, after_flow)) = margin_flow {
+                let InlineSourcePositionOf::Logical(point) = position else {
+                    unreachable!("numeric margin flow has the same logical phase as its strip");
+                };
+                let endpoint = endpoint.expect("numeric margin belongs to an endpoint");
+                let flow_point = |inline| {
+                    project_source(
+                        InlineSourcePositionOf::Logical(LogicalPointOf::new(inline, point.block)),
+                        LogicalSizeOf::new(S::ZERO, S::ZERO),
+                    )
+                };
+                let before_flow = flow_point(before_flow);
+                let after_flow = flow_point(after_flow);
+                let positive =
+                    FlowAxes::new(constants.flow_axes.writing_mode(), crate::Direction::Ltr)
+                        .inline_start();
+                let side = match endpoint.kind {
+                    crate::InlineBoundaryKind::Start => endpoint.axes.inline_start(),
+                    crate::InlineBoundaryKind::End => endpoint.axes.inline_end(),
+                };
+                let (before, after) = match (positive, side == positive) {
+                    (crate::PhysicalSide::Left, true) => (before_flow.x, location.x),
+                    (crate::PhysicalSide::Left, false) => (location.x + size.width, after_flow.x),
+                    (crate::PhysicalSide::Top, true) => (before_flow.y, location.y),
+                    (crate::PhysicalSide::Top, false) => (location.y + size.height, after_flow.y),
+                    (crate::PhysicalSide::Bottom, true) => {
+                        (before_flow.y, location.y + size.height)
+                    }
+                    (crate::PhysicalSide::Bottom, false) => (location.y, after_flow.y),
+                    _ => unreachable!("the forward native inline basis is left, top or bottom"),
+                };
+                if !before.is_finite() || !after.is_finite() {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(child),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::TextNumeric {
+                            value: if !after.is_finite() {
+                                after.to_f64()
+                            } else {
+                                before.to_f64()
+                            },
+                            reason: crate::LayoutTextNumericError::NonFinite,
+                        },
+                    ));
+                }
+                if before == after {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(child),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::TextNumeric {
+                            value: endpoint.edge.margin().to_f64(),
+                            reason: crate::LayoutTextNumericError::NonZeroLost,
+                        },
+                    ));
+                }
+            }
             tree.set_unrounded(
                 child,
                 NodeOutputOf::<S> {
                     source_index: crate::SourceIndex::new(source_index),
-                    location: shifted_control_locations
-                        .get(&source_index)
-                        .copied()
-                        .unwrap_or_else(|| project_source(position, logical_size)),
+                    location,
                     size,
                     border,
                     padding,
+                    margin: endpoint.map_or(
+                        Edges::ZERO,
+                        crate::inline::InlineEndpointOf::physical_margin,
+                    ),
                     ..NodeOutputOf::new()
                 },
             );

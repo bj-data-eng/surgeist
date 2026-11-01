@@ -384,7 +384,7 @@ fn selected_endpoints_contribute_once_to_flow_prefix_and_exact_event_selection()
     }
     assert_eq!(
         line.control_slots()
-            .map(|control| control.inline_bounds())
+            .map(|control| control.strip_interval())
             .collect::<Vec<_>>(),
         [(10.0, 15.0), (25.0, 33.0)]
     );

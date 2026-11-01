@@ -33,11 +33,11 @@ pub use grid::{
 };
 pub use inline::{
     AtomicInlineParticipation, BaselineSource, BlockGeneration, InlineBaselineContext,
-    InlineBaselineError, InlineBoundaryEdge, InlineBoundaryEdgeOf, InlineBoundaryInput,
-    InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics,
-    InlineMetricsError, InlineMetricsOf, LineBreakDisplay, LineBreakInput, LineBreakInputOf,
-    TextAlign, TextAlignLast, TextIndent, TextIndentOf, TextJustification, TextWrapStyle,
-    VerticalAlign, VerticalAlignOf, WritingMode,
+    InlineBaselineError, InlineBoundaryEdge, InlineBoundaryEdgeError, InlineBoundaryEdgeErrorOf,
+    InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind,
+    InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf, LineBreakDisplay,
+    LineBreakInput, LineBreakInputOf, TextAlign, TextAlignLast, TextIndent, TextIndentOf,
+    TextJustification, TextWrapStyle, VerticalAlign, VerticalAlignOf, WritingMode,
 };
 pub use scroll::{
     ComputedOverflow, ComputedOverflowError, Overflow, OverflowClipBox, OverflowClipMargin,

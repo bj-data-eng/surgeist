@@ -100,7 +100,7 @@ fn native_tree<S: LayoutScalar>(
         };
         // All dimensions are genuine nonnegative used border components.
         // No margin, manufactured strut or change to the source bidi is involved.
-        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(amount), S::ZERO).unwrap();
+        let edge = InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(amount), S::ZERO).unwrap();
         let metrics = InlineMetricsOf::try_new(
             InlineBaselineContext::Physical,
             S::from_f64(8.0),
@@ -122,7 +122,7 @@ fn native_tree<S: LayoutScalar>(
                 }),
             )
         } else {
-            InlineBoundaryInputOf::contribution(kind, metrics, edge)
+            InlineBoundaryInputOf::contribution(kind, metrics, edge).unwrap()
         }
         .with_writing_mode(WritingMode::HorizontalTb)
         .with_direction(direction(formatter_rtl));
@@ -292,7 +292,7 @@ fn assert_strip<S: LayoutScalar>(
         .control_slots()
         .find(|slot| slot.control() == occurrence)
         .unwrap();
-    assert_eq!(slot.inline_bounds(), (start, end));
+    assert_eq!(slot.strip_interval(), (start, end));
     let fragments: Vec<_> = batch
         .unrounded_inline_fragments()
         .iter()
@@ -376,7 +376,7 @@ fn nested<S: LayoutScalar>(rtl: bool, captured_child: bool) {
             line.control_slots()
                 .find(|slot| slot.control() == occurrence)
                 .unwrap()
-                .inline_bounds()
+                .strip_interval()
         };
         assert_eq!(bounds(&replay), bounds(line));
     }
@@ -528,3 +528,6 @@ mod source_ranges;
 
 #[path = "parent_geometry_capture_admission.rs"]
 mod capture_admission;
+
+#[path = "parent_geometry/signed_tab.rs"]
+mod signed_tab;

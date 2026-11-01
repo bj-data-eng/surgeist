@@ -797,6 +797,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         .unwrap(),
         crate::InlineBoundaryEdgeOf::ZERO,
     )
+    .unwrap()
     .with_writing_mode(WritingMode::HorizontalTb)
     .with_direction(direction);
     let root = NodeInputOf {
@@ -1237,7 +1238,8 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             )
             .unwrap(),
             crate::InlineBoundaryEdgeOf::ZERO,
-        );
+        )
+        .unwrap();
         let line_break = LineBreakInputOf::new().with_metrics(
             InlineMetricsOf::from_ascent_descent(
                 crate::InlineBaselineContext::Physical,

@@ -252,8 +252,8 @@ fn captured_inline_endpoints_stay_exterior_to_their_a_cell() {
     assert_eq!(slots.len(), 2);
     assert_eq!(slots[0].control(), controls[0]);
     assert_eq!(slots[1].control(), controls[1]);
-    assert_eq!(slots[0].inline_bounds(), (0.0, 2.0));
-    assert_eq!(slots[1].inline_bounds(), (12.0, 15.0));
+    assert_eq!(slots[0].strip_interval(), (0.0, 2.0));
+    assert_eq!(slots[1].strip_interval(), (12.0, 15.0));
     let layout = Layout::from_finalized_lines(PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,
@@ -386,7 +386,7 @@ fn nested_empty_inline_endpoint_pairs_do_not_split_a_cross_box_egc_or_create_cel
     assert_eq!(slots.len(), 4);
     for (slot, control) in slots.iter().zip(&controls) {
         assert_eq!(slot.control(), *control);
-        let (start, end) = slot.inline_bounds();
+        let (start, end) = slot.strip_interval();
         assert_eq!(start, end); // Coincidence does not erase distinct captured pairs.
     }
     let glyphs = line

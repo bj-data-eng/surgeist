@@ -572,16 +572,22 @@ fn execute(
             ShapedItem::Anchor { unit, .. } => {
                 let advance =
                     crate::protocol::boundary::advance(selected.presentation_input(), unit);
-                let inline_end = add(
-                    "inline boundary end",
-                    TextNumericPhase::Finalization,
+                let executed = crate::protocol::boundary::execute(
+                    selected.presentation_input(),
+                    unit,
                     pen,
-                    advance,
+                    TextNumericPhase::Finalization,
                 )?;
+                let inline_end = executed.flow.1;
+                let component_edge =
+                    crate::protocol::boundary::allocation(selected.presentation_input(), unit)
+                        .is_some_and(|edge| edge.box_components().is_some());
                 let endpoint_offset = endpoint_offsets
                     .as_ref()
                     .and_then(|geometry| geometry.offsets[unit]);
-                let slot = if let Some(offset) = endpoint_offset {
+                let slot = if component_edge {
+                    executed.strip.0
+                } else if let Some(offset) = endpoint_offset {
                     add(
                         "shared unit endpoint origin",
                         TextNumericPhase::Finalization,
@@ -591,7 +597,9 @@ fn execute(
                 } else {
                     pen
                 };
-                let slot_end = if endpoint_offset.is_some() {
+                let slot_end = if component_edge {
+                    executed.strip.1
+                } else if endpoint_offset.is_some() {
                     add(
                         "shared unit endpoint end",
                         TextNumericPhase::Finalization,
@@ -646,7 +654,17 @@ fn execute(
                         unit,
                         slot: Point::new(slot, slot_y),
                         level,
-                        inline_end: slot_end,
+                        geometry: if component_edge {
+                            AnchorGeometry::BoxEdge {
+                                flow_start: executed.flow.0,
+                                flow_end: executed.flow.1,
+                                strip_end: slot_end,
+                            }
+                        } else {
+                            AnchorGeometry::Ordinary {
+                                inline_end: slot_end,
+                            }
+                        },
                     },
                 )?;
                 pen = inline_end;
@@ -1250,7 +1268,7 @@ fn execute(
         let unit = &selected.presentation.units[anchor.unit];
         let rect = data.cell_rect(
             anchor.slot.x,
-            crate::protocol::boundary::advance(selected.presentation_input(), anchor.unit),
+            anchor.strip_interval().1 - anchor.strip_interval().0,
             anchor.reference,
         );
         use crate::protocol::{paragraph::FragmentOwner, prepared::PresentationUnitKind};
@@ -1317,7 +1335,7 @@ fn execute(
             }
             FinalizedVisualItem::Anchor(index) => {
                 let item = &data.anchors[index];
-                (item.slot.x, item.inline_end)
+                item.strip_interval()
             }
             FinalizedVisualItem::InlineBox(index) => {
                 let item = &data.boxes[index];
@@ -2118,9 +2136,12 @@ fn install_out_of_flow(
     }
     for anchor in &data.anchors {
         slots[anchor.unit] = Some(if anchor.level & 1 == 0 {
-            (anchor.slot.x, anchor.inline_end)
+            anchor.flow_interval()
         } else {
-            (anchor.inline_end, anchor.slot.x)
+            {
+                let (start, end) = anchor.flow_interval();
+                (end, start)
+            }
         });
     }
     for item in &data.boxes {
@@ -3033,7 +3054,9 @@ fn classify_trailing(
     for item in shaped.items.iter().rev() {
         match *item {
             ShapedItem::Anchor { unit } => {
-                if crate::protocol::boundary::advance(selected.presentation_input(), unit) != 0.0 {
+                if crate::protocol::boundary::allocation(selected.presentation_input(), unit)
+                    .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
+                {
                     break;
                 }
                 continue;

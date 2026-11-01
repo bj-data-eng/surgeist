@@ -163,12 +163,15 @@ fn continuation(
     for (node, kind) in [(1, InlineBoundaryKind::Start), (5, InlineBoundaryKind::End)] {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                kind,
-                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                    .unwrap(),
-                crate::InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    kind,
+                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        .unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         );
     }
     let bindings = prepared
@@ -609,16 +612,19 @@ fn segmented_fixture(
     for &node in &boundary_nodes {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                if node <= 101 {
-                    InlineBoundaryKind::Start
-                } else {
-                    InlineBoundaryKind::End
-                },
-                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                    .unwrap(),
-                crate::InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    if node <= 101 {
+                        InlineBoundaryKind::Start
+                    } else {
+                        InlineBoundaryKind::End
+                    },
+                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        .unwrap(),
+                    crate::InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         );
     }
     let mut source_node = origin_nodes.into_iter();
@@ -913,12 +919,15 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
     ] {
         tree.insert_input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                kind,
-                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                    .unwrap(),
-                InlineBoundaryEdgeOf::try_new(border, padding).unwrap(),
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    kind,
+                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        .unwrap(),
+                    InlineBoundaryEdgeOf::try_new(0.0, border, padding).unwrap(),
+                )
+                .unwrap(),
+            ),
         );
     }
     let positive = compute(&tree);

@@ -197,16 +197,19 @@ fn fixture<S: l::LayoutScalar>() -> (
         (1, l::InlineBoundaryKind::Start),
         (5, l::InlineBoundaryKind::End),
     ] {
-        inputs[node] = l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::contribution(
-            kind,
-            l::InlineMetricsOf::try_new(
-                surgeist_layout::InlineBaselineContext::Physical,
-                S::from_f64(8.0),
-                S::from_f64(10.0),
+        inputs[node] = l::LayoutInputOf::inline_boundary(
+            l::InlineBoundaryInputOf::contribution(
+                kind,
+                l::InlineMetricsOf::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    S::from_f64(8.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
+                l::InlineBoundaryEdgeOf::ZERO,
             )
             .unwrap(),
-            l::InlineBoundaryEdgeOf::ZERO,
-        ));
+        );
     }
     let bindings = capture
         .paragraphs()

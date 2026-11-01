@@ -481,51 +481,118 @@ pub enum InlineBoundaryKind {
     End,
 }
 
-/// Actual used border and padding on this endpoint's own inline side.
-/// Components and their sum are finite, nonnegative Layout coordinates.
+/// Intrinsic component, arithmetic or operation-role refusal for one inline edge.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum InlineBoundaryEdgeErrorOf<S: LayoutScalar = DefaultScalar> {
+    InvalidMargin(crate::FiniteScalarErrorOf<S>),
+    InvalidBorder(crate::NonNegativeFiniteScalarErrorOf<S>),
+    InvalidPadding(crate::NonNegativeFiniteScalarErrorOf<S>),
+    InvalidBorderPaddingAdvance(crate::FiniteScalarErrorOf<S>),
+    InvalidFlowAdvance(crate::FiniteScalarErrorOf<S>),
+    LostMargin { value: S },
+    LostBorderPaddingAdvance { value: S },
+    MarginRequiresBoxEdge { margin: S },
+}
+pub type InlineBoundaryEdgeError = InlineBoundaryEdgeErrorOf<DefaultScalar>;
+impl<S: LayoutScalar> core::fmt::Display for InlineBoundaryEdgeErrorOf<S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::InvalidMargin(_) => "inline margin must be finite",
+            Self::InvalidBorder(_) => "inline border must be finite and nonnegative",
+            Self::InvalidPadding(_) => "inline padding must be finite and nonnegative",
+            Self::InvalidBorderPaddingAdvance(_) => "inline border/padding sum must be finite",
+            Self::InvalidFlowAdvance(_) => "inline signed flow must be finite",
+            Self::LostMargin { .. } => "inline signed flow lost its nonzero margin",
+            Self::LostBorderPaddingAdvance { .. } => {
+                "inline signed flow lost its nonzero strip extent"
+            }
+            Self::MarginRequiresBoxEdge { .. } => {
+                "a nonzero inline margin requires a BoxEdge operation"
+            }
+        })
+    }
+}
+impl<S: LayoutScalar> std::error::Error for InlineBoundaryEdgeErrorOf<S> {}
+
+/// Actual used signed margin and nonnegative border/padding on one inline side.
+/// Both sums are computed and validated in this computation's native scalar lane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InlineBoundaryEdgeOf<S: LayoutScalar = DefaultScalar> {
+    margin: S,
     border: S,
     padding: S,
 }
-
 pub type InlineBoundaryEdge = InlineBoundaryEdgeOf<DefaultScalar>;
-
 impl<S: LayoutScalar> InlineBoundaryEdgeOf<S> {
     /// An affirmative used zero edge, rather than missing geometry.
     pub const ZERO: Self = Self {
+        margin: S::ZERO,
         border: S::ZERO,
         padding: S::ZERO,
     };
-
-    /// Validates the used components and their sum in the actual scalar lane.
-    ///
-    /// # Errors
-    /// Rejects negative/nonfinite components or a nonfinite component sum.
-    pub fn try_new(
-        border: S,
-        padding: S,
-    ) -> Result<Self, crate::NonNegativeFiniteScalarErrorOf<S>> {
-        let border = crate::NonNegativeFiniteOf::new(border)?.get();
-        let padding = crate::NonNegativeFiniteOf::new(padding)?.get();
-        crate::NonNegativeFiniteOf::new(border + padding)?;
-        Ok(Self { border, padding })
+    /// Validate components and native-lane flow without tightening ordinary BP rounding.
+    pub fn try_new(margin: S, border: S, padding: S) -> Result<Self, InlineBoundaryEdgeErrorOf<S>> {
+        use InlineBoundaryEdgeErrorOf as E;
+        if !margin.is_finite() {
+            return Err(E::InvalidMargin(crate::FiniteScalarErrorOf::NonFinite {
+                value: margin,
+            }));
+        }
+        let margin = crate::scalar::canonical_zero(margin);
+        let border = crate::NonNegativeFiniteOf::new(border)
+            .map_err(E::InvalidBorder)?
+            .get();
+        let padding = crate::NonNegativeFiniteOf::new(padding)
+            .map_err(E::InvalidPadding)?
+            .get();
+        let extent = border + padding;
+        if !extent.is_finite() {
+            return Err(E::InvalidBorderPaddingAdvance(
+                crate::FiniteScalarErrorOf::NonFinite { value: extent },
+            ));
+        }
+        let flow = margin + extent;
+        if !flow.is_finite() {
+            return Err(E::InvalidFlowAdvance(
+                crate::FiniteScalarErrorOf::NonFinite { value: flow },
+            ));
+        }
+        if margin != S::ZERO && flow == extent {
+            return Err(E::LostMargin { value: margin });
+        }
+        if extent != S::ZERO && flow == margin {
+            return Err(E::LostBorderPaddingAdvance { value: extent });
+        }
+        Ok(Self {
+            margin,
+            border,
+            padding,
+        })
     }
-
+    #[must_use]
+    pub const fn margin(self) -> S {
+        self.margin
+    }
     #[must_use]
     pub const fn border(self) -> S {
         self.border
     }
-
     #[must_use]
     pub const fn padding(self) -> S {
         self.padding
     }
-
-    /// The constructor-proved sum in S; consumers lower this result once.
+    /// The ordinary constructor-proved BP sum in S; lower this result once.
     #[must_use]
-    pub fn advance(self) -> S {
+    pub fn border_padding_advance(self) -> S {
         self.border + self.padding
+    }
+    /// Signed native-lane flow. Exact cancellation is a valid zero result.
+    #[must_use]
+    pub fn flow_advance(self) -> S {
+        crate::scalar::canonical_zero(self.margin + self.border_padding_advance())
+    }
+    pub(crate) fn participates(self) -> bool {
+        self.margin != S::ZERO || self.border != S::ZERO || self.padding != S::ZERO
     }
 }
 
@@ -552,12 +619,17 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
     /// Contribute actual border/padding advance and metrics without requesting
     /// paired physical box geometry. Unpaired and zero-valued controls remain valid.
     #[must_use]
-    pub const fn contribution(
+    pub fn contribution(
         kind: InlineBoundaryKind,
         metrics: InlineMetricsOf<S>,
         edge: InlineBoundaryEdgeOf<S>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, InlineBoundaryEdgeErrorOf<S>> {
+        if edge.margin() != S::ZERO {
+            return Err(InlineBoundaryEdgeErrorOf::MarginRequiresBoxEdge {
+                margin: edge.margin(),
+            });
+        }
+        Ok(Self {
             kind,
             writing_mode: WritingMode::HorizontalTb,
             direction: Direction::Ltr,
@@ -565,7 +637,7 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
             metrics,
             edge,
             operation: InlineBoundaryOperation::Contribution,
-        }
+        })
     }
 
     /// Request physical box-edge placement with the actual immediate parent's
@@ -577,9 +649,15 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
         edge: InlineBoundaryEdgeOf<S>,
         parent_axes: crate::FlowAxes,
     ) -> Self {
-        let mut value = Self::contribution(kind, metrics, edge);
-        value.operation = InlineBoundaryOperation::BoxEdge { parent_axes };
-        value
+        Self {
+            kind,
+            writing_mode: WritingMode::HorizontalTb,
+            direction: Direction::Ltr,
+            vertical_align: VerticalAlignOf::Baseline,
+            metrics,
+            edge,
+            operation: InlineBoundaryOperation::BoxEdge { parent_axes },
+        }
     }
 
     /// The actual immediate parent basis for this explicit BoxEdge operation.
@@ -642,3 +720,7 @@ impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
         self.metrics
     }
 }
+
+#[cfg(test)]
+#[path = "inline/signed_components.rs"]
+mod signed_components;

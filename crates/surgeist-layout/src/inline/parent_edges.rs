@@ -183,3 +183,97 @@ pub(super) fn reorder<S: LayoutScalar>(
     }
     Ok(())
 }
+
+/// Execute in the existing native logical S frame. Only the new nonzero
+/// margin recipients add loss checks; ordinary BP rounding is preserved.
+pub(super) fn execute<S: LayoutScalar>(
+    control: super::InlineBoundaryControlOf<S>,
+    incoming: S,
+    axes: FlowAxes,
+) -> Result<(super::ResolvedInlineSlot<S>, S), NumericWrappingError> {
+    let edge = control.edge();
+    let margin = edge.margin();
+    let extent = edge.border_padding_advance();
+    let flow = edge.flow_advance();
+    let rtl = axes.direction() == crate::Direction::Rtl;
+    let end = if rtl {
+        incoming - flow
+    } else {
+        incoming + flow
+    };
+    if margin == S::ZERO {
+        return Ok((
+            super::ResolvedInlineSlot {
+                inline_start: if rtl { end } else { incoming },
+                margin_flow: None,
+            },
+            end,
+        ));
+    }
+    let check = |value: S| {
+        if value.is_finite() {
+            Ok(value)
+        } else {
+            Err(NumericWrappingError::Geometry {
+                value: value.to_f64(),
+                reason: crate::LayoutTextNumericError::NonFinite,
+            })
+        }
+    };
+    check(end)?;
+    if flow != S::ZERO && end == incoming {
+        return Err(NumericWrappingError::Geometry {
+            value: flow.to_f64(),
+            reason: crate::LayoutTextNumericError::NonZeroLost,
+        });
+    }
+    let positive = FlowAxes::new(axes.writing_mode(), crate::Direction::Ltr).inline_start();
+    let parent = control
+        .parent_edge_axes()
+        .expect("explicit native box edge retains parent basis");
+    let side = match control.kind() {
+        crate::InlineBoundaryKind::Start => parent.inline_start(),
+        crate::InlineBoundaryKind::End => parent.inline_end(),
+    };
+    let left = side == positive;
+    let start = if rtl {
+        let before_strip_end = if left {
+            check(incoming - margin)?
+        } else {
+            incoming
+        };
+        check(before_strip_end - extent)?
+    } else {
+        let start = if left {
+            check(incoming + margin)?
+        } else {
+            incoming
+        };
+        check(start + extent)?;
+        start
+    };
+    let collapsed = if left {
+        if rtl {
+            incoming == check(start + extent)?
+        } else {
+            incoming == start
+        }
+    } else if rtl {
+        start == end
+    } else {
+        check(start + extent)? == end
+    };
+    if collapsed {
+        return Err(NumericWrappingError::Geometry {
+            value: margin.to_f64(),
+            reason: crate::LayoutTextNumericError::NonZeroLost,
+        });
+    }
+    Ok((
+        super::ResolvedInlineSlot {
+            inline_start: start,
+            margin_flow: Some((incoming, end)),
+        },
+        end,
+    ))
+}

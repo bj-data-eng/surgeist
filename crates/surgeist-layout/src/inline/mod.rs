@@ -156,6 +156,8 @@ pub(super) struct InlineControlSourceOf<S: LayoutScalar = DefaultScalar> {
     pub position: InlineSourcePositionOf<S>,
     pub inline_extent: S,
     pub endpoint: Option<InlineEndpointOf<S>>,
+    /// Present only for an executed numeric margin, in the same logical frame.
+    pub margin_flow: Option<(S, S)>,
     pub line_index: usize,
     pub visual_index: Option<usize>,
 }
@@ -189,6 +191,18 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
                 .unwrap_or(control.flow().flow_axes),
             edge: control.edge(),
         }
+    }
+
+    pub(super) fn physical_margin(self) -> Edges<S> {
+        let logical = match self.kind {
+            InlineBoundaryKind::Start => {
+                crate::geometry::LogicalEdgesOf::new(self.edge.margin(), S::ZERO, S::ZERO, S::ZERO)
+            }
+            InlineBoundaryKind::End => {
+                crate::geometry::LogicalEdgesOf::new(S::ZERO, self.edge.margin(), S::ZERO, S::ZERO)
+            }
+        };
+        self.axes.physical_edges(logical)
     }
 
     pub(super) fn physical_components(self) -> (Edges<S>, Edges<S>) {
@@ -667,9 +681,7 @@ impl<S: LayoutScalar> MixedInlineParticipantOf<S> {
     fn has_in_flow_content(self) -> bool {
         match self {
             Self::Atomic { .. } => true,
-            Self::Boundary(control) => {
-                control.edge().border() != S::ZERO || control.edge().padding() != S::ZERO
-            }
+            Self::Boundary(control) => control.edge().participates(),
             Self::ForcedLineBreak(_) => false,
         }
     }
@@ -688,7 +700,7 @@ impl<S: LayoutScalar> MixedInlineParticipantOf<S> {
                 flow_axes.logical_size(item.size).inline + margin.inline_sum()
             }
             Self::ForcedLineBreak(_) => S::ZERO,
-            Self::Boundary(control) => control.edge().advance(),
+            Self::Boundary(control) => control.edge().flow_advance(),
         }
     }
 
@@ -2182,6 +2194,12 @@ fn resolved_float_terminal_block_extent<S: LayoutScalar>(
     }
 }
 
+#[derive(Clone, Copy)]
+struct ResolvedInlineSlot<S: LayoutScalar> {
+    inline_start: S,
+    margin_flow: Option<(S, S)>,
+}
+
 fn resolved_inline_unit_slots<S: LayoutScalar>(
     line: &SelectedInlineLineOf<S>,
     supplied: &[SuppliedInlineParticipant],
@@ -2190,7 +2208,8 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     direction: Direction,
     insets: surgeist_text::LineAlignmentInsets,
     wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
-) -> Result<(S, Vec<usize>, Vec<S>), crate::inline_wrapping::NumericWrappingError> {
+) -> Result<(S, Vec<usize>, Vec<ResolvedInlineSlot<S>>), crate::inline_wrapping::NumericWrappingError>
+{
     let line_inline_start =
         selected_line_inline_start(line, flow_axes, text_align, direction, insets)?;
     let mut order = vec![0; line.units.len()];
@@ -2199,7 +2218,13 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
         .expect("selected descriptor range has exactly one slot per selected unit");
     parent_edges::reorder(line, flow_axes, wrapping, &mut order)?;
     let mut visual_indices = vec![0; line.units.len()];
-    let mut inline_starts = vec![S::ZERO; line.units.len()];
+    let mut inline_starts = vec![
+        ResolvedInlineSlot {
+            inline_start: S::ZERO,
+            margin_flow: None
+        };
+        line.units.len()
+    ];
     for (visual_index, &source_index) in order.iter().enumerate() {
         visual_indices[source_index] = visual_index;
     }
@@ -2219,12 +2244,20 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
         } else {
             selected.participant.inline_advance(flow_axes)
         };
-        if rtl_flow {
-            inline_start = inline_start - selected_inline_extent;
-        }
-        inline_starts[source_index] = inline_start;
-        if !rtl_flow {
-            inline_start = inline_start + selected_inline_extent;
+        if let MixedInlineParticipantOf::Boundary(control) = selected.participant
+            && control.parent_edge_axes().is_some()
+        {
+            let (slot, next) = parent_edges::execute(control, inline_start, flow_axes)?;
+            inline_starts[source_index] = slot;
+            inline_start = next;
+        } else {
+            if rtl_flow {
+                inline_start = inline_start - selected_inline_extent;
+            }
+            inline_starts[source_index].inline_start = inline_start;
+            if !rtl_flow {
+                inline_start = inline_start + selected_inline_extent;
+            }
         }
     }
     Ok((line_inline_start, visual_indices, inline_starts))
@@ -3386,7 +3419,7 @@ where
                 };
                 nonformatted_controls.push(NonFormattedInlineControlOf {
                     control,
-                    inline_start: inline_starts[index],
+                    inline_start: inline_starts[index].inline_start,
                     block_start: line.band.block_start,
                 });
             }
@@ -3460,7 +3493,7 @@ where
         post_line_clear_intents.push(line.post_line_clear_intent);
         line_bands.push(line.band);
         for (source_index, selected) in line.units.into_iter().enumerate() {
-            let inline_start = inline_starts[source_index];
+            let inline_start = inline_starts[source_index].inline_start;
             match selected.participant {
                 MixedInlineParticipantOf::Atomic { item, .. } => {
                     let logical_margin = input.flow_axes.logical_edges(item.margin);
@@ -3527,8 +3560,9 @@ where
                             inline_start,
                             control_block,
                         )),
-                        inline_extent: control.edge().advance(),
+                        inline_extent: control.edge().border_padding_advance(),
                         endpoint: Some(InlineEndpointOf::from_control(control)),
+                        margin_flow: inline_starts[source_index].margin_flow,
                         line_index,
                         visual_index: Some(visual_indices[source_index]),
                     });
@@ -3556,6 +3590,7 @@ where
                 )),
                 inline_extent: S::ZERO,
                 endpoint: None,
+                margin_flow: None,
                 line_index,
                 visual_index: None,
             });

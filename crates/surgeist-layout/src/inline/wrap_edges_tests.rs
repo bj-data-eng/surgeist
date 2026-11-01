@@ -100,11 +100,12 @@ impl<S: LayoutScalar> Fixture<S> {
         });
     }
     fn boundary(&mut self, node: u32, kind: InlineBoundaryKind, advance: f64) {
-        let edge = InlineBoundaryEdgeOf::try_new(n(advance), S::ZERO).unwrap();
+        let edge = InlineBoundaryEdgeOf::try_new(S::ZERO, n(advance), S::ZERO).unwrap();
         self.tree.insert_input(
             node,
             LayoutInputOf::inline_boundary(
                 InlineBoundaryInputOf::contribution(kind, metrics(), edge)
+                    .unwrap()
                     .with_direction(self.direction),
             ),
         );

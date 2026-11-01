@@ -704,6 +704,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                             top_metrics,
                             crate::InlineBoundaryEdgeOf::ZERO,
                         )
+                        .unwrap()
                         .with_vertical_align(VerticalAlignOf::Top),
                     ),
                     NodeInputOf::non_box(),
@@ -716,6 +717,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
                             bottom_metrics,
                             crate::InlineBoundaryEdgeOf::ZERO,
                         )
+                        .unwrap()
                         .with_vertical_align(VerticalAlignOf::Bottom),
                     ),
                     NodeInputOf::non_box(),
@@ -850,11 +852,14 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
                 ),
                 (
                     3,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        InlineBoundaryKind::Start,
-                        boundary_metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::Start,
+                            boundary_metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
                 (4, paragraph.text_input(4), NodeInputOf::non_box()),
@@ -1098,11 +1103,14 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
         let only_boundary = fri06_c03_mixed_batch(
             vec![(
                 1,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                    InlineBoundaryKind::Start,
-                    metrics,
-                    crate::InlineBoundaryEdgeOf::ZERO,
-                )),
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        InlineBoundaryKind::Start,
+                        metrics,
+                        crate::InlineBoundaryEdgeOf::ZERO,
+                    )
+                    .unwrap(),
+                ),
                 NodeInputOf::non_box(),
             )],
             AvailableOf::MAX_CONTENT,
@@ -1117,20 +1125,26 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             vec![
                 (
                     1,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        InlineBoundaryKind::Start,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::Start,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
                 (
                     2,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -1153,21 +1167,27 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             vec![
                 (
                     1,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        InlineBoundaryKind::Start,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::Start,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
                 text(),
                 (
                     3,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -1301,11 +1321,14 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 atomic(3, 10.0, 10.0, InlineBreakOpportunity::Prohibited),
                 (
                     4,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -1349,11 +1372,14 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 atomic(3, 20.0, 10.0, InlineBreakOpportunity::Prohibited),
                 (
                     4,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -1389,11 +1415,14 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                 atomic(4, 30.0, 10.0, InlineBreakOpportunity::Prohibited),
                 (
                     5,
-                    LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                        InlineBoundaryKind::End,
-                        metrics,
-                        crate::InlineBoundaryEdgeOf::ZERO,
-                    )),
+                    LayoutInputOf::inline_boundary(
+                        InlineBoundaryInputOf::contribution(
+                            InlineBoundaryKind::End,
+                            metrics,
+                            crate::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .unwrap(),
+                    ),
                     NodeInputOf::non_box(),
                 ),
             ],
@@ -3187,7 +3216,8 @@ fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
         )
         .unwrap(),
         crate::InlineBoundaryEdgeOf::ZERO,
-    );
+    )
+    .unwrap();
     let mut children = vec![
         (3, paragraph.text_input(3), NodeInputOf::non_box()),
         (
@@ -5607,11 +5637,14 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
         .insert(2, LayoutInput::box_input(NodeInput::default()));
     tree.inputs.insert(
         3,
-        LayoutInput::inline_boundary(InlineBoundaryInput::contribution(
-            InlineBoundaryKind::Start,
-            metrics,
-            crate::InlineBoundaryEdgeOf::ZERO,
-        )),
+        LayoutInput::inline_boundary(
+            InlineBoundaryInput::contribution(
+                InlineBoundaryKind::Start,
+                metrics,
+                crate::InlineBoundaryEdgeOf::ZERO,
+            )
+            .unwrap(),
+        ),
     );
     tree.caches.insert(1, Cache::new());
     tree.caches.insert(2, Cache::new());

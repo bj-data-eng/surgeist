@@ -2362,7 +2362,8 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
                 mr02_atomic(2, 10.0, 10.0, 8.0, 0, InlineBreakOpportunity::Prohibited),
             ]
         };
-        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap();
+        let edge =
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(3.0), S::from_f64(5.0)).unwrap();
         for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
             let report =
                 layout_mixed_inline_run(mr02_input(available, participants(edge))).unwrap();
@@ -2395,7 +2396,7 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
             assert_eq!(report.line_bands[0].block_start, S::from_f64(expected_y));
             assert_eq!(
                 crate::inline::expect_logical_position(report.atomics[1].position).inline,
-                S::from_f64(10.0) + edge.advance()
+                S::from_f64(10.0) + edge.flow_advance()
             );
         }
     }

@@ -36,24 +36,27 @@ fn tree<S: LayoutScalar>(
         let input = if row.node == 22 {
             LayoutInputOf::text_control(TextControlParticipation::new(row.occurrence.clone()))
         } else {
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                if row.node == 20 {
-                    InlineBoundaryKind::Start
-                } else {
-                    InlineBoundaryKind::End
-                },
-                InlineMetricsOf::try_new(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(8.0),
-                    S::from_f64(10.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    if row.node == 20 {
+                        InlineBoundaryKind::Start
+                    } else {
+                        InlineBoundaryKind::End
+                    },
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
+                    if row.node == 20 {
+                        start
+                    } else {
+                        InlineBoundaryEdgeOf::ZERO
+                    },
                 )
                 .unwrap(),
-                if row.node == 20 {
-                    start
-                } else {
-                    InlineBoundaryEdgeOf::ZERO
-                },
-            ))
+            )
         };
         tree.inputs.insert(row.node, input);
     }
@@ -93,19 +96,23 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         assert_eq!(warm.unrounded_entries(), cold.unrounded_entries());
         assert_eq!(first(&warm).selected_line().request(), &zero_request);
         warm.apply_to(&mut actual).unwrap();
-        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::from_f64(3.0)).unwrap();
+        let edge =
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::from_f64(3.0)).unwrap();
         actual.inputs.insert(
             20,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::Start,
-                InlineMetricsOf::try_new(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(8.0),
-                    S::from_f64(10.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
+                    edge,
                 )
                 .unwrap(),
-                edge,
-            )),
+            ),
         );
         let before = actual.retained.clone();
         let changed = actual.compute_invalidated(request, &[20]).unwrap();
@@ -150,32 +157,39 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         } else {
             f64::from(f32::MAX)
         };
-        let overflow = InlineBoundaryEdgeOf::try_new(S::from_f64(largest), S::ZERO).unwrap();
+        let overflow =
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(largest), S::ZERO).unwrap();
         actual.inputs.insert(
             20,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::Start,
-                InlineMetricsOf::try_new(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(8.0),
-                    S::from_f64(10.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
+                    overflow,
                 )
                 .unwrap(),
-                overflow,
-            )),
+            ),
         );
         actual.inputs.insert(
             21,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::End,
-                InlineMetricsOf::try_new(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(8.0),
-                    S::from_f64(10.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::End,
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
+                    overflow,
                 )
                 .unwrap(),
-                overflow,
-            )),
+            ),
         );
         let retained = actual.retained.clone();
         let error = actual.compute_invalidated(request, &[20, 21]).unwrap_err();
@@ -194,45 +208,54 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         assert_eq!(actual.retained, retained);
         actual.inputs.insert(
             20,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::Start,
-                InlineMetricsOf::try_new(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(8.0),
-                    S::from_f64(10.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
+                    edge,
                 )
                 .unwrap(),
-                edge,
-            )),
+            ),
         );
         actual.inputs.insert(
             21,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::End,
-                InlineMetricsOf::try_new(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(8.0),
-                    S::from_f64(10.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::End,
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
+                    InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
         );
         let retry = actual.compute_invalidated(request, &[20, 21]).unwrap();
         assert_eq!(retry.unrounded_entries(), fresh.unrounded_entries());
         retry.apply_to(&mut actual).unwrap();
         actual.inputs.insert(
             20,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::Start,
-                InlineMetricsOf::try_new(
-                    crate::InlineBaselineContext::Physical,
-                    S::from_f64(8.0),
-                    S::from_f64(10.0),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::Start,
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
+                    InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
         );
         let restored = actual.compute_invalidated(request, &[20]).unwrap();
         assert_eq!(restored.unrounded_entries(), cold.unrounded_entries());

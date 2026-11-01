@@ -37,7 +37,7 @@ fn lane<S: LayoutScalar>() {
                 kind,
                 InlineMetricsOf::try_new(InlineBaselineContext::Physical, S::ZERO, S::ZERO)
                     .unwrap(),
-                InlineBoundaryEdgeOf::try_new(S::from_f64(amount), S::ZERO).unwrap(),
+                InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(amount), S::ZERO).unwrap(),
                 FlowAxes::new(WritingMode::HorizontalTb, direction),
             )
             .with_direction(direction);
@@ -100,7 +100,7 @@ fn lane<S: LayoutScalar>() {
                 .control_slots()
                 .find(|slot| slot.control() == control.occurrence)
                 .unwrap();
-            assert_eq!(slot.inline_bounds(), (left, right));
+            assert_eq!(slot.strip_interval(), (left, right));
             let output = batch
                 .unrounded_entries()
                 .iter()

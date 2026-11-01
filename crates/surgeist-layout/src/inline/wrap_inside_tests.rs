@@ -64,19 +64,25 @@ fn exercise<S: LayoutScalar>(
         )
         .input(
             2,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::Start,
-                metrics,
-                InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::Start,
+                    metrics,
+                    InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         )
         .input(
             5,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                InlineBoundaryKind::End,
-                metrics,
-                InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    InlineBoundaryKind::End,
+                    metrics,
+                    InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         );
     let (graph, _) =
         crate::engine::validation::validate_layout_request_with_text_graph(&tree, 100, &[], &[])

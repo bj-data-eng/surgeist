@@ -215,16 +215,19 @@ impl Fixture {
             };
             tree = tree.children(control.node, []).input(
                 control.node,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                    kind,
-                    InlineMetricsOf::try_new(
-                        InlineBaselineContext::Named(BaselineName::Alphabetic),
-                        0.0,
-                        0.0,
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        kind,
+                        InlineMetricsOf::try_new(
+                            InlineBaselineContext::Named(BaselineName::Alphabetic),
+                            0.0,
+                            0.0,
+                        )
+                        .unwrap(),
+                        InlineBoundaryEdgeOf::ZERO,
                     )
                     .unwrap(),
-                    InlineBoundaryEdgeOf::ZERO,
-                )),
+                ),
             );
         }
         Self {

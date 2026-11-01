@@ -84,6 +84,49 @@ fn qualify_spacing_displacement(
     Ok(())
 }
 
+fn qualify_inline_margin(
+    placed: &PlacedLine,
+    anchor: &crate::engine::layout::data::FinalizedAnchor,
+) -> Result<()> {
+    let selected = &placed.finalized.selected;
+    let Some(components) = super::boundary::allocation(selected.presentation_input(), anchor.unit)
+        .and_then(super::InlineBoundaryAllocation::box_components)
+    else {
+        return Ok(());
+    };
+    let margin = components.margin();
+    if margin == 0.0 {
+        return Ok(());
+    }
+    let flow = anchor.flow_interval();
+    let strip = anchor.strip_interval();
+    let (before, after) =
+        match super::boundary::component_side(selected.presentation_input(), anchor.unit)?
+            .expect("component edge has an actual assigned side")
+        {
+            super::LineEdgeSide::Start => (flow.0, strip.0),
+            super::LineEdgeSide::End => (strip.1, flow.1),
+        };
+    let before = crate::layout::inline_coordinate(
+        placed.orientation,
+        crate::layout::line_point(placed, Point::new(before, anchor.slot.y)),
+    );
+    let after = crate::layout::inline_coordinate(
+        placed.orientation,
+        crate::layout::line_point(placed, Point::new(after, anchor.slot.y)),
+    );
+    finite("placed inline margin recipient", before)?;
+    finite("placed inline margin recipient", after)?;
+    if before == after {
+        return Err(numeric(
+            "placed inline margin recipient",
+            TextNumericError::NonZeroLost,
+            margin,
+        ));
+    }
+    Ok(())
+}
+
 /// Qualify the same actual square/inner mapping used by immutable glyph readback.
 /// This also serves retained word units that have no glyph or font run.
 fn qualify_cell_frame(
@@ -597,6 +640,7 @@ pub(crate) fn place_request(
         );
         include(&mut bounds, metric_rect)?;
         for anchor in &placed.finalized.data.anchors {
+            qualify_inline_margin(&placed, anchor)?;
             if !matches!(
                 selected.presentation.units[anchor.unit].kind,
                 super::prepared::PresentationUnitKind::Control { .. }
@@ -606,7 +650,7 @@ pub(crate) fn place_request(
             if anchor.reference.is_some() {
                 let rect = placed.finalized.data.cell_rect(
                     anchor.slot.x,
-                    anchor.inline_end - anchor.slot.x,
+                    anchor.strip_interval().1 - anchor.slot.x,
                     anchor.reference,
                 );
                 // Source-only anchors still participate in the placed geometry

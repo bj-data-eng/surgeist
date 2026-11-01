@@ -1863,11 +1863,14 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
     ] {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                kind,
-                metrics,
-                crate::InlineBoundaryEdgeOf::ZERO,
-            )),
+            LayoutInputOf::inline_boundary(
+                InlineBoundaryInputOf::contribution(
+                    kind,
+                    metrics,
+                    crate::InlineBoundaryEdgeOf::ZERO,
+                )
+                .unwrap(),
+            ),
         );
     }
     for (i, &(side, width, height, clear, horizontal_margin)) in floats.iter().enumerate() {

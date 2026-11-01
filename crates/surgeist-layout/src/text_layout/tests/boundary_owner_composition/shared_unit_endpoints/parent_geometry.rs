@@ -48,7 +48,7 @@ fn packet_tree<S: LayoutScalar>(p: &TextParagraphBinding<u32>, rtl: bool) -> Pub
         let input = InlineBoundaryInputOf::box_edge(
             old.kind(),
             old.metrics(),
-            InlineBoundaryEdgeOf::try_new(S::from_f64(amount), S::ZERO).unwrap(),
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(amount), S::ZERO).unwrap(),
             parent_axes(immediate_parent_rtl),
         )
         .with_writing_mode(old.writing_mode())
@@ -201,7 +201,7 @@ fn strip<S: LayoutScalar>(
         line.control_slots()
             .find(|slot| slot.control() == occurrence)
             .unwrap()
-            .inline_bounds(),
+            .strip_interval(),
         (lo, hi)
     );
     let fragments: Vec<_> = batch

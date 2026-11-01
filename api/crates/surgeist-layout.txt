@@ -240,6 +240,21 @@ pub surgeist_layout::InlineBaselineError::ReferenceMismatch
 pub surgeist_layout::InlineBaselineError::ReferenceMismatch::actual: surgeist_layout::InlineBaselineContext
 pub surgeist_layout::InlineBaselineError::ReferenceMismatch::expected: surgeist_layout::InlineBaselineContext
 pub surgeist_layout::InlineBaselineError::UnrepresentableCoordinate
+pub enum surgeist_layout::InlineBoundaryEdgeErrorOf<S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::InvalidBorder(surgeist_layout::NonNegativeFiniteScalarErrorOf<S>)
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::InvalidBorderPaddingAdvance(surgeist_layout::FiniteScalarErrorOf<S>)
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::InvalidFlowAdvance(surgeist_layout::FiniteScalarErrorOf<S>)
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::InvalidMargin(surgeist_layout::FiniteScalarErrorOf<S>)
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::InvalidPadding(surgeist_layout::NonNegativeFiniteScalarErrorOf<S>)
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::LostBorderPaddingAdvance
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::LostBorderPaddingAdvance::value: S
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::LostMargin
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::LostMargin::value: S
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::MarginRequiresBoxEdge
+pub surgeist_layout::InlineBoundaryEdgeErrorOf::MarginRequiresBoxEdge::margin: S
+impl<S: surgeist_layout::LayoutScalar> core::error::Error for surgeist_layout::InlineBoundaryEdgeErrorOf<S>
+impl<S: surgeist_layout::LayoutScalar> core::fmt::Display for surgeist_layout::InlineBoundaryEdgeErrorOf<S>
+pub fn surgeist_layout::InlineBoundaryEdgeErrorOf<S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_layout::InlineBoundaryKind
 pub surgeist_layout::InlineBoundaryKind::End
 pub surgeist_layout::InlineBoundaryKind::Start
@@ -1221,14 +1236,16 @@ pub surgeist_layout::IndefiniteLaneContributionGroupOf::span: usize
 pub struct surgeist_layout::InlineBoundaryEdgeOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineBoundaryEdgeOf<S>
 pub const surgeist_layout::InlineBoundaryEdgeOf<S>::ZERO: Self
-pub fn surgeist_layout::InlineBoundaryEdgeOf<S>::advance(self) -> S
 pub const fn surgeist_layout::InlineBoundaryEdgeOf<S>::border(self) -> S
+pub fn surgeist_layout::InlineBoundaryEdgeOf<S>::border_padding_advance(self) -> S
+pub fn surgeist_layout::InlineBoundaryEdgeOf<S>::flow_advance(self) -> S
+pub const fn surgeist_layout::InlineBoundaryEdgeOf<S>::margin(self) -> S
 pub const fn surgeist_layout::InlineBoundaryEdgeOf<S>::padding(self) -> S
-pub fn surgeist_layout::InlineBoundaryEdgeOf<S>::try_new(border: S, padding: S) -> core::result::Result<Self, surgeist_layout::NonNegativeFiniteScalarErrorOf<S>>
+pub fn surgeist_layout::InlineBoundaryEdgeOf<S>::try_new(margin: S, border: S, padding: S) -> core::result::Result<Self, surgeist_layout::InlineBoundaryEdgeErrorOf<S>>
 pub struct surgeist_layout::InlineBoundaryInputOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::InlineBoundaryInputOf<S>
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::box_edge(kind: surgeist_layout::InlineBoundaryKind, metrics: surgeist_layout::InlineMetricsOf<S>, edge: surgeist_layout::InlineBoundaryEdgeOf<S>, parent_axes: surgeist_layout::FlowAxes) -> Self
-pub const fn surgeist_layout::InlineBoundaryInputOf<S>::contribution(kind: surgeist_layout::InlineBoundaryKind, metrics: surgeist_layout::InlineMetricsOf<S>, edge: surgeist_layout::InlineBoundaryEdgeOf<S>) -> Self
+pub fn surgeist_layout::InlineBoundaryInputOf<S>::contribution(kind: surgeist_layout::InlineBoundaryKind, metrics: surgeist_layout::InlineMetricsOf<S>, edge: surgeist_layout::InlineBoundaryEdgeOf<S>) -> core::result::Result<Self, surgeist_layout::InlineBoundaryEdgeErrorOf<S>>
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::direction(self) -> surgeist_layout::Direction
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::edge(self) -> surgeist_layout::InlineBoundaryEdgeOf<S>
 pub const fn surgeist_layout::InlineBoundaryInputOf<S>::kind(self) -> surgeist_layout::InlineBoundaryKind
@@ -2008,6 +2025,7 @@ pub type surgeist_layout::GridComputation = surgeist_layout::GridComputationOf<s
 pub type surgeist_layout::GridFlowTolerance = surgeist_layout::GridFlowToleranceOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::IndefiniteLaneContributionGroup = surgeist_layout::IndefiniteLaneContributionGroupOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineBoundaryEdge = surgeist_layout::InlineBoundaryEdgeOf<surgeist_layout::DefaultScalar>
+pub type surgeist_layout::InlineBoundaryEdgeError = surgeist_layout::InlineBoundaryEdgeErrorOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineBoundaryInput = surgeist_layout::InlineBoundaryInputOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineFragmentOutput = surgeist_layout::InlineFragmentOutputOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::InlineFragmentOutputEntry<Node> = surgeist_layout::InlineFragmentOutputEntryOf<Node, surgeist_layout::DefaultScalar>

@@ -192,16 +192,19 @@ fn fixture() -> (
                 display: layout::Display::Block,
                 ..layout::NodeInput::DEFAULT
             }),
-            layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::contribution(
-                layout::InlineBoundaryKind::Start,
-                layout::InlineMetrics::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
-                    8.0,
-                    10.0,
+            layout::LayoutInput::InlineBoundary(
+                layout::InlineBoundaryInput::contribution(
+                    layout::InlineBoundaryKind::Start,
+                    layout::InlineMetrics::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        8.0,
+                        10.0,
+                    )
+                    .unwrap(),
+                    layout::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                layout::InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
             layout::LayoutInput::InlineText(layout::TextParticipation::new(
                 all[0].origin_views().next().unwrap().handle(),
             )),
@@ -212,16 +215,19 @@ fn fixture() -> (
             layout::LayoutInput::InlineText(layout::TextParticipation::new(
                 all[2].origin_views().next().unwrap().handle(),
             )),
-            layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::contribution(
-                layout::InlineBoundaryKind::End,
-                layout::InlineMetrics::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
-                    8.0,
-                    10.0,
+            layout::LayoutInput::InlineBoundary(
+                layout::InlineBoundaryInput::contribution(
+                    layout::InlineBoundaryKind::End,
+                    layout::InlineMetrics::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        8.0,
+                        10.0,
+                    )
+                    .unwrap(),
+                    layout::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                layout::InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
         ],
         non_box: layout::NodeInput::non_box(),
     };

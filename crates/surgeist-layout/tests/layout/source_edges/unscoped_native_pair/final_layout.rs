@@ -215,7 +215,7 @@ fn unscoped_pair_complete_pipeline<S: layout::LayoutScalar>() {
             // source scope or default/font strut is fabricated for this pair.
             assert_eq!(input.metrics().baseline(), S::ZERO);
             assert_eq!(input.metrics().line_extent(), S::ZERO);
-            assert_eq!(input.edge().advance(), S::ZERO);
+            assert_eq!(input.edge().border_padding_advance(), S::ZERO);
             installed[node as usize] = Some(layout::LayoutInputOf::inline_boundary(input));
             binding.controls.push(layout::TextControlBinding {
                 occurrence: handle,

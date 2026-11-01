@@ -153,8 +153,10 @@ impl<S: l::LayoutScalar> Host<S> {
                         S::from_f64(10.0),
                     )
                     .unwrap(),
-                    l::InlineBoundaryEdgeOf::try_new(S::from_f64(ADVANCES[i]), S::ZERO).unwrap(),
+                    l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(ADVANCES[i]), S::ZERO)
+                        .unwrap(),
                 )
+                .unwrap()
             }),
             declarations,
             associations,

@@ -169,7 +169,15 @@ fn positions(
                 )?
             }
             ShapedItem::Anchor { unit } => {
-                crate::protocol::boundary::advance(selected.presentation_input(), unit)
+                pen = crate::protocol::boundary::execute(
+                    selected.presentation_input(),
+                    unit,
+                    pen,
+                    TextNumericPhase::Finalization,
+                )?
+                .flow
+                .1;
+                continue;
             }
         };
         pen = add(
@@ -241,7 +249,9 @@ fn raw_trailing(
     for item in shaped.items.iter().rev() {
         match *item {
             ShapedItem::Anchor { unit } => {
-                if crate::protocol::boundary::advance(selected.presentation_input(), unit) != 0.0 {
+                if crate::protocol::boundary::allocation(selected.presentation_input(), unit)
+                    .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
+                {
                     break;
                 }
             }
@@ -345,7 +355,8 @@ pub(super) fn natural(
         for &ordinal in &visual {
             let row = match shaped.items[ordinal] {
                 ShapedItem::Anchor { unit } => {
-                    if crate::protocol::boundary::advance(selected.presentation_input(), unit) > 0.0
+                    if crate::protocol::boundary::allocation(selected.presentation_input(), unit)
+                        .is_some_and(crate::InlineBoundaryAllocation::blocks_hanging)
                     {
                         break;
                     }
@@ -698,6 +709,9 @@ fn measure(
                 }
             }
             ShapedItem::Anchor { unit } => {
+                css_composed |=
+                    crate::protocol::boundary::allocation(selected.presentation_input(), unit)
+                        .is_some_and(|edge| edge.box_components().is_some());
                 if baseline.raw_advance.is_some() {
                     0.0
                 } else {
@@ -721,6 +735,7 @@ fn measure(
     let mut opaque = None;
     // Every purpose uses the same admitted order as actual positioning.
     for (ordinal, _) in execution.order.iter() {
+        let mut executed_end = None;
         let contribution = match shaped.items[ordinal] {
             ShapedItem::Cell(cell) => {
                 let extent = shaped.cells[cell].extent;
@@ -773,15 +788,21 @@ fn measure(
                 )?
             }
             ShapedItem::Anchor { unit } => {
-                let n = crate::protocol::boundary::advance(selected.presentation_input(), unit);
-                if n != 0.0 {
-                    include(
-                        &mut bounds,
-                        pen,
-                        add("occupied boundary", TextNumericPhase::Finalization, pen, n)?,
-                    )
+                let edge = crate::protocol::boundary::execute(
+                    selected.presentation_input(),
+                    unit,
+                    pen,
+                    TextNumericPhase::Finalization,
+                )?;
+                if crate::protocol::boundary::allocation(selected.presentation_input(), unit)
+                    .is_some_and(|allocation| {
+                        allocation.box_components().is_some() || allocation.strip_advance() != 0.0
+                    })
+                {
+                    include(&mut bounds, edge.strip.0, edge.strip.1);
                 }
-                n
+                executed_end = Some(edge.flow.1);
+                crate::protocol::boundary::advance(selected.presentation_input(), unit)
             }
         };
         if css_composed {
@@ -809,12 +830,16 @@ fn measure(
                 delta,
             )?;
         }
-        pen = add(
-            "occupied edge flow",
-            TextNumericPhase::Finalization,
-            pen,
-            contribution,
-        )?;
+        pen = if let Some(end) = executed_end {
+            end
+        } else {
+            add(
+                "occupied edge flow",
+                TextNumericPhase::Finalization,
+                pen,
+                contribution,
+            )?
+        };
     }
     let (occupied_start, occupied_end) = bounds.unwrap_or((0.0, 0.0));
     let raw = InlineMeasure {

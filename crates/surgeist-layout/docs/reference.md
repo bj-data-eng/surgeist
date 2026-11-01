@@ -425,7 +425,7 @@ Box/control-only native runs also distinguish nominal metrics from formatted
 line existence. Empty zero-decoration endpoints retain their metrics and
 source-indexed descendant outputs with zero used height; they do not establish
 a formatted ordinal, baseline, float band or adjoining-margin separator. A real
-in-flow atomic, each individual nonzero supported inline border or padding, and
+in-flow atomic, each individual nonzero supported inline margin, border or padding, and
 an actual Forced ending remain formatted even with zero extent. A terminal
 strut-only receiver does not inherit the preceding Forced status. These native
 results use the numeric owner directly and do not manufacture Text receipts.
@@ -442,9 +442,14 @@ AssociationOnly metadata stays nonrendering, and numerical struts alone do not
 create work. Known-size and cache paths retain actual semantic baseline/metric
 work; whole-paragraph placement applies the same phantom disposition above.
 
-Native non-atomic endpoints carry their actual border and padding.
+Native non-atomic endpoints carry finite signed margin and finite nonnegative
+border/padding. `InlineBoundaryEdgeOf::try_new(margin, border, padding)` keeps the
+components separate. Ordinary border/padding addition retains native scalar
+rounding; `border_padding_advance()` and checked signed `flow_advance()` are
+different observations.
 `InlineBoundaryInputOf::contribution(kind, metrics, edge)` supplies the existing
-endpoint operation without a full-box claim. `box_edge(kind, metrics, edge,
+endpoint operation without a full-box claim and refuses nonzero margin.
+`box_edge(kind, metrics, edge,
 parent_axes)` requests actual box-side geometry with a separately resolved
 immediate-parent basis. The existing writing-mode/direction fields remain the
 containing Block formatter and retain `InlineFlowMismatch` validation;
@@ -460,9 +465,21 @@ unchanged; context-only controls add no flow. A failed BoxEdge request refuses
 without becoming a Contribution. Captured Contribution controls remain genuine
 Contribution operations, including zero.
 
-These endpoints do not represent signed inline margins. That remaining capability
-belongs to [fragmented inline decoration work](https://github.com/bj-data-eng/surgeist/issues/780).
-An atomic's signed margins cannot stand in for a non-atomic margin-only witness.
+The strip footprint stays nonnegative even when margin makes flow negative or
+zero. On a formatted line, its zero-block-extent node sits at the actual control
+baseline; supplied metrics independently determine line height. Node
+location/size/border/padding describe that strip; `NodeOutputOf::margin`
+retains actual physical margins. Individual nonzero components establish
+participation and shaping separation, so opposing margins or cancellation with
+border/padding do not turn a genuine empty pair into a phantom line. Actual
+strut/baseline evidence remains independent.
+
+Text's lane-specific component receipt preserves the used native arithmetic
+before widening. Layout consumes its separate directed-flow and strip readback
+and the [margin-edge fit observation](../../surgeist-text/docs/atomic-fit.md),
+retaining independent Native opaque geometry. Raw overflow does not replace that
+fit demand. Complete fragmentation/NCA formatting and decoration painting remain
+with [fragmented inline decoration work](https://github.com/bj-data-eng/surgeist/issues/780).
 
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope

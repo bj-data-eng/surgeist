@@ -2,6 +2,7 @@
 
 pub(crate) mod boxes;
 pub(crate) mod capture;
+pub(crate) mod edge_components;
 pub(crate) mod fit;
 pub(crate) mod formatted;
 mod roles;
