@@ -90,6 +90,8 @@ mod value_sharing;
 use provenance::{FieldCopy, OriginGroupRef};
 #[cfg(test)]
 mod no_panic_tests;
+#[cfg(test)]
+mod read_fault_tests;
 mod select;
 mod svg;
 mod template;

@@ -22,6 +22,13 @@ pub(crate) struct ConstructionCauseRef {
     issuer: Weak<evidence::EvidenceIdentity>,
     control: ControlIdentity,
 }
+#[cfg(test)]
+impl ConstructionCauseRef {
+    /// Names a cause the evidence does not hold.
+    pub(super) fn corrupt_for_test(&mut self) {
+        self.index = usize::MAX;
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ParserRule {
@@ -1053,6 +1060,26 @@ impl ParseEvidence {
             groups: self.native.groups.as_slice(),
             causes: self.native.causes.as_slice(),
         })
+    }
+    /// The published construction causes, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn causes_for_test(&mut self) -> &mut [ConstructionCause] {
+        self.native.causes.as_mut_slice_for_test()
+    }
+    /// The published origin groups, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn groups_for_test(&mut self) -> &mut [OriginGroup] {
+        self.native.groups.as_mut_slice_for_test()
+    }
+    /// The published lexical occurrences, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn lexical_occurrences_for_test(&mut self) -> &mut [LexicalOccurrence] {
+        self.native.lexical.occurrences.as_mut_slice_for_test()
+    }
+    /// The published lexical parts, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn lexical_parts_for_test(&mut self) -> &mut [LexicalPart] {
+        self.native.lexical.parts.as_mut_slice_for_test()
     }
     #[cfg(test)]
     pub(super) fn history_counts(&self) -> (usize, usize, usize) {

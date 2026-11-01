@@ -3773,7 +3773,7 @@ mod fragment_origin_tests {
     }
 
     #[test]
-    fn a_context_effect_naming_a_missing_node_reads_as_absent_from_the_frozen_effects() {
+    fn a_context_effect_naming_a_missing_node_is_reported_by_the_frozen_effects() {
         let (mut c, mut session, _registry, document) = registry_fragment_owner();
         session
             .active_mut()
@@ -3793,8 +3793,11 @@ mod fragment_origin_tests {
         let mut frozen = session.freeze(&mut c).unwrap();
         let effects = frozen.frozen_fragment_effects().unwrap();
         assert_eq!(effects.len(), 1);
-        assert!(effects.effect(0).unwrap().is_none());
-        assert!(effects.effect(1).unwrap().is_none());
+        assert_eq!(
+            effects.effect(0).err(),
+            Some(read::UnresolvedReference::new(read::UnresolvedKind::Node))
+        );
+        assert!(matches!(effects.effect(1), Ok(None)));
         frozen.release(&mut c).unwrap();
         crate::construction::tests::storage_zero(&c);
     }

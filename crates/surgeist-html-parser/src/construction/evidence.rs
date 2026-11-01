@@ -180,6 +180,20 @@ impl FailureDiagnosticEvidence {
         }
     }
 }
+#[cfg(test)]
+impl ParseEvidence {
+    /// Names a location that is not committed as the location of one
+    /// diagnostic record. Whether the record exists.
+    pub(super) fn corrupt_diagnostic_location_for_test(&mut self, index: usize) -> bool {
+        match self.records.as_mut_slice_for_test().get_mut(index) {
+            Some(record) => {
+                record.location = usize::MAX;
+                true
+            }
+            None => false,
+        }
+    }
+}
 impl ParseEvidence {
     pub(super) fn retains_diagnostics(&self) -> bool {
         !self.diagnostics_taken
@@ -1483,7 +1497,7 @@ mod tests {
     }
 
     #[test]
-    fn a_retained_record_naming_a_missing_location_reads_as_absent() {
+    fn a_retained_record_naming_a_missing_location_is_reported() {
         let record = DiagnosticRecord {
             kind: DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter),
             context: DiagnosticContext::Tokenizer {
@@ -1503,7 +1517,12 @@ mod tests {
             locations: &[],
         };
         assert_eq!(view.len(), 1);
-        assert!(view.retained_record(0).unwrap().is_none());
-        assert!(view.retained_record(1).unwrap().is_none());
+        assert_eq!(
+            view.retained_record(0).err(),
+            Some(read::UnresolvedReference::new(
+                read::UnresolvedKind::Diagnostic
+            ))
+        );
+        assert!(matches!(view.retained_record(1), Ok(None)));
     }
 }

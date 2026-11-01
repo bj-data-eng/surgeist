@@ -2316,14 +2316,15 @@ mod tests {
         );
     }
 
-    // Readers answer from a published report, where no controller exists, so a
-    // reference that cannot be resolved there is not an error to report but a
-    // row or value the report cannot present. Each test corrupts one reference
-    // a published report holds and requires the cursor to skip the row it
-    // would make unanswerable, or the reader to read the value as absent.
+    // A published report was qualified once, so a reference one of its rows
+    // holds that its tables cannot resolve is a defect in that qualification.
+    // Each test corrupts one such reference and requires the cursor to report
+    // the fault at that row, and to stay faulted, rather than skip the row or
+    // read the reference as absent. A skipped row is only one that is not an
+    // association.
     fn styled_report() -> crate::HtmlParseReport {
         crate::HtmlDocumentParseRequest::offline(
-            crate::HtmlSource::utf8("<!doctype html><style title=a>b{}</style><p>c"),
+            crate::HtmlSource::utf8("<!doctype html><style title=a type=text/css>b{}</style><p>c"),
             super::super::tests::limits(),
         )
         .parse()
@@ -2331,6 +2332,9 @@ mod tests {
     }
     fn frozen(report: &mut crate::HtmlParseReport) -> &mut FrozenStorage {
         report.storage_mut().history_mut().storage_mut()
+    }
+    fn fault(kind: read::UnresolvedKind) -> read::UnresolvedReference {
+        read::UnresolvedReference::new(kind)
     }
     /// Edits the first style occurrence a report holds that the filter accepts.
     fn corrupt_style_occurrence(
@@ -2353,107 +2357,92 @@ mod tests {
             .unwrap();
         edit(row);
     }
-    fn presented_occurrences(report: &crate::HtmlParseReport) -> usize {
-        let mut cursor = report.pending_associations();
-        let mut count = 0;
-        loop {
-            match cursor.advance() {
-                Step::Occurrence(_) => count += 1,
-                Step::Complete => return count,
-                _ => {}
-            }
-        }
+    /// What a walk of the cursor lends: the associations presented, the rows
+    /// skipped, and the first fault, which the cursor must keep reporting.
+    struct Walk {
+        presented: usize,
+        skipped: usize,
+        fault: Option<read::UnresolvedReference>,
     }
-    /// Asks every presented occurrence for everything it can answer.
-    fn answer_everything(report: &crate::HtmlParseReport) {
+    fn walk(report: &crate::HtmlParseReport) -> Walk {
         let mut cursor = report.pending_associations();
+        let mut walk = Walk {
+            presented: 0,
+            skipped: 0,
+            fault: None,
+        };
         loop {
             match cursor.advance() {
-                Step::Fault(fault) => panic!("{fault}"),
-                Step::Occurrence(view) => {
-                    let context = view.context();
-                    let _ = (
-                        view.id(),
-                        view.subject(),
-                        view.root(),
-                        view.document(),
-                        view.previous_document(),
-                        view.next_document(),
-                        view.prior_document(),
-                        view.prior_style(),
-                        view.cause(),
-                        view.preferred_name(),
-                        view.base_changed_input(),
-                        context.epoch(),
-                        context.first_base(),
-                        context.requirement(ContextRole::Encoding),
-                        context.slot(ContextRole::DocumentUrl),
-                        context.selected_base(),
-                    );
-                    if let Some(style) = view.style() {
-                        let _ = (style.creating_parser_document(), style.sheet_order(0));
-                    }
+                Step::Occurrence(_) | Step::Document(_) => walk.presented += 1,
+                Step::Skipped => walk.skipped += 1,
+                Step::Complete => return walk,
+                Step::Fault(first) => {
+                    assert!(matches!(cursor.advance(), Step::Fault(again) if again == first));
+                    walk.fault = Some(first);
+                    return walk;
                 }
-                Step::Document(view) => {
-                    let _ = (
-                        view.document(),
-                        view.last_occurrence(),
-                        view.first_missing(),
-                    );
-                }
-                Step::Skipped => {}
-                Step::Complete => return,
             }
         }
     }
     #[test]
-    fn an_occurrence_whose_subject_is_missing_is_not_presented() {
+    fn an_uncorrupted_report_lends_every_association_and_skips_only_other_rows() {
+        let report = styled_report();
+        let walk = walk(&report);
+        assert!(walk.presented > 0 && walk.skipped > 0);
+        assert_eq!(walk.fault, None);
+    }
+    fn assert_row_fault(
+        report: &crate::HtmlParseReport,
+        before: &Walk,
+        kind: read::UnresolvedKind,
+    ) {
+        let after = walk(report);
+        assert_eq!(after.fault, Some(fault(kind)));
+        assert_eq!(
+            after.skipped, before.skipped,
+            "a faulted row is not a skipped one"
+        );
+    }
+    #[test]
+    fn an_occurrence_whose_subject_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = presented_occurrences(&report);
+        let before = walk(&report);
         corrupt_style_occurrence(&mut report, |_| true, |row| row.subject = usize::MAX);
-        assert_eq!(presented_occurrences(&report), before - 1);
-        answer_everything(&report);
+        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
     }
     #[test]
-    fn an_occurrence_whose_root_is_missing_is_not_presented() {
+    fn an_occurrence_whose_root_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = presented_occurrences(&report);
+        let before = walk(&report);
         corrupt_style_occurrence(&mut report, |_| true, |row| row.root = usize::MAX);
-        assert_eq!(presented_occurrences(&report), before - 1);
-        answer_everything(&report);
+        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
     }
     #[test]
-    fn an_occurrence_whose_document_is_missing_is_not_presented() {
+    fn an_occurrence_whose_document_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = presented_occurrences(&report);
+        let before = walk(&report);
         corrupt_style_occurrence(
             &mut report,
             |_| true,
-            |row| {
-                row.document = DocumentRef::Owned(usize::MAX);
-            },
+            |row| row.document = DocumentRef::Owned(usize::MAX),
         );
-        assert_eq!(presented_occurrences(&report), before - 1);
-        answer_everything(&report);
+        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
     }
     #[test]
-    fn an_occurrence_whose_previous_document_is_missing_is_not_presented() {
+    fn an_occurrence_whose_previous_document_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = presented_occurrences(&report);
+        let before = walk(&report);
         corrupt_style_occurrence(
             &mut report,
             |_| true,
-            |row| {
-                row.previous_document = Some(DocumentRef::Owned(usize::MAX));
-            },
+            |row| row.previous_document = Some(DocumentRef::Owned(usize::MAX)),
         );
-        assert_eq!(presented_occurrences(&report), before - 1);
-        answer_everything(&report);
+        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
     }
     #[test]
-    fn an_occurrence_whose_creating_parser_document_is_missing_is_not_presented() {
+    fn an_occurrence_whose_creating_parser_document_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = presented_occurrences(&report);
+        let before = walk(&report);
         corrupt_style_occurrence(
             &mut report,
             |_| true,
@@ -2461,11 +2450,61 @@ mod tests {
                 row.inputs.as_mut().unwrap().parser_document = Some(DocumentRef::Owned(usize::MAX));
             },
         );
-        assert_eq!(presented_occurrences(&report), before - 1);
-        answer_everything(&report);
+        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
     }
     #[test]
-    fn a_text_group_that_is_missing_reads_as_absent() {
+    fn an_occurrence_whose_cause_is_missing_is_a_fault() {
+        let mut report = styled_report();
+        let before = walk(&report);
+        corrupt_style_occurrence(
+            &mut report,
+            |row| row.cause.is_some(),
+            |row| row.cause.as_mut().unwrap().corrupt_for_test(),
+        );
+        assert_row_fault(&report, &before, read::UnresolvedKind::Cause);
+    }
+    #[test]
+    fn an_occurrence_whose_attribute_group_is_missing_is_a_fault() {
+        let mut report = styled_report();
+        let before = walk(&report);
+        let with_attribute = |row: &Occurrence| {
+            row.inputs
+                .as_ref()
+                .is_some_and(|inputs| inputs.attributes.iter().any(Option::is_some))
+        };
+        corrupt_style_occurrence(&mut report, with_attribute, |row| {
+            let attributes = &mut row.inputs.as_mut().unwrap().attributes;
+            attributes.iter_mut().flatten().next().unwrap().index = usize::MAX;
+        });
+        assert_row_fault(&report, &before, read::UnresolvedKind::Group);
+    }
+    #[test]
+    fn an_occurrence_whose_policy_row_is_not_a_policy_is_a_fault() {
+        let mut report = styled_report();
+        let before = walk(&report);
+        corrupt_style_occurrence(
+            &mut report,
+            |row| !row.context.policy_missing,
+            |row| row.context.csp = Some(usize::MAX),
+        );
+        assert_row_fault(&report, &before, read::UnresolvedKind::Payload);
+    }
+    #[test]
+    fn an_occurrence_whose_base_facts_row_is_not_base_facts_is_a_fault() {
+        let mut report =
+            super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
+                .parse()
+                .unwrap();
+        let before = walk(&report);
+        corrupt_style_occurrence(
+            &mut report,
+            |row| row.context.base_document.is_some(),
+            |row| row.context.base_document = Some(usize::MAX),
+        );
+        assert_row_fault(&report, &before, read::UnresolvedKind::Payload);
+    }
+    #[test]
+    fn a_text_group_that_is_missing_is_a_fault_of_the_text_reader() {
         let mut report = styled_report();
         let with_text = |row: &Occurrence| row.inputs.as_ref().is_some_and(|i| i.text.len() != 0);
         corrupt_style_occurrence(&mut report, with_text, |row| {
@@ -2480,18 +2519,23 @@ mod tests {
                     if let Some(style) = view.style()
                         && style.text_len() != 0
                     {
-                        assert!(style.text(0).unwrap().is_none());
+                        assert_eq!(
+                            style.text(0).err(),
+                            Some(fault(read::UnresolvedKind::Group))
+                        );
+                        assert!(matches!(style.text(style.text_len()), Ok(None)));
                         checked = true;
                     }
                 }
                 Step::Complete => break,
+                Step::Fault(fault) => panic!("{fault}"),
                 _ => {}
             }
         }
         assert!(checked);
     }
     #[test]
-    fn a_sheet_order_entry_that_is_missing_reads_as_absent() {
+    fn a_sheet_order_entry_that_is_missing_is_a_fault_of_the_order_reader() {
         let mut report = styled_report();
         for row in frozen(&mut report).payloads.values.iter_mut() {
             if let RetainedPayload::StyleOrder(list) = row {
@@ -2506,46 +2550,39 @@ mod tests {
                     if let Some(style) = view.style()
                         && style.sheet_order_len() != 0
                     {
-                        assert!(style.sheet_order(0).unwrap().is_none());
+                        assert_eq!(
+                            style.sheet_order(0).err(),
+                            Some(fault(read::UnresolvedKind::Node))
+                        );
+                        assert!(matches!(
+                            style.sheet_order(style.sheet_order_len()),
+                            Ok(None)
+                        ));
                         checked = true;
                     }
                 }
                 Step::Complete => break,
+                Step::Fault(fault) => panic!("{fault}"),
                 _ => {}
             }
         }
         assert!(checked);
     }
     #[test]
-    fn documents_whose_capture_is_missing_are_not_presented() {
+    fn documents_whose_capture_is_missing_are_a_fault() {
         let mut report =
             super::super::fragment_document::tests::fragment_report("<style>a</style>");
-        let captured = |report: &crate::HtmlParseReport| {
-            let mut cursor = report.pending_associations();
-            let mut count = 0;
-            loop {
-                match cursor.advance() {
-                    Step::Document(view)
-                        if matches!(view.document(), report::MetadataDocument::Captured(_)) =>
-                    {
-                        count += 1;
-                    }
-                    Step::Complete => return count,
-                    _ => {}
-                }
-            }
-        };
-        assert_ne!(captured(&report), 0);
+        let before = walk(&report);
         frozen(&mut report).fragment = None;
-        assert_eq!(captured(&report), 0);
-        answer_everything(&report);
+        assert_row_fault(&report, &before, read::UnresolvedKind::Fragment);
     }
     #[test]
-    fn a_base_observation_that_is_missing_reads_as_a_missing_frozen_base() {
+    fn a_base_observation_that_is_missing_is_a_fault() {
         let mut report =
             super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
                 .parse()
                 .unwrap();
+        let before = walk(&report);
         let with_base = |row: &Occurrence| {
             row.context.base_document.is_some()
                 && row.context.first_base.is_some()
@@ -2554,46 +2591,19 @@ mod tests {
         corrupt_style_occurrence(&mut report, with_base, |row| {
             row.context.base_observation = Some(usize::MAX);
         });
-        let mut cursor = report.pending_associations();
-        let mut checked = false;
-        loop {
-            match cursor.advance() {
-                Step::Occurrence(view) if view.context().base_observation() == Some(usize::MAX) => {
-                    assert_eq!(
-                        view.context().selected_base().err(),
-                        Some(crate::HtmlBaseMissing::FrozenBase)
-                    );
-                    checked = true;
-                }
-                Step::Complete => break,
-                _ => {}
-            }
-        }
-        assert!(checked);
+        assert_row_fault(&report, &before, read::UnresolvedKind::Payload);
     }
     #[test]
-    fn a_first_base_that_is_missing_reads_as_absent() {
+    fn a_first_base_that_is_missing_is_a_fault() {
         let mut report =
             super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
                 .parse()
                 .unwrap();
+        let before = walk(&report);
         let with_base = |row: &Occurrence| row.context.first_base.is_some();
         corrupt_style_occurrence(&mut report, with_base, |row| {
             row.context.first_base = Some(usize::MAX);
         });
-        let mut cursor = report.pending_associations();
-        let mut checked = false;
-        loop {
-            match cursor.advance() {
-                Step::Occurrence(view) if view.context().base_observation().is_some() => {
-                    if view.context().first_base().is_none() {
-                        checked = true;
-                    }
-                }
-                Step::Complete => break,
-                _ => {}
-            }
-        }
-        assert!(checked);
+        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
     }
 }

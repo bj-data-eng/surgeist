@@ -56,6 +56,13 @@ pub(crate) struct LexicalOccurrence {
     cause: usize,
     data_units: usize,
 }
+#[cfg(test)]
+impl LexicalOccurrence {
+    /// Names a cause the evidence does not hold.
+    pub(crate) fn corrupt_cause_for_test(&mut self) {
+        self.cause = usize::MAX;
+    }
+}
 impl LexicalOccurrence {
     pub(crate) fn cause(&self) -> usize {
         self.cause

@@ -255,6 +255,16 @@ impl FrozenHistory {
     pub(super) fn evidence(&self) -> &ParseEvidence {
         &self.evidence
     }
+    /// The published evidence, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn evidence_mut(&mut self) -> &mut ParseEvidence {
+        &mut self.evidence
+    }
+    /// The published association rows, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn rows_for_test(&mut self) -> &mut [NativeAssociation] {
+        self.rows.as_mut_slice_for_test()
+    }
     pub(crate) fn view(&self) -> HistoryView<'_> {
         HistoryView {
             storage: &self.storage,
