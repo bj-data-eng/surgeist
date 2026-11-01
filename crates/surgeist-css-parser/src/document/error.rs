@@ -26,7 +26,7 @@ pub(super) enum BuildErrorKind {
 /// use surgeist_css_parser::limits::{DepthExcess, Limits};
 ///
 /// let limits = Limits::new(1, usize::MAX, usize::MAX);
-/// let error = Document::<()>::parse("((a))", &Options::default(), limits, DepthExcess::Fail)
+/// let error = Document::<()>::parse("((a))", &Options::default(), limits, 0, DepthExcess::Fail)
 ///     .unwrap_err();
 /// assert!(error.is_depth_limit());
 /// ```

@@ -703,9 +703,9 @@ pub fn surgeist_css_parser::Document<'s, P>::stream(&self, list: surgeist_css_pa
 pub fn surgeist_css_parser::Document<'s, P>::token(&self, node: surgeist_css_parser::document::NodeId) -> surgeist_css_parser::Token<'_>
 impl<'s, P> surgeist_css_parser::Document<'s, P>
 pub fn surgeist_css_parser::Document<'s, P>::builder(limits: surgeist_css_parser::limits::Limits, base_depth: u32, meter: core::option::Option<&'s dyn surgeist_css_parser::limits::Meter>) -> core::result::Result<surgeist_css_parser::document::TreeBuilder<'s, P>, surgeist_css_parser::document::BuildError>
-pub fn surgeist_css_parser::Document<'s, P>::parse(source: &'s str, options: &surgeist_css_parser::lexer::Options, limits: surgeist_css_parser::limits::Limits, depth_excess: surgeist_css_parser::limits::DepthExcess) -> core::result::Result<Self, surgeist_css_parser::document::BuildError>
+pub fn surgeist_css_parser::Document<'s, P>::parse(source: &'s str, options: &surgeist_css_parser::lexer::Options, limits: surgeist_css_parser::limits::Limits, base_depth: u32, depth_excess: surgeist_css_parser::limits::DepthExcess) -> core::result::Result<Self, surgeist_css_parser::document::BuildError>
 impl<P> surgeist_css_parser::Document<'static, P>
-pub fn surgeist_css_parser::Document<'static, P>::parse_owned(source: impl core::convert::Into<alloc::string::String>, options: &surgeist_css_parser::lexer::Options, limits: surgeist_css_parser::limits::Limits, depth_excess: surgeist_css_parser::limits::DepthExcess) -> core::result::Result<Self, surgeist_css_parser::document::BuildError>
+pub fn surgeist_css_parser::Document<'static, P>::parse_owned(source: impl core::convert::Into<alloc::string::String>, options: &surgeist_css_parser::lexer::Options, limits: surgeist_css_parser::limits::Limits, base_depth: u32, depth_excess: surgeist_css_parser::limits::DepthExcess) -> core::result::Result<Self, surgeist_css_parser::document::BuildError>
 impl<P> core::fmt::Debug for surgeist_css_parser::Document<'_, P>
 pub fn surgeist_css_parser::Document<'_, P>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<P> core::ops::drop::Drop for surgeist_css_parser::Document<'_, P>

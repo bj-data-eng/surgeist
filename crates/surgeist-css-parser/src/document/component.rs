@@ -19,7 +19,7 @@ use crate::{Offset, Token};
 /// use surgeist_css_parser::limits::{DepthExcess, Limits};
 ///
 /// let document: Document =
-///     Document::parse("[a]", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("[a]", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let node = document.list(document.root_list())[0];
 /// assert_eq!(document.group_kind(node), Some(GroupKind::Block(BlockKind::Square)));
 /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
@@ -126,7 +126,7 @@ pub enum Fault {
 /// use surgeist_css_parser::limits::{DepthExcess, Limits};
 ///
 /// let document: Document =
-///     Document::parse("(a) (b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("(a) (b", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let nodes = document.list(document.root_list());
 /// assert!(matches!(document.group_end(nodes[0]), Some(GroupEnd::Closed { .. })));
 /// assert!(matches!(document.group_end(nodes[2]), Some(GroupEnd::Eof { .. })));
@@ -170,7 +170,7 @@ pub enum GroupEnd<P> {
 /// use surgeist_css_parser::limits::{DepthExcess, Limits};
 ///
 /// let document: Document =
-///     Document::parse("f(a)", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("f(a)", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let node = document.list(document.root_list())[0];
 /// let Component::Function { name, children, .. } = document.component(node) else {
 ///     panic!("a function");
@@ -370,7 +370,7 @@ impl<'d, P> Component<'d, P> {
     /// use surgeist_css_parser::limits::{DepthExcess, Limits};
     ///
     /// let document: Document =
-    ///     Document::parse("} a", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("} a", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let first = document.list(document.root_list())[0];
     /// assert_eq!(document.component(first).fault(), Some(Fault::UnexpectedCloser));
     /// let second = document.list(document.root_list())[1];

@@ -101,11 +101,11 @@ enum Kind<'i, P> {
 /// use surgeist_css_parser::{Document, anb};
 ///
 /// let document: Document =
-///     Document::parse("99999999999n", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("99999999999n", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let error = anb::parse(&mut document.root()).unwrap_err();
 /// assert!(error.is_overflow());
 /// let document: Document =
-///     Document::parse("3 n", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("3 n", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// // `3` is an `<integer>`, so it matches and the stray `n` is left for the caller.
 /// let mut stream = document.root();
 /// assert_eq!(anb::parse(&mut stream).unwrap().b(), 3);
@@ -260,7 +260,7 @@ impl<P> std::error::Error for AnPlusBError<'_, P> {}
 /// use surgeist_css_parser::{Document, anb};
 ///
 /// let document: Document =
-///     Document::parse("+3n - 2", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("+3n - 2", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let value = anb::parse(&mut document.root()).unwrap();
 /// assert_eq!((value.a(), value.b()), (3, -2));
 /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
@@ -290,7 +290,7 @@ pub fn parse<'i, P>(stream: &mut Stream<'i, P>) -> Result<AnPlusB, AnPlusBError<
 /// use surgeist_css_parser::{Document, anb};
 ///
 /// let document: Document =
-///     Document::parse("n + 2147483648", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("n + 2147483648", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let value = anb::parse_saturating(&mut document.root()).unwrap();
 /// assert_eq!((value.a(), value.b()), (1, i32::MAX));
 /// # Ok::<(), surgeist_css_parser::document::BuildError>(())

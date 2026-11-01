@@ -22,7 +22,7 @@ use crate::document::NodeId;
 /// use surgeist_css_parser::Document;
 ///
 /// let document: Document =
-///     Document::parse("a b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("a b", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let mut stream = document.root();
 /// let mark = stream.mark();
 /// stream.consume_ident().unwrap();

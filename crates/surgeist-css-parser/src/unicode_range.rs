@@ -108,5 +108,5 @@ pub fn consume_value<'s, P>(
     limits: Limits,
 ) -> Result<Document<'s, P>, BuildError> {
     let options = Options::default().unicode_ranges(true).origin(origin);
-    Document::parse(text, &options, limits, DepthExcess::Fail)
+    Document::parse(text, &options, limits, 0, DepthExcess::Fail)
 }

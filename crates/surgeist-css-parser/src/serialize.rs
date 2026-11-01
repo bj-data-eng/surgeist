@@ -502,7 +502,7 @@ pub const fn needs_separator(previous: Adjacency, next: Adjacency) -> bool {
 /// // `1`, a comment and `px` are two tokens; written without the comment they
 /// // would be the one dimension `1px`.
 /// let document: Document =
-///     Document::parse("1/**/px", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("1/**/px", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let mut writer = Writer::new(String::new());
 /// let mut stream = document.root();
 /// while let Ok(token) = stream.consume_token() {
@@ -654,7 +654,7 @@ const fn block_tokens(kind: BlockKind) -> (Token<'static>, Token<'static>) {
 /// use surgeist_css_parser::{Document, serialize};
 ///
 /// let document: Document =
-///     Document::parse("a { b : f( 1px ) } ", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("a { b : f( 1px ) } ", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let mut out = String::new();
 /// serialize::list(&document, document.root_list(), &mut out).unwrap();
 /// assert_eq!(out, "a { b : f( 1px ) } ");
@@ -662,7 +662,7 @@ const fn block_tokens(kind: BlockKind) -> (Token<'static>, Token<'static>) {
 /// // A block denied for nesting too deep is written as the text it was.
 /// let limits = Limits::new(1, usize::MAX, usize::MAX);
 /// let document: Document =
-///     Document::parse("{{a}}", &Options::default(), limits, DepthExcess::DenyBlock)?;
+///     Document::parse("{{a}}", &Options::default(), limits, 0, DepthExcess::DenyBlock)?;
 /// let mut out = String::new();
 /// serialize::list(&document, document.root_list(), &mut out).unwrap();
 /// assert_eq!(out, "{{a}}");

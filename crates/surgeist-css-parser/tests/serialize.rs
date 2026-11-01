@@ -813,6 +813,7 @@ fn list(text: &str) -> String {
         text,
         &Options::default(),
         Limits::default(),
+        0,
         DepthExcess::Fail,
     )
     .unwrap();
@@ -848,6 +849,7 @@ fn a_denied_block_is_written_as_the_text_it_covered() {
         "a{ b{ c } d{ e } } f",
         &Options::default(),
         limits,
+        0,
         DepthExcess::DenyBlock,
     )
     .unwrap();

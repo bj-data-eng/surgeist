@@ -438,8 +438,14 @@ fn entering_a_block_with_none_pending_is_an_error_not_a_panic() {
 #[test]
 fn a_denied_block_has_nothing_to_enter() {
     let limits = Limits::new(0, usize::MAX, usize::MAX);
-    let document =
-        Document::<()>::parse("{a}", &Options::default(), limits, DepthExcess::DenyBlock).unwrap();
+    let document = Document::<()>::parse(
+        "{a}",
+        &Options::default(),
+        limits,
+        0,
+        DepthExcess::DenyBlock,
+    )
+    .unwrap();
     let mut stream = document.root();
     assert_eq!(stream.consume_token().unwrap(), Token::OpenCurly);
     assert_eq!(stream.unentered_block(), None);
@@ -638,6 +644,7 @@ fn a_curly_block_whether_opened_or_denied_is_the_open_curly_stop_token() {
         "a {b} c",
         &Options::default(),
         limits,
+        0,
         DepthExcess::DenyBlock,
     )
     .unwrap();

@@ -37,7 +37,7 @@ use crate::{Offset, Site, Stream, Token};
 /// use surgeist_css_parser::{Document, SyntaxError};
 ///
 /// let document: Document =
-///     Document::parse("a f(b)", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("a f(b)", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let mut stream = document.root();
 /// assert_eq!(stream.consume_ident().ok(), Some("a"));
 /// assert_eq!(stream.consume_function_name().ok(), Some("f"));
@@ -155,7 +155,7 @@ impl<'s, P> Document<'s, P> {
     /// use surgeist_css_parser::Document;
     ///
     /// let mut document: Document<&str> =
-    ///     Document::parse("a", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("a", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// assert_eq!(document.attached(), None);
     /// assert_eq!(document.attach("the host"), None);
     /// assert_eq!(document.attached(), Some(&"the host"));
@@ -197,7 +197,7 @@ impl<'s, P> Document<'s, P> {
     /// use surgeist_css_parser::Document;
     ///
     /// let document: Document =
-    ///     Document::parse("\\66 (a)", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("\\66 (a)", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let node = document.list(document.root_list())[0];
     /// // The function's name is `f`, but its spelling is the escape.
     /// assert_eq!(document.spelling(node), Some("\\66 ("));
@@ -327,7 +327,7 @@ impl<'s, P> Document<'s, P> {
     /// use surgeist_css_parser::{Document, Token};
     ///
     /// let document: Document =
-    ///     Document::parse("f(a) b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("f(a) b", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let tokens: Vec<_> = document.nodes().map(|node| document.token(node)).collect();
     /// assert_eq!(
     ///     tokens,
@@ -390,7 +390,7 @@ impl<'s, P> Document<'s, P> {
     /// use surgeist_css_parser::Document;
     ///
     /// let document: Document =
-    ///     Document::parse("a b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("a b", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let root = document.root_list();
     /// assert_eq!(document.site(root, 2).and_then(|site| site.token()), Some(surgeist_css_parser::Token::Ident("b")));
     /// assert!(document.site(root, 3).is_some_and(|site| site.node().is_none()));
@@ -426,7 +426,7 @@ impl<'s, P> Document<'s, P> {
     /// use surgeist_css_parser::{Document, Offset};
     ///
     /// let document: Document =
-    ///     Document::parse("a (b)", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("a (b)", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let at_b = document.node_at_offset(Offset::new(3)).unwrap();
     /// assert!(!at_b.is_closing());
     /// let at_close = document.node_at_offset(Offset::new(4)).unwrap();

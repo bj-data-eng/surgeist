@@ -109,7 +109,10 @@ document one payload of its own (`Document::attached`), for what a reader of a
 `Copy`, `PartialEq` and `Eq` by hand so that the payload type `P` needs no
 bounds; do not replace them with derives. The depth policy is applied by
 `Document::parse` alone (a `TreeBuilder` always fails a build that nests too
-deep, because only text lets it find the end of a denied block).
+deep, because only text lets it find the end of a denied block). `parse` and
+`parse_owned` take the `base_depth` that `Document::builder` takes, with the
+same meaning: it counts against `Limits::max_depth`, a denied block is judged at
+the same total depth, and it appears in `Metrics::maximum_depth`.
 `Stream::comma_segments` hands the grammar every segment, empty ones included; it is
 not the algorithm of section 5.4.2. The first meter refusal is latched on the
 `Document`: later metered steps fail without asking the meter again, and a method

@@ -82,6 +82,7 @@ pub(super) fn refusal<'i, E, P>(error: StreamError<'i, P>, kind: UnitKind) -> Fa
 ///     "<!-- a {} @x; b {} -->",
 ///     &Options::default(),
 ///     Limits::default(),
+///     0,
 ///     DepthExcess::Fail,
 /// )?;
 /// let mut grammar = Selectors;
@@ -260,6 +261,7 @@ where
 ///     "color: red; &:hover { x: y } @media print {} width: 1px",
 ///     &Options::default(),
 ///     Limits::default(),
+///     0,
 ///     DepthExcess::Fail,
 /// )?;
 /// let mut grammar = Names;

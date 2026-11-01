@@ -543,13 +543,16 @@ impl<'s, P> Document<'s, P> {
     /// close a `(`-block that is open, and does not close an outer
     /// `[`-block behind it either.
     ///
-    /// Text past the limits fails the build. `depth_excess` says what happens
-    /// to a `{}`-block that nests deeper than [`Limits::max_depth`] allows:
-    /// [`DepthExcess::Fail`] fails the build, and [`DepthExcess::DenyBlock`]
-    /// keeps it as one opaque [`Component::Denied`](super::Component::Denied)
-    /// that spans the block to its closing token or the end of the text, and
-    /// carries on. Any other kind of group nested too deeply fails the build in
-    /// both cases.
+    /// Text past the limits fails the build. `base_depth` is the nesting depth
+    /// the text already sits at, as for [`builder`](Self::builder): it counts
+    /// against [`Limits::max_depth`], the depth policy below applies at the same
+    /// total depth, and it appears in [`Metrics::maximum_depth`]. `depth_excess`
+    /// says what happens to a `{}`-block that nests deeper than
+    /// [`Limits::max_depth`] allows: [`DepthExcess::Fail`] fails the build, and
+    /// [`DepthExcess::DenyBlock`] keeps it as one opaque
+    /// [`Component::Denied`](super::Component::Denied) that spans the block to
+    /// its closing token or the end of the text, and carries on. Any other kind
+    /// of group nested too deeply fails the build in both cases.
     ///
     /// `P` is the payload type of the result; a text carries no payloads, so
     /// every node has `None`.
@@ -565,7 +568,7 @@ impl<'s, P> Document<'s, P> {
     /// use surgeist_css_parser::Document;
     ///
     /// let document: Document =
-    ///     Document::parse("a{b:c}", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("a{b:c}", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// assert_eq!(document.node_count(), 5); // a, the block, b, the colon, c
     /// assert_eq!(document.metrics().maximum_depth(), 1);
     /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
@@ -574,12 +577,14 @@ impl<'s, P> Document<'s, P> {
         source: &'s str,
         options: &Options,
         limits: Limits,
+        base_depth: u32,
         depth_excess: DepthExcess,
     ) -> Result<Self, BuildError> {
         let mut document = Self::build(
             source,
             options,
             limits,
+            base_depth,
             depth_excess,
             |pool, value, at, _| place(source, pool, value, at),
         )?;
@@ -592,10 +597,11 @@ impl<'s, P> Document<'s, P> {
         source: &str,
         options: &Options,
         limits: Limits,
+        base_depth: u32,
         depth_excess: DepthExcess,
         mut place: impl FnMut(&mut String, &str, Offset, Range<usize>) -> Result<Text<'s>, BuildError>,
     ) -> Result<Self, BuildError> {
-        let mut builder = TreeBuilder::new(limits, 0, None)?;
+        let mut builder = TreeBuilder::new(limits, base_depth, None)?;
         let origin = options.origin_offset().value();
         let end = origin
             .checked_add(source.len())
@@ -622,7 +628,9 @@ impl<'s, P> Document<'s, P> {
             }
             let parent = frames.last().map_or(ListId::ROOT, |frame| frame.list);
             if let Some(kind) = GroupKind::of_opening(&token) {
-                let depth = u32::try_from(frames.len() + 1).unwrap_or(u32::MAX);
+                let depth = u32::try_from(frames.len() + 1)
+                    .unwrap_or(u32::MAX)
+                    .saturating_add(base_depth);
                 if depth_excess == DepthExcess::DenyBlock
                     && token == Token::OpenCurly
                     && depth > limits.max_depth()
@@ -725,7 +733,7 @@ impl<P> Document<'static, P> {
     ///
     /// fn tokens() -> Document<'static> {
     ///     let text = String::from("a f(b)");
-    ///     Document::parse_owned(text, &Options::default(), Limits::default(), DepthExcess::Fail)
+    ///     Document::parse_owned(text, &Options::default(), Limits::default(), 0, DepthExcess::Fail)
     ///         .unwrap()
     /// }
     /// let document = tokens();
@@ -736,6 +744,7 @@ impl<P> Document<'static, P> {
         source: impl Into<String>,
         options: &Options,
         limits: Limits,
+        base_depth: u32,
         depth_excess: DepthExcess,
     ) -> Result<Self, BuildError> {
         let mut source: String = source.into();
@@ -744,6 +753,7 @@ impl<P> Document<'static, P> {
             &source,
             options,
             limits,
+            base_depth,
             depth_excess,
             |pool, value, at, span| place_owned(&source, pool, value, at, span),
         )?;

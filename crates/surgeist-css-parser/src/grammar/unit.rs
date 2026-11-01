@@ -89,7 +89,7 @@ fn range_between<P>(start: Site<'_, P>, end: Site<'_, P>) -> Option<Range<Offset
 /// }
 ///
 /// let document: Document =
-///     Document::parse("@charset 'x'; @media a {}", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("@charset 'x'; @media a {}", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let mut grammar = Names;
 /// let rules: Vec<_> = document.root().stylesheet_contents(&mut grammar).map(Result::unwrap).collect();
 /// assert_eq!(rules[0], ("charset".to_owned(), false, RuleEnd::Semicolon));
@@ -267,7 +267,7 @@ impl<P> fmt::Debug for QualifiedRule<'_, P> {
 /// }
 ///
 /// let document: Document =
-///     Document::parse("color: red !important; --x: {a}", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("color: red !important; --x: {a}", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let mut grammar = Pairs;
 /// let items: Vec<_> = document.root().block_contents(&mut grammar).map(Result::unwrap).collect();
 /// assert_eq!(items, ["color!", "--x"]);

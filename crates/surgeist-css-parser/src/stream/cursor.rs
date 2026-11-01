@@ -71,6 +71,7 @@ use crate::{Document, Offset, Token};
 ///     "a b, c d",
 ///     &Options::default(),
 ///     Limits::default(),
+///     0,
 ///     DepthExcess::Fail,
 /// )?;
 /// let mut stream = document.root();
@@ -179,7 +180,7 @@ impl<'i, P> Stream<'i, P> {
     /// use surgeist_css_parser::{Document, Offset};
     ///
     /// let document: Document =
-    ///     Document::parse("a/**/b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("a/**/b", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let mut stream = document.root();
     /// stream.consume_ident().unwrap();
     /// assert_eq!(stream.site().offset(), Some(Offset::new(1)));
@@ -309,7 +310,7 @@ impl<'i, P> Stream<'i, P> {
     /// use surgeist_css_parser::{Document, Token};
     ///
     /// let document: Document =
-    ///     Document::parse("/* c */ a", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("/* c */ a", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let stream = document.root();
     /// assert_eq!(stream.next_token(), Some(Token::Whitespace));
     /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
@@ -582,7 +583,7 @@ impl<'i, P> Stream<'i, P> {
     /// use surgeist_css_parser::{Document, SyntaxError};
     ///
     /// let document: Document =
-    ///     Document::parse("f(a) b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("f(a) b", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let mut stream = document.root();
     /// stream.consume_function_named("F").unwrap();
     /// let inside = stream
@@ -686,7 +687,7 @@ impl<'i, P> Stream<'i, P> {
     /// use surgeist_css_parser::{Document, SyntaxError};
     ///
     /// let document: Document =
-    ///     Document::parse("a, b ,c", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+    ///     Document::parse("a, b ,c", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
     /// let names = document
     ///     .root()
     ///     .comma_segments(|item| Ok::<_, SyntaxError<'_, ()>>(item.consume_ident()?))

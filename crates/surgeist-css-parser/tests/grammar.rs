@@ -268,6 +268,7 @@ fn a_rule_with_a_denied_block_is_reported_and_not_given_to_the_grammar() {
         "a {b} @m {x}",
         &Options::default(),
         Limits::new(0, usize::MAX, usize::MAX),
+        0,
         DepthExcess::DenyBlock,
     )
     .unwrap();

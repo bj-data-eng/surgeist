@@ -23,7 +23,7 @@ use std::num::NonZeroU32;
 /// use surgeist_css_parser::limits::{DepthExcess, Limits};
 ///
 /// let document: Document =
-///     Document::parse("a b", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("a b", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// let nodes = document.list(document.root_list());
 /// assert!(nodes[0] < nodes[1]);
 /// assert_eq!(nodes[0].index(), 0);
@@ -66,7 +66,7 @@ impl NodeId {
 /// use surgeist_css_parser::limits::{DepthExcess, Limits};
 ///
 /// let document: Document =
-///     Document::parse("f(a)", &Options::default(), Limits::default(), DepthExcess::Fail)?;
+///     Document::parse("f(a)", &Options::default(), Limits::default(), 0, DepthExcess::Fail)?;
 /// assert_eq!(document.root_list().index(), 0);
 /// assert_eq!(document.list_count(), 2);
 /// # Ok::<(), surgeist_css_parser::document::BuildError>(())

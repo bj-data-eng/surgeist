@@ -1631,8 +1631,9 @@ mod tests {
                                 denied, expected,
                                 "{pattern:?} {around} {last:?} close={close} base {base}"
                             );
+                            // The document counts the base depth it starts at.
                             assert!(
-                                document.metrics().maximum_depth() as usize <= room,
+                                document.metrics().maximum_depth() as usize <= base as usize + room,
                                 "{pattern:?} {around} {last:?} base {base}"
                             );
                             cases += 1;
@@ -1690,8 +1691,9 @@ mod tests {
             next
         );
         assert_eq!(document.metrics().components(), 7);
-        // The tree counts depth from its own root; the denied block adds none.
-        assert_eq!(document.metrics().maximum_depth(), 0);
+        // The tree counts depth from its base (the state's depth); the denied
+        // block adds none.
+        assert_eq!(document.metrics().maximum_depth(), 256);
         assert_eq!(document.metrics().spelling_bytes(), source.len());
         let crate::component::CssValueOrigin::Parsed(origin) = &document.origin(denied) else {
             panic!("actual original denied opening");
