@@ -89,6 +89,29 @@ fn a_style_adds_the_same_visits_whatever_other_style_elements_precede_it() {
     assert_independent_of_unrelated("<style>b{}</style>", "<style>a{}</style>");
 }
 
+/// One form control that registers a form association.
+const CONTROL: &str = "<input name=a>";
+
+#[test]
+fn a_paragraph_adds_the_same_visits_whatever_form_controls_precede_it() {
+    assert_independent_of_unrelated(CONTROL, "<p>x</p>");
+}
+
+#[test]
+fn a_division_adds_the_same_visits_whatever_form_controls_precede_it() {
+    assert_independent_of_unrelated(CONTROL, "<div class=a><span>x</span></div>");
+}
+
+#[test]
+fn an_input_adds_the_same_visits_whatever_form_controls_precede_it() {
+    assert_independent_of_unrelated(CONTROL, "<input name=b>");
+}
+
+#[test]
+fn a_form_adds_the_same_visits_whatever_form_controls_precede_it() {
+    assert_independent_of_unrelated(CONTROL, "<form><input name=b></form>");
+}
+
 /// The visits the last of `options` copies of `option` adds inside `container`.
 fn visits_added_by_last_option(container: &str, option: &str, options: usize) -> i64 {
     let page = |count: usize| {
