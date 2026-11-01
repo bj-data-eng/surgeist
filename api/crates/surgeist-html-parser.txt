@@ -243,9 +243,10 @@ pub surgeist_html_parser::HtmlParseImageUpdate::UnavailableActivity::latest_star
 pub surgeist_html_parser::HtmlParseImageUpdate::Waiting
 pub surgeist_html_parser::HtmlParseImageUpdate::Waiting::flags: surgeist_html::image::HtmlImageUpdateFlags
 pub surgeist_html_parser::HtmlParseImageUpdate::Waiting::generation: u64
-pub enum surgeist_html_parser::HtmlParseInvariant
+#[non_exhaustive] pub enum surgeist_html_parser::HtmlParseInvariant
 pub surgeist_html_parser::HtmlParseInvariant::CapacityMismatch
 pub surgeist_html_parser::HtmlParseInvariant::CleanupWhileRunning
+pub surgeist_html_parser::HtmlParseInvariant::ColorConversionState
 pub surgeist_html_parser::HtmlParseInvariant::ForeignControl
 pub surgeist_html_parser::HtmlParseInvariant::ForeignEvidence
 pub surgeist_html_parser::HtmlParseInvariant::ForeignSource
@@ -259,6 +260,9 @@ pub surgeist_html_parser::HtmlParseInvariant::ReentrantProviderCallback
 pub surgeist_html_parser::HtmlParseInvariant::RegistryRow
 pub surgeist_html_parser::HtmlParseInvariant::ReleaseUnderflow
 pub surgeist_html_parser::HtmlParseInvariant::SharedAllocationAliased
+pub surgeist_html_parser::HtmlParseInvariant::TokenizerState
+pub surgeist_html_parser::HtmlParseInvariant::TreeBuilderOwnerLost
+pub surgeist_html_parser::HtmlParseInvariant::TreeBuilderState
 pub surgeist_html_parser::HtmlParseInvariant::ZeroSizedStorage
 pub enum surgeist_html_parser::HtmlParseLexicalDisposition
 pub surgeist_html_parser::HtmlParseLexicalDisposition::Abandoned

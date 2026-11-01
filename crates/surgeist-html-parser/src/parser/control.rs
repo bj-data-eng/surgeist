@@ -56,26 +56,70 @@ slots!(WorkCategory, WORK_COUNT, {
     ProviderCall => 7,
 });
 
+/// A state the parser's own sequencing rules out, reported instead of a panic.
+///
+/// No valid use produces one: each variant names the part of the parser whose
+/// contract was found broken, so a report can say which part to read. The parser
+/// latches the stop first, hands back every owner it holds and releases all
+/// charged usage. The enum grows as more states are classified.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum Invariant {
+    /// A source other than the one bound to the parse was presented.
     ForeignSource,
+    /// A storage-only accounting operation named a resource that is not storage.
     NonStorageResource,
+    /// A release returned more units than the parse currently holds.
     ReleaseUnderflow,
+    /// A node release was requested for nodes, which are never reclaimed one by
+    /// one.
     NonReclaimableNodes,
+    /// A buffer's actual capacity differs from the capacity that was charged.
     CapacityMismatch,
+    /// Storage was requested for a zero-sized element type.
     ZeroSizedStorage,
+    /// A stopped parse has no source binding where one was admitted.
     MissingSource,
+    /// The input cursor (decoded input, position, checkpoint, pending-input
+    /// poll or consumed boundary) is in a state its own contract excludes.
     InputCursorState,
+    /// A value, ticket or capacity owned under one parse controller was
+    /// presented to another.
     ForeignControl,
+    /// A record identifier or evidence handle from one evidence owner was
+    /// presented to another.
     ForeignEvidence,
+    /// A cleanup-only operation ran while the parse had not stopped.
     CleanupWhileRunning,
+    /// A shared allocation that must be uniquely held was aliased.
     SharedAllocationAliased,
+    /// A construction session was used while form effects were still pending.
     PendingFormEffects,
+    /// A creation that holds a form, link, select or details association
+    /// failed with an error other than a stop.
     IncompleteFormAssociationCreation,
-    /// A retained record, child or payload row that internal state names is
-    /// missing, out of range or of another kind, or an owner that the parser's
-    /// own sequencing keeps in a slot is not there.
+    /// A construction registry row, record, child or payload that internal
+    /// state names is missing, out of range or of another kind, or a
+    /// construction owner that the registry keeps in a slot is not there.
     RegistryRow,
+    /// A tree-builder driver, stage or prologue owner that the driver's own
+    /// sequencing keeps in a slot while its controller is held is gone.
+    TreeBuilderOwnerLost,
+    /// The tree-builder algorithm is in a state its transitions exclude: an
+    /// invalid formatting-list state, script nesting or return mode, a
+    /// boundary or before-head sequencing error, an exhausted tokenizer, or a
+    /// token slot holding another kind of event.
+    TreeBuilderState,
+    /// The tokenizer is in a state its transitions exclude: a draft tag,
+    /// attribute, comment, doctype or processing-instruction part that must
+    /// exist is missing, its event queue is full, a source-boundary proof is
+    /// absent, or a character-reference table lookup is out of range.
+    TokenizerState,
+    /// CSS colour processing is in a state its own sequencing excludes: a
+    /// digit or conversion bank is missing or out of range, a read ran past
+    /// its input, or the colour adapter reported malformed input that the
+    /// parser builds well formed.
+    ColorConversionState,
     /// A Meta CSP processor, or the CSS color-scheme parser, called an
     /// admission or release callback while another callback of the same call
     /// was still running.
