@@ -106,12 +106,15 @@ impl HeadState<'_> {
                 let current = self.before.kernel.current(c)?;
                 Host::Owned(current)
             };
-            self.before.kernel.push(&node, c)?;
+            // Every lookup that can fail precedes the push, so a refusal never
+            // leaves the node on the stack of open elements.
             let capability = &self
                 .script
                 .as_ref()
                 .ok_or(HeadError::ConstructionCapabilityUnavailable)?
                 .capability;
+            let source = &self.pending.as_ref().ok_or(HeadError::MissingInput)?.source;
+            self.before.kernel.push(&node, c)?;
             let host = match &host {
                 Host::Owned(host) => {
                     crate::construction::context::DeclarativeShadowHost::Owned(host)
@@ -120,13 +123,11 @@ impl HeadState<'_> {
                     crate::construction::context::DeclarativeShadowHost::Captured(host)
                 }
             };
-            let attached = self.before.kernel.session.attach_declarative_shadow(
-                c,
-                &node,
-                host,
-                &self.pending.as_ref().ok_or(HeadError::MissingInput)?.source,
-                capability,
-            )?;
+            let attached = self
+                .before
+                .kernel
+                .session
+                .attach_declarative_shadow(c, &node, host, source, capability)?;
             if !attached {
                 let location = self
                     .before
@@ -172,17 +173,17 @@ impl HeadState<'_> {
                 .parent(c, &scope)?
                 .ok_or(HeadError::MissingInput)?;
         }
+        let capability = &self
+            .script
+            .as_ref()
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?
+            .capability;
         self.before.kernel.push(&node, c)?;
-        let success = self.before.kernel.session.prepare_template_patching(
-            c,
-            &scope,
-            &node,
-            &self
-                .script
-                .as_ref()
-                .ok_or(HeadError::ConstructionCapabilityUnavailable)?
-                .capability,
-        )?;
+        let success = self
+            .before
+            .kernel
+            .session
+            .prepare_template_patching(c, &scope, &node, capability)?;
         if !success {
             let location = self
                 .before
