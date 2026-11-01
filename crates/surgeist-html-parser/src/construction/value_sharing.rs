@@ -2030,6 +2030,86 @@ mod tests {
         super::super::tests::storage_zero(c);
     }
 
+    fn credits(c: &ParseControl) -> u64 {
+        c.usage().resource(HtmlParseResource::WorkCredits).current
+    }
+
+    #[test]
+    fn a_begin_finalizing_the_construction_cannot_recover_restores_the_storage() {
+        let (mut c, mut arena) = parsed();
+        // A second holder of the document keeps the arena from being recovered
+        // as the sole owner, as a leaked handle would.
+        let held = match &arena.storage.as_ref().unwrap().view {
+            HtmlConstructionResult::Document(document) => document.clone(),
+            HtmlConstructionResult::Fragment(_) => panic!("a document fixture"),
+        };
+        let aliased = ParseStop::InternalInvariant(
+            crate::parser::control::Invariant::SharedAllocationAliased,
+        );
+        assert_eq!(
+            arena.begin_finalizing(&mut c),
+            Err(SessionError::Stop(aliased))
+        );
+        assert_eq!(c.stop(), Some(aliased));
+        // The storage went back whole and no finalizing owner was left behind.
+        assert!(arena.storage.is_some());
+        assert!(arena.finalizing.is_none());
+        assert!(!arena.sharing_started);
+        drop(held);
+        release_and_check(arena, &mut c);
+    }
+
+    #[test]
+    fn every_work_cut_of_value_sharing_leaves_an_arena_that_releases_to_zero() {
+        let all = crate::parser::tree_builder::tests::limits(100).work_credits();
+        let (mut baseline, mut arena) = parsed();
+        let before = credits(&baseline);
+        drop(
+            arena
+                .share_values(&mut baseline, ValueSharingMode::Combined)
+                .ok()
+                .expect("an uncut sharing succeeds"),
+        );
+        let cost = credits(&baseline) - before;
+        release_and_check(arena, &mut baseline);
+        let mut refused_after_finalizing = 0;
+        // Every sharing step costs far too much to cut at each credit, so the
+        // first and last stretches are cut at each credit and the long middle
+        // at a stride. Publication, where the finalizing owner is restored,
+        // lies at the end.
+        let stride = usize::try_from(cost / 64).unwrap_or(1).max(1);
+        let sampled = (0..cost.min(32))
+            .chain((32..cost.saturating_sub(64)).step_by(stride))
+            .chain(cost.saturating_sub(64).max(32)..cost);
+        for admitted in sampled {
+            let (mut c, mut arena) = parsed();
+            c.charge(WorkCategory::StateStep, all - credits(&c) - admitted)
+                .unwrap();
+            let error = match arena.share_values(&mut c, ValueSharingMode::Combined) {
+                Ok(_) => panic!("a cut sharing at {admitted} of {cost} credits succeeded"),
+                Err(error) => error,
+            };
+            assert!(
+                matches!(
+                    error,
+                    SessionError::Stop(ParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        ..
+                    })
+                ),
+                "{error:?}"
+            );
+            // The refusal left the owner in exactly one place, so release
+            // finds it and credits everything.
+            assert!(arena.storage.is_some() != arena.finalizing.is_some());
+            refused_after_finalizing += usize::from(arena.finalizing.is_some());
+            release_and_check(arena, &mut c);
+        }
+        // Some cut falls after the storage moved into the finalizing owner and
+        // before it was published, so the restore of that owner is exercised.
+        assert!(refused_after_finalizing > 0);
+    }
+
     #[test]
     fn a_join_table_shorter_than_the_registry_reports_the_registry_row() {
         let (mut c, mut arena) = finalizing();
