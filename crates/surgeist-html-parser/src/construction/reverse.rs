@@ -1405,6 +1405,35 @@ mod tests {
     }
 
     #[test]
+    fn lineage_over_more_native_rows_than_the_projection_holds_reports_the_registry_row() {
+        let registry_row =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let source = crate::HtmlSource::utf8("A");
+        let mut c = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        let mut evidence = two_current_destinations(&mut c, &source);
+        // The second native row is gone, so the run of rows of the first one
+        // continues past the end of the projection.
+        evidence
+            .native
+            .projection
+            .as_mut()
+            .unwrap()
+            .try_pop(&mut c)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            evidence.project_lineage(&mut c),
+            Err(SessionError::Stop(registry_row))
+        );
+        assert_eq!(c.stop(), Some(registry_row));
+        evidence.release(&mut c).unwrap();
+        crate::parser::tree_builder::tests::assert_released(&c);
+    }
+
+    #[test]
     fn reverse_visits_one_literal_row_per_call_with_point_and_eof_rules() {
         let source = crate::HtmlSource::utf8("AB😀");
         let rows = make_rows(&source);

@@ -1713,6 +1713,69 @@ mod tests {
         (c, frozen, index)
     }
 
+    fn registry_row() -> ParseStop {
+        ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+    }
+    fn published() -> crate::HtmlParseReport {
+        crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<!doctype html><p>a"),
+            super::super::tests::limits(),
+        )
+        .parse()
+        .unwrap()
+    }
+
+    #[test]
+    fn releasing_the_execution_bank_past_the_registry_reports_the_registry_row() {
+        let mut report = published();
+        let mut c = ParseControl::new(super::super::tests::limits(), HtmlParseCancellation::new());
+        report.storage_mut().associated_slot = Some(usize::MAX / 2);
+        assert_eq!(
+            report.storage_mut().release_execution_inputs(&mut c),
+            Err(registry_row())
+        );
+        assert_eq!(c.stop(), Some(registry_row()));
+    }
+
+    #[test]
+    fn releasing_the_execution_bank_from_another_row_kind_keeps_that_row() {
+        let mut report = published();
+        let mut c = ParseControl::new(super::super::tests::limits(), HtmlParseCancellation::new());
+        let row = report
+            .storage_mut()
+            .history_mut()
+            .arena_mut()
+            .storage
+            .as_ref()
+            .unwrap()
+            .payloads
+            .values
+            .iter()
+            .position(|row| !matches!(row, RetainedPayload::Retired))
+            .unwrap();
+        let before = |report: &mut crate::HtmlParseReport| {
+            mem::discriminant(
+                &report
+                    .storage_mut()
+                    .history_mut()
+                    .arena_mut()
+                    .storage
+                    .as_ref()
+                    .unwrap()
+                    .payloads
+                    .values[row],
+            )
+        };
+        let kept = before(&mut report);
+        report.storage_mut().associated_slot = Some(row);
+        assert_eq!(
+            report.storage_mut().release_execution_inputs(&mut c),
+            Err(registry_row())
+        );
+        assert_eq!(c.stop(), Some(registry_row()));
+        assert_eq!(before(&mut report), kept);
+    }
+
     #[test]
     fn cached_select_reference_qualification_has_finite_exact_cost_and_sticky_cleanup() {
         let limits = super::super::tests::limits();
