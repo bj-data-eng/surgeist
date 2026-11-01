@@ -169,8 +169,13 @@ impl HeadState<'_> {
         if self.formatting_removed.is_some() || index >= self.formatting.len() {
             return Err(HeadError::InvalidFormattingState);
         }
+        let last = self
+            .formatting
+            .len()
+            .checked_sub(1)
+            .ok_or(HeadError::InvalidFormattingState)?;
         write(size_of::<Option<FormattingEntry>>(), 1, c)?;
-        for shift in index..self.formatting.len() - 1 {
+        for shift in index..last {
             if !self.formatting.swap_slots(shift, shift + 1, c)? {
                 return Err(HeadError::InvalidFormattingState);
             }
@@ -240,7 +245,12 @@ impl HeadState<'_> {
             self.before.kernel.push(&node, c)?;
             self.format_replace_node(index, &node, c)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if index == self.formatting.len() - 1 {
+            let last = self
+                .formatting
+                .len()
+                .checked_sub(1)
+                .ok_or(HeadError::InvalidFormattingState)?;
+            if index == last {
                 break;
             }
             write(size_of::<usize>(), 1, c)?;
@@ -257,11 +267,9 @@ impl HeadState<'_> {
         let mut matches = 0usize;
         let mut earliest = None;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        for index in (0..self.formatting.len()).rev() {
+        for (index, entry) in self.formatting.as_slice().iter().enumerate().rev() {
             c.charge(WorkCategory::RecordVisit, 2)?;
-            let Some(FormattingElement { creation, .. }) =
-                &self.formatting.as_slice()[index].element
-            else {
+            let Some(FormattingElement { creation, .. }) = &entry.element else {
                 break;
             };
             let Some(FormattingElement {
@@ -713,7 +721,13 @@ impl HeadState<'_> {
                 return Err(stop.into());
             }
             c.charge(WorkCategory::RecordVisit, 1)?;
-            for shift in (insertion..self.formatting.len() - 1).rev() {
+            // The push above left the entry in the list, so it is not empty.
+            let last = self
+                .formatting
+                .len()
+                .checked_sub(1)
+                .ok_or(HeadError::InvalidFormattingState)?;
+            for shift in (insertion..last).rev() {
                 if !self.formatting.swap_slots(shift, shift + 1, c)? {
                     return Err(HeadError::InvalidFormattingState);
                 }
@@ -761,11 +775,7 @@ impl HeadState<'_> {
                 self.formatting.try_pop(c)?
             };
             let Some(entry) = entry else { break };
-            self.formatting_removed = Some(entry);
-            self.formatting_removed
-                .as_mut()
-                .expect("retained disposal owner")
-                .release(c)?;
+            self.formatting_removed.insert(entry).release(c)?;
             self.formatting_removed = None;
         }
         Ok(())

@@ -341,7 +341,13 @@ impl<'source> HeadStage<'source> {
             template_modes.release(c)?;
             return Err(stop.into());
         }
-        let mut before = before.take().expect("verified prologue continuation");
+        let Some(mut before) = before.take() else {
+            lexical.release(c)?;
+            formatting.release(c)?;
+            table.entries.release(c)?;
+            template_modes.release(c)?;
+            return Err(HeadError::MissingInput);
+        };
         let pending = before.input.take().map(PendingToken::from_token);
         Ok(Self {
             source,
@@ -638,10 +644,7 @@ impl<'source> HeadStage<'source> {
                     4,
                     c,
                 )?;
-                let Event::Token(event) = state.lexical_pending.take().expect("retained event")
-                else {
-                    unreachable!("actual token variant inspected")
-                };
+                let event = super::take_token_event(&mut state.lexical_pending, c)?;
                 state.pending = Some(PendingToken::from_token(event.into_token(c)?));
                 // HTML877d pre/listing/textarea: the initial-LF rule applies to the
                 // token immediately after the start tag, whichever mode handles it.
@@ -654,7 +657,7 @@ impl<'source> HeadStage<'source> {
                 let event = state
                     .lexical_pending
                     .take()
-                    .expect("retained lexical event");
+                    .ok_or(HeadError::TokenizerExhausted)?;
                 if let Err((stop, event)) = state.lexical.try_push_recover(c, event) {
                     // Terminal recovery preserves ownership, without useful work.
                     state.lexical_pending = Some(event);
@@ -774,7 +777,7 @@ impl<'source> HeadStage<'source> {
         }
         // These empty vectors still retain admitted capacities. Move and release
         // the whole state only after alias-sensitive arena release succeeded.
-        let state = self.state.take().expect("retained active state");
+        let state = self.state.take().ok_or(HeadError::Consumed)?;
         state.before.whitespace.release(c)?;
         state.lexical.release(c)?;
         state.formatting.release(c)?;
@@ -988,7 +991,7 @@ impl HeadState<'_> {
                 let text = self
                     .whitespace_pending
                     .take()
-                    .expect("retained whitespace prefix");
+                    .ok_or(HeadError::MissingInput)?;
                 if let Err((stop, text)) = self.before.whitespace.try_push_recover(c, text) {
                     self.whitespace_pending = Some(text);
                     return Err(stop.into());
@@ -1292,7 +1295,7 @@ impl HeadState<'_> {
         write(size_of::<Option<HtmlSourceRange>>(), 1, c)?;
         self.script
             .as_mut()
-            .expect("qualified end script state")
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?
             .insertion_point = None;
         Ok(())
     }
@@ -1329,7 +1332,7 @@ impl HeadState<'_> {
             .ok_or(HeadError::MissingInput)?
             .payload
         else {
-            unreachable!("classified actual script tag")
+            return Err(HeadError::MissingInput);
         };
         let template = self.before.kernel.last_template(c)?;
         let context = template.as_ref().map_or(
@@ -1667,7 +1670,7 @@ impl HeadState<'_> {
                             .ok_or(HeadError::MissingInput)?
                             .payload
                         else {
-                            unreachable!("classified actual text")
+                            return Err(HeadError::InvalidTextToken);
                         };
                         self.before.kernel.insert_text(
                             input,

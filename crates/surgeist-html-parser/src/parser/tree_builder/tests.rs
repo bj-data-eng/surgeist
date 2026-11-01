@@ -19850,7 +19850,41 @@ fn the_fresh_head_transition_without_retained_lexical_evidence_reports_consumed(
         .unwrap();
     let error = driver.step().err().unwrap();
     assert!(matches!(error, StandaloneError::Consumed), "{error:?}");
-    assert!(driver.control.stop().is_none());
+    // The driver latches every error outside its named mappings as the generic
+    // unsupported-state stop; that first stop is the one cleanup runs under.
+    assert_eq!(
+        driver.control.stop(),
+        Some(ParseStop::UnsupportedStandaloneState(
+            crate::parser::control::StandaloneUnsupported::InvalidNesting
+        ))
+    );
     driver.release().unwrap();
     assert_released(&driver.control);
+}
+
+#[test]
+fn a_token_event_is_taken_only_from_a_token_slot_and_other_content_stays_for_release() {
+    use crate::parser::input::PreprocessingRecord;
+    let source = HtmlSource::utf8("a\r\nb");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut empty = None;
+    let stop = take_token_event(&mut empty, &mut c).err().unwrap();
+    assert_eq!(
+        stop,
+        ParseStop::InternalInvariant(Invariant::InputCursorState)
+    );
+    assert_eq!(c.stop(), Some(stop));
+    assert!(empty.is_none());
+
+    let mut other = Some(Event::Preprocessing {
+        _record: PreprocessingRecord::Newline { was_crlf: true },
+        _source: source.range(1, 3).unwrap(),
+        retention: OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap(),
+    });
+    // The first stop stays the first stop; the content is still in its slot.
+    let again = take_token_event(&mut other, &mut c).err().unwrap();
+    assert_eq!(again, stop);
+    other.take().unwrap().release(&mut c).unwrap();
+    assert_released(&c);
 }

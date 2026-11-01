@@ -250,7 +250,13 @@ impl LocationKernel {
         let template = self.named(target, "template", c)?;
         self.push(target, c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        for shift in (index..self.stack()?.len() - 1).rev() {
+        // The push left the target on top, so the stack is not empty.
+        let top = self
+            .stack()?
+            .len()
+            .checked_sub(1)
+            .ok_or(KernelError::EmptyStack)?;
+        for shift in (index..top).rev() {
             if !self
                 .open
                 .as_mut()
@@ -359,6 +365,8 @@ impl LocationKernel {
         self.session.validate_node(c, target)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let len = self.stack()?.len();
+        // An empty stack holds no match, which is the same refusal as below.
+        let top = len.checked_sub(1).ok_or(KernelError::EmptyStack)?;
         for index in 0..len {
             let node = self.at(index, c)?;
             if self.session.same_node(c, &node, target)? {
@@ -368,7 +376,7 @@ impl LocationKernel {
                     self.template_remove(at, c)?;
                 }
                 self.templates_shift(index + 1, false, c)?;
-                for shift in index..len - 1 {
+                for shift in index..top {
                     if !self
                         .open
                         .as_mut()
@@ -396,17 +404,21 @@ impl LocationKernel {
             .ok_or(KernelError::Consumed)?
             .fragment_root(control)?;
         let open = OwnedVec::new(HtmlParseResource::OpenElements)?;
+        let templates = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         write(size_of::<Self>(), 5, control)?;
         write(size_of::<Option<ParserArenaSession>>(), 1, control)?;
         control.charge(WorkCategory::ProviderCall, 1)?;
+        // Every fallible step precedes the take, so a refusal leaves the
+        // caller's session where it was.
+        let Some(session) = session.take() else {
+            return Err(KernelError::Consumed);
+        };
         Ok(Self {
             owner: control.identity(),
-            session: session
-                .take()
-                .expect("verified session remains owned until commit"),
+            session,
             open: Some(open),
             stack_position_bound: 0,
-            templates: Some(OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?),
+            templates: Some(templates),
             root_target,
             foster_parenting: false,
         })
@@ -934,11 +946,10 @@ impl LocationKernel {
     fn release_stack(&mut self, control: &mut ParseControl) -> Result<(), KernelError> {
         // Every owner is taken and released even when an earlier release fails;
         // the first failure is the one returned.
-        let stack = self
-            .open
-            .take()
-            .expect("verified active stack")
-            .release(control);
+        let stack = match self.open.take() {
+            Some(open) => open.release(control).map_err(KernelError::from),
+            None => Err(KernelError::Consumed),
+        };
         let listings = match self.templates.take() {
             Some(templates) => templates.release(control),
             None => Ok(()),
@@ -1287,7 +1298,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                         .get(c, id)?;
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if event.token(c)?.is_some() {
+                if matches!(event, Event::Token(_)) {
                     write(
                         const {
                             size_of::<Option<Event>>()
@@ -1296,11 +1307,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                         2,
                         c,
                     )?;
-                    let Event::Token(event) =
-                        self.event.take().expect("retained actual token event")
-                    else {
-                        unreachable!("variant inspected")
-                    };
+                    let event = take_token_event(&mut self.event, c)?;
                     self.token = Some(event.into_token(c)?);
                 } else {
                     self.lexical
@@ -1309,7 +1316,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
                         .reserve_geometric(c, 1)?;
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     write(size_of::<Option<Event>>(), 1, c)?;
-                    let event = self.event.take().expect("retained lexical event");
+                    let event = self
+                        .event
+                        .take()
+                        .ok_or(StandaloneError::TokenizerExhausted)?;
                     if let Err((stop, event)) = self
                         .lexical
                         .as_mut()
@@ -1344,26 +1354,25 @@ impl<'source> StandaloneDocumentDriver<'source> {
             self.before = Some(
                 self.prologue
                     .as_mut()
-                    .expect("active prologue")
+                    .ok_or(StandaloneError::Consumed)?
                     .take_before_head(c)?,
             );
             self.prologue = None;
         }
         write(size_of::<Option<head::HeadStage>>(), 1, c)?;
-        self.head = Some(head::HeadStage::new(
+        let head = self.head.insert(head::HeadStage::new(
             self.source,
             &mut self.before,
             &mut self.tokenizer,
             c,
         )?);
         c.charge(WorkCategory::RecordVisit, 2)?;
-        let head = self.head.as_mut().expect("actual fresh head transfer");
         write(size_of::<ConstructionCapability>(), 5, c)?;
         c.charge(WorkCategory::ProviderCall, 1)?;
         let document = head
             .state
             .as_ref()
-            .expect("actual fresh head")
+            .ok_or(StandaloneError::Consumed)?
             .before
             .kernel
             .session
@@ -1382,8 +1391,12 @@ impl<'source> StandaloneDocumentDriver<'source> {
         c.charge(WorkCategory::RecordVisit, 2)?;
         write(const { size_of::<OwnedVec<Event>>() * 2 }, 2, c)?;
         std::mem::swap(
-            &mut head.state.as_mut().expect("active head").lexical,
-            self.lexical.as_mut().expect("retained lexical evidence"),
+            &mut head
+                .state
+                .as_mut()
+                .ok_or(StandaloneError::Consumed)?
+                .lexical,
+            self.lexical.as_mut().ok_or(StandaloneError::Consumed)?,
         );
         Ok(head::HeadStep::Consumed)
     }
@@ -1508,7 +1521,8 @@ impl<'source> StandaloneDocumentDriver<'source> {
             if c.stop().is_none() {
                 write(size_of::<Option<prologue::BeforeHead>>(), 1, c)?;
             }
-            let before = self.before.take().expect("retained BeforeHead");
+        }
+        if let Some(before) = self.before.take() {
             before.whitespace.release(c)?;
         }
         if c.stop().is_none() {
@@ -1565,6 +1579,20 @@ impl<'source> StandaloneDocumentDriver<'source> {
             lexical.release(c)?;
         }
         Ok(())
+    }
+}
+/// Takes the token event out of `slot`. Any other content stays in the slot
+/// for the usual release, and the refusal is an invariant stop.
+fn take_token_event(
+    slot: &mut Option<super::tokenizer::token::Event>,
+    c: &mut ParseControl,
+) -> Result<super::tokenizer::token::TokenEvent, ParseStop> {
+    match slot.take() {
+        Some(super::tokenizer::token::Event::Token(event)) => Ok(event),
+        other => {
+            *slot = other;
+            Err(c.fail_invariant(super::control::Invariant::InputCursorState))
+        }
     }
 }
 fn dispose_token(

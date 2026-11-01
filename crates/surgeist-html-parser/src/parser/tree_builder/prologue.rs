@@ -219,28 +219,22 @@ impl<'a> DocumentPrologue<'a> {
         whitespace.require_owner(c)?;
         let mut session =
             match ParserArenaSession::new(c, RootKind::Document(HtmlDocumentMode::NoQuirks)) {
-                Ok(session) => Some(session),
+                Ok(session) => session,
                 Err(error) => {
                     whitespace.release(c)?;
                     return Err(error.into());
                 }
             };
         if let Err(error) = session
-            .as_mut()
-            .expect("fresh Document")
             .initialize_standalone_document(c)
-            .and_then(|()| {
-                session
-                    .as_mut()
-                    .expect("fresh Document")
-                    .initialize_parse_evidence(c, source)
-            })
+            .and_then(|()| session.initialize_parse_evidence(c, source))
         {
-            session.as_mut().expect("retained Document").release(c)?;
+            session.release(c)?;
 
             whitespace.release(c)?;
             return Err(error.into());
         }
+        let mut session = Some(session);
         let mut kernel = match LocationKernel::new(&mut session, c) {
             Ok(kernel) => kernel,
             Err(error) => {
@@ -383,7 +377,10 @@ impl<'a> DocumentPrologue<'a> {
                     crate::construction::provenance::ParserRule::Prologue(self.mode),
                 )?;
             write(size_of::<Option<Text>>(), 1, c)?;
-            let prefix = self.whitespace_pending.take().expect("retained prefix");
+            let prefix = self
+                .whitespace_pending
+                .take()
+                .ok_or(PrologueError::MissingInput)?;
             if let Err((stop, prefix)) = self
                 .whitespace
                 .as_mut()
@@ -423,7 +420,7 @@ impl<'a> DocumentPrologue<'a> {
         write(size_of::<Token>(), 1, c)?;
         write(size_of::<PendingToken>(), 3, c)?;
         self.pending = Some(PendingToken::from_token(
-            input.take().expect("validated input"),
+            input.take().ok_or(PrologueError::MissingInput)?,
         ));
         self.advance(c)
     }
@@ -491,7 +488,7 @@ impl<'a> DocumentPrologue<'a> {
                         .ok_or(PrologueError::MissingInput)?
                         .payload
                     else {
-                        unreachable!("doctype payload retained");
+                        return Err(PrologueError::MissingInput);
                     };
                     let kernel = self.kernel.as_mut().ok_or(PrologueError::Consumed)?;
                     let node = kernel.session.allocate_doctype(c, input)?;
@@ -609,16 +606,27 @@ impl<'a> DocumentPrologue<'a> {
         if self.mode != PrologueMode::BeforeHead {
             return Err(PrologueError::PendingInput);
         }
+        if self.whitespace.is_none() {
+            return Err(PrologueError::Consumed);
+        }
         write(size_of::<BeforeHead>(), 3, c)?;
         write(size_of::<Option<LocationKernel>>(), 1, c)?;
         write(size_of::<Option<PendingToken>>(), 1, c)?;
         write(size_of::<Option<OwnedVec<Text>>>(), 1, c)?;
-        Ok(BeforeHead {
-            kernel: self.kernel.take().expect("active kernel"),
-            input: self.pending.take().and_then(PendingToken::into_token),
-
-            whitespace: self.whitespace.take().expect("active whitespace"),
-        })
+        // Both owners were observed above; should either be gone anyway, the
+        // other stays where it was.
+        match (self.kernel.take(), self.whitespace.take()) {
+            (Some(kernel), Some(whitespace)) => Ok(BeforeHead {
+                kernel,
+                input: self.pending.take().and_then(PendingToken::into_token),
+                whitespace,
+            }),
+            (kernel, whitespace) => {
+                self.kernel = kernel;
+                self.whitespace = whitespace;
+                Err(PrologueError::Consumed)
+            }
+        }
     }
     pub(super) fn release(&mut self, c: &mut ParseControl) -> Result<(), PrologueError> {
         if c.stop().is_some() {
@@ -626,9 +634,9 @@ impl<'a> DocumentPrologue<'a> {
         } else {
             c.require_identity(&self.owner)?;
         }
-        if self.kernel.is_none() {
+        let Some(kernel) = self.kernel.as_mut() else {
             return Err(PrologueError::Consumed);
-        }
+        };
         if let Some(pending) = &mut self.pending {
             pending.release(c)?;
         }
@@ -646,7 +654,7 @@ impl<'a> DocumentPrologue<'a> {
                 text.release(c)?;
             }
         }
-        self.kernel.as_mut().expect("active kernel").release(c)?;
+        kernel.release(c)?;
         if let Some(whitespace) = self.whitespace.take() {
             whitespace.release(c)?;
         }

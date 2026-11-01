@@ -110,7 +110,7 @@ impl HeadState<'_> {
             let capability = &self
                 .script
                 .as_ref()
-                .expect("validated construction")
+                .ok_or(HeadError::ConstructionCapabilityUnavailable)?
                 .capability;
             let host = match &host {
                 Host::Owned(host) => {
@@ -180,7 +180,7 @@ impl HeadState<'_> {
             &self
                 .script
                 .as_ref()
-                .expect("validated standalone")
+                .ok_or(HeadError::ConstructionCapabilityUnavailable)?
                 .capability,
         )?;
         if !success {

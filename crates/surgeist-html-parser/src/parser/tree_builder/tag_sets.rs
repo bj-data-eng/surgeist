@@ -37,10 +37,11 @@ pub(super) fn ascii_eq(
     if value.len() != expected.len() {
         return Ok(false);
     }
-    for (index, byte) in expected.bytes().enumerate() {
+    // The lengths are equal, so the pairs are exactly the literal's indices.
+    for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
         // Two stored UTF-16 bytes and one defining literal byte are inspected.
         control.charge(WorkCategory::InspectByte, 3)?;
-        if value.code_units()[index] != u16::from(byte) {
+        if unit != u16::from(byte) {
             return Ok(false);
         }
     }
@@ -148,9 +149,10 @@ pub(super) fn equal_units(
     if left.len() != right.len() {
         return Ok(false);
     }
-    for index in 0..left.len() {
+    // The lengths are equal, so the pairs are exactly the shared indices.
+    for (left, right) in left.code_units().iter().zip(right.code_units()) {
         c.charge(WorkCategory::InspectByte, 4)?;
-        if left.code_units()[index] != right.code_units()[index] {
+        if left != right {
             return Ok(false);
         }
     }

@@ -156,7 +156,7 @@ impl HeadState<'_> {
         }
         self.body_runs
             .as_mut()
-            .expect("retained partition")
+            .ok_or(HeadError::MissingInput)?
             .release(c)?;
         write(size_of::<Option<BodyTextRuns>>(), 1, c)?;
         self.body_runs = None;

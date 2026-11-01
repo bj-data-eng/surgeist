@@ -43,11 +43,11 @@ pub(super) fn insensitive(
     if value.len() != literal.len() {
         return Ok(false);
     }
-    for (index, byte) in literal.bytes().enumerate() {
+    // The lengths are equal, so the pairs are exactly the literal's indices.
+    for (&unit, byte) in value.code_units().iter().zip(literal.bytes()) {
         c.charge(WorkCategory::InspectByte, 3)?;
-        let unit = value.code_units()[index];
         let lower = if (65..=90).contains(&unit) {
-            unit + 32
+            unit | 0x20
         } else {
             unit
         };
@@ -413,7 +413,7 @@ impl HeadState<'_> {
                 self.body_run = self
                     .body_runs
                     .as_mut()
-                    .expect("retained runs")
+                    .ok_or(HeadError::MissingInput)?
                     .take_next(c)?;
             }
             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -424,14 +424,7 @@ impl HeadState<'_> {
             let kind = run.kind;
             if kind == BodyTextKind::Null {
                 let mode = self.mode(c)?;
-                for origin in self
-                    .body_run
-                    .as_ref()
-                    .expect("retained run")
-                    .text
-                    .origins
-                    .as_slice()
-                {
+                for origin in run.text.origins.as_slice() {
                     c.charge(WorkCategory::RecordVisit, 1)?;
 
                     c.charge(WorkCategory::ProviderCall, 1)?;
@@ -475,7 +468,10 @@ impl HeadState<'_> {
                 self.frameset(false, c)?;
             }
         }
-        self.body_runs.as_mut().expect("retained runs").release(c)?;
+        self.body_runs
+            .as_mut()
+            .ok_or(HeadError::MissingInput)?
+            .release(c)?;
         write(size_of::<Option<BodyTextRuns>>(), 1, c)?;
         self.body_runs = None;
         self.finish(c)
@@ -632,7 +628,13 @@ impl HeadState<'_> {
             )?;
         }
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let mut index = self.before.kernel.stack()?.len() - 1;
+        let mut index = self
+            .before
+            .kernel
+            .stack()?
+            .len()
+            .checked_sub(1)
+            .ok_or(KernelError::EmptyStack)?;
         loop {
             c.charge(WorkCategory::StateStep, 1)?;
             if index == 0 {
@@ -719,15 +721,15 @@ impl HeadState<'_> {
         if name.len() != token.len() {
             return Ok(false);
         }
-        for index in 0..name.len() {
+        // The lengths are equal, so the pairs are exactly the shared indices.
+        for (&unit, &expected) in name.code_units().iter().zip(token.code_units()) {
             c.charge(WorkCategory::InspectByte, 4)?;
-            let unit = name.code_units()[index];
             let lower = if (65..=90).contains(&unit) {
-                unit + 32
+                unit | 0x20
             } else {
                 unit
             };
-            if lower != token.code_units()[index] {
+            if lower != expected {
                 return Ok(false);
             }
         }
