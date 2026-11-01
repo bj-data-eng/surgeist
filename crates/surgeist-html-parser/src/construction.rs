@@ -3749,24 +3749,36 @@ impl SessionStorage {
                 );
             }
         } else {
-            for position in 0..self
+            // Walk back from the last child to the reference sibling, so the
+            // work is the children behind it and not the ones in front of it;
+            // the entry just before it is the preceding sibling.
+            let parent = self
                 .construction
                 .node_at(parent_index)
-                .ok_or_else(|| latch_registry_row(control))?
-                .child_count()
-            {
+                .ok_or_else(|| latch_registry_row(control))?;
+            let mut position = parent.child_count();
+            loop {
+                let Some(found) = position.checked_sub(1) else {
+                    return Err(latch_registry_row(control));
+                };
                 control.charge(WorkCategory::RecordVisit, 1)?;
-                let child = self
-                    .construction
-                    .node_at(parent_index)
-                    .ok_or_else(|| latch_registry_row(control))?
-                    .child_at(position)
+                let child = parent
+                    .child_at(found)
                     .ok_or_else(|| latch_registry_row(control))?
                     .position();
+                position = found;
                 if Some(child) == before_index {
                     break;
                 }
-                preceding = Some(child);
+            }
+            if let Some(previous) = position.checked_sub(1) {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                preceding = Some(
+                    parent
+                        .child_at(previous)
+                        .ok_or_else(|| latch_registry_row(control))?
+                        .position(),
+                );
             }
         }
         control.charge(WorkCategory::RecordVisit, 1)?;
@@ -27837,12 +27849,15 @@ mod tests {
         assert_eq!(control.usage().actual_capacity_bytes, 0);
     }
 
+    /// High-water marks before and after the changes of `order_scenario`.
+    type OrderMarks = ([u64; 2], [u64; 2]);
+    /// The first stop of `order_scenario` and the order `root` held then.
+    type OrderStop = (SessionError, Vec<usize>);
+
     /// Builds `root` holding `a`, `b`, `e` and `other` holding `d`, then
     /// moves `c` before `d`, moves `b` before `a`, detaches `e`, and returns
     /// the usage mark before the changes and after them, or the first stop.
-    fn order_scenario(
-        selected: HtmlParseLimits,
-    ) -> Result<([u64; 2], [u64; 2]), (SessionError, Vec<usize>)> {
+    fn order_scenario(selected: HtmlParseLimits) -> Result<OrderMarks, OrderStop> {
         let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
         let root = session.root(&mut control).unwrap();
@@ -27967,7 +27982,7 @@ mod tests {
             .managed_capacity_bytes(after[1] - 1)
             .finish()
             .unwrap();
-        let (error, root_order) = order_scenario(short).err().expect("one byte short");
+        let (error, root_order) = order_scenario(short).expect_err("one byte short");
         assert!(matches!(
             error,
             SessionError::Stop(ParseStop::LimitExceeded {
