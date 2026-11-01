@@ -1303,11 +1303,9 @@ impl FrozenArena {
         let target = view.node_by_result_id(target).unwrap().position();
         c.arm_finalization_cut(target, earlier, kind);
     }
-    pub(super) fn share_values<'c>(
-        &mut self,
-        c: &'c mut ParseControl,
-        #[cfg(test)] mode: ValueSharingMode,
-    ) -> Result<Sharing<'c>, SessionError> {
+    /// Moves the original storage into its terminal finalizing owner. A refusal
+    /// leaves the storage, or the owner that already holds it, for release.
+    fn begin_finalizing(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         if self.sharing_started || self.finalizing.is_some() {
             return Err(SessionError::Consumed);
         }
@@ -1372,6 +1370,14 @@ impl FrozenArena {
             .unwrap()
             .construction
             .recovered(c, recovery)?;
+        Ok(())
+    }
+    pub(super) fn share_values<'c>(
+        &mut self,
+        c: &'c mut ParseControl,
+        #[cfg(test)] mode: ValueSharingMode,
+    ) -> Result<Sharing<'c>, SessionError> {
+        self.begin_finalizing(c)?;
         let mut sharing = Sharing::new(
             c,
             #[cfg(test)]
