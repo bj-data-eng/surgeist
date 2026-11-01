@@ -60,6 +60,9 @@ mod composition;
 #[path = "native_family_functional/opposed_empty.rs"]
 mod opposed_empty;
 
+#[path = "native_family_functional/empty_float_suffix.rs"]
+mod empty_float_suffix;
+
 fn prepared_fixture<S: LayoutScalar>(levels: [u8; 6], soft_breaks: bool) -> Fixture<S> {
     let mut f = bidi_metadata::split_box_fixture::<S>();
     // The formatter must respond to each request's available width. Its actual
