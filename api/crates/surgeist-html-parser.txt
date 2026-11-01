@@ -261,7 +261,6 @@ pub surgeist_html_parser::HtmlParseInvariant::RegistryRow
 pub surgeist_html_parser::HtmlParseInvariant::ReleaseUnderflow
 pub surgeist_html_parser::HtmlParseInvariant::SharedAllocationAliased
 pub surgeist_html_parser::HtmlParseInvariant::TokenizerState
-pub surgeist_html_parser::HtmlParseInvariant::TreeBuilderOwnerLost
 pub surgeist_html_parser::HtmlParseInvariant::TreeBuilderState
 pub surgeist_html_parser::HtmlParseInvariant::ZeroSizedStorage
 pub enum surgeist_html_parser::HtmlParseLexicalDisposition

@@ -102,13 +102,12 @@ pub enum Invariant {
     /// state names is missing, out of range or of another kind, or a
     /// construction owner that the registry keeps in a slot is not there.
     RegistryRow,
-    /// A tree-builder driver, stage or prologue owner that the driver's own
-    /// sequencing keeps in a slot while its controller is held is gone.
-    TreeBuilderOwnerLost,
-    /// The tree-builder algorithm is in a state its transitions exclude: an
-    /// invalid formatting-list state, script nesting or return mode, a
-    /// boundary or before-head sequencing error, an exhausted tokenizer, or a
-    /// token slot holding another kind of event.
+    /// The tree-builder drivers or algorithm are in a state their sequencing
+    /// excludes: a driver, stage or prologue owner that the sequencing keeps in
+    /// a slot is gone, the formatting list is invalid, script nesting or the
+    /// return mode is wrong, the boundary or before-head sequence is broken,
+    /// the tokenizer is exhausted early, or a token slot holds another kind of
+    /// event.
     TreeBuilderState,
     /// The tokenizer is in a state its transitions exclude: a draft tag,
     /// attribute, comment, doctype or processing-instruction part that must
