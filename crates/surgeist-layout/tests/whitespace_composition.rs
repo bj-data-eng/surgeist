@@ -386,6 +386,7 @@ fn compute(fixture: &Fixture, width: layout::Available) -> layout::CompletedLayo
         0,
         vec![fixture.binding.clone()],
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

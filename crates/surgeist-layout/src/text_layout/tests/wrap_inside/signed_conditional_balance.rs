@@ -48,6 +48,7 @@ fn signed_run<S: LayoutScalar>(
         0,
         vec![fixture.binding.clone()],
         WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: policies(fixture, &[WrapInside::Auto]),
             child_order: vec![],

@@ -117,6 +117,7 @@ fn positions<S: LayoutScalar>(
         0,
         Vec::new(),
         WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![WrappingScopeInput::NativePair {
                 metric_contribution: None,

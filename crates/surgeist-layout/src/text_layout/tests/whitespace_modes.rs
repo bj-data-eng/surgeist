@@ -45,6 +45,7 @@ fn batch<S: LayoutScalar>(
         0,
         vec![p.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -124,6 +125,7 @@ fn intrinsic<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

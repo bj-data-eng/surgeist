@@ -308,7 +308,7 @@ demanded result, including a result with no placed pieces. Its `family()`
 retains the exact checked preparation and its `pieces()` borrows Text's actual
 placed pieces; Layout does not project another fragment geometry. This exposes
 fragment identities and existing geometry, not complete decoration painting or
-NCA-controlled formatting. Numeric-only flow makes no equivalent family claim.
+NCA-controlled formatting.
 
 NotRequested allocates no family-slot owner and adds no family preflight.
 Requested families share one optional binding-indexed owner; when captured
@@ -317,6 +317,18 @@ roots participate in admission and exact related-product census. These limits
 already fund the successful preparation; family construction does not introduce
 a separate funding mode. With no applicable ceiling, Native allocations remain
 fallible without acquiring a new global quota.
+
+Numeric formatters request a Layout-owned family through
+`WrappingInput::native_inline_boxes`. Both checked constructors authenticate its
+complete generated-child proof and actual native ordering roles.
+`CompletedLayoutBatch::native_inline_box_families()` retains formatter-wide box,
+body, fragment and ancestry identities across wrapping;
+`native_inline_box_pieces()` exposes actual selected membership and executed edge
+associations. A demanded empty result retains its family with no pieces;
+unrequested formatters have no family. These numeric observations preserve native
+custody without issuing Text's `InlineFragmentOutput`, decoration envelopes,
+paint rectangles or NCA-controlled formatting. Actual scheduled Prepared Text
+execution refuses native-family demand and uses the Prepared capability above.
 
 Layout selects actual issued break opportunities and alternatives, then consumes Text's
 finalized metrics, fragments, control slots, and atomic slots. At a discretionary
@@ -495,7 +507,10 @@ Contribution operations, including zero.
 
 The numeric formatter excludes actual BoxEdge operations from content L2 before
 ordering and retains their physical allocation. Ordinary Contributions remain
-supplied operands, including zero. `WrappingInput::gaps` carries resolved
+supplied operands, including zero. A demanded and proven normal family can
+classify its genuine zero-component undecorated endpoints as transparent logical
+aliases while retaining their Contribution operation and supplied metrics.
+`WrappingInput::gaps` carries resolved
 neighbor/formatter/delimiter/empty-parent attachments when actual facts cannot
 determine an ordering-empty box's gap uniquely. Attachments must remain valid for
 the actual selected cut; a body-valid neighbor on another line supplies no gap.

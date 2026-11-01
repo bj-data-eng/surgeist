@@ -53,6 +53,7 @@ fn signed_compute<S: LayoutScalar>(
         0,
         vec![fixture.binding.clone()],
         WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![WrappingScopeInput::Captured {
                 scope,

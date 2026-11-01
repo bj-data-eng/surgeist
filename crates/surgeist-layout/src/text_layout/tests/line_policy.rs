@@ -52,6 +52,7 @@ fn batch<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -497,6 +498,7 @@ fn assert_float_amounts<S: LayoutScalar>() {
             0,
             vec![binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
@@ -637,6 +639,7 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

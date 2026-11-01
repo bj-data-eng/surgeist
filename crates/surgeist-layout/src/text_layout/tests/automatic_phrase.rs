@@ -238,6 +238,7 @@ fn rejects(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -260,6 +261,7 @@ fn automatic_phrase_scope_inventory_requires_the_exact_issued_scope_and_own_pair
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -343,6 +345,7 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -484,6 +487,7 @@ fn compute(
         100,
         vec![binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -589,6 +593,7 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -657,6 +662,7 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
             100,
             paragraphs.to_vec(),
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),

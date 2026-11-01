@@ -90,6 +90,7 @@ fn rejects<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -114,6 +115,7 @@ fn generated_inventory<S: LayoutScalar>() {
             0,
             vec![binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
@@ -190,6 +192,7 @@ fn shared_order<S: LayoutScalar>() {
         0,
         vec![binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

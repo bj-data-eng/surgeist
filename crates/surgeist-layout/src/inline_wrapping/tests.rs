@@ -34,7 +34,11 @@ fn raw_numeric_run_admits_its_actual_repeated_acyclic_occurrence() {
     let (graph, _) =
         crate::engine::validation::validate_layout_request_with_text_graph(&tree, 0, &[], &[])
             .unwrap();
-    let context = WrappingContext::new(&tree, &graph, &[], &[], &[], &[], |_| false).unwrap();
+    let context =
+        WrappingContext::new(&tree, &graph, &crate::WrappingInput::default(), &[], |_| {
+            false
+        })
+        .unwrap();
     // The actual post-float run is the second occurrence of1. An earlier
     // occurrence outside this checked raw slice supplies no substitute rank.
     context
@@ -170,9 +174,10 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         WrappingContext::new(
             &tree,
             &graph,
-            &[pair(1, 4), pair(2, 3)],
-            &[],
-            &[],
+            &crate::WrappingInput {
+                scopes: vec![pair(1, 4), pair(2, 3)],
+                ..Default::default()
+            },
             &[],
             |_| false
         )
@@ -182,9 +187,10 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         WrappingContext::new(
             &tree,
             &graph,
-            &[pair(1, 3), pair(2, 4)],
-            &[],
-            &[],
+            &crate::WrappingInput {
+                scopes: vec![pair(1, 3), pair(2, 4)],
+                ..Default::default()
+            },
             &[],
             |_| false
         )
@@ -192,16 +198,27 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         WrappingScopeError::CrossingScopes
     );
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(3, 4)], &[], &[], &[], |_| false).unwrap_err(),
+        WrappingContext::new(
+            &tree,
+            &graph,
+            &crate::WrappingInput {
+                scopes: vec![pair(3, 4)],
+                ..Default::default()
+            },
+            &[],
+            |_| false
+        )
+        .unwrap_err(),
         WrappingScopeError::EndpointRole
     );
     assert_eq!(
         WrappingContext::new(
             &tree,
             &graph,
-            &[pair(2, 3), pair(2, 3)],
-            &[],
-            &[],
+            &crate::WrappingInput {
+                scopes: vec![pair(2, 3), pair(2, 3)],
+                ..Default::default()
+            },
             &[],
             |_| false
         )
@@ -209,7 +226,17 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         WrappingScopeError::DuplicateScope
     );
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(1, 9)], &[], &[], &[], |_| false).unwrap_err(),
+        WrappingContext::new(
+            &tree,
+            &graph,
+            &crate::WrappingInput {
+                scopes: vec![pair(1, 9)],
+                ..Default::default()
+            },
+            &[],
+            |_| false
+        )
+        .unwrap_err(),
         WrappingScopeError::NodeNotReachable
     );
 }

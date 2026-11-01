@@ -4,6 +4,7 @@ use crate::{InlineBoxFragmentationDemand as Demand, LayoutTree, Traverse};
 
 fn wrapping() -> crate::WrappingInput<u32> {
     crate::WrappingInput {
+        native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
         scopes: Vec::new(),
         child_order: Vec::new(),

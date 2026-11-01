@@ -258,6 +258,7 @@ fn wrapping(nested: bool) -> WrappingInput<u32> {
         child_order.push(order(pair(1, 5), GeneratedBoxRef::Node(3)));
     }
     WrappingInput {
+        native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
         scopes,
         child_order,

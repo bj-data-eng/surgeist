@@ -1411,6 +1411,7 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
                 });
             }
             WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes,
                 child_order: vec![],

@@ -125,12 +125,7 @@ pub(crate) struct Row {
 pub(crate) struct Body {
     pub(crate) visual: Range<usize>,
 }
-pub(crate) struct Fragment {
-    pub(crate) owner: Owner,
-    pub(crate) body: usize,
-    pub(crate) visual: Range<usize>,
-    pub(crate) parent: Option<usize>,
-}
+pub(crate) type Fragment = crate::inline_box_components::Component<Owner>;
 pub(crate) struct NativeAncestor {
     enclosing: Option<usize>,
     parent: Owner,

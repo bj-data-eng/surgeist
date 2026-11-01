@@ -134,6 +134,7 @@ pub fn assert_surgeist_matches_with_endpoint_accounting(
             0,
             tree.paragraphs.clone(),
             surgeist_layout::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
@@ -6755,6 +6756,7 @@ mod tests {
             0,
             tree.paragraphs.clone(),
             surgeist_layout::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),

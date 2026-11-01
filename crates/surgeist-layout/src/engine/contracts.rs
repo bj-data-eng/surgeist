@@ -74,6 +74,22 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         _fragments: Option<Vec<InlineFragmentOutputOf<Self::Scalar>>>,
     ) {
     }
+    /// Publish only an accepted native run, never candidate/intrinsic geometry.
+    fn publish_native_inline_run(
+        &mut self,
+        node: Self::Node,
+        _source: std::ops::Range<usize>,
+        completion: Option<std::sync::Arc<crate::inline_wrapping::NativeOrderingProjection>>,
+        lines: Vec<crate::inline_wrapping::family::NativeLineReceipt<Self::Scalar>>,
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, M> {
+        if lines.is_empty() && completion.is_none() {
+            return Ok(());
+        }
+        Err(crate::inline_wrapping::wrapping_error(
+            node,
+            crate::WrappingScopeError::UnsupportedIncidence,
+        ))
+    }
     fn compute_child(
         &mut self,
         node: Self::Node,

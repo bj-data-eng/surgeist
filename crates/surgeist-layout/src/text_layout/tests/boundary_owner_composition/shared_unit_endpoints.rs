@@ -533,6 +533,7 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
                     0,
                     vec![p.clone()],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
                         gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
@@ -601,6 +602,7 @@ fn physical_nested_pairs_keep_the_mark_attached_and_count_each_edge_once() {
                 0,
                 vec![p.clone()],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
@@ -705,6 +707,7 @@ fn cached_packets<S: LayoutScalar>(
         0,
         vec![p.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

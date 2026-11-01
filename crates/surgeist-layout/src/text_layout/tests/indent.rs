@@ -63,6 +63,7 @@ fn simple<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -181,6 +182,7 @@ fn forced<S: LayoutScalar>(each_line: bool, hanging: bool) -> CompletedLayoutBat
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -253,6 +255,7 @@ fn assert_percentage_float<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -333,6 +336,7 @@ fn anonymous<S: LayoutScalar>(
         0,
         vec![paragraph.binding(container)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -393,6 +397,7 @@ fn assert_intrinsic<S: LayoutScalar>() {
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
@@ -492,6 +497,7 @@ fn assert_retry<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -598,6 +604,7 @@ fn assert_administrative_groups<S: LayoutScalar>() {
             0,
             vec![first.binding(0), second.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
@@ -663,6 +670,7 @@ fn assert_empty_forced<S: LayoutScalar>() {
             0,
             vec![binding],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
@@ -709,6 +717,7 @@ fn assert_justified<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -778,6 +787,7 @@ fn assert_preserved_break_and_fraction<S: LayoutScalar>() {
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
@@ -829,6 +839,7 @@ fn assert_own_anonymous_basis_and_principal_reset<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(1)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -852,6 +863,7 @@ fn assert_own_anonymous_basis_and_principal_reset<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(1)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -887,6 +899,7 @@ fn assert_scroll<S: LayoutScalar>() {
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),

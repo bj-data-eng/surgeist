@@ -255,6 +255,7 @@ fn prepared_nested_atomic_baseline_batch<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0), inner.binding(2)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -1580,6 +1581,7 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
                 0,
                 vec![paragraph.binding(2)],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
                     gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
@@ -1720,6 +1722,7 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
             0,
             vec![paragraph.binding(3)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),

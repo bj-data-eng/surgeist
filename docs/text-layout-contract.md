@@ -752,6 +752,56 @@ then schedules the physical operations around the reordered content. Ordinary
 Contributions remain operands, including zero or unpaired occurrences. A wrapping
 NativePair declaration alone grants no transparent ordering role.
 
+A permitted soft cut includes consecutive closing structural End operations
+before measuring the candidate, so their actual advance and metrics belong to
+the selected content. Advance both raw source and descriptor cursors through
+those operations. Opening operations, forced stops and fitting-run fences keep
+their existing boundaries; an ordinary Contribution End remains an operand.
+
+`WrappingInput::native_inline_boxes` requests complete normal inline-box families
+for named native formatters. Each request needs the actual generated-child proof
+for the formatter root and every nested normal box, including undecorated Auto
+pairs. Complete flags alone do not establish that closure. The retained generated
+proof and whole-formatter occurrence snapshot have different roles: visible
+delimiters, ordinary Contributions and excluded metadata are occurrences, not
+invented generated child boxes. Actual Prepared execution refuses this native
+demand even when no gap groups are supplied.
+
+A source-validated canonical empty inline scope can retain its captured identity
+without a native extent. Its complete occurrence and child proof, actual native
+roles and authenticated body attachment establish empty incidence; physical
+phantom realization does not. If there are no raw slots, one body and one actual
+frontier, equivalent Start/End witnesses can derive the attachment. One
+operand-empty body with excluded metadata does not establish raw-frontier
+uniqueness. Retain global identity without inventing a selected line or piece.
+
+For otherwise admissible declarations, an absent required formatter-root or
+nested child-order record refuses `MissingChildOrder`. A present proof with an
+`Unknown` side, or a root closure omitting an actual generated child, refuses
+`IncompleteFamily`. Independently malformed ordering retains `ChildOrder`;
+distinct NativePairs with crossing or shared-endpoint intervals retain
+`CrossingScopes`. These checks never turn an incomplete request into an
+unrequested family.
+
+Text owns the shared component and fragment-parent derivation. Prepared retains
+its captured incidence, full-body L1/L2 and packet authority; the supplied adapter
+consumes resolved native ordering and genuine empty-box incidence without claiming
+Source authority. A body has its own root. Intervening participating content can
+split a normal box; metadata and differing levels alone do not. The resulting
+global fragment identities survive fitting-run cuts and soft wrapping, including
+when previously separated fragments become adjacent on a selected line.
+
+Only exact, proven zero Contribution endpoints in a demanded normal family become
+ordering-transparent. They retain their Contribution operation and metrics as
+logical-source aliases, without parent-directed BoxEdge authority. Place each
+alias using its genuine logical frontier's resolved direction and executed
+selected port. An equivalent adjacent witness must certify the same gap and be
+valid on that selected cut; empty aliases need genuine empty-gap authority.
+Otherwise refuse `GapOutsideSelection`. Nonzero Contributions cannot acquire this
+role. In the six-atomic `000111` case with zero endpoints around members 2/3,
+member positions are `0,10,20,50,40,30`: the logical Start/End aliases are `20/50`,
+while the parent-LTR physical box end is `60`.
+
 `WrappingInput::gaps` supplies resolved attachments for ordering-empty boxes.
 This capability requires a font-free numeric formatter. Actual Prepared-backed
 participation in the target formatter refuses `UnsupportedIncidence`; the Text
@@ -762,6 +812,8 @@ kinds alone do not establish a numeric formatter. Opaque descendant formatters
 retain their own execution authority.
 Each `InlineGapGroupInput` names an anchor and the explicit physical order of
 unrelated boxes at that gap; nested boxes retain their admitted ancestry.
+Each real box/body has one attachment group. Overlapping group declarations
+refuse `ConflictingGap`; they do not define a partial-order merging capability.
 `InlineGapAnchor::Neighbor` uses a genuine ordering occurrence and physical
 `InlineGapAffinity::Before` or `After`. `Formatter` uses the actual source Start
 or End and its adjoining body. `Delimiter` uses the source side of a genuine

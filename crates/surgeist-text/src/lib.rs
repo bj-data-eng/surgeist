@@ -19,6 +19,7 @@ mod font;
 mod geometry;
 mod hyphenation;
 mod id;
+mod inline_box_components;
 mod layout;
 mod options;
 mod phrase;
@@ -69,6 +70,10 @@ pub use font::{
 };
 pub use geometry::{GlyphBasis, GlyphFrame, Point, Rect, Size};
 pub use id::Id;
+pub use inline_box_components::{
+    InlineBoxComponentParticipation, SuppliedInlineBoxComponent, SuppliedInlineBoxComponentRow,
+    SuppliedInlineBoxComponents, SuppliedInlineBoxComponentsInput,
+};
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
     Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line, LineMetricFact, Metrics,

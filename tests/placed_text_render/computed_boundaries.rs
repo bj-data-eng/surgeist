@@ -367,6 +367,7 @@ fn assert_computed_scope_before(
             line_strut: None,
         }],
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),

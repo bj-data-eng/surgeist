@@ -128,6 +128,7 @@ pub(crate) struct WrappingContext<Node> {
     has_avoid: bool,
     pub(crate) edge_plan: super::edge_plan::EdgePlan<Node>,
     ordering: Vec<super::ordering::NativeOrderingProfile<Node>>,
+    pub(crate) families: Vec<super::family::NativeInlineBoxFamily<Node>>,
 }
 impl<Node> PartialEq for WrappingContext<Node> {
     fn eq(&self, other: &Self) -> bool {
@@ -140,9 +141,11 @@ impl<Node> Default for WrappingContext<Node> {
         Self {
             rows: Vec::new(),
             ordering: Vec::new(),
+            families: Vec::new(),
             ancestry: Arc::default(),
             has_avoid: false,
             edge_plan: super::edge_plan::EdgePlan {
+                proof: None,
                 locations: Vec::new(),
                 dependencies: Vec::new(),
                 subtrees: Vec::new(),
@@ -342,17 +345,23 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
     pub(crate) fn new<Tree: LayoutTree<Node = Node>>(
         tree: &Tree,
         graph: &ValidationGraph<Node>,
-        inputs: &[WrappingScopeInput<Node>],
+        input: &super::WrappingInput<Node>,
         proofs: &[WrappingScopeProof<Node>],
-        child_order: &[InlineChildOrderInput<Node>],
-        gaps: &[InlineGapGroupInput<Node>],
         prepared_execution: impl Fn(Node) -> bool,
     ) -> Result<Self, WrappingScopeError> {
+        let super::WrappingInput {
+            scopes: inputs,
+            child_order,
+            gaps,
+            native_inline_boxes: demands,
+            ..
+        } = input;
         let box_edges = graph.nodes.iter().any(|node| matches!(tree.layout_input(*node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()));
         if !box_edges
             && inputs.is_empty()
             && child_order.is_empty()
             && gaps.is_empty()
+            && demands.is_empty()
             && graph
                 .nodes
                 .iter()
@@ -675,7 +684,8 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             }
         }
         let has_avoid = rows.iter().any(|row| row.policy == WrapInside::Avoid);
-        let edge_plan = if child_order.is_empty()
+        let mut edge_plan = if demands.is_empty()
+            && child_order.is_empty()
             && rows.iter().all(|r| r.edges.is_auto())
             && graph
                 .nodes
@@ -683,6 +693,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 .all(|&n| tree.node_input(n).wrap_edges.is_auto())
         {
             super::edge_plan::EdgePlan {
+                proof: None,
                 locations: Vec::new(),
                 dependencies: Vec::new(),
                 subtrees: Vec::new(),
@@ -690,18 +701,82 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         } else {
             super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order, proofs)?
         };
-        let ordering = if box_edges || !gaps.is_empty() {
-            super::ordering::prepare(tree, graph, &rows, gaps, &prepared_execution)?
+        let ordering = if box_edges || !gaps.is_empty() || !demands.is_empty() {
+            super::ordering::prepare(
+                tree,
+                graph,
+                &rows,
+                gaps,
+                demands,
+                edge_plan.proof.as_ref(),
+                &prepared_execution,
+            )?
         } else {
             Vec::new()
         };
+        // Retain the complete Native dependency set once in its existing owner.
+        // Both invalidation consumers borrow it without another dependency list.
+        for profile in &ordering {
+            if profile.data.has_family() && !edge_plan.dependencies.contains(&profile.flow) {
+                edge_plan
+                    .dependencies
+                    .try_reserve(1)
+                    .map_err(|_| WrappingScopeError::Allocation)?;
+                edge_plan.dependencies.push(profile.flow);
+            }
+        }
+        for row in rows.iter().filter(|row| {
+            row.policy == WrapInside::Avoid
+                || !row.edges.is_auto()
+                || row.metric_contribution.is_some()
+                || row.parent_edge_axes.is_some()
+        }) {
+            for n in [Some(row.flow), row.pair.map(|p| p.0), row.pair.map(|p| p.1)]
+                .into_iter()
+                .flatten()
+            {
+                if !edge_plan.dependencies.contains(&n) {
+                    edge_plan
+                        .dependencies
+                        .try_reserve(1)
+                        .map_err(|_| WrappingScopeError::Allocation)?;
+                    edge_plan.dependencies.push(n);
+                }
+            }
+        }
         Ok(Self {
+            families: Vec::new(),
             ordering,
             rows,
             ancestry: Arc::new(Ancestry { intervals }),
             has_avoid,
             edge_plan,
         })
+    }
+    pub(crate) fn retain_native_families(
+        &mut self,
+        graph: Arc<ValidationGraph<Node>>,
+    ) -> Result<(), WrappingScopeError> {
+        for profile in &self.ordering {
+            if profile.data.has_family() {
+                self.families
+                    .try_reserve(1)
+                    .map_err(|_| WrappingScopeError::Allocation)?;
+                self.families
+                    .push(super::family::NativeInlineBoxFamily::new(
+                        profile.flow,
+                        Arc::clone(&graph),
+                        Arc::clone(
+                            self.edge_plan
+                                .proof
+                                .as_ref()
+                                .ok_or(WrappingScopeError::IncompleteFamily)?,
+                        ),
+                        Arc::clone(&profile.data),
+                    ));
+            }
+        }
+        Ok(())
     }
     /// Borrow actual admitted source extents. Geometry-only references do not
     /// acquire wrapping preferences, metric witnesses or completion authority.
@@ -775,7 +850,9 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
     }
 
     pub(crate) fn has_effects(&self) -> bool {
-        self.has_avoid
+        !self.families.is_empty()
+            || self.ordering.iter().any(|p| p.data.has_family())
+            || self.has_avoid
             || !self.edge_plan.dependencies.is_empty()
             || self
                 .rows
@@ -1092,24 +1169,8 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             end: project(pair.1)?,
         })
     }
-    pub(crate) fn dependencies(&self) -> Vec<Node> {
-        let mut result = self.edge_plan.dependencies.clone();
-        for row in self.rows.iter().filter(|row| {
-            row.policy == WrapInside::Avoid
-                || !row.edges.is_auto()
-                || row.metric_contribution.is_some()
-                || row.parent_edge_axes.is_some()
-        }) {
-            for n in [Some(row.flow), row.pair.map(|p| p.0), row.pair.map(|p| p.1)]
-                .into_iter()
-                .flatten()
-            {
-                if !result.contains(&n) {
-                    result.push(n);
-                }
-            }
-        }
-        result
+    pub(crate) fn dependencies(&self) -> &[Node] {
+        &self.edge_plan.dependencies
     }
 }
 #[derive(Clone, Debug, PartialEq)]

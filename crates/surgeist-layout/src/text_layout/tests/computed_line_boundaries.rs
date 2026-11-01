@@ -434,6 +434,7 @@ fn compute<S: LayoutScalar>(
         0,
         vec![fixture.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1033,6 +1034,7 @@ fn control_only_prepared_flow_rejects_native_gap_group<S: LayoutScalar>() {
         tree.insert_input(node, LayoutInputOf::inline_boundary(input));
     }
     let wrapping = crate::WrappingInput {
+        native_inline_boxes: Vec::new(),
         scopes: vec![crate::WrappingScopeInput::Captured {
             scope: scope.clone(),
             wrap_inside: crate::WrapInside::Auto,
@@ -1145,6 +1147,7 @@ fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1188,6 +1191,7 @@ fn missing_metrics<S: LayoutScalar>() {
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1227,6 +1231,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![foreign],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1252,6 +1257,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![next.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1275,6 +1281,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![absent],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1298,6 +1305,7 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![absent],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1341,6 +1349,7 @@ fn after_float<S: LayoutScalar>() {
         0,
         vec![neutral.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1394,6 +1403,7 @@ fn after_float<S: LayoutScalar>() {
             0,
             vec![f.binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: vec![],
                 child_order: Vec::new(),
@@ -1613,6 +1623,7 @@ fn cached_compute<S: LayoutScalar>(
         1000,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1666,6 +1677,7 @@ fn unproved_float<S: LayoutScalar>() {
         0,
         vec![neutral.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1711,6 +1723,7 @@ fn unproved_float<S: LayoutScalar>() {
         0,
         vec![requested.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
@@ -1746,3 +1759,9 @@ fn unrepresented_float_at_semantic_only_scope_after_requires_real_side_incidence
 
 #[path = "computed_line_boundaries/inline_box_fragments.rs"]
 mod inline_box_fragments;
+
+#[path = "computed_line_boundaries/native_family_admission.rs"]
+mod native_family_admission;
+
+#[path = "computed_line_boundaries/native_family_node_free.rs"]
+mod native_family_node_free;

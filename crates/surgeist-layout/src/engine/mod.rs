@@ -54,9 +54,14 @@ where
 {
     let (graph, invalidated_nodes) =
         validation::validate_layout_request_with_text_graph(tree, root, changed_nodes, &[])?;
-    let wrapping =
-        crate::inline_wrapping::WrappingContext::new(tree, &graph, &[], &[], &[], &[], |_| false)
-            .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+    let wrapping = crate::inline_wrapping::WrappingContext::new(
+        tree,
+        &graph,
+        &crate::WrappingInput::default(),
+        &[],
+        |_| false,
+    )
+    .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
     compute_validated_layout(
         tree,
         root,

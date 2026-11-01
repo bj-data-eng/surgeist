@@ -167,6 +167,7 @@ pub(super) fn prepared_source_batch<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -352,6 +353,7 @@ pub(super) fn prepared_mixed_batch<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -380,6 +382,7 @@ pub(super) fn prepared_tree_batch<S: LayoutScalar>(
         0,
         paragraphs,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -1381,6 +1384,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             0,
             vec![self.text.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
@@ -1400,6 +1404,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             0,
             vec![self.text.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),

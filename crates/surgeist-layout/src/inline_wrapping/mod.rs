@@ -13,8 +13,8 @@ pub(crate) mod tail;
 pub use declarations::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
     InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, InlineDelimiterSide,
-    InlineFormatterEdge, InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput, WrapEdge,
-    WrapEdges, WrappingInput,
+    InlineFormatterEdge, InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput,
+    NativeInlineBoxFamilyInput, WrapEdge, WrapEdges, WrappingInput,
 };
 pub(crate) use declarations::{EdgeEffect, EdgePreferences, WrappingMode};
 
@@ -25,7 +25,12 @@ pub(crate) use canonical_order::{
     CanonicalBox, CanonicalCoverage, CanonicalOrderBindings, CanonicalOrderInventory,
 };
 mod edge_plan;
-mod ordering;
+pub(crate) mod family;
+pub use family::{
+    NativeInlineBoxEdgeView, NativeInlineBoxFamily, NativeInlineBoxFragment,
+    NativeInlineBoxMemberView, NativeInlineBoxPieceView,
+};
+pub(crate) mod ordering;
 pub(crate) use ordering::{NativeOrderingProjection, NativeOrderingSelection, NativeRunSource};
 mod source;
 pub(crate) use crate::error::wrapping_error;
@@ -98,6 +103,16 @@ pub enum WrappingScopeError {
     ConflictingGap,
     CyclicGap,
     GapOutsideSelection,
+    /// The same formatter was requested more than once.
+    DuplicateFamily,
+    /// Supplied proof does not establish the requested complete generated closure.
+    IncompleteFamily,
+    /// A requested normal family's Contribution endpoint has nonzero flow advance.
+    IncompatibleContribution,
+    /// The fragment identities belong to different admitted families.
+    DifferentFamily,
+    /// The fragments belong to distinct bodies of the same family.
+    DifferentBody,
 }
 
 #[derive(Debug, Default)]

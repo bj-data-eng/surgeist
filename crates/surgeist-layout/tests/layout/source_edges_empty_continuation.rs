@@ -249,6 +249,7 @@ fn fixture_empty<S: l::LayoutScalar>()
 
 fn captured_wrapping(scope: t::CapturedScope) -> l::WrappingInput<u32> {
     l::WrappingInput {
+        native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
         scopes: vec![l::WrappingScopeInput::Captured {
             scope: scope.clone(),
