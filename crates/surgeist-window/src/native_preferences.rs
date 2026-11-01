@@ -116,6 +116,52 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     #[test]
+    fn windows_known_connection_cost_is_captured_as_reduced_data() {
+        use windows::Networking::Connectivity::{NetworkCostType, NetworkInformation};
+
+        // Derive the expected UA policy directly from Windows, independently of
+        // capture. An absent profile, unknown cost or failed read is unavailable.
+        let expected = || -> windows::core::Result<Option<ReductionPreference>> {
+            let cost = NetworkInformation::GetInternetConnectionProfile()?.GetConnectionCost()?;
+            let kind = cost.NetworkCostType()?;
+            if !matches!(
+                kind,
+                NetworkCostType::Unrestricted | NetworkCostType::Fixed | NetworkCostType::Variable
+            ) {
+                return Ok(None);
+            }
+            let roaming = cost.Roaming()?;
+            let over_limit = cost.OverDataLimit()?;
+            let approaching_limit = cost.ApproachingDataLimit()?;
+            Ok(Some(
+                if kind == NetworkCostType::Unrestricted
+                    && !roaming
+                    && !over_limit
+                    && !approaching_limit
+                {
+                    ReductionPreference::NoPreference
+                } else {
+                    ReductionPreference::Reduce
+                },
+            ))
+        };
+        let before = expected().ok().flatten();
+        let captured = capture(Some(Theme::Dark));
+        let after = expected().ok().flatten();
+        if before != after {
+            eprintln!("SKIP reduced-data comparison: native cost changed during capture");
+            return;
+        }
+        eprintln!(
+            "native reduced-data witness={before:?}, captured={:?}",
+            captured.reduced_data
+        );
+        assert_eq!(captured.reduced_data, before);
+        assert_eq!(captured.color_scheme, Some(Theme::Dark));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
     fn windows_capture_reports_actual_accessibility_preferences() {
         use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
 
