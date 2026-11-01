@@ -203,9 +203,10 @@ fn main() {
 fn main() {
     use std::{cell::RefCell, rc::Rc};
     use surgeist_window::{
-        ContrastPreference, Handler, Point, Ready, Rect, ReductionPreference, Result, Size,
-        WindowSnapshot, app, open,
+        ContrastPreference, Handler, InputCapabilities, Point, PointerAccuracy, PointerCapability,
+        Ready, Rect, ReductionPreference, Result, Size, WindowSnapshot, app, open,
     };
+    use windows::Devices::Input::{PointerDevice, PointerDeviceType};
     use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
 
     if std::env::var("SURGEIST_RUN_NATIVE_PREFERENCES_PROBE").as_deref() != Ok("1") {
@@ -220,6 +221,72 @@ fn main() {
         client: winsafe::RECT,
         client_origin: winsafe::POINT,
         dpi: u32,
+        input: std::result::Result<InputCapabilities, String>,
+    }
+    fn expected_input() -> std::result::Result<InputCapabilities, String> {
+        let devices = PointerDevice::GetPointerDevices().map_err(|error| error.to_string())?;
+        let count = devices.Size().map_err(|error| error.to_string())?;
+        let mut pointers = Vec::new();
+        let mut mouse = false;
+        let mut pen = false;
+        let mut pen_hover = false;
+        let mut touch = false;
+        for index in 0..count {
+            let device = devices.GetAt(index).map_err(|error| error.to_string())?;
+            let kind = device
+                .PointerDeviceType()
+                .map_err(|error| error.to_string())?;
+            let capability =
+                if kind == PointerDeviceType::Mouse || kind == PointerDeviceType::Touchpad {
+                    mouse = true;
+                    PointerCapability {
+                        accuracy: PointerAccuracy::Fine,
+                        hover: true,
+                    }
+                } else if kind == PointerDeviceType::Pen {
+                    pen = true;
+                    let hover = device
+                        .MaxPointersWithZDistance()
+                        .map_err(|error| error.to_string())?
+                        > 0;
+                    pen_hover |= hover;
+                    PointerCapability {
+                        accuracy: PointerAccuracy::Fine,
+                        hover,
+                    }
+                } else if kind == PointerDeviceType::Touch {
+                    touch = true;
+                    PointerCapability {
+                        accuracy: PointerAccuracy::Coarse,
+                        hover: false,
+                    }
+                } else {
+                    return Err(format!("unknown Windows pointer kind {kind:?}"));
+                };
+            pointers.push(capability);
+        }
+        let primary = if mouse {
+            PointerCapability {
+                accuracy: PointerAccuracy::Fine,
+                hover: true,
+            }
+        } else if pen {
+            PointerCapability {
+                accuracy: PointerAccuracy::Fine,
+                hover: pen_hover,
+            }
+        } else if touch {
+            PointerCapability {
+                accuracy: PointerAccuracy::Coarse,
+                hover: false,
+            }
+        } else {
+            PointerCapability {
+                accuracy: PointerAccuracy::None,
+                hover: false,
+            }
+        };
+        InputCapabilities::new(primary, pointers).map_err(|error| error.to_string())
     }
     fn native_witness(title: &str) -> std::result::Result<NativeWitness, String> {
         let mut matches = Vec::new();
@@ -248,6 +315,7 @@ fn main() {
                 .ClientToScreen(winsafe::POINT::default())
                 .map_err(|error| error.to_string())?,
             dpi: window.GetDpiForWindow(),
+            input: expected_input(),
         })
     }
     struct Capture {
@@ -342,6 +410,14 @@ fn main() {
     assert_eq!(viewport.sizes().large(), client.area().size);
     assert_eq!(viewport.sizes().small(), client.area().size);
     assert_eq!(viewport.sizes().dynamic(), client.area().size);
+    if let Err(error) = &witness.input {
+        eprintln!("Windows input observations unavailable: {error}");
+    }
+    assert_eq!(
+        snapshot.environment().input.as_ref(),
+        witness.input.as_ref().ok()
+    );
+    println!("native input={:?}", snapshot.environment().input);
     println!(
         "native monitor {}: screen={screen:?}, client={client:?}, scale={scale}",
         witness.monitor.szDevice()
