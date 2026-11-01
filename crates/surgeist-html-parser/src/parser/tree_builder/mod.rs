@@ -903,14 +903,20 @@ impl LocationKernel {
         self.release_stack(control)
     }
     fn release_stack(&mut self, control: &mut ParseControl) -> Result<(), KernelError> {
-        self.open
+        // Every owner is taken and released even when an earlier release fails;
+        // the first failure is the one returned.
+        let stack = self
+            .open
             .take()
             .expect("verified active stack")
-            .release(control)?;
-        if let Some(templates) = self.templates.take() {
-            templates.release(control)?;
-        }
+            .release(control);
+        let listings = match self.templates.take() {
+            Some(templates) => templates.release(control),
+            None => Ok(()),
+        };
         self.root_target = None;
+        stack?;
+        listings?;
         Ok(())
     }
 }
