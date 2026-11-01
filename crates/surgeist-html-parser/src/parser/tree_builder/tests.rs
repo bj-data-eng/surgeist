@@ -872,6 +872,46 @@ fn checking_a_new_element_for_insertion_costs_the_same_at_every_depth() {
 }
 
 #[test]
+fn popping_the_last_template_costs_the_same_at_every_depth() {
+    // Each chunk opens more elements and a template on top of the previous
+    // template; popping it makes the previous one last again, wherever it lies.
+    let chunks = [5_usize, 15, 60];
+    let tags: String = chunks
+        .iter()
+        .map(|divs| format!("{}<template>", "<div>".repeat(*divs)))
+        .collect();
+    let source = HtmlSource::utf8(format!("<html><template>{tags}"));
+    let mut c = control(200);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    let mut costs = Vec::new();
+    for divs in chunks {
+        for _ in 0..divs {
+            add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+        }
+        let template = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+        let last = kernel.last_template(&mut c).unwrap().unwrap();
+        same(&kernel, &last, &template, &mut c);
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        kernel.pop(&mut c, None).unwrap();
+        costs.push(c.usage().resource(HtmlParseResource::WorkCredits).current - before);
+        // The template below is last again.
+        assert!(kernel.last_template(&mut c).unwrap().is_some());
+    }
+    assert!(
+        costs.windows(2).all(|pair| pair[0] == pair[1]),
+        "work of popping a template at depths {chunks:?}: {costs:?}"
+    );
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
 fn empty_wrong_kind_duplicate_and_foreign_handles_preserve_stack() {
     let source = HtmlSource::utf8("<html><body>");
     let mut c = control(100);

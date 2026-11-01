@@ -252,6 +252,37 @@ fn a_foreign_element_adds_the_same_state_steps_whatever_elements_are_open_around
 }
 
 #[test]
+fn a_template_adds_the_same_state_steps_whatever_elements_are_open_around_it() {
+    // Closing the template leaves the stack as it was, whatever lies below: the
+    // template that was last before it is read, not searched for.
+    assert_state_steps_independent_of_depth("<div>", "<template></template>");
+}
+
+#[test]
+fn a_template_adds_the_same_state_steps_whatever_separates_it_from_an_open_template() {
+    let measures = SIZES.map(|depth| {
+        let page = |inner: &str| {
+            format!(
+                "<!doctype html><body><template>{}{inner}",
+                "<div>".repeat(depth)
+            )
+        };
+        work(
+            page("<template></template>"),
+            HtmlParseWorkCategory::StateStep,
+        ) as i64
+            - work(page(""), HtmlParseWorkCategory::StateStep) as i64
+    });
+    assert_flat_of(
+        "state steps",
+        "<template></template>",
+        "<div> in an open template",
+        measures,
+        0,
+    );
+}
+
+#[test]
 fn an_html_element_adds_the_same_state_steps_whatever_elements_are_open_around_it() {
     assert_state_steps_independent_of_depth("<span>", "<span>");
 }
