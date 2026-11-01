@@ -429,9 +429,8 @@ impl SessionStorage {
                 let performed = if matches!(description, Description::InitializeBacking(_))
                     && control.take_text_append_backing_fault()
                 {
-                    // The backing was never created: the action is dropped
-                    // unperformed and the operation reports the failure.
-                    drop(action);
+                    // The backing was never created: the action goes unperformed
+                    // and the operation reports the failure.
                     Err(HtmlConstructionError::AllocationFailed)
                 } else {
                     action.perform(minimum)
