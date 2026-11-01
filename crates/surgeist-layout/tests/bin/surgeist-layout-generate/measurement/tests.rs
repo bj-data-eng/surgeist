@@ -658,6 +658,11 @@ fn br_font_band_request_preserves_selected_rectangle_independently_of_input_role
                     .descendants()
                     .any(|node| node.has_tag_name("browser-control"))
             );
+            let input = parsed
+                .descendants()
+                .find(|node| node.has_tag_name("input"))
+                .unwrap();
+            let native_input = xml[input.range()].to_owned();
             let mut relation_only = fixture;
             relation_only["children"][0]
                 .as_object_mut()
@@ -665,6 +670,11 @@ fn br_font_band_request_preserves_selected_rectangle_independently_of_input_role
                 .remove("browserBrObservation");
             let xml = crate::xml::generate_xml("no-band-demand", &supported(&relation_only));
             let parsed = roxmltree::Document::parse(&xml).unwrap();
+            let input = parsed
+                .descendants()
+                .find(|node| node.has_tag_name("input"))
+                .unwrap();
+            assert_eq!(native_input, xml[input.range()]);
             assert!(
                 !parsed
                     .descendants()
