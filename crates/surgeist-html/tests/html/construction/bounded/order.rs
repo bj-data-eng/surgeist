@@ -147,6 +147,113 @@ fn detaching_the_last_child_describes_the_same_work_at_every_fanout() {
     assert_same_work("detaching the last child", &measured);
 }
 
+/// Performs every action of `command` and returns the storage with the
+/// `record_writes` and `copied_bytes` its Commit action described.
+fn commit_description(
+    storage: HtmlConstructionStorage,
+    command: HtmlConstructionCommand,
+) -> (HtmlConstructionStorage, usize, usize) {
+    let mut operation = Some(
+        storage
+            .prepare(command)
+            .unwrap_or_else(|_| panic!("preparation")),
+    );
+    let mut described = None;
+    while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+        if let HtmlConstructionActionDescription::Commit {
+            record_writes,
+            copied_bytes,
+            ..
+        } = action.description()
+        {
+            assert!(described.replace((record_writes, copied_bytes)).is_none());
+        }
+        action.perform().unwrap().accept();
+    }
+    let HtmlConstructionCommit::Changed { storage, .. } =
+        HtmlConstructionOperation::try_ready(&mut operation)
+            .unwrap()
+            .commit()
+    else {
+        panic!("mutation produced publication")
+    };
+    let (writes, bytes) = described.expect("a commit action");
+    (storage, writes, bytes)
+}
+
+/// Changes at the front of an order, among `n` and `2n` siblings, whose commit
+/// shifts the entries behind the change. The expected growth of the described
+/// writes is derived by hand for each, from the order length `n`, where an
+/// order edit writes one word per entry written or shifted.
+#[test]
+fn changes_at_the_front_of_an_order_describe_the_shifted_entries() {
+    type Change =
+        fn(&HtmlBuilderNode, &[HtmlBuilderNode], &HtmlBuilderNode) -> HtmlConstructionCommand;
+    // (name, command, entries the order edit writes among n siblings)
+    let cases: [(&str, Change, fn(usize) -> usize); 3] = [
+        (
+            "insert before the first child",
+            |root, children, fresh| HtmlConstructionCommand::Insert {
+                node: fresh.clone(),
+                parent: root.clone(),
+                before: Some(children[0].clone()),
+            },
+            // The parent link (1), the inserted entry (1) and the n entries
+            // behind the insertion place, which move one place right: n + 2.
+            |n| n + 2,
+        ),
+        (
+            "detach the first child",
+            |_, children, _| HtmlConstructionCommand::Detach {
+                node: children[0].clone(),
+            },
+            // The parent link (1), the removed entry (1) and the n - 1 entries
+            // behind it, which move one place left: n + 1.
+            |n| n + 1,
+        ),
+        (
+            "move the first child to the end",
+            |root, children, _| HtmlConstructionCommand::Insert {
+                node: children[0].clone(),
+                parent: root.clone(),
+                before: None,
+            },
+            // The parent link (1), the removed entry (1) and the n - 1 entries
+            // behind it moving left, then the re-inserted entry (1) at the end
+            // of the n - 1 entries left, with nothing behind it: n + 2.
+            |n| n + 2,
+        ),
+    ];
+    for (name, change, entries) in cases {
+        for n in [16, 128] {
+            let described = |siblings: usize| {
+                let (owner, root) = fragment(storage());
+                let (owner, children) = fill(owner, &root, siblings);
+                let (owner, fresh) = create(owner, element("fresh"));
+                let command = change(&root, &children, &fresh);
+                let (_, writes, bytes) = commit_description(owner, command);
+                (writes, bytes)
+            };
+            let (writes, bytes) = described(n);
+            let (double_writes, double_bytes) = described(2 * n);
+            let extra = entries(2 * n) - entries(n);
+            assert_eq!(extra, n, "{name}: the hand derivation grows by n");
+            assert_eq!(
+                double_writes - writes,
+                extra,
+                "{name}: writes among {n} and {} siblings",
+                2 * n
+            );
+            assert_eq!(
+                double_bytes - bytes,
+                extra * size_of::<usize>(),
+                "{name}: copied bytes among {n} and {} siblings",
+                2 * n
+            );
+        }
+    }
+}
+
 /// A reference model of the DOM's insert and remove steps over child lists.
 struct Model {
     parents: Vec<Vec<usize>>,

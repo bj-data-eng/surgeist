@@ -27563,6 +27563,64 @@ mod tests {
     }
 
     #[test]
+    fn changes_at_the_front_of_an_order_charge_for_the_entries_they_shift() {
+        // Among `n` and `2n` children, a change at the front of the order walks
+        // back over all n entries behind its target, one action each, and its
+        // commit shifts n or n - 1 of them, so going from n to 2n adds n of each:
+        // - the walk: an action costs 3 record visits for the controller's
+        //   `action` call and 1 for the described `Inspect`, so 4 visits per
+        //   entry (insert before the first child walks to the reference
+        //   sibling; remove and move walk to the node itself, first in its
+        //   order);
+        // - the shift: one record write and one copied word per entry, the same
+        //   n extra whichever of n or n - 1 entries move.
+        let word = mem::size_of::<usize>() as u64;
+        for case in 0..3 {
+            let measure = |fanout: usize| {
+                let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
+                let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+                let root = session.root(&mut c).unwrap();
+                let mut children = Vec::new();
+                for _ in 0..fanout {
+                    let child = session
+                        .allocate_element(&mut c, element(Namespace::none(), "x"))
+                        .unwrap();
+                    session.insert(&mut c, &root, &child, None, None).unwrap();
+                    children.push(child);
+                }
+                let fresh = session
+                    .allocate_element(&mut c, element(Namespace::none(), "fresh"))
+                    .unwrap();
+                let before = ORDER_MEASURED.map(|category| c.usage().work(category));
+                match case {
+                    0 => session
+                        .insert(&mut c, &root, &fresh, Some(&children[0]), None)
+                        .unwrap(),
+                    1 => session.remove(&mut c, &children[0], None).unwrap(),
+                    _ => session
+                        .insert(&mut c, &root, &children[0], None, None)
+                        .unwrap(),
+                }
+                let after = ORDER_MEASURED.map(|category| c.usage().work(category));
+                session.release(&mut c).unwrap();
+                std::array::from_fn::<u64, 6, _>(|i| after[i] - before[i])
+            };
+            // Counts leave spare room in both orders, so no growth is charged.
+            let (narrow, wide) = (measure(20), measure(40));
+            let grown = |category: WorkCategory| {
+                let index = ORDER_MEASURED
+                    .iter()
+                    .position(|candidate| *candidate == category)
+                    .unwrap();
+                wide[index] - narrow[index]
+            };
+            assert_eq!(grown(WorkCategory::RecordVisit), 4 * 20, "case {case}");
+            assert_eq!(grown(WorkCategory::RecordWrite), 20, "case {case}");
+            assert_eq!(grown(WorkCategory::CopyByte), 20 * word, "case {case}");
+        }
+    }
+
+    #[test]
     fn child_order_changes_leave_the_order_the_dom_steps_define() {
         let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
