@@ -857,8 +857,9 @@ impl<'a> MetadataCursor<'a> {
         };
         // `next` named a registry row, so it is below the address space.
         self.next = self.next.saturating_add(1);
-        if metadata_node(payload).is_some() {
+        if let Some(node) = metadata_node(payload) {
             MetadataStep::Record(MetadataRef {
+                node,
                 history: self.history,
                 closed_common: self.closed_common,
                 storage: self.storage,
@@ -873,6 +874,8 @@ impl<'a> MetadataCursor<'a> {
 /// Issued only by the qualified report's fixed slot observation. No caller can
 /// supply a raw payload index or mix this lender with another result's arena.
 pub struct MetadataRef<'a> {
+    /// The node the payload names, which is why the payload was issued.
+    node: usize,
     closed_common: bool,
     history: &'a FrozenHistory,
     storage: &'a FrozenStorage,
@@ -1215,7 +1218,6 @@ pub enum MetadataImageUpdate {
 }
 pub struct MetadataImage<'a> {
     history: &'a FrozenHistory,
-    storage: &'a FrozenStorage,
     arena: &'a HtmlConstructionResult,
     node: usize,
     state: &'a associated::ImageMetadata,
@@ -1393,7 +1395,6 @@ impl<'a> MetadataRef<'a> {
         };
         Some(MetadataImage {
             history: self.history,
-            storage: self.storage,
             arena: self.arena,
             node: *node,
             state,
@@ -1506,7 +1507,7 @@ impl<'a> MetadataRef<'a> {
         ))
     }
     pub fn node(&self) -> HtmlNode<'a> {
-        self.native(metadata_node(self.payload).expect("issued metadata node"))
+        self.native(self.node)
     }
     pub(super) fn nonce(&self) -> Option<&'a DocumentString> {
         match self.payload {

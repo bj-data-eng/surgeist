@@ -797,7 +797,7 @@ mod tests {
                     session
                         .prepare_native_associations(&mut c, request.source())
                         .unwrap();
-                    let mut history = session.freeze_history(&mut c).unwrap();
+                    let history = session.freeze_history(&mut c).unwrap();
                     let view = history.view();
                     let mut generated_name = false;
                     for index in 0..view.len() {

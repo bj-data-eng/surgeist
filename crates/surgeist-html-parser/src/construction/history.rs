@@ -49,7 +49,7 @@ impl ParserArenaSession {
         // Admit the actual new wrapper before the existing recoverable arena
         // transfer. There is no fallible operation after successful freeze.
         payload_write::<FrozenHistory>(c, 1)?;
-        FrozenHistory::publish(self.freeze(c)?).map_err(|_| SessionError::WrongToken)
+        FrozenHistory::publish(&mut Some(self.freeze(c)?)).ok_or(SessionError::WrongToken)
     }
 }
 
@@ -219,26 +219,27 @@ fn qualify(
 }
 
 impl FrozenHistory {
-    /// Moves a qualified arena into its published form. An arena that cannot
-    /// give it up, because it holds no storage, evidence, source or complete
-    /// projection, is returned whole and unchanged.
-    fn publish(mut arena: FrozenArena) -> Result<Self, FrozenArena> {
+    /// Moves a qualified arena out of `slot` into its published form. An
+    /// arena that cannot give it up, because it holds no storage, evidence,
+    /// source or complete projection, stays in `slot` whole and unchanged.
+    fn publish(slot: &mut Option<FrozenArena>) -> Option<Self> {
+        let arena = slot.as_mut()?;
         if arena.finalizing.is_some() {
-            return Err(arena);
+            return None;
         }
-        let Some(mut storage) = arena.storage.take() else {
-            return Err(arena);
-        };
+        let mut storage = arena.storage.take()?;
         let Some(mut evidence) = storage.evidence.take() else {
             arena.storage = Some(storage);
-            return Err(arena);
+            return None;
         };
         let Some((source, rows)) = evidence.take_published() else {
             storage.evidence = Some(evidence);
             arena.storage = Some(storage);
-            return Err(arena);
+            return None;
         };
-        Ok(Self {
+        // Nothing is left in the arena that anything reads.
+        *slot = None;
+        Some(Self {
             storage,
             evidence,
             source,
@@ -356,11 +357,7 @@ impl<'a> PreparedHistory<'a> {
     /// borrowed, so a refusal is an impossible custody state. The arena is put
     /// back for release, and the caller latches the refusal on its controller.
     pub(crate) fn commit(self) -> Result<FrozenHistory, Unpublishable> {
-        let arena = self.input.take().ok_or(Unpublishable)?;
-        FrozenHistory::publish(arena).map_err(|arena| {
-            *self.input = Some(arena);
-            Unpublishable
-        })
+        FrozenHistory::publish(self.input).ok_or(Unpublishable)
     }
 }
 
@@ -428,8 +425,9 @@ impl<'a> HistoryLeaf<'a> {
         let original = self.origins.get(index)?;
         Some(HistoryOrigin {
             original,
-            start: self.offset + original.start,
-            end: self.offset + original.end,
+            // The offset and the atom's end lie within the group's units.
+            start: self.offset.saturating_add(original.start),
+            end: self.offset.saturating_add(original.end),
         })
     }
 }
@@ -454,15 +452,11 @@ impl<'a> HistoryView<'a> {
         }
         Ok(group.index)
     }
-    fn leaf(&self, group: &OriginGroup, offset: usize) -> HistoryLeaf<'a> {
-        let GroupBody::Leaf {
-            start,
-            length,
-            value,
-        } = group.body
-        else {
-            unreachable!("qualified leaf header")
-        };
+    fn leaf(
+        &self,
+        (start, length, value): (usize, usize, LeafValue),
+        offset: usize,
+    ) -> HistoryLeaf<'a> {
         let units = match value {
             LeafValue::Empty => &[],
             LeafValue::Payload(slot) => {
@@ -476,7 +470,7 @@ impl<'a> HistoryView<'a> {
         };
         HistoryLeaf {
             units,
-            origins: &self.data.origins[start..start + length],
+            origins: &self.data.origins[start..start.saturating_add(length)],
             offset,
         }
     }
@@ -491,7 +485,11 @@ impl<'a> HistoryView<'a> {
             index,
         };
         let body = match group.body {
-            GroupBody::Leaf { .. } => HistoryBody::Leaf(self.leaf(group, 0)),
+            GroupBody::Leaf {
+                start,
+                length,
+                value,
+            } => HistoryBody::Leaf(self.leaf((start, length, value), 0)),
             GroupBody::Alias { original } => HistoryBody::Alias {
                 original: reference(original),
             },
@@ -521,7 +519,7 @@ impl<'a> HistoryView<'a> {
         let index = self.require(group)?;
         // Strict backward headers bound the pending DFS stack by index+1 even
         // for a shared DAG. Setup neither scans the graph nor clears scratch.
-        let required = index + 1;
+        let required = index.saturating_add(1);
         if scratch.len() < required {
             return Err(HistoryReadError::InsufficientScratch {
                 required,
@@ -569,20 +567,25 @@ impl<'a> HistoryCursor<'a, '_> {
             self.cancelled = true;
             return HistoryStep::Cancelled;
         }
-        if self.length == 0 {
+        let Some(top) = self.length.checked_sub(1) else {
             return HistoryStep::Complete;
-        }
-        self.length -= 1;
-        let frame = self.scratch[self.length];
+        };
+        self.length = top;
+        let frame = self.scratch[top];
         let group = &self.view.data.groups[frame.index];
         match group.body {
-            GroupBody::Leaf { .. } => HistoryStep::Leaf(self.view.leaf(group, frame.offset)),
+            GroupBody::Leaf {
+                start,
+                length,
+                value,
+            } => HistoryStep::Leaf(self.view.leaf((start, length, value), frame.offset)),
             GroupBody::Alias { original } => {
-                self.scratch[self.length] = HistoryFrame {
+                self.scratch[top] = HistoryFrame {
                     index: original,
                     offset: frame.offset,
                 };
-                self.length += 1;
+                // The stack is bounded by the scratch the cursor was given.
+                self.length = top.saturating_add(1);
                 HistoryStep::Progress
             }
             GroupBody::Concat {
@@ -590,15 +593,16 @@ impl<'a> HistoryCursor<'a, '_> {
                 incoming,
                 offset,
             } => {
-                self.scratch[self.length] = HistoryFrame {
+                self.scratch[top] = HistoryFrame {
                     index: incoming,
-                    offset: frame.offset + offset,
+                    // The offset and the left part lie within the group's units.
+                    offset: frame.offset.saturating_add(offset),
                 };
-                self.scratch[self.length + 1] = HistoryFrame {
+                self.scratch[top.saturating_add(1)] = HistoryFrame {
                     index: original,
                     offset: frame.offset,
                 };
-                self.length += 2;
+                self.length = top.saturating_add(2);
                 HistoryStep::Progress
             }
         }

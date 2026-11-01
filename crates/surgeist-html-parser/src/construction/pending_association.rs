@@ -1225,11 +1225,13 @@ impl<'a> Resolved<'a> {
 }
 /// One actual payload slot per step; no hidden next-match traversal.
 ///
-/// A published report has no controller, so a row whose references the
-/// report no longer holds is not an error to report: the cursor skips it
-/// instead of lending a view that could not answer. Publication qualifies
-/// every row (`qualify`), so no such row is expected. A report whose storage
-/// is gone has no rows.
+/// Publication qualifies every row and what it names (`qualify`), and a
+/// report is immutable afterwards, so every row it holds can be lent. A row
+/// that could not be resolved would be a fault in that qualification; a
+/// published report has no controller to report it on, so such a row is
+/// skipped here, which is the one answer that does not lend a view that could
+/// not answer. `Step::Skipped` otherwise means a row that is not an
+/// association.
 pub struct Cursor<'a> {
     anchor: Option<Anchor<'a>>,
     next: usize,
