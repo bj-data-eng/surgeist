@@ -64,6 +64,53 @@ impl AccessibilityPreferences {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_capture_reports_actual_accessibility_preferences() {
+        use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
+
+        let ui = UISettings::new().expect("Windows UI settings are available");
+        let accessibility =
+            AccessibilitySettings::new().expect("Windows accessibility settings are available");
+        let animations = ui
+            .AnimationsEnabled()
+            .expect("animation effects observation");
+        let transparency = ui
+            .AdvancedEffectsEnabled()
+            .expect("transparency effects observation");
+        let high_contrast = accessibility
+            .HighContrast()
+            .expect("contrast theme observation");
+        let captured = capture(Some(Theme::Dark));
+
+        assert_eq!(
+            captured.reduced_motion,
+            Some(if animations {
+                ReductionPreference::NoPreference
+            } else {
+                ReductionPreference::Reduce
+            })
+        );
+        assert_eq!(
+            captured.reduced_transparency,
+            Some(if transparency {
+                ReductionPreference::NoPreference
+            } else {
+                ReductionPreference::Reduce
+            })
+        );
+        assert_eq!(
+            captured.contrast,
+            Some(if high_contrast {
+                ContrastPreference::Custom
+            } else {
+                ContrastPreference::NoPreference
+            })
+        );
+        assert_eq!(captured.color_scheme, Some(Theme::Dark));
+        assert_eq!(captured.reduced_data, None);
+    }
+
     #[test]
     fn accessibility_flags_map_independently_without_inventing_data_or_color_preferences() {
         for (motion, expected_motion) in [
