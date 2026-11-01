@@ -76,3 +76,45 @@ fn an_image_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
 fn a_dialog_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
     assert_independent_of_unrelated(SPAN, "<dialog></dialog>");
 }
+
+/// The visits the last of `options` copies of `option` adds inside `container`.
+fn visits_added_by_last_option(container: &str, option: &str, options: usize) -> i64 {
+    let page = |count: usize| {
+        format!(
+            "<!doctype html><body><{container}>{}</{container}>",
+            option.repeat(count)
+        )
+    };
+    record_visits(page(options)) as i64 - record_visits(page(options - 1)) as i64
+}
+
+/// Requires a select to add at most 5% (and eight visits) more per option than
+/// the same options in a div add, with 400 options as with 50. The div pays the
+/// same insertion, creation and registry costs but runs no selectedness
+/// setting, so the difference is the select algorithm's own work.
+fn assert_selectedness_work_independent_of_other_options(option: &str) {
+    let excess = |options: usize| {
+        visits_added_by_last_option("select", option, options)
+            - visits_added_by_last_option("div", option, options)
+    };
+    let (few, many) = (excess(50), excess(400));
+    assert!(
+        many <= few + few.abs() / 20 + 8,
+        "{option} in a select added {few} visits over a div after 50 options but {many} after 400"
+    );
+}
+
+#[test]
+fn an_option_adds_the_same_selectedness_visits_whatever_other_options_the_select_holds() {
+    assert_selectedness_work_independent_of_other_options("<option>x</option>");
+}
+
+#[test]
+fn a_selected_option_adds_the_same_selectedness_visits_whatever_other_options_the_select_holds() {
+    assert_selectedness_work_independent_of_other_options("<option selected>x</option>");
+}
+
+#[test]
+fn a_disabled_option_adds_the_same_selectedness_visits_whatever_other_options_the_select_holds() {
+    assert_selectedness_work_independent_of_other_options("<option disabled>x</option>");
+}
