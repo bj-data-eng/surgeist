@@ -4,6 +4,9 @@
 use crate::{ContrastPreference, ReductionPreference};
 use crate::{Theme, UserPreferences};
 
+#[cfg(any(target_os = "windows", test))]
+mod windows_connection_cost;
+
 /// Samples supported preferences at an existing event-loop opportunity.
 /// No notification observer or independent wakeup is installed.
 pub(crate) fn capture(color_scheme: Option<Theme>) -> UserPreferences {
@@ -22,12 +25,13 @@ pub(crate) fn capture(color_scheme: Option<Theme>) -> UserPreferences {
         use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
 
         let ui = UISettings::new().ok();
-        WindowsAccessibilityPreferences {
+        WindowsPreferences {
             animations_enabled: ui.as_ref().and_then(|ui| ui.AnimationsEnabled().ok()),
             transparency_enabled: ui.as_ref().and_then(|ui| ui.AdvancedEffectsEnabled().ok()),
             high_contrast: AccessibilitySettings::new()
                 .and_then(|settings| settings.HighContrast())
                 .ok(),
+            reduced_data: windows_connection_cost::capture(),
         }
         .into_preferences(color_scheme)
     }
@@ -41,14 +45,15 @@ pub(crate) fn capture(color_scheme: Option<Theme>) -> UserPreferences {
 }
 
 #[cfg(any(target_os = "windows", test))]
-struct WindowsAccessibilityPreferences {
+struct WindowsPreferences {
     animations_enabled: Option<bool>,
     transparency_enabled: Option<bool>,
     high_contrast: Option<bool>,
+    reduced_data: Option<ReductionPreference>,
 }
 
 #[cfg(any(target_os = "windows", test))]
-impl WindowsAccessibilityPreferences {
+impl WindowsPreferences {
     fn into_preferences(self, color_scheme: Option<Theme>) -> UserPreferences {
         let reduction = |enabled| {
             if enabled {
@@ -71,7 +76,7 @@ impl WindowsAccessibilityPreferences {
                 }
             }),
             color_scheme,
-            reduced_data: None,
+            reduced_data: self.reduced_data,
         }
     }
 }
@@ -204,7 +209,6 @@ mod tests {
             })
         );
         assert_eq!(captured.color_scheme, Some(Theme::Dark));
-        assert_eq!(captured.reduced_data, None);
     }
 
     #[test]
@@ -279,11 +283,22 @@ mod tests {
                     (Some(false), Some(ContrastPreference::NoPreference)),
                     (Some(true), Some(ContrastPreference::Custom)),
                 ] {
-                    for theme in [None, Some(Theme::Light), Some(Theme::Dark)] {
-                        let captured = WindowsAccessibilityPreferences {
+                    for (theme, reduced_data) in [None, Some(Theme::Light), Some(Theme::Dark)]
+                        .into_iter()
+                        .flat_map(|theme| {
+                            [
+                                None,
+                                Some(ReductionPreference::NoPreference),
+                                Some(ReductionPreference::Reduce),
+                            ]
+                            .map(|data| (theme, data))
+                        })
+                    {
+                        let captured = WindowsPreferences {
                             animations_enabled: animations,
                             transparency_enabled: transparency,
                             high_contrast: contrast,
+                            reduced_data,
                         }
                         .into_preferences(theme);
                         assert_eq!(
@@ -293,7 +308,7 @@ mod tests {
                                 reduced_transparency: reduction,
                                 contrast: expected_contrast,
                                 color_scheme: theme,
-                                reduced_data: None,
+                                reduced_data,
                             }
                         );
                     }
