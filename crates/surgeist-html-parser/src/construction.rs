@@ -19926,7 +19926,7 @@ mod tests {
                 panic!("tag")
             };
             // Lexical pending events precede the final retained allocation.
-            // Body stays detached: no unneeded child-order scratch is admitted.
+            // Body stays detached: no insertion, so no child-order growth is admitted.
             let _body = session.allocate_implicit_body(&mut c, None).unwrap();
             let mut input = Some(tag);
             let original = input
