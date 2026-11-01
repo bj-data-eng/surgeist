@@ -572,3 +572,123 @@ fn lifting_the_deepest_record_after_a_full_recomputation_counts_each_level_once(
     let (owner, _) = change(owner, HtmlConstructionCommand::Detach { node: c });
     assert_eq!(owner.usage().depth(), 2);
 }
+
+/// Asserts that `measure` describes the same work beside 16, 128 and 1024
+/// unrelated records.
+fn assert_same_work_at_every_unrelated_record_count(
+    what: &str,
+    measure: impl Fn(HtmlConstructionStorage) -> DescribedWork,
+) {
+    let mut measured = Vec::new();
+    for unrelated in [16, 128, 1024] {
+        let (owner, unrelated_root) = fragment(storage());
+        let owner = filler(owner, &unrelated_root, unrelated);
+        measured.push((unrelated, measure(owner)));
+    }
+    let (first_count, first) = measured[0];
+    for (count, work) in &measured {
+        assert_eq!(
+            *work, first,
+            "{what} beside {count} unrelated records described different work than beside \
+             {first_count}"
+        );
+    }
+}
+
+/// A detached template whose contents hold one element.
+fn template_with_child(
+    storage: HtmlConstructionStorage,
+) -> (HtmlConstructionStorage, HtmlBuilderNode) {
+    let (storage, template) = create(storage, element("template"));
+    let contents = storage
+        .node(&template)
+        .unwrap()
+        .template_contents()
+        .unwrap()
+        .handle();
+    let (storage, child) = create(storage, element("child"));
+    (append(storage, &child, &contents), template)
+}
+
+/// Unowned shadow contents that hold one element.
+fn shadow_with_child(
+    storage: HtmlConstructionStorage,
+) -> (HtmlConstructionStorage, HtmlBuilderNode) {
+    let (storage, shadow) = create(
+        storage,
+        HtmlConstructionCommand::CreateShadowContents {
+            properties: properties(),
+        },
+    );
+    let (storage, child) = create(storage, element("child"));
+    (append(storage, &child, &shadow), shadow)
+}
+
+#[test]
+fn giving_a_template_a_shadow_host_describes_the_same_work_at_every_unrelated_record_count() {
+    assert_same_work_at_every_unrelated_record_count("attaching template shadow", |owner| {
+        let (owner, template) = template_with_child(owner);
+        let (owner, host) = create(owner, element("host"));
+        let (owner, shadow) = shadow_with_child(owner);
+        driven(
+            owner,
+            HtmlConstructionCommand::AttachTemplateShadow {
+                template,
+                host,
+                contents: shadow,
+            },
+        )
+        .1
+    });
+}
+
+#[test]
+fn replacing_template_contents_with_shadow_contents_describes_the_same_work_at_every_unrelated_record_count()
+ {
+    assert_same_work_at_every_unrelated_record_count("setting template shadow contents", |owner| {
+        let (owner, template) = template_with_child(owner);
+        let (owner, shadow) = shadow_with_child(owner);
+        driven(
+            owner,
+            HtmlConstructionCommand::SetTemplateShadowContents {
+                template,
+                contents: shadow,
+            },
+        )
+        .1
+    });
+}
+
+#[test]
+fn detaching_a_shadow_root_describes_the_same_work_at_every_unrelated_record_count() {
+    assert_same_work_at_every_unrelated_record_count("detaching a shadow root", |owner| {
+        let (owner, host) = create(owner, element("host"));
+        let (owner, shadow) = shadow_with_child(owner);
+        let (owner, _) = change(
+            owner,
+            HtmlConstructionCommand::AttachShadow {
+                host: host.clone(),
+                contents: shadow,
+            },
+        );
+        driven(owner, HtmlConstructionCommand::DetachShadow { host }).1
+    });
+}
+
+#[test]
+fn reassigning_template_contents_describes_the_same_work_at_every_unrelated_record_count() {
+    assert_same_work_at_every_unrelated_record_count("reassigning template contents", |owner| {
+        let (owner, template) = template_with_child(owner);
+        let (owner, replacement) = fragment(owner);
+        let (owner, child) = create(owner, element("child"));
+        let owner = append(owner, &child, &replacement);
+        driven(
+            owner,
+            HtmlConstructionCommand::ReassignTemplateContents {
+                template,
+                contents: replacement,
+            },
+        )
+        .1
+    });
+}
