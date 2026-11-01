@@ -462,6 +462,100 @@ mod consumed_boundary_tests {
         );
     }
 
+    // The two tests below forge the prepared advance, which `prepare` never
+    // produces, to characterize how completion treats an inconsistent one.
+    fn forged(
+        source: &HtmlSource,
+        start: usize,
+        end: usize,
+        units: DecodedSourceUnits,
+    ) -> ConsumedBoundaryAdvance {
+        let mut boundary = source.initial_consumed_boundary();
+        boundary.offset = start;
+        ConsumedBoundaryAdvance {
+            start: boundary,
+            end,
+            units,
+        }
+    }
+
+    #[test]
+    fn completion_rejects_an_advance_whose_range_ends_before_it_starts() {
+        let utf8 = HtmlSource::utf8("abc");
+        let backwards = forged(
+            &utf8,
+            2,
+            1,
+            DecodedSourceUnits::Utf8 {
+                units: [0x62, 0, 0, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(
+            utf8.complete_consumed_boundary(backwards),
+            Err(ConsumedBoundaryError::InvalidBoundary)
+        );
+        let utf16 = HtmlSource::utf16(DocumentString::from("abc"));
+        let backwards = forged(
+            &utf16,
+            2,
+            1,
+            DecodedSourceUnits::Utf16 {
+                units: [0x62, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(
+            utf16.complete_consumed_boundary(backwards),
+            Err(ConsumedBoundaryError::InvalidBoundary)
+        );
+    }
+
+    #[test]
+    fn completion_rejects_an_advance_whose_range_is_not_as_long_as_its_units() {
+        // The first supplied unit equals the first prepared unit, so only the
+        // length disagreement can report the mismatch.
+        let utf8 = HtmlSource::utf8("ab");
+        let longer = forged(
+            &utf8,
+            0,
+            2,
+            DecodedSourceUnits::Utf8 {
+                units: [0x61, 0, 0, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(
+            utf8.complete_consumed_boundary(longer),
+            Err(ConsumedBoundaryError::ContentMismatch)
+        );
+        let utf16 = HtmlSource::utf16(DocumentString::from("ab"));
+        let longer = forged(
+            &utf16,
+            0,
+            2,
+            DecodedSourceUnits::Utf16 {
+                units: [0x61, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(
+            utf16.complete_consumed_boundary(longer),
+            Err(ConsumedBoundaryError::ContentMismatch)
+        );
+        // Control: a range matching its units completes.
+        let exact = forged(
+            &utf8,
+            0,
+            1,
+            DecodedSourceUnits::Utf8 {
+                units: [0x61, 0, 0, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(utf8.complete_consumed_boundary(exact).unwrap().offset(), 1);
+    }
+
     #[test]
     fn utf16_literal_surrogate_proofs_do_not_claim_scalar_validity() {
         let source = HtmlSource::utf16(DocumentString::from_utf16(vec![0xD800, 0x61]));

@@ -1,9 +1,11 @@
+use crate::parser::support::{bank, record, revision};
 use surgeist_html::*;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlParseLimitsBuilder,
     HtmlParseLimitsError, HtmlParseRequestError, HtmlParseResource, HtmlSource,
     HtmlSourceCoordinates,
 };
+use surgeist_html_semantics::HtmlBaseEncoding;
 use surgeist_html_semantics::HtmlCaptureDocumentId;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -584,13 +586,39 @@ fn request_input_bank_is_absent_until_a_builder_supplies_it() {
         .parse()
         .unwrap_err();
     assert_eq!(plain.encoding_url_facts(), None);
-    let supplied = HtmlFragmentParseRequest::new(HtmlSource::utf8("x"), context, limits(0))
+    assert_eq!(plain.encoding_url_contexts(), None);
+
+    let encoding = HtmlBaseEncoding::fresh();
+    let base = record(&revision(), "https://example.test/", false, None);
+    let first = bank(&base, &encoding, Vec::new());
+    let second = bank(&base, &encoding, Vec::new());
+    assert!(!first.same_owner(&second));
+
+    // A later builder call for another field keeps the earlier supplied facts.
+    let kept = HtmlFragmentParseRequest::new(HtmlSource::utf8("x"), context.clone(), limits(0))
         .unwrap()
-        .with_encoding_url_facts(Vec::new())
+        .with_encoding_url_facts(vec![first.clone()])
         .with_encoding_url_contexts(Vec::new())
-        .with_encoding_url_facts(Vec::new())
         .parse()
         .unwrap_err();
-    assert_eq!(supplied.encoding_url_facts(), Some(&[][..]));
-    assert_eq!(supplied.encoding_url_contexts(), Some(&[][..]));
+    let facts = kept.encoding_url_facts().unwrap();
+    assert_eq!(facts.len(), 1);
+    assert!(facts[0].same_owner(&first));
+    assert_eq!(kept.encoding_url_contexts(), Some(&[][..]));
+
+    // Supplying the same field again replaces it, and the contexts supplied in
+    // between survive that second facts call.
+    let replaced = HtmlFragmentParseRequest::new(HtmlSource::utf8("x"), context, limits(0))
+        .unwrap()
+        .with_encoding_url_facts(vec![first.clone()])
+        .with_encoding_url_contexts(Vec::with_capacity(3))
+        .with_encoding_url_facts(vec![second.clone()])
+        .parse()
+        .unwrap_err();
+    let facts = replaced.encoding_url_facts().unwrap();
+    assert_eq!(facts.len(), 1);
+    assert!(facts[0].same_owner(&second));
+    assert!(!facts[0].same_owner(&first));
+    assert_eq!(replaced.encoding_url_contexts(), Some(&[][..]));
+    assert!(replaced.encoding_url_context_capacity().unwrap() >= 3);
 }
