@@ -25,8 +25,8 @@ fn admit_work(
 
 /// One actual stopped pending allocation, kept until explicit owner cleanup.
 pub(super) struct FailedTextAppend {
-    value: DocumentString,
-    allocation: DocumentStringAllocation,
+    pub(super) value: DocumentString,
+    pub(super) allocation: DocumentStringAllocation,
 }
 impl FailedTextAppend {
     pub(super) fn release(self, control: &mut ParseControl) {

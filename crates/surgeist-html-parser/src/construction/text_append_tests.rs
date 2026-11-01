@@ -601,3 +601,125 @@ fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatc
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+// Impossible states met while a text append commits are reported as the
+// controller's first stop with every ticket and value of the append handed
+// back, never as a panic or a dropped ticket. Each test forces the state
+// through crate-private access or a controller hook, asserts the exact typed
+// error and that the stop is latched first, and that the session's own release
+// drains every resource afterwards.
+fn capacity_mismatch() -> ParseStop {
+    ParseStop::InternalInvariant(crate::parser::control::Invariant::CapacityMismatch)
+}
+
+fn registry_row() -> ParseStop {
+    ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+}
+
+#[test]
+fn a_refused_ticket_restoration_after_a_preserving_append_commits_hands_every_ticket_back() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    // One text node whose string is shared appends through a new backing.
+    let mut first = Some(owned_text(&mut c, &[65, 66]));
+    let node = session
+        .insert_text(&mut c, &root, None, &mut first, None)
+        .unwrap()
+        .unwrap()
+        ._node;
+    let mut next = Some(owned_text(&mut c, &[67]));
+    c.refuse_next_text_append_restore();
+    let result = session.insert_text(&mut c, &root, None, &mut next, None);
+    assert_eq!(result.err(), Some(SessionError::Stop(capacity_mismatch())));
+    assert_eq!(c.stop(), Some(capacity_mismatch()));
+    let _ = node;
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_refused_ticket_restoration_after_an_in_place_append_commits_hands_every_ticket_back() {
+    let mut c = control();
+    let (mut session, root, _node) = aggregate(&mut c);
+    let mut next = Some(owned_text(&mut c, &[67]));
+    c.refuse_next_text_append_restore();
+    let result = session.insert_text(&mut c, &root, None, &mut next, None);
+    assert_eq!(result.err(), Some(SessionError::Stop(capacity_mismatch())));
+    assert_eq!(c.stop(), Some(capacity_mismatch()));
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_stopped_append_releases_its_buffer_when_the_terminal_owner_is_already_taken() {
+    let selected = limits()
+        .into_builder()
+        .managed_utf16_units(3)
+        .finish()
+        .unwrap();
+    let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    let mut first = Some(owned_text(&mut c, &[65]));
+    session
+        .insert_text(&mut c, &root, None, &mut first, None)
+        .unwrap();
+    // A terminal owner from an earlier stopped append already holds the slot.
+    let value = DocumentString::default();
+    let allocation = c.prepare_text_append_allocation().unwrap();
+    session.active_mut().unwrap().failed_text_append =
+        Some(text_append::FailedTextAppend { value, allocation });
+    let mut next = Some(owned_text(&mut c, &[66]));
+    let result = session.insert_text(&mut c, &root, None, &mut next, None);
+    let limit = ParseStop::LimitExceeded {
+        resource: HtmlParseResource::ManagedUtf16Units,
+        limit: 3,
+        current: 2,
+        requested_delta: 2,
+    };
+    assert_eq!(result.err(), Some(SessionError::Stop(limit)));
+    assert_eq!(c.stop(), Some(limit));
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn appending_while_an_attribute_edit_holds_the_storage_reports_the_registry_row() {
+    let mut c = control();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    let root = session.root(&mut c).unwrap();
+    let element = session
+        .allocate_element(
+            &mut c,
+            HtmlElement::new(
+                QualifiedName::new(Namespace::none(), None, "x"),
+                OrderedAttributes::default(),
+            ),
+        )
+        .unwrap();
+    session.insert(&mut c, &root, &element, None, None).unwrap();
+    let mut first = Some(owned_text(&mut c, &[65]));
+    session
+        .insert_text(&mut c, &element, None, &mut first, None)
+        .unwrap();
+    // An attribute edit holds the storage, so the append cannot take it.
+    let storage = session.active_mut().unwrap();
+    storage
+        .construction
+        .begin_attributes(
+            &mut c,
+            element.index,
+            HtmlConstructionAttributeEditMode::Slots,
+        )
+        .unwrap();
+    let mut next = Some(owned_text(&mut c, &[66]));
+    let result = session.insert_text(&mut c, &element, None, &mut next, None);
+    assert_eq!(result.err(), Some(SessionError::Stop(registry_row())));
+    assert_eq!(c.stop(), Some(registry_row()));
+    // Nothing was taken from the registry before the refusal.
+    let storage = session.active_mut().unwrap();
+    storage.construction.abort_attributes(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

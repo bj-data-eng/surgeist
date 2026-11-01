@@ -262,6 +262,10 @@ impl ParseControl {
         allocation: &mut DocumentStringAllocation,
         value: &crate::DocumentString,
     ) -> Result<(), ParseStop> {
+        #[cfg(test)]
+        if self.take_text_append_restore_fault() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        }
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
             return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
         }

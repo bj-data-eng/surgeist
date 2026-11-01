@@ -221,6 +221,10 @@ pub(crate) struct ParseControl {
     /// has taken the storage back and retired the publication wrapper.
     #[cfg(test)]
     construction_recovery_fault: bool,
+    /// Refuses the next text-append ticket restoration before it changes
+    /// anything, as an impossible precondition would.
+    #[cfg(test)]
+    text_append_restore_fault: bool,
 }
 
 /// Fixed-size diagnostic metadata for actual execution between real polls.
@@ -279,6 +283,8 @@ impl ParseControl {
             construction_retire_fault: false,
             #[cfg(test)]
             construction_recovery_fault: false,
+            #[cfg(test)]
+            text_append_restore_fault: false,
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
@@ -441,6 +447,15 @@ impl ParseControl {
     #[cfg(test)]
     pub(crate) fn take_construction_recovery_fault(&mut self) -> bool {
         std::mem::take(&mut self.construction_recovery_fault)
+    }
+    /// Forces the next text-append ticket restoration to refuse.
+    #[cfg(test)]
+    pub(crate) fn refuse_next_text_append_restore(&mut self) {
+        self.text_append_restore_fault = true;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_text_append_restore_fault(&mut self) -> bool {
+        std::mem::take(&mut self.text_append_restore_fault)
     }
     #[cfg(test)]
     pub(crate) fn clear_owned_span_observation(&mut self) {
