@@ -524,3 +524,62 @@ fn text_append_preserving_copy_has_exact_managed_boundary_and_retains_failed_buf
         assert_eq!(c.first_stop_usage(), first.as_ref());
     }
 }
+
+// Characterization of existing behaviour after B07 (a malformed reserve
+// request from the producer is a typed stop, not a panic); not RED against an
+// earlier commit. The capacity is real, observed from an actual append
+// operation; only the requested size is made impossible.
+#[test]
+fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatch() {
+    use crate::bounded::HtmlConstructionTextAppend as Append;
+    let mut c = control();
+    let (mut session, _root, node) = aggregate(&mut c);
+    let storage = session.active_mut().unwrap();
+    let slot = storage.payloads.node_joins[node.index].text().unwrap();
+    let RetainedPayload::String {
+        value, allocation, ..
+    } = mem::replace(&mut storage.payloads.values[slot], RetainedPayload::Retired)
+    else {
+        panic!("registered text")
+    };
+    let mut allocation = allocation;
+    c.suspend_text_append_ticket(&mut allocation, &value)
+        .unwrap();
+    // Without the registry's strong handle the original is exclusive, as it is
+    // when the real append starts.
+    drop(value);
+    let mut operation = Some(Append::begin(
+        storage.construction.owner.take().unwrap(),
+        node.handle.clone(),
+        DocumentString::from("C"),
+    ));
+    let before = {
+        let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+        let observation = action.perform(None).unwrap();
+        let before = observation.capacity().unwrap();
+        observation.accept();
+        before
+    };
+    assert_eq!(before.initialized_len(), 2);
+    let stop = c
+        .prepare_text_append_reserve(&allocation, before, before.initialized_len() - 1)
+        .unwrap_err();
+    let mismatch =
+        ParseStop::InternalInvariant(crate::parser::control::Invariant::CapacityMismatch);
+    assert_eq!(stop, mismatch);
+    assert_eq!(c.stop(), Some(mismatch));
+    let (owner, ..) = operation.take().unwrap().abort().into_parts();
+    storage.construction.owner = Some(owner);
+    let value = match storage.construction.node_at(node.index).unwrap().kind() {
+        HtmlNodeKind::Text(value) => value.clone(),
+        _ => panic!("native text"),
+    };
+    storage.payloads.values[slot] = RetainedPayload::String {
+        value,
+        allocation,
+        origins: None,
+        location: StringLocation::Text(node.index),
+    };
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

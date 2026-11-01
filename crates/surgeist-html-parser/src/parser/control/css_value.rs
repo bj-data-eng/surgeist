@@ -61,7 +61,18 @@ impl CssSchemeValue {
 /// this state through one cell. A callback that finds the state in use, or a
 /// release the ledger cannot honour, cannot reach the controller to latch the
 /// stop; it records it for [`Self::finish`].
+/// A state the CSS parser cannot produce, forced into the next scheme parse.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum SchemeFault {
+    /// Every release callback finds the state already in use.
+    ReentrantRelease,
+    /// The storage admitted differs from the storage the report retains.
+    LiveDrift,
+}
 struct SchemeCallbacks<'c> {
+    #[cfg(test)]
+    fault: Option<SchemeFault>,
     control: RefCell<&'c mut ParseControl>,
     live: Cell<(u64, u64)>,
     owner: ControlIdentity,
@@ -81,6 +92,8 @@ impl<'c> SchemeCallbacks<'c> {
     fn new(control: &'c mut ParseControl) -> Self {
         let owner = control.identity();
         Self {
+            #[cfg(test)]
+            fault: control.css_scheme_fault.take(),
             control: RefCell::new(control),
             live: Cell::new((0, 0)),
             owner,
@@ -132,6 +145,11 @@ impl<'c> SchemeCallbacks<'c> {
     /// has no way to take a refusal back, so it is kept for `finish`; the
     /// ledger is left as it was.
     fn release_to(&self, next: (u64, u64)) {
+        #[cfg(test)]
+        if self.fault == Some(SchemeFault::ReentrantRelease) {
+            self.refuse_reentry();
+            return;
+        }
         let Ok(mut c) = self.control.try_borrow_mut() else {
             self.refuse_reentry();
             return;
@@ -154,8 +172,15 @@ impl<'c> SchemeCallbacks<'c> {
     fn finish(self) -> Finished<'c> {
         let reentered = self.reentered.get();
         let release_error = self.release_error.get();
-        let live = self.live.get();
+        #[allow(unused_mut)]
+        let mut live = self.live.get();
         let control = self.control.into_inner();
+        #[cfg(test)]
+        if self.fault == Some(SchemeFault::LiveDrift)
+            && control.acquire_retained_provider(1, 0, 0).is_ok()
+        {
+            live.0 += 1;
+        }
         let refusal = if reentered {
             Some(control.fail_invariant(Invariant::ReentrantProviderCallback))
         } else {
@@ -527,5 +552,44 @@ mod tests {
         c.release_retained_provider(&owner, live.0, live.1, 0)
             .unwrap();
         empty(c);
+    }
+    // Characterization of existing behaviour after B07; not RED against an
+    // earlier commit. A test hook forces each state the CSS parser cannot make.
+    #[test]
+    fn characterization_a_refused_callback_during_a_scheme_parse_latches_and_credits_everything() {
+        // The skipped release leaves more live than the parser later reports,
+        // so its next admission underflows first; `finish` keeps that first
+        // stop in place of the reentry it also records.
+        let underflow = ParseStop::InternalInvariant(Invariant::ReleaseUnderflow);
+        let mut c = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
+        c.css_scheme_fault = Some(SchemeFault::ReentrantRelease);
+        let raw: Vec<_> = "only dark".encode_utf16().collect();
+        let error = match c.parse_meta_color_scheme(&raw, crate::HtmlDocumentMode::NoQuirks) {
+            Err(error) => error,
+            Ok(value) => {
+                value.release(&mut c).unwrap();
+                panic!("the refused release was not reported");
+            }
+        };
+        assert_eq!(error, underflow);
+        assert_eq!(c.stop(), Some(underflow));
+        empty(&c);
+    }
+    #[test]
+    fn characterization_storage_admitted_beyond_the_report_is_a_capacity_mismatch_and_credited() {
+        let mismatch = ParseStop::InternalInvariant(Invariant::CapacityMismatch);
+        let mut c = ParseControl::new(limits(), crate::HtmlParseCancellation::new());
+        c.css_scheme_fault = Some(SchemeFault::LiveDrift);
+        let raw: Vec<_> = "only dark".encode_utf16().collect();
+        let error = match c.parse_meta_color_scheme(&raw, crate::HtmlDocumentMode::NoQuirks) {
+            Err(error) => error,
+            Ok(value) => {
+                value.release(&mut c).unwrap();
+                panic!("the drifted admission was not reported");
+            }
+        };
+        assert_eq!(error, mismatch);
+        assert_eq!(c.stop(), Some(mismatch));
+        empty(&c);
     }
 }

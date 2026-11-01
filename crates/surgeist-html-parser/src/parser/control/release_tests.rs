@@ -8,6 +8,9 @@ use crate::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 const FOREIGN: ParseStop = ParseStop::InternalInvariant(Invariant::ForeignControl);
 const MISMATCH: ParseStop = ParseStop::InternalInvariant(Invariant::CapacityMismatch);
 const UNDERFLOW: ParseStop = ParseStop::InternalInvariant(Invariant::ReleaseUnderflow);
+const REPRESENTATION: ParseStop = ParseStop::RepresentationExhausted {
+    resource: HtmlParseResource::ManagedCapacityBytes,
+};
 
 fn control() -> ParseControl {
     ParseControl::new(
@@ -177,6 +180,54 @@ fn final_attribute_release_with_a_forged_capacity_is_refused() {
     vector.capacity -= 1;
     assert!(c.release_final_attributes(values, vector, shared).is_ok());
     assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
+}
+
+// Characterization of existing behaviour after the release paths became
+// fallible; these were not RED against any earlier commit.
+#[test]
+fn characterization_final_vector_release_with_an_unrepresentable_capacity_hands_the_ticket_back() {
+    let mut c = control();
+    let values = bank();
+    let (mut vector, shared) = c.final_attribute_tickets(&values).unwrap();
+    let real = vector.capacity;
+    // No allocation spans this many bytes, so the byte count overflows.
+    vector.capacity = usize::MAX;
+    let before = c.usage().clone();
+    let (stop, mut vector) = c.release_final_vector(vector, 1).unwrap_err().into_parts();
+    assert_eq!(stop, REPRESENTATION);
+    assert_eq!(c.stop(), Some(REPRESENTATION));
+    assert_eq!(c.usage(), &before);
+    // The ticket came back intact: restored, the owner's release drains it.
+    vector.capacity = real;
+    c.release_final_vector(vector, 1).unwrap();
+    c.release_final_shared(shared).unwrap();
+    drop(values);
+    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
+    assert_eq!(current(&c, HtmlParseResource::ManagedAttributes), 0);
+}
+
+// Characterization, as above. The vector capacity must equal the bank's real
+// one, so the overflow is reached through the shared ticket's byte count.
+#[test]
+fn characterization_final_attribute_release_with_an_unrepresentable_byte_count_hands_everything_back()
+ {
+    let mut c = control();
+    let values = bank();
+    let (vector, mut shared) = c.final_attribute_tickets(&values).unwrap();
+    let real = shared.bytes;
+    shared.bytes = u64::MAX;
+    let before = c.usage().clone();
+    let (stop, (values, vector, mut shared)) = c
+        .release_final_attributes(values, vector, shared)
+        .unwrap_err()
+        .into_parts();
+    assert_eq!(stop, REPRESENTATION);
+    assert_eq!(c.stop(), Some(REPRESENTATION));
+    assert_eq!(c.usage(), &before);
+    shared.bytes = real;
+    c.release_final_attributes(values, vector, shared).unwrap();
+    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
+    assert_eq!(current(&c, HtmlParseResource::ManagedAttributes), 0);
 }
 
 fn text(units: &[u16]) -> crate::DocumentString {

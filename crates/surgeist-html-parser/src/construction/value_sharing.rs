@@ -1542,4 +1542,49 @@ mod tests {
         assert_eq!(text.code_units(), &[118, 97, 108, 117, 101]);
         assert_eq!(bank.as_slice()[0].value(), &text);
     }
+
+    // Characterization of existing behaviour after B07 (a refused credit on
+    // Drop is latched, not a panic); not RED against an earlier commit.
+    const UNDERFLOW: ParseStop =
+        ParseStop::InternalInvariant(crate::parser::control::Invariant::ReleaseUnderflow);
+
+    #[test]
+    fn characterization_dropping_a_pending_over_unadmitted_storage_latches_the_refusal() {
+        let mut c = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        {
+            let _pending = Pending::new(
+                Selected {
+                    value: (),
+                    usage: Usage { bytes: 8, units: 2 },
+                },
+                &mut c,
+            );
+        }
+        assert_eq!(c.stop(), Some(UNDERFLOW));
+        assert_eq!(c.checkpoint(), Err(UNDERFLOW));
+        super::super::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn characterization_dropping_a_sharing_over_unadmitted_storage_latches_the_refusal() {
+        let mut c = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        {
+            let mut sharing = Sharing::new(&mut c, ValueSharingMode::Combined).unwrap();
+            // More than the controller ever admitted for these pools.
+            sharing.pools.as_mut().unwrap().strings_usage = Usage {
+                bytes: u64::MAX,
+                units: 0,
+            };
+        }
+        assert_eq!(c.stop(), Some(UNDERFLOW));
+        assert_eq!(c.checkpoint(), Err(UNDERFLOW));
+        // Every other credit was still attempted, so the real admission drained.
+        super::super::tests::storage_zero(&c);
+    }
 }
