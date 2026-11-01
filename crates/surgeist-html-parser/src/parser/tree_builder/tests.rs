@@ -831,6 +831,47 @@ fn the_last_template_is_the_topmost_open_template_after_every_stack_operation() 
 }
 
 #[test]
+fn checking_a_new_element_for_insertion_costs_the_same_at_every_depth() {
+    // A new element has no children, so it can be a host-including ancestor of
+    // the target only by being the target: the check visits no ancestor.
+    let chunks = [5_usize, 15, 60];
+    let tags: String = chunks
+        .iter()
+        .map(|divs| format!("{}<p>", "<div>".repeat(*divs)))
+        .collect();
+    let source = HtmlSource::utf8(format!("<html>{tags}"));
+    let mut c = control(200);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let mut visits = Vec::new();
+    for divs in chunks {
+        for _ in 0..divs {
+            add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+        }
+        let mut p = tag(&mut tokenizer, &mut c);
+        let node = kernel.session.allocate_html_tag(&mut c, &mut p).unwrap();
+        let top = kernel.current(&mut c).unwrap();
+        let before = c.usage().work(WorkCategory::RecordVisit);
+        let ignored = kernel
+            .session
+            .element_insertion_ignored(&mut c, &node, &top)
+            .unwrap();
+        assert!(ignored.is_none());
+        visits.push(c.usage().work(WorkCategory::RecordVisit) - before);
+    }
+    assert!(
+        visits.windows(2).all(|pair| pair[0] == pair[1]),
+        "visits at depths {chunks:?}: {visits:?}"
+    );
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
 fn empty_wrong_kind_duplicate_and_foreign_handles_preserve_stack() {
     let source = HtmlSource::utf8("<html><body>");
     let mut c = control(100);

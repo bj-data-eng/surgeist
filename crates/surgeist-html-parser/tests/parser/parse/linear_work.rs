@@ -60,6 +60,16 @@ pub(super) fn roomy_limits() -> HtmlParseLimits {
         .unwrap()
 }
 
+/// `roomy_limits` with room for the stack of open elements that nested shadow
+/// roots fill: each layer keeps its host and its template open.
+fn deep_limits() -> HtmlParseLimits {
+    roomy_limits()
+        .into_builder()
+        .open_elements(5_000)
+        .finish()
+        .unwrap()
+}
+
 fn parse_work(raw: String) -> Work {
     let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), roomy_limits());
     let report = request
@@ -109,7 +119,7 @@ fn parse_fragment_work(raw: String) -> Work {
     let request = HtmlFragmentParseRequest::with_options(
         HtmlSource::utf8(raw),
         div_context(),
-        roomy_limits(),
+        deep_limits(),
         HtmlParserScriptingMode::Inert,
         true,
     )
@@ -372,5 +382,50 @@ fn work_added_by_each_doubling_of_meta_elements_is_near_double() {
             ("record visits", |work| work.visited),
             ("total work", |work| work.total),
         ],
+    );
+}
+
+/// One layer of nested declarative shadow roots: a host whose template becomes
+/// its shadow root, and the template and host still open.
+const SHADOW_LAYER: &str = "<div><template shadowrootmode=open><p>x</p>";
+const SHADOW_LAYER_END: &str = "</template></div>";
+
+fn nested_shadow_roots(layers: usize, innermost: &str) -> String {
+    format!(
+        "{}{innermost}{}",
+        SHADOW_LAYER.repeat(layers),
+        SHADOW_LAYER_END.repeat(layers)
+    )
+}
+
+#[test]
+fn work_added_by_each_doubling_of_nested_declarative_shadow_roots_is_near_double() {
+    // Each host sits inside the shadow root of the one before it, so the tree
+    // and the stack of open elements deepen with every repeat.
+    assert_parses_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| nested_shadow_roots(repeats, ""),
+        parse_fragment_work,
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn a_declarative_shadow_root_adds_the_same_visits_whatever_shadow_roots_enclose_it() {
+    // The layers deepen both the tree and the stack, and the scope checks the
+    // added layer makes end at its own template, so nothing the layer does
+    // needs to look beyond the layers around it.
+    let added = |layers: usize| {
+        let layer = format!("{SHADOW_LAYER}{SHADOW_LAYER_END}");
+        parse_fragment_work(nested_shadow_roots(layers, &layer)).visited as i64
+            - parse_fragment_work(nested_shadow_roots(layers, "")).visited as i64
+    };
+    let measures = [25, 100, 400].map(added);
+    assert!(
+        measures.iter().all(|visits| *visits == measures[0]),
+        "one more shadow root added {measures:?} record visits inside 25, 100 and 400"
     );
 }
