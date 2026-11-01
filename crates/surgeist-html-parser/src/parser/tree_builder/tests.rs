@@ -650,6 +650,71 @@ fn literal_surrogates_and_supplementary_text_survive_real_transfer_and_merge() {
 }
 
 #[test]
+fn pushing_a_node_created_after_every_pushed_node_examines_no_stack_entry() {
+    let source = HtmlSource::utf8(format!("<html>{}", "<div>".repeat(40)));
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let mut steps = Vec::new();
+    for _ in 0..40 {
+        let node = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+        let before = c.usage().work(WorkCategory::StateStep);
+        kernel.push(&node, &mut c).unwrap();
+        steps.push(c.usage().work(WorkCategory::StateStep) - before);
+    }
+    assert_eq!(steps, vec![0; 40]);
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn a_node_already_on_the_stack_is_a_duplicate_wherever_it_sits_and_however_it_got_there() {
+    let source = HtmlSource::utf8("<html><body><p><span><b>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, html) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let body = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    let p = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    for on_stack in [&html, &body, &p] {
+        assert!(matches!(
+            kernel.push(on_stack, &mut c),
+            Err(KernelError::DuplicateOpenElement)
+        ));
+    }
+    // A popped node may be pushed again, and then it is a duplicate again.
+    kernel.pop(&mut c, None).unwrap();
+    kernel.push(&p, &mut c).unwrap();
+    assert!(matches!(
+        kernel.push(&p, &mut c),
+        Err(KernelError::DuplicateOpenElement)
+    ));
+    // A node written into the stack by replacement is on the stack too.
+    let span = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    kernel.replace_stack(2, &span, &mut c, None).unwrap();
+    assert!(matches!(
+        kernel.push(&span, &mut c),
+        Err(KernelError::DuplicateOpenElement)
+    ));
+    // And so is one written by insertion at a position below the top.
+    let b = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    kernel.insert_stack(1, &b, &mut c).unwrap();
+    assert!(matches!(
+        kernel.push(&b, &mut c),
+        Err(KernelError::DuplicateOpenElement)
+    ));
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
 fn empty_wrong_kind_duplicate_and_foreign_handles_preserve_stack() {
     let source = HtmlSource::utf8("<html><body>");
     let mut c = control(100);

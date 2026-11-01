@@ -17,12 +17,16 @@ use super::linear_work::roomy_limits;
 /// One unrelated element with an attribute and a text node.
 const SPAN: &str = "<span class=b>t</span>";
 
-fn record_visits(raw: String) -> u64 {
+fn work(raw: String, category: HtmlParseWorkCategory) -> u64 {
     let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), roomy_limits());
     let report = request
         .parse()
         .unwrap_or_else(|_| panic!("the document parses within roomy limits"));
-    report.usage().work(HtmlParseWorkCategory::RecordVisit)
+    report.usage().work(category)
+}
+
+fn record_visits(raw: String) -> u64 {
+    work(raw, HtmlParseWorkCategory::RecordVisit)
 }
 
 /// The visits `element` adds to a document whose other section holds `filler`
@@ -42,13 +46,18 @@ const SIZES: [usize; 3] = [50, 200, 800];
 
 /// Requires the measures taken at `SIZES` to differ by at most `slack`.
 fn assert_flat(what: &str, unit: &str, measures: [i64; 3], slack: i64) {
+    assert_flat_of("record visits", what, unit, measures, slack);
+}
+
+/// As `assert_flat`, naming the `measured` quantity in the failure.
+fn assert_flat_of(measured: &str, what: &str, unit: &str, measures: [i64; 3], slack: i64) {
     let (least, most) = (
         measures.iter().min().copied().unwrap_or(0),
         measures.iter().max().copied().unwrap_or(0),
     );
     assert!(
         most - least <= slack,
-        "{what} added {measures:?} record visits after {SIZES:?} unrelated {unit}"
+        "{what} added {measures:?} {measured} after {SIZES:?} unrelated {unit}"
     );
 }
 
@@ -184,4 +193,39 @@ fn a_selected_option_adds_the_same_selectedness_visits_whatever_other_options_th
 #[test]
 fn a_disabled_option_adds_the_same_selectedness_visits_whatever_other_options_the_select_holds() {
     assert_selectedness_work_independent_of_other_options("<option disabled>x</option>");
+}
+
+/// The work `category` adds when `element` follows `depth` copies of `open`,
+/// all left open: the element's parent has `depth` ancestors that are open
+/// elements and nothing else between.
+fn work_added_at_depth(
+    category: HtmlParseWorkCategory,
+    open: &str,
+    depth: usize,
+    element: &str,
+) -> i64 {
+    let page = |inner: &str| format!("<!doctype html><body>{}{inner}", open.repeat(depth));
+    work(page(element), category) as i64 - work(page(""), category) as i64
+}
+
+/// Requires `element` to add the same state steps after 50, 200 and 800 open
+/// copies of `open`. A state step is what the tree builder charges for each
+/// stack entry it examines, so a flat measure means the element's insertion
+/// examines no entry beyond the top of the stack of open elements. The check
+/// is exact: a start tag that has no scope or duplicate check to run adds a
+/// fixed number of steps.
+fn assert_state_steps_independent_of_depth(open: &str, element: &str) {
+    let measures = SIZES
+        .map(|depth| work_added_at_depth(HtmlParseWorkCategory::StateStep, open, depth, element));
+    assert_flat_of("state steps", element, open, measures, 0);
+}
+
+#[test]
+fn a_foreign_element_adds_the_same_state_steps_whatever_elements_are_open_around_it() {
+    assert_state_steps_independent_of_depth("<svg>", "<g>");
+}
+
+#[test]
+fn an_html_element_adds_the_same_state_steps_whatever_elements_are_open_around_it() {
+    assert_state_steps_independent_of_depth("<span>", "<span>");
 }
