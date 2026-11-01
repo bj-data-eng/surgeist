@@ -30,9 +30,15 @@ Remove-Item Env:SURGEIST_RUN_NATIVE_PREFERENCES_PROBE
 
 The Windows probe opens an invisible window through the production loop and
 compares its `Ready` preference snapshot with Windows Runtime animation,
-transparency and contrast-theme observations. Keep those settings stable during
-the probe. It reads settings without changing them. It does not qualify monitor
-enrichment, notification wakeups or rendering behavior.
+transparency and contrast-theme observations. It independently locates that
+process-owned native window, obtains its current monitor directly, and compares
+the captured screen, work area, client origin, DPI scale and fixed viewport
+variants with WinSafe observations. A complete Windows Runtime pointer-device
+sample independently checks the host's primary and union input capabilities;
+unavailable native input remains explicit. It works with multiple monitors without
+selecting a device by screen geometry or enumeration order. Keep settings and
+monitor configuration and input devices stable during the probe. It reads facts without changing
+them and makes no claim about color precision, notification wakeups or rendering.
 
 See [host observations](explanation.md#host-observations-and-consumer-inputs) for
 the supported values, sampling opportunities and unavailable observations.

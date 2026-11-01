@@ -203,8 +203,10 @@ fn main() {
 fn main() {
     use std::{cell::RefCell, rc::Rc};
     use surgeist_window::{
-        ContrastPreference, Handler, Ready, ReductionPreference, Result, WindowSnapshot, app, open,
+        ContrastPreference, Handler, InputCapabilities, Point, PointerAccuracy, PointerCapability,
+        Ready, Rect, ReductionPreference, Result, Size, WindowSnapshot, app, open,
     };
+    use windows::Devices::Input::{PointerDevice, PointerDeviceType};
     use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
 
     if std::env::var("SURGEIST_RUN_NATIVE_PREFERENCES_PROBE").as_deref() != Ok("1") {
@@ -214,21 +216,212 @@ fn main() {
         return;
     }
 
-    struct Probe(Rc<RefCell<Option<WindowSnapshot>>>);
+    struct NativeWitness {
+        monitor: winsafe::MONITORINFOEX,
+        client: winsafe::RECT,
+        client_origin: winsafe::POINT,
+        dpi: u32,
+        input: std::result::Result<InputCapabilities, String>,
+    }
+    fn expected_input() -> std::result::Result<InputCapabilities, String> {
+        let devices = PointerDevice::GetPointerDevices().map_err(|error| error.to_string())?;
+        let count = devices.Size().map_err(|error| error.to_string())?;
+        let mut pointers = Vec::new();
+        let mut mouse = false;
+        let mut pen = false;
+        let mut pen_hover = false;
+        let mut touch = false;
+        for index in 0..count {
+            let device = devices.GetAt(index).map_err(|error| error.to_string())?;
+            let kind = device
+                .PointerDeviceType()
+                .map_err(|error| error.to_string())?;
+            let capability =
+                if kind == PointerDeviceType::Mouse || kind == PointerDeviceType::Touchpad {
+                    mouse = true;
+                    PointerCapability {
+                        accuracy: PointerAccuracy::Fine,
+                        hover: true,
+                    }
+                } else if kind == PointerDeviceType::Pen {
+                    pen = true;
+                    let hover = device
+                        .MaxPointersWithZDistance()
+                        .map_err(|error| error.to_string())?
+                        > 0;
+                    pen_hover |= hover;
+                    PointerCapability {
+                        accuracy: PointerAccuracy::Fine,
+                        hover,
+                    }
+                } else if kind == PointerDeviceType::Touch {
+                    touch = true;
+                    PointerCapability {
+                        accuracy: PointerAccuracy::Coarse,
+                        hover: false,
+                    }
+                } else {
+                    return Err(format!("unknown Windows pointer kind {kind:?}"));
+                };
+            pointers.push(capability);
+        }
+        let primary = if mouse {
+            PointerCapability {
+                accuracy: PointerAccuracy::Fine,
+                hover: true,
+            }
+        } else if pen {
+            PointerCapability {
+                accuracy: PointerAccuracy::Fine,
+                hover: pen_hover,
+            }
+        } else if touch {
+            PointerCapability {
+                accuracy: PointerAccuracy::Coarse,
+                hover: false,
+            }
+        } else {
+            PointerCapability {
+                accuracy: PointerAccuracy::None,
+                hover: false,
+            }
+        };
+        InputCapabilities::new(primary, pointers).map_err(|error| error.to_string())
+    }
+    fn native_witness(title: &str) -> std::result::Result<NativeWitness, String> {
+        let mut matches = Vec::new();
+        winsafe::EnumWindows(|window| {
+            if window.GetWindowThreadProcessId().1 == std::process::id()
+                && window.GetWindowText().is_ok_and(|text| text == title)
+            {
+                matches.push(window);
+            }
+            true
+        })
+        .map_err(|error| error.to_string())?;
+        let [window] = matches.as_slice() else {
+            return Err(format!(
+                "expected one process-owned probe window, found {}",
+                matches.len()
+            ));
+        };
+        Ok(NativeWitness {
+            monitor: window
+                .MonitorFromWindow(winsafe::co::MONITOR::DEFAULTTONULL)
+                .GetMonitorInfo()
+                .map_err(|error| error.to_string())?,
+            client: window.GetClientRect().map_err(|error| error.to_string())?,
+            client_origin: window
+                .ClientToScreen(winsafe::POINT::default())
+                .map_err(|error| error.to_string())?,
+            dpi: window.GetDpiForWindow(),
+            input: expected_input(),
+        })
+    }
+    struct Capture {
+        snapshot: WindowSnapshot,
+        witness: std::result::Result<NativeWitness, String>,
+    }
+    struct Probe {
+        capture: Rc<RefCell<Option<Capture>>>,
+        title: String,
+    }
     impl Handler for Probe {
         fn ready(&mut self, ready: &mut Ready<'_>) -> Result<()> {
-            self.0.replace(Some(ready.state().clone()));
+            self.capture.replace(Some(Capture {
+                snapshot: ready.state().clone(),
+                witness: native_witness(&self.title),
+            }));
             ready.exit();
             Ok(())
         }
     }
 
-    let snapshot = Rc::new(RefCell::new(None));
-    app(Probe(snapshot.clone()))
-        .open(open("native-preferences-probe").visible(false))
-        .run()
-        .expect("the hidden native loop exits cleanly after Ready");
-    let snapshot = snapshot.borrow_mut().take().expect("Ready captured state");
+    let capture = Rc::new(RefCell::new(None));
+    let title = format!("Surgeist native probe {}", std::process::id());
+    app(Probe {
+        capture: capture.clone(),
+        title: title.clone(),
+    })
+    .open(open("native-preferences-probe").title(title).visible(false))
+    .run()
+    .expect("the hidden native loop exits cleanly after Ready");
+    let Capture { snapshot, witness } = capture.borrow_mut().take().expect("Ready captured state");
+    let witness = witness.expect("native window geometry capture");
+    let scale = snapshot.metrics().scale_factor();
+    let logical_rect = |rect: winsafe::RECT| Rect {
+        origin: Point {
+            x: f64::from(rect.left) / scale,
+            y: f64::from(rect.top) / scale,
+        },
+        size: Size {
+            width: (f64::from(rect.right) - f64::from(rect.left)) / scale,
+            height: (f64::from(rect.bottom) - f64::from(rect.top)) / scale,
+        },
+    };
+    let screen = snapshot
+        .environment()
+        .screen
+        .as_ref()
+        .expect("native monitor capture");
+    let assert_rect_close = |actual: Rect, expected: Rect| {
+        for (actual, expected) in [
+            (actual.origin.x, expected.origin.x),
+            (actual.origin.y, expected.origin.y),
+            (actual.size.width, expected.size.width),
+            (actual.size.height, expected.size.height),
+        ] {
+            // Absolute division and monitor-local offset projection may differ
+            // by a few floating-point rounding steps on mixed-DPI desktops.
+            let tolerance = 8.0 * f64::EPSILON * expected.abs().max(1.0);
+            assert!(
+                (actual - expected).abs() <= tolerance,
+                "{actual} != {expected}"
+            );
+        }
+    };
+    assert_rect_close(screen.area(), logical_rect(witness.monitor.rcMonitor));
+    assert_rect_close(
+        screen.available_area().expect("captured native work area"),
+        logical_rect(witness.monitor.rcWork),
+    );
+    assert_eq!(scale, f64::from(witness.dpi) / 96.0);
+    let client = snapshot
+        .environment()
+        .client_area
+        .as_ref()
+        .expect("native client capture");
+    assert_rect_close(
+        client.area(),
+        Rect {
+            origin: Point {
+                x: f64::from(witness.client_origin.x) / scale,
+                y: f64::from(witness.client_origin.y) / scale,
+            },
+            size: logical_rect(witness.client).size,
+        },
+    );
+    let viewport = snapshot
+        .environment()
+        .viewport
+        .as_ref()
+        .expect("native viewport capture");
+    assert_eq!(viewport.layout(), client.area().size);
+    assert_eq!(viewport.sizes().large(), client.area().size);
+    assert_eq!(viewport.sizes().small(), client.area().size);
+    assert_eq!(viewport.sizes().dynamic(), client.area().size);
+    if let Err(error) = &witness.input {
+        eprintln!("Windows input observations unavailable: {error}");
+    }
+    assert_eq!(
+        snapshot.environment().input.as_ref(),
+        witness.input.as_ref().ok()
+    );
+    println!("native input={:?}", snapshot.environment().input);
+    println!(
+        "native monitor {}: screen={screen:?}, client={client:?}, scale={scale}",
+        witness.monitor.szDevice()
+    );
     let captured = &snapshot.environment().preferences;
     let ui = UISettings::new().expect("native UI settings");
     let animations = ui.AnimationsEnabled().expect("animation observation");
