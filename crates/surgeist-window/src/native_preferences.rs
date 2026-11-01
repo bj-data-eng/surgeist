@@ -1,6 +1,6 @@
 //! Native baseline observations, independent of application or origin overrides.
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 use crate::{ContrastPreference, ReductionPreference};
 use crate::{Theme, UserPreferences};
 
@@ -17,11 +17,61 @@ pub(crate) fn capture(color_scheme: Option<Theme>) -> UserPreferences {
         }
         .into_preferences(color_scheme)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
+
+        let ui = UISettings::new().ok();
+        WindowsAccessibilityPreferences {
+            animations_enabled: ui.as_ref().and_then(|ui| ui.AnimationsEnabled().ok()),
+            transparency_enabled: ui.as_ref().and_then(|ui| ui.AdvancedEffectsEnabled().ok()),
+            high_contrast: AccessibilitySettings::new()
+                .and_then(|settings| settings.HighContrast())
+                .ok(),
+        }
+        .into_preferences(color_scheme)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         UserPreferences {
             color_scheme,
             ..UserPreferences::default()
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+struct WindowsAccessibilityPreferences {
+    animations_enabled: Option<bool>,
+    transparency_enabled: Option<bool>,
+    high_contrast: Option<bool>,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl WindowsAccessibilityPreferences {
+    fn into_preferences(self, color_scheme: Option<Theme>) -> UserPreferences {
+        let reduction = |enabled| {
+            if enabled {
+                ReductionPreference::NoPreference
+            } else {
+                ReductionPreference::Reduce
+            }
+        };
+        UserPreferences {
+            reduced_motion: self.animations_enabled.map(reduction),
+            reduced_transparency: self.transparency_enabled.map(reduction),
+            // Windows contrast themes select a palette, not an independently
+            // measured preference for higher or lower contrast. Without palette
+            // classification, retain that custom preference rather than More.
+            contrast: self.high_contrast.map(|active| {
+                if active {
+                    ContrastPreference::Custom
+                } else {
+                    ContrastPreference::NoPreference
+                }
+            }),
+            color_scheme,
+            reduced_data: None,
         }
     }
 }
@@ -63,6 +113,53 @@ impl AccessibilityPreferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_capture_reports_actual_accessibility_preferences() {
+        use windows::UI::ViewManagement::{AccessibilitySettings, UISettings};
+
+        let ui = UISettings::new().expect("Windows UI settings are available");
+        let accessibility =
+            AccessibilitySettings::new().expect("Windows accessibility settings are available");
+        let animations = ui
+            .AnimationsEnabled()
+            .expect("animation effects observation");
+        let transparency = ui
+            .AdvancedEffectsEnabled()
+            .expect("transparency effects observation");
+        let high_contrast = accessibility
+            .HighContrast()
+            .expect("contrast theme observation");
+        let captured = capture(Some(Theme::Dark));
+
+        assert_eq!(
+            captured.reduced_motion,
+            Some(if animations {
+                ReductionPreference::NoPreference
+            } else {
+                ReductionPreference::Reduce
+            })
+        );
+        assert_eq!(
+            captured.reduced_transparency,
+            Some(if transparency {
+                ReductionPreference::NoPreference
+            } else {
+                ReductionPreference::Reduce
+            })
+        );
+        assert_eq!(
+            captured.contrast,
+            Some(if high_contrast {
+                ContrastPreference::Custom
+            } else {
+                ContrastPreference::NoPreference
+            })
+        );
+        assert_eq!(captured.color_scheme, Some(Theme::Dark));
+        assert_eq!(captured.reduced_data, None);
+    }
 
     #[test]
     fn accessibility_flags_map_independently_without_inventing_data_or_color_preferences() {
@@ -119,7 +216,47 @@ mod tests {
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn windows_preferences_preserve_each_known_flag_and_independent_unavailability() {
+        for (animations, motion) in [
+            (None, None),
+            (Some(true), Some(ReductionPreference::NoPreference)),
+            (Some(false), Some(ReductionPreference::Reduce)),
+        ] {
+            for (transparency, reduction) in [
+                (None, None),
+                (Some(true), Some(ReductionPreference::NoPreference)),
+                (Some(false), Some(ReductionPreference::Reduce)),
+            ] {
+                for (contrast, expected_contrast) in [
+                    (None, None),
+                    (Some(false), Some(ContrastPreference::NoPreference)),
+                    (Some(true), Some(ContrastPreference::Custom)),
+                ] {
+                    for theme in [None, Some(Theme::Light), Some(Theme::Dark)] {
+                        let captured = WindowsAccessibilityPreferences {
+                            animations_enabled: animations,
+                            transparency_enabled: transparency,
+                            high_contrast: contrast,
+                        }
+                        .into_preferences(theme);
+                        assert_eq!(
+                            captured,
+                            UserPreferences {
+                                reduced_motion: motion,
+                                reduced_transparency: reduction,
+                                contrast: expected_contrast,
+                                color_scheme: theme,
+                                reduced_data: None,
+                            }
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     #[test]
     fn unsupported_platform_leaves_accessibility_observations_unavailable() {
         assert_eq!(

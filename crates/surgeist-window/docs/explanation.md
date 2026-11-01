@@ -210,8 +210,18 @@ On macOS, the native adapter samples AppKit's reduced-motion,
 reduced-transparency and increased-contrast flags. A true reduction flag maps to
 `Reduce`, and false maps to `NoPreference`. Increased contrast maps to `More`
 when true and `NoPreference` when false; this flag does not detect `Less` or
-`Custom`. These are explicit host-policy mappings of observed settings. Other
-platforms retain unavailable values for these observations.
+`Custom`. These are explicit host-policy mappings of observed settings.
+
+On Windows, safe Windows Runtime APIs sample `UISettings.AnimationsEnabled`,
+[`UISettings.AdvancedEffectsEnabled`](https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.uisettings.advancedeffectsenabled)
+and [`AccessibilitySettings.HighContrast`](https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.accessibilitysettings.highcontrast).
+Disabled animation or transparency effects map to `Reduce`; enabled effects map
+to `NoPreference`. An active contrast theme maps to `Custom`: this observer does
+not classify the selected palette as particularly high or low contrast. An
+inactive contrast theme maps to `NoPreference`. Each failed observation remains
+independently unavailable, preserving successfully sampled siblings and the
+separately supplied system color scheme. These APIs do not establish reduced-data
+preferences. Other platforms retain unavailable values for these observations.
 
 The complete preference baseline is sampled at resume, native/user events,
 command application and idle opportunities. Changed facts commit before their
