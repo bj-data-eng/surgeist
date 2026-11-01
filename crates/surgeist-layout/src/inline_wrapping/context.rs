@@ -110,7 +110,7 @@ pub(crate) struct ScopeRow<Node> {
     pub(crate) policy: WrapInside,
     pub(crate) edges: WrapEdges,
     pub(crate) metric_contribution: Option<InlineBoxMetricContribution>,
-    parent_edge_axes: Option<crate::FlowAxes>,
+    pub(super) parent_edge_axes: Option<crate::FlowAxes>,
     geometry_only: bool,
     source: Option<SourceExtent>,
 }
@@ -127,6 +127,7 @@ pub(crate) struct WrappingContext<Node> {
     ancestry: Arc<Ancestry>,
     has_avoid: bool,
     pub(crate) edge_plan: super::edge_plan::EdgePlan<Node>,
+    ordering: Vec<super::ordering::NativeOrderingProfile<Node>>,
 }
 impl<Node> PartialEq for WrappingContext<Node> {
     fn eq(&self, other: &Self) -> bool {
@@ -138,6 +139,7 @@ impl<Node> Default for WrappingContext<Node> {
     fn default() -> Self {
         Self {
             rows: Vec::new(),
+            ordering: Vec::new(),
             ancestry: Arc::default(),
             has_avoid: false,
             edge_plan: super::edge_plan::EdgePlan {
@@ -308,18 +310,24 @@ pub(super) fn native_span_with<Node: Copy + Eq>(
 fn ordered_ranks<Node: Copy + Eq>(
     graph: &ValidationGraph<Node>,
     owner: usize,
+    domain: std::ops::Range<usize>,
     nodes: &[Node],
 ) -> Result<Vec<usize>, WrappingScopeError> {
     let children = &graph.children[owner];
-    let mut cursor = 0;
+    let search = children
+        .get(domain.clone())
+        .ok_or(WrappingScopeError::InconsistentIncidence)?;
+    let mut cursor = domain.start;
     let mut ranks = Vec::with_capacity(nodes.len());
     for &node in nodes {
-        let Some(offset) = children[cursor..]
+        let Some(offset) = children[cursor..domain.end]
             .iter()
             .position(|&i| graph.nodes[i] == node)
         else {
-            return Err(if children.iter().any(|&i| graph.nodes[i] == node) {
+            return Err(if search.iter().any(|&i| graph.nodes[i] == node) {
                 WrappingScopeError::EndpointOrder
+            } else if children.iter().any(|&i| graph.nodes[i] == node) {
+                WrappingScopeError::InconsistentIncidence
             } else {
                 WrappingScopeError::DifferentFlow
             });
@@ -337,11 +345,14 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         inputs: &[WrappingScopeInput<Node>],
         proofs: &[WrappingScopeProof<Node>],
         child_order: &[InlineChildOrderInput<Node>],
+        gaps: &[InlineGapGroupInput<Node>],
+        prepared_execution: impl Fn(Node) -> bool,
     ) -> Result<Self, WrappingScopeError> {
         let box_edges = graph.nodes.iter().any(|node| matches!(tree.layout_input(*node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()));
         if !box_edges
             && inputs.is_empty()
             && child_order.is_empty()
+            && gaps.is_empty()
             && graph
                 .nodes
                 .iter()
@@ -679,7 +690,13 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         } else {
             super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order, proofs)?
         };
+        let ordering = if box_edges || !gaps.is_empty() {
+            super::ordering::prepare(tree, graph, &rows, gaps, &prepared_execution)?
+        } else {
+            Vec::new()
+        };
         Ok(Self {
+            ordering,
             rows,
             ancestry: Arc::new(Ancestry { intervals }),
             has_avoid,
@@ -848,12 +865,14 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         &self,
         graph: &ValidationGraph<Node>,
         flow: Node,
+        source: super::NativeRunSource<'_, Node>,
         nodes: &[Node],
     ) -> Result<NumericWrapping, WrappingScopeError> {
         let owner = graph
             .index(flow)
             .ok_or(WrappingScopeError::NodeNotReachable)?;
-        let ranks = ordered_ranks(graph, owner, nodes)?;
+        let raw_range = source.validate(graph, owner)?;
+        let ranks = ordered_ranks(graph, owner, raw_range.clone(), nodes)?;
         let requested: Vec<_> = self
             .rows
             .iter()
@@ -1012,7 +1031,23 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 ancestry,
             });
         }
+        let ordering = self
+            .ordering
+            .iter()
+            .find(|profile| profile.flow == flow)
+            .map(|profile| {
+                if source.nodes.is_empty() {
+                    return Err(WrappingScopeError::UnsupportedIncidence);
+                }
+                Ok(Arc::new(super::ordering::NativeOrderingProjection {
+                    profile: Arc::clone(&profile.data),
+                    ranks,
+                    raw_range,
+                }))
+            })
+            .transpose()?;
         Ok(NumericWrapping {
+            ordering,
             boxes,
             metrics,
             forced,
@@ -1036,7 +1071,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 .position(|&i| graph.nodes[i] == node)
                 .ok_or(WrappingScopeError::DifferentFlow)
         };
-        let ranks = ordered_ranks(graph, owner, nodes)?;
+        let ranks = ordered_ranks(graph, owner, 0..graph.children[owner].len(), nodes)?;
         if ranks.is_empty() {
             return Err(WrappingScopeError::EndpointOrder);
         }
@@ -1098,6 +1133,7 @@ pub(crate) struct NumericWrapping {
     forced: Vec<bool>,
     metrics: Vec<NumericBoxMetrics>,
     boxes: Vec<NumericBoxEdges>,
+    ordering: Option<Arc<super::ordering::NativeOrderingProjection>>,
 }
 impl PartialEq for NumericWrapping {
     fn eq(&self, other: &Self) -> bool {
@@ -1106,9 +1142,13 @@ impl PartialEq for NumericWrapping {
             && self.forced == other.forced
             && self.metrics == other.metrics
             && self.boxes == other.boxes
+            && self.ordering == other.ordering
     }
 }
 impl NumericWrapping {
+    pub(crate) fn ordering(&self) -> Option<&Arc<super::ordering::NativeOrderingProjection>> {
+        self.ordering.as_ref()
+    }
     pub(crate) fn boxes(&self) -> &[NumericBoxEdges] {
         &self.boxes
     }

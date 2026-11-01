@@ -680,6 +680,7 @@ mod tests {
                 0,
                 tree.paragraphs.clone(),
                 layout::WrappingInput {
+                    gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },

@@ -158,6 +158,7 @@ impl<S: LayoutScalar> NumericTree<S> {
             0,
             vec![],
             WrappingInput {
+                gaps: Vec::new(),
                 scopes: self.scopes.clone(),
                 child_order: vec![],
             },

@@ -131,3 +131,58 @@ fn captured_empty_box_edges_use_the_authentic_original_gap_f32() {
 fn captured_empty_box_edges_use_the_authentic_original_gap_f64() {
     lane::<f64>();
 }
+
+fn native_gap_on_prepared_formatter<S: LayoutScalar>() {
+    // Execute the maintained actual Ahem/captured-gap control before requesting
+    // authority owned only by the font-free numeric adapter.
+    lane::<S>();
+    let case = Case::new(Shape::Paired, Direction::Ltr);
+    let mut tree = case.tree::<S>(25.0, false);
+    for (node, kind, amount) in [
+        (20, InlineBoundaryKind::Start, 2.0),
+        (21, InlineBoundaryKind::End, 3.0),
+    ] {
+        let boundary = InlineBoundaryInputOf::box_edge(
+            kind,
+            InlineMetricsOf::try_new(InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap(),
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(amount), S::ZERO).unwrap(),
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        );
+        tree.insert_input(node, LayoutInputOf::inline_boundary(boundary));
+    }
+    let mut inventory = case.inventory(&[(WrapEdges::AUTO, None)], false, false);
+    inventory.gaps.push(crate::InlineGapGroupInput {
+        anchor: crate::InlineGapAnchor::Formatter {
+            node: 0,
+            edge: crate::InlineFormatterEdge::Start,
+        },
+        boxes: vec![InlineBoxRef::Scope(case.scopes[0].clone())],
+    });
+    let error = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![case.binding.clone()],
+        inventory,
+        Vec::new(),
+    )
+    .err()
+    .expect("native gap authority cannot be admitted and ignored on a Prepared-backed formatter");
+    assert!(
+        matches!(
+            error.kind(),
+            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::WrappingScope(
+                WrappingScopeError::UnsupportedIncidence
+            ))
+        ),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn native_gap_group_on_genuine_prepared_empty_box_refuses_f32() {
+    native_gap_on_prepared_formatter::<f32>();
+}
+#[test]
+fn native_gap_group_on_genuine_prepared_empty_box_refuses_f64() {
+    native_gap_on_prepared_formatter::<f64>();
+}

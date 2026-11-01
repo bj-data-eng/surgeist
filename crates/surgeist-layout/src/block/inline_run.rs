@@ -1265,7 +1265,15 @@ where
                         })
                         .collect();
                     context
-                        .numeric_projection(graph, container, &nodes)
+                        .numeric_projection(
+                            graph,
+                            container,
+                            crate::inline_wrapping::NativeRunSource {
+                                nodes: run,
+                                start: source_index_start,
+                            },
+                            &nodes,
+                        )
                         .map(|projection| {
                             if matches!(available_inline_extent, AvailableOf::MinContent) {
                                 projection.without_avoidance()

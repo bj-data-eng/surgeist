@@ -153,6 +153,7 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -235,6 +236,7 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

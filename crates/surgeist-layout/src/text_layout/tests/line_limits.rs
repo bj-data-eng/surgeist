@@ -44,6 +44,7 @@ fn compute<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

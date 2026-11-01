@@ -146,6 +146,7 @@ fn paragraph<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -326,6 +327,7 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                     0,
                     vec![paragraph.binding(0)],
                     crate::WrappingInput {
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -440,6 +442,7 @@ fn interleaved<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

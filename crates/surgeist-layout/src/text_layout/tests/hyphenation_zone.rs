@@ -280,6 +280,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
         0,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

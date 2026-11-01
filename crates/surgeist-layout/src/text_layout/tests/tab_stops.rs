@@ -69,6 +69,7 @@ fn batch<S: LayoutScalar>(
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -226,6 +227,7 @@ fn css_tab_capture_rejects_a_different_actual_container_direction() {
         0,
         vec![prepared.binding(0)],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -288,6 +290,7 @@ fn intrinsic_with_indent(
         0,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -498,6 +501,7 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
             0,
             vec![p.binding(0)],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

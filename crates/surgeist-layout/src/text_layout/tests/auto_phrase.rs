@@ -66,6 +66,7 @@ fn compute<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -242,6 +243,7 @@ fn intrinsic<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -811,6 +813,7 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
                 0,
                 vec![binding.clone()],
                 crate::WrappingInput {
+                    gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },

@@ -1560,6 +1560,7 @@ mod tests {
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -1881,6 +1882,7 @@ mod grid_overflow_observation_tests {
                     2,
                     vec![tree.text.binding(3)],
                     crate::WrappingInput {
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -1914,6 +1916,7 @@ mod grid_overflow_observation_tests {
                     2,
                     vec![tree.text.binding(3)],
                     crate::WrappingInput {
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -1978,6 +1981,7 @@ mod grid_overflow_observation_tests {
                     2,
                     vec![tree.text.binding(3)],
                     crate::WrappingInput {
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -2088,6 +2092,7 @@ mod grid_overflow_observation_tests {
             0,
             vec![text.binding(1)],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

@@ -406,6 +406,7 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
         0,
         vec![],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![crate::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 2,
@@ -423,7 +424,15 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
     .unwrap();
     let wrapping = flow
         .wrapping
-        .numeric_projection(&flow.graph, 0, &[1, 2])
+        .numeric_projection(
+            &flow.graph,
+            0,
+            crate::inline_wrapping::NativeRunSource {
+                nodes: &[1, 2],
+                start: 0,
+            },
+            &[1, 2],
+        )
         .unwrap();
     let mut query = input::<S>(
         direction,
@@ -520,6 +529,7 @@ fn scoped_metric_witness<S: LayoutScalar>(
         0,
         vec![],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![crate::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 2,
@@ -543,7 +553,15 @@ fn scoped_metric_witness<S: LayoutScalar>(
     .unwrap();
     let wrapping = flow
         .wrapping
-        .numeric_projection(&flow.graph, 0, &[1, 2])
+        .numeric_projection(
+            &flow.graph,
+            0,
+            crate::inline_wrapping::NativeRunSource {
+                nodes: &[1, 2],
+                start: 0,
+            },
+            &[1, 2],
+        )
         .unwrap();
     let mut query = input::<S>(
         direction,

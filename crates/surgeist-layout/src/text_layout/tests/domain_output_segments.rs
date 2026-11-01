@@ -334,6 +334,7 @@ fn capture<'a, S: LayoutScalar>(
         ROOT,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: vec![],
         },
@@ -602,6 +603,7 @@ fn duplicate_whole_output_claim_refuses_overlapping_authentic_members() {
         ROOT,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: vec![],
         },
@@ -649,6 +651,7 @@ fn independent_outputs_cannot_split_one_uninterrupted_native_run_at_raw_markers(
         ROOT,
         bindings,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: vec![],
         },

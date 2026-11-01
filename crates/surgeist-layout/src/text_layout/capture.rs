@@ -318,6 +318,14 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
         &self.runs
     }
 
+    /// Actual admitted Text execution, including scheduled empty source windows.
+    /// Paragraph classification alone does not establish this reachability.
+    pub(crate) fn has_prepared_execution(&self, flow: Node) -> bool {
+        self.runs
+            .iter()
+            .any(|row| self.paragraphs[row.paragraph].container == flow)
+    }
+
     /// Borrow one canonical admitted row with its original immutable binding
     /// inventory. LayoutFlowInput establishes this coupling before publication;
     /// the computation and its forks keep borrowing that same input family.

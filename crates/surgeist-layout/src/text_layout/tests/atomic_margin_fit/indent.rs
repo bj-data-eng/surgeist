@@ -105,6 +105,7 @@ fn placed<S: LayoutScalar>(
         0,
         vec![p.binding(0)],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: vec![],
         },

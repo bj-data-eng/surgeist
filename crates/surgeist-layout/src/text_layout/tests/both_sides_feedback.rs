@@ -153,6 +153,7 @@ fn intrinsic<S: LayoutScalar>(
         2,
         vec![p.binding(2)],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

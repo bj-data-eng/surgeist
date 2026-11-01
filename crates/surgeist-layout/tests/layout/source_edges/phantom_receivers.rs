@@ -300,6 +300,7 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     };
     let inline = layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::Scope(scope));
     let wrapping = layout::WrappingInput {
+        gaps: Vec::new(),
         scopes: vec![layout::WrappingScopeInput::Captured {
             scope: processed.captured_scope(1).unwrap(),
             wrap_inside: layout::WrapInside::Auto,
@@ -596,6 +597,7 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
         formatting_context: 0,
     };
     let wrapping = layout::WrappingInput {
+        gaps: Vec::new(),
         scopes: vec![layout::WrappingScopeInput::Captured {
             scope,
             wrap_inside: layout::WrapInside::Auto,

@@ -66,6 +66,7 @@ fn final_pair_wrapping<S: layout::LayoutScalar>(
         layout::InlineBoxRef::NativePair { start: 3, end: 4 }
     );
     layout::WrappingInput {
+        gaps: Vec::new(),
         scopes: vec![layout::WrappingScopeInput::NativePair {
             start: 3,
             end: 4,

@@ -43,6 +43,7 @@ fn compute<S: LayoutScalar>(
         0,
         paragraphs,
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -128,6 +129,7 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
             0,
             vec![p.binding(0)],
             crate::WrappingInput {
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -331,6 +333,7 @@ fn float_probe_tail_truth_is_merged_only_when_its_packet_is_accepted() {
         0,
         vec![p.binding(2)],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -454,6 +457,7 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
         0,
         vec![p.binding(2)],
         crate::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

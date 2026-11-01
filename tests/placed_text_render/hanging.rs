@@ -83,6 +83,7 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
             line_strut: None,
         }],
         surgeist_layout::WrappingInput {
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
