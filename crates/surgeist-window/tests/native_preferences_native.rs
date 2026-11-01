@@ -296,10 +296,26 @@ fn main() {
         .screen
         .as_ref()
         .expect("native monitor capture");
-    assert_eq!(screen.area(), logical_rect(witness.monitor.rcMonitor));
-    assert_eq!(
-        screen.available_area(),
-        Some(logical_rect(witness.monitor.rcWork))
+    let assert_rect_close = |actual: Rect, expected: Rect| {
+        for (actual, expected) in [
+            (actual.origin.x, expected.origin.x),
+            (actual.origin.y, expected.origin.y),
+            (actual.size.width, expected.size.width),
+            (actual.size.height, expected.size.height),
+        ] {
+            // Absolute division and monitor-local offset projection may differ
+            // by a few floating-point rounding steps on mixed-DPI desktops.
+            let tolerance = 8.0 * f64::EPSILON * expected.abs().max(1.0);
+            assert!(
+                (actual - expected).abs() <= tolerance,
+                "{actual} != {expected}"
+            );
+        }
+    };
+    assert_rect_close(screen.area(), logical_rect(witness.monitor.rcMonitor));
+    assert_rect_close(
+        screen.available_area().expect("captured native work area"),
+        logical_rect(witness.monitor.rcWork),
     );
     assert_eq!(scale, f64::from(witness.dpi) / 96.0);
     let client = snapshot
@@ -307,15 +323,15 @@ fn main() {
         .client_area
         .as_ref()
         .expect("native client capture");
-    assert_eq!(
+    assert_rect_close(
         client.area(),
         Rect {
             origin: Point {
                 x: f64::from(witness.client_origin.x) / scale,
-                y: f64::from(witness.client_origin.y) / scale
+                y: f64::from(witness.client_origin.y) / scale,
             },
             size: logical_rect(witness.client).size,
-        }
+        },
     );
     let viewport = snapshot
         .environment()
