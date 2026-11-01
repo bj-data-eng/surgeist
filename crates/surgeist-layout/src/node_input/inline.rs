@@ -618,7 +618,7 @@ pub type InlineBoundaryInput = InlineBoundaryInputOf<DefaultScalar>;
 impl<S: LayoutScalar> InlineBoundaryInputOf<S> {
     /// Contribute actual border/padding advance and metrics without requesting
     /// paired physical box geometry. Unpaired and zero-valued controls remain valid.
-    #[must_use]
+    /// Nonzero margins require the BoxEdge operation.
     pub fn contribution(
         kind: InlineBoundaryKind,
         metrics: InlineMetricsOf<S>,

@@ -2200,6 +2200,12 @@ struct ResolvedInlineSlot<S: LayoutScalar> {
     margin_flow: Option<(S, S)>,
 }
 
+struct ResolvedInlineSlots<S: LayoutScalar> {
+    line_inline_start: S,
+    visual_indices: Vec<usize>,
+    slots: Vec<ResolvedInlineSlot<S>>,
+}
+
 fn resolved_inline_unit_slots<S: LayoutScalar>(
     line: &SelectedInlineLineOf<S>,
     supplied: &[SuppliedInlineParticipant],
@@ -2208,8 +2214,7 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     direction: Direction,
     insets: surgeist_text::LineAlignmentInsets,
     wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
-) -> Result<(S, Vec<usize>, Vec<ResolvedInlineSlot<S>>), crate::inline_wrapping::NumericWrappingError>
-{
+) -> Result<ResolvedInlineSlots<S>, crate::inline_wrapping::NumericWrappingError> {
     let line_inline_start =
         selected_line_inline_start(line, flow_axes, text_align, direction, insets)?;
     let mut order = vec![0; line.units.len()];
@@ -2260,7 +2265,11 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
             }
         }
     }
-    Ok((line_inline_start, visual_indices, inline_starts))
+    Ok(ResolvedInlineSlots {
+        line_inline_start,
+        visual_indices,
+        slots: inline_starts,
+    })
 }
 
 #[cfg(test)]
@@ -3404,7 +3413,10 @@ where
         if NumericLineDisposition::for_line(line.ending, line.has_in_flow_content)
             == NumericLineDisposition::NonFormatted
         {
-            let (_, _, inline_starts) = resolved_inline_unit_slots(
+            let ResolvedInlineSlots {
+                slots: inline_starts,
+                ..
+            } = resolved_inline_unit_slots(
                 &line,
                 &supplied[line.descriptor_range.clone()],
                 input.flow_axes,
@@ -3457,7 +3469,11 @@ where
         last_named_baseline = named_authority;
         first_baseline.get_or_insert(line_baseline);
         last_baseline = Some(line_baseline);
-        let (line_inline_start, visual_indices, inline_starts) = resolved_inline_unit_slots(
+        let ResolvedInlineSlots {
+            line_inline_start,
+            visual_indices,
+            slots: inline_starts,
+        } = resolved_inline_unit_slots(
             &line,
             &supplied[line.descriptor_range.clone()],
             input.flow_axes,

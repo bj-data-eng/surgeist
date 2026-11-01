@@ -129,7 +129,15 @@ fn issued_both_sides<S: LayoutScalar>() {
         ),
         ..ahem_style(10.0, 10.0)
     };
-    let fixture = captured("AB\u{ad}CDE", style, &[0..6], &[], false, true, AHEM);
+    let fixture = captured(
+        "AB\u{ad}CDE",
+        style,
+        std::slice::from_ref(&(0..6)),
+        &[],
+        false,
+        true,
+        AHEM,
+    );
     assert_eq!(fixture.binding.prepared.origin_views().count(), 1);
     let wide = signed_run::<S>(&fixture, TextWrapStyle::Auto, 0.0, 0.0, 50.0);
     assert_eq!(cuts(&wide), [6]);
@@ -258,7 +266,7 @@ fn balanced_signed_end<S: LayoutScalar>() {
             hyphens: text::Hyphens::None,
             ..ahem_style(10.0, 10.0)
         },
-        &[0..8],
+        std::slice::from_ref(&(0..8)),
         &[],
         false,
         true,
