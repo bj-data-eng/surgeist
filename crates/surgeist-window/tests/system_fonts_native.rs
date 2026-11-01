@@ -60,7 +60,31 @@ fn main() {
     );
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn main() {
+    if std::env::var_os("SURGEIST_RUN_NATIVE_FONT_PROBE").as_deref()
+        != Some(std::ffi::OsStr::new("1"))
+    {
+        println!("native Windows font probe skipped; set SURGEIST_RUN_NATIVE_FONT_PROBE=1");
+        return;
+    }
+
+    use surgeist_window::{SystemFontEnvironment, SystemFontRole};
+
+    let environment = SystemFontEnvironment::capture().expect("native Windows UI font capture");
+    for role in [
+        SystemFontRole::Caption,
+        SystemFontRole::Icon,
+        SystemFontRole::Menu,
+        SystemFontRole::MessageBox,
+        SystemFontRole::SmallCaption,
+        SystemFontRole::StatusBar,
+    ] {
+        println!("{role:?}: {:?}", environment.font(role));
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn main() {
     use surgeist_window::{SystemFontEnvironment, SystemFontError};
     assert_eq!(
