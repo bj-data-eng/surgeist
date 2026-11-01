@@ -1,5 +1,9 @@
-use super::{FlowAxes, LayoutScalar, MixedInlineParticipantOf, SelectedInlineLineOf};
+use super::{
+    FlowAxes, InlineLineInput, LayoutScalar, MixedInlineParticipantOf, SelectedInlineLineOf,
+};
 use crate::inline_wrapping::{NumericWrapping, NumericWrappingError, WrappingScopeError};
+use std::ops::Range;
+use surgeist_text::SuppliedLine;
 
 #[derive(Clone, Copy)]
 struct Edge {
@@ -21,6 +25,84 @@ fn invalid() -> NumericWrappingError {
     WrappingScopeError::UnsupportedIncidence.into()
 }
 
+/// Two borrowed views of the same actual numeric units. Candidate retention
+/// comes from that slice's existing discard summary, never a future endpoint.
+enum Line<'a, S: LayoutScalar> {
+    Selected(&'a SelectedInlineLineOf<S>),
+    Candidate {
+        input: InlineLineInput<'a, S>,
+        retained: Range<usize>,
+    },
+}
+impl<S: LayoutScalar> Line<'_, S> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Selected(line) => line.units.len(),
+            Self::Candidate { input, .. } => input.participants.len(),
+        }
+    }
+    fn source_start(&self) -> usize {
+        match self {
+            Self::Selected(line) => line.source_start,
+            Self::Candidate { input, .. } => input.source_start,
+        }
+    }
+    fn participant(&self, unit: usize) -> MixedInlineParticipantOf<S> {
+        match self {
+            Self::Selected(line) => line.units[unit].participant,
+            Self::Candidate { input, .. } => input.participants[unit],
+        }
+    }
+    fn discarded(&self, unit: usize) -> bool {
+        match self {
+            Self::Selected(line) => line.units[unit].discarded,
+            Self::Candidate { retained, .. } => !retained.contains(&unit),
+        }
+    }
+    fn boxed(&self, unit: usize) -> bool {
+        matches!(self.participant(unit),
+            MixedInlineParticipantOf::Boundary(control) if control.parent_edge_axes().is_some())
+    }
+    fn has_box_edges(&self) -> bool {
+        (0..self.len()).any(|unit| self.boxed(unit))
+    }
+}
+
+/// Used flow in the same canonical packet/edge order as selected placement.
+/// Ordinary scalar runs retain their existing accumulator and allocate nothing.
+pub(super) fn canonical_flow<S: LayoutScalar>(
+    input: InlineLineInput<'_, S>,
+    retained: Range<usize>,
+    axes: FlowAxes,
+    wrapping: Option<&NumericWrapping>,
+) -> Result<Option<S>, NumericWrappingError> {
+    let line = Line::Candidate { input, retained };
+    if !line.has_box_edges() {
+        return Ok(None);
+    }
+    let mut order = buffer(line.len())?;
+    order.resize(line.len(), 0);
+    SuppliedLine::new(input.supplied)
+        .reorder_into(&mut order)
+        .map_err(|_| invalid())?;
+    let mut flow = S::ZERO;
+    schedule(&line, axes, wrapping, &mut order, |unit| {
+        if !line.discarded(unit) {
+            // Preserve the actual S arithmetic; only its semantic traversal
+            // changes. Positioned margin recipients retain their own checks.
+            flow = flow + line.participant(unit).inline_advance(axes);
+            if !flow.is_finite() {
+                return Err(NumericWrappingError::Geometry {
+                    value: flow.to_f64(),
+                    reason: crate::LayoutTextNumericError::NonFinite,
+                });
+            }
+        }
+        Ok(())
+    })?;
+    Ok(Some(flow))
+}
+
 /// Numeric units are already the host's indivisible native packets. The
 /// source cursor and admitted native pair interval, rather than bidi levels
 /// or equal numeric coordinates, identify each packet's actual box incidence.
@@ -30,13 +112,21 @@ pub(super) fn reorder<S: LayoutScalar>(
     wrapping: Option<&NumericWrapping>,
     order: &mut Vec<usize>,
 ) -> Result<(), NumericWrappingError> {
-    let boxed = |unit: usize| {
-        matches!(line.units[unit].participant,
-        MixedInlineParticipantOf::Boundary(control) if control.parent_edge_axes().is_some())
-    };
-    if !line.units.iter().enumerate().any(|(index, _)| boxed(index)) {
+    let line = Line::Selected(line);
+    if !line.has_box_edges() {
         return Ok(());
     }
+    schedule(&line, axes, wrapping, order, |_| Ok(()))
+}
+
+fn schedule<S: LayoutScalar>(
+    line: &Line<'_, S>,
+    axes: FlowAxes,
+    wrapping: Option<&NumericWrapping>,
+    order: &mut Vec<usize>,
+    mut emit: impl FnMut(usize) -> Result<(), NumericWrappingError>,
+) -> Result<(), NumericWrappingError> {
+    let boxed = |unit: usize| line.boxed(unit);
     let wrapping = wrapping.ok_or_else(invalid)?;
     let mut payload = buffer(order.len())?;
     for &unit in order.iter() {
@@ -47,13 +137,13 @@ pub(super) fn reorder<S: LayoutScalar>(
     let mut edges = buffer(order.len())?;
     let positive_side = FlowAxes::new(axes.writing_mode(), crate::Direction::Ltr).inline_start();
     for (rank, &unit) in order.iter().enumerate() {
-        let MixedInlineParticipantOf::Boundary(control) = line.units[unit].participant else {
+        let MixedInlineParticipantOf::Boundary(control) = line.participant(unit) else {
             continue;
         };
         let Some(parent) = control.parent_edge_axes() else {
             continue;
         };
-        let source = line.source_start.checked_add(unit).ok_or_else(invalid)?;
+        let source = line.source_start().checked_add(unit).ok_or_else(invalid)?;
         let endpoint = match control.kind() {
             crate::InlineBoundaryKind::Start => 0,
             crate::InlineBoundaryKind::End => 1,
@@ -69,7 +159,7 @@ pub(super) fn reorder<S: LayoutScalar>(
         let mut extent = None;
         for (position, &candidate) in payload.iter().enumerate() {
             let actual = line
-                .source_start
+                .source_start()
                 .checked_add(candidate)
                 .ok_or_else(invalid)?;
             if first <= actual && actual < after {
@@ -95,8 +185,8 @@ pub(super) fn reorder<S: LayoutScalar>(
                 .count();
             for other in row.endpoints.into_iter().flatten() {
                 let Some(local) = other
-                    .checked_sub(line.source_start)
-                    .filter(|&at| at < line.units.len())
+                    .checked_sub(line.source_start())
+                    .filter(|&at| at < line.len())
                 else {
                     continue;
                 };
@@ -173,13 +263,109 @@ pub(super) fn reorder<S: LayoutScalar>(
             };
             emitted[index] = true;
             order.push(edges[index].unit);
+            emit(edges[index].unit)?;
         }
         if let Some(&unit) = payload.get(gap) {
             order.push(unit);
+            emit(unit)?;
         }
     }
-    if order.len() != line.units.len() {
+    if order.len() != line.len() {
         return Err(invalid());
     }
     Ok(())
+}
+
+/// Execute in the existing native logical S frame. Only the new nonzero
+/// margin recipients add loss checks; ordinary BP rounding is preserved.
+pub(super) fn execute<S: LayoutScalar>(
+    control: super::InlineBoundaryControlOf<S>,
+    incoming: S,
+    axes: FlowAxes,
+) -> Result<(super::ResolvedInlineSlot<S>, S), NumericWrappingError> {
+    let edge = control.edge();
+    let margin = edge.margin();
+    let extent = edge.border_padding_advance();
+    let flow = edge.flow_advance();
+    let rtl = axes.direction() == crate::Direction::Rtl;
+    let end = if rtl {
+        incoming - flow
+    } else {
+        incoming + flow
+    };
+    if margin == S::ZERO {
+        return Ok((
+            super::ResolvedInlineSlot {
+                inline_start: if rtl { end } else { incoming },
+                margin_flow: None,
+            },
+            end,
+        ));
+    }
+    let check = |value: S| {
+        if value.is_finite() {
+            Ok(value)
+        } else {
+            Err(NumericWrappingError::Geometry {
+                value: value.to_f64(),
+                reason: crate::LayoutTextNumericError::NonFinite,
+            })
+        }
+    };
+    check(end)?;
+    if flow != S::ZERO && end == incoming {
+        return Err(NumericWrappingError::Geometry {
+            value: flow.to_f64(),
+            reason: crate::LayoutTextNumericError::NonZeroLost,
+        });
+    }
+    let positive = FlowAxes::new(axes.writing_mode(), crate::Direction::Ltr).inline_start();
+    let parent = control
+        .parent_edge_axes()
+        .expect("explicit native box edge retains parent basis");
+    let side = match control.kind() {
+        crate::InlineBoundaryKind::Start => parent.inline_start(),
+        crate::InlineBoundaryKind::End => parent.inline_end(),
+    };
+    let left = side == positive;
+    let start = if rtl {
+        let before_strip_end = if left {
+            check(incoming - margin)?
+        } else {
+            incoming
+        };
+        check(before_strip_end - extent)?
+    } else {
+        let start = if left {
+            check(incoming + margin)?
+        } else {
+            incoming
+        };
+        check(start + extent)?;
+        start
+    };
+    let collapsed = if left {
+        if rtl {
+            incoming == check(start + extent)?
+        } else {
+            incoming == start
+        }
+    } else if rtl {
+        start == end
+    } else {
+        check(start + extent)? == end
+    };
+    if collapsed {
+        return Err(NumericWrappingError::Geometry {
+            value: margin.to_f64(),
+            reason: crate::LayoutTextNumericError::NonZeroLost,
+        });
+    }
+    Ok((
+        super::ResolvedInlineSlot {
+            inline_start: start,
+            margin_flow: Some((incoming, end)),
+        },
+        end,
+    ))
 }

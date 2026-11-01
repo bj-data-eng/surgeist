@@ -46,7 +46,7 @@ fn end_edge_stops_local_hanging_and_moves_the_actual_line_below_a_float_both_sca
         for (edge, raw, fit, alignment, y) in [
             (InlineBoundaryEdgeOf::ZERO, 20.0, 10.0, 15.0, 0.0),
             (
-                InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::from_f64(3.0)).unwrap(),
+                InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::from_f64(3.0)).unwrap(),
                 25.0,
                 25.0,
                 25.0,
@@ -84,7 +84,10 @@ fn end_edge_stops_local_hanging_and_moves_the_actual_line_below_a_float_both_sca
             );
             assert_eq!(output(&batch, 20).location.y, S::from_f64(y + 8.0));
             let endpoint = output(&batch, 21);
-            assert_eq!(endpoint.size, Size::new(edge.advance(), S::ZERO));
+            assert_eq!(
+                endpoint.size,
+                Size::new(edge.border_padding_advance(), S::ZERO)
+            );
             assert_eq!(endpoint.content_size, Size::ZERO);
             assert_eq!(endpoint.border.right, edge.border());
             assert_eq!(endpoint.padding.right, edge.padding());
@@ -107,7 +110,7 @@ fn end_edge_stops_local_hanging_and_moves_the_actual_line_below_a_float_both_sca
                             .occurrence
                 })
                 .unwrap();
-            assert_eq!(slot.inline_bounds(), (20.0, raw));
+            assert_eq!(slot.strip_interval(), (20.0, raw));
         }
     }
     lane::<f32>();
@@ -121,7 +124,7 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
         for (edge, total, advance) in [
             (InlineBoundaryEdgeOf::ZERO, 0.0, 30.0),
             (
-                InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap(),
+                InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(3.0), S::from_f64(5.0)).unwrap(),
                 8.0,
                 50.0,
             ),
@@ -154,7 +157,7 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
                 })
                 .unwrap();
             assert_eq!(allocation.boundary.as_ref().unwrap().advance(), total);
-            assert_eq!(output(&batch, 20).size.width, edge.advance());
+            assert_eq!(output(&batch, 20).size.width, edge.border_padding_advance());
             assert_eq!(output(&batch, 20).border.left, edge.border());
             assert_eq!(output(&batch, 20).padding.left, edge.padding());
             let b = lines[0]
@@ -183,8 +186,8 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
     lane::<f32>();
     lane::<f64>();
     let fixture = Fixture::new("A\tB", (1, 3), text::WhiteSpace::Preserve, false, true);
-    let edge = InlineBoundaryEdgeOf::try_new(4.8f32, 0.2f32).unwrap();
-    assert_eq!(edge.advance(), 5.0);
+    let edge = InlineBoundaryEdgeOf::try_new(0.0, 4.8f32, 0.2f32).unwrap();
+    assert_eq!(edge.border_padding_advance(), 5.0);
     assert_eq!(
         f64::from(edge.border()) + f64::from(edge.padding()),
         5.000_000_193_715_095_5
@@ -228,7 +231,8 @@ fn endpoint_node_uses_its_own_direction_and_control_fragment_without_a_scope_env
                 paragraph_rtl,
                 false,
             );
-            let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap();
+            let edge =
+                InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(3.0), S::from_f64(5.0)).unwrap();
             let batch = fixture.compute(
                 edge,
                 InlineBoundaryEdgeOf::ZERO,
@@ -316,8 +320,8 @@ fn generated_separator_scope_rectangles_keep_their_own_geometry_when_endpoints_w
         AvailableOf::definite(500.0),
     );
     let widened = fixture.compute(
-        InlineBoundaryEdgeOf::try_new(3.0, 5.0).unwrap(),
-        InlineBoundaryEdgeOf::try_new(2.0, 3.0).unwrap(),
+        InlineBoundaryEdgeOf::try_new(0.0, 3.0, 5.0).unwrap(),
+        InlineBoundaryEdgeOf::try_new(0.0, 2.0, 3.0).unwrap(),
         false,
         Some(500.0),
         false,
@@ -359,7 +363,8 @@ fn generated_separator_scope_rectangles_keep_their_own_geometry_when_endpoints_w
 fn justification_feedback_preserves_one_selected_endpoint_total() {
     fn lane<S: LayoutScalar>() {
         let fixture = Fixture::new("A B", (2, 3), text::WhiteSpace::Collapse, false, false);
-        let edge = InlineBoundaryEdgeOf::try_new(S::from_f64(3.0), S::from_f64(5.0)).unwrap();
+        let edge =
+            InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(3.0), S::from_f64(5.0)).unwrap();
         let tree = fixture
             .tree(edge, InlineBoundaryEdgeOf::ZERO, false, Some(48.0), false)
             .style(
@@ -415,7 +420,7 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
             line.control_slots()
                 .find(|row| row.control() == start.occurrence)
                 .unwrap()
-                .inline_bounds(),
+                .strip_interval(),
             (30.0, 38.0)
         );
         assert_eq!(output(&batch, 20).location.x, S::from_f64(30.0));
@@ -427,3 +432,6 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
 
 #[path = "inline_boundary_edges/parent_geometry.rs"]
 mod parent_geometry;
+
+#[path = "inline_boundary_edges/signed_flow.rs"]
+mod signed_flow;

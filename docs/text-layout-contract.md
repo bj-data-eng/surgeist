@@ -704,17 +704,25 @@ the same punctuation kernel with its actual raw metric and emission profile.
 
 ### Native inline endpoint geometry
 
-Layout owns used border/padding on each endpoint. Its
+Layout owns finite signed margin and finite nonnegative border/padding on each endpoint. Its
 [InlineBoundaryEdgeOf<S>](../crates/surgeist-layout/src/node_input/inline.rs)
-constructor checks each component and their sum in scalar `S`, with explicit
+constructor `try_new(margin, border, padding)` checks each component in scalar `S`, with explicit
 `ZERO` for a genuine used zero. Both `InlineBoundaryInputOf::contribution` and
-`::box_edge` require that explicit value. Lower the one checked `edge.advance()` result once to Text's
-`f64` total; do not widen the components separately and recompute the sum. Layout
-retains the components and Start/End role for output. Existing boundary
+`::box_edge` require that explicit value; Contribution refuses nonzero margin.
+Keep the used border/padding sum `e = border + padding` and signed flow
+`f = margin + e` distinct. Ordinary BP addition retains native-lane rounding.
+The new margin-flow addition refuses nonfinite results or a wholly absorbed
+nonzero margin or strip term; exact cancellation is valid. Canonicalize signed zero.
+Text's checked `InlineBoxEdgeComponents::from_f32` or `::from_f64` retains that
+lane and the original typed components, deriving its native `e` and `f` before
+widening each result once. Do not widen individual `f32` components and recompute
+different used sums in `f64`, or accept caller-supplied totals.
+Layout retains the components and Start/End role for output. Existing boundary
 writing-mode/direction describe the containing Block formatter, preserving
 `InlineFlowMismatch`; they do not describe an inline parent's own axes.
 Text's [InlineBoundaryAllocation](../crates/surgeist-text/src/protocol/mod.rs)
-checks the finite nonnegative total and normalizes negative zero. Unknown Style
+keeps a scalar finite nonnegative Contribution and accepts checked components
+for BoxEdge. Unknown Style
 geometry is not zero; no compatibility constructor, Boolean barrier, padded
 atomic substitute or new font/style supplies a missing endpoint fact.
 
@@ -727,7 +735,8 @@ captured Inline scope or an explicitly declared pair of genuine captured Start/E
 controls; exact nominations canonicalize to the scope. Its
 `inline_box_edge_context` checks the actual preparation/domain and parent. A domain
 can be the parent, never the inline owner. Selection checks the supplied
-noncrossing family and consistent paired contexts. Do not infer a pair or parent
+noncrossing family, including actual owner and parent references, and consistent
+paired contexts. Do not infer a pair or parent
 from equal cuts, flattened native containment, child direction or source levels.
 Zero BoxEdge still needs this context; zero Contribution needs no invented parent.
 Capture does not promote a Contribution, and failed BoxEdge admission never
@@ -755,8 +764,10 @@ the authenticated control-node binding and explicit normalized used edge.
 
 Supply rows in deterministic first-demand encounter order. A partial query admits
 only an initial prefix; a direct `select` request may supply the whole list in
-that same order without querying first. A proved positive barrier stops the
-outward context walk; zero continues to the next influential endpoint. Unrelated
+that same order without querying first. Any nonzero BoxEdge margin/border/padding
+is a separating shaping barrier, including negative margin and zero-total
+cancellation. Contribution retains its positive-scalar barrier rule. A proved
+barrier stops the outward context walk; an all-zero edge continues to the next influential endpoint. Unrelated
 or unreachable endpoints are not demanded. `select` returns
 `MissingBoundaryContext` for an unanswered demand, `DuplicateBoundaryContext` for
 duplicates/selected overlap, and `UnexpectedBoundaryContext` for wrong-role,
@@ -772,11 +783,11 @@ Retain opportunity ownership, positive-source deleted occurrences and distinct
 disappearing-SPACE cuts. Do not invent a cut, strand a closing endpoint at an
 artificial earlier Soft end, or rewrite Forced/domain/atomic chronology.
 
-Positive inter-unit endpoints bound the selected original and presentation
+Separating inter-unit endpoints bound the selected original and presentation
 joining domains, including consumed off-selection original context and computed
 Before/After attachments. Incoming indications retain their
-[receiver-side mixed-event custody](#hyphenation-indication-bidi) on either zero
-or positive edges. Zero preserves permitted whole-word context across an
+[receiver-side mixed-event custody](#hyphenation-indication-bidi) on every edge.
+All-zero edges preserve permitted whole-word context across an
 unforced Soft cut. Rebuild only selection-local boundaries/assignments using the
 retained font instances; do not requery a catalogue or mutate preparation.
 An explicit Contribution inside an indivisible typographic unit remains a numeric contribution
@@ -797,9 +808,20 @@ packet once, retaining original Source levels and relative non-edge payload orde
 Empty or deleted-only owners use an authentic captured gap or return a precise
 incidence refusal. Context-only endpoints never become selected flow.
 
-One canonical visual-order contribution supplies raw/occupied flow, fit,
-alignment, MinContent/MaxContent, tabs, prefixes, placement and overflow. Positive
-selected edges count as retained flow; context-only rows contribute nothing.
+At incoming physical line-left pen `P`, widen the checked native margin, strip
+extent and flow receipt once to `M`, `E` and `F`. A physical-left edge has strip
+`[P + M, (P + M) + E]`; a physical-right edge has strip `[P, P + E]`.
+Both have directed flow `(P, P + F)`. Check the actual operations and nonzero
+margin displacement at their recipient, including Layout's later native
+conversion. Native-lane rounding means widened `F` need not equal a new widened
+`M + E` sum; never reconstruct it from strip endpoints. Negative flow is not a
+negative-width strip. Individual nonzero components establish formatted
+participation even when their flow cancels; strut and baseline evidence remain
+independent.
+
+One canonical visual-order execution supplies directed flow, strips, raw
+geometry, fit, alignment, MinContent/MaxContent, tabs, prefixes, placement and
+overflow. Only selected endpoints contribute flow.
 `FinalizedPrefixView` retains the same provider-closed grouping and exact source
 chronology. These are receipts from the complete frozen execution, including
 the TAB advances that actually executed. A logical prefix is not a prefix of
@@ -807,18 +829,22 @@ the physical edge insertion order or a counterfactual shorter execution. A newly
 selected partial recipe executes its own selected inventory; no future closing
 edge adds flow. CSS tab resolution includes preceding endpoint advances in the real
 pen and recomputes after spacing. Layout's numeric box/control-only path consumes
-the same used advance through Text-owned ordering without inventing text rows.
+the same used components through Text-owned ordering without inventing text rows.
 Every ordinary/conditional/measurement trial and float/justification retry uses
 the complete resolved request and actual finalization; preliminary glyph widths
 cannot replace edge-aware receipts. Layout never adds the width again afterward.
 
 Collapse/PreserveBreaks edge removal remains transparent to inline controls.
-For remaining-separator hanging, zero endpoints are transparent and a positive
-endpoint stops the scan locally; a later eligible sequence on its edge side may
-still hang. The endpoint's own advance is ordinary flow, never whitespace
+For punctuation and remaining-separator hanging, BoxEdge border/padding stops
+eligibility locally; margin alone does not. This follows the general
+[hangable-glyph rule](../references/css-text-3--CRD-css-text-3-20260814--17c26f1b4145.md#hanging),
+before its punctuation subsection. Contribution retains its existing
+positive-scalar blocker. A later eligible sequence on an edge's outer side may
+still hang. Actual signed geometry and the available edge govern conditional
+overflow. The endpoint's own signed flow is never whitespace
 exclusion. In the Preserve/PreserveSpaces case with wrapping enabled, Start0 and
 a real Forced ending, X10 plus SPACE10 with End0 at width15 has raw20, fit10,
-alignment15, MinContent10, MaxContent20 and actual hanging5. End(border2,padding3) gives raw/fit/alignment/MinContent/MaxContent25,
+alignment15, MinContent10, MaxContent20 and actual hanging5. End(margin0,border2,padding3) gives raw/fit/alignment/MinContent/MaxContent25,
 with no hanging through that edge. Natural eligibility remains frozen through
 allocated-spacing replay; this is no global scope-wide disable-hanging flag.
 
@@ -826,22 +852,33 @@ allocated-spacing replay; this is no global scope-wide disable-hanging flag.
 
 | Observation | Endpoint custody |
 | --- | --- |
-| `FinalizedControlView` | `inline_bounds()` is the checked physical left/right interval; `slot().x` is left, with the actual control baseline. Alignment translates both ends. |
-| `FinalizedFragmentOwner::Control` | The same source-free occurrence gets the interval at actual line-metric height. Original/local/aggregate/processed source ranges remain absent; no glyph ink is invented. |
-| Layout endpoint node | Publish the endpoint footprint and border/padding on the admitted side: formatter basis for Contribution, actual immediate-parent basis for BoxEdge. Preserve the Control fragment without replacing this footprint with a text-fragment envelope. Numeric-only flow publishes the same footprint without Text fragments. |
+| `FinalizedControlView` | `flow_interval()` is the checked directed pen pair; `strip_interval()` is the nonnegative physical strip. Alignment translates both observations once. Static normal-flow consumers use flow. |
+| `FinalizedFragmentOwner::Control` | The same source-free occurrence gets the strip at actual line-metric height. Original/local/aggregate/processed source ranges remain absent; no margin gap or glyph ink is invented. |
+| Layout endpoint node | Publish the strip footprint with zero block extent, actual physical margin and border/padding on the admitted side: formatter basis for Contribution, actual immediate-parent basis for BoxEdge. Its baseline position and supplied line metrics remain independent of this footprint. Preserve the Control fragment without replacing this footprint with a text-fragment envelope. Numeric-only flow publishes the same footprint without Text fragments. |
 | Virtual-separator Scope fragment | Retain only that separator's actual local geometry, empty authored association and canonical global scope identity. Several separators keep separate occurrences; no separator means no Scope fragment. No endpoint strip is donated to them. |
-| Original source and exact placed positions | Endpoints add no UTF-16, source Range membership, glyph or plaintext. Exact relation-event Before/After positions retain original Source-event cuts and source-level orientation, using the actual finalized interval, including relocated BoxEdge geometry. Parent side/role controls physical insertion. Exact selected-event ranges include the endpoint's actual line-height interval even with glyphs selected; source-offset queries do not invent that membership. |
+| Original source and exact placed positions | Endpoints add no UTF-16, source Range membership, glyph or plaintext. Exact relation-event Before/After positions retain original Source-event cuts and source-level orientation over the actual finalized strip, including relocated BoxEdge geometry. Parent side/role controls physical insertion. Exact selected-event ranges include the endpoint's actual line-height strip even with glyphs selected; source-offset queries do not invent that membership. |
 
 The node footprint and Control fragment observe one contribution, not two widths.
 Source/caret/Range, Render and accessibility consume the same displaced genuine
 geometry and retain source-free endpoint custody. Global scope pairing remains
 capture-owned; paragraph cuts manufacture no continuation endpoint or envelope.
 
+Selected checked BoxEdges activate the existing
+[margin-edge fit observation](../crates/surgeist-text/docs/atomic-fit.md), including
+explicit all-zero components. Its signed executed flow can retract after a later
+negative margin, while independent Native opaque constraints retain their actual
+positions. Apply actual indent before the final floor/full-band comparison;
+do not clamp each box, keep a prefix maximum, borrow an unselected closing edge,
+or substitute raw strip/paint overflow for fit. NativeOnly, ordinary Contribution
+and CSS atomic authority remain distinct. Context-only edges grant no selected
+flow or fit authority. Finite/intrinsic selection and float, conditional and
+balanced retries consume this same observation and actual height feedback.
+
 Selected operations, actual owner/parent/side contexts and the exact reached
-context list enter request equality, conditional/frame identity, candidate reuse,
+context list, component lane and canonical components enter request equality, conditional/frame identity, candidate reuse,
 spacing replay and cycle checks, including zero-valued operations. Layout retains dependencies on
 each demanded endpoint, including off-selection nodes. A changed edge or
-candidate/alternative/incoming/purpose request reruns demand: zero↔positive can
+candidate/alternative/incoming/purpose request reruns demand: all-zero↔separating can
 reveal or hide farther context. Geometry-only changes reuse the same preparation
 but rebuild affected joining, glyph, prefix, fit, tab, fragment and float results;
 unreached endpoints enter no Text request identity. Rigid translation can reuse

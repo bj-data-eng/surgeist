@@ -20,7 +20,7 @@ fn snapshot(line: &FinalizedLine) -> Snapshot {
         line.feedback().advance,
         line.cell_views().next().unwrap().square(),
         line.control_slots()
-            .map(|slot| (slot.control(), slot.inline_bounds()))
+            .map(|slot| (slot.control(), slot.strip_interval()))
             .collect(),
         line.run_views()
             .flat_map(|run| {
@@ -43,7 +43,7 @@ fn whole_cell_geometry(
 ) {
     assert_eq!(line.prepared_text(), *prepared);
     assert_eq!(line.cell_views().len(), 1);
-    assert_eq!(line.feedback().advance, 15.0); // real2+E10+3, parent contributions0
+    assert_eq!(line.feedback().advance, 15.0); // selected edges plus real E10
     assert_eq!(line.measurements().fit().advance(), 15.0);
     assert_eq!(line.measurements().alignment().advance(), 15.0);
     assert_eq!(
@@ -76,7 +76,7 @@ fn whole_cell_geometry(
                 .iter()
                 .find(|slot| slot.control() == *occurrence)
                 .unwrap()
-                .inline_bounds(),
+                .strip_interval(),
             expected
         );
     }
@@ -267,11 +267,15 @@ fn native_parent_opposed_box_edges_reorder_the_complete_cw_cell_packet() {
     let mut request = ordinary.selected_line().request().clone();
     for allocation in &mut request.controls {
         if allocation.occurrence == controls[1] {
-            allocation.boundary =
-                Some(InlineBoundaryAllocation::box_edge(context.clone(), 2.0).unwrap());
+            allocation.boundary = Some(InlineBoundaryAllocation::box_edge(
+                context.clone(),
+                crate::InlineBoxEdgeComponents::from_f64(0.0, 2.0, 0.0).unwrap(),
+            ));
         } else if allocation.occurrence == controls[2] {
-            allocation.boundary =
-                Some(InlineBoundaryAllocation::box_edge(context.clone(), 3.0).unwrap());
+            allocation.boundary = Some(InlineBoundaryAllocation::box_edge(
+                context.clone(),
+                crate::InlineBoxEdgeComponents::from_f64(0.0, 3.0, 0.0).unwrap(),
+            ));
         } else {
             assert_eq!(allocation.boundary.as_ref().unwrap().advance(), 0.0);
         }
@@ -311,6 +315,69 @@ fn native_parent_opposed_box_edges_reorder_the_complete_cw_cell_packet() {
         source_levels
     );
 
+    // The same real exterior C endpoints accept signed components without
+    // dividing the Cell. In the opposed parent basis C.End is LEFT: margin-4
+    // then BP3 gives strip-4..-1 and flow0->-1. One E10 Cell occupies-1..9.
+    // C.Start is RIGHT: strip9..12 then margin3 gives flow9->15.
+    let mut signed_request = line.selected_line().request().clone();
+    for allocation in &mut signed_request.controls {
+        let parts = if allocation.occurrence == controls[1] {
+            Some([3.0, 2.0, 1.0])
+        } else if allocation.occurrence == controls[2] {
+            Some([-4.0, 1.0, 2.0])
+        } else {
+            None
+        };
+        if let Some([margin, border, padding]) = parts {
+            allocation.boundary = Some(InlineBoundaryAllocation::box_edge(
+                context.clone(),
+                crate::InlineBoxEdgeComponents::from_f64(margin, border, padding).unwrap(),
+            ));
+        }
+    }
+    let signed = prepared
+        .select(signed_request)
+        .unwrap()
+        .finalize(LineAllocations {
+            spacing: SpacingAllocations::None,
+            scopes: ScopeAllocations::None,
+        })
+        .unwrap();
+    whole_cell_geometry(
+        &signed,
+        &prepared,
+        &c,
+        &controls,
+        &bytes,
+        -1.0,
+        &[(0.0, 0.0), (9.0, 12.0), (-4.0, -1.0), (15.0, 15.0)],
+    );
+    assert_eq!(
+        signed.measurements().margin_edge_fit().authority(),
+        crate::MarginEdgeFitAuthority::CssComposed
+    );
+    assert_eq!(
+        signed
+            .measurements()
+            .margin_edge_fit()
+            .required_inline_size(),
+        15.0
+    );
+    for (control, flow) in [(&controls[1], (9.0, 15.0)), (&controls[2], (0.0, -1.0))] {
+        assert_eq!(
+            signed
+                .control_slots()
+                .find(|slot| slot.control() == *control)
+                .unwrap()
+                .flow_interval(),
+            flow
+        );
+    }
+    let signed_replay = signed.with_spacing(SpacingAllocations::None).unwrap();
+    assert_eq!(snapshot(&signed_replay), snapshot(&signed));
+    assert_eq!(snapshot(&ordinary), old);
+    assert_eq!(snapshot(&replay), snapshot(&line));
+
     // Real CW placement, same input anchor for each immutable result. Actual
     // horizontal hhea8/-2 gives cross-left100-2=98 and local baseline8. Thus
     // ordinary flow top20+2 yields glyph baseline30; BoxEdge flow top20+3
@@ -319,6 +386,8 @@ fn native_parent_opposed_box_edges_reorder_the_complete_cw_cell_packet() {
         (&ordinary, Point::new(98.0, 30.0)),
         (&line, Point::new(98.0, 31.0)),
         (&replay, Point::new(98.0, 31.0)),
+        (&signed, Point::new(98.0, 27.0)),
+        (&signed_replay, Point::new(98.0, 27.0)),
     ] {
         let layout = Layout::from_finalized_lines(PlacementRequest {
             prepared: prepared.clone(),

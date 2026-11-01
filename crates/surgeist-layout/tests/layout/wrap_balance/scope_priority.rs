@@ -32,6 +32,7 @@ fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle)
                 .unwrap(),
                 l::InlineBoundaryEdgeOf::ZERO,
             )
+            .unwrap()
             .with_direction(direction),
         )
     };

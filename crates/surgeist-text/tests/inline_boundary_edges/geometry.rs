@@ -203,7 +203,7 @@ fn positive_end_owns_its_interval_and_stops_hanging_without_donating_source_geom
             .control_slots()
             .find(|slot| slot.control() == end)
             .unwrap()
-            .inline_bounds(),
+            .strip_interval(),
         (20.0, 25.0)
     );
     let fragment = positive
@@ -490,7 +490,7 @@ fn consumed_off_line_endpoint_context_changes_joining_without_allocating_its_wid
                     .control_slots()
                     .find(|slot| slot.control() == p.control_views().next().unwrap().handle())
                     .unwrap();
-                let (left, right) = opening.inline_bounds();
+                let (left, right) = opening.strip_interval();
                 assert_eq!(right - left, edge);
                 for run in receiving.run_views() {
                     assert_eq!(run.face().bytes(), bytes);
@@ -784,7 +784,7 @@ fn an_incoming_after_indication_stays_on_its_authentic_side_of_the_opening_edge(
             .control_slots()
             .find(|slot| slot.control() == p.control_views().next().unwrap().handle())
             .unwrap();
-        let (left, right) = slot.inline_bounds();
+        let (left, right) = slot.strip_interval();
         assert_eq!(right - left, edge);
         if edge > 0.0 {
             for run in receiving.run_views() {
@@ -903,8 +903,8 @@ fn incoming_after_retains_two_nested_opening_edges_in_ltr_and_rtl_blocks() {
                 [0, 1, 2, 3]
             );
             assert!(slots.iter().all(|slot| slot.level().get() == level));
-            let (left, outer_end) = slots[0].inline_bounds();
-            let (inner_start, inner_end) = slots[1].inline_bounds();
+            let (left, outer_end) = slots[0].strip_interval();
+            let (inner_start, inner_end) = slots[1].strip_interval();
             assert_eq!(outer_end - left, outer);
             assert_eq!(inner_start, outer_end);
             assert_eq!(inner_end - inner_start, inner);
@@ -931,10 +931,10 @@ fn incoming_after_retains_two_nested_opening_edges_in_ltr_and_rtl_blocks() {
                 ]
             );
             assert_eq!(
-                slots[2].inline_bounds(),
+                slots[2].strip_interval(),
                 (inner_end + 20.0, inner_end + 20.0)
             );
-            assert_eq!(slots[3].inline_bounds(), slots[2].inline_bounds());
+            assert_eq!(slots[3].strip_interval(), slots[2].strip_interval());
             assert_eq!(
                 p.analyzed_source().source().text(),
                 &t::Text::from("AA\u{ad}AAA")
@@ -975,3 +975,9 @@ fn an_empty_original_occurrence_does_not_hide_the_actual_closing_endpoint() {
         "real empty source metadata is transparent to closing custody: {observed:?}"
     );
 }
+
+#[path = "signed_source_consumers.rs"]
+mod signed_source_consumers;
+
+#[path = "geometry/signed_shaping.rs"]
+mod signed_shaping;

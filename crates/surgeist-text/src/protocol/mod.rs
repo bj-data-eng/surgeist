@@ -11,7 +11,9 @@ use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
 use selection::SelectedData;
 
 pub(crate) mod inline_box;
-pub use inline_box::{InlineBoxEdgeContext, InlineBoxEdgeError, InlineBoxSource};
+pub use inline_box::{
+    InlineBoxEdgeComponents, InlineBoxEdgeContext, InlineBoxEdgeError, InlineBoxSource,
+};
 mod atomic_fit;
 pub use atomic_fit::{AtomicFitAllocation, CssMarginBoxFit};
 
@@ -476,7 +478,7 @@ pub struct ControlAllocation {
     pub boundary: Option<InlineBoundaryAllocation>,
 }
 
-/// One endpoint's actual used inline advance, already resolved by its consumer.
+/// An allocated scalar contribution or authenticated native-lane box components.
 #[derive(Clone, Debug, PartialEq)]
 pub struct InlineBoundaryAllocation {
     data: InlineBoundaryData,
@@ -487,7 +489,7 @@ enum InlineBoundaryData {
         advance: f64,
     },
     BoxEdge {
-        advance: f64,
+        components: InlineBoxEdgeComponents,
         context: InlineBoxEdgeContext,
     },
 }
@@ -519,18 +521,50 @@ impl InlineBoundaryAllocation {
         })
     }
 
-    pub fn box_edge(context: InlineBoxEdgeContext, advance: f64) -> Result<Self> {
-        let advance = Self::contribution(advance)?.advance();
-        Ok(Self {
-            data: InlineBoundaryData::BoxEdge { advance, context },
-        })
+    /// Assemble checked source/parent authority and intrinsically valid components.
+    #[must_use]
+    pub fn box_edge(context: InlineBoxEdgeContext, components: InlineBoxEdgeComponents) -> Self {
+        Self {
+            data: InlineBoundaryData::BoxEdge {
+                components,
+                context,
+            },
+        }
     }
 
+    /// Actual native-lane flow contribution, signed for a component BoxEdge.
     #[must_use]
     pub const fn advance(&self) -> f64 {
         match self.data {
-            InlineBoundaryData::Contribution { advance }
-            | InlineBoundaryData::BoxEdge { advance, .. } => advance,
+            InlineBoundaryData::Contribution { advance } => advance,
+            InlineBoundaryData::BoxEdge { components, .. } => components.flow_advance(),
+        }
+    }
+    #[must_use]
+    pub const fn box_components(&self) -> Option<&InlineBoxEdgeComponents> {
+        match &self.data {
+            InlineBoundaryData::BoxEdge { components, .. } => Some(components),
+            InlineBoundaryData::Contribution { .. } => None,
+        }
+    }
+    /// Component participation is independent of signed net flow and struts.
+    #[must_use]
+    pub fn participates(&self) -> bool {
+        match self.data {
+            InlineBoundaryData::Contribution { advance } => advance > 0.0,
+            InlineBoundaryData::BoxEdge { components, .. } => components.participates(),
+        }
+    }
+    pub(crate) fn blocks_hanging(&self) -> bool {
+        match self.data {
+            InlineBoundaryData::Contribution { advance } => advance > 0.0,
+            InlineBoundaryData::BoxEdge { components, .. } => components.blocks_hanging(),
+        }
+    }
+    pub(crate) fn strip_advance(&self) -> f64 {
+        match self.data {
+            InlineBoundaryData::Contribution { advance } => advance,
+            InlineBoundaryData::BoxEdge { components, .. } => components.border_padding_advance(),
         }
     }
     #[must_use]

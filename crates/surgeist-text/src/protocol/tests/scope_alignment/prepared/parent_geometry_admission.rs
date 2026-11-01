@@ -158,7 +158,10 @@ fn context(f: &Family, index: usize, side: LineEdgeSide) -> InlineBoxEdgeContext
         .unwrap()
 }
 fn allocation(context: &InlineBoxEdgeContext, advance: f64) -> InlineBoundaryAllocation {
-    InlineBoundaryAllocation::box_edge(context.clone(), advance).unwrap()
+    InlineBoundaryAllocation::box_edge(
+        context.clone(),
+        crate::InlineBoxEdgeComponents::from_f64(0.0, advance, 0.0).unwrap(),
+    )
 }
 fn request_for(f: &Family, boundaries: Vec<InlineBoundaryAllocation>) -> LineSelectionRequest {
     assert_eq!(boundaries.len(), f.controls.len());
@@ -244,7 +247,7 @@ fn plain20(f: &Family, line: &FinalizedLine) {
             .control_slots()
             .find(|slot| slot.control() == f.controls[index])
             .unwrap();
-        assert_eq!(slot.inline_bounds(), expected);
+        assert_eq!(slot.strip_interval(), expected);
     }
     let glyphs = line
         .run_views()
@@ -639,7 +642,7 @@ fn deleted10(f: &Family, line: &FinalizedLine) {
             .control_slots()
             .find(|slot| slot.control() == f.controls[index])
             .unwrap();
-        assert_eq!(slot.inline_bounds(), expected);
+        assert_eq!(slot.strip_interval(), expected);
     }
 }
 
@@ -740,3 +743,6 @@ mod local_constructors;
 
 #[path = "parent_geometry_admission/parent_only_family.rs"]
 mod parent_only_family;
+
+#[path = "parent_geometry_admission/signed_recipient.rs"]
+mod signed_recipient;

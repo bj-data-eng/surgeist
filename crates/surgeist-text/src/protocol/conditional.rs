@@ -768,7 +768,14 @@ struct PolicyContext {
 impl PolicyContext {
     fn box_contexts(
         &self,
-    ) -> impl Iterator<Item = (bool, &super::PreparedControl, &super::InlineBoxEdgeContext)> {
+    ) -> impl Iterator<
+        Item = (
+            bool,
+            &super::PreparedControl,
+            &super::InlineBoxEdgeContext,
+            &super::InlineBoxEdgeComponents,
+        ),
+    > {
         self.frame.iter().flat_map(|frame| {
             let request = &frame.inner.selected.request;
             super::inline_box::context_identity(&request.controls, &request.boundary_context)

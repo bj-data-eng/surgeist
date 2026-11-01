@@ -138,9 +138,10 @@ pub(super) fn prepare(lines: &[PlacedLine], cuts: &[usize]) -> Vec<Position> {
                         || extent.clone(),
                         |first| first..owned.next_back().unwrap_or(first) + 1,
                     );
+                    let (strip_start, strip_end) = row.strip_interval();
                     for right in [false, true] {
                         let before = right == (row.level & 1 != 0);
-                        if !before && unit.source.is_empty() && row.inline_end == row.slot.x {
+                        if !before && unit.source.is_empty() && strip_end == strip_start {
                             continue;
                         }
                         local.push(Position {
@@ -405,7 +406,7 @@ fn local_x(line: &PlacedLine, target: Target) -> f64 {
         Target::Anchor { anchor, right } => {
             let anchor = &line.finalized.data.anchors[anchor];
             if right {
-                anchor.inline_end
+                anchor.strip_interval().1
             } else {
                 anchor.slot.x
             }
@@ -925,7 +926,7 @@ pub(crate) fn selection(
                 let line = &layout.lines[index];
                 let anchor = &line.finalized.data.anchors[anchor];
                 let presentation = &line.finalized.selected.presentation;
-                anchor.inline_end != anchor.slot.x
+                anchor.strip_interval().1 != anchor.slot.x
                     && presentation.selected_relation.unit_events[anchor.unit]
                         .clone()
                         .any(|event| {

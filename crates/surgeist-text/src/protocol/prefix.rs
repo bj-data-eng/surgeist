@@ -739,7 +739,9 @@ pub(crate) fn in_flow_item(
             retained && shaped.clusters[index].whitespace != Whitespace::Newline
         }
         ShapedItem::InlineBox { .. } => retained,
-        ShapedItem::Anchor { unit } => super::boundary::advance(input, unit) > 0.0,
+        ShapedItem::Anchor { unit } => super::boundary::facts(input, unit)
+            .allocation()
+            .is_some_and(super::InlineBoundaryAllocation::participates),
     }
 }
 
@@ -762,7 +764,10 @@ pub(crate) fn retained_item(
         ),
         ShapedItem::Anchor { unit } => match input.presentation.units[unit].kind {
             PresentationUnitKind::Control { occurrence } => {
-                controls[&occurrence].strut.is_some() || super::boundary::advance(input, unit) > 0.0
+                controls[&occurrence].strut.is_some()
+                    || super::boundary::facts(input, unit)
+                        .allocation()
+                        .is_some_and(super::InlineBoundaryAllocation::participates)
             }
             _ => false,
         },

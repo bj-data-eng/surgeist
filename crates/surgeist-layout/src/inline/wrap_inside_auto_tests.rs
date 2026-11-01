@@ -252,6 +252,7 @@ fn assert_layout_placement<S: LayoutScalar>(
             node,
             LayoutInputOf::inline_boundary(
                 InlineBoundaryInputOf::contribution(kind, metrics(), InlineBoundaryEdgeOf::ZERO)
+                    .unwrap()
                     .with_direction(direction),
             ),
         );

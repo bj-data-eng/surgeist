@@ -201,7 +201,7 @@ impl LineDisposition {
                 control
                     .boundary
                     .as_ref()
-                    .is_some_and(|edge| edge.advance() != 0.0)
+                    .is_some_and(|edge| edge.participates())
             })
         {
             Ok(Self::Formatted)

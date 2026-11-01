@@ -141,7 +141,7 @@ fn endpoint<S: LayoutScalar>(
     InlineBoundaryInputOf::box_edge(
         kind,
         InlineMetricsOf::try_new(InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap(),
-        InlineBoundaryEdgeOf::try_new(S::from_f64(border), S::from_f64(padding)).unwrap(),
+        InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(border), S::from_f64(padding)).unwrap(),
         parent,
     )
     .with_writing_mode(frame.mode)
@@ -450,3 +450,9 @@ fn numeric_parent_basis_does_not_replace_formatter_validation_f64() {
 
 #[path = "parent_geometry_numeric_admission.rs"]
 mod admission;
+
+#[path = "parent_geometry_numeric/signed.rs"]
+mod signed;
+
+#[path = "parent_geometry_numeric/signed_native_fold.rs"]
+mod signed_native_fold;

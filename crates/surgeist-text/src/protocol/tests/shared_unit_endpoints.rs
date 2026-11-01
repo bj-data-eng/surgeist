@@ -355,8 +355,8 @@ fn anywhere_positive_endpoints_preserve_shared_mark_attachment_and_count_each_ed
     );
     let slots = line.control_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 2);
-    assert_eq!(slots[0].inline_bounds(), (0.0, 2.0));
-    assert_eq!(slots[1].inline_bounds(), (12.0, 15.0));
+    assert_eq!(slots[0].strip_interval(), (0.0, 2.0));
+    assert_eq!(slots[1].strip_interval(), (12.0, 15.0));
     for (slot, control) in slots.iter().zip(p.control_views()) {
         assert_eq!(slot.control(), control.handle());
     }
@@ -624,7 +624,7 @@ fn nested_physical_pairs_retain_distinct_coincident_end_events_and_shared_glyphs
             .control_slots()
             .find(|slot| slot.control() == *control)
             .unwrap();
-        assert_eq!(slot.inline_bounds(), bounds);
+        assert_eq!(slot.strip_interval(), bounds);
     }
 }
 
@@ -1039,7 +1039,7 @@ fn odd_shared_unit_keeps_each_nested_end_interval_on_its_actual_visual_side() {
             .find(|s| s.control() == *control)
             .unwrap();
         assert_eq!(slot.level().get(), 1);
-        assert_eq!(slot.inline_bounds(), bounds);
+        assert_eq!(slot.strip_interval(), bounds);
     }
 }
 

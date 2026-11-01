@@ -19,6 +19,7 @@ fn allocated_endpoint<S: l::LayoutScalar>(
             .unwrap(),
             edge,
         )
+        .unwrap()
         .with_direction(direction),
     )
 }
@@ -30,9 +31,9 @@ fn pair_with_one_positive_side<S: l::LayoutScalar>(
     extent: f64,
 ) -> Vec<l::LayoutInputOf<S>> {
     let positive = if border {
-        l::InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::ZERO).unwrap()
+        l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::ZERO).unwrap()
     } else {
-        l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(3.0)).unwrap()
+        l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::ZERO, S::from_f64(3.0)).unwrap()
     };
     [l::InlineBoundaryKind::Start, l::InlineBoundaryKind::End]
         .into_iter()

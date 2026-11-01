@@ -152,7 +152,7 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
             (2, l::InlineBoundaryKind::End),
         ] {
             let edge = if positive_start && node == 1 {
-                l::InlineBoundaryEdgeOf::try_new(S::from_f64(2.0), S::ZERO).unwrap()
+                l::InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(2.0), S::ZERO).unwrap()
             } else {
                 l::InlineBoundaryEdgeOf::ZERO
             };
@@ -167,6 +167,7 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
                     .unwrap(),
                     edge,
                 )
+                .unwrap()
                 .with_direction(direction),
             );
         }

@@ -1485,7 +1485,7 @@ pub struct FinalizedControlView<'a> {
     slot: Point,
     scope_displacement: crate::BaselineShift,
     level: u8,
-    inline_end: f64,
+    geometry: crate::engine::layout::data::AnchorGeometry,
 }
 impl fmt::Debug for FinalizedControlView<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1512,9 +1512,15 @@ impl FinalizedControlView<'_> {
     pub const fn slot(&self) -> Point {
         self.slot
     }
+    /// Actual nonnegative BP strip in line-local coordinates; margins are not a rectangle.
     #[must_use]
-    pub const fn inline_bounds(&self) -> (f64, f64) {
-        (self.slot.x, self.inline_end)
+    pub const fn strip_interval(&self) -> (f64, f64) {
+        self.geometry.strip_interval(self.slot.x)
+    }
+    /// Actual directed normal flow, independently of the nonnegative BP strip.
+    #[must_use]
+    pub const fn flow_interval(&self) -> (f64, f64) {
+        self.geometry.flow_interval(self.slot.x)
     }
     #[must_use]
     pub fn level(&self) -> BidiLevel {
@@ -1536,7 +1542,7 @@ impl FinalizedLine {
                 slot: anchor.slot,
                 scope_displacement: anchor.scope_displacement,
                 level: anchor.level,
-                inline_end: anchor.inline_end,
+                geometry: anchor.geometry,
             })
         })
     }
