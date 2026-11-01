@@ -185,7 +185,9 @@ impl Plan {
         Ok(writes)
     }
     /// Whether the planned edits apply to `arena` exactly as located: every
-    /// entry is where planning found it and the push cannot reallocate.
+    /// entry is where planning found it (`ParentChildConflict` otherwise) and
+    /// the node and new parent exist and the push cannot reallocate
+    /// (`CapacityMismatch` otherwise).
     pub(super) fn check_order_edits(&self, arena: &Arena) -> Result<(), HtmlConstructionError> {
         let [node, parent, before] = self.positions;
         if arena.records.get(node).is_none() {
