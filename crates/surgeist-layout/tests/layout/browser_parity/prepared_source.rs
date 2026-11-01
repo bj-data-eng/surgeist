@@ -910,4 +910,236 @@ mod tests {
             assert!(Capture::parse(&raw.to_string(), 1).is_err());
         }
     }
+
+    fn opaque_break_capture(writing_mode: &str, direction: &str, line_height: f64) -> Value {
+        let mut raw = original_capture();
+        raw["writingMode"] = json!(writing_mode);
+        raw["direction"] = json!(direction);
+        raw["baseStyle"]["fontSize"] = json!(20.0);
+        raw["baseStyle"]["lineHeight"] = json!(line_height);
+        raw["origins"] = json!([]);
+        raw["connections"] = json!([]);
+        raw["atomics"] = json!([
+            {"child":0,"at":0,"kind":"in-flow","width":10.0,"height":10.0,"precedingWrap":"word","followingWrap":"word","ancestorWrap":"word"},
+            {"child":2,"at":0,"kind":"in-flow","width":10.0,"height":10.0,"precedingWrap":"word","followingWrap":"word","ancestorWrap":"word"}
+        ]);
+        raw["controls"] = json!([{"child":1,"at":0,"kind":"forced-break"}]);
+        raw["order"] = json!([
+            {"kind":"atomic","index":0,"affinity":"before"},
+            {"kind":"control","index":0,"affinity":"before"},
+            {"kind":"atomic","index":1,"affinity":"before"}
+        ]);
+        raw
+    }
+
+    fn assert_empty_source_opaque_break_flow(writing_mode: &str, direction: &str) {
+        let vertical = writing_mode != "horizontal-tb";
+        for line_height in [30.0, 40.0] {
+            let raw = opaque_break_capture(writing_mode, direction, line_height);
+            let encoded = raw
+                .to_string()
+                .replace('&', "&amp;")
+                .replace('"', "&quot;")
+                .replace('<', "&lt;");
+            let inline_size = if vertical { "height" } else { "width" };
+            let golden = super::super::Golden::parse(&format!(
+                r#"<test name="empty-source-opaque-break" measurement-version="2" use-rounding="false">
+                    <viewport width="120px" height="120px"/>
+                    <input><div display="block" direction="{direction}" writing-mode="{writing_mode}" {inline_size}="120px" font-size="20px" line-height="{line_height}px" layout-ready-inline-root="true">
+                        <prepared-paragraph capture="{encoded}"/>
+                        <div source-tag="span" display="inline-block" direction="{direction}" writing-mode="{writing_mode}" width="10px" height="10px"/>
+                        <div source-tag="br" display="inline" direction="{direction}" writing-mode="{writing_mode}"/>
+                        <div source-tag="span" display="inline-block" direction="{direction}" writing-mode="{writing_mode}" width="10px" height="10px"/>
+                    </div></input><expectations><node/></expectations>
+                </test>"#
+            )).unwrap();
+            let capture = golden.root.prepared.as_ref().unwrap();
+            assert!(
+                capture
+                    .prepared
+                    .analyzed_source()
+                    .source()
+                    .text()
+                    .is_empty()
+            );
+            assert_eq!(
+                capture.prepared.analyzed_source().paragraph_strut(),
+                text::ParagraphStrut::DefaultFont
+            );
+            assert_eq!(capture.prepared.origin_views().len(), 0);
+            assert_eq!(capture.prepared.unit_views().len(), 0);
+            assert_eq!(
+                capture.prepared.orientation(),
+                if vertical {
+                    text::LineOrientation::Vertical
+                } else {
+                    text::LineOrientation::Horizontal
+                }
+            );
+            let atomics = capture.prepared.atomic_views().collect::<Vec<_>>();
+            assert_eq!(atomics.len(), 2);
+            assert_eq!(atomics[0].original_box().id().as_u64(), 0);
+            assert_eq!(atomics[1].original_box().id().as_u64(), 2);
+            let controls = capture.prepared.control_views().collect::<Vec<_>>();
+            assert_eq!(controls.len(), 1);
+            assert!(matches!(
+                controls[0].kind(),
+                text::ParagraphControlKind::ForcedBreak
+            ));
+
+            let tree = super::super::TestTree::from_golden(&golden.root).unwrap();
+            assert_eq!(tree.paragraphs.len(), 1);
+            let binding = &tree.paragraphs[0];
+            assert_eq!(binding.nodes, [1, 2, 3]);
+            assert!(binding.origins.is_empty());
+            assert!(binding.line_strut.is_none());
+            assert_eq!(binding.atomics[0].node, 1);
+            assert_eq!(binding.atomics[0].occurrence, atomics[0].handle());
+            assert_eq!(binding.atomics[1].node, 3);
+            assert_eq!(binding.atomics[1].occurrence, atomics[1].handle());
+            assert_eq!(binding.controls[0].node, 2);
+            assert_eq!(binding.controls[0].occurrence, controls[0].handle());
+
+            let flow = layout::LayoutFlowInput::try_new(
+                &tree,
+                0,
+                tree.paragraphs.clone(),
+                layout::WrappingInput::default(),
+                Vec::new(),
+            )
+            .unwrap();
+            let request = layout::LayoutRootRequest::viewport(layout::Size::new(
+                layout::Available::definite(120.0),
+                layout::Available::definite(120.0),
+            ))
+            .unwrap();
+            let batch = layout::compute_layout_with_flow(&flow, 0, request).unwrap();
+            assert_eq!(batch.placed_text().len(), 1);
+            let placed = batch.placed_text()[0].layout();
+            assert!(placed.source().text().is_empty());
+            assert_eq!(
+                placed.analyzed_source().identity(),
+                binding.prepared.analyzed_source().identity()
+            );
+            assert!(placed.glyph_runs().is_empty());
+            assert_eq!(placed.lines().len(), 2);
+            let boxes = placed.inline_boxes();
+            assert_eq!(boxes.len(), 2);
+            for (atomic, node, id, line) in [(boxes[0], 1, 0, 0), (boxes[1], 3, 2, 1)] {
+                assert_eq!(atomic.id().as_u64(), id);
+                assert_eq!(atomic.kind(), text::InlineBoxKind::InFlow);
+                assert_eq!(atomic.line(), line);
+                assert_eq!(atomic.rect().size, text::Size::new(10.0, 10.0));
+                let native = batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .unwrap()
+                    .output();
+                assert_eq!(f64::from(native.location.x), atomic.rect().origin.x);
+                assert_eq!(f64::from(native.location.y), atomic.rect().origin.y);
+                assert_eq!(native.size, layout::Size::new(10.0, 10.0));
+            }
+            let control_fragment = batch
+                .final_inline_fragments()
+                .iter()
+                .find(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(2))
+                .unwrap();
+            let line = control_fragment
+                .fragment()
+                .finalized_fragment()
+                .finalized_line();
+            assert_eq!(line.prepared_text(), binding.prepared);
+            assert_eq!(line.feedback().advance, 10.0);
+            // No glyph run, caller strut, or BR metrics can donate this extent.
+            assert_eq!(line.feedback().line_height, line_height);
+            assert!(line.selected_line().request().line_strut.is_none());
+            assert!(
+                line.selected_line()
+                    .request()
+                    .controls
+                    .iter()
+                    .all(|allocation| allocation.strut.is_none())
+            );
+            assert_eq!(
+                line.atomic_slots().next().unwrap().occurrence,
+                binding.atomics[0].occurrence
+            );
+            assert_eq!(
+                line.control_slots().next().unwrap().control(),
+                binding.controls[0].occurrence
+            );
+            let root = batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == 0)
+                .unwrap()
+                .output();
+            assert_eq!(
+                f64::from(if vertical {
+                    root.size.width
+                } else {
+                    root.size.height
+                }),
+                2.0 * line_height
+            );
+        }
+    }
+
+    #[test]
+    fn empty_source_opaque_break_horizontal_ltr_uses_font_owned_lines() {
+        assert_empty_source_opaque_break_flow("horizontal-tb", "ltr");
+    }
+
+    #[test]
+    fn empty_source_opaque_break_horizontal_rtl_uses_font_owned_lines() {
+        assert_empty_source_opaque_break_flow("horizontal-tb", "rtl");
+    }
+
+    #[test]
+    fn empty_source_opaque_break_vertical_lr_ltr_uses_font_owned_lines() {
+        assert_empty_source_opaque_break_flow("vertical-lr", "ltr");
+    }
+
+    #[test]
+    fn empty_source_opaque_break_vertical_lr_rtl_uses_font_owned_lines() {
+        assert_empty_source_opaque_break_flow("vertical-lr", "rtl");
+    }
+
+    #[test]
+    fn empty_source_opaque_break_vertical_rl_ltr_uses_font_owned_lines() {
+        assert_empty_source_opaque_break_flow("vertical-rl", "ltr");
+    }
+
+    #[test]
+    fn empty_source_opaque_break_vertical_rl_rtl_uses_font_owned_lines() {
+        assert_empty_source_opaque_break_flow("vertical-rl", "rtl");
+    }
+
+    #[test]
+    fn empty_source_opaque_break_rejects_wrong_occurrence_order_and_font() {
+        let raw = opaque_break_capture("horizontal-tb", "ltr", 30.0);
+        let prior = Capture::parse(&raw.to_string(), 3).unwrap();
+        let mut wrong_order = raw.clone();
+        wrong_order["order"] = json!([
+            {"kind":"control","index":0,"affinity":"before"},
+            {"kind":"atomic","index":0,"affinity":"before"},
+            {"kind":"atomic","index":1,"affinity":"before"}
+        ]);
+        assert!(Capture::parse(&wrong_order.to_string(), 3).is_err());
+        for (field, value) in [("sha256", json!("wrong")), ("loaded", json!(false))] {
+            let mut wrong_font = raw.clone();
+            wrong_font["font"][field] = value;
+            assert!(Capture::parse(&wrong_font.to_string(), 3).is_err());
+        }
+        assert!(prior.prepared.analyzed_source().source().text().is_empty());
+        assert_eq!(
+            prior.binding(0, &[1, 2, 3]).unwrap().controls[0].occurrence,
+            prior.controls[0].1
+        );
+        assert_eq!(
+            Capture::parse(&raw.to_string(), 3).unwrap().atomics.len(),
+            2
+        );
+    }
 }
