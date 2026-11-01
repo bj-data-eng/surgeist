@@ -267,7 +267,16 @@ impl ImmutableParseReport {
         Option<crate::construction::context::FrozenFragmentEffects<'_>>,
         crate::construction::read::UnresolvedReference,
     > {
-        Ok(self.storage.effects())
+        match (self.storage.effects(), &self.context) {
+            // A contextual report holds its fragment storage, as
+            // `fragment_parser_document` also requires.
+            (None, ReportContext::Fragment(_)) => {
+                Err(crate::construction::read::UnresolvedReference::new(
+                    crate::construction::read::UnresolvedKind::Fragment,
+                ))
+            }
+            (effects, _) => Ok(effects),
+        }
     }
 }
 

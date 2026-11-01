@@ -1603,7 +1603,11 @@ pub struct ContextView<'a> {
     first_base: Option<HtmlNode<'a>>,
     base_input: Option<HistoryGroup<'a>>,
     observation: Option<&'a surgeist_html_semantics::HtmlBaseParseObservation>,
-    fragment_context: Option<&'a crate::HtmlFragmentContext>,
+    /// For a captured Document: its identity and the context that captured it.
+    captured: Option<(
+        &'a crate::HtmlCaptureDocumentId,
+        &'a crate::HtmlFragmentContext,
+    )>,
 }
 impl<'a> ContextView<'a> {
     fn new(
@@ -1668,7 +1672,17 @@ impl<'a> ContextView<'a> {
             first_base,
             base_input: optional_group(anchor.history, value.base_input.as_ref())?,
             observation,
-            fragment_context: storage.fragment.as_ref().map(|fragment| &fragment.context),
+            captured: match document {
+                DocumentRef::Captured(id) => Some((
+                    id,
+                    &storage
+                        .fragment
+                        .as_ref()
+                        .ok_or(unresolved(read::UnresolvedKind::Fragment))?
+                        .context,
+                )),
+                DocumentRef::Owned(_) => None,
+            },
         })
     }
     /// The exact association applicable at this occurrence, never final policy.
@@ -1759,14 +1773,12 @@ impl<'a> ContextView<'a> {
         if self.requirement(role) != ContextRequirement::DeferredCaptured {
             return None;
         }
-        let DocumentRef::Captured(document) = self.document else {
-            return None;
-        };
+        let (document, context) = self.captured?;
         Some(CapturedObservation {
             epoch: self.input_epoch(role),
             role,
             document,
-            context: self.fragment_context?,
+            context,
         })
     }
     /// `None` means the occurrence has no base facts of this document.
