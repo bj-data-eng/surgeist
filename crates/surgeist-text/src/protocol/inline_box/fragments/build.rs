@@ -106,7 +106,10 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
         )
     })?;
     account::drop_vec(ledger, positions)?;
-    let presence = super::bodies::prepare(data, &owners, &first, ledger)?;
+    let super::bodies::PreparedBodies {
+        presence,
+        mut endpoints,
+    } = super::bodies::prepare(data, &owners, &first, ledger)?;
     // Actual body-local content/child-box incidence decides whether a terminal
     // box needs an opaque representative. Another body's text is irrelevant.
     for occurrence in &presence {
@@ -343,14 +346,58 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
         |a, b| a.0.cmp(&b.0),
     )?;
     for (fragment, f) in data.fragments.iter().enumerate() {
+        let first_endpoint = crate::processing::contextual::alignment::operations::partition_point(
+            &endpoints,
+            ledger.as_mut(),
+            |endpoint| (endpoint.body, endpoint.owner) < (f.body, f.owner),
+        )?;
+        let last_endpoint = crate::processing::contextual::alignment::operations::partition_point(
+            &endpoints,
+            ledger.as_mut(),
+            |endpoint| (endpoint.body, endpoint.owner) <= (f.body, f.owner),
+        )?;
         for rank in f.visual.clone() {
             account::work(ledger, 1)?;
             let row = data.order[rank];
             if member(data, &data.rows[row], f.owner, ledger)? {
                 account::push_fallible(ledger, &mut data.row_fragments, (row, fragment))?;
+                if data.rows[row].content {
+                    // Source Start/End select the first/last true logical member,
+                    // independently of parent-directed BoxEdge geometry. Opaque
+                    // Cells and genuine child-gap rows retain their real role.
+                    for endpoint in &mut endpoints[first_endpoint..last_endpoint] {
+                        account::work(ledger, 1)?;
+                        if endpoint.frontier.is_none_or(|(previous, _)| {
+                            if endpoint.start {
+                                row < previous
+                            } else {
+                                previous < row
+                            }
+                        }) {
+                            endpoint.frontier = Some((row, fragment));
+                        }
+                    }
+                }
             }
         }
     }
+    for endpoint in &endpoints {
+        account::work(ledger, 1)?;
+        let (_, fragment) = endpoint
+            .frontier
+            .ok_or_else(|| invalid(InlineBoxFragmentationError::InvalidIncidence))?;
+        account::push_fallible(
+            ledger,
+            &mut data.endpoint_fragments,
+            (endpoint.control, fragment),
+        )?;
+    }
+    crate::processing::contextual::alignment::operations::order_by(
+        &mut data.endpoint_fragments,
+        ledger.as_mut(),
+        |a, b| a.cmp(b),
+    )?;
+    account::drop_vec(ledger, endpoints)?;
     crate::processing::contextual::alignment::operations::order_by(
         &mut data.row_fragments,
         ledger.as_mut(),

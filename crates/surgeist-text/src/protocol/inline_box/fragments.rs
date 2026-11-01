@@ -147,6 +147,8 @@ pub(crate) struct FamilyData {
     pub(crate) row_owners: Vec<Owner>,
     pub(crate) row_lookup: Vec<(BidiOwner, usize)>,
     pub(crate) empty_lookup: Vec<((usize, Owner), usize)>,
+    /// Actual closed endpoint occurrence to its existing Source-frontier fragment.
+    pub(crate) endpoint_fragments: Vec<(usize, usize)>,
     pub(crate) row_fragments: Vec<(usize, usize)>,
     pub(crate) retention: Option<ScopeAlignmentRetention>,
     pub(crate) usage: Option<ScopeAlignmentUsage>,
@@ -224,6 +226,10 @@ impl FamilyData {
         visit(AllocationWitness::buffer(
             &self.empty_lookup,
             self.empty_lookup.len(),
+        )?)?;
+        visit(AllocationWitness::buffer(
+            &self.endpoint_fragments,
+            self.endpoint_fragments.len(),
         )?)?;
         visit(AllocationWitness::buffer(
             &self.row_fragments,

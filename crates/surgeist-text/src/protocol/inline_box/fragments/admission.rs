@@ -136,6 +136,7 @@ pub(super) fn prepare(
         row_owners: Vec::new(),
         row_lookup: Vec::new(),
         empty_lookup: Vec::new(),
+        endpoint_fragments: Vec::new(),
         row_fragments: Vec::new(),
         retention: None,
         usage: None,

@@ -15,6 +15,21 @@ pub(super) struct Presence {
     closing: bool,
 }
 
+/// A closed family's real endpoint occurrence; frontier is filled only from
+/// actual participating logical rows in that same canonical body.
+pub(super) struct Endpoint {
+    pub(super) control: usize,
+    pub(super) owner: Owner,
+    pub(super) body: usize,
+    pub(super) start: bool,
+    pub(super) frontier: Option<(usize, usize)>,
+}
+
+pub(super) struct PreparedBodies {
+    pub(super) presence: Vec<Presence>,
+    pub(super) endpoints: Vec<Endpoint>,
+}
+
 fn retain(
     data: &FamilyData,
     rows: &mut Vec<Presence>,
@@ -47,7 +62,7 @@ pub(super) fn prepare(
     owners: &[Owner],
     first: &[Option<usize>],
     ledger: &mut Ledger,
-) -> Result<Vec<Presence>> {
+) -> Result<PreparedBodies> {
     let prepared = data.prepared.inner.clone();
     let a = &prepared.analyzed;
     let mut next = 0;
@@ -83,6 +98,7 @@ pub(super) fn prepare(
         return Err(invalid(InlineBoxFragmentationError::InvalidIncidence));
     }
     let mut presence = Vec::new();
+    let mut endpoints = Vec::new();
     for section in 0..a.sections.len() {
         account::work(ledger, 1)?;
         for body in a
@@ -126,7 +142,39 @@ pub(super) fn prepare(
                             .as_ref()
                             .expect("admitted family")
                             .control_orders[control];
+                        let leaf =
+                            super::build::owner_at(data, SourceIncidence::Event(position), ledger)?;
+                        let source = data.source(leaf);
+                        if source.is_inline()
+                            && source.endpoints().is_some_and(|(entry, exit)| {
+                                let endpoint = if start { entry } else { exit };
+                                endpoint.event_position().index == position
+                            })
+                        {
+                            account::push_fallible(
+                                ledger,
+                                &mut endpoints,
+                                Endpoint {
+                                    control,
+                                    owner: leaf,
+                                    body,
+                                    start,
+                                    frontier: None,
+                                },
+                            )?;
+                        }
                         if let Some(native) = data.native_endpoint(position, start, ledger)? {
+                            account::push_fallible(
+                                ledger,
+                                &mut endpoints,
+                                Endpoint {
+                                    control,
+                                    owner: Owner::Native(native),
+                                    body,
+                                    start,
+                                    frontier: None,
+                                },
+                            )?;
                             retain(
                                 data,
                                 &mut presence,
@@ -292,7 +340,15 @@ pub(super) fn prepare(
                 .then_with(|| data.interval(b.owner).0.cmp(&data.interval(a.owner).0))
         },
     )?;
-    Ok(presence)
+    crate::processing::contextual::alignment::operations::order_by(
+        &mut endpoints,
+        ledger.as_mut(),
+        |a, b| (a.body, a.owner, a.start).cmp(&(b.body, b.owner, b.start)),
+    )?;
+    Ok(PreparedBodies {
+        presence,
+        endpoints,
+    })
 }
 
 pub(super) fn selected_body(

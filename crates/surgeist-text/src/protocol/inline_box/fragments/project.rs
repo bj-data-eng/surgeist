@@ -109,6 +109,37 @@ fn associations(
     }
     Ok(())
 }
+fn endpoint_fragment(
+    data: &FamilyData,
+    control: usize,
+    ledger: &mut Ledger,
+) -> Result<Option<usize>> {
+    let index = crate::processing::contextual::alignment::operations::binary_search_by(
+        &data.endpoint_fragments,
+        ledger.as_mut(),
+        |entry| entry.0.cmp(&control),
+    )?;
+    Ok(index.ok().map(|index| data.endpoint_fragments[index].1))
+}
+
+/// Exact aliases for this issued unit are contiguous. Different Source/Native
+/// owners remain distinct; repeated proof of the same unit/owner adds no custody.
+fn retain_alias(
+    aliases: &mut Vec<Alias>,
+    first: usize,
+    unit: usize,
+    owner: Owner,
+    ledger: &mut Ledger,
+) -> Result<()> {
+    for alias in &aliases[first..] {
+        account::work(ledger, 1)?;
+        if alias.unit == unit && alias.owner == owner {
+            return Ok(());
+        }
+    }
+    account::push_fallible(ledger, aliases, Alias { unit, owner })
+}
+
 pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Result<()> {
     let Some(family) = selected.request.inline_boxes.clone() else {
         return Ok(());
@@ -122,6 +153,7 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
     for (unit, value) in selected.presentation.units.iter().enumerate() {
         account::work(ledger, 1)?;
         let source_body = super::bodies::selected_body(selected, unit, ledger)?;
+        let first_alias = aliases.len();
         let mut represented = false;
         let mut body = false;
         let key = match value.kind {
@@ -207,7 +239,7 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
                 ledger,
                 |site, ledger| {
                     let owner = super::build::owner_at(data, site, ledger)?;
-                    account::push_fallible(ledger, &mut aliases, Alias { unit, owner })?;
+                    retain_alias(&mut aliases, first_alias, unit, owner, ledger)?;
                     let mut at = Some(owner);
                     while let Some(owner) = at {
                         account::work(ledger, 1)?;
@@ -223,6 +255,24 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
                     Ok(())
                 },
             )?;
+        }
+        if let K::Control { occurrence } = value.kind
+            && let Some(fragment) = endpoint_fragment(data, occurrence, ledger)?
+        {
+            let frontier = &data.fragments[fragment];
+            if source_body != Some(frontier.body) {
+                return Err(invalid(InlineBoxFragmentationError::InvalidIncidence));
+            }
+            retain_alias(&mut aliases, first_alias, unit, frontier.owner, ledger)?;
+            let mut at = Some(fragment);
+            while let Some(fragment) = at {
+                account::work(ledger, 1)?;
+                account::push_fallible(ledger, &mut found, (fragment, unit))?;
+                at = data.fragments[fragment].parent;
+            }
+            // This selects only the actual endpoint unit. Its frontier's text,
+            // provider packet and content classification are never imported.
+            // BoxEdge execution authority remains the separate allocation below.
         }
         account::push_fallible(ledger, &mut body_units, body)?;
     }
