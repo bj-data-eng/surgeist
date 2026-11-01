@@ -16,9 +16,12 @@
 
 use std::{fmt, marker::PhantomData};
 
-/// Implementable only through [`slots!`], which proves the mapping at compile
-/// time. A hand-written [`Slots`] would bypass those proofs, so the trait is
-/// sealed by this supertrait; the macro implements both.
+/// A crate-internal naming convention, not a hard seal. [`slots!`] expands in
+/// the modules that use it, so no private module is reachable from the
+/// expansion and this module must be `pub(crate)`; any code in the crate could
+/// therefore write `impl Sealed<N>` by hand. The supertrait makes a hand-written
+/// [`Slots`] impl need that deliberate, greppable step, and the compile-time
+/// proofs hold only for impls the macro produces. Review keeps it that way.
 #[doc(hidden)]
 pub(crate) mod sealed {
     pub(crate) trait Sealed<const N: usize> {}
@@ -26,7 +29,7 @@ pub(crate) mod sealed {
 
 /// Maps every variant of a closed enum to its element of an `N`-element array.
 ///
-/// Sealed: [`slots!`] is the only implementation route.
+/// [`slots!`] is the intended implementation route; see [`sealed`].
 pub(crate) trait Slots<const N: usize>: Copy + sealed::Sealed<N> {
     fn slot_ref<T>(table: &[T; N], key: Self) -> &T;
     fn slot_mut<T>(table: &mut [T; N], key: Self) -> &mut T;

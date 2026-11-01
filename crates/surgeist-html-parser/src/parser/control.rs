@@ -75,8 +75,9 @@ pub enum Invariant {
     /// A retained record, child or payload row that internal state names is
     /// missing, out of range or of another kind.
     RegistryRow,
-    /// A Meta CSP processor called an admission or release callback while
-    /// another callback of the same call was still running.
+    /// A Meta CSP processor, or the CSS color-scheme parser, called an
+    /// admission or release callback while another callback of the same call
+    /// was still running.
     ReentrantProviderCallback,
 }
 
@@ -207,6 +208,8 @@ pub(crate) struct ParseControl {
     finalization_transfer_cut: Option<finalization::TransferCut>,
     #[cfg(test)]
     finalization_transfer_observation: Option<FinalizationTransferObservation>,
+    #[cfg(test)]
+    css_scheme_fault: Option<css_value::SchemeFault>,
 }
 
 /// Fixed-size diagnostic metadata for actual execution between real polls.
@@ -257,6 +260,8 @@ impl ParseControl {
             finalization_transfer_cut: None,
             #[cfg(test)]
             finalization_transfer_observation: None,
+            #[cfg(test)]
+            css_scheme_fault: None,
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
