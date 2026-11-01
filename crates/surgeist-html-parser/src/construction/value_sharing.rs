@@ -108,6 +108,24 @@ impl<'c, T: Temporary> Pending<'c, T> {
             None => Err(latch_registry_row(self.control)),
         }
     }
+    /// Moves the temporary through a transition that takes it by value. The
+    /// guard holds it again afterwards, advanced or, on a refusal, unchanged.
+    fn advance(
+        &mut self,
+        step: impl FnOnce(T, &mut ParseControl) -> Result<T, (SessionError, T)>,
+    ) -> Result<(), SessionError> {
+        let value = self.take()?;
+        match step(value, &mut *self.control) {
+            Ok(value) => {
+                self.value = Some(value);
+                Ok(())
+            }
+            Err((error, value)) => {
+                self.value = Some(value);
+                Err(error)
+            }
+        }
+    }
     /// Hands the temporary to its next owner; the guard is then empty.
     fn take(&mut self) -> Result<T, SessionError> {
         match self.value.take() {
@@ -815,9 +833,6 @@ enum BankStage {
         ticket: VectorCapacity<Attribute>,
         shared: SharedAllocation<Vec<Attribute>>,
     },
-    /// Custody is inside a transition of [`BankOutput`] and never observed
-    /// outside one.
-    Moving,
 }
 /// The tickets that account for one attribute bank.
 type BankTickets = (VectorCapacity<Attribute>, SharedAllocation<Vec<Attribute>>);
@@ -863,59 +878,64 @@ impl BankOutput {
         }
     }
     /// Moves the staged vector behind its shared allocation. A refusal hands the
-    /// vector back.
-    fn share(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
-        match mem::replace(&mut self.stage, BankStage::Moving) {
+    /// output back with the vector still in it.
+    fn share(self, c: &mut ParseControl) -> Result<Self, (SessionError, Self)> {
+        let Self { stage, attributes } = self;
+        match stage {
             BankStage::Building { vector, ticket } => match c.share_owned(vector) {
                 Ok((backing, mut shared)) => {
                     shared.promote_final();
-                    self.stage = BankStage::Shared {
-                        backing,
-                        ticket,
-                        shared,
-                    };
-                    Ok(())
+                    Ok(Self {
+                        stage: BankStage::Shared {
+                            backing,
+                            ticket,
+                            shared,
+                        },
+                        attributes,
+                    })
                 }
-                Err((stop, vector)) => {
-                    self.stage = BankStage::Building { vector, ticket };
-                    Err(stop.into())
-                }
+                Err((stop, vector)) => Err((
+                    stop.into(),
+                    Self {
+                        stage: BankStage::Building { vector, ticket },
+                        attributes,
+                    },
+                )),
             },
-            other => {
-                self.stage = other;
-                Err(latch_registry_row(c))
-            }
+            stage => Err((latch_registry_row(c), Self { stage, attributes })),
         }
     }
-    /// Validates the shared backing as a bank. A refusal hands the backing back.
-    fn validate(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
-        match mem::replace(&mut self.stage, BankStage::Moving) {
+    /// Validates the shared backing as a bank. A refusal hands the output back
+    /// with the backing still in it.
+    fn validate(self, c: &mut ParseControl) -> Result<Self, (SessionError, Self)> {
+        let Self { stage, attributes } = self;
+        match stage {
             BankStage::Shared {
                 backing,
                 ticket,
                 shared,
             } => match validate_parser_attributes(backing, c) {
-                Ok(values) => {
-                    self.stage = BankStage::Validated {
+                Ok(values) => Ok(Self {
+                    stage: BankStage::Validated {
                         values,
                         ticket,
                         shared,
-                    };
-                    Ok(())
-                }
-                Err((error, backing)) => {
-                    self.stage = BankStage::Shared {
-                        backing,
-                        ticket,
-                        shared,
-                    };
-                    Err(error)
-                }
+                    },
+                    attributes,
+                }),
+                Err((error, backing)) => Err((
+                    error,
+                    Self {
+                        stage: BankStage::Shared {
+                            backing,
+                            ticket,
+                            shared,
+                        },
+                        attributes,
+                    },
+                )),
             },
-            other => {
-                self.stage = other;
-                Err(latch_registry_row(c))
-            }
+            stage => Err((latch_registry_row(c), Self { stage, attributes })),
         }
     }
     fn values(&self, c: &mut ParseControl) -> Result<&OrderedAttributes, SessionError> {
@@ -972,7 +992,6 @@ impl Temporary for BankOutput {
                 drop(values);
                 (Some(shared), Some(ticket))
             }
-            BankStage::Moving => (None, None),
         };
         // Both credits are attempted; the first refusal is reported.
         let shared = match shared {
@@ -1267,8 +1286,9 @@ impl Finalizing {
             );
             output.push(attribute, c)?;
         }
-        output.share(c)?;
-        output.validate(c)?;
+        pending.advance(BankOutput::share)?;
+        pending.advance(BankOutput::validate)?;
+        let (output, c) = pending.parts()?;
         pools.offer_attributes(output.values(c)?, c)?;
         #[cfg(test)]
         if let Some(earlier) = c.finalization_cut_earlier(element)
