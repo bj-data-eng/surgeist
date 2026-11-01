@@ -61,6 +61,9 @@ pub enum Invariant {
     /// A retained record, child or payload row that internal state names is
     /// missing, out of range or of another kind.
     RegistryRow,
+    /// A Meta CSP processor called an admission or release callback while
+    /// another callback of the same call was still running.
+    ReentrantProviderCallback,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
