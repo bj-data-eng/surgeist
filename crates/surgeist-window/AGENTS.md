@@ -38,8 +38,8 @@ cargo check -j 1 --offline -p surgeist-window
 cargo check -j 1 --offline -p surgeist-window --features accessibility
 cargo test -j 1 --offline -p surgeist-window
 cargo test -j 1 --offline -p surgeist-window --features accessibility
-cargo clippy -j 1 --offline -p surgeist-window --all-targets -- -F unsafe-code -D warnings
-cargo clippy -j 1 --offline -p surgeist-window --all-targets --features accessibility -- -F unsafe-code -D warnings
+cargo clippy -j 1 --offline -p surgeist-window --all-targets --no-deps -- -F unsafe-code -D warnings
+cargo clippy -j 1 --offline -p surgeist-window --all-targets --features accessibility --no-deps -- -F unsafe-code -D warnings
 RUSTDOCFLAGS='-D warnings' cargo doc -j 1 --offline -p surgeist-window --no-deps
 RUSTDOCFLAGS='-D warnings' cargo doc -j 1 --offline -p surgeist-window --no-deps --features accessibility
 ```

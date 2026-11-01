@@ -33,7 +33,7 @@ adapters and planning implementation types remain private except for the public
 | `HostEnvironment`, viewport, screen, input and preference values | Captured host facts with explicit unavailable observations | [environment](../src/environment.rs) |
 | `NativeGeometryRequest`, `NativeOpenFeatures` | Host-authorized CSS-pixel geometry resolved into ordinary window commands | [native geometry](../src/native_geometry.rs) |
 | `NativePointerCoordinates` | Fractional native client, desktop and screen-relative pointer observations | [pointer coordinates](../src/pointer_coordinates.rs) |
-| `SystemFontEnvironment` | Actual native UI font preferences and metrics | [system fonts](../src/system_fonts.rs) |
+| `SystemFontEnvironment` | Native UI role preferences, with AppKit face metrics and Windows logical font requests | [system fonts](../src/system_fonts.rs) |
 | `HostCapabilities`, `HostCommandPlan` | Immutable host support report and planned diagnostics | [capabilities](../src/capability.rs), [planning](../src/planning.rs) |
 | `Registry`, `Id`, `Ref`, `Handle`, `Access`, `Proxy` | Live lookup, runtime identity, native access, and queued ingress | [registry](../src/registry.rs), [geometry](../src/geometry.rs) |
 | `Clipboard`, `MemoryClipboard`, image types | Loop-owned text and image service | [clipboard](../src/clipboard.rs) |
@@ -107,7 +107,7 @@ These invocations use existing local dependencies without fetching:
 | `cargo check --offline -p surgeist-window` | Default-feature compilation |
 | `cargo test --offline -p surgeist-window` | Default-feature unit tests and rustdoc examples |
 | `cargo test --offline -p surgeist-window --features accessibility` | Unit tests and rustdoc examples with accessibility enabled |
-| `cargo clippy --offline -p surgeist-window --all-targets -- -F unsafe-code -D warnings` | Default-feature Clippy check with unsafe code forbidden and warnings denied |
+| `cargo clippy --offline -p surgeist-window --all-targets --no-deps -- -F unsafe-code -D warnings` | Default-feature Clippy check with unsafe code forbidden and warnings denied |
 | `cargo fmt -p surgeist-window --check` | Rust formatting |
 
 The [getting-started guide](getting-started.md) supplies the focused first-success

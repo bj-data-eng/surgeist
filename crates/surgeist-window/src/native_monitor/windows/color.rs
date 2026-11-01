@@ -46,20 +46,12 @@ fn capture<S>(
 }
 
 fn read_interfaces(device_name: &str) -> Option<Vec<String>> {
-    use winsafe as w;
-
-    let mut devices = w::EnumDisplayDevices(
-        Some(device_name),
-        Some(w::co::EDD::GET_DEVICE_INTERFACE_NAME),
-    );
-    // Own every returned string before invoking the query callback. The native
-    // buffer is reused, and terminal FALSE consults the thread's error slot.
-    collect_interfaces(std::iter::from_fn(|| {
-        w::SetLastError(w::co::ERROR::SUCCESS);
-        devices
-            .next()
-            .map(|device| device.map(|device| device.DeviceID()))
-    }))
+    let interfaces = surgeist_typed_winsafe::display_interfaces(device_name).ok()?;
+    collect_interfaces(
+        interfaces
+            .into_iter()
+            .map(Ok::<_, std::convert::Infallible>),
+    )
 }
 
 fn collect_interfaces<E>(

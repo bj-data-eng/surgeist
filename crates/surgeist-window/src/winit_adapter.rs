@@ -3951,8 +3951,7 @@ mod tests {
     }
 
     #[test]
-    fn accessibility_only_baseline_changes_publish_complete_preferences_without_reentrant_callbacks()
-     {
+    fn preference_only_baseline_changes_publish_complete_preferences_without_reentrant_callbacks() {
         #[derive(Default)]
         struct Observer {
             observations: Vec<(HostEnvironment, HostEnvironment, Option<Theme>)>,
@@ -4015,11 +4014,21 @@ mod tests {
             contrast: Some(ContrastPreference::More),
             ..reduced_both.clone()
         };
+        let unmetered = UserPreferences {
+            reduced_data: Some(ReductionPreference::NoPreference),
+            ..reduced_both.clone()
+        };
+        let metered = UserPreferences {
+            reduced_data: Some(ReductionPreference::Reduce),
+            ..reduced_both.clone()
+        };
         for (index, preferences) in [
             observed,
             reduced_motion,
             reduced_both.clone(),
             increased,
+            unmetered,
+            metered,
             reduced_both.clone(),
         ]
         .into_iter()
@@ -4065,7 +4074,7 @@ mod tests {
             runner.registry.get(id).unwrap().environment().preferences,
             reduced_both
         );
-        assert_eq!(runner.handler.observations.len(), 5);
+        assert_eq!(runner.handler.observations.len(), 7);
     }
 
     #[derive(Default)]

@@ -73,6 +73,7 @@ members = [
     "crates/surgeist-template",
     "crates/surgeist-test",
     "crates/surgeist-text",
+    "crates/surgeist-typed-winsafe",
     "crates/surgeist-window",
     "tools/cssom-reflections",
 ]

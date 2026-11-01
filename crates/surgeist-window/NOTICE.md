@@ -7,7 +7,8 @@ This notice covers the twelve direct production dependencies and the
 including the optional `accessibility` feature and dependency material for all
 declared platforms. The maintained consumer is bundled under
 [vendor/accesskit-consumer](../../vendor/accesskit-consumer); the other direct
-dependencies are not vendored here. This inventory does not cover other transitive dependencies or
+dependencies are not vendored here. The repository-owned typed Windows bridge
+has its own linked source and dependency notices below. This inventory does not cover other transitive dependencies or
 material incorporated into a particular application binary. The project's own
 license is in [LICENSE](LICENSE).
 
@@ -124,11 +125,11 @@ Krieger:
 * Additional material: [W3C license and source attribution notices](licenses/winit/NOTICE.md)
 * Homepage: [winit](https://github.com/rust-windowing/winit)
 
-### winsafe 0.0.29
+### surgeist-typed-winsafe 0.1.0
 
-This product depends on winsafe, distributed by Rodrigo Cesar de Freitas Dias.
-It is a Windows-only direct dependency for safe native monitor enumeration and
-work-area observations; its `user` feature is enabled.
+This product depends on the repository-owned Windows bridge for typed native
+monitor, window and UI-font preference observations.
 
-* License: [MIT](licenses/winsafe/LICENSE.md)
-* Homepage: [WinSafe](https://github.com/rodrigocfd/winsafe)
+* License: [MIT](../surgeist-typed-winsafe/LICENSE)
+* Dependency notices: [NOTICE.md](../surgeist-typed-winsafe/NOTICE.md)
+* Homepage: [Surgeist](https://github.com/bj-data-eng/surgeist)

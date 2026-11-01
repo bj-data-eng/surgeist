@@ -3925,6 +3925,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "surgeist-typed-winsafe"
+version = "0.1.0"
+dependencies = [
+ "winsafe",
+]
+
+[[package]]
 name = "surgeist-window"
 version = "0.1.0"
 dependencies = [
@@ -3937,10 +3944,10 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "raw-window-handle",
+ "surgeist-typed-winsafe",
  "web-time",
  "windows",
  "winit",
- "winsafe",
 ]
 
 [[package]]

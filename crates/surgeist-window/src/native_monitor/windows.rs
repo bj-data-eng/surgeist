@@ -13,26 +13,19 @@ pub(super) fn observe(
     scale: ScaleFactor,
 ) -> MonitorFacts {
     use winit::platform::windows::MonitorHandleExtWindows;
-    use winsafe::{HDC, prelude::*};
 
     let id = monitor.native_id();
-    let mut observations = Vec::new();
-    let mut failed = false;
-    let enumeration = HDC::NULL.EnumDisplayMonitors(None, |monitor, _, _| {
-        match monitor.GetMonitorInfo() {
-            Ok(info) => observations.push(Observation {
-                id: info.szDevice(),
-                frame: NativeRect::from(info.rcMonitor),
-                work: NativeRect::from(info.rcWork),
-            }),
-            Err(_) => failed = true,
-        }
-        // Complete enumeration: an early match cannot rule out duplicate IDs.
-        true
-    });
-    if enumeration.is_err() || failed {
+    let Ok(monitors) = surgeist_typed_winsafe::monitors() else {
         return MonitorFacts::default();
-    }
+    };
+    let observations = monitors
+        .into_iter()
+        .map(|monitor| Observation {
+            id: monitor.device_name,
+            frame: NativeRect::from(monitor.frame),
+            work: NativeRect::from(monitor.work_area),
+        })
+        .collect::<Vec<_>>();
     facts_for(&id, &observations, origin, scale, color::observe(&id))
 }
 
@@ -45,8 +38,8 @@ struct NativeRect {
 }
 
 #[cfg(target_os = "windows")]
-impl From<winsafe::RECT> for NativeRect {
-    fn from(rect: winsafe::RECT) -> Self {
+impl From<surgeist_typed_winsafe::Rect> for NativeRect {
+    fn from(rect: surgeist_typed_winsafe::Rect) -> Self {
         Self {
             left: rect.left,
             top: rect.top,

@@ -16,7 +16,13 @@ Use [surgeist-admin](.agents/skills/surgeist-admin/SKILL.md) for issues and labe
 pull requests, local working material and pause/resume handoffs. PISCT owns
 engineering methods. Apply `$pisct:invariants` to engineering and
 `$pisct:rust-modeling` to Rust models and APIs. Surgeist-owned Rust prohibits
-executable `unsafe`.
+executable `unsafe`, with one explicitly authorized exception:
+`surgeist-typed-winsafe` may use it only in its private native preference-call
+module to implement fixed, typed Windows operations. Its public API remains
+safe, and every unsafe operation requires a documented safety justification.
+All other modules and crates, including Window, retain the prohibition. This
+crate-specific direction takes precedence over PISCT's blanket unsafe rule;
+it grants no exception elsewhere.
 
 The coordinator owns issue and label updates, staging, commits, integration and
 publication within the authorized scope. Use `$pisct:holistic-review` for final
@@ -131,7 +137,7 @@ Facade checks from the repository root:
 ```sh
 cargo check --offline --locked -j 1 -p surgeist
 cargo test --offline --locked -j 1 -p surgeist --lib
-cargo clippy --offline --locked -j 1 -p surgeist --all-targets -- -F unsafe-code -D warnings
+cargo clippy --offline --locked -j 1 -p surgeist --all-targets --no-deps -- -F unsafe-code -D warnings
 cargo fmt --all -- --check
 ```
 
