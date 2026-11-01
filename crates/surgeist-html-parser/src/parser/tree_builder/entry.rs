@@ -124,13 +124,19 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             progressive,
         ) {
             Ok(()) => Phase::Ready,
-            Err(_) => {
+            Err(error) => {
                 // Resource/cancellation failure already owns the first stop. An
-                // unexpected nonterminal stage error cannot leave a runnable prefix.
+                // unexpected nonterminal stage error cannot leave a runnable
+                // prefix; a lost owner is an invariant, not an unsupported
+                // document.
                 if driver.control.stop().is_none() {
-                    driver
-                        .control
-                        .stop_unsupported_standalone(StandaloneUnsupported::InvalidNesting);
+                    if error.lost_owner() {
+                        StandaloneError::owner_lost(&mut driver.control);
+                    } else {
+                        driver
+                            .control
+                            .stop_unsupported_standalone(StandaloneUnsupported::InvalidNesting);
+                    }
                 }
                 Phase::Failed
             }

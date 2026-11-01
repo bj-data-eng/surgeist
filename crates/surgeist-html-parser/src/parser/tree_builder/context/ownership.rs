@@ -306,20 +306,19 @@ impl<'source> FragmentEntry<'source> {
         ),
         FragmentExecutionError,
     > {
-        let Some(stop) = driver.control.stop() else {
-            return Err(FragmentExecutionError::owner_lost(&mut driver.control));
-        };
-        let Some(at_stop) = driver.failure_usage.take() else {
-            return Err(FragmentExecutionError::owner_lost(&mut driver.control));
-        };
+        // Cleanup refuses an owner that has not stopped, and the stop and its
+        // snapshot exist together.
+        let (stop, at_stop) = driver
+            .control
+            .stopped()
+            .map(|(stop, usage)| (stop, usage.clone()))
+            .ok_or(FragmentExecutionError::Consumed)?;
         let Some(after_cleanup) = self.after_cleanup.take() else {
-            driver.failure_usage = Some(at_stop);
             return Err(FragmentExecutionError::owner_lost(&mut driver.control));
         };
         match driver.control.take_stopped_optional_source_binding() {
             Ok(binding) => Ok((stop, at_stop, after_cleanup, binding)),
             Err(error) => {
-                driver.failure_usage = Some(at_stop);
                 self.after_cleanup = Some(after_cleanup);
                 Err(error.into())
             }

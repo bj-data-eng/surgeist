@@ -127,11 +127,19 @@ impl InputBank {
             Self::Shared(None) => Default::default(),
             Self::Shared(Some(shared)) => match std::sync::Arc::try_unwrap(shared) {
                 Ok(bank) => bank,
-                Err(shared) => return Self::Shared(Some(shared)),
+                Err(shared) => return Self::unedited(shared),
             },
         };
         edit(&mut bank);
         Self::Building(Some(bank))
+    }
+    /// The edit found a bank that execution also holds. No public path leads
+    /// here, so tests fail loudly; a release build leaves the bank alone.
+    fn unedited(shared: std::sync::Arc<crate::construction::associated::Inputs>) -> Self {
+        #[cfg(test)]
+        panic!("an input edit reached a bank that execution also holds: {shared:?}");
+        #[cfg(not(test))]
+        Self::Shared(Some(shared))
     }
     /// Ends editing: a supplied bank becomes the one execution shares.
     fn share(self) -> Self {
@@ -832,22 +840,12 @@ mod tests {
     }
 
     #[test]
-    fn an_edit_after_sharing_reopens_a_bank_nothing_else_holds_and_spares_one_execution_holds() {
+    fn an_edit_after_sharing_reopens_a_bank_nothing_else_holds_without_a_copy() {
         let shared = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1))
             .with_encoding_url_facts(Vec::new())
             .share_associated_inputs();
-        // Nothing else holds the bank, so the edit reopens it without a copy.
         let reopened = shared.with_encoding_url_facts(Vec::new());
         assert!(reopened.shared_associated_inputs().is_none());
         assert!(reopened.associated_inputs().is_some());
-
-        let shared = reopened.share_associated_inputs();
-        let held = std::sync::Arc::clone(shared.shared_associated_inputs().unwrap());
-        // Execution holds the bank: the edit is not applied and no copy is made.
-        let unchanged = shared.with_encoding_url_facts(Vec::new());
-        assert!(std::sync::Arc::ptr_eq(
-            unchanged.shared_associated_inputs().unwrap(),
-            &held
-        ));
     }
 }

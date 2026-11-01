@@ -183,11 +183,25 @@ impl<'source> ContextFragmentDriver<'source> {
         Some((&mut self.control, session, capability))
     }
     pub(crate) fn step(&mut self) -> Result<HeadStep, FragmentExecutionError> {
+        let result = self.step_inner();
+        if let Err(error) = &result {
+            // One controller owns terminality; a stop the step already latched
+            // stays the first one. A lost owner is an invariant, not an
+            // unsupported construct.
+            if error.lost_owner() {
+                FragmentExecutionError::owner_lost(&mut self.control);
+            } else {
+                self.control
+                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+            }
+        }
+        result
+    }
+    fn step_inner(&mut self) -> Result<HeadStep, FragmentExecutionError> {
         self.control.require_source(self.request.source())?;
         let head = self.head.as_mut().ok_or(FragmentExecutionError::Consumed)?;
-        let result = head.step(&mut self.control);
-        match result {
-            Ok(HeadStep::Boundary(head::HeadBoundary::AfterHead)) => {
+        match head.step(&mut self.control)? {
+            HeadStep::Boundary(head::HeadBoundary::AfterHead) => {
                 let state = head
                     .state
                     .as_mut()
@@ -200,12 +214,7 @@ impl<'source> ContextFragmentDriver<'source> {
                 state.boundary = None;
                 Ok(HeadStep::Consumed)
             }
-            Err(error) => {
-                self.control
-                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-                Err(error.into())
-            }
-            Ok(step) => Ok(step),
+            step => Ok(step),
         }
     }
     pub(crate) fn release(&mut self) -> Result<(), FragmentExecutionError> {
@@ -270,15 +279,14 @@ impl<'source> ContextFragmentDriver<'source> {
     fn reclaim_failed(
         &mut self,
     ) -> Result<(ParseStop, super::super::control::ParseUsage), FragmentExecutionError> {
-        let stop = self
+        // The stop and its snapshot exist together.
+        let (stop, at_stop) = self
             .control
-            .stop()
+            .stopped()
+            .map(|(stop, usage)| (stop, usage.clone()))
             .ok_or(FragmentExecutionError::Consumed)?;
         if self.failure_usage.is_none() {
-            let Some(at_stop) = self.control.first_stop_usage().cloned() else {
-                return Err(FragmentExecutionError::owner_lost(&mut self.control));
-            };
-            self.failure_usage = Some(at_stop);
+            self.failure_usage = Some(at_stop.clone());
             self.failed_evidence = self
                 .head
                 .as_mut()
@@ -292,9 +300,6 @@ impl<'source> ContextFragmentDriver<'source> {
                 .take_failed_evidence(&mut self.control)?;
         }
         self.release()?;
-        let Some(at_stop) = self.failure_usage.take() else {
-            return Err(FragmentExecutionError::owner_lost(&mut self.control));
-        };
         Ok((stop, at_stop))
     }
 }
@@ -570,15 +575,14 @@ impl<'source> CompletedContextFragment<'source> {
         frozen: &mut crate::construction::FrozenArena,
         driver: &mut ContextFragmentDriver<'source>,
     ) -> Result<(ParseStop, super::super::control::ParseUsage), FragmentExecutionError> {
-        let stop = driver
+        // The stop and its snapshot exist together.
+        let (stop, at_stop) = driver
             .control
-            .stop()
+            .stopped()
+            .map(|(stop, usage)| (stop, usage.clone()))
             .ok_or(FragmentExecutionError::Consumed)?;
         if driver.failure_usage.is_none() {
-            let Some(at_stop) = driver.control.first_stop_usage().cloned() else {
-                return Err(FragmentExecutionError::owner_lost(&mut driver.control));
-            };
-            driver.failure_usage = Some(at_stop);
+            driver.failure_usage = Some(at_stop.clone());
             driver.failed_evidence = frozen.take_stopped_evidence(&mut driver.control)?;
         }
         if let Some(head) = &mut driver.head {
@@ -586,9 +590,6 @@ impl<'source> CompletedContextFragment<'source> {
             driver.head = None;
         }
         frozen.release(&mut driver.control)?;
-        let Some(at_stop) = driver.failure_usage.take() else {
-            return Err(FragmentExecutionError::owner_lost(&mut driver.control));
-        };
         Ok((stop, at_stop))
     }
     pub(crate) fn prepare_native_associations(&mut self) -> Result<(), FragmentExecutionError> {

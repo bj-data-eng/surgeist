@@ -537,9 +537,8 @@ impl FrozenStandaloneParts {
         StandaloneError,
     > {
         self.cleanup_failure()?;
-        let Some(stop) = self.control.stop() else {
-            return Err(StandaloneError::owner_lost(&mut self.control));
-        };
+        // Cleanup refuses an owner that has not stopped, so the stop is there.
+        let stop = self.control.stop().ok_or(StandaloneError::Consumed)?;
         let Some(after_cleanup) = self.after_cleanup.take() else {
             return Err(StandaloneError::owner_lost(&mut self.control));
         };
@@ -792,14 +791,16 @@ impl<'source> StandaloneDocumentDriver<'source> {
     fn reclaim_failed(
         &mut self,
     ) -> Result<(ParseStop, super::super::control::ParseUsage), StandaloneError> {
-        let stop = self.control.stop().ok_or(StandaloneError::Consumed)?;
+        // The stop and its snapshot exist together.
+        let (stop, at_stop) = self
+            .control
+            .stopped()
+            .map(|(stop, usage)| (stop, usage.clone()))
+            .ok_or(StandaloneError::Consumed)?;
         // Fixed snapshots and moves use the envelope admitted before first pull.
         // No checkpoint, allocation, variable copy or error append follows stop.
         if self.failure_usage.is_none() {
-            let Some(at_stop) = self.control.first_stop_usage().cloned() else {
-                return Err(StandaloneError::owner_lost(&mut self.control));
-            };
-            self.failure_usage = Some(at_stop);
+            self.failure_usage = Some(at_stop.clone());
             let session = if let Some(head) = &mut self.head {
                 &mut head
                     .state
@@ -826,9 +827,6 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 .map_err(HeadError::from)?;
         }
         self.reclaim_parse_owners()?;
-        let Some(at_stop) = self.failure_usage.take() else {
-            return Err(StandaloneError::owner_lost(&mut self.control));
-        };
         Ok((stop, at_stop))
     }
 }
