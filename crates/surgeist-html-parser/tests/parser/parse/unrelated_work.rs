@@ -229,3 +229,30 @@ fn a_foreign_element_adds_the_same_state_steps_whatever_elements_are_open_around
 fn an_html_element_adds_the_same_state_steps_whatever_elements_are_open_around_it() {
     assert_state_steps_independent_of_depth("<span>", "<span>");
 }
+
+/// Requires `element` to add the same record visits over what `control` adds,
+/// after 50, 200 and 800 open copies of `open`. Both are created and inserted
+/// below the same open elements, so every cost they share, including the
+/// walks the construction owner makes from the new node's parent toward the
+/// root, cancels; what remains is the work only `element`'s creation does.
+fn assert_creation_excess_independent_of_depth(open: &str, element: &str, control: &str) {
+    let excess = |depth| {
+        let visits =
+            |element| work_added_at_depth(HtmlParseWorkCategory::RecordVisit, open, depth, element);
+        visits(element) - visits(control)
+    };
+    assert_flat_of(
+        &format!("record visits over {control}"),
+        element,
+        open,
+        SIZES.map(excess),
+        0,
+    );
+}
+
+#[test]
+fn an_html_element_adds_no_more_visits_than_a_foreign_one_whatever_is_open_around_it() {
+    // An HTML element's creation asks whether a template is open to decide
+    // whether the form pointer applies; a foreign element's does not.
+    assert_creation_excess_independent_of_depth("<span>", "<span>", "<svg>");
+}

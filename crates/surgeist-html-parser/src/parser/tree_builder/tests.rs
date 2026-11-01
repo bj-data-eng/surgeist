@@ -714,6 +714,122 @@ fn a_node_already_on_the_stack_is_a_duplicate_wherever_it_sits_and_however_it_go
     assert_released(&c);
 }
 
+/// Applies a long deterministic sequence of every stack operation to a kernel
+/// and to a plain vector of the same nodes, and requires the kernel's answer to
+/// "which template is last" to be the vector's after each one. The vector's
+/// answer is a scan from the top, so it is independent of how the kernel
+/// derives its own.
+#[test]
+fn the_last_template_is_the_topmost_open_template_after_every_stack_operation() {
+    const POOL: [&str; 12] = [
+        "<template>",
+        "<div>",
+        "<template>",
+        "<div>",
+        "<div>",
+        "<template>",
+        "<div>",
+        "<template>",
+        "<div>",
+        "<div>",
+        "<template>",
+        "<div>",
+    ];
+    let source = HtmlSource::utf8(format!("<html>{}", POOL.concat()));
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let pool: Vec<(ParserNode, bool)> = POOL
+        .iter()
+        .map(|tag| {
+            let node = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+            (node, *tag == "<template>")
+        })
+        .collect();
+    // `open` holds pool indices; the html element below them is not a template.
+    let mut open: Vec<usize> = Vec::new();
+    let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut pick = |bound: usize| {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((seed >> 33) as usize) % bound
+    };
+    let mut seen_template_last = false;
+    let mut seen_no_template = false;
+    let mut ran = [0_u32; 5];
+    for step in 0..600 {
+        let unused: Vec<usize> = (0..pool.len()).filter(|id| !open.contains(id)).collect();
+        let operation = pick(5);
+        match operation {
+            0 if !unused.is_empty() => {
+                let id = unused[pick(unused.len())];
+                kernel.push(&pool[id].0, &mut c).unwrap();
+                open.push(id);
+            }
+            1 if !open.is_empty() => {
+                kernel.pop(&mut c, None).unwrap();
+                open.pop();
+            }
+            2 if !open.is_empty() && !unused.is_empty() => {
+                let at = pick(open.len());
+                let id = unused[pick(unused.len())];
+                kernel
+                    .replace_stack(at + 1, &pool[id].0, &mut c, None)
+                    .unwrap();
+                open[at] = id;
+            }
+            3 if !unused.is_empty() => {
+                let at = pick(open.len() + 1);
+                let id = unused[pick(unused.len())];
+                kernel.insert_stack(at + 1, &pool[id].0, &mut c).unwrap();
+                open.insert(at, id);
+            }
+            4 if !open.is_empty() => {
+                let at = pick(open.len());
+                kernel
+                    .remove_stack_identity(&pool[open[at]].0, &mut c, None)
+                    .unwrap();
+                open.remove(at);
+            }
+            _ => continue,
+        }
+        ran[operation] += 1;
+        assert_eq!(kernel.stack().unwrap().len(), open.len() + 1, "step {step}");
+        for (index, id) in open.iter().enumerate() {
+            let node = kernel.at(index + 1, &mut c).unwrap();
+            same(&kernel, &node, &pool[*id].0, &mut c);
+        }
+        let expected = open.iter().rposition(|id| pool[*id].1);
+        let actual = kernel.last_template(&mut c).unwrap();
+        match (expected, actual) {
+            (None, None) => seen_no_template = true,
+            (Some(at), Some(node)) => {
+                same(&kernel, &node, &pool[open[at]].0, &mut c);
+                seen_template_last = true;
+            }
+            (expected, actual) => panic!(
+                "step {step}: expected stack index {expected:?}, found {}",
+                actual.is_some()
+            ),
+        }
+        assert_eq!(
+            kernel.contains_html_template(&mut c).unwrap(),
+            expected.is_some(),
+            "step {step}"
+        );
+    }
+    // The sequence visited both answers, so the comparison was not vacuous.
+    assert!(seen_template_last && seen_no_template);
+    assert!(ran.iter().all(|count| *count > 20), "{ran:?}");
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
 #[test]
 fn empty_wrong_kind_duplicate_and_foreign_handles_preserve_stack() {
     let source = HtmlSource::utf8("<html><body>");
