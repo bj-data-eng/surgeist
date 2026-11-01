@@ -1,3 +1,4 @@
+mod depth;
 mod focus;
 use std::sync::Arc;
 use surgeist_html::{
