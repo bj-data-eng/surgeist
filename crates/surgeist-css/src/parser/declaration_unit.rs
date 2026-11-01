@@ -1,18 +1,18 @@
 //! A declaration that the parser crate's driver consumed, admitted by the
 //! shell every declaration of a ported grammar shares.
 //!
-//! The shell is the one of the declarations the native callbacks still admit
-//! (`parse_declaration_core`), reading the same parts of the same text: the
-//! value is everything between the colon and the first `!` (or the end of the
-//! declaration), whitespace and comments included, because the retained
-//! components and the origin of a declaration cover it. The importance
-//! annotation is the first `!` and what follows it. Both are read from the
-//! driver's token tree, so nothing is lexed again but the value, which the
-//! property grammars read from a document of its own.
+//! The driver has applied Syntax 3 section 5.5.6 steps 6 to 8 by the time a
+//! grammar sees the declaration: the `!important` that ends it is recognised
+//! (the last two tokens that are not whitespace) and a non-custom value with a
+//! `{}`-block beside other values is refused. The text records where the parts
+//! of the declaration are in the source: the value runs from the colon to that
+//! `!` (or to the end of the declaration), whitespace and comments included,
+//! because the retained components and the origin of a declaration cover it.
+//! Nothing is lexed again but the value, which the property grammars read from
+//! a document of its own.
 use std::ops::Range;
 
 use cssparser::ParseError;
-use surgeist_css_parser::Token;
 
 use super::block_units::{DeclarationUnit, location_at, offset_of};
 use super::{
@@ -22,22 +22,8 @@ use super::{
 use crate::declaration::CssImportance;
 use crate::diagnostic::CssError;
 use crate::diagnostic::error::property::SyntaxErrorExt;
-use crate::diagnostic::error::{unexpected_syntax_end, unexpected_syntax_token};
-use crate::parser::syntax_types::Site;
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::DocumentExt;
-
-/// The importance annotation of a declaration, as the shell reads it.
-pub(super) struct Annotation {
-    /// Where the `!` is.
-    bang: usize,
-    /// Whether it is followed by `important` and nothing else.
-    pub(super) complete: bool,
-    /// What a reader of the annotation that finds it malformed meets first: the
-    /// first token after the `!` that is not `important`, the first token after
-    /// `important`, or the end of the declaration.
-    pub(super) malformed: Option<ParseError<'static, CssError>>,
-}
 
 /// Where the parts of a declaration are in the source text.
 pub(crate) struct DeclarationText {
@@ -46,9 +32,11 @@ pub(crate) struct DeclarationText {
     pub(super) end: usize,
     /// Where the value begins: right after the colon.
     pub(super) value_start: usize,
-    /// Where the value ends: at the first `!`, or at the end of the declaration.
+    /// Where the value ends: at the `!` of the `!important` that ends the
+    /// declaration, or at the end of the declaration.
     value_end: usize,
-    pub(super) annotation: Option<Annotation>,
+    /// Where the `!` of the `!important` that ends the declaration is.
+    bang: Option<usize>,
 }
 
 impl DeclarationText {
@@ -57,9 +45,16 @@ impl DeclarationText {
         self.name.start
     }
 
-    /// Where the value ends: at the first `!`, or at the end of the declaration.
+    /// Where the value ends: at the `!` of the `!important` that ends the
+    /// declaration, or at the end of the declaration.
     pub(super) const fn value_end(&self) -> usize {
         self.value_end
+    }
+
+    /// Where the `!` of the `!important` that ends the declaration is, if there
+    /// is one (step 6).
+    pub(super) const fn bang(&self) -> Option<usize> {
+        self.bang
     }
 
     /// The bytes of the declaration's name.
@@ -70,12 +65,8 @@ impl DeclarationText {
     /// Reads the parts of `declaration` from the token tree it was consumed
     /// from, which is a document of source text.
     pub(super) fn of(declaration: &DeclarationUnit<'_>) -> Self {
-        Self::read(declaration.start(), declaration.end().index())
-    }
-
-    /// Reads the parts of the declaration that starts at the identifier `start`
-    /// and whose value ends before the node `end` of the same list.
-    pub(super) fn read(start: Site<'_>, end: usize) -> Self {
+        let start = declaration.start();
+        let end = declaration.end().index();
         let document = start.document();
         let list = start.list();
         let nodes = document.list(list);
@@ -96,55 +87,33 @@ impl DeclarationText {
                     .expect("a boundary of the declaration's list"),
             )
         };
-        let bang =
-            (first..end).find(|&index| matches!(document.token(nodes[index]), Token::Delim('!')));
-        let annotation = bang.map(|bang| {
-            let mut index = bang + 1;
-            while index < end && document.is_trivia(nodes[index]) {
-                index += 1;
-            }
-            let word_at = index;
-            let word = index < end
-                && matches!(document.token(nodes[index]), Token::Ident(word) if word.eq_ignore_ascii_case("important"));
-            index += 1;
-            while index < end && document.is_trivia(nodes[index]) {
-                index += 1;
-            }
-            let complete = word && index >= end;
-            let malformed = (!complete).then(|| {
-                let snapshot = document
-                    .snapshot()
-                    .expect("a source declaration has its snapshot");
-                // The token a reader meets: the first that is not `important`
-                // after the `!`, the first after `important`, or the end.
-                let meets = if word { index } else { word_at };
-                match nodes.get(meets).filter(|_| meets < end) {
-                    Some(node) => unexpected_syntax_token(
-                        location_at(snapshot, boundary(meets)),
-                        document.token(*node),
-                    ),
-                    None => unexpected_syntax_end(location_at(snapshot, boundary(end))),
-                }
-            });
-            Annotation {
-                bang: boundary(bang),
-                complete,
-                malformed,
-            }
-        });
+        // Step 6: the last two tokens that are not whitespace are `!` and
+        // `important`.
+        let bang = declaration
+            .is_important()
+            .then(|| {
+                let significant = |upto: usize| {
+                    (first..upto)
+                        .rev()
+                        .find(|&index| !document.is_trivia(nodes[index]))
+                };
+                let important = significant(end)?;
+                significant(important)
+            })
+            .flatten();
         Self {
             name: name.start.value()..name.end.value(),
             value_start: boundary(first),
             value_end: boundary(bang.unwrap_or(end)),
             end: boundary(end),
-            annotation,
+            bang: bang.map(boundary),
         }
     }
 }
 
 /// Admits the declaration named `name` that lies at `text` in the way of
 /// `mode`: its name selects the grammar of its value, which is read first;
-/// then its importance annotation is judged.
+/// then its importance is judged.
 pub(super) fn parse_declaration_unit<'i>(
     mode: DeclarationMode,
     name: &str,
@@ -187,18 +156,18 @@ pub(super) fn parse_declaration_unit<'i>(
         })?;
     let value_origin = CssParsedOrigin::from_range(snapshot, value)
         .expect("parser value boundaries belong to the original source");
-    let importance = match &text.annotation {
+    let importance = match text.bang() {
         None => CssImportance::Normal,
-        Some(annotation) => {
+        Some(bang) => {
             let admitted = matches!(
                 plan.context,
                 DeclarationBoundaryContext::OrdinaryKnown(_)
                     | DeclarationBoundaryContext::OrdinaryCustom(_)
                     | DeclarationBoundaryContext::OrdinarySvgGlyph
             );
-            if !(admitted && annotation.complete) {
+            if !admitted {
                 return Err(invalid_annotation_for_context(
-                    location_at(snapshot, annotation.bang),
+                    location_at(snapshot, bang),
                     &plan.context,
                 ));
             }

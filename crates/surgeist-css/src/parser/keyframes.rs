@@ -1,6 +1,6 @@
 use super::block_units::{
     DeclarationUnit, GrammarError, NativeError, drive_units, dropped_unit, grammar_error,
-    location_at, offset_of, refused_declaration,
+    location_at, offset_of,
 };
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
 use super::descriptor_stream::{Value, fail, from_component, from_here, parse_scope, read_scope};
@@ -145,36 +145,15 @@ pub(super) fn drive_declarations<'i>(
     };
     let mut declarations = Vec::new();
     let mut diagnostics = Vec::new();
-    let mut readmit = KeyframeDeclarationParser {
-        source,
-        recovery: recovery.clone(),
-    };
-    drive_units(contents, &mut grammar, |unit| {
+    let refused = drive_units(contents, &mut grammar, |unit| {
         let failed = match unit {
             Ok(declaration) => {
                 declarations.push(declaration);
-                return None;
+                return;
             }
             Err(failed) => failed,
         };
-        let mut dropped = dropped_unit(snapshot, source, &failed);
-        if let Some((start, end)) = refused_declaration(&failed) {
-            // A declaration that step 8 refuses is read to its `;` all the
-            // same, and the grammar's verdict on it is reported (until the
-            // declaration paths follow step 8).
-            let text = DeclarationText::read(start, end);
-            let name = match start.token() {
-                Some(surgeist_css_parser::Token::Ident(name)) => name,
-                _ => "",
-            };
-            match readmit.admit(name, &text) {
-                Ok(declaration) => {
-                    declarations.push(declaration);
-                    return Some(end);
-                }
-                Err(error) => dropped.error = error,
-            }
-        }
+        let dropped = dropped_unit(snapshot, source, &failed);
         // An at-rule is dropped for its prelude, so its text ends before the
         // `;` or `{` that ended it; every at-rule is invalid in a keyframe's
         // block.
@@ -203,8 +182,16 @@ pub(super) fn drive_declarations<'i>(
         {
             diagnostics.push(diagnostic);
         }
-        None
     });
+    if refused
+        && let Some(diagnostic) = crate::parser::block_units::refusal_diagnostic(
+            snapshot,
+            contents,
+            crate::diagnostic::CssRecoveryAction::DropDeclaration,
+        )
+    {
+        diagnostics.push(diagnostic);
+    }
     (CssKeyframeDeclarationList::new(declarations), diagnostics)
 }
 
@@ -334,14 +321,6 @@ impl<'i> RuleListGrammar<'i> for KeyframeBlockParser<'_> {
                 }
             };
         self.block(selectors, start, opening, block)
-    }
-
-    fn admit_declaration(
-        &mut self,
-        _: &str,
-        _: &DeclarationText,
-    ) -> Result<CssKeyframeBlock, NativeError<'i>> {
-        unreachable!("a list of keyframe blocks is read as rules")
     }
 
     fn drop_action(&self, _: &str) -> crate::diagnostic::CssRecoveryAction {

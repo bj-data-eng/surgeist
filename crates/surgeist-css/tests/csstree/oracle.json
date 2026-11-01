@@ -5,7 +5,7 @@
   "source_tree": "bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8",
   "expectation_schema_version": 1,
   "generation_report_sha256": "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366",
-  "expected_class_registry_sha256": "671eb420c4cffd8bab440c715235e0a66616e00dceb9cbd44a84a4f2a633e3da",
+  "expected_class_registry_sha256": "f07c7106a34906cd5756b2b8e05e5c2ee40f8cd374ab261857003063bc856b5a",
   "records": [
     {
       "id": "atrule/atrule/container.json#/all together",
@@ -443,9 +443,9 @@
         "is_clean": false,
         "diagnostics": [
           {
-            "code": "unknown_descriptor",
+            "code": "unexpected_token",
             "action": "drop_descriptor",
-            "byte_offset": 13,
+            "byte_offset": 17,
             "span_start": 13,
             "span_end": 19,
             "multiplicity": 1,
@@ -10879,9 +10879,9 @@
             "payload_relation": "intersects"
           },
           {
-            "code": "unknown_property",
+            "code": "unexpected_token",
             "action": "drop_qualified_rule",
-            "byte_offset": 26,
+            "byte_offset": 36,
             "span_start": 26,
             "span_end": 51,
             "multiplicity": 1,

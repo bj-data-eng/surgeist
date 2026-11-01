@@ -34,11 +34,9 @@ fn block_item_recovery_declaration_error_classes_retain_ordered_siblings() {
     let cases = [
         ("mystery: 1;", CssErrorCode::UnknownProperty, "mystery"),
         ("width: nope;", CssErrorCode::InvalidPropertyValue, "nope"),
-        (
-            "width: 2px !oops;",
-            CssErrorCode::InvalidDeclarationAnnotation,
-            "!",
-        ),
+        // §5.5.6 step 6: `!oops` ends no value with `!important`, so it is part
+        // of the value, which the property's grammar rejects at the `!`.
+        ("width: 2px !oops;", CssErrorCode::InvalidPropertyValue, "!"),
         ("broken;", CssErrorCode::UnexpectedEnd, ";"),
     ];
 
@@ -70,18 +68,37 @@ fn block_item_recovery_declaration_error_classes_retain_ordered_siblings() {
 }
 
 #[test]
-fn block_item_recovery_invalid_custom_annotation_retains_ordered_siblings_and_context() {
-    let unit = "--Accent: ready !oops;";
-    let source = format!(".x {{ color: red; {unit} width: 2px; }}");
-    let report = CssParser::default().parse_sheet(&source);
+fn block_item_recovery_a_custom_value_with_a_bang_that_ends_nothing_is_retained_whole() {
+    // §5.5.6 steps 6 and 7: `!oops` ends no value with `!important`, so a
+    // custom property keeps it as part of its value.
+    let source = ".x { color: red; --Accent: ready !oops; width: 2px; }";
+    let report = CssParser::default().parse_sheet(source);
 
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected retained style rule");
     };
-    assert_eq!(property_names(rule.declarations()), ["color", "width"]);
+    assert_eq!(
+        property_names(rule.declarations()),
+        ["color", "--Accent", "width"]
+    );
+    assert!(report.is_clean(), "{report:?}");
+    let custom = rule.declarations().as_slice()[1]
+        .custom()
+        .expect("custom declaration");
+    assert_eq!(
+        custom.value().value().expect("authored value").as_css(),
+        "ready !oops"
+    );
+}
 
+#[test]
+fn block_item_recovery_an_annotation_where_none_is_admitted_keeps_its_context() {
+    // CSS Animations 1 §4.2: a keyframe declaration admits no importance.
+    let unit = "--Accent: ready !important;";
+    let source = format!("@keyframes k {{ from {{ color: red; {unit} }} }}");
+    let report = CssParser::default().parse_sheet(&source);
     let [diagnostic] = report.diagnostics() else {
-        panic!("expected exactly one custom declaration diagnostic");
+        panic!("expected exactly one custom declaration diagnostic: {report:?}");
     };
     assert_drop(
         &source,
@@ -89,17 +106,13 @@ fn block_item_recovery_invalid_custom_annotation_retains_ordered_siblings_and_co
         unit,
         CssErrorCode::InvalidDeclarationAnnotation,
         CssRecoveryAction::DropDeclaration,
-        source.find('!').expect("first responsible bang"),
+        source.find('!').expect("responsible bang"),
     );
     let detail = diagnostic.error();
-    assert_eq!(
-        detail.code(),
-        CssErrorCode::InvalidDeclarationAnnotation,
-        "expected invalid declaration annotation detail"
-    );
-    let CssDeclarationContextRef::CustomProperty(name) = detail.declaration_context().unwrap()
+    let CssDeclarationContextRef::KeyframeCustomProperty(name) =
+        detail.declaration_context().unwrap()
     else {
-        panic!("expected custom-property declaration context");
+        panic!("expected keyframe custom-property declaration context");
     };
     assert_eq!(name.as_str(), "--Accent");
     assert_eq!(detail.encountered().unwrap().kind(), CssTokenKind::Delim);
@@ -163,7 +176,7 @@ fn block_item_recovery_repeated_declaration_failures_progress_to_later_valid_ite
         (
             &report.diagnostics()[2],
             "width: 2px !bad;",
-            CssErrorCode::InvalidDeclarationAnnotation,
+            CssErrorCode::InvalidPropertyValue,
             source.find('!').unwrap(),
         ),
     ] {

@@ -1,12 +1,11 @@
 use super::block_units::{
     DeclarationUnit, GrammarError, NativeError, drive_units, dropped_unit, grammar_error,
-    location_at, native_error, offset_of, refused_declaration,
+    location_at, native_error, offset_of,
 };
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
 use super::descriptor_stream::{
-    DescriptorGrammar, Value, ValueError, byte_offset, collect_scope, consume_remaining,
-    drive_block_items, expect_exhausted, fail, from_component, from_here, location, native,
-    parse_scope,
+    Value, ValueError, byte_offset, collect_scope, consume_remaining, drive_block_items,
+    expect_exhausted, fail, from_component, from_here, location, native, parse_scope,
 };
 use super::property_input::StreamExt;
 use super::syntax_types::{Attached, Site, Stream, SyntaxError};
@@ -18,7 +17,7 @@ use surgeist_css_parser::{Offset, Token, match_ignore_ascii_case};
 
 use super::recovery::RecoveryState;
 use super::{
-    DeclarationMode, block_item_diagnostic, is_declaration_recovery_unit,
+    DeclarationMode, block_item_diagnostic_from_start, is_declaration_recovery_unit,
     top_level_only_at_rule_placement,
 };
 use crate::component::{CssComponentValueRef, CssValueTokenRef};
@@ -166,22 +165,15 @@ pub(super) fn parse_body<'i>(
         recovery: recovery.clone(),
         diagnostics: Vec::new(),
     };
-    let mut readmit = PageBodyParser {
-        source,
-        recovery: recovery.clone(),
-        diagnostics: Vec::new(),
-    };
     let (items, mut dropped) = drive_block_items(
         contents,
         &mut grammar,
-        &mut readmit,
         source,
         &recovery,
         crate::diagnostic::CssRecoveryAction::DropDeclaration,
     );
     diagnostics.append(&mut dropped);
     diagnostics.append(&mut grammar.diagnostics);
-    diagnostics.append(&mut readmit.diagnostics);
     let mut declarations = Vec::new();
     let mut margin_rules = Vec::new();
     for item in items {
@@ -218,38 +210,17 @@ pub(super) fn drive_margin_body<'i>(
         source,
         recovery: recovery.clone(),
     };
-    let mut readmit = MarginBodyParser {
-        source,
-        recovery: recovery.clone(),
-    };
     let mut declarations = Vec::new();
     let mut diagnostics = Vec::new();
-    drive_units(contents, &mut grammar, |unit| {
+    let refused = drive_units(contents, &mut grammar, |unit| {
         let failed = match unit {
             Ok(declaration) => {
                 declarations.push(declaration);
-                return None;
+                return;
             }
             Err(failed) => failed,
         };
-        let mut dropped = dropped_unit(snapshot, source, &failed);
-        if let Some((start, end)) = refused_declaration(&failed) {
-            // A declaration that step 8 refuses is read to its `;` all the
-            // same, and the grammar's verdict on it is reported (until the
-            // declaration paths follow step 8).
-            let text = DeclarationText::read(start, end);
-            let name = match start.token() {
-                Some(surgeist_css_parser::Token::Ident(name)) => name,
-                _ => "",
-            };
-            match readmit.admit(name, &text) {
-                Ok(declaration) => {
-                    declarations.push(declaration);
-                    return Some(end);
-                }
-                Err(error) => dropped.error = error,
-            }
-        }
+        let dropped = dropped_unit(snapshot, source, &failed);
         // The dropped unit of a failed rule ends after its block's opening
         // token; the block is skipped with the unit. An at-rule whose prelude
         // was accepted had its block entered and is dropped whole; one whose
@@ -267,11 +238,24 @@ pub(super) fn drive_margin_body<'i>(
         } else {
             crate::diagnostic::CssRecoveryAction::DropAtRule
         };
-        if let Some(diagnostic) = block_item_diagnostic(source, dropped.error, text, end, action) {
+        // The span starts where the dropped unit does, whatever part of it the
+        // text names: a rejected prelude names less than the unit, which runs
+        // to the end of its block.
+        if let Some(diagnostic) =
+            block_item_diagnostic_from_start(source, dropped.error, dropped.start, end, action)
+        {
             diagnostics.push(diagnostic);
         }
-        None
     });
+    if refused
+        && let Some(diagnostic) = crate::parser::block_units::refusal_diagnostic(
+            snapshot,
+            contents,
+            crate::diagnostic::CssRecoveryAction::DropDeclaration,
+        )
+    {
+        diagnostics.push(diagnostic);
+    }
     let body = CssPageDeclarationBlock::from_parsed(declarations);
     (
         CssMarginDeclarationBlock::from_parsed(body.properties().clone()),
@@ -711,16 +695,6 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for PageBodyParser<'_> {
     }
 }
 
-impl<'i> DescriptorGrammar<'i, PageBodyItem> for PageBodyParser<'_> {
-    fn readmit(
-        &mut self,
-        name: &str,
-        text: &DeclarationText,
-    ) -> Result<PageBodyItem, NativeError<'i>> {
-        self.admit(name, text)
-    }
-}
-
 impl PageBodyParser<'_> {
     /// Admits the declaration named `name` that lies at `text`.
     fn admit<'i>(
@@ -739,8 +713,7 @@ impl PageBodyParser<'_> {
             let name_origin =
                 crate::source::CssParsedOrigin::from_range(snapshot, text.name_range())
                     .expect("real descriptor name");
-            // Page descriptors admit importance; a malformed annotation
-            // reports its own first unexpected token.
+            // Page descriptors admit importance.
             let (value, importance) = descriptor_value(snapshot, text, kind).map_err(|error| {
                 crate::diagnostic::error::with_descriptor_context(error, "page", kind.as_str())
             })?;
@@ -798,15 +771,10 @@ fn descriptor_value<'i>(
         crate::component::values::parse::promote_window(&document).map_err(failed_at)?;
     let origin = crate::source::CssParsedOrigin::from_range(snapshot, range.clone())
         .expect("parser value boundaries belong to the original source");
-    let importance = match &text.annotation {
-        None => crate::declaration::CssImportance::Normal,
-        Some(annotation) if annotation.complete => crate::declaration::CssImportance::Important,
-        Some(annotation) => {
-            return Err(annotation
-                .malformed
-                .clone()
-                .expect("an incomplete annotation has its malformed token"));
-        }
+    let importance = if text.bang().is_some() {
+        crate::declaration::CssImportance::Important
+    } else {
+        crate::declaration::CssImportance::Normal
     };
     Ok((
         CssPageDescriptorValue::from_parsed(kind, data, components, origin),

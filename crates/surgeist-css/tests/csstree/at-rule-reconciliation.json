@@ -370,8 +370,8 @@
       "clean": false,
       "diagnostics": [
         {
-          "error_code": "UnknownDescriptor",
-          "error_byte_offset": 13,
+          "error_code": "UnexpectedToken",
+          "error_byte_offset": 17,
           "recovery_byte_span": [
             13,
             19
@@ -392,7 +392,7 @@
         },
         "diagnostics": [
           {
-            "code": "unknown_descriptor",
+            "code": "unexpected_token",
             "action": "drop_descriptor",
             "payload_relation": "intersects"
           }

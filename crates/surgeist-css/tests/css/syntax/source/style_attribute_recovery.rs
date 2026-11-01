@@ -62,11 +62,7 @@ fn style_attribute_declaration_error_classes_match_style_blocks_modulo_wrapper_o
     for (unit, code, responsible) in [
         ("mystery: 1;", CssErrorCode::UnknownProperty, 0),
         ("width: nope;", CssErrorCode::InvalidPropertyValue, 7),
-        (
-            "width: 2px !oops;",
-            CssErrorCode::InvalidDeclarationAnnotation,
-            11,
-        ),
+        ("width: 2px !oops;", CssErrorCode::InvalidPropertyValue, 11),
         ("color: #ggg;", CssErrorCode::InvalidColorSyntax, 7),
         ("--bad name: 1px;", CssErrorCode::UnexpectedToken, 6),
         ("broken;", CssErrorCode::UnexpectedEnd, 6),

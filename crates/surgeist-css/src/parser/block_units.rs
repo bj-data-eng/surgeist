@@ -10,11 +10,10 @@ use cssparser::{BasicParseErrorKind, CowRcStr, ParseError, ParseErrorKind, Sourc
 use surgeist_css_parser::Token;
 use surgeist_css_parser::grammar::{BlockGrammar, Declaration, Failed, RuleEnd, UnitKind};
 
-use crate::diagnostic::CssError;
 use crate::diagnostic::error::{unexpected_syntax_end, unexpected_syntax_token};
+use crate::diagnostic::{CssError, CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::parser::syntax_types::{Attached, Site, Stream, SyntaxError};
-use crate::source::CssSourceSnapshot;
-use crate::syntax_consumption::DocumentExt;
+use crate::source::{CssSourcePosition, CssSourceSnapshot, CssSourceSpan};
 
 /// The error the ported grammars report: what the native callbacks report.
 pub(super) type NativeError<'i> = ParseError<'i, CssError>;
@@ -74,6 +73,11 @@ pub(super) fn native_error_located<'i>(
         return native.clone();
     }
     let location = locate(error.at());
+    if error.is_refused() {
+        // The meter refused a step: that is a resource failure, never the
+        // end of the input.
+        return refused_error(location);
+    }
     let basic = |kind| ParseError {
         kind: ParseErrorKind::Basic(kind),
         location,
@@ -91,6 +95,17 @@ pub(super) fn native_error_located<'i>(
         Some(token) => unexpected_syntax_token(location, token),
         None => unexpected_syntax_end(location),
     }
+}
+
+/// The error of a stream whose meter refused a step, at `location`.
+pub(super) fn refused_error<'i>(location: SourceLocation) -> NativeError<'i> {
+    crate::diagnostic::error::invalid_component_value(
+        location,
+        crate::component::CssComponentValueError::new(
+            crate::component::values::CssComponentValueErrorKind::CapacityOverflow,
+            crate::component::CssValueOrigin::Programmatic,
+        ),
+    )
 }
 
 /// A unit that was dropped: what the recovery diagnostic of the grammars still
@@ -115,72 +130,55 @@ pub(super) struct DroppedUnit<'s, 'i> {
 }
 
 /// Drives the units of `contents` through `grammar`, handing each to `unit`.
-///
-/// A unit may report that it took over more of the block than the driver
-/// consumed for it: it returns the node of the block's list where what it
-/// took ends, and the driver resumes there.
+/// Returns whether the meter refused a step and no unit was handed over for
+/// it: the list was cut short without a trace, which the caller reports with
+/// [`refusal_diagnostic`].
 pub(super) fn drive_units<'i, G>(
     contents: &mut Stream<'i>,
     grammar: &mut G,
-    mut unit: impl FnMut(Result<G::Item, Failure<'i>>) -> Option<usize>,
-) where
+    mut unit: impl FnMut(Result<G::Item, Failure<'i>>),
+) -> bool
+where
     G: BlockGrammar<'i, Attached<'i>, Error = NativeError<'i>>,
 {
     let mut stream = contents.clone();
-    loop {
-        let mut units = stream.block_contents(&mut *grammar);
-        let mut resume = None;
-        for item in units.by_ref() {
-            if let Some(end) = unit(item) {
-                resume = Some(end);
-                break;
-            }
+    let mut units = stream.block_contents(&mut *grammar);
+    let mut reported = false;
+    for item in units.by_ref() {
+        if let Err(failed) = &item {
+            reported |= failed.start().document().is_refused();
         }
-        stream = units.stream();
-        let Some(end) = resume else { break };
-        while stream.site().index() < end && stream.consume_token_with_comments().is_ok() {}
+        unit(item);
     }
+    stream = units.stream();
+    let unreported = stream.is_refused() && !reported;
     *contents = stream;
+    unreported
 }
 
-/// A declaration that Syntax 3 §5.5.6 step 8 refused (a `{}`-block beside
-/// other values in the value of a property that is not custom), which the
-/// driver never shows to the grammar. A block's recovery reads the value of
-/// such a declaration to its `;` all the same, and reports what the grammar
-/// says of it (until the declaration paths follow step 8). Returns the
-/// identifier the declaration starts at and the node of its list that ends its
-/// value.
-pub(super) fn refused_declaration<'i>(failed: &Failure<'i>) -> Option<(Site<'i>, usize)> {
-    if failed.kind() == UnitKind::AtRule {
-        return None;
-    }
-    let declaration_error = failed.declaration_error().unwrap_or_else(|| failed.error());
-    if !declaration_error.is_stream_error() {
-        return None;
-    }
-    let start = failed.start();
-    let document = start.document();
-    let nodes = document.list(start.list());
-    if !matches!(document.token(*nodes.get(start.index())?), Token::Ident(_)) {
-        return None;
-    }
-    let mut colon = start.index() + 1;
-    while nodes
-        .get(colon)
-        .is_some_and(|node| document.is_trivia(*node))
-    {
-        colon += 1;
-    }
-    if !matches!(
-        nodes.get(colon).map(|node| document.token(*node)),
-        Some(Token::Colon)
-    ) {
-        return None;
-    }
-    let end = (colon + 1..nodes.len())
-        .find(|&index| matches!(document.token(nodes[index]), Token::Semicolon))
-        .unwrap_or(nodes.len());
-    Some((start, end))
+/// The diagnostic of a refusal that cut the list `stream` stands in short: a
+/// resource failure from where the stream stopped to the end of its list.
+pub(super) fn refusal_diagnostic(
+    snapshot: &CssSourceSnapshot,
+    stream: &Stream<'_>,
+    action: CssRecoveryAction,
+) -> Option<CssRecoveryDiagnostic> {
+    let site = stream.site();
+    let at = site.offset()?.value();
+    let end = site
+        .document()
+        .list_end(site.list())
+        .map_or(at, |end| end.value())
+        .max(at);
+    let error = crate::diagnostic::error::from_parse_error(
+        snapshot.as_str(),
+        refused_error(location_at(snapshot, at)),
+    );
+    let span = CssSourceSpan::new(
+        CssSourcePosition::from_byte_offset_in(snapshot.as_str(), at),
+        CssSourcePosition::from_byte_offset_in(snapshot.as_str(), end),
+    )?;
+    CssRecoveryDiagnostic::new(error, span, action)
 }
 
 /// Reads a failed unit of the source `source`.
@@ -203,6 +201,13 @@ pub(super) fn dropped_unit<'s, 'i>(
     let mut block_contents = None;
     let document = after.document();
     let nodes = document.list(after.list());
+    // A unit handed over after the meter refused a step, or for the refusal,
+    // is the unit the refusal cut short: it is reported with the rest of the
+    // list.
+    let refused = failed.error().is_refused() || document.is_refused();
+    if refused && let Some(list_end) = document.list_end(after.list()) {
+        end = end.max(list_end.value());
+    }
     let at_end = location_at(snapshot, end);
     match rule_end {
         Some(RuleEnd::Block) => {
@@ -240,7 +245,9 @@ pub(super) fn dropped_unit<'s, 'i>(
             nodes.get(first.index()).map(|node| document.token(*node)),
             Some(Token::Ident(_))
         );
-    let error = if begins_declaration {
+    let error = if refused {
+        refused_error(at_end)
+    } else if begins_declaration {
         // Failed::error is the declaration's error when no block was found,
         // and the rule's when one was; the declaration's is the other.
         let declaration_error = failed.declaration_error().unwrap_or_else(|| failed.error());

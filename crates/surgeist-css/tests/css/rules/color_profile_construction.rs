@@ -476,14 +476,22 @@ fn matched_root_blocks_remain_data_under_environment_whole_grammar_deferral() {
             value(Kind::RenderingIntent, source).view(),
             View::Pending(_)
         ));
+        // Syntax 3 §5.5.6 step 8: as a declaration, a block beside another
+        // value returns nothing, whatever env() could defer.
         let sheet = CssParser::default().parse_sheet(format!(
             "@color-profile --x {{ rendering-intent: {source}; }} .after {{ color: red; }}"
         ));
-        assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
-        assert!(matches!(
-            sheet.syntax().rules(),
-            [CssRule::ColorProfile(_), CssRule::Style(_)]
-        ));
+        let units = if source.ends_with('}') { 1 } else { 2 };
+        assert_eq!(
+            sheet.diagnostics().len(),
+            units,
+            "{:?}",
+            sheet.diagnostics()
+        );
+        let [CssRule::ColorProfile(profile), CssRule::Style(_)] = sheet.syntax().rules() else {
+            panic!("the profile and the following rule survive");
+        };
+        assert_eq!(profile.descriptors().len(), 0);
     }
     // Without env(), the ordinary keyword grammar rejects the block.
     for ordinary in ["{}", "perceptual {}"] {

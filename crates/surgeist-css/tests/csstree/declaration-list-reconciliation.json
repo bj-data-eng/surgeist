@@ -1144,7 +1144,7 @@
             "payload_relation": "intersects"
           },
           {
-            "code": "unknown_property",
+            "code": "unexpected_token",
             "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           }
@@ -1161,10 +1161,10 @@
           "multiplicity": 1
         },
         {
-          "code": "unknown_property",
+          "code": "unexpected_token",
           "action": "drop_qualified_rule",
           "payload_relation": "intersects",
-          "byte_offset": 26,
+          "byte_offset": 36,
           "span_start": 26,
           "span_end": 51,
           "multiplicity": 1

@@ -95,18 +95,15 @@ fn a_keyframe_declaration_block_is_one_block_and_nothing_else() {
     }
 }
 
-// CHARACTERIZATION of current behaviour that contradicts Syntax 3 (2026 CRD)
-// §5.5.6 step 8, which returns nothing for a non-custom declaration whose
-// value holds a `{}`-block beside other values (WPT `var-with-blocks.html`
-// agrees). It is due to change when every declaration path follows steps 6 to
-// 8; the expectations below then change with it.
+// Syntax 3 (2026 CRD) §5.5.6 step 8 returns nothing for a non-custom
+// declaration whose value holds a `{}`-block beside other values (WPT
+// `var-with-blocks.html` agrees), even when a substitution could admit the
+// block. §5.5.5 then reads the same text as a qualified rule.
 #[test]
-fn characterization_a_declaration_value_runs_to_its_semicolon_when_a_substitution_admits_the_block()
-{
-    // The value of `color` holds a substitution; the `{}`-block does not end
-    // the declaration, which runs to the `;`, and the declaration after the
-    // semicolon is separate. Step 8 would drop `color: var(--a) {x}` as a
-    // qualified rule and read `opacity: 1;` as a declaration of its own.
+fn a_declaration_value_with_a_block_beside_a_substitution_is_dropped_as_a_rule() {
+    // `color: var(--a) {x}` is refused as a declaration and read as a
+    // qualified rule that ends at its block; `opacity: 1;` is a declaration of
+    // its own, and so is `width: 1px`.
     let source = "{ color: var(--a) {x} opacity: 1; width: 1px }";
     let report = fragments::parse_keyframe_declaration_block_with_context(
         source,
@@ -114,15 +111,20 @@ fn characterization_a_declaration_value_runs_to_its_semicolon_when_a_substitutio
     );
     let fragment = report.syntax().as_ref().expect("a declaration block");
     assert_eq!(fragment.body().len(), 2, "{report:?}");
-    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(
+        dropped(&report),
+        [(
+            CssRecoveryAction::DropDeclaration,
+            CssErrorCode::UnexpectedToken,
+            range_of(source, "color: var(--a) {x}")
+        )]
+    );
 }
 
-// CHARACTERIZATION, as above: step 8 refuses `x: y { z }` before any grammar
-// sees it, so its error would be the unexpected `{`, not the unknown property.
+// Step 8 refuses `x: y { z }` before any grammar sees it, so its error is the
+// unexpected `{`, not the unknown property.
 #[test]
-fn characterization_a_declaration_whose_block_is_refused_reports_its_grammars_verdict_first() {
-    // The unknown property is the first thing the declaration grammar says of
-    // `x: y { z }`, before the value.
+fn a_declaration_whose_block_is_refused_reports_the_unexpected_block_first() {
     let source = "{ x: y { z } ; color: red }";
     let report = fragments::parse_keyframe_declaration_block_with_context(
         source,
@@ -133,7 +135,7 @@ fn characterization_a_declaration_whose_block_is_refused_reports_its_grammars_ve
         dropped(&report),
         [(
             CssRecoveryAction::DropDeclaration,
-            CssErrorCode::UnknownProperty,
+            CssErrorCode::UnexpectedToken,
             range_of(source, "x: y { z }")
         )]
     );
@@ -144,12 +146,24 @@ fn a_detached_margin_rule_admits_its_declarations_and_reports_what_it_drops() {
     let source = "@top-left { margin: var(--a) {x} 1px; margin-top: 1px; bogus: 1; @media x {} }";
     let report = CssMarginRule::parse(&CssParser::default(), source);
     let rule = report.syntax().as_ref().expect("a margin rule");
-    // CHARACTERIZATION (contradicts §5.5.6 step 8, due to change with it): the
-    // substitution admits the block, so the first declaration runs to its `;`.
-    assert_eq!(rule.declarations().properties().len(), 2, "{report:?}");
+    // §5.5.6 step 8 refuses `margin: var(--a) {x} 1px` whatever a substitution
+    // could admit: it is read as a qualified rule that ends at its block (the
+    // span stops after the block's `{`), and ` 1px;` is a qualified rule of
+    // its own that a `;` stops.
+    assert_eq!(rule.declarations().properties().len(), 1, "{report:?}");
     assert_eq!(
         dropped(&report),
         [
+            (
+                CssRecoveryAction::DropDeclaration,
+                CssErrorCode::UnexpectedToken,
+                range_of(source, "margin: var(--a) {")
+            ),
+            (
+                CssRecoveryAction::DropAtRule,
+                CssErrorCode::UnexpectedToken,
+                range_of(source, "1px;")
+            ),
             (
                 CssRecoveryAction::DropDeclaration,
                 CssErrorCode::UnknownProperty,
@@ -175,13 +189,14 @@ fn a_rejected_prelude_and_a_rejected_block_drop_different_extents() {
     let [prelude, block] = dropped(&report)[..] else {
         panic!("two dropped units: {report:?}")
     };
-    // The span of the first stops after the `{` of the block it never entered.
+    // The span of the first starts at the unit's own start and stops after
+    // the `{` of the block it never entered.
     assert_eq!(
-        (prelude.0, prelude.1, prelude.2.1),
+        prelude,
         (
             CssRecoveryAction::DropAtRule,
             CssErrorCode::UnexpectedToken,
-            range_of(source, "x {").1
+            range_of(source, "@top-right x {")
         )
     );
     assert_eq!(
@@ -287,26 +302,30 @@ fn the_importance_annotation_ignores_whitespace_comments_and_the_case_of_importa
     }
 }
 
-// CHARACTERIZATION of current behaviour that departs from Syntax 3 (2026 CRD)
-// §5.5.6 steps 6 and 7: the first `!` of a value starts the annotation, and
-// anything but `important` after it is an invalid annotation. By the steps, a
-// `!` that is not the second to last token is an ordinary delimiter in the
-// value, and the declaration is judged by its property's grammar (for a custom
-// property it is accepted whole). Due to change with step 12.
+// Syntax 3 (2026 CRD) §5.5.6 steps 6 and 7 read an annotation only at the end
+// of a value: a `!` that is not the second to last token is an ordinary
+// delimiter in the value, and the declaration is judged by its property's
+// grammar (for a custom property it is accepted whole).
 #[test]
-fn characterization_a_bang_that_does_not_end_the_value_is_an_invalid_annotation() {
+fn a_bang_that_does_not_end_the_value_is_part_of_the_value() {
+    use crate::declaration::CssImportance::Normal;
     for body in [
         "margin-top: 1px ! 2px",
         "margin-top: 1px !important x",
         "margin-top: 1px !important !important",
         "margin-top: 1px !",
         "margin-top: 1px !importantx",
-        "--x: a ! b",
-        "--x: a !important b",
     ] {
         assert_eq!(
             importance_and_codes(body),
-            (vec![], vec![CssErrorCode::InvalidDeclarationAnnotation]),
+            (vec![], vec![CssErrorCode::InvalidPropertyValue]),
+            "{body:?}"
+        );
+    }
+    for body in ["--x: a ! b", "--x: a !important b"] {
+        assert_eq!(
+            importance_and_codes(body),
+            (vec![Normal], vec![]),
             "{body:?}"
         );
     }
@@ -361,18 +380,15 @@ fn error_locations_count_columns_in_utf16_units_and_offsets_in_bytes() {
         (position.byte_offset().value(), position.column().value()),
         (source.find("bogus").unwrap(), 28)
     );
-    // CHARACTERIZATION (§5.5.6 step 6 would not call this an annotation): the
-    // annotation error is located at the `!`.
+    // §5.5.6 step 6 does not call `! x` an annotation: it is part of the value,
+    // and the value error is located at the `!`.
     let source = "@top-left { content: \"😀\"; margin-top: 1px ! x }";
     let report = CssMarginRule::parse(&CssParser::default(), source);
-    let [annotation] = report.diagnostics() else {
+    let [invalid] = report.diagnostics() else {
         panic!("one diagnostic: {report:?}")
     };
-    assert_eq!(
-        annotation.error().code(),
-        CssErrorCode::InvalidDeclarationAnnotation
-    );
-    let position = annotation.error().position();
+    assert_eq!(invalid.error().code(), CssErrorCode::InvalidPropertyValue);
+    let position = invalid.error().position();
     assert_eq!(
         (position.byte_offset().value(), position.column().value()),
         (source.find('!').unwrap(), 43)

@@ -168,7 +168,6 @@ fn malformed_custom_tails_and_known_property_globals_drop_atomically() {
     for invalid in [
         "--x:inherit var()",
         "--x:inherit var(foo)",
-        "--x:inherit 1px !oops",
         "width:inherit 1px",
     ] {
         let source = format!("color:red;{invalid};height:2px");

@@ -1135,8 +1135,9 @@ fn error_property_descriptor_color_and_annotation_roots_expose_all_fields() {
         _ => panic!("unexpected error root"),
     }
 
+    // CSS Animations 1 §4.2: a keyframe declaration admits no importance.
     let annotation = CssParser::default()
-        .parse_sheet(".x { width: 1px !oops; }")
+        .parse_sheet("@keyframes k { from { width: 1px !important } }")
         .expect_err("bad annotation must fail");
     assert_eq!(
         annotation.code(),
@@ -1146,7 +1147,7 @@ fn error_property_descriptor_color_and_annotation_roots_expose_all_fields() {
         CssErrorCode::InvalidDeclarationAnnotation => {
             let detail = &annotation;
             match detail.declaration_context().unwrap() {
-                CssDeclarationContextRef::KnownProperty(property) => {
+                CssDeclarationContextRef::Keyframe(property) => {
                     assert_eq!(property, CssKnownProperty::Width);
                 }
                 _ => panic!("unexpected declaration context"),

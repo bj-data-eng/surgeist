@@ -7,11 +7,11 @@ use crate::component::CssComponentValueLimits;
 use crate::declaration::{CssDeclaration, CssDeclarationList};
 use crate::diagnostic::CssRecoveryAction;
 use crate::diagnostic::error::{
-    invalid_syntax, property_name_error, unexpected_syntax_end, unexpected_syntax_token,
+    property_name_error, unexpected_syntax_end, unexpected_syntax_token,
 };
 use crate::parser::block_units::{
     DeclarationUnit, Failure, GrammarError, NativeError, grammar_error, location_at, native_error,
-    offset_of, refused_declaration,
+    offset_of,
 };
 use crate::parser::declaration_unit::{DeclarationText, parse_declaration_unit};
 use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
@@ -246,6 +246,7 @@ fn parse_contents_with_snapshot<R: Receiver>(
         let mut declarations = Vec::new();
         let mut diagnostics = Vec::new();
         let mut resource_failure = false;
+        let mut refusal_reported = false;
         let consumed_end = loop {
             let before = stream.clone();
             let mut grammar = Contents {
@@ -258,7 +259,19 @@ fn parse_contents_with_snapshot<R: Receiver>(
             stream = units.stream();
             let after = offset_of(stream.site());
             let failed = match unit {
-                None => break after,
+                None => {
+                    if stream.is_refused()
+                        && !refusal_reported
+                        && let Some(diagnostic) = crate::parser::block_units::refusal_diagnostic(
+                            &snapshot,
+                            &stream,
+                            CssRecoveryAction::DropDeclaration,
+                        )
+                    {
+                        diagnostics.push(diagnostic);
+                    }
+                    break after;
+                }
                 Some(Ok(declaration)) => {
                     // An admitted declaration began where the grammar saw it.
                     let start = grammar.start.unwrap_or(after);
@@ -268,7 +281,10 @@ fn parse_contents_with_snapshot<R: Receiver>(
                     declarations.push(declaration);
                     continue;
                 }
-                Some(Err(failed)) => failed,
+                Some(Err(failed)) => {
+                    refusal_reported |= failed.start().document().is_refused();
+                    failed
+                }
             };
             let start = failed.start();
             let document = start.document();
@@ -289,28 +305,7 @@ fn parse_contents_with_snapshot<R: Receiver>(
                     failed.end().index(),
                 )
             } else {
-                let mut error = declaration_failure(&snapshot, &failed);
-                if let Some((begin, declaration_end)) = refused_declaration(&failed) {
-                    // The generic declaration consumption refuses a value that
-                    // holds a `{}`-block beside others, after the header
-                    // admitted the name.
-                    let name = match begin.token() {
-                        Some(Token::Ident(name)) => name,
-                        _ => "",
-                    };
-                    let text = DeclarationText::read(begin, declaration_end);
-                    let named = if name.starts_with("--") {
-                        Ok(())
-                    } else {
-                        grammar
-                            .receiver
-                            .check_name(name, location_at(&snapshot, start_offset))
-                    };
-                    error = match named {
-                        Ok(()) => invalid_syntax(location_at(&snapshot, text.value_start)),
-                        Err(named) => named,
-                    };
-                }
+                let error = declaration_failure(&snapshot, &failed);
                 if failed.kind() == UnitKind::QualifiedRule
                     && crate::diagnostic::error::is_resource_parse_error(&error)
                 {

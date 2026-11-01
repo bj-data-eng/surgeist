@@ -199,7 +199,7 @@
         },
         "diagnostics": [
           {
-            "code": "unknown_descriptor",
+            "code": "unexpected_token",
             "action": "drop_descriptor",
             "payload_relation": "intersects"
           }
@@ -5139,7 +5139,7 @@
             "payload_relation": "intersects"
           },
           {
-            "code": "unknown_property",
+            "code": "unexpected_token",
             "action": "drop_qualified_rule",
             "payload_relation": "intersects"
           }

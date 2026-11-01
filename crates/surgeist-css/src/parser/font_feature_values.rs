@@ -11,9 +11,9 @@ use super::block_units::{
 };
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
-    Boundary, DescriptorGrammar, DescriptorRecovery, NativeValueError, Value, comma_list,
-    consume_remaining, declaration_position, drive_descriptors_into, expect_exhausted, fail,
-    from_remaining, native, parse_descriptor_checked, parse_descriptor_text, parse_scope,
+    Boundary, DescriptorRecovery, NativeValueError, Value, comma_list, consume_remaining,
+    declaration_position, drive_descriptors_into, expect_exhausted, fail, from_remaining, native,
+    parse_descriptor_checked, parse_descriptor_range, parse_descriptor_text, parse_scope,
     read_scope, validate_root,
 };
 use super::property_input::StreamExt;
@@ -189,16 +189,9 @@ fn drive_members<'i>(
         kind,
         diagnostics: Rc::clone(&sink),
     };
-    let mut readmit = BodyParser {
-        source,
-        recovery: recovery.clone(),
-        kind,
-        diagnostics: Rc::clone(&sink),
-    };
     let members = drive_descriptors_into(
         contents,
         &mut grammar,
-        &mut readmit,
         &DescriptorRecovery {
             source,
             recovery,
@@ -208,7 +201,7 @@ fn drive_members<'i>(
         },
         &sink,
     );
-    drop((grammar, readmit));
+    drop(grammar);
     (members, sink.take())
 }
 
@@ -306,12 +299,6 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for BodyParser<'_> {
     }
 }
 
-impl<'i> DescriptorGrammar<'i, Member> for BodyParser<'_> {
-    fn readmit(&mut self, name: &str, text: &DeclarationText) -> Result<Member, NativeError<'i>> {
-        self.admit(name, text)
-    }
-}
-
 impl BodyParser<'_> {
     /// Admits the declaration named `name` that lies at `text`.
     fn admit<'i>(&mut self, name: &str, text: &DeclarationText) -> Result<Member, NativeError<'i>> {
@@ -332,10 +319,10 @@ impl BodyParser<'_> {
             let friendly = CssFontFeatureValueName::try_new(name.to_string())
                 .map_err(|_| invalid_syntax(start_location))
                 .map_err(|error| with_descriptor_context(error, owner, name))?;
-            let value = parse_descriptor_text(
+            let value = parse_descriptor_range(
                 snapshot,
-                text.value_start,
-                text.end,
+                text.value_start..text.value_end(),
+                text.bang(),
                 owner,
                 name,
                 Boundary::Value,
@@ -368,10 +355,10 @@ impl BodyParser<'_> {
                     name,
                 ));
             }
-            let value = parse_descriptor_text(
+            let value = parse_descriptor_range(
                 snapshot,
-                text.value_start,
-                text.end,
+                text.value_start..text.value_end(),
+                text.bang(),
                 owner,
                 name,
                 Boundary::ValidatedValue,

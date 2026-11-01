@@ -6,9 +6,9 @@ use super::block_units::{
 };
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
-    Boundary, DescriptorGrammar, DescriptorRecovery, Value, comma_list, consume_remaining,
-    declaration_position, drive_descriptors, expect_exhausted, fail, from_component, native,
-    parse_descriptor_checked, parse_descriptor_text, read_scope, validate_root,
+    Boundary, DescriptorRecovery, Value, comma_list, consume_remaining, declaration_position,
+    drive_descriptors, expect_exhausted, fail, from_component, native, parse_descriptor_checked,
+    parse_descriptor_range, parse_descriptor_text, read_scope, validate_root,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -102,14 +102,9 @@ fn drive_body<'i>(
         source,
         recovery: recovery.clone(),
     };
-    let mut readmit = BodyParser {
-        source,
-        recovery: recovery.clone(),
-    };
     drive_descriptors(
         contents,
         &mut grammar,
-        &mut readmit,
         &DescriptorRecovery {
             source,
             recovery,
@@ -158,16 +153,6 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for BodyParser<'_> {
     }
 }
 
-impl<'i> DescriptorGrammar<'i, CssColorProfileDescriptor> for BodyParser<'_> {
-    fn readmit(
-        &mut self,
-        name: &str,
-        text: &DeclarationText,
-    ) -> Result<CssColorProfileDescriptor, NativeError<'i>> {
-        self.admit(name, text)
-    }
-}
-
 impl BodyParser<'_> {
     /// Admits the descriptor named `name` that lies at `text`.
     fn admit<'i>(
@@ -188,7 +173,7 @@ impl BodyParser<'_> {
                 name,
             )
         })?;
-        let value = parse_text_value(snapshot, text.value_start, text.end, kind)
+        let value = parse_declared_value(snapshot, text, kind)
             .map_err(|error| with_descriptor_context(error, "color-profile", name))?;
         self.recovery.retain_component_closures(implicit);
         Ok(CssColorProfileDescriptor::new(value)
@@ -196,7 +181,8 @@ impl BodyParser<'_> {
     }
 }
 
-/// The value of a descriptor from the text between `value_start` and `end`.
+/// The value of a descriptor from the text between `value_start` and `end`, an
+/// annotation at its end included.
 fn parse_text_value(
     snapshot: &crate::source::CssSourceSnapshot,
     value_start: usize,
@@ -210,14 +196,38 @@ fn parse_text_value(
         "color-profile",
         kind.as_str(),
         Boundary::Whole,
-        |input, components, numeric, _| {
-            let data = parse_value_data(input, kind, &components, numeric)?;
-            expect_exhausted(input)?;
-            Ok(CssColorProfileDescriptorValue::from_parts(
-                kind, components, data,
-            ))
-        },
+        |input, components, numeric, _| read_value(input, components, numeric, kind),
     )
+}
+
+/// The value of the descriptor that the declaration `text` holds.
+fn parse_declared_value(
+    snapshot: &crate::source::CssSourceSnapshot,
+    text: &DeclarationText,
+    kind: CssColorProfileDescriptorKind,
+) -> Result<CssColorProfileDescriptorValue, ParseError<'static, CssError>> {
+    parse_descriptor_range(
+        snapshot,
+        text.value_start..text.value_end(),
+        text.bang(),
+        "color-profile",
+        kind.as_str(),
+        Boundary::Whole,
+        |input, components, numeric, _| read_value(input, components, numeric, kind),
+    )
+}
+
+fn read_value<'d>(
+    input: &mut Stream<'d>,
+    components: CssComponentValues,
+    numeric: &NumericInputContext<'_>,
+    kind: CssColorProfileDescriptorKind,
+) -> Value<'d, CssColorProfileDescriptorValue> {
+    let data = parse_value_data(input, kind, &components, numeric)?;
+    expect_exhausted(input)?;
+    Ok(CssColorProfileDescriptorValue::from_parts(
+        kind, components, data,
+    ))
 }
 
 pub(super) fn parse_descriptor_value_from_parser<'i>(

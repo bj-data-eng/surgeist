@@ -19,7 +19,7 @@ use crate::diagnostic::error::{
 };
 use crate::parser::block_units::{
     DeclarationUnit, Failure, GrammarError, NativeError, dropped_unit, grammar_error, location_at,
-    native_error, offset_of, refused_declaration,
+    native_error, offset_of,
 };
 use crate::parser::counter_style::{CounterStylePrelude, parse_counter_style_rule};
 use crate::parser::declaration_unit::DeclarationText;
@@ -516,12 +516,6 @@ pub(crate) trait RuleListGrammar<'i>:
     /// Reads the prelude of a qualified rule that met no block, for what
     /// reading it records.
     fn read_prelude(&mut self, _prelude: &mut Stream<'i>) {}
-    /// Admits the declaration named `name` that lies at `text`.
-    fn admit_declaration(
-        &mut self,
-        name: &str,
-        text: &DeclarationText,
-    ) -> Result<Self::Item, NativeError<'i>>;
     /// What a dropped unit with the text `text` is reported as dropped.
     fn drop_action(&self, text: &str) -> crate::diagnostic::CssRecoveryAction {
         structural_recovery_action(text)
@@ -581,6 +575,7 @@ pub(crate) fn recover_rule_list<'i, G, S>(
 {
     let snapshot = grammar.recovery().source_snapshot().clone();
     let mut stream = contents;
+    let mut refusal_reported = false;
     loop {
         let before = stream.clone();
         let progress = RecoveryProgress::record(Offset::new(offset_of(before.site())));
@@ -614,42 +609,11 @@ pub(crate) fn recover_rule_list<'i, G, S>(
             }
             Err(failed) => failed,
         };
+        refusal_reported |= failed.start().document().is_refused();
         if kind == RuleListKind::Stylesheet {
             report_returned_nothing(source, grammar, &before, failed.start().index());
         }
-        // A declaration that Syntax 3 §5.5.6 step 8 refuses is read to its
-        // `;` all the same, and the grammar's verdict on it is reported (until
-        // the declaration paths follow step 8).
-        let mut replaced = None;
-        if kind == RuleListKind::Declarations
-            && let Some((start, end)) = refused_declaration(&failed)
-        {
-            let text = DeclarationText::read(start, end);
-            let name = match start.token() {
-                Some(surgeist_css_parser::Token::Ident(name)) => name,
-                _ => "",
-            };
-            match grammar.admit_declaration(name, &text) {
-                Ok(item) => {
-                    while stream.site().index() < end
-                        && stream.consume_token_with_comments().is_ok()
-                    {}
-                    let outcome = progress.finish(Offset::new(offset_of(stream.site())), true);
-                    sink.retain(
-                        item,
-                        source,
-                        offset_of(stream.site()),
-                        grammar.diagnostics(),
-                    );
-                    if outcome == RecoveryLoopOutcome::Terminated {
-                        break;
-                    }
-                    continue;
-                }
-                Err(error) => replaced = Some(error),
-            }
-        }
-        let facts = read_failure(source, &snapshot, kind, grammar, &before, &failed, replaced);
+        let facts = read_failure(source, &snapshot, kind, grammar, &before, &failed);
         let mut unit_state = std::mem::replace(grammar.unit(), UnitState::new());
         let outcome = progress.finish(after_offset, false);
         if unit_state.boundary.partitions(facts.at_block) {
@@ -693,6 +657,17 @@ pub(crate) fn recover_rule_list<'i, G, S>(
         if outcome == RecoveryLoopOutcome::Terminated {
             break;
         }
+    }
+    // A refusal that cut the list short without a unit to carry it.
+    if stream.is_refused()
+        && !refusal_reported
+        && let Some(diagnostic) = crate::parser::block_units::refusal_diagnostic(
+            &snapshot,
+            &stream,
+            grammar.drop_action(""),
+        )
+    {
+        grammar.diagnostics().push(diagnostic);
     }
 }
 
@@ -778,13 +753,9 @@ fn read_failure<'i, 's, G: RuleListGrammar<'i>>(
     grammar: &mut G,
     before: &Stream<'i>,
     failed: &Failure<'i>,
-    replaced: Option<NativeError<'i>>,
 ) -> Facts<'i, 's> {
     use crate::syntax_consumption::DocumentExt as _;
-    let mut dropped = dropped_unit(snapshot, source, failed);
-    if let Some(replaced) = replaced {
-        dropped.error = replaced;
-    }
+    let dropped = dropped_unit(snapshot, source, failed);
     let unit_start = dropped.start;
     // A block the document denied for nesting too deep was never shown to the
     // grammar: the prelude is read, and the block refused, here.
@@ -1831,14 +1802,6 @@ impl<'i> RuleListGrammar<'i> for RuleParser<'_> {
 
     fn read_prelude(&mut self, prelude: &mut Stream<'i>) {
         let _ = self.qualified_prelude(prelude);
-    }
-
-    fn admit_declaration(
-        &mut self,
-        name: &str,
-        text: &DeclarationText,
-    ) -> Result<RuleListItem, NativeError<'i>> {
-        RuleParser::admit_declaration(self, name, text)
     }
 }
 

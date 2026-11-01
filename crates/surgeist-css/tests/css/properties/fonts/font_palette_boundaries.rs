@@ -17,12 +17,21 @@ fn root_matched_blocks_remain_pending_in_every_descriptor() {
                 kind.as_str()
             );
             let report = CssParser::default().parse_sheet(&source);
-            assert!(report.is_clean(), "{}: {value}: {report:?}", kind.as_str());
+            // Syntax 3 §5.5.6 step 8: a declaration whose value holds a block
+            // beside another value returns nothing, whatever a substitution
+            // could admit; a block that is the whole value stays.
+            let whole = value == "{var(--x)}";
+            assert_eq!(
+                report.is_clean(),
+                whole,
+                "{}: {value}: {report:?}",
+                kind.as_str()
+            );
             let [CssRule::FontPaletteValues(rule), CssRule::Style(_)] = report.syntax().rules()
             else {
                 panic!("valid sibling descriptors and following rule must survive");
             };
-            assert_eq!(rule.descriptors().len(), 3);
+            assert_eq!(rule.descriptors().len(), if whole { 3 } else { 2 });
             let fragment = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
             assert!(
                 fragment.is_clean(),
@@ -37,11 +46,11 @@ fn root_matched_blocks_remain_pending_in_every_descriptor() {
             )
             .unwrap();
             assert_eq!(constructed.components(), &components);
-            for admitted in [
-                rule.descriptors()[1].value(),
-                fragment.syntax().as_ref().unwrap(),
-                &constructed,
-            ] {
+            let mut admitted_values = vec![fragment.syntax().as_ref().unwrap(), &constructed];
+            if whole {
+                admitted_values.insert(0, rule.descriptors()[1].value());
+            }
+            for admitted in admitted_values {
                 assert_eq!(admitted.kind(), kind);
                 assert!(matches!(
                     admitted.view(),
