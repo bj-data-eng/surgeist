@@ -1,6 +1,7 @@
 //! Explicit caller-supplied processing for original Meta CSP transitions.
 use crate::construction::SessionError;
 use crate::parser::control::{Invariant, ParseControl, ParseStop, WorkCategory};
+use crate::parser::tree_builder::parse::ReturnableCspStorage;
 use crate::{HtmlDocumentParseRequest, HtmlParseFailure, HtmlParseReport};
 use std::{
     cell::{Cell, RefCell},
@@ -24,9 +25,26 @@ pub struct HtmlParseCspFailure<E> {
     pub(crate) parse: HtmlParseFailure,
     pub(crate) native: Option<E>,
     pub(crate) kind: HtmlParseCspFailureKind,
-    pub(crate) storage: Storage,
+    pub(crate) storage: ReturnableCspStorage,
 }
 impl<E> HtmlParseCspFailure<E> {
+    /// Builds the envelope. Whether the failure can take the provider's storage
+    /// back is settled here, while `cleanup_error` is still readable through
+    /// the envelope, rather than when the envelope is dropped.
+    pub(crate) fn new(
+        mut parse: HtmlParseFailure,
+        native: Option<E>,
+        kind: HtmlParseCspFailureKind,
+        storage: Storage,
+    ) -> Self {
+        let storage = parse.claim_csp_storage(storage);
+        Self {
+            parse,
+            native,
+            kind,
+            storage,
+        }
+    }
     pub fn parse_failure(&self) -> &HtmlParseFailure {
         &self.parse
     }
@@ -62,9 +80,7 @@ impl<E: std::error::Error + 'static> std::error::Error for HtmlParseCspFailure<E
 impl<E> Drop for HtmlParseCspFailure<E> {
     fn drop(&mut self) {
         drop(self.native.take());
-        if self.storage != Storage::ZERO {
-            self.parse.release_csp_storage(self.storage);
-        }
+        self.parse.return_csp_storage(self.storage);
     }
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -353,12 +369,12 @@ pub(crate) fn parse<P: HtmlMetaCspProcessor>(
                 }
                 _ => adapter.kind,
             };
-            Err(HtmlParseCspFailure {
+            Err(HtmlParseCspFailure::new(
                 parse,
-                native: adapter.error,
+                adapter.error,
                 kind,
-                storage: adapter.storage,
-            })
+                adapter.storage,
+            ))
         }
     }
 }
@@ -472,22 +488,49 @@ mod tests {
     }
 
     #[test]
-    fn dropping_a_failure_whose_owner_cannot_take_the_storage_back_does_not_panic() {
+    fn storage_a_failure_cannot_take_back_is_reported_before_the_envelope_is_dropped() {
         let request =
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<p>x"), limits());
         request.cancellation().cancel();
         let parse = request.parse().unwrap_err();
-        let failure = HtmlParseCspFailure::<()> {
+        assert_eq!(parse.cleanup_error(), None);
+        let failure = HtmlParseCspFailure::<()>::new(
             parse,
-            native: None,
-            kind: HtmlParseCspFailureKind::Cancelled,
-            storage: Storage {
+            None,
+            HtmlParseCspFailureKind::Cancelled,
+            Storage {
                 bytes: 8,
                 units: 2,
                 entries: 1,
             },
-        };
-        assert_eq!(failure.parse_failure().cleanup_error(), None);
+        );
+        // The caller can read why the storage was not released, and the
+        // envelope holds nothing for its drop to hand back.
+        assert_eq!(
+            failure.parse_failure().cleanup_error(),
+            Some(crate::HtmlParseEngineCondition::Ownership)
+        );
+        assert_eq!(failure.storage, ReturnableCspStorage::NONE);
+        assert_eq!(
+            failure.parse_failure().reason(),
+            crate::HtmlParseFailureReason::Stop(ParseStop::Cancelled)
+        );
         drop(failure);
+    }
+
+    #[test]
+    fn no_storage_leaves_a_failure_without_a_cleanup_report() {
+        let request =
+            crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<p>x"), limits());
+        request.cancellation().cancel();
+        let parse = request.parse().unwrap_err();
+        let failure = HtmlParseCspFailure::<()>::new(
+            parse,
+            None,
+            HtmlParseCspFailureKind::Cancelled,
+            Storage::ZERO,
+        );
+        assert_eq!(failure.parse_failure().cleanup_error(), None);
+        assert_eq!(failure.storage, ReturnableCspStorage::NONE);
     }
 }

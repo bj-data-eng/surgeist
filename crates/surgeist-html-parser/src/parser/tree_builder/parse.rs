@@ -39,6 +39,13 @@ pub enum HtmlParseEngineCondition {
     Completion,
     Cleanup,
 }
+/// CSP storage this failure agreed to take back (see
+/// `HtmlParseFailure::claim_csp_storage`); only a claim can produce one.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ReturnableCspStorage(crate::meta_csp::Storage);
+impl ReturnableCspStorage {
+    pub(crate) const NONE: Self = Self(crate::meta_csp::Storage::ZERO);
+}
 enum FailureStorage {
     OrdinaryInitialization(OrdinaryInitializationOwner),
     Ordinary(OwnedOrdinaryFailure),
@@ -54,17 +61,33 @@ pub struct HtmlParseFailure {
     cleanup_error: Option<HtmlParseEngineCondition>,
 }
 impl HtmlParseFailure {
-    pub(crate) fn release_csp_storage(&mut self, storage: crate::meta_csp::Storage) {
-        match &mut self.storage {
-            FailureStorage::Ordinary(owner) => owner.release_csp_storage(storage),
-            // A native error is issued only by the original ordinary driver, so
-            // no other owner holds the controller its storage was charged to.
-            // The storage stays unreleased and the cleanup records why; the
-            // original stop and retained evidence are untouched.
-            _ => {
-                self.cleanup_error
-                    .get_or_insert(HtmlParseEngineCondition::Ownership);
-            }
+    /// Decides, while this failure is still readable by the caller, whether it
+    /// can take back `storage` that a processor's native error carried out of
+    /// the parse. Only the original ordinary driver holds the controller the
+    /// storage was charged to. For any other owner the storage stays
+    /// unreleased and `cleanup_error` says why; the original stop and retained
+    /// evidence are untouched. The result is what may later be returned.
+    pub(crate) fn claim_csp_storage(
+        &mut self,
+        storage: crate::meta_csp::Storage,
+    ) -> ReturnableCspStorage {
+        if storage == crate::meta_csp::Storage::ZERO
+            || matches!(self.storage, FailureStorage::Ordinary(_))
+        {
+            return ReturnableCspStorage(storage);
+        }
+        self.cleanup_error
+            .get_or_insert(HtmlParseEngineCondition::Ownership);
+        ReturnableCspStorage::NONE
+    }
+    /// Gives claimed storage back to the controller it was charged to.
+    pub(crate) fn return_csp_storage(&mut self, storage: ReturnableCspStorage) {
+        // A claim for nonzero storage exists only for an ordinary failure, and
+        // the owner variant never changes after construction.
+        if let FailureStorage::Ordinary(owner) = &mut self.storage
+            && storage.0 != crate::meta_csp::Storage::ZERO
+        {
+            owner.release_csp_storage(storage.0);
         }
     }
 
@@ -826,11 +849,13 @@ mod tests {
         assert!(!matches!(failed.storage, FailureStorage::Ordinary(_)));
         assert_eq!(failed.cleanup_error(), None);
         let retained = failed.retained_usage().cloned();
-        failed.release_csp_storage(crate::meta_csp::Storage {
+        let claimed = failed.claim_csp_storage(crate::meta_csp::Storage {
             bytes: 1,
             units: 1,
             entries: 1,
         });
+        assert_eq!(claimed, ReturnableCspStorage::NONE);
+        failed.return_csp_storage(claimed);
         assert_eq!(
             failed.cleanup_error(),
             Some(HtmlParseEngineCondition::Ownership)
