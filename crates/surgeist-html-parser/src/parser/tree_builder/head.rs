@@ -2012,8 +2012,8 @@ mod script_state_tests {
         ));
         assert_eq!(
             driver.control.stop(),
-            Some(ParseStop::UnsupportedStandaloneState(
-                crate::parser::control::StandaloneUnsupported::InvalidNesting
+            Some(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::RegistryRow
             ))
         );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();

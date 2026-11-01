@@ -19896,6 +19896,11 @@ fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
         StandaloneError::Head(HeadError::MissingInput),
         StandaloneError::Head(HeadError::MissingTokenizer),
         StandaloneError::Head(HeadError::InvalidFormattingState),
+        StandaloneError::Head(HeadError::InvalidTextToken),
+        StandaloneError::Head(HeadError::MissingReturnMode),
+        StandaloneError::Head(HeadError::InvalidScriptNesting),
+        StandaloneError::Head(HeadError::TokenizerExhausted),
+        StandaloneError::TokenizerExhausted,
         StandaloneError::Head(HeadError::Kernel(KernelError::Consumed)),
         StandaloneError::Head(HeadError::Prologue(PrologueError::Consumed)),
         StandaloneError::Prologue(PrologueError::Consumed),
@@ -19909,10 +19914,9 @@ fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
         StandaloneError::UnsupportedDocumentInitialization,
         StandaloneError::UnsupportedExecutionProfile,
         StandaloneError::Stop(ParseStop::Cancelled),
-        StandaloneError::TokenizerExhausted,
         StandaloneError::Head(HeadError::UnsupportedScriptPause),
         StandaloneError::Head(HeadError::UnsupportedPendingScript),
-        StandaloneError::Head(HeadError::InvalidScriptNesting),
+        StandaloneError::Head(HeadError::AlreadyAtBoundary),
         StandaloneError::Head(HeadError::IncompleteCompletion),
         StandaloneError::Head(HeadError::ConstructionCapabilityUnavailable),
         StandaloneError::Head(HeadError::Kernel(KernelError::EmptyStack)),
@@ -19951,6 +19955,23 @@ fn an_ordinary_completion_without_its_stage_state_latches_the_registry_row() {
     let stop = ParseStop::InternalInvariant(Invariant::RegistryRow);
     assert_eq!(driver.control.stop(), Some(stop));
     driver.head.as_mut().unwrap().state = Some(state);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.stop(), Some(stop));
+}
+
+#[test]
+fn enabling_meta_csp_without_the_prologue_latches_the_registry_row() {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits(100));
+    let mut driver = entry::initialized_driver(&request);
+    // Private-state fault injection: the prologue the processor attaches to is
+    // gone, which is not an unsupported document.
+    let prologue = driver.prologue.take().unwrap();
+    let error = driver.enable_meta_csp(false).err().unwrap();
+    assert!(matches!(error, StandaloneError::Consumed), "{error:?}");
+    let stop = ParseStop::InternalInvariant(Invariant::RegistryRow);
+    assert_eq!(driver.control.stop(), Some(stop));
+    driver.prologue = Some(prologue);
     driver.release().unwrap();
     assert_released(&driver.control);
     assert_eq!(driver.control.stop(), Some(stop));

@@ -940,6 +940,39 @@ mod tests {
     }
 
     #[test]
+    fn a_failure_whose_cleanup_was_refused_still_reports_its_first_stop() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        let failed = HtmlParseFailure {
+            reason: HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            storage: FailureStorage::OrdinaryInitialization(OrdinaryInitialization::new(request)),
+            cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
+        };
+        // The carrier holds no stopped prefix, but execution ran and was
+        // stopped: the stop the reason names is the first one.
+        assert_eq!(failed.first_stop(), Some(ParseStop::Cancelled));
+        assert_eq!(failed.source_admitted(), None);
+        assert_eq!(
+            failed.cleanup_error(),
+            Some(HtmlParseEngineCondition::Cleanup)
+        );
+        // Without a cleanup condition, the same carrier names no stop.
+        let rejected = HtmlParseFailure {
+            reason: HtmlParseFailureReason::UnsupportedDocumentInitialization,
+            storage: FailureStorage::OrdinaryInitialization(OrdinaryInitialization::new(
+                HtmlDocumentParseRequest::offline(
+                    HtmlSource::utf8("x"),
+                    super::super::tests::limits(100),
+                ),
+            )),
+            cleanup_error: None,
+        };
+        assert_eq!(rejected.first_stop(), None);
+    }
+
+    #[test]
     fn csp_storage_the_ordinary_controller_never_admitted_is_reported_not_claimed() {
         let tight = super::super::tests::limits(100)
             .into_builder()

@@ -222,6 +222,45 @@ fn frozen_completed(request: &HtmlDocumentParseRequest) -> CompletedStandaloneDo
     }
     panic!("real EOF was not reached");
 }
+#[test]
+fn a_completion_stopped_for_a_lost_owner_latches_the_invariant_and_still_cleans() {
+    for lost in [true, false] {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        completed.stop_for_public_failure(lost);
+        let expected = if lost {
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+        } else {
+            ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+        };
+        assert_eq!(
+            completed.driver.as_ref().unwrap().control.stop(),
+            Some(expected)
+        );
+        let mut failed = completed.take_public_failure().unwrap();
+        assert_eq!(failed.stop(), expected);
+        failed.release().unwrap();
+        super::super::tests::assert_released(&failed.control);
+    }
+}
+#[test]
+fn a_completion_without_a_stop_is_not_taken_as_a_failure_and_keeps_its_driver() {
+    let request = HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<p>x"),
+        super::super::tests::limits(100),
+    );
+    let mut completed = frozen_completed(&request);
+    assert!(matches!(
+        completed.take_public_failure(),
+        Err(StandaloneError::Consumed)
+    ));
+    assert!(completed.driver.is_some());
+    completed.release().unwrap();
+    assert!(completed.driver.is_none());
+}
 fn native_child<'a>(
     document: &'a crate::HtmlDocument,
     parent: crate::HtmlNode<'a>,

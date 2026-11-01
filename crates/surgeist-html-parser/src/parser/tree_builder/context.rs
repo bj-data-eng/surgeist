@@ -1140,6 +1140,10 @@ mod tests {
             FragmentExecutionError::Head(HeadError::MissingInput),
             FragmentExecutionError::Head(HeadError::MissingTokenizer),
             FragmentExecutionError::Head(HeadError::InvalidFormattingState),
+            FragmentExecutionError::Head(HeadError::InvalidTextToken),
+            FragmentExecutionError::Head(HeadError::MissingReturnMode),
+            FragmentExecutionError::Head(HeadError::InvalidScriptNesting),
+            FragmentExecutionError::Head(HeadError::TokenizerExhausted),
             FragmentExecutionError::Head(HeadError::Kernel(KernelError::Consumed)),
         ];
         for error in &lost {
@@ -1152,7 +1156,7 @@ mod tests {
                 SessionError::ScriptMetadataUnavailable,
             )),
             FragmentExecutionError::Head(HeadError::UnsupportedScriptPause),
-            FragmentExecutionError::Head(HeadError::InvalidScriptNesting),
+            FragmentExecutionError::Head(HeadError::AlreadyAtBoundary),
             FragmentExecutionError::Head(HeadError::Kernel(KernelError::Session(
                 SessionError::CompletionIncomplete,
             ))),
@@ -1182,6 +1186,37 @@ mod tests {
         driver.release().unwrap();
         super::super::tests::assert_released(&driver.control);
         assert_eq!(driver.control.stop(), Some(stop));
+    }
+
+    #[test]
+    fn a_fragment_completion_stopped_for_a_lost_owner_latches_the_invariant_and_still_cleans() {
+        for lost in [true, false] {
+            let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
+            let mut driver = Some(initialized_driver(&request));
+            complete(driver.as_mut().unwrap());
+            let mut completed = ContextFragmentDriver::take_completed(&mut driver).unwrap();
+            completed.stop_for_public_failure(lost);
+            let expected = if lost {
+                ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+            } else {
+                ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+            };
+            assert_eq!(
+                completed.driver.as_ref().unwrap().control.stop(),
+                Some(expected)
+            );
+            let mut failed = completed.take_failed().unwrap();
+            assert_eq!(failed.stop(), expected);
+            failed.release().unwrap();
+            assert_eq!(
+                failed
+                    .control
+                    .usage()
+                    .resource(HtmlParseResource::OpenElements)
+                    .current,
+                0
+            );
+        }
     }
 
     #[test]
