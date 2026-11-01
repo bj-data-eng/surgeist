@@ -360,6 +360,9 @@ struct SessionStorage {
     construction: ConstructionOwner,
     payloads: PayloadStorage,
     failed_text_append: Option<text_append::FailedTextAppend>,
+    /// The registry row listing the document tree's style elements while every
+    /// change to that list since it was built has been applied to it.
+    style_order: Option<pending_association::CurrentOrder>,
 }
 
 use crate::bounded::HtmlConstructionResult;
@@ -664,6 +667,9 @@ enum RetainedPayload {
         state: SelectMetadata,
     },
     WorkList(Option<OwnedVec<usize>>),
+    /// The style elements of one tree in tree order, shared by the style
+    /// occurrences recorded while the tree held exactly a prefix of them.
+    StyleOrder(OwnedVec<usize>),
     // A replaced raw backing was disposed; its initialized registry slot
     // remains admitted until the registry itself is released.
     Retired,
@@ -1236,6 +1242,7 @@ impl PayloadStorage {
                 }
                 RetainedPayload::WorkList(Some(list)) => list.require_disposal_owner(control)?,
                 RetainedPayload::WorkList(None) => return Err(SessionError::Consumed),
+                RetainedPayload::StyleOrder(list) => list.require_disposal_owner(control)?,
             }
         }
         Ok(())
@@ -1415,6 +1422,10 @@ impl PayloadStorage {
                 continue;
             }
             if let RetainedPayload::WorkList(Some(list)) = payload {
+                keep_first(&mut refused, list.release(control));
+                continue;
+            }
+            if let RetainedPayload::StyleOrder(list) = payload {
                 keep_first(&mut refused, list.release(control));
                 continue;
             }
@@ -1741,6 +1752,7 @@ impl SessionStorage {
             standalone_ineligibility: None,
             construction,
             failed_text_append: None,
+            style_order: Some(pending_association::CurrentOrder::empty_main_tree()),
             payloads: PayloadStorage {
                 values,
                 allocation,
@@ -5842,6 +5854,7 @@ impl SessionStorage {
             construction,
             payloads,
             failed_text_append,
+            style_order: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
         } = self;
@@ -8069,6 +8082,7 @@ impl ParserArenaSession {
             construction,
             payloads,
             failed_text_append,
+            style_order: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
         } = self

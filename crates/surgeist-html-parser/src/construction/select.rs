@@ -868,16 +868,16 @@ impl SessionStorage {
         }
         Ok(())
     }
-    /// Whether no option can follow `option` in `select`'s list: it ends every
-    /// ancestor's children up to the select, and an option's own descendants
-    /// are not in the list.
-    fn ends_option_list(
+    /// Whether no node follows `node` in `root`'s subtree in tree order, apart
+    /// from `node`'s own descendants: it ends every ancestor's children up to
+    /// `root`.
+    pub(super) fn ends_subtree(
         &self,
         c: &mut ParseControl,
-        select: usize,
-        option: usize,
+        root: usize,
+        node: usize,
     ) -> Result<bool, SessionError> {
-        let mut node = option;
+        let mut node = node;
         for _ in 0..self.construction.storage().len() {
             let Some(parent) = self.ordinary_parent(c, node, None)? else {
                 return Ok(false);
@@ -895,7 +895,7 @@ impl SessionStorage {
             if last != Some(node) {
                 return Ok(false);
             }
-            if parent == select {
+            if parent == root {
                 return Ok(true);
             }
             node = parent;
@@ -926,7 +926,8 @@ impl SessionStorage {
         let Some(settled) = select_state.settled else {
             return Ok(None);
         };
-        if !self.ends_option_list(c, select, option)? {
+        // An option's own descendants are not in the list.
+        if !self.ends_subtree(c, select, option)? {
             return Ok(None);
         }
         let (option_slot, SelectMetadata::Option(mut option_state)) =
@@ -1069,6 +1070,23 @@ impl SessionStorage {
             next = self.uncharged_parent(ancestor);
         }
         false
+    }
+    /// Uncharged: the style elements of the tree at `root` in tree order.
+    pub(super) fn uncharged_style_order(&self, root: usize) -> Vec<usize> {
+        let mut found = Vec::new();
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            let record = self.construction.node_at(node).expect("a retained node");
+            if self.uncharged_html_local(node, "style") {
+                found.push(node);
+            }
+            stack.extend(
+                (0..record.child_count())
+                    .rev()
+                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
+            );
+        }
+        found
     }
     /// Uncharged: the selectedcontent elements below `select` in tree order.
     fn uncharged_selectedcontent_descendants(&self, select: usize) -> Vec<usize> {

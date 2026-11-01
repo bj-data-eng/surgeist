@@ -93,7 +93,32 @@ pub(super) struct Inputs {
     document_tree: bool,
     attributes: [Option<OriginGroupRef>; 5],
     text: OwnedVec<OriginGroupRef>,
-    order: OwnedVec<usize>,
+    /// The tree's style elements in tree order when this occurrence was
+    /// recorded: the first `len` entries of a shared `StyleOrder` row.
+    order: Option<OrderRef>,
+}
+#[derive(Clone, Copy)]
+struct OrderRef {
+    slot: usize,
+    len: usize,
+}
+/// The style elements of the session's main tree, the tree rooted at record 0,
+/// as a registry row (none while the tree holds no style element) that every
+/// insertion and removal of a style element since the session began has been
+/// applied to.
+#[derive(Clone, Copy)]
+pub(super) struct CurrentOrder {
+    root: usize,
+    slot: Option<usize>,
+}
+impl CurrentOrder {
+    /// Record 0 is the main tree's root, and it has no descendants yet.
+    pub(super) fn empty_main_tree() -> Self {
+        Self {
+            root: 0,
+            slot: None,
+        }
+    }
 }
 pub(super) struct Context {
     input_document: usize,
@@ -309,7 +334,6 @@ impl SessionStorage {
             HtmlNodeKind::Document(_)
         );
         let mut text = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        let mut order = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let result = (|| {
             let mut attributes = [None, None, None, None, None];
             for (index, local) in ["type", "media", "title", "blocking", "nonce"]
@@ -344,17 +368,11 @@ impl SessionStorage {
                     text.try_push_geometric(c, group)?;
                 }
             }
-            let mut next = Some(root);
-            while let Some(candidate) = next {
-                if self.html_local(c, candidate, "style")? {
-                    order.try_push_geometric(c, candidate)?;
-                }
-                next = self.next_view_node(c, root, candidate, detached)?;
-            }
-            Ok::<_, SessionError>(attributes)
+            let order = self.style_order(c, root, detached)?;
+            Ok::<_, SessionError>((attributes, order))
         })();
         match result {
-            Ok(attributes) => Ok(Some(Inputs {
+            Ok((attributes, order)) => Ok(Some(Inputs {
                 state,
                 parser_document,
                 connected,
@@ -366,10 +384,159 @@ impl SessionStorage {
             })),
             Err(error) => {
                 text.release(c)?;
-                order.release(c)?;
                 Err(error)
             }
         }
+    }
+    /// The tree's style elements in tree order, as a prefix of a shared row.
+    /// The main tree keeps one row that each style insertion at the end of the
+    /// tree extends; any other change to its style elements, and every other
+    /// tree, builds the row by walking the tree.
+    fn style_order(
+        &mut self,
+        c: &mut ParseControl,
+        root: usize,
+        detached: Option<usize>,
+    ) -> Result<Option<OrderRef>, SessionError> {
+        let cacheable = root == 0 && detached.is_none();
+        if cacheable && let Some(current) = self.style_order {
+            let order = match current.slot {
+                None => None,
+                Some(slot) => {
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get(slot)
+                    else {
+                        return Err(latch_registry_row(c));
+                    };
+                    Some(OrderRef {
+                        slot,
+                        len: list.len(),
+                    })
+                }
+            };
+            #[cfg(test)]
+            assert_eq!(
+                order.map_or(&[][..], |order| match &self.payloads.values[order.slot] {
+                    RetainedPayload::StyleOrder(list) => list.as_slice(),
+                    _ => &[],
+                }),
+                self.uncharged_style_order(root).as_slice(),
+                "the extended style order equals the tree's walk"
+            );
+            return Ok(order);
+        }
+        let mut list = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        let walked = (|| {
+            let mut next = Some(root);
+            while let Some(candidate) = next {
+                if self.html_local(c, candidate, "style")? {
+                    list.try_push_geometric(c, candidate)?;
+                }
+                next = self.next_view_node(c, root, candidate, detached)?;
+            }
+            Ok::<_, SessionError>(())
+        })();
+        if let Err(error) = walked {
+            list.release(c)?;
+            return Err(error);
+        }
+        let order = self.retain_style_order(c, list)?;
+        if cacheable {
+            self.style_order = Some(CurrentOrder {
+                root,
+                slot: order.map(|order| order.slot),
+            });
+        }
+        Ok(order)
+    }
+    /// Registers a style order row, or releases an empty list.
+    fn retain_style_order(
+        &mut self,
+        c: &mut ParseControl,
+        list: OwnedVec<usize>,
+    ) -> Result<Option<OrderRef>, SessionError> {
+        if list.len() == 0 {
+            list.release(c)?;
+            return Ok(None);
+        }
+        if let Err(error) = self.prepare_payload_slot_owned(c) {
+            list.release(c)?;
+            return Err(error);
+        }
+        let order = OrderRef {
+            slot: self.payloads.values.len(),
+            len: list.len(),
+        };
+        self.payloads.values.push(RetainedPayload::StyleOrder(list));
+        Ok(Some(order))
+    }
+    /// Applies a style element's insertion or removal to the main tree's style
+    /// order. A removal, or an insertion that is not at the end of the tree,
+    /// drops the order for the next trigger to rebuild.
+    fn style_order_changed(
+        &mut self,
+        c: &mut ParseControl,
+        style: usize,
+        detached: Option<usize>,
+        removal: bool,
+    ) -> Result<(), SessionError> {
+        let Some(current) = self.style_order else {
+            return Ok(());
+        };
+        if removal || detached.is_some() {
+            self.style_order = None;
+            return Ok(());
+        }
+        if self.ordinary_root(c, style, None)? != current.root {
+            return Ok(());
+        }
+        if let Some(slot) = current.slot {
+            let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get(slot) else {
+                return Err(latch_registry_row(c));
+            };
+            // A rebuild during this subtree's insertion already lists the style.
+            if list.as_slice().last() == Some(&style) {
+                return Ok(());
+            }
+        }
+        // Style elements hold text, so only the style itself can follow it.
+        let record = self
+            .construction
+            .node_at(style)
+            .ok_or_else(|| latch_registry_row(c))?;
+        let mut elements = false;
+        for position in 0..record.child_count() {
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            elements |= record
+                .child_at(position)
+                .is_some_and(|child| matches!(child.kind(), HtmlNodeKind::Element(_)));
+        }
+        if elements || !self.ends_subtree(c, current.root, style)? {
+            self.style_order = None;
+            return Ok(());
+        }
+        match current.slot {
+            Some(slot) => {
+                let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get_mut(slot)
+                else {
+                    return Err(latch_registry_row(c));
+                };
+                list.try_push_geometric(c, style)?;
+            }
+            None => {
+                let mut list = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+                if let Err(error) = list.try_push_geometric(c, style) {
+                    list.release(c)?;
+                    return Err(error.into());
+                }
+                let order = self.retain_style_order(c, list)?;
+                self.style_order = Some(CurrentOrder {
+                    root: current.root,
+                    slot: order.map(|order| order.slot),
+                });
+            }
+        }
+        Ok(())
     }
     fn association_captured_context(
         &mut self,
@@ -744,7 +911,6 @@ impl SessionStorage {
             Err(error) => {
                 if let Some(inputs) = inputs {
                     inputs.text.release(c)?;
-                    inputs.order.release(c)?;
                 }
                 Err(error)
             }
@@ -787,6 +953,7 @@ impl SessionStorage {
         old_parent: Option<usize>,
     ) -> Result<(), SessionError> {
         if self.html_local(c, node, "style")? {
+            self.style_order_changed(c, node, detached, removal)?;
             let Some(slot) = self.style_slot(c, node)? else {
                 return Ok(());
             };
@@ -1237,12 +1404,18 @@ impl<'a> StyleInputs<'a> {
             .map(|value| group(self.history, value))
     }
     pub fn sheet_order_len(&self) -> usize {
-        self.value.order.len()
+        self.value.order.map_or(0, |order| order.len)
     }
     pub fn sheet_order(&self, index: usize) -> Option<HtmlNode<'a>> {
-        self.value
-            .order
-            .as_slice()
+        let order = self.value.order?;
+        if index >= order.len {
+            return None;
+        }
+        let Some(RetainedPayload::StyleOrder(list)) = self.storage.payloads.values.get(order.slot)
+        else {
+            return None;
+        };
+        list.as_slice()
             .get(index)
             .map(|node| native(self.storage, *node))
     }
@@ -1531,10 +1704,15 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 }
                 if let Some(inputs) = &value.inputs {
                     inputs.text.require_disposal_owner(c)?;
-                    inputs.order.require_disposal_owner(c)?;
-                    for node in inputs.order.as_slice() {
+                    if let Some(order) = inputs.order {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        if storage.view.node_at(*node).is_none() {
+                        // Entries are qualified once, with their row.
+                        if order.slot >= slot
+                            || !matches!(
+                                storage.payloads.values.get(order.slot),
+                                Some(RetainedPayload::StyleOrder(list)) if order.len != 0 && order.len <= list.len()
+                            )
+                        {
                             return Err(latch_registry_row(c));
                         }
                     }
@@ -1570,6 +1748,15 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                     && !matches!((&value.document, storage.payloads.values.get(provider)), (DocumentRef::Captured(document), Some(RetainedPayload::AssociationCapturedContext(context))) if context.value.document() == document)
                 {
                     return Err(latch_registry_row(c));
+                }
+            }
+            RetainedPayload::StyleOrder(list) => {
+                list.require_disposal_owner(c)?;
+                for node in list.as_slice() {
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    if storage.view.node_at(*node).is_none() {
+                        return Err(latch_registry_row(c));
+                    }
                 }
             }
             _ => {}
@@ -1629,10 +1816,6 @@ fn release_inputs(value: Occurrence, c: &mut ParseControl) {
             .text
             .release(c)
             .expect("owned association text inputs");
-        inputs
-            .order
-            .release(c)
-            .expect("owned association order inputs");
     }
 }
 pub(super) fn captured_usage(value: &CapturedContext) -> associated::AssociatedStorageUsage {

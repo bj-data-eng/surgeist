@@ -10586,6 +10586,45 @@ fn select_option_appends_agree_with_the_full_selectedness_algorithm_over_every_s
 }
 
 #[test]
+fn style_order_extensions_agree_with_the_tree_walk_over_varied_documents() {
+    // Every style trigger on the main tree is compared in test builds with a
+    // walk of the tree, so parsing each document is the check. The documents
+    // insert styles at the end, mid-tree, through foster parenting and the
+    // adoption agency, in templates and foreign content, and with text between.
+    for body in [
+        "<head><style>a{}</style><style>b{}</style><body><style>c{}</style>",
+        "<style>a{}</style><!--c--><style>b{}</style>t<style>c{}</style>",
+        "<table><style>a{}</style><tr><td><style>b{}</style></table><style>c{}",
+        "<table><b><style>a{}</style></b><tr><td>x</table><style>c{}",
+        "<b><style>a{}</style><p>x</b><style>b{}</style>",
+        "<b><p><style>a{}</style></b>x</p><style>b{}</style>",
+        "<a>1<style>a{}</style><a>2<style>b{}</style></a></a><style>c{}",
+        "<template><style>a{}</style></template><style>b{}</style>\
+         <template><template><style>c{}</style></template></template><style>d{}",
+        "<svg><style>a{}</style></svg><style>b{}</style><math><style>c{}</style></math>",
+        "<select><style>a{}</style><option>x</select><style>b{}",
+        "<div><div><style>a{}</style></div><style>b{}</style></div><style>c{}",
+        "<p><style>a{}</style><p><style>b{}</style><ul><li><style>c{}",
+        "<form><style>a{}</style></form><form><style>b{}</style><style>c{}</style>",
+        "<style>a{}</style><frameset><style>b{}</style></frameset><style>c{}",
+        "<style type=text/css media=print title=t nonce=n>a{}</style><style>b{}",
+    ] {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!("<!doctype html>{body}")),
+            limits(100),
+        );
+        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+        assert_eq!(
+            standalone_boundary(&mut driver),
+            super::head::HeadStep::Complete
+        );
+        let (mut c, mut frozen) = body_document(driver);
+        frozen.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+}
+
+#[test]
 fn select_family_modern_body_dispatch_keeps_generic_children_and_hidden_guard() {
     for (source, expected) in [
         (
