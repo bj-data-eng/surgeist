@@ -923,34 +923,60 @@ fn popping_the_last_template_costs_the_same_at_every_depth() {
 }
 
 #[test]
-fn finding_a_listed_template_charges_the_comparisons_of_the_search() {
-    // Sixteen nested templates are listed at stack indices 1 through 16. A
-    // binary search over n listings makes at most floor(log2 n) + 1
-    // comparisons, so five over sixteen and four over fifteen. Replacing or
-    // removing a listed entry searches the list twice: once to learn that the
-    // entry is listed and once to unlist it. The kernel charges one state step
-    // for each comparison, as it does for each stack entry a scan examines.
-    let source = HtmlSource::utf8(format!("<html>{}<div>", "<template>".repeat(16)));
+fn finding_a_listed_template_charges_each_probe_of_the_search() {
+    // Sixteen nested templates are listed at stack indices 1 through 16, and a
+    // div sits on top at 17. The search probes the middle of the range still
+    // open, `low + (high - low) / 2` over the listing positions, and stops at
+    // the first probe that finds the entry; each probe is one state step.
+    // Replacing or removing a listed entry searches the list twice: once to
+    // learn that the entry is listed and once to unlist it.
+    //
+    // 1. Replace the template at stack index 9 (position 8 of 16): the first
+    //    probe is position 8, which holds 9, so each search takes 1 probe: 2.
+    //    Unlisting leaves 15 listings: 1-8 and 10-16.
+    // 2. Remove the template at index 8 (position 7 of 15): the first probe is
+    //    position 7, which holds 8, so each search takes 1 probe: 2. The
+    //    entries above move down, leaving 14 listings: 1-7 and 9-15.
+    // 3. Replace the div, now at index 16, which is not listed. The range
+    //    0..14 probes position 7 (holds 9, less than 16), then 8..14 probes
+    //    position 11 (holds 13), then 12..14 probes position 13 (holds 15),
+    //    and 14..14 is empty: 3 probes and not found. Only one search is made,
+    //    as nothing is unlisted: 3.
+    let source = HtmlSource::utf8(format!("<html>{}<div><div><div>", "<template>".repeat(16)));
     let mut c = control(100);
     c.admit_source(&source).unwrap();
     let mut tokenizer =
         crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
             .unwrap();
     let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
-    for _ in 0..16 {
+    for _ in 0..17 {
         add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
     }
-    assert_eq!(kernel.template_indices().len(), 16);
-    let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    assert_eq!(kernel.template_indices(), (1..=16).collect::<Vec<_>>());
     let steps = |c: &ParseControl| c.usage().work(WorkCategory::StateStep);
+
+    let first = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = steps(&c);
-    kernel.replace_stack(1, &replacement, &mut c, None).unwrap();
-    assert_eq!(steps(&c) - before, 2 * 5);
-    assert_eq!(kernel.template_indices().len(), 15);
-    let lowest = kernel.at(2, &mut c).unwrap();
+    kernel.replace_stack(9, &first, &mut c, None).unwrap();
+    assert_eq!(steps(&c) - before, 2);
+    assert_eq!(
+        kernel.template_indices(),
+        (1..=8).chain(10..=16).collect::<Vec<_>>()
+    );
+
+    let eighth = kernel.at(8, &mut c).unwrap();
     let before = steps(&c);
-    kernel.remove_stack_identity(&lowest, &mut c, None).unwrap();
-    assert_eq!(steps(&c) - before, 2 * 4);
+    kernel.remove_stack_identity(&eighth, &mut c, None).unwrap();
+    assert_eq!(steps(&c) - before, 2);
+    assert_eq!(
+        kernel.template_indices(),
+        (1..=7).chain(9..=15).collect::<Vec<_>>()
+    );
+
+    let second = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    let before = steps(&c);
+    kernel.replace_stack(16, &second, &mut c, None).unwrap();
+    assert_eq!(steps(&c) - before, 3);
     assert_eq!(kernel.template_indices().len(), 14);
     tokenizer.release(&mut c).unwrap();
     kernel.release(&mut c).unwrap();
@@ -958,7 +984,7 @@ fn finding_a_listed_template_charges_the_comparisons_of_the_search() {
 }
 
 #[test]
-fn a_failed_stack_release_still_releases_the_templates_and_clears_the_root_target() {
+fn a_failed_stack_release_takes_the_templates_and_clears_the_root_target() {
     let source = HtmlSource::utf8("<html><template>");
     let mut c = control(100);
     c.admit_source(&source).unwrap();
