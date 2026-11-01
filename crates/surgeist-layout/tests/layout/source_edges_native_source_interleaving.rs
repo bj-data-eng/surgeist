@@ -95,6 +95,7 @@ impl<S: layout::LayoutScalar> MixedHost<S> {
                 metrics,
                 layout::InlineBoundaryEdgeOf::ZERO,
             )
+            .unwrap()
             .with_direction(direction)
         };
         Self {

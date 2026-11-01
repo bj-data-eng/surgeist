@@ -1976,6 +1976,7 @@ impl TestTree {
                         metrics,
                         layout::InlineBoundaryEdge::ZERO,
                     )
+                    .unwrap()
                     .with_direction(flow.direction())
                     .with_writing_mode(flow.writing_mode()),
                 )
@@ -1997,6 +1998,7 @@ impl TestTree {
                             metrics,
                             layout::InlineBoundaryEdgeOf::ZERO,
                         )
+                        .unwrap()
                         .with_direction(flow.direction())
                         .with_writing_mode(flow.writing_mode()),
                     )

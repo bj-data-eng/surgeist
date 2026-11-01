@@ -460,7 +460,7 @@ fn real_endpoint_strips_keep_source_free_slots_and_exact_cw_position_selection()
     assert_eq!(slots.len(), 2);
     for ((slot, control), interval) in slots.iter().zip(&controls).zip([(0.0, 2.0), (12.0, 15.0)]) {
         assert_eq!(slot.control(), *control);
-        assert_eq!(slot.inline_bounds(), interval);
+        assert_eq!(slot.strip_interval(), interval);
         assert_eq!(slot.level().get(), 0);
     }
     let fragments = line

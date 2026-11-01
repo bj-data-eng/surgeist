@@ -247,8 +247,8 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
     assert_eq!(line.feedback().advance, 20.0 + opening);
     let slots = line.control_slots().collect::<Vec<_>>();
     assert_eq!(slots.len(), 2);
-    assert_eq!(slots[0].inline_bounds(), (10.0, 10.0 + opening));
-    assert_eq!(slots[1].inline_bounds(), (20.0 + opening, 20.0 + opening));
+    assert_eq!(slots[0].strip_interval(), (10.0, 10.0 + opening));
+    assert_eq!(slots[1].strip_interval(), (20.0 + opening, 20.0 + opening));
     let layout = text::Layout::from_finalized_lines(text::PlacementRequest {
         prepared: prepared.clone(),
         coverage: text::PlacementCoverage::WholeParagraph,
@@ -436,3 +436,6 @@ fn positive_inline_endpoint_displaces_only_the_second_real_ahem_cell_without_pai
 
 #[path = "parent_geometry_paint.rs"]
 mod parent_geometry_paint;
+
+#[path = "signed_edge_paint.rs"]
+mod signed_edge_paint;

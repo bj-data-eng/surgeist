@@ -340,6 +340,7 @@ fn tree<S: LayoutScalar>(
                         .find_map(|(node, edge)| (*node == control.node).then_some(*edge))
                         .unwrap_or(InlineBoundaryEdgeOf::ZERO),
                 )
+                .unwrap()
                 .with_direction(if rtl { Direction::Rtl } else { Direction::Ltr }),
             ),
         );

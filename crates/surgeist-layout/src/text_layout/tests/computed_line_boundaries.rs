@@ -387,6 +387,7 @@ fn tree<S: LayoutScalar>(fixture: &Fixture, rtl: bool) -> PublicLayoutTreeOf<S> 
                     .unwrap(),
                     InlineBoundaryEdgeOf::ZERO,
                 )
+                .unwrap()
                 .with_direction(direction),
             ),
         );

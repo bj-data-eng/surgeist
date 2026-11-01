@@ -188,6 +188,7 @@ mod tests {
             boundary_metrics,
             crate::InlineBoundaryEdgeOf::ZERO,
         )
+        .expect("zero-margin contribution")
         .with_writing_mode(WritingMode::SidewaysRl)
         .with_direction(Direction::Rtl)
         .with_vertical_align(VerticalAlignOf::Bottom);

@@ -434,6 +434,7 @@ fn explicit_control_offsets<S: l::LayoutScalar>() {
                             metrics,
                             l::InlineBoundaryEdgeOf::ZERO,
                         )
+                        .unwrap()
                         .with_vertical_align(alignment),
                     ),
                 );

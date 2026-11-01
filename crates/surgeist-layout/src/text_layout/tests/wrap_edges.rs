@@ -241,6 +241,7 @@ impl Fixture {
                         .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
+                    .unwrap()
                     .with_direction(Direction::Ltr),
                 ),
             );

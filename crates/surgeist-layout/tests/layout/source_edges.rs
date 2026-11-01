@@ -1118,12 +1118,14 @@ impl<S: layout::LayoutScalar> PairedEarly<S> {
             metrics,
             layout::InlineBoundaryEdgeOf::ZERO,
         )
+        .unwrap()
         .with_direction(direction);
         let end = layout::InlineBoundaryInputOf::contribution(
             layout::InlineBoundaryKind::End,
             metrics,
             layout::InlineBoundaryEdgeOf::ZERO,
         )
+        .unwrap()
         .with_direction(direction);
         // The physical flow contains the actual pair's endpoints, while the
         // generated tree contains the one paired inline box, not two children.

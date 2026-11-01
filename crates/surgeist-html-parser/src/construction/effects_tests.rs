@@ -1845,12 +1845,10 @@ fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
     // Each element exercises the payload lookups its kind performs while it is
     // created, attributed and inserted: attribute containers, ids, the node's
     // document binding, attribute values read by identity (nonce, href), and
-    // script/style/dialog/image/form/details/output metadata. Input and select
-    // creation is not measured here: it runs the full-registry alias check
-    // (`check_aliases`, construction.rs, input/select creation and the
-    // named-attribute merge), which protects the registry's integrity
-    // guarantee and is deliberately linear; the indexed lookups they use are
-    // covered by the lookup-level test below. Elements that walk the document
+    // script/style/dialog/image/form/details/output metadata. Creation audits
+    // only the rows registered since the previous creation
+    // (`check_new_aliases`, construction.rs); the completed-freeze preflight
+    // and release still run the full `check_aliases`. Elements that walk the document
     // in tree order (meta theme color, style with text) scale with tree nodes,
     // not with payloads, and are not measured here.
     let elements = [
@@ -1866,6 +1864,8 @@ fn per_element_lookup_work_stays_constant_as_unrelated_payloads_grow() {
         "<textarea id=l>x</textarea>",
         "<details id=o open><summary>s</summary></details>",
         "<output id=r></output>",
+        "<input id=m name=a>",
+        "<select id=n><option>x</option></select>",
         "<svg id=s><circle></circle></svg>",
         "<link rel=stylesheet href=a>",
         "<p>text<!--c--></p>",

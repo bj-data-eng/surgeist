@@ -327,6 +327,7 @@ fn text_tree<S: LayoutScalar>(
                         .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
+                    .unwrap()
                     .with_direction(direction),
                 )
             }
@@ -822,6 +823,7 @@ fn numeric_tree<S: LayoutScalar>(
                         .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
+                    .unwrap()
                     .with_direction(direction),
                 ),
             );
@@ -2503,3 +2505,6 @@ fn unknown_topology_mixed_crossing_refuses_at_scope_construction() {
         failures.join("\n")
     );
 }
+
+#[path = "wrap_inside/signed_conditional_balance.rs"]
+mod signed_conditional_balance;

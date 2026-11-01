@@ -455,16 +455,19 @@ fn fixture_with_child_topology(
         };
         inputs.insert(
             10 + ordinal,
-            layout::LayoutInput::inline_boundary(layout::InlineBoundaryInput::contribution(
-                kind,
-                layout::InlineMetrics::try_new(
-                    surgeist_layout::InlineBaselineContext::Physical,
-                    8.0,
-                    10.0,
+            layout::LayoutInput::inline_boundary(
+                layout::InlineBoundaryInput::contribution(
+                    kind,
+                    layout::InlineMetrics::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        8.0,
+                        10.0,
+                    )
+                    .unwrap(),
+                    layout::InlineBoundaryEdgeOf::ZERO,
                 )
                 .unwrap(),
-                layout::InlineBoundaryEdgeOf::ZERO,
-            )),
+            ),
         );
     }
     let mut children = first_nodes.clone();

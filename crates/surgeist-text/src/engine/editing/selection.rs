@@ -181,13 +181,13 @@ pub(super) fn with_membership(
                 }
                 FinalizedVisualItem::Anchor(index) => {
                     let anchor = &data.anchors[index];
-                    if anchor.inline_end == anchor.slot.x {
+                    if anchor.strip_interval().1 == anchor.slot.x {
                         continue;
                     }
                     (
                         selected_anchor(line_index, index),
                         anchor.slot.x,
-                        anchor.inline_end,
+                        anchor.strip_interval().1,
                         anchor.reference,
                         None,
                     )

@@ -5,7 +5,9 @@
 //! Hence End3,atomic,Start2 => atomic[3,13], signed flow11, Native requirement13.
 //! Plain Contribution preserves Start2,atomic,End3 => atomic[2,12], requirement12.
 //! All three measurement views have identical operands here: no text, trimming,
-//! hanging, tabs, supplied spacing, CSS fit receipt or scope displacement.
+//! hanging, tabs, supplied spacing, CSS atomic fit receipt or scope displacement.
+//! Selected component BoxEdges activate CSS-composed authority while this
+//! atomic's actual NativeOccupied interval remains an independent constraint.
 
 use super::*;
 use crate::protocol::InlineBoxSource;
@@ -131,7 +133,10 @@ fn atomic_request(
             occurrence: view.handle(),
             strut: None,
             boundary: Some(if boxed {
-                InlineBoundaryAllocation::box_edge(context.clone(), advance).unwrap()
+                InlineBoundaryAllocation::box_edge(
+                    context.clone(),
+                    crate::InlineBoxEdgeComponents::from_f64(0.0, advance, 0.0).unwrap(),
+                )
             } else {
                 InlineBoundaryAllocation::contribution(advance).unwrap()
             }),
@@ -187,7 +192,7 @@ fn atomic_geometry(prepared: &PreparedText, line: &FinalizedLine, boxed: bool) {
             .control_slots()
             .find(|v| v.control() == control)
             .unwrap();
-        assert_eq!(slot.inline_bounds(), expected);
+        assert_eq!(slot.strip_interval(), expected);
     }
     let slots = line.atomic_slots().collect::<Vec<_>>();
     let [slot] = slots.as_slice() else {
@@ -224,7 +229,7 @@ fn atomic_geometry(prepared: &PreparedText, line: &FinalizedLine, boxed: bool) {
     assert_eq!(line.feedback().advance, 11.0);
 }
 
-fn atomic_measurements(line: &FinalizedLine, occupied_end: f64) {
+fn atomic_measurements(line: &FinalizedLine, occupied_end: f64, boxed: bool) {
     let measurements = line.measurements();
     let raw = measurements.fit();
     assert_eq!(
@@ -240,7 +245,18 @@ fn atomic_measurements(line: &FinalizedLine, occupied_end: f64) {
         measurements.margin_edge_min_content_contribution(),
         measurements.margin_edge_max_content_contribution(),
     ] {
-        assert_eq!(admission.authority(), MarginEdgeFitAuthority::NativeOnly);
+        assert_eq!(
+            admission.authority(),
+            if boxed {
+                MarginEdgeFitAuthority::CssComposed
+            } else {
+                MarginEdgeFitAuthority::NativeOnly
+            }
+        );
+        assert_eq!(
+            admission.native_occupied_bounds(),
+            if boxed { Some((3.0, 13.0)) } else { None }
+        );
         assert_eq!(admission.advance(), 11.0);
         assert_eq!(
             (admission.constraint_start(), admission.constraint_end()),
@@ -256,7 +272,7 @@ fn physical_parent_edges_measure_the_atomic_at_its_executed_position() {
     let plain_request = atomic_request(&capture, &prepared, false);
     let prior = finish_atomic(&prepared, plain_request.clone());
     atomic_geometry(&prepared, &prior, false);
-    atomic_measurements(&prior, 12.0);
+    atomic_measurements(&prior, 12.0, false);
     // Only endpoint authority changes. The atomic occurrence, source, levels,
     // Native raw geometry, independent advance6 and every other request stay.
     let boxed_request = atomic_request(&capture, &prepared, true);
@@ -267,18 +283,18 @@ fn physical_parent_edges_measure_the_atomic_at_its_executed_position() {
     assert_eq!(demoted, plain_request);
     let boxed = finish_atomic(&prepared, boxed_request.clone());
     atomic_geometry(&prepared, &boxed, true);
-    atomic_measurements(&boxed, 13.0);
+    atomic_measurements(&boxed, 13.0, true);
     assert_eq!(boxed.selected_line().request(), &boxed_request);
     let stats = system.stats();
     let replay = boxed.with_spacing(SpacingAllocations::None).unwrap();
     assert_eq!(system.stats(), stats);
     assert_eq!(replay.selected_line().request(), &boxed_request);
     atomic_geometry(&prepared, &replay, true);
-    atomic_measurements(&replay, 13.0);
+    atomic_measurements(&replay, 13.0, true);
     // Both independent owners remain usable while the replay coexists.
     assert_eq!(prior.selected_line().request(), &plain_request);
     atomic_geometry(&prepared, &prior, false);
-    atomic_measurements(&prior, 12.0);
+    atomic_measurements(&prior, 12.0, false);
     atomic_geometry(&prepared, &boxed, true);
-    atomic_measurements(&boxed, 13.0);
+    atomic_measurements(&boxed, 13.0, true);
 }

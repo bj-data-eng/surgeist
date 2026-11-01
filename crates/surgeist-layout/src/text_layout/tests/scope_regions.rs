@@ -87,12 +87,15 @@ fn bind(
             tree.insert_children(node, []);
             tree.insert_input(
                 node,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
-                    kind,
-                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
-                        .unwrap(),
-                    crate::InlineBoundaryEdgeOf::ZERO,
-                )),
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        kind,
+                        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                            .unwrap(),
+                        crate::InlineBoundaryEdgeOf::ZERO,
+                    )
+                    .unwrap(),
+                ),
             );
             TextControlBinding {
                 occurrence: view.handle(),

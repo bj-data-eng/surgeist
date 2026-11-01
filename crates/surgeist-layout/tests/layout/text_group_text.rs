@@ -338,9 +338,14 @@ impl Paragraph {
                                 l::InlineBoundaryInputOf::contribution(
                                     kind,
                                     metrics,
-                                    l::InlineBoundaryEdgeOf::try_new(S::from_f64(edge), S::ZERO)
-                                        .unwrap(),
+                                    l::InlineBoundaryEdgeOf::try_new(
+                                        S::ZERO,
+                                        S::from_f64(edge),
+                                        S::ZERO,
+                                    )
+                                    .unwrap(),
                                 )
+                                .unwrap()
                                 .with_writing_mode(writing_mode)
                                 .with_direction(direction),
                             )

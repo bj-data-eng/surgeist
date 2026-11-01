@@ -115,12 +115,18 @@ fn funded() -> Funded {
         ControlAllocation {
             occurrence: controls[1].clone(),
             strut: None,
-            boundary: Some(InlineBoundaryAllocation::box_edge(context.clone(), 1.0).unwrap()),
+            boundary: Some(InlineBoundaryAllocation::box_edge(
+                context.clone(),
+                crate::InlineBoxEdgeComponents::from_f64(0.0, 1.0, 0.0).unwrap(),
+            )),
         },
         ControlAllocation {
             occurrence: controls[2].clone(),
             strut: None,
-            boundary: Some(InlineBoundaryAllocation::box_edge(context, 2.0).unwrap()),
+            boundary: Some(InlineBoundaryAllocation::box_edge(
+                context,
+                crate::InlineBoxEdgeComponents::from_f64(0.0, 2.0, 0.0).unwrap(),
+            )),
         },
     ];
     // Small REAL spare caller capacity distinguishes retained backing from len.
@@ -214,7 +220,7 @@ fn preserved(f: &Funded, line: &FinalizedLine, request: &LineSelectionRequest) {
             .control_slots()
             .find(|slot| slot.control() == request.controls[row].occurrence)
             .unwrap();
-        assert_eq!(slot.inline_bounds(), expected);
+        assert_eq!(slot.strip_interval(), expected);
     }
 }
 fn refused<T>(result: Result<T>, kind: ScopeAlignmentLimitKind, required: usize, limit: usize) {

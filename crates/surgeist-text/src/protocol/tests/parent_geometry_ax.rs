@@ -64,7 +64,10 @@ fn placed_box_edges_project_relocated_original_units_to_ax() {
     .map(|(control, advance, context)| ControlAllocation {
         occurrence: control.clone(),
         strut: None,
-        boundary: Some(crate::InlineBoundaryAllocation::box_edge(context, advance).unwrap()),
+        boundary: Some(crate::InlineBoundaryAllocation::box_edge(
+            context,
+            crate::InlineBoxEdgeComponents::from_f64(0.0, advance, 0.0).unwrap(),
+        )),
     })
     .collect();
     assert!(prepared.boundary_context_demand(&input).unwrap().is_none());
