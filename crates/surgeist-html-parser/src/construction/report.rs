@@ -539,6 +539,16 @@ impl<'a> PreparedReportStorage<'a> {
                     if let Some(raw) = meta.language {
                         checked_raw(storage, raw, c)?;
                     }
+                    // `MetadataDocumentMeta` reads these rows without a controller.
+                    for slot in [meta.csp, meta.base_csp].into_iter().flatten() {
+                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        if !matches!(
+                            storage.payloads.values.get(slot),
+                            Some(RetainedPayload::CspPolicy(_))
+                        ) {
+                            return Err(latch_registry_row(c));
+                        }
+                    }
                     if let Some(scheme) = &meta.scheme {
                         scheme.require(c)?;
                         let Some(HtmlNodeKind::Document(mode)) =

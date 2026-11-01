@@ -1799,6 +1799,14 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 {
                     return Err(latch_registry_row(c));
                 }
+                // `ContextView::first_base` and `selected_base` read this node
+                // without a controller, so it is established here, at publication.
+                if let Some(first) = value.context.first_base {
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    if storage.view.node_at(first).is_none() {
+                        return Err(latch_registry_row(c));
+                    }
+                }
                 // `ContextView::csp_association` reads this row without a controller,
                 // so its kind is established here, at publication.
                 if let Some(policy) = value.context.csp
