@@ -111,7 +111,7 @@ fn head_handoff_keeps_the_real_pause_and_accepts_returned_eof() {
     let mut t = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let event = t.next(&mut c, false).unwrap().unwrap();
     assert!(
-        matches!(&event, Event::Token(value) if matches!(&value.token().kind, TokenKind::Tag(_)))
+        matches!(&event, Event::Token(value) if matches!(&value.token_for_tests().kind, TokenKind::Tag(_)))
     );
     event.release(&mut c).unwrap();
     let last = t.last_start.len();
@@ -119,11 +119,13 @@ fn head_handoff_keeps_the_real_pause_and_accepts_returned_eof() {
     assert_eq!(t.last_start.len(), last);
     let event = t.next(&mut c, false).unwrap().unwrap();
     assert!(
-        matches!(&event, Event::Token(value) if matches!(&value.token().kind, TokenKind::Text(text) if text.value.text().code_units() == [65]))
+        matches!(&event, Event::Token(value) if matches!(&value.token_for_tests().kind, TokenKind::Text(text) if text.value.text().code_units() == [65]))
     );
     event.release(&mut c).unwrap();
     let event = t.next(&mut c, false).unwrap().unwrap();
-    assert!(matches!(&event, Event::Token(value) if matches!(&value.token().kind, TokenKind::Eof)));
+    assert!(
+        matches!(&event, Event::Token(value) if matches!(&value.token_for_tests().kind, TokenKind::Eof))
+    );
     t.validate_head_handoff(&source, &mut c).unwrap();
     assert!(t.done);
     event.release(&mut c).unwrap();
@@ -312,7 +314,7 @@ fn collect(
                 ));
             }
             Event::Token(t) => {
-                let t = t.token();
+                let t = t.token_for_tests();
                 assert_eq!(t.source.source(), source.identity());
                 output.push(match &t.kind {
                     TokenKind::Text(t) => Seen::Text(text(t)),
@@ -630,7 +632,7 @@ fn spans_cover_original_crlf_utf8_and_reference_spelling() {
             kind: TokenKind::Text(text),
             source,
             ..
-        }) = event.token()
+        }) = event.token_for_tests()
         {
             records.push((
                 text.value.text().code_units().to_vec(),
@@ -839,14 +841,16 @@ fn tree_state_selection_after_actual_start_tag_is_functional() {
     let mut tokenizer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
     let tag = tokenizer.next(&mut c, false).unwrap().unwrap();
     assert!(
-        matches!(tag.token(),Some(Token{kind:TokenKind::Tag(t),..}) if t.kind==TagKind::Start&&text(&t.name)==units("title"))
+        matches!(tag.token_for_tests(),Some(Token{kind:TokenKind::Tag(t),..}) if t.kind==TagKind::Start&&text(&t.name)==units("title"))
     );
     tag.release(&mut c).unwrap();
     tokenizer
         .set_state(State::Raw(Raw::Rcdata), &mut c)
         .unwrap();
     let event = tokenizer.next(&mut c, false).unwrap().unwrap();
-    assert!(matches!(event.token(),Some(Token{kind:TokenKind::Text(t),..}) if text(t)==units("&")));
+    assert!(
+        matches!(event.token_for_tests(),Some(Token{kind:TokenKind::Text(t),..}) if text(t)==units("&"))
+    );
     event.release(&mut c).unwrap();
     while let Some(event) = tokenizer.next(&mut c, false).unwrap() {
         event.release(&mut c).unwrap();
@@ -1004,7 +1008,7 @@ fn input_diagnostics_and_reconsume_newline_origins_are_emitted_once() {
                 newlines += 1;
             }
             Event::Token(event) => {
-                if let TokenKind::Comment(t) = &event.token().kind {
+                if let TokenKind::Comment(t) = &event.token_for_tests().kind {
                     assert_eq!(text(t), [10, 0xD800, 0xFDD0, 1]);
                     let o = &t.origins.as_slice()[0];
                     assert_eq!(
@@ -1083,7 +1087,7 @@ fn attribute_occurrence_spans_exclude_separating_whitespace() {
     let Some(Token {
         kind: TokenKind::Tag(tag),
         ..
-    }) = event.token()
+    }) = event.token_for_tests()
     else {
         panic!("tag")
     };
@@ -1183,7 +1187,7 @@ fn repeated_cdata_brackets_keep_the_two_pending_original_spans() {
             if let Some(Token {
                 kind: TokenKind::Text(text),
                 ..
-            }) = event.token()
+            }) = event.token_for_tests()
             {
                 observed.push((
                     text.value.text().code_units().to_vec(),
@@ -1239,7 +1243,7 @@ fn emitted_text_accounts_for_each_actual_utf8_endpoint_read() {
         let Some(Token {
             kind: TokenKind::Text(value),
             ..
-        }) = event.token()
+        }) = event.token_for_tests()
         else {
             panic!("text")
         };
@@ -1864,7 +1868,7 @@ fn lexical_utf16_attribute_parts_preserve_surrogate_crlf_null_bom_pair_and_entit
     let mut value = false;
     while let Some(event) = lexer.next(&mut c, false).unwrap() {
         if let Event::Token(token) = &event
-            && let TokenKind::Tag(tag) = &token.token().kind
+            && let TokenKind::Tag(tag) = &token.token_for_tests().kind
         {
             assert_eq!(tag.attributes.as_slice().len(), 1);
             assert_eq!(
@@ -2030,7 +2034,7 @@ fn lexical_cdata_chunk_coordinates_accumulate_exact_actual_output_units() {
     let mut actual = Vec::new();
     while let Some(event) = lexer.next(&mut c, true).unwrap() {
         if let Event::Token(token) = &event
-            && let TokenKind::Text(text) = &token.token().kind
+            && let TokenKind::Text(text) = &token.token_for_tests().kind
         {
             actual.extend_from_slice(text.value.text().code_units());
         }
@@ -2105,7 +2109,7 @@ fn lexical_delimiter_observation(
     let mut targets = Vec::new();
     while let Some(event) = lexer.next(&mut c, cdata).unwrap() {
         if let Event::Token(token) = &event {
-            match &token.token().kind {
+            match &token.token_for_tests().kind {
                 TokenKind::Text(text) | TokenKind::Comment(text) => {
                     value.extend_from_slice(text.value.text().code_units());
                 }
@@ -2625,7 +2629,7 @@ fn retained_attribute_growth_is_bounded_without_charging_duplicates_as_new_slots
                     );
                     diagnostic_count += 1;
                 }
-                Event::Token(event) => match &event.token().kind {
+                Event::Token(event) => match &event.token_for_tests().kind {
                     TokenKind::Tag(tag) => {
                         assert_eq!(tag.kind, TagKind::Start);
                         assert_eq!(text(&tag.name), units("p"));
@@ -2640,7 +2644,10 @@ fn retained_attribute_growth_is_bounded_without_charging_duplicates_as_new_slots
                             assert_eq!((a.source.start(), a.source.end()), (*start, *end));
                         }
                         assert_eq!(
-                            (event.token().source.start(), event.token().source.end()),
+                            (
+                                event.token_for_tests().source.start(),
+                                event.token_for_tests().source.end()
+                            ),
                             (0, raw.len())
                         );
                         tag_count += 1;
@@ -3020,7 +3027,7 @@ fn long_comment_origin_storage_submits_bounded_layouts_with_exact_literal_mappin
                     break;
                 };
                 match &event {
-                    Event::Token(token) => match &token.token().kind {
+                    Event::Token(token) => match &token.token_for_tests().kind {
                         TokenKind::Comment(text) => {
                             comments += 1;
                             assert_eq!(text.value.text().code_units(), expected);
@@ -3036,14 +3043,20 @@ fn long_comment_origin_storage_submits_bounded_layouts_with_exact_literal_mappin
                                 );
                             }
                             assert_eq!(
-                                (token.token().source.start(), token.token().source.end()),
+                                (
+                                    token.token_for_tests().source.start(),
+                                    token.token_for_tests().source.end()
+                                ),
                                 (0, count + 7)
                             );
                         }
                         TokenKind::Eof => {
                             eof += 1;
                             assert_eq!(
-                                (token.token().source.start(), token.token().source.end()),
+                                (
+                                    token.token_for_tests().source.start(),
+                                    token.token_for_tests().source.end()
+                                ),
                                 (count + 7, count + 7)
                             );
                         }
@@ -3423,7 +3436,7 @@ fn progressive_observe(
     match event {
         Event::Diagnostic(id) => errors.push(evidence.tokenizer_observation(id).code),
         Event::Preprocessing { .. } => {}
-        Event::Token(token) => output.push(match &token.token().kind {
+        Event::Token(token) => output.push(match &token.token_for_tests().kind {
             TokenKind::Text(t) => Seen::Text(text(t)),
             TokenKind::Comment(t) => Seen::Comment(text(t)),
             TokenKind::Tag(t) => Seen::Tag(
@@ -4129,7 +4142,9 @@ fn a_token_event_without_its_token_stops_instead_of_indexing() {
         panic!("the pulled event owns its token");
     };
     let emptied = TokenEvent::emptied(token, &mut c).unwrap();
-    let _ = emptied.token();
+    let stop = emptied.token(&mut c).err().unwrap();
+    assert_eq!(stop, first_invariant_stop());
+    assert_eq!(c.stop(), Some(stop));
     emptied.release(&mut c).unwrap();
     lexer.release(&mut c).unwrap();
     assert_storage_released(&c);

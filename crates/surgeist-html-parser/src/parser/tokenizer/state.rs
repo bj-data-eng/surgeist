@@ -70,19 +70,15 @@ impl Tokenizer<'_> {
             self.current.end(),
             c,
         )?;
-        if self.cursor.is_progressive() {
-            let start = self.boundary_proof(self.current.start(), c)?;
-            admit_record_write(size_of::<crate::source::ConsumedSourceBoundary>(), 1, c)?;
-            self.proofs.as_mut().expect("progressive").start = start;
-        }
+        self.save_single_proof(SingleProof::Start, self.current.start(), c)?;
         self.start = self.current.start();
         self.less_than = self.current.clone();
         let lexical = evidence.lexical_begin(c, &self.current, LexicalKind::Markup, None)?;
         admit_record_write(size_of::<Option<LexicalRef>>(), 1, c)?;
-        self.lexical = Some(lexical);
+        let occurrence = self.lexical.insert(lexical);
         evidence.lexical_part(
             c,
-            self.lexical.as_ref().expect("retained occurrence"),
+            occurrence,
             LexicalRole::Syntax,
             &self.current,
             0..0,
@@ -122,7 +118,12 @@ impl Tokenizer<'_> {
                 } else {
                     self.error(CdataInHtmlContent, c, evidence)?;
                     self.create_comment(c)?;
-                    let source = self.range(self.less_than.end() + 1, self.current.end(), c)?;
+                    let after_bang = self
+                        .less_than
+                        .end()
+                        .checked_add(1)
+                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+                    let source = self.range(after_bang, self.current.end(), c)?;
                     for &p in b"[CDATA[" {
                         self.comment
                             .as_mut()
@@ -212,15 +213,7 @@ impl Tokenizer<'_> {
             },
             TagOpen => match p {
                 0x21 => {
-                    if self.cursor.is_progressive() {
-                        let proof = self.boundary_proof(self.current.end(), c)?;
-                        admit_record_write(
-                            size_of::<crate::source::ConsumedSourceBoundary>(),
-                            1,
-                            c,
-                        )?;
-                        self.proofs.as_mut().expect("progressive").declaration = proof;
-                    }
+                    self.save_single_proof(SingleProof::Declaration, self.current.end(), c)?;
                     self.set_state(MarkupDeclaration, c)?;
                 }
                 0x2F => {
@@ -819,11 +812,12 @@ impl Tokenizer<'_> {
             }
             CdataEnd => match p {
                 0x5D => {
-                    let first = self.range(
-                        self.pending_syntax.start(),
-                        self.pending_syntax.start() + 1,
-                        c,
-                    )?;
+                    let after_first = self
+                        .pending_syntax
+                        .start()
+                        .checked_add(1)
+                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+                    let first = self.range(self.pending_syntax.start(), after_first, c)?;
                     self.emit_point(0x5D, &first, OriginKind::Literal, c, evidence)?;
                     let source = self.range(first.end(), self.current.end(), c)?;
                     self.remember_syntax(source, c)?;

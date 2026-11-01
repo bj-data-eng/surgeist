@@ -1287,7 +1287,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                         .get(c, id)?;
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if event.token().is_some() {
+                if event.token(c)?.is_some() {
                     write(
                         const {
                             size_of::<Option<Event>>()

@@ -1298,7 +1298,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(
-            matches!(&event, Event::Token(token) if matches!(&token.token().kind, TokenKind::Eof))
+            matches!(&event, Event::Token(token) if matches!(&token.token_for_tests().kind, TokenKind::Eof))
         );
         event.release(&mut c).unwrap();
         lexer.release(&mut c).unwrap();
@@ -1533,7 +1533,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(
-            matches!(&event, Event::Token(token) if matches!(token.token().kind, TokenKind::Eof))
+            matches!(&event, Event::Token(token) if matches!(token.token_for_tests().kind, TokenKind::Eof))
         );
         event.release(&mut c).unwrap();
         lexer.release(&mut c).unwrap();

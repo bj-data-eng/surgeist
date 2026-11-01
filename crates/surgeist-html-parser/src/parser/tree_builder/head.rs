@@ -631,7 +631,7 @@ impl<'source> HeadStage<'source> {
                     .get(c, id)?;
             }
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let Some(token) = event.token() {
+            if let Some(token) = event.token(c)? {
                 validate_source(self.source, token, c)?;
                 write(
                     const { size_of::<Option<Event>>() + size_of::<PendingToken>() },

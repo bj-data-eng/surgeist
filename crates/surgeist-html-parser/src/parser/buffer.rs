@@ -66,10 +66,10 @@ impl Utf16Buffer {
         self.units.require_owner(control)?;
         control.charge(WorkCategory::InspectByte, size_of::<CodePoint>() as u64)?;
         let value = code_point.value();
-        if value <= 0xFFFF {
+        let Some(value) = value.checked_sub(0x10000) else {
+            // A basic-plane value is one unit.
             return self.push_unit(value as u16, control);
-        }
-        let value = value - 0x10000;
+        };
         let pair = [
             0xD800 | ((value >> 10) as u16),
             0xDC00 | ((value & 0x3FF) as u16),

@@ -790,7 +790,7 @@ mod tests {
                         .unwrap();
                     assert!(
                         matches!(&eof, crate::parser::tokenizer::token::Event::Token(token)
-                        if matches!(&token.token().kind, TokenKind::Eof))
+                        if matches!(&token.token_for_tests().kind, TokenKind::Eof))
                     );
                     eof.release(&mut c).unwrap();
                     lexer.release(&mut c).unwrap();

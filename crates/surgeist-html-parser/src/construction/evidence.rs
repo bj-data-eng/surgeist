@@ -1346,7 +1346,7 @@ mod tests {
                     }
                     Event::Token(value) => {
                         assert_eq!(diagnostics, n);
-                        let token = value.token();
+                        let token = value.token_for_tests();
                         assert_eq!(token.source.source(), source.identity());
                         match &token.kind {
                             TokenKind::Comment(text) => {

@@ -153,7 +153,10 @@ impl Tokenizer<'_> {
             2,
             c,
         )?;
-        let mut reference = self.reference.take().expect("retained reference");
+        let mut reference = self
+            .reference
+            .take()
+            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
         let result = self.reference_steps(&mut reference, c, evidence);
         match result {
             Ok(false) => {
@@ -324,7 +327,9 @@ impl Tokenizer<'_> {
                     if !r.semicolon {
                         self.error(MissingSemicolonAfterCharacterReference, c, evidence)?;
                     }
-                    let value = r.replacement.expect("actual longest match");
+                    let value = r
+                        .replacement
+                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
                     if r.attribute {
                         match value {
                             ReferenceValue::One(a) => self.reference_point(
@@ -409,12 +414,10 @@ impl Tokenizer<'_> {
                                     c,
                                 )?;
                             } else {
-                                r.literal.as_mut().expect("actual literal").push(
-                                    p,
-                                    &self.current,
-                                    self.current_kind,
-                                    c,
-                                )?;
+                                r.literal
+                                    .as_mut()
+                                    .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                                    .push(p, &self.current, self.current_kind, c)?;
                             }
                             continue;
                         }
@@ -425,7 +428,11 @@ impl Tokenizer<'_> {
                     }
                     if !r.attribute {
                         admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
-                        let text = r.literal.take().expect("actual literal").freeze(c)?;
+                        let text = r
+                            .literal
+                            .take()
+                            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                            .freeze(c)?;
                         self.emit(TokenKind::Text(text), r.amp.start(), r.end, c, evidence)?;
                     }
                     return Ok(true);
@@ -449,12 +456,11 @@ impl Tokenizer<'_> {
                     };
                     if let InputRead::Character(ch) = read {
                         let p = ch.code_point().value();
-                        let digit = match p {
-                            0x30..=0x39 => Some(p - 0x30),
-                            0x41..=0x46 if r.hex => Some(p - 0x41 + 10),
-                            0x61..=0x66 if r.hex => Some(p - 0x61 + 10),
-                            _ => None,
-                        };
+                        // ASCII decimal digits and, in a hexadecimal reference,
+                        // the letters A-F in either case.
+                        let digit = u8::try_from(p).ok().and_then(|byte| {
+                            char::from(byte).to_digit(if r.hex { 16 } else { 10 })
+                        });
                         if let Some(digit) = digit {
                             self.read(c, evidence)?;
                             admit_record_write(
