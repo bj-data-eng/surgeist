@@ -33,13 +33,15 @@ fn capture<S>(
     interfaces: impl FnOnce() -> Option<Vec<String>>,
     query: impl FnOnce(&S, &[String]) -> Option<ColorEstimate>,
 ) -> Option<ColorEstimate> {
+    // Anchor freshness before reading the GDI mapping, so a remap during either
+    // identity enumeration or wire queries invalidates this same snapshot.
+    let snapshot = snapshot()?;
     let interfaces = interfaces()?;
     // A cloned GDI output can identify multiple physical monitors. Do not pick
     // one physical target's precision as the logical output's observation.
     if interfaces.len() != 1 {
         return None;
     }
-    let snapshot = snapshot()?;
     query(&snapshot, &interfaces)
 }
 

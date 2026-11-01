@@ -289,7 +289,9 @@ Windows color capture uses a synchronous read-only display-state query. The
 selected device's fully enumerated PnP monitor interface must match exactly one
 fresh connected `DisplayTarget.DeviceInterfacePath`; multiple child interfaces
 remain ambiguous. The display state and selected target must remain fresh
-through the read. Failed queries, invalid identities, missing wire formats or
+through the read. The snapshot is acquired before resolving the GDI mapping, so
+its freshness interval covers interface enumeration and wire queries. Failed
+queries, invalid identities, missing wire formats or
 unknown encodings leave color unavailable without discarding valid work bounds.
 The native display manager is closed after every query; no display ownership or
 configuration mutation is requested.
