@@ -468,6 +468,26 @@ fn scheme<'a>(
 }
 
 #[test]
+fn metas_that_cannot_be_candidates_leave_the_selected_theme_and_scheme_unchanged() {
+    // A meta is a candidate only with the exact name and a content attribute,
+    // so the selection must be the same with or without these around.
+    let plain = parse(
+        "<!doctype html><meta name=theme-color content=not-a-color><meta name=theme-color content=red><meta name=color-scheme content='only dark'><meta name=color-scheme content=light>",
+    );
+    let noisy = parse(
+        "<!doctype html><meta charset=x><meta name=theme-color content=not-a-color><meta name=viewport content=y><meta name=theme-color><meta name=theme-color content=red><meta name=color-scheme><meta name=author content=z><meta name=color-scheme content='only dark'><meta property=theme-color content=blue><meta name=color-scheme content=light>",
+    );
+    let (plain, noisy) = (rows(&plain), rows(&noisy));
+    assert_eq!(theme(&plain[0]), theme(&noisy[0]));
+    assert!(theme(&noisy[0]).is_some());
+    assert_eq!(
+        format!("{:?}", scheme(&plain[0])),
+        format!("{:?}", scheme(&noisy[0]))
+    );
+    assert!(scheme(&noisy[0]).is_some());
+}
+
+#[test]
 fn intrinsic_css_selects_first_valid_candidate_in_tree_order_without_input_fallback() {
     let report = parse(
         "<!doctype html><meta name=theme-color content=not-a-color><meta name=ThEmE-CoLoR content=' \t#3699\r\n' media=' \t\n'><meta name=theme-color content=red><meta name=color-scheme content='dark !!!'><meta name=color-scheme content='only dark'><meta name=color-scheme content=light>",

@@ -355,3 +355,22 @@ fn work_added_by_each_doubling_of_inputs_with_ids_is_near_double() {
         ],
     );
 }
+
+#[test]
+fn work_added_by_each_doubling_of_meta_elements_is_near_double() {
+    // None of these is a theme-color or color-scheme candidate, so inserting
+    // one never recomputes the document's selected theme color or scheme.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><head>{}",
+                "<meta name=viewport content=x>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}

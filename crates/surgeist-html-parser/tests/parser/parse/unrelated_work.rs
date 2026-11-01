@@ -129,6 +129,20 @@ fn a_style_adds_the_same_visits_whatever_other_style_elements_precede_it() {
     );
 }
 
+#[test]
+fn a_meta_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
+    // Only a meta named theme-color or color-scheme can change which one the
+    // document selects, so a charset declaration changes nothing to recompute.
+    assert_independent_of_unrelated(SPAN, "<meta charset=x>");
+}
+
+#[test]
+fn a_viewport_meta_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
+    // Its name and content attributes are each written to the element before
+    // it is inserted anywhere, which no recomputation of the selection sees.
+    assert_independent_of_unrelated(SPAN, "<meta name=viewport content=x>");
+}
+
 /// One form control that registers a form association.
 const CONTROL: &str = "<input name=a>";
 
