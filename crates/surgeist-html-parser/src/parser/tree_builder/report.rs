@@ -202,7 +202,9 @@ impl ImmutableParseReport {
         }
     }
     /// Actual source-created auxiliary parser Document, qualified by this
-    /// completed contextual report. Ordinary reports cannot issue this lender.
+    /// completed contextual report. Ordinary reports cannot issue this lender,
+    /// and answer `None`. A contextual report that cannot present its Document
+    /// is a fault.
     pub fn fragment_parser_document(
         &self,
     ) -> Result<
@@ -212,7 +214,9 @@ impl ImmutableParseReport {
         if self.context().is_none() {
             return Ok(None);
         }
-        Ok(self.storage.fragment_parser_document(self.source()))
+        self.storage
+            .fragment_parser_document(self.source())
+            .map(Some)
     }
     pub fn document_state(&self) -> Option<StandaloneDocumentState> {
         match &self.context {

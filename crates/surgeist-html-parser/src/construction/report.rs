@@ -808,7 +808,7 @@ impl ReportStorage {
     pub(crate) fn fragment_parser_document<'a>(
         &'a self,
         source: &'a crate::HtmlSource,
-    ) -> Option<fragment_document::FragmentParserDocument<'a>> {
+    ) -> Result<fragment_document::FragmentParserDocument<'a>, read::UnresolvedReference> {
         fragment_document::FragmentParserDocument::new(&self.history, source)
     }
     pub(crate) fn history(&self) -> &FrozenHistory {

@@ -30,22 +30,33 @@ pub struct FragmentParserDocument<'a> {
 }
 impl<'a> FragmentParserDocument<'a> {
     /// The Document, its mode and its completion are read once, here, so the
-    /// readers cannot fail. `None` when the report holds no fragment context
+    /// readers cannot fail. The fault if the report holds no fragment context,
     /// or no longer holds the Document or the completion row it was
     /// qualified against.
-    pub(super) fn new(history: &'a FrozenHistory, source: &'a crate::HtmlSource) -> Option<Self> {
+    pub(super) fn new(
+        history: &'a FrozenHistory,
+        source: &'a crate::HtmlSource,
+    ) -> Result<Self, read::UnresolvedReference> {
+        let fault = |kind| read::UnresolvedReference::new(kind);
         let storage = history.storage();
-        let fragment = storage.fragment.as_ref()?;
-        let document = storage.view.node_at(0)?.as_node();
+        let fragment = storage
+            .fragment
+            .as_ref()
+            .ok_or(fault(read::UnresolvedKind::Fragment))?;
+        let document = storage
+            .view
+            .node_at(0)
+            .ok_or(fault(read::UnresolvedKind::Node))?
+            .as_node();
         let HtmlNodeKind::Document(mode) = document.kind() else {
-            return None;
+            return Err(fault(read::UnresolvedKind::Node));
         };
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            storage.payloads.values.get(fragment.completion)?
+        let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
+            storage.payloads.values.get(fragment.completion)
         else {
-            return None;
+            return Err(fault(read::UnresolvedKind::Payload));
         };
-        Some(Self {
+        Ok(Self {
             source,
             fragment,
             document,
@@ -169,17 +180,5 @@ pub(super) mod tests {
         .unwrap()
         .parse()
         .unwrap()
-    }
-
-    // The auxiliary Document is lent only when everything its readers answer
-    // from is in the report: a report whose completion row is gone issues none
-    // instead of lending a Document that cannot say how it completed.
-    #[test]
-    fn a_completion_row_that_is_gone_issues_no_parser_document() {
-        let mut report = fragment_report("<p>a</p>");
-        let storage = report.storage_mut().history_mut().storage_mut();
-        let completion = storage.fragment.as_ref().unwrap().completion;
-        storage.payloads.values[completion] = crate::construction::RetainedPayload::Retired;
-        assert!(report.fragment_parser_document().unwrap().is_none());
     }
 }

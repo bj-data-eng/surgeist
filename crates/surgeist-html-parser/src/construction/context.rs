@@ -2358,18 +2358,19 @@ impl<'a> FrozenFragmentEffects<'a> {
     pub fn registry_slots(&self) -> usize {
         self.storage.payloads.values.len()
     }
-    fn node(&self, index: usize) -> Result<HtmlNode<'a>, SessionError> {
-        Ok(self
-            .arena
+    fn node(&self, index: usize) -> Result<HtmlNode<'a>, read::UnresolvedReference> {
+        self.arena
             .node_at(index)
-            .ok_or(SessionError::ForeignNode)?
-            .as_node())
+            .map(|node| node.as_node())
+            .ok_or(read::UnresolvedReference::new(read::UnresolvedKind::Node))
     }
-    /// Exactly one actual effect slot; there is no hidden ordinal scan.
+    /// Exactly one actual effect slot; there is no hidden ordinal scan. Past
+    /// the last effect is absent. An effect the report cannot resolve, or one
+    /// whose record was never bound, is a fault.
     pub(crate) fn get(
         &self,
         index: usize,
-    ) -> Result<Option<FrozenFragmentEffect<'a>>, SessionError> {
+    ) -> Result<Option<FrozenFragmentEffect<'a>>, read::UnresolvedReference> {
         let Some(effect) = self.fragment.effects.as_slice().get(index) else {
             return Ok(None);
         };
@@ -2383,7 +2384,9 @@ impl<'a> FrozenFragmentEffects<'a> {
                     .context
                     .capture()
                     .node(document.subject())
-                    .map_err(|_| SessionError::ContextUnavailable)?,
+                    .map_err(|_| {
+                        read::UnresolvedReference::new(read::UnresolvedKind::CapturedNode)
+                    })?,
                 inert: self.node(*inert)?,
             },
             ContextEffect::AttachShadow {
@@ -2408,7 +2411,12 @@ impl<'a> FrozenFragmentEffects<'a> {
                 available_to_internals: *available_to_internals,
                 source,
             },
-            _ => return Err(SessionError::ContextUnavailable),
+            // The record the effect binds was never bound.
+            _ => {
+                return Err(read::UnresolvedReference::new(
+                    read::UnresolvedKind::Payload,
+                ));
+            }
         }))
     }
     /// Exactly one canonical payload slot. The reader chooses its next index;
@@ -2416,7 +2424,7 @@ impl<'a> FrozenFragmentEffects<'a> {
     pub(crate) fn registry_binding(
         &self,
         index: usize,
-    ) -> Result<Option<FrozenFragmentRegistryBinding<'a>>, SessionError> {
+    ) -> Result<Option<FrozenFragmentRegistryBinding<'a>>, read::UnresolvedReference> {
         let Some(RetainedPayload::LookupRegistry {
             node: Some(node),
             registry,
@@ -2547,7 +2555,7 @@ impl FrozenArena {
                 const { (mem::size_of::<usize>() + mem::size_of::<RegistryRef>()) as u64 },
             )?;
             c.charge(WorkCategory::RecordVisit, 1)?;
-            view.node(*node)?;
+            view.node(*node).map_err(|_| SessionError::ForeignNode)?;
             if let RegistryRef::Captured(index) = registry {
                 // Validate the stored identity without cloning it or requiring scope truth.
                 view.fragment
@@ -2562,22 +2570,23 @@ impl FrozenArena {
 }
 
 impl<'a> FrozenFragmentEffects<'a> {
-    /// The effect at `index`. Every row is qualified before publication and the
-    /// report is immutable afterwards; a row that no longer qualifies reads as
-    /// absent rather than panicking.
+    /// The effect at `index`, or `None` past the last effect. Every effect is
+    /// qualified before publication and the report is immutable afterwards, so
+    /// an effect the report cannot resolve is a fault.
     pub fn effect(
         &self,
         index: usize,
     ) -> Result<Option<FrozenFragmentEffect<'a>>, read::UnresolvedReference> {
-        Ok(self.get(index).ok().flatten())
+        self.get(index)
     }
-    /// The registry binding at `index`, with the same qualification rule as
-    /// [`Self::effect`].
+    /// The registry binding at `index`, or `None` for a row that is not one,
+    /// including one past the registry. A binding that names a node the report
+    /// cannot resolve is a fault.
     pub fn registry(
         &self,
         index: usize,
     ) -> Result<Option<FrozenFragmentRegistryBinding<'a>>, read::UnresolvedReference> {
-        Ok(self.registry_binding(index).ok().flatten())
+        self.registry_binding(index)
     }
 }
 impl FrozenFragmentRegistryBinding<'_> {

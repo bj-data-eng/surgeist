@@ -131,10 +131,12 @@ impl DiagnosticEvidenceView<'_> {
         let Some(record) = self.records.get(index) else {
             return Ok(None);
         };
-        Ok(self
-            .locations
+        self.locations
             .get(record.location)
-            .map(|location| (record, location)))
+            .map(|location| Some((record, location)))
+            .ok_or(read::UnresolvedReference::new(
+                read::UnresolvedKind::Diagnostic,
+            ))
     }
     #[cfg(test)]
     pub fn records_pointer(&self) -> *const DiagnosticRecord {
