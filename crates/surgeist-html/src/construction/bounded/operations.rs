@@ -2502,3 +2502,146 @@ mod reference_admission_tests {
         assert_eq!(recovery.storage.len(), 1);
     }
 }
+
+#[cfg(test)]
+mod publish_membership_tests {
+    use super::*;
+
+    fn drive(
+        storage: HtmlConstructionStorage,
+        command: HtmlConstructionCommand,
+    ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
+        let mut operation = Some(
+            storage
+                .prepare(command)
+                .unwrap_or_else(|_| panic!("retained command")),
+        );
+        while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        match HtmlConstructionOperation::try_ready(&mut operation)
+            .unwrap()
+            .commit()
+        {
+            HtmlConstructionCommit::Changed {
+                storage, created, ..
+            } => (storage, created),
+            HtmlConstructionCommit::Published { .. } => panic!("mutation published"),
+        }
+    }
+
+    /// A fragment `root` with ordinary children `a` (position 1) and `b` (position 2).
+    fn tree() -> (HtmlConstructionStorage, HtmlBuilderNode) {
+        let mut initialization = Some(HtmlConstructionStorage::begin());
+        initialization
+            .as_mut()
+            .unwrap()
+            .next_action()
+            .unwrap()
+            .unwrap()
+            .perform()
+            .accept();
+        let storage = HtmlConstructionInitialization::try_ready(&mut initialization)
+            .unwrap()
+            .commit();
+        let (mut storage, root) = drive(storage, HtmlConstructionCommand::CreateFragment);
+        let root = root.unwrap();
+        for local in ["a", "b"] {
+            let (next, node) = drive(
+                storage,
+                HtmlConstructionCommand::Create {
+                    kind: HtmlNodeKind::Element(HtmlElement::new(
+                        QualifiedName::new(Namespace::html(), None, local),
+                        OrderedAttributes::default(),
+                    )),
+                },
+            );
+            let (next, _) = drive(
+                next,
+                HtmlConstructionCommand::Insert {
+                    node: node.unwrap(),
+                    parent: root.clone(),
+                    before: None,
+                },
+            );
+            storage = next;
+        }
+        (storage, root)
+    }
+
+    /// Runs publication until its first refusal, or to completion.
+    fn publish(
+        storage: HtmlConstructionStorage,
+        root: HtmlBuilderNode,
+    ) -> (HtmlConstructionStorage, Result<(), HtmlConstructionError>) {
+        let mut operation = Some(
+            storage
+                .prepare_finish(root)
+                .unwrap_or_else(|_| panic!("retained publish command")),
+        );
+        let result = loop {
+            match operation.as_mut().unwrap().next_action() {
+                Ok(Some(action)) => match action.perform() {
+                    Ok(observation) => observation.accept(),
+                    Err(failure) => break Err(failure.into_parts().0),
+                },
+                Ok(None) => break Ok(()),
+                Err(error) => break Err(error),
+            }
+        };
+        if result.is_ok() {
+            let HtmlConstructionCommit::Published { result, lease } =
+                HtmlConstructionOperation::try_ready(&mut operation)
+                    .unwrap()
+                    .commit()
+            else {
+                panic!("publication produced mutation")
+            };
+            let recovery =
+                HtmlConstructionLease::try_recover(&mut Some(result), &mut Some(lease)).unwrap();
+            return (recovery.storage, Ok(()));
+        }
+        (operation.unwrap().abort().storage, result)
+    }
+
+    #[test]
+    fn publication_accepts_each_child_listed_exactly_once() {
+        let (storage, root) = tree();
+        let (storage, result) = publish(storage, root.clone());
+        assert_eq!(result, Ok(()));
+        // Publishing again from the recovered storage succeeds the same way.
+        assert_eq!(publish(storage, root).1, Ok(()));
+    }
+
+    #[test]
+    fn publication_refuses_a_child_listed_twice() {
+        let (mut storage, root) = tree();
+        storage.arena.records[0].children = vec![1, 1, 2];
+        assert_eq!(
+            publish(storage, root).1,
+            Err(HtmlConstructionError::ParentChildConflict)
+        );
+    }
+
+    #[test]
+    fn publication_refuses_a_child_missing_from_its_parents_list() {
+        let (mut storage, root) = tree();
+        storage.arena.records[0].children = vec![1];
+        assert_eq!(
+            publish(storage, root).1,
+            Err(HtmlConstructionError::ParentChildConflict)
+        );
+    }
+
+    #[test]
+    fn publication_refuses_a_child_listed_only_by_another_parent() {
+        // `b` names the root as its parent but only `a` lists it.
+        let (mut storage, root) = tree();
+        storage.arena.records[0].children = vec![1];
+        storage.arena.records[1].children = vec![2];
+        assert_eq!(
+            publish(storage, root).1,
+            Err(HtmlConstructionError::ParentChildConflict)
+        );
+    }
+}
