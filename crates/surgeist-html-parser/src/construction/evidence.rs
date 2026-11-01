@@ -1466,4 +1466,29 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn a_retained_record_naming_a_missing_location_reads_as_absent() {
+        let record = DiagnosticRecord {
+            kind: DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter),
+            context: DiagnosticContext::Tokenizer {
+                phase: DiagnosticPhase::Tokenizer,
+                state: State::Data,
+            },
+            severity: DiagnosticSeverity::Recoverable,
+            rule: DiagnosticRule {
+                anchor: "parse-error-unexpected-null-character",
+                branch: "unexpected-null-character",
+            },
+            location: 3,
+        };
+        let records = [record];
+        let view = DiagnosticEvidenceView {
+            records: &records,
+            locations: &[],
+        };
+        assert_eq!(view.len(), 1);
+        assert!(view.retained_record(0).is_none());
+        assert!(view.retained_record(1).is_none());
+    }
 }

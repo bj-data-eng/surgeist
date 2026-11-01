@@ -386,3 +386,61 @@ fn binding_an_svg_script_slot_to_a_row_that_is_not_one_reports_the_registry_row(
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+#[test]
+fn releasing_a_work_list_past_the_registry_reports_the_registry_row() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    assert_registry_row(storage.release_work_list(&mut c, usize::MAX / 2), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn releasing_a_work_list_on_another_row_kind_leaves_that_row_in_place() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    assert!(!matches!(
+        storage.payloads.values.first(),
+        Some(RetainedPayload::WorkList(_))
+    ));
+    let before = mem::discriminant(&storage.payloads.values[0]);
+    assert_eq!(
+        storage.release_work_list(&mut c, 0).err(),
+        Some(SessionError::WrongToken)
+    );
+    assert_eq!(mem::discriminant(&storage.payloads.values[0]), before);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn field_group_lookups_past_the_registry_report_the_registry_row() {
+    let past = usize::MAX / 2;
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    assert_registry_row(storage.copied_slot_group(&mut c, past), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    assert_registry_row(storage.reset_group(&mut c, past, None, 0), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    assert_registry_row(storage.retire_field_group(&mut c, past), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    assert_registry_row(storage.merge_field_groups(&mut c, past, 0, 0, 0), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

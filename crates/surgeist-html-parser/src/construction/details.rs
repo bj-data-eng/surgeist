@@ -1138,4 +1138,51 @@ mod tests {
         assert_eq!((location.start(), location.end()), (15, 37));
         completed.release().unwrap();
     }
+
+    #[test]
+    fn a_shift_count_at_the_end_of_its_range_reports_the_registry_row_and_aborts_the_edit() {
+        let request = request("<details open=v a=1>");
+        let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
+        let storage = session.active_mut().unwrap();
+        let container = storage
+            .element_attribute_container(&mut c, node.index)
+            .unwrap();
+        // The state a removal installs before its first adjacent swap, with
+        // the shift count already at the end of its range.
+        let Some(RetainedPayload::Attributes(slot)) = storage.payloads.values.get_mut(container)
+        else {
+            panic!("attribute container")
+        };
+        let Some(AttributeStorage::Frozen {
+            values,
+            allocation,
+            shared,
+            element,
+        }) = slot.take()
+        else {
+            panic!("frozen attributes")
+        };
+        *slot = Some(AttributeStorage::Removing {
+            values,
+            allocation,
+            shared,
+            element,
+            index: 0,
+            shifted: usize::MAX,
+            popped: false,
+            rebound: 0,
+        });
+        let result = storage.edit_removing_attribute(&mut c, node.index, container, Some(0));
+        let invariant =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
+        assert_eq!(c.stop(), Some(invariant), "latched as the first stop");
+        assert!(!storage.construction.has_attribute_edit());
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        zero(&c);
+    }
 }

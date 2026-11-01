@@ -3649,4 +3649,134 @@ mod fragment_origin_tests {
             assert_eq!(c.usage().resource(resource).current(), 0, "{resource:?}");
         }
     }
+
+    /// A fragment parse whose context element and document name one global
+    /// registry, and that registry's identity.
+    fn registry_fragment_owner() -> (
+        ParseControl,
+        ParserArenaSession,
+        HtmlCaptureRegistryId,
+        HtmlCaptureDocumentId,
+    ) {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let global = builder.add_registry(Some(Vec::new())).unwrap();
+        builder
+            .establish_registry_scope(&global, HtmlRegistryScope::Global)
+            .unwrap();
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Registry(global.clone()),
+            )
+            .unwrap();
+        builder
+            .establish_document_template_facts(
+                &document,
+                HtmlDocumentClass::Html,
+                HtmlTemplateDocumentRole::Ordinary,
+                HtmlCaptureTemplateCacheInput::Absent,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Registry(global.clone()),
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        let capture = builder.finish().unwrap();
+        let global = capture.registry_id(&global).unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        let document = context.target_document().clone();
+        let request = HtmlFragmentParseRequest::new(
+            HtmlSource::utf8("<div>"),
+            context,
+            crate::parser::tree_builder::tests::limits(100),
+        )
+        .unwrap();
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        session.initialize_standalone_document(&mut c).unwrap();
+        session.initialize_fragment(&mut c, &request).unwrap();
+        (c, session, global, document)
+    }
+
+    fn assert_registry_row<T>(result: Result<T, SessionError>, c: &ParseControl) {
+        let invariant =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
+        assert_eq!(c.stop(), Some(invariant), "latched as the first stop");
+    }
+
+    #[test]
+    fn a_captured_registry_in_a_parse_without_fragment_storage_reports_the_registry_row() {
+        let (mut c, mut session, registry, _document) = registry_fragment_owner();
+        let storage = session.active_mut().unwrap();
+        let fragment = storage.fragment.take();
+        assert_registry_row(
+            storage.effective_global_registry(&mut c, RegistryRef::Captured(registry.clone())),
+            &c,
+        );
+        storage.fragment = fragment;
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn a_definition_lookup_without_fragment_storage_reports_the_registry_row() {
+        let (mut c, mut session, registry, _document) = registry_fragment_owner();
+        let storage = session.active_mut().unwrap();
+        let fragment = storage.fragment.take();
+        assert_registry_row(
+            storage.require_no_definition(
+                &mut c,
+                &RegistryRef::Captured(registry.clone()),
+                &DocumentString::from("x-a"),
+                Some(&DocumentString::from("x-b")),
+                true,
+            ),
+            &c,
+        );
+        storage.fragment = fragment;
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn a_context_effect_naming_a_missing_node_reads_as_absent_from_the_frozen_effects() {
+        let (mut c, mut session, _registry, document) = registry_fragment_owner();
+        session
+            .active_mut()
+            .unwrap()
+            .fragment
+            .as_mut()
+            .unwrap()
+            .effects
+            .try_push(
+                &mut c,
+                ContextEffect::TemplateCache {
+                    document,
+                    inert: Some(usize::MAX / 2),
+                },
+            )
+            .unwrap();
+        let mut frozen = session.freeze(&mut c).unwrap();
+        let effects = frozen.frozen_fragment_effects().unwrap();
+        assert_eq!(effects.len(), 1);
+        assert!(effects.effect(0).is_none());
+        assert!(effects.effect(1).is_none());
+        frozen.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
+    }
 }
