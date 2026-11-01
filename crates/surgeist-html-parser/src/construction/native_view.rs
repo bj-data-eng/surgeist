@@ -294,7 +294,7 @@ impl<'a> NativeView<'a> {
         let position = self
             .storage
             .construction
-            .storage()
+            .test_storage()
             .node_by_result_id(node)
             .map_err(|_| SessionError::ForeignNode)?
             .position();
@@ -370,7 +370,7 @@ impl<'a> NativeView<'a> {
             let position = self
                 .storage
                 .construction
-                .storage()
+                .test_storage()
                 .node_by_result_id(shadow.contents())
                 .map_err(|_| SessionError::ForeignNode)?
                 .position();

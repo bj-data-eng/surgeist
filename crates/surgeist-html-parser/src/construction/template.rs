@@ -75,7 +75,7 @@ impl SessionStorage {
                 RetainedPayload::NodeDocument { node, document } => {
                     let node = node.ok_or(SessionError::NodeDocumentUnavailable)?;
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    if node >= self.construction.storage().len() {
+                    if node >= self.construction.storage(c)?.len() {
                         return Err(SessionError::NodeDocumentUnavailable);
                     }
                     self.validate_document_ref(c, document)?;
@@ -342,7 +342,8 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<(usize, TemplateMetadata), SessionError> {
-        self.template_slot_in(c, self.construction.storage(), node)
+        let storage = self.construction.storage(c)?;
+        self.template_slot_in(c, storage, node)
     }
     pub(super) fn template_slot_in(
         &self,
@@ -433,7 +434,7 @@ impl SessionStorage {
                 self.payloads
                     .push_row(RetainedPayload::NodeDocument {
                         node: None,
-                        document: DocumentRef::Owned(self.construction.storage().len()),
+                        document: DocumentRef::Owned(self.construction.storage(c)?.len()),
                     })
                     .map_err(|_| latch_registry_row(c))?;
                 payload_write::<[Option<usize>; 2]>(c, 2)?;
@@ -514,7 +515,7 @@ impl SessionStorage {
                 .push_row(RetainedPayload::Template {
                     node: None,
                     state: TemplateMetadata::fresh(
-                        self.construction.storage().len() + 1,
+                        self.construction.storage(c)?.len() + 1,
                         HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
                     ),
                 })
@@ -591,7 +592,7 @@ impl SessionStorage {
                 .push_row(RetainedPayload::Template {
                     node: None,
                     state: TemplateMetadata::fresh(
-                        self.construction.storage().len() + 1,
+                        self.construction.storage(c)?.len() + 1,
                         HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
                     ),
                 })

@@ -428,7 +428,7 @@ impl SessionStorage {
         local: &str,
     ) -> Result<(), SessionError> {
         self.payloads
-            .check_aliases(ConstructionView::Active(self.construction.storage()), c)?;
+            .check_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
         let container = self.element_attribute_container(c, node)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
@@ -610,9 +610,10 @@ impl ParserArenaSession {
         if !storage.html_local(c, node, family.local())? {
             return Err(SessionError::WrongToken);
         }
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
+        storage.payloads.check_aliases(
+            ConstructionView::Active(storage.construction.test_storage()),
+            c,
+        )?;
         let attr = input.as_ref().ok_or(SessionError::Consumed)?;
         c.require_source_range(&attr.source)?;
         check_formatting_text(c, &attr.name, &attr.source)?;

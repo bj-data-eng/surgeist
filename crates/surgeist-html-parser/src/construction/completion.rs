@@ -221,9 +221,10 @@ impl ParserArenaSession {
         let storage = self.active()?;
         storage.require(c)?;
         storage.validate_completion_facts(c)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
+        storage.payloads.check_aliases(
+            ConstructionView::Active(storage.construction.storage(c)?),
+            c,
+        )?;
         let state = self.standalone_document_state(c)?;
         if finished {
             storage.effects.require_freezable(c)?;

@@ -74,11 +74,8 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<bool, SessionError> {
-        local(
-            c,
-            ConstructionView::Active(self.construction.storage()),
-            node,
-        )
+        let storage = self.construction.storage(c)?;
+        local(c, ConstructionView::Active(storage), node)
     }
     pub(super) fn svg_state_at(
         &self,
@@ -212,7 +209,7 @@ impl ParserArenaSession {
         c.charge(WorkCategory::RecordVisit, 1)?;
         let position = storage
             .construction
-            .storage()
+            .storage(c)?
             .position(&node.handle)
             .map_err(|_| SessionError::SvgScriptMetadataUnavailable)?;
         if storage.effects.svg_wrapper != Some(position) {
@@ -230,7 +227,7 @@ impl ParserArenaSession {
         c.charge(WorkCategory::RecordVisit, 1)?;
         let position = storage
             .construction
-            .storage()
+            .storage(c)?
             .position(&node.handle)
             .map_err(|_| SessionError::SvgScriptMetadataUnavailable)?;
         if storage.effects.svg_wrapper != Some(position) {
@@ -889,7 +886,7 @@ mod tests {
         let (tag, source) = tag(&mut lexer, &mut c);
         let alias = tag.name.value.text().clone();
         let mut input = Some(tag);
-        let nodes = session.active().unwrap().construction.storage().len();
+        let nodes = session.active().unwrap().construction.test_storage().len();
         let slots = session.active().unwrap().payloads.values.len();
         assert_eq!(
             session
@@ -906,7 +903,7 @@ mod tests {
         );
         assert!(input.is_some());
         assert_eq!(
-            session.active().unwrap().construction.storage().len(),
+            session.active().unwrap().construction.test_storage().len(),
             nodes
         );
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);

@@ -233,7 +233,7 @@ impl SessionStorage {
         // container; the node stays an element while its attributes change.
         if !matches!(
             self.construction
-                .storage()
+                .storage(c)?
                 .node_at(node)
                 .map(|record| record.kind()),
             Some(HtmlNodeKind::Element(_))
@@ -266,7 +266,7 @@ impl SessionStorage {
                 node,
                 HtmlConstructionAttributeEditMode::Slots,
             )?;
-            let group = self.construction.attribute_edit();
+            let group = self.construction.attribute_edit(c)?;
             let slot = if let Some(position) = position {
                 group.swap_adjacent(position)
             } else {
@@ -289,7 +289,7 @@ impl SessionStorage {
         }
         let Some(HtmlNodeKind::Element(element_record)) = self
             .construction
-            .storage()
+            .storage(c)?
             .node_at(node)
             .map(|record| record.kind())
         else {
@@ -484,7 +484,7 @@ mod tests {
             .unwrap()
             .payloads
             .check_aliases(
-                ConstructionView::Active(session.active().unwrap().construction.storage()),
+                ConstructionView::Active(session.active().unwrap().construction.test_storage()),
                 &mut c,
             )
             .unwrap();

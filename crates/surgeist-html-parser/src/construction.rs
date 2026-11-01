@@ -234,7 +234,8 @@ fn validate_parser_attributes(
 ) -> Result<OrderedAttributes, (SessionError, Arc<Vec<Attribute>>)> {
     // The validation owner holds the only other count on `backing`; keeping one
     // here hands the allocation back on every refusal without recovering it
-    // from the owner, and is dropped again once validation succeeds.
+    // from the owner. On success the spare is simply dropped when this
+    // function exits.
     let spare = Arc::clone(&backing);
     let mut validation = Some(HtmlAttributeStorage::from_shared_attributes(backing).validate());
     let validation_error = |error| match error {
@@ -870,9 +871,11 @@ enum AttributeStorage {
         shared: SharedAllocation<Vec<Attribute>>,
         element: Option<usize>,
     },
-    /// The staged attributes were shared for validation, validation refused,
-    /// and the controller refused to unshare them again. The same actual Arc
-    /// and ticket stay here for the cleanup walk to retry the release.
+    /// The staged attributes were shared for validation, validation stopped
+    /// (refused by the attributes themselves, by a work stop or by a
+    /// cancellation), and the controller refused to unshare them again. The
+    /// same actual Arc and ticket stay here for the cleanup walk to retry the
+    /// release.
     Unvalidated {
         backing: Arc<Vec<Attribute>>,
         allocation: VectorCapacity<Attribute>,
@@ -2174,7 +2177,7 @@ impl SessionStorage {
         self.require(control)?;
         control.charge(WorkCategory::RecordVisit, 2)?;
         self.construction
-            .storage()
+            .storage(control)?
             .position(&node.handle)
             .map_err(|_| SessionError::ForeignNode)
     }
@@ -2303,7 +2306,7 @@ impl SessionStorage {
         if nonce_slot.is_some() {
             payload_write::<Option<usize>>(control, 1)?;
         }
-        let index = self.construction.len();
+        let index = self.construction.len(control)?;
         control.reserve_vector_geometric(
             &mut self.payloads.node_joins,
             &mut self.payloads.node_joins_allocation,
@@ -2322,7 +2325,7 @@ impl SessionStorage {
         };
         let Ok(position) = self
             .construction
-            .storage()
+            .storage(control)?
             .node(&handle)
             .map(|record| record.position())
         else {
@@ -4183,7 +4186,7 @@ impl SessionStorage {
         }
         let container = self.element_attribute_container(control, target)?;
         self.payloads.check_new_aliases(
-            ConstructionView::Active(self.construction.storage()),
+            ConstructionView::Active(self.construction.storage(control)?),
             control,
         )?;
         control.charge(WorkCategory::ProviderCall, 1)?;
@@ -4229,7 +4232,7 @@ impl SessionStorage {
                 )?;
             }
             self.construction
-                .attribute_edit()
+                .attribute_edit(control)?
                 .selected_count()
                 .map_err(|error| construction_owner::construction_error(control, error))
         })();
@@ -4280,7 +4283,7 @@ impl SessionStorage {
                     .ok_or_else(|| latch_registry_row(control))?;
                 let keep = self
                     .construction
-                    .attribute_edit()
+                    .attribute_edit(control)?
                     .decision(decision_index)
                     .map_err(|error| construction_owner::construction_error(control, error))?;
                 let Some(attribute) = attributes.try_pop(control)? else {
@@ -4674,7 +4677,7 @@ impl SessionStorage {
         // container; the target stays an element while its attributes change.
         if !matches!(
             self.construction
-                .storage()
+                .storage(control)?
                 .node_at(target)
                 .map(|node| node.kind()),
             Some(HtmlNodeKind::Element(_))
@@ -4710,7 +4713,7 @@ impl SessionStorage {
         };
         let result = (|| {
             started?;
-            let group = self.construction.attribute_edit();
+            let group = self.construction.attribute_edit(control)?;
             let slot = if append {
                 let Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
                     values,
@@ -4737,7 +4740,7 @@ impl SessionStorage {
         // Restore the sole ticket before creating the registry's known alias.
         let Some(HtmlNodeKind::Element(record)) = self
             .construction
-            .storage()
+            .storage(control)?
             .node_at(target)
             .map(|node| node.kind())
         else {
@@ -4845,7 +4848,8 @@ impl SessionStorage {
         control: &mut ParseControl,
         index: usize,
     ) -> Result<bool, SessionError> {
-        self.associated_document_parent_in(control, self.construction.storage(), index)
+        let storage = self.construction.storage(control)?;
+        self.associated_document_parent_in(control, storage, index)
     }
     fn associated_document_parent_in(
         &self,
@@ -4892,7 +4896,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         ordinary_view_parent(
-            ConstructionView::Active(self.construction.storage()),
+            ConstructionView::Active(self.construction.storage(control)?),
             control,
             node,
             detached,
@@ -4905,7 +4909,7 @@ impl SessionStorage {
         mut node: usize,
         detached: Option<usize>,
     ) -> Result<usize, SessionError> {
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(control)?.len() {
             match self.ordinary_parent(control, node, detached)? {
                 Some(parent) => node = parent,
                 None => return Ok(node),
@@ -4920,7 +4924,8 @@ impl SessionStorage {
         node: usize,
         local: &str,
     ) -> Result<bool, SessionError> {
-        Self::html_local_in(control, self.construction.storage(), node, local)
+        let storage = self.construction.storage(control)?;
+        Self::html_local_in(control, storage, node, local)
     }
     fn html_local_in(
         control: &mut ParseControl,
@@ -4947,7 +4952,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         let mut next = self.ordinary_parent(control, node, detached)?;
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(control)?.len() {
             let Some(node) = next else { return Ok(None) };
             if self.html_local(control, node, "form")? {
                 return Ok(Some(node));
@@ -5131,7 +5136,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         next_ordinary_view_node(
-            ConstructionView::Active(self.construction.storage()),
+            ConstructionView::Active(self.construction.storage(control)?),
             control,
             root,
             node,
@@ -5149,7 +5154,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<bool, SessionError> {
         let mut node = node;
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(c)?.len() {
             let Some(parent) = self.ordinary_parent(c, node, None)? else {
                 return Ok(false);
             };
@@ -5208,7 +5213,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<bool, SessionError> {
         let mut root = self.ordinary_root(control, node, detached)?;
-        'roots: for _ in 0..self.construction.storage().len() {
+        'roots: for _ in 0..self.construction.storage(control)?.len() {
             control.charge(WorkCategory::RecordVisit, 1)?;
             if matches!(
                 self.construction
@@ -5230,7 +5235,7 @@ impl SessionStorage {
                 control.charge(WorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
-                    .storage()
+                    .storage(control)?
                     .node_by_result_id(host)
                     .map_err(|_| SessionError::ForeignNode)?
                     .position();
@@ -5909,7 +5914,7 @@ impl SessionStorage {
             self.construction.abort_pending(control, pending)?;
             return Err(error);
         }
-        self.construction.finish_pending(pending);
+        self.construction.finish_pending(control, pending)?;
         if form_effects.is_some() {
             self.effects.form = form_effects;
         }
@@ -6069,7 +6074,7 @@ impl SessionStorage {
                     // writes. The actual detached construction view stays here.
                     let mut ancestor = Some(index);
                     let mut connected = false;
-                    for _ in 0..self.construction.storage().len() {
+                    for _ in 0..self.construction.storage(control)?.len() {
                         let Some(current) = ancestor else { break };
                         control.charge(WorkCategory::RecordVisit, 1)?;
                         let record = self
@@ -6312,7 +6317,7 @@ impl ParserArenaSession {
         control.charge(WorkCategory::RecordVisit, 1)?;
         storage
             .construction
-            .storage()
+            .storage(control)?
             .position(&creation.arena)
             .map_err(|_| SessionError::ForeignNode)?;
         control.require_source_range(&creation.source)?;
@@ -6552,7 +6557,7 @@ impl ParserArenaSession {
         }
         if storage
             .construction
-            .storage()
+            .storage(c)?
             .position(&document.handle)
             .ok()
             != Some(0)
@@ -6926,7 +6931,7 @@ impl ParserArenaSession {
         // creation pays for the registry its predecessors built.
         let storage = self.active_mut()?;
         storage.payloads.check_new_aliases(
-            ConstructionView::Active(storage.construction.storage()),
+            ConstructionView::Active(storage.construction.storage(control)?),
             control,
         )?;
         if !matches!(profile, CreationProfile::Ordinary) {
@@ -7391,7 +7396,7 @@ impl ParserArenaSession {
         let state = self.input_state(control, node)?;
         let storage = self.active()?;
         append_native_input_value(
-            ConstructionView::Active(storage.construction.storage()),
+            ConstructionView::Active(storage.construction.test_storage()),
             &storage.payloads,
             control,
             node.index,
@@ -7409,7 +7414,7 @@ impl ParserArenaSession {
         destination.require_owner(control)?;
         self.input_state(control, node)?;
         append_input_content(
-            ConstructionView::Active(self.active()?.construction.storage()),
+            ConstructionView::Active(self.active()?.construction.test_storage()),
             control,
             node.index,
             destination,
@@ -7456,7 +7461,7 @@ impl ParserArenaSession {
         destination.require_owner(control)?;
         self.output_state(control, node)?;
         append_descendant_text(
-            ConstructionView::Active(self.active()?.construction.storage()),
+            ConstructionView::Active(self.active()?.construction.test_storage()),
             control,
             node.index,
             destination,
@@ -8228,7 +8233,7 @@ impl ParserArenaSession {
             }
         } else {
             let mut ancestor = Some(target);
-            for _ in 0..storage.construction.storage().len() {
+            for _ in 0..storage.construction.storage(control)?.len() {
                 let Some(index) = ancestor else { break };
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 if index == element {
@@ -8246,7 +8251,7 @@ impl ParserArenaSession {
                     control.charge(WorkCategory::ProviderCall, 1)?;
                     let owner_position = storage
                         .construction
-                        .storage()
+                        .storage(control)?
                         .node_by_result_id(owner)
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
@@ -8511,7 +8516,7 @@ impl ParserArenaSession {
         let storage = self.active()?;
         storage.require(control)?;
         storage.payloads.check_aliases(
-            ConstructionView::Active(storage.construction.storage()),
+            ConstructionView::Active(storage.construction.storage(control)?),
             control,
         )?;
         control.charge(WorkCategory::RecordVisit, 1)?;
@@ -8527,7 +8532,7 @@ impl ParserArenaSession {
     pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
         cleanup_owner(control, &self.active()?.control)?;
         self.active()?.payloads.check_aliases(
-            ConstructionView::Active(self.active()?.construction.storage()),
+            ConstructionView::Active(self.active()?.construction.storage(control)?),
             control,
         )?;
         self.storage
@@ -8929,10 +8934,11 @@ impl FrozenArena {
                 return Err(construction_owner::construction_error(control, error));
             }
         };
-        construction.recovered(control, recovery)?;
         // Every owner is released even after a refusal; the first one is
-        // returned at the end.
+        // returned at the end. The recovery put the storage back before it
+        // could refuse, so the owner below can still be retired.
         let mut refused = None;
+        keep_first(&mut refused, construction.recovered(control, recovery));
         if let Some(fragment) = fragment {
             keep_first(&mut refused, fragment.release(control, &owner));
         }
@@ -8977,11 +8983,15 @@ fn release_parts(
     } = parts;
     // Retirement consumes the owner and may refuse; the logical counts it held
     // are read first so they are released either way.
-    let usage = construction.usage();
-    let (edges, nodes) = (usage.edges() as u64, usage.nodes() as u64);
     let mut refused = None;
-    if let Err(error) = construction.retire(control) {
+    let usage = construction.usage(control).unwrap_or_else(|error| {
+        // Storage that is not at rest holds counts nothing can name.
         refused = Some(error);
+        HtmlConstructionUsage::default()
+    });
+    let (edges, nodes) = (usage.edges() as u64, usage.nodes() as u64);
+    if let Err(error) = construction.retire(control) {
+        refused.get_or_insert(error);
     }
     for (resource, units) in [
         (HtmlParseResource::ManagedEdges, edges),
@@ -12149,7 +12159,10 @@ mod tests {
                 input.is_none(),
                 "lexical transfer precedes wrapper, credit={wrapper_credit}"
             );
-            assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                1
+            );
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))
@@ -12335,7 +12348,10 @@ mod tests {
                 }
             ));
             assert_eq!(result.err(), Some(SessionError::Stop(first)));
-            assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                3
+            );
             assert_eq!(
                 creation
                     .token
@@ -12814,7 +12830,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            2 * session.active().unwrap().construction.storage().len() as u64
+            2 * session.active().unwrap().construction.test_storage().len() as u64
                 + session.active().unwrap().payloads.values.len() as u64
         );
         session.release(&mut c).unwrap();
@@ -13162,7 +13178,7 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                2 * storage.construction.storage().len() as u64
+                2 * storage.construction.test_storage().len() as u64
                     + storage.payloads.values.len() as u64
             );
             if result.is_err() {
@@ -15800,7 +15816,7 @@ mod tests {
             );
             let (mut c, mut session, capability, lexer, parent, mut input, range) =
                 input_owner(&request);
-            let records = session.active().unwrap().construction.storage().len();
+            let records = session.active().unwrap().construction.test_storage().len();
             let slots = session.active().unwrap().payloads.values.len();
             let alias = (case == 0).then(|| {
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -15846,7 +15862,7 @@ mod tests {
             );
             assert!(input.is_some());
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 records
             );
             assert_eq!(session.active().unwrap().payloads.values.len(), slots);
@@ -16679,7 +16695,7 @@ mod tests {
                 );
                 let (mut c, mut session, capability, lexer, parent, mut input, range) =
                     input_owner(&request);
-                let records = session.active().unwrap().construction.storage().len();
+                let records = session.active().unwrap().construction.test_storage().len();
                 let slots = session.active().unwrap().payloads.values.len();
                 let alias = (case == 0).then(|| {
                     input.as_ref().unwrap().attributes.as_slice()[1]
@@ -16727,7 +16743,7 @@ mod tests {
                 );
                 assert!(input.is_some());
                 assert_eq!(
-                    session.active().unwrap().construction.storage().len(),
+                    session.active().unwrap().construction.test_storage().len(),
                     records
                 );
                 assert_eq!(session.active().unwrap().payloads.values.len(), slots);
@@ -17263,7 +17279,7 @@ mod tests {
             );
             let (mut c, mut session, capability, lexer, parent, mut input, range) =
                 input_owner(&request);
-            let records = session.active().unwrap().construction.storage().len();
+            let records = session.active().unwrap().construction.test_storage().len();
             let slots = session.active().unwrap().payloads.values.len();
             let alias = (case == 0).then(|| {
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -17309,7 +17325,7 @@ mod tests {
             );
             assert!(input.is_some());
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 records
             );
             assert_eq!(session.active().unwrap().payloads.values.len(), slots);
@@ -17839,7 +17855,13 @@ mod tests {
                     101
                 );
                 assert_eq!(
-                    session.active().unwrap().construction.usage().utf16_units(),
+                    session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .test_storage()
+                        .usage()
+                        .utf16_units(),
                     90
                 );
                 assert!(
@@ -18527,7 +18549,15 @@ mod tests {
         let result = unrelated.mark_script_eof(&mut c, &node, &capability);
         assert_eq!(result, Err(SessionError::Stop(stop)));
         assert_eq!(c.stop(), Some(stop));
-        assert_eq!(unrelated.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            unrelated
+                .active()
+                .unwrap()
+                .construction
+                .test_storage()
+                .len(),
+            1
+        );
         assert!(original.active().unwrap().payloads.values.iter().any(|entry| matches!(entry, RetainedPayload::Script { metadata, .. } if !metadata.flags.already_started())));
         assert!(
             matches!(unrelated.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
@@ -18678,7 +18708,7 @@ mod tests {
             assert_eq!(retained.script_type, None);
             assert_eq!(retained.preparation_document, None);
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 3 + depth
             );
             session.release(&mut c).unwrap();
@@ -19279,7 +19309,7 @@ mod tests {
             );
             assert_eq!(incoming.is_some(), cap == 17);
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 if cap == 27 { 3 } else { 2 }
             );
             let count = session
@@ -19349,7 +19379,7 @@ mod tests {
             }
         };
         let alias = tag.name.value.text().clone();
-        let before = session.active().unwrap().construction.storage().len();
+        let before = session.active().unwrap().construction.test_storage().len();
         let mut input = Some(tag);
         assert!(matches!(
             session.allocate_disabled_parser_script(
@@ -19363,7 +19393,7 @@ mod tests {
         ));
         assert!(input.is_some());
         assert_eq!(
-            session.active().unwrap().construction.storage().len(),
+            session.active().unwrap().construction.test_storage().len(),
             before
         );
         assert_eq!(c.stop(), None);
@@ -20245,7 +20275,10 @@ mod tests {
                 input.as_ref().unwrap().name.value.text().code_units(),
                 original
             );
-            assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                3
+            );
             assert_eq!(session.active().unwrap().payloads.values.len(), 16);
             assert!(session.active().unwrap().effects.form.is_none());
             assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
@@ -20664,7 +20697,7 @@ mod tests {
     fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect() {
         let mut c = control();
         let (mut session, body, button, prepared) = listed_id_slot_fixture(&mut c);
-        let old_count = session.active().unwrap().construction.storage().len();
+        let old_count = session.active().unwrap().construction.test_storage().len();
         assert!(matches!(
             session.form_association_owner(&mut c, &button),
             Err(SessionError::Stop(ParseStop::InternalInvariant(
@@ -20674,7 +20707,7 @@ mod tests {
         let stop = c.stop().unwrap();
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
         let storage = session.active().unwrap();
-        assert_eq!(storage.construction.storage().len(), old_count);
+        assert_eq!(storage.construction.test_storage().len(), old_count);
         assert!(storage.effects.form.is_some());
         let HtmlNodeKind::Element(element) = &storage
             .construction
@@ -21452,23 +21485,24 @@ mod tests {
                 )
             })
             .collect();
-        let original_topology: Vec<_> = (0..session.active().unwrap().construction.storage().len())
-            .map(|position| {
-                let record = session
-                    .active()
-                    .unwrap()
-                    .construction
-                    .node_at(position)
-                    .unwrap();
-                (
-                    record.parent().map(|node| node.position()),
-                    record
-                        .children()
-                        .map(|node| node.position())
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect();
+        let original_topology: Vec<_> =
+            (0..session.active().unwrap().construction.test_storage().len())
+                .map(|position| {
+                    let record = session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .node_at(position)
+                        .unwrap();
+                    (
+                        record.parent().map(|node| node.position()),
+                        record
+                            .children()
+                            .map(|node| node.position())
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect();
         let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
         let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
         let mut input = Some(tag);
@@ -21501,7 +21535,7 @@ mod tests {
                     .collect::<Vec<_>>(),
             )
         });
-        let topology: Vec<_> = (0..session.active().unwrap().construction.storage().len())
+        let topology: Vec<_> = (0..session.active().unwrap().construction.test_storage().len())
             .map(|position| {
                 let record = session
                     .active()
@@ -21645,7 +21679,10 @@ mod tests {
             session.active().unwrap().payloads.values.capacity(),
             capacity
         );
-        assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            3
+        );
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
@@ -21730,7 +21767,7 @@ mod tests {
         ));
         assert!(input.is_none());
         let storage = session.active().unwrap();
-        assert_eq!(storage.construction.storage().len(), 4);
+        assert_eq!(storage.construction.test_storage().len(), 4);
         assert_eq!(
             storage
                 .construction
@@ -21896,7 +21933,7 @@ mod tests {
                     })) if limit == cap && current == cap
                 ));
                 let storage = session.active().unwrap();
-                assert_eq!(storage.construction.storage().len(), 4);
+                assert_eq!(storage.construction.test_storage().len(), 4);
                 assert!(
                     !storage
                         .payloads
@@ -21925,7 +21962,10 @@ mod tests {
                 ));
                 // Metadata, name, namespace and attributes are initialized;
                 // the next actual record-ticket entry is the rejected slot.
-                assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    3
+                );
                 assert_eq!(session.active().unwrap().payloads.values.len(), 24);
                 assert!(
                     session
@@ -22342,12 +22382,18 @@ mod tests {
                             .current,
                         units
                     );
-                    assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+                    assert_eq!(
+                        session.active().unwrap().construction.test_storage().len(),
+                        2
+                    );
                 } else {
                     assert!(
                         matches!(result, Err(SessionError::Stop(ParseStop::LimitExceeded { resource: HtmlParseResource::ManagedUtf16Units, limit, .. })) if limit == cap)
                     );
-                    assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+                    assert_eq!(
+                        session.active().unwrap().construction.test_storage().len(),
+                        1
+                    );
                     assert_eq!(
                         session.freeze(&mut c).err(),
                         Some(SessionError::Stop(c.stop().unwrap()))
@@ -22440,7 +22486,10 @@ mod tests {
             wrong
         );
         assert_eq!(session.document_mode(&mut foreign), Err(wrong));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             session.document_mode(&mut c),
             Ok(HtmlDocumentMode::NoQuirks)
@@ -22454,7 +22503,10 @@ mod tests {
             session.document_mode(&mut c),
             Err(SessionError::Stop(ParseStop::Cancelled))
         );
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.stop(), Some(ParseStop::Cancelled));
@@ -22514,7 +22566,12 @@ mod tests {
         session
             .insert(&mut c, &branch, &destination, None, None)
             .unwrap();
-        let before = session.active().unwrap().construction.usage();
+        let before = session
+            .active()
+            .unwrap()
+            .construction
+            .test_storage()
+            .usage();
         assert_eq!(
             session
                 .reparent_children(&mut c, &from, &destination, None)
@@ -22552,7 +22609,7 @@ mod tests {
                 .position(),
             branch.index
         );
-        assert_eq!(storage.construction.usage(), before);
+        assert_eq!(storage.construction.test_storage().usage(), before);
         assert!(c.stop().is_none());
         session.release(&mut c).unwrap();
         assert_eq!(c.usage().actual_capacity_bytes, 0);
@@ -22572,7 +22629,7 @@ mod tests {
             .unwrap()
             .construction
             .actual_record_layout();
-        let required = original.active().unwrap().construction.len() + 3; // inert Document + template + contents
+        let required = original.active().unwrap().construction.test_storage().len() + 3; // inert Document + template + contents
         assert!(required > capacity);
         let one_short =
             initial - (capacity * element_size) as u64 + (required * element_size) as u64 - 1;
@@ -22597,7 +22654,7 @@ mod tests {
             matches!(error,Some(SessionError::Stop(ParseStop::LimitExceeded{resource:HtmlParseResource::ManagedCapacityBytes,limit,..})) if limit==one_short)
         );
         let storage = session.active().unwrap();
-        assert_eq!(storage.construction.len(), 1);
+        assert_eq!(storage.construction.test_storage().len(), 1);
         assert_eq!(storage.payloads.values.len(), payloads);
         assert!(storage.payloads.values.iter().any(|payload| matches!(
             payload,
@@ -22629,7 +22686,7 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let storage = session.active_mut().unwrap();
-        let held = storage.construction.len();
+        let held = storage.construction.test_storage().len();
         let mut capacities = vec![storage.construction.actual_record_layout().0];
         // Ask for ever more records, as a growing document does. An exact
         // policy changes the bank for every larger request.
@@ -22667,7 +22724,7 @@ mod tests {
         let at_eight = baseline.usage().actual_capacity_bytes;
         let storage = original.active().unwrap();
         let (capacity, element_size) = storage.construction.actual_record_layout();
-        let required = storage.construction.len() + 9;
+        let required = storage.construction.test_storage().len() + 9;
         assert!(capacity < required && required < 2 * capacity);
         let exact_fit =
             at_eight - (capacity * element_size) as u64 + (required * element_size) as u64;
@@ -22843,7 +22900,7 @@ mod tests {
                     .is_none())
             );
             assert!(storage.payloads.values.iter().any(|v| matches!(v, RetainedPayload::String { origins: Some(origins), location: StringLocation::AttributeValue(_, 2), .. } if storage.observed_origins(origins, &mut c).unwrap()[0].source == expected_origin)));
-            assert_eq!(storage.construction.usage().attributes(), 4);
+            assert_eq!(storage.construction.test_storage().usage().attributes(), 4);
             t.release(&mut c).unwrap();
             let mut frozen = session.freeze(&mut c).unwrap();
             let document = frozen.document().unwrap();
@@ -23026,7 +23083,10 @@ mod tests {
         // including those already rebound and those still using the redirect.
         storage
             .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)
+            .check_aliases(
+                ConstructionView::Active(storage.construction.test_storage()),
+                c,
+            )
             .unwrap();
     }
 
@@ -23657,7 +23717,7 @@ mod tests {
                 .unwrap()
                 .payloads
                 .check_aliases(
-                    ConstructionView::Active(session.active().unwrap().construction.storage()),
+                    ConstructionView::Active(session.active().unwrap().construction.test_storage()),
                     &mut c,
                 )
                 .unwrap();
@@ -24340,7 +24400,10 @@ mod tests {
         let (target, data) = input.take().expect("both original fields retained");
         assert_eq!(target.value.text().code_units(), [0x78]);
         assert_eq!(data.value.text().code_units(), [0xd800]);
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         target.release(&mut c).unwrap();
         data.release(&mut foreign).unwrap();
         session.release(&mut c).unwrap();
@@ -24769,7 +24832,10 @@ mod tests {
             }))
         ));
         assert!(input.is_none());
-        assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            2
+        );
         assert_eq!(
             c.usage().resource(HtmlParseResource::ManagedNodes).current,
             2
@@ -24877,7 +24943,10 @@ mod tests {
                 ..
             }))
         ));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedUtf16Units)
@@ -25034,7 +25103,10 @@ mod tests {
                 requested_delta: 1,
             }))
         ));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedAttributes)
@@ -25329,7 +25401,10 @@ mod tests {
                 .unwrap();
             assert_eq!(old.text().code_units(), historical);
             ParseEvidence::release_materialized_group(&mut c, &mut Some(old)).unwrap();
-            assert_eq!(storage.construction.usage().utf16_units(), prefix + 5);
+            assert_eq!(
+                storage.construction.test_storage().usage().utf16_units(),
+                prefix + 5
+            );
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::ManagedUtf16Units)
@@ -25487,7 +25562,13 @@ mod tests {
             [0xd800, 0x20, 0xd83d, 0xde00, 0]
         );
         assert_eq!(
-            session.active().unwrap().construction.usage().utf16_units(),
+            session
+                .active()
+                .unwrap()
+                .construction
+                .test_storage()
+                .usage()
+                .utf16_units(),
             5
         );
         // Actual retained strings: old2 + incoming3 + merged5. Four origin
@@ -26440,7 +26521,7 @@ mod tests {
             let retained = c.usage().clone();
             if count == 256 {
                 let storage = session.active().unwrap();
-                assert_eq!(storage.construction.storage().len(), 2);
+                assert_eq!(storage.construction.test_storage().len(), 2);
                 assert_eq!(storage.payloads.values.len(), 2 * count + 1);
                 assert_eq!(
                     storage
@@ -26872,7 +26953,10 @@ mod tests {
                 .is_none()
         );
         assert!(text.is_none());
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
@@ -26898,7 +26982,10 @@ mod tests {
             Err(SessionError::DuplicateAttribute)
         ));
         assert!(tag.is_none());
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
@@ -27275,7 +27362,10 @@ mod tests {
                 ..
             }))
         ));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             session
                 .active()
@@ -27580,7 +27670,10 @@ mod tests {
                 ..
             }))
         ));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             control
                 .usage()
@@ -27748,7 +27841,10 @@ mod tests {
                 .kind() as *const HtmlNodeKind,
             records_pointer
         );
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(control.usage().actual_capacity_bytes, root_capacity as u64);
         session.release(&mut control).unwrap();
         assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -28429,7 +28525,10 @@ mod tests {
                     .node(&mut c, &session)
                     .unwrap();
                 assert_ne!(inert.index, root.index);
-                assert_eq!(session.active().unwrap().construction.storage().len(), 4);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    4
+                );
                 assert!(state.target.is_none() && state._start.is_none() && state.end.is_none());
             } else {
                 let Err(SessionError::Stop(first)) = result else {
@@ -28445,7 +28544,10 @@ mod tests {
                     }
                 ));
                 assert!(input.is_some());
-                assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    1
+                );
                 assert!(
                     !session
                         .active()
@@ -28515,7 +28617,10 @@ mod tests {
                         .current,
                     21
                 );
-                assert_eq!(session.active().unwrap().construction.storage().len(), 4);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    4
+                );
                 assert!(
                     session
                         .template_state(&mut c, &node)
@@ -28532,7 +28637,7 @@ mod tests {
                 );
                 assert_eq!(input.is_some(), cap == 14);
                 assert_eq!(
-                    session.active().unwrap().construction.storage().len(),
+                    session.active().unwrap().construction.test_storage().len(),
                     if cap == 14 { 1 } else { 2 }
                 );
                 assert_eq!(
@@ -28579,7 +28684,10 @@ mod tests {
             let mut input = Some((target, data));
             let result = session.allocate_processing_instruction(&mut c, &mut input, None);
             assert!(input.is_none());
-            assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                2
+            );
             if cap == 19 {
                 let node = result.unwrap();
                 assert_eq!(
@@ -28750,7 +28858,7 @@ mod tests {
             .unwrap();
             let result = session.allocate_processing_instruction(&mut c, &mut input, None);
             let storage = session.active().unwrap();
-            if storage.construction.storage().len() == 2 {
+            if storage.construction.test_storage().len() == 2 {
                 installed = true;
                 let HtmlNodeKind::ProcessingInstruction(pi) = &storage
                     .construction
@@ -29855,7 +29963,7 @@ mod tests {
             );
             let (mut c, mut session, capability, lexer, parent, mut input, range) =
                 input_owner(&request);
-            let records = session.active().unwrap().construction.storage().len();
+            let records = session.active().unwrap().construction.test_storage().len();
             let slots = session.active().unwrap().payloads.values.len();
             let alias = (case == 0).then(|| {
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -29901,7 +30009,7 @@ mod tests {
             );
             assert!(input.is_some());
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 records
             );
             assert_eq!(session.active().unwrap().payloads.values.len(), slots);
@@ -30043,7 +30151,7 @@ mod tests {
             );
             let (mut c, mut session, capability, lexer, parent, mut input, range) =
                 input_owner(&request);
-            let records = session.active().unwrap().construction.storage().len();
+            let records = session.active().unwrap().construction.test_storage().len();
             let payloads = session.active().unwrap().payloads.values.len();
             let alias = (case == 0).then(|| {
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -30087,7 +30195,7 @@ mod tests {
             );
             assert!(input.is_some());
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 records
             );
             assert_eq!(session.active().unwrap().payloads.values.len(), payloads);

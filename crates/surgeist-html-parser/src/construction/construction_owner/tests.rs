@@ -39,7 +39,7 @@ fn aborted_child_bank_ticket_cannot_retire_later_recreated_record_bank() {
     let old = stale.snapshot().clone();
     owner.abort_pending(&mut control, pending).unwrap();
     assert!(owner.node_at(1).is_none());
-    assert_eq!(owner.storage().position(&root), Ok(0));
+    assert_eq!(owner.test_storage().position(&root), Ok(0));
     let created = owner
         .apply(
             &mut control,
@@ -50,15 +50,15 @@ fn aborted_child_bank_ticket_cannot_retire_later_recreated_record_bank() {
         .unwrap();
     let current = owner.children[1].as_ref().unwrap().snapshot();
     assert_ne!(old.id(), current.id());
-    assert_eq!(owner.storage().position(&created), Ok(1));
+    assert_eq!(owner.test_storage().position(&created), Ok(1));
     let before = control.usage().actual_capacity_bytes;
     assert_eq!(
         control.require_construction_retirement(&stale, current),
         Err(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
     );
     assert_eq!(control.usage().actual_capacity_bytes, before);
-    assert_eq!(owner.storage().position(&root), Ok(0));
-    assert_eq!(owner.storage().position(&created), Ok(1));
+    assert_eq!(owner.test_storage().position(&root), Ok(0));
+    assert_eq!(owner.test_storage().position(&created), Ok(1));
     let stop = control.stop();
     drop(stale);
     owner.retire(&mut control).unwrap();
@@ -457,8 +457,11 @@ fn losing_the_attribute_edit_during_a_removal_reports_the_registry_row() {
     let storage = session.active_mut().unwrap();
     storage.construction.restore_hidden_attribute_edit();
     storage.construction.abort_attributes(&mut c).unwrap();
-    session.release(&mut c).unwrap();
-    crate::construction::tests::storage_zero(&c);
+    // The element's shared attributes lived in the lost edit's storage, so the
+    // row that held them cannot be put back; its release reports the emptied
+    // row instead of dropping it silently, and the first stop is unchanged.
+    assert_eq!(session.release(&mut c), Err(SessionError::Consumed));
+    assert_eq!(c.stop(), Some(registry_row()));
 }
 
 #[test]

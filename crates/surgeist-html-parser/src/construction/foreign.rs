@@ -477,7 +477,10 @@ mod tests {
                     assert!(
                         matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
                     );
-                    assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+                    assert_eq!(
+                        session.active().unwrap().construction.test_storage().len(),
+                        2
+                    );
                 }
                 let mut pending = input.map(TokenKind::Tag);
                 if pending.is_some() {
@@ -533,7 +536,10 @@ mod tests {
                 _ => assert!(matches!(result, Err(SessionError::Stop(_)))),
             }
             assert!(input.is_some());
-            assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                2
+            );
             drop(alias);
             let mut pending = input.map(TokenKind::Tag);
             release_token_kind(&mut pending, &mut c).unwrap();
@@ -704,7 +710,9 @@ mod tests {
                     .unwrap()
                     .payloads
                     .check_aliases(
-                        ConstructionView::Active(session.active().unwrap().construction.storage()),
+                        ConstructionView::Active(
+                            session.active().unwrap().construction.test_storage(),
+                        ),
                         &mut c,
                     )
                     .unwrap();
@@ -834,7 +842,7 @@ mod tests {
                         }
                     ));
                     stopped_after_element |=
-                        session.active().unwrap().construction.storage().len() > 3;
+                        session.active().unwrap().construction.test_storage().len() > 3;
                     assert!(
                         matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
                     );
@@ -842,7 +850,7 @@ mod tests {
                 Err(error) => panic!("qualified clone failure: {error:?}"),
             }
             match session.active().unwrap().payloads.check_aliases(
-                ConstructionView::Active(session.active().unwrap().construction.storage()),
+                ConstructionView::Active(session.active().unwrap().construction.test_storage()),
                 &mut c,
             ) {
                 Ok(()) => {}
@@ -857,7 +865,7 @@ mod tests {
                         .payloads
                         .check_aliases(
                             ConstructionView::Active(
-                                session.active().unwrap().construction.storage(),
+                                session.active().unwrap().construction.test_storage(),
                             ),
                             &mut c,
                         )

@@ -21,9 +21,10 @@ impl ParserArenaSession {
     ) -> Result<FrozenHistory, SessionError> {
         let storage = self.active()?;
         storage.require(c)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
+        storage.payloads.check_aliases(
+            ConstructionView::Active(storage.construction.test_storage()),
+            c,
+        )?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         payload_write::<HistoryData<'_>>(c, 1)?;
@@ -1041,7 +1042,7 @@ mod tests {
     fn immutable_history_alias_refusal_cancel_and_foreign_control_preserve_transfer_and_retry() {
         let source = crate::HtmlSource::utf8("AB");
         let (mut c, mut session, _) = projected(&source);
-        let alias = (0..session.active().unwrap().construction.storage().len())
+        let alias = (0..session.active().unwrap().construction.test_storage().len())
             .find_map(|position| {
                 match session
                     .active()

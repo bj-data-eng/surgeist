@@ -11,7 +11,7 @@ impl SessionStorage {
         retire_slots: &[Option<usize>],
     ) -> Result<Attribute, SessionError> {
         self.begin_attribute_edit(control, node, HtmlConstructionAttributeEditMode::Slots)?;
-        let mut group = self.construction.take_attribute_edit();
+        let mut group = self.construction.take_attribute_edit(control)?;
         // Everything that can refuse is checked before ownership leaves the
         // container, and a refusal hands the edit back and aborts it. The edit
         // changes only the element's attributes, so the record checked here is

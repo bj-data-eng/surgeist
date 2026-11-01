@@ -153,7 +153,7 @@ impl SessionStorage {
     ) -> Result<(crate::HtmlNonceConnection, crate::HtmlHeaderDeliveredCsp), SessionError> {
         use crate::{HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C};
         let mut root = self.ordinary_root(c, node, None)?;
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(c)?.len() {
             c.charge(WorkCategory::RecordVisit, 2)?;
             if matches!(
                 self.construction
@@ -174,7 +174,7 @@ impl SessionStorage {
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
-                    .storage()
+                    .storage(c)?
                     .node_by_result_id(host)
                     .map_err(|_| SessionError::ForeignNode)?
                     .position();
@@ -400,7 +400,7 @@ impl SessionStorage {
             c.charge(WorkCategory::ProviderCall, 1)?;
             return Ok(Some(
                 self.construction
-                    .storage()
+                    .storage(c)?
                     .node_by_result_id(shadow.contents())
                     .map_err(|_| SessionError::ForeignNode)?
                     .position(),
@@ -415,7 +415,7 @@ impl SessionStorage {
             return Ok(Some(child.position()));
         }
         let mut cursor = node;
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(c)?.len() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if cursor == root {
                 return Ok(None);
@@ -460,7 +460,7 @@ impl SessionStorage {
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
-                    .storage()
+                    .storage(c)?
                     .node_by_result_id(host)
                     .map_err(|_| SessionError::ForeignNode)?
                     .position();
@@ -531,7 +531,7 @@ impl SessionStorage {
         c.require_identity(&self.control)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         self.payloads
-            .check_aliases(ConstructionView::Active(self.construction.storage()), c)?;
+            .check_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
         let container = self.element_attribute_container(c, node)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
@@ -1126,7 +1126,7 @@ mod tests {
     }
     fn p_node(c: &mut ParseControl, session: &ParserArenaSession) -> ParserNode {
         let storage = session.active().unwrap();
-        let index = (0..storage.construction.storage().len()).find(|&position|matches!(storage.construction.node_at(position).unwrap().kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
+        let index = (0..storage.construction.test_storage().len()).find(|&position|matches!(storage.construction.node_at(position).unwrap().kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("p"))).unwrap();
         storage.node(c, index).unwrap()
     }
     #[test]

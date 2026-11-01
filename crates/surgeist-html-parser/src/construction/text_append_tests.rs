@@ -90,7 +90,13 @@ fn every_append_work_cut_preserves_original_or_commits_exact_input_and_reclaims_
                 expected.extend_from_slice(&incoming);
                 assert_eq!(native_text(&session, &node), expected);
                 assert_eq!(
-                    session.active().unwrap().construction.usage().utf16_units(),
+                    session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .test_storage()
+                        .usage()
+                        .utf16_units(),
                     302
                 );
             }
@@ -102,7 +108,13 @@ fn every_append_work_cut_preserves_original_or_commits_exact_input_and_reclaims_
             )) => {
                 assert_eq!(native_text(&session, &node), [65, 66]);
                 assert_eq!(
-                    session.active().unwrap().construction.usage().utf16_units(),
+                    session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .test_storage()
+                        .usage()
+                        .utf16_units(),
                     2
                 );
                 let first = c.first_stop_usage().unwrap().clone();
@@ -171,7 +183,13 @@ fn cancellation_after_real_tail_chunk_keeps_old_text_and_actual_growth_and_first
     assert!(input.is_none());
     assert_eq!(native_text(&session, &node), [65, 66]);
     assert_eq!(
-        session.active().unwrap().construction.usage().utf16_units(),
+        session
+            .active()
+            .unwrap()
+            .construction
+            .test_storage()
+            .usage()
+            .utf16_units(),
         2
     );
     let first = c.first_stop_usage().unwrap().clone();

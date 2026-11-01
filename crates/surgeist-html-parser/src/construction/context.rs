@@ -270,7 +270,7 @@ impl SessionStorage {
         self.payloads
             .push_row(RetainedPayload::NodeDocument {
                 node: None,
-                document: DocumentRef::Owned(self.construction.storage().len()),
+                document: DocumentRef::Owned(self.construction.storage(c)?.len()),
             })
             .map_err(|_| latch_registry_row(c))?;
         payload_write::<Option<usize>>(c, 3)?;
@@ -359,7 +359,7 @@ impl ParserArenaSession {
         storage.require(c)?;
         c.charge(WorkCategory::RecordVisit, 3)?;
         if storage.fragment.is_some()
-            || storage.construction.storage().len() != 1
+            || storage.construction.storage(c)?.len() != 1
             || !matches!(
                 storage
                     .construction
@@ -510,8 +510,8 @@ impl ParserArenaSession {
             .child_at(0)
             .ok_or(SessionError::ContextUnavailable)?
             .position();
-        if output >= storage.construction.storage().len()
-            || root >= storage.construction.storage().len()
+        if output >= storage.construction.storage(c)?.len()
+            || root >= storage.construction.storage(c)?.len()
             || !matches!(
                 storage
                     .construction
@@ -1847,7 +1847,7 @@ impl SessionStorage {
         c.charge(WorkCategory::ProviderCall, 1)?;
         let shadow_contents = self
             .construction
-            .storage()
+            .storage(c)?
             .node_by_result_id(shadow.contents())
             .map_err(|_| SessionError::ForeignNode)?
             .position();
@@ -3113,7 +3113,10 @@ mod tests {
             )))
         ));
         assert!(session.active().unwrap().fragment.is_none());
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);
         assert_eq!(
             c.stop(),
@@ -3333,7 +3336,10 @@ mod tests {
                 assert!(
                     matches!(first,ParseStop::LimitExceeded {resource:actual,..} if actual==resource)
                 );
-                assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    3
+                );
                 assert_eq!(
                     session.freeze(&mut c).err(),
                     Some(SessionError::Stop(first))

@@ -1559,7 +1559,8 @@ impl SessionStorage {
         original: Option<&ConstructionCauseRef>,
         intended_parent: Option<usize>,
     ) -> Result<Option<ConstructionCauseRef>, SessionError> {
-        if intended_parent.is_some_and(|parent| parent >= self.construction.storage().len()) {
+        let records = self.construction.len(c)?;
+        if intended_parent.is_some_and(|parent| parent >= records) {
             return Err(SessionError::ForeignNode);
         }
         let Some(evidence) = &mut self.evidence else {
@@ -2658,9 +2659,10 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         c.require_source(source)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
+        storage.payloads.check_aliases(
+            ConstructionView::Active(storage.construction.storage(c)?),
+            c,
+        )?;
         let evidence = storage.evidence.as_mut().ok_or(SessionError::WrongToken)?;
         if evidence
             .native
@@ -2733,7 +2735,7 @@ impl ParserArenaSession {
                 _ => None,
             };
             if let Some((node, slot, kind)) = raw {
-                if node >= storage.construction.storage().len() {
+                if node >= storage.construction.storage(c)?.len() {
                     return Err(SessionError::WrongToken);
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
@@ -2780,7 +2782,7 @@ impl ParserArenaSession {
             {
                 cleanup_owner(c, &cause.control)?;
                 if cause.issuer.as_ptr() != Arc::as_ptr(&evidence.identity)
-                    || *node >= storage.construction.storage().len()
+                    || *node >= storage.construction.storage(c)?.len()
                 {
                     return Err(SessionError::WrongToken);
                 }
@@ -2822,7 +2824,7 @@ impl ParserArenaSession {
             };
             c.require_document_string(allocation, value)?;
             let Some(native) = location.value(
-                ConstructionView::Active(storage.construction.storage()),
+                ConstructionView::Active(storage.construction.storage(c)?),
                 &storage.payloads.values,
                 payload_slot,
                 c,
@@ -3044,7 +3046,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         source: usize,
     ) -> Result<Option<ConstructionCauseRef>, SessionError> {
-        if source >= self.construction.storage().len() {
+        if source >= self.construction.storage(c)?.len() {
             return Err(SessionError::ForeignNode);
         }
         let Some(evidence) = &mut self.evidence else {

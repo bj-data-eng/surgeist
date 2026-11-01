@@ -54,7 +54,7 @@ impl SessionStorage {
                     c.charge(WorkCategory::ProviderCall, 1)?;
                     let shadow_contents = self
                         .construction
-                        .storage()
+                        .storage(c)?
                         .node_by_result_id(shadow.contents())
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
