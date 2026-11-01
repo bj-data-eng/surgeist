@@ -1031,6 +1031,11 @@ impl ParseEvidence {
             .get(group.index)
             .ok_or(SessionError::WrongToken)
     }
+    /// Drops the complete projection, as a fault in a published report would.
+    #[cfg(test)]
+    pub(super) fn drop_projection_for_test(&mut self) {
+        self.native.projection = None;
+    }
     pub(super) fn history_data(&self) -> Result<HistoryData<'_>, SessionError> {
         // Do not mint an immutable history lender from a native-only projection
         // or an unfinished lexical prefix.

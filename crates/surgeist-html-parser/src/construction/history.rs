@@ -257,6 +257,11 @@ impl<'a> PreparedHistory<'a> {
                 mode,
             )
     }
+    /// The prepared arena, for tests that corrupt what publication will take.
+    #[cfg(test)]
+    pub(crate) fn arena_for_test(&mut self) -> Option<&mut FrozenArena> {
+        self.input.as_mut()
+    }
     pub(crate) fn prepare(
         input: &'a mut Option<FrozenArena>,
         c: &mut ParseControl,
@@ -760,6 +765,31 @@ mod tests {
             Err(SessionError::WrongToken)
         ));
         session.release(&mut c).unwrap();
+        zero(&c);
+    }
+
+    #[test]
+    fn a_prepared_history_without_its_projection_refuses_to_publish_and_keeps_the_arena() {
+        let source = crate::HtmlSource::utf8("AB");
+        let (mut c, mut session, _) = projected(&source);
+        let mut slot = Some(session.freeze(&mut c).unwrap());
+        let mut prepared = PreparedHistory::prepare(&mut slot, &mut c).unwrap();
+        prepared
+            .arena_for_test()
+            .unwrap()
+            .storage
+            .as_mut()
+            .unwrap()
+            .evidence
+            .as_mut()
+            .unwrap()
+            .drop_projection_for_test();
+        assert!(
+            prepared.commit().is_err(),
+            "a history that lacks its projection is not published"
+        );
+        let mut arena = slot.take().expect("the arena stays where it was");
+        arena.release(&mut c).unwrap();
         zero(&c);
     }
 
