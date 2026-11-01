@@ -108,16 +108,14 @@ struct OrderRef {
 /// applied to.
 #[derive(Clone, Copy)]
 pub(super) struct CurrentOrder {
-    root: usize,
     slot: Option<usize>,
 }
+/// Record 0 roots the main tree.
+const MAIN_TREE: usize = 0;
 impl CurrentOrder {
-    /// Record 0 is the main tree's root, and it has no descendants yet.
+    /// The main tree has no descendants yet.
     pub(super) fn empty_main_tree() -> Self {
-        Self {
-            root: 0,
-            slot: None,
-        }
+        Self { slot: None }
     }
 }
 pub(super) struct Context {
@@ -398,7 +396,7 @@ impl SessionStorage {
         root: usize,
         detached: Option<usize>,
     ) -> Result<Option<OrderRef>, SessionError> {
-        let cacheable = root == 0 && detached.is_none();
+        let cacheable = root == MAIN_TREE && detached.is_none();
         if cacheable && let Some(current) = self.style_order {
             let order = match current.slot {
                 None => None,
@@ -443,7 +441,6 @@ impl SessionStorage {
         let order = self.retain_style_order(c, list)?;
         if cacheable {
             self.style_order = Some(CurrentOrder {
-                root,
                 slot: order.map(|order| order.slot),
             });
         }
@@ -487,7 +484,7 @@ impl SessionStorage {
             self.style_order = None;
             return Ok(());
         }
-        if self.ordinary_root(c, style, None)? != current.root {
+        if self.ordinary_root(c, style, None)? != MAIN_TREE {
             return Ok(());
         }
         if let Some(slot) = current.slot {
@@ -511,7 +508,7 @@ impl SessionStorage {
                 .child_at(position)
                 .is_some_and(|child| matches!(child.kind(), HtmlNodeKind::Element(_)));
         }
-        if elements || !self.ends_subtree(c, current.root, style)? {
+        if elements || !self.ends_subtree(c, MAIN_TREE, style)? {
             self.style_order = None;
             return Ok(());
         }
@@ -531,7 +528,6 @@ impl SessionStorage {
                 }
                 let order = self.retain_style_order(c, list)?;
                 self.style_order = Some(CurrentOrder {
-                    root: current.root,
                     slot: order.map(|order| order.slot),
                 });
             }

@@ -877,40 +877,6 @@ impl SessionStorage {
         }
         Ok(())
     }
-    /// Whether no node follows `node` in `root`'s subtree in tree order, apart
-    /// from `node`'s own descendants: it ends every ancestor's children up to
-    /// `root`.
-    pub(super) fn ends_subtree(
-        &self,
-        c: &mut ParseControl,
-        root: usize,
-        node: usize,
-    ) -> Result<bool, SessionError> {
-        let mut node = node;
-        for _ in 0..self.construction.storage().len() {
-            let Some(parent) = self.ordinary_parent(c, node, None)? else {
-                return Ok(false);
-            };
-            c.charge(WorkCategory::RecordVisit, 2)?;
-            let record = self
-                .construction
-                .node_at(parent)
-                .ok_or_else(|| latch_registry_row(c))?;
-            let last = record
-                .child_count()
-                .checked_sub(1)
-                .and_then(|last| record.child_at(last))
-                .map(|child| child.position());
-            if last != Some(node) {
-                return Ok(false);
-            }
-            if parent == root {
-                return Ok(true);
-            }
-            node = parent;
-        }
-        Err(SessionError::Cycle)
-    }
     /// The selectedness setting algorithm's result after `option` was inserted
     /// as the last option of `select`'s list, from the settled summary alone
     /// (HTML 877d, steps 5 to 7: the earlier options keep their selectedness and
@@ -1008,38 +974,6 @@ impl SessionStorage {
 
 #[cfg(test)]
 impl SessionStorage {
-    /// Uncharged: `node` is an HTML element named `local`.
-    fn uncharged_html_local(&self, node: usize, local: &str) -> bool {
-        let Some(record) = self.construction.node_at(node) else {
-            return false;
-        };
-        let HtmlNodeKind::Element(element) = record.kind() else {
-            return false;
-        };
-        element
-            .name()
-            .namespace()
-            .uri()
-            .is_some_and(|uri| uri.to_utf8().as_deref() == Ok("http://www.w3.org/1999/xhtml"))
-            && element.name().local_name().to_utf8().as_deref() == Ok(local)
-    }
-    pub(super) fn uncharged_attribute(&self, node: usize, local: &str) -> bool {
-        let Some(HtmlNodeKind::Element(element)) =
-            self.construction.node_at(node).map(|record| record.kind())
-        else {
-            return false;
-        };
-        element.attributes().as_slice().iter().any(|attribute| {
-            attribute.name().namespace().uri().is_none()
-                && attribute.name().local_name().to_utf8().as_deref() == Ok(local)
-        })
-    }
-    fn uncharged_parent(&self, node: usize) -> Option<usize> {
-        self.construction
-            .node_at(node)
-            .and_then(|record| record.parent())
-            .map(|parent| parent.position())
-    }
     fn uncharged_selectedness(&self, node: usize) -> bool {
         let slot = self
             .payloads
@@ -1084,23 +1018,6 @@ impl SessionStorage {
             next = self.uncharged_parent(ancestor);
         }
         false
-    }
-    /// Uncharged: the style elements of the tree at `root` in tree order.
-    pub(super) fn uncharged_style_order(&self, root: usize) -> Vec<usize> {
-        let mut found = Vec::new();
-        let mut stack = vec![root];
-        while let Some(node) = stack.pop() {
-            let record = self.construction.node_at(node).expect("a retained node");
-            if self.uncharged_html_local(node, "style") {
-                found.push(node);
-            }
-            stack.extend(
-                (0..record.child_count())
-                    .rev()
-                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
-            );
-        }
-        found
     }
     /// Uncharged: the selectedcontent elements below `select` in tree order.
     fn uncharged_selectedcontent_descendants(&self, select: usize) -> Vec<usize> {
