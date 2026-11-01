@@ -289,11 +289,11 @@ fn simple_matrix<S: LayoutScalar>() {
                 supplied: &supplied,
             };
             assert_eq!(
-                inline_min_content(run, input.flow_axes, input.wrapping.as_ref()),
+                inline_min_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
                 n(10.0)
             );
             assert_eq!(
-                inline_max_content(run, input.flow_axes, input.wrapping.as_ref()),
+                inline_max_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
                 n(30.0)
             );
         }
@@ -350,11 +350,11 @@ fn force_matrix<S: LayoutScalar>() {
                 supplied: &supplied,
             };
             assert_eq!(
-                inline_min_content(run, input.flow_axes, input.wrapping.as_ref()),
+                inline_min_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
                 n(20.0)
             );
             assert_eq!(
-                inline_max_content(run, input.flow_axes, input.wrapping.as_ref()),
+                inline_max_content(run, input.flow_axes, input.wrapping.as_ref()).unwrap(),
                 n(20.0)
             );
         }

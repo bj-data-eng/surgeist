@@ -251,6 +251,11 @@ recipe is a different operation: its TAB pen can change, and unselected closing
 edges add no flow. See [endpoint operations](reference.md#native-inline-endpoint-geometry)
 for explicit Contribution versus checked BoxEdge construction.
 
+Raw line feedback and purpose-specific advances follow the canonical selected
+execution for checked BoxEdges. Finite sums can round differently from the
+original-logical prefix receipts when parent-side placement changes traversal,
+including at a seam after the complete line.
+
 An interior seam counts the whole smallest unit closed under both selected
 graphemes and actual provider-cluster associations. `interior_unit()` lends its
 presentation extent, actual original `source_pieces`, every actual `alternatives()` owner and
