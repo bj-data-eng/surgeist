@@ -756,6 +756,10 @@ NativePair declaration alone grants no transparent ordering role.
 This capability requires a font-free numeric formatter. Actual Prepared-backed
 participation in the target formatter refuses `UnsupportedIncidence`; the Text
 adapter does not silently ignore a requested native gap group.
+Determine that execution authority from the actual admitted source-segment runs,
+including control-only and empty semantic or joint-flow segments. Native slot
+kinds alone do not establish a numeric formatter. Opaque descendant formatters
+retain their own execution authority.
 Each `InlineGapGroupInput` names an anchor and the explicit physical order of
 unrelated boxes at that gap; nested boxes retain their admitted ancestry.
 `InlineGapAnchor::Neighbor` uses a genuine ordering occurrence and physical

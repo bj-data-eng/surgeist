@@ -95,6 +95,7 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
     graph: &ValidationGraph<Node>,
     rows: &[ScopeRow<Node>],
     gaps: &[InlineGapGroupInput<Node>],
+    prepared_execution: &impl Fn(Node) -> bool,
 ) -> Result<Vec<NativeOrderingProfile<Node>>> {
     // Existence belongs to every supplied node reference, before interpreting
     // its role or looking for an admitted box/body in this formatter.
@@ -311,6 +312,7 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
             }
             Ok(rank)
         };
+        let mut admitted_execution = None;
         for input in gaps {
             let first_owner = resolve_box(&input.boxes[0])?;
             if rows[first_owner].flow != flow {
@@ -327,10 +329,12 @@ pub(super) fn prepare<Node: Copy + Eq, Tree: LayoutTree<Node = Node>>(
                 }
                 owners.push(owner);
             }
-            // Native gap capabilities apply to this formatter's numeric path.
-            // Prepared participation elsewhere in an opaque descendant belongs
-            // to that descendant; only this actual formatter inventory matters.
-            if data.bodies.iter().any(|body| body.prepared) {
+            // Native gaps must not be admitted for actual scheduled Text runs,
+            // even when their only native nodes are structural controls. Query
+            // that retained authority only for this requested formatter.
+            if *admitted_execution.get_or_insert_with(|| prepared_execution(flow))
+                || data.bodies.iter().any(|body| body.prepared)
+            {
                 return Err(WrappingScopeError::UnsupportedIncidence);
             }
             let (body, anchor) = match &input.anchor {

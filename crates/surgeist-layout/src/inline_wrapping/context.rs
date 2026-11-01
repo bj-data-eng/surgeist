@@ -346,6 +346,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         proofs: &[WrappingScopeProof<Node>],
         child_order: &[InlineChildOrderInput<Node>],
         gaps: &[InlineGapGroupInput<Node>],
+        prepared_execution: impl Fn(Node) -> bool,
     ) -> Result<Self, WrappingScopeError> {
         let box_edges = graph.nodes.iter().any(|node| matches!(tree.layout_input(*node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()));
         if !box_edges
@@ -690,7 +691,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order, proofs)?
         };
         let ordering = if box_edges || !gaps.is_empty() {
-            super::ordering::prepare(tree, graph, &rows, gaps)?
+            super::ordering::prepare(tree, graph, &rows, gaps, &prepared_execution)?
         } else {
             Vec::new()
         };

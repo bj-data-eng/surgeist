@@ -100,6 +100,7 @@ fn exercise<S: LayoutScalar>(
         &[],
         &[],
         &[],
+        |_| false,
     )
     .unwrap();
     let projection = context
