@@ -1187,6 +1187,10 @@ impl SessionStorage {
     }
 }
 
+type Fault = read::UnresolvedReference;
+fn unresolved(kind: read::UnresolvedKind) -> Fault {
+    read::UnresolvedReference::new(kind)
+}
 /// The report storage the readers answer from, with the one node that every
 /// identity names. Resolved when a cursor is created, so no reader looks it up.
 #[derive(Clone, Copy)]
@@ -1202,19 +1206,26 @@ enum Resolved<'a> {
     Captured(crate::HtmlCapturedNode<'a>),
 }
 impl<'a> Resolved<'a> {
-    /// `None` when the report no longer holds the Document.
-    fn new(storage: &'a FrozenStorage, value: &DocumentRef) -> Option<Self> {
+    /// The fault if the report no longer holds the Document.
+    fn new(storage: &'a FrozenStorage, value: &DocumentRef) -> Result<Self, Fault> {
         match value {
             DocumentRef::Owned(node) => native(storage, *node).map(Self::Owned),
             DocumentRef::Captured(id) => storage
                 .fragment
-                .as_ref()?
+                .as_ref()
+                .ok_or(unresolved(read::UnresolvedKind::Fragment))?
                 .context
                 .capture()
                 .node(id.subject())
-                .ok()
-                .map(Self::Captured),
+                .map(Self::Captured)
+                .map_err(|_| unresolved(read::UnresolvedKind::CapturedNode)),
         }
+    }
+    fn optional(
+        storage: &'a FrozenStorage,
+        value: Option<&DocumentRef>,
+    ) -> Result<Option<Self>, Fault> {
+        value.map(|value| Self::new(storage, value)).transpose()
     }
     fn lend(self) -> report::MetadataDocument<'a> {
         match self {
@@ -1227,14 +1238,15 @@ impl<'a> Resolved<'a> {
 ///
 /// Publication qualifies every row and what it names (`qualify`), and a
 /// report is immutable afterwards, so every row it holds can be lent. A row
-/// that could not be resolved would be a fault in that qualification; a
-/// published report has no controller to report it on, so such a row is
-/// skipped here, which is the one answer that does not lend a view that could
-/// not answer. `Step::Skipped` otherwise means a row that is not an
-/// association.
+/// whose references the report cannot resolve is a defect in that
+/// qualification: the cursor reports it as a fault, and keeps reporting it,
+/// instead of skipping the row, because a consumer that skipped it would act
+/// on a report that lacks an association. `Step::Skipped` means only a row
+/// that is not an association.
 pub struct Cursor<'a> {
-    anchor: Option<Anchor<'a>>,
+    anchor: Result<Anchor<'a>, Fault>,
     next: usize,
+    fault: Option<Fault>,
 }
 pub enum Step<'a> {
     Document(DocumentView<'a>),
@@ -1255,11 +1267,23 @@ impl<'a> Cursor<'a> {
             storage,
             first,
         });
-        Self { anchor, next: 0 }
+        Self {
+            anchor,
+            next: 0,
+            fault: None,
+        }
+    }
+    fn fail(&mut self, fault: Fault) -> Step<'a> {
+        self.fault = Some(fault);
+        Step::Fault(fault)
     }
     pub fn advance(&mut self) -> Step<'a> {
-        let Some(anchor) = self.anchor else {
-            return Step::Complete;
+        if let Some(fault) = self.fault {
+            return Step::Fault(fault);
+        }
+        let anchor = match self.anchor {
+            Ok(anchor) => anchor,
+            Err(fault) => return self.fail(fault),
         };
         let slot = self.next;
         let Some(row) = anchor.storage.payloads.values.get(slot) else {
@@ -1274,15 +1298,20 @@ impl<'a> Cursor<'a> {
             RetainedPayload::AssociationOccurrence(values) => values
                 .as_slice()
                 .first()
+                .ok_or(unresolved(read::UnresolvedKind::Payload))
                 .and_then(|value| OccurrenceView::new(anchor, slot, value))
                 .map(Step::Occurrence),
-            _ => None,
+            _ => return Step::Skipped,
         };
-        view.unwrap_or(Step::Skipped)
+        view.unwrap_or_else(|fault| self.fail(fault))
     }
 }
-fn native(storage: &FrozenStorage, index: usize) -> Option<HtmlNode<'_>> {
-    storage.view.node_at(index).map(|node| node.as_node())
+fn native(storage: &FrozenStorage, index: usize) -> Result<HtmlNode<'_>, Fault> {
+    storage
+        .view
+        .node_at(index)
+        .map(|node| node.as_node())
+        .ok_or(unresolved(read::UnresolvedKind::Node))
 }
 fn identity(anchor: Anchor<'_>, slot: usize) -> OccurrenceId {
     OccurrenceId {
@@ -1296,9 +1325,21 @@ fn context_epoch(anchor: Anchor<'_>, slot: usize) -> ContextEpochId {
         slot,
     }
 }
-/// `None` when the report's history no longer holds the group.
-fn group<'a>(history: &'a FrozenHistory, value: &'a OriginGroupRef) -> Option<HistoryGroup<'a>> {
-    history.view().group(value.index)
+/// The group a stored reference names, or the fault.
+fn group<'a>(
+    history: &'a FrozenHistory,
+    value: &OriginGroupRef,
+) -> Result<HistoryGroup<'a>, Fault> {
+    history
+        .view()
+        .group(value.index)
+        .ok_or(unresolved(read::UnresolvedKind::Group))
+}
+fn optional_group<'a>(
+    history: &'a FrozenHistory,
+    value: Option<&OriginGroupRef>,
+) -> Result<Option<HistoryGroup<'a>>, Fault> {
+    value.map(|value| group(history, value)).transpose()
 }
 pub struct DocumentView<'a> {
     anchor: Anchor<'a>,
@@ -1306,8 +1347,8 @@ pub struct DocumentView<'a> {
     document: Resolved<'a>,
 }
 impl<'a> DocumentView<'a> {
-    fn new(anchor: Anchor<'a>, value: &'a DocumentCapture) -> Option<Self> {
-        Some(Self {
+    fn new(anchor: Anchor<'a>, value: &'a DocumentCapture) -> Result<Self, Fault> {
+        Ok(Self {
             anchor,
             value,
             document: Resolved::new(anchor.storage, &value.document)?,
@@ -1340,6 +1381,9 @@ impl<'a> DocumentView<'a> {
         crate::construction::read::HtmlParseHistory::new(self.anchor.history)
     }
 }
+/// An occurrence with everything it names resolved when it is lent, so the
+/// readers of the view cannot fail afterwards.
+#[derive(Clone, Copy)]
 pub struct OccurrenceView<'a> {
     anchor: Anchor<'a>,
     slot: usize,
@@ -1348,34 +1392,54 @@ pub struct OccurrenceView<'a> {
     root: HtmlNode<'a>,
     document: Resolved<'a>,
     previous_document: Option<Resolved<'a>>,
-    parser_document: Option<Resolved<'a>>,
+    cause: Option<read::HtmlParseCause<'a>>,
+    preferred: Option<HistoryGroup<'a>>,
+    base_changed_input: Option<HistoryGroup<'a>>,
+    style: Option<StyleInputs<'a>>,
+    context: ContextView<'a>,
 }
 impl<'a> OccurrenceView<'a> {
-    /// `None` when the report no longer holds a node or Document the
-    /// occurrence names.
-    fn new(anchor: Anchor<'a>, slot: usize, value: &'a Occurrence) -> Option<Self> {
+    /// The fault if the report no longer holds a node, Document, cause, group
+    /// or row the occurrence names.
+    fn new(anchor: Anchor<'a>, slot: usize, value: &'a Occurrence) -> Result<Self, Fault> {
         let storage = anchor.storage;
-        let previous_document = match &value.previous_document {
-            Some(previous) => Some(Resolved::new(storage, previous)?),
-            None => None,
-        };
-        let parser_document = match value
+        let history = anchor.history;
+        let parser_document = Resolved::optional(
+            storage,
+            value
+                .inputs
+                .as_ref()
+                .and_then(|inputs| inputs.parser_document.as_ref()),
+        )?;
+        let style = value
             .inputs
             .as_ref()
-            .and_then(|inputs| inputs.parser_document.as_ref())
-        {
-            Some(document) => Some(Resolved::new(storage, document)?),
-            None => None,
-        };
-        Some(Self {
+            .map(|inputs| StyleInputs::new(anchor, inputs, parser_document))
+            .transpose()?;
+        let cause = value
+            .cause
+            .as_ref()
+            .map(|cause| {
+                history
+                    .evidence()
+                    .retained_cause(cause)
+                    .map(|retained| read::HtmlParseCause::qualified(history, retained))
+                    .ok_or(unresolved(read::UnresolvedKind::Cause))
+            })
+            .transpose()?;
+        Ok(Self {
             anchor,
             slot,
             value,
             subject: native(storage, value.subject)?,
             root: native(storage, value.root)?,
             document: Resolved::new(storage, &value.document)?,
-            previous_document,
-            parser_document,
+            previous_document: Resolved::optional(storage, value.previous_document.as_ref())?,
+            cause,
+            preferred: optional_group(history, value.preferred.as_ref())?,
+            base_changed_input: optional_group(history, value.base_changed_input.as_ref())?,
+            style,
+            context: ContextView::new(anchor, slot, &value.document, &value.context)?,
         })
     }
     pub fn id(&self) -> OccurrenceId {
@@ -1419,45 +1483,49 @@ impl<'a> OccurrenceView<'a> {
             .prior_style
             .map(|slot| identity(self.anchor, slot))
     }
-    /// `None` when the occurrence has no cause or the report no longer holds it.
+    /// `None` when the occurrence has no cause.
     pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
-        let cause = self.value.cause.as_ref()?;
-        let retained = self.anchor.history.evidence().retained_cause(cause)?;
-        Some(read::HtmlParseCause::qualified(
-            self.anchor.history,
-            retained,
-        ))
+        self.cause
     }
-    /// `None` when there is no preferred name or the history no longer holds it.
+    /// `None` when there is no preferred name.
     pub fn preferred_name(&self) -> Option<HistoryGroup<'a>> {
-        group(self.anchor.history, self.value.preferred.as_ref()?)
+        self.preferred
     }
-    /// `None` when there is no changed input or the history no longer holds it.
+    /// `None` when there is no changed input.
     pub fn base_changed_input(&self) -> Option<HistoryGroup<'a>> {
-        group(self.anchor.history, self.value.base_changed_input.as_ref()?)
+        self.base_changed_input
     }
     pub fn style(&self) -> Option<StyleInputs<'a>> {
-        self.value.inputs.as_ref().map(|value| StyleInputs {
-            anchor: self.anchor,
-            value,
-            parser_document: self.parser_document,
-        })
+        self.style
     }
     pub fn context(&self) -> ContextView<'a> {
-        ContextView {
-            anchor: self.anchor,
-            slot: self.slot,
-            document: &self.value.document,
-            value: &self.value.context,
-        }
+        self.context
     }
 }
+#[derive(Clone, Copy)]
 pub struct StyleInputs<'a> {
     anchor: Anchor<'a>,
     value: &'a Inputs,
     parser_document: Option<Resolved<'a>>,
+    attributes: [Option<HistoryGroup<'a>>; 5],
 }
 impl<'a> StyleInputs<'a> {
+    fn new(
+        anchor: Anchor<'a>,
+        value: &'a Inputs,
+        parser_document: Option<Resolved<'a>>,
+    ) -> Result<Self, Fault> {
+        let mut attributes = [None; 5];
+        for (resolved, stored) in attributes.iter_mut().zip(&value.attributes) {
+            *resolved = optional_group(anchor.history, stored.as_ref())?;
+        }
+        Ok(Self {
+            anchor,
+            value,
+            parser_document,
+            attributes,
+        })
+    }
     pub fn state(&self) -> surgeist_html::HtmlStyleState {
         self.value.state
     }
@@ -1476,26 +1544,15 @@ impl<'a> StyleInputs<'a> {
     pub fn text_len(&self) -> usize {
         self.value.text.len()
     }
-    /// `None` past the text.
-    pub fn text(
-        &self,
-        index: usize,
-    ) -> Result<Option<HistoryGroup<'a>>, read::UnresolvedReference> {
-        Ok(self
-            .value
-            .text
-            .as_slice()
-            .get(index)
-            .and_then(|value| group(self.anchor.history, value)))
+    /// `None` past the text. A group the history no longer holds is a fault.
+    pub fn text(&self, index: usize) -> Result<Option<HistoryGroup<'a>>, Fault> {
+        optional_group(self.anchor.history, self.value.text.as_slice().get(index))
     }
     pub fn sheet_order_len(&self) -> usize {
         self.value.order.map_or(0, |order| order.len)
     }
-    /// `None` past the order.
-    pub fn sheet_order(
-        &self,
-        index: usize,
-    ) -> Result<Option<HtmlNode<'a>>, read::UnresolvedReference> {
+    /// `None` past the order. An entry the report no longer holds is a fault.
+    pub fn sheet_order(&self, index: usize) -> Result<Option<HtmlNode<'a>>, Fault> {
         let Some(order) = self.value.order else {
             return Ok(None);
         };
@@ -1505,49 +1562,115 @@ impl<'a> StyleInputs<'a> {
         let Some(RetainedPayload::StyleOrder(list)) =
             self.anchor.storage.payloads.values.get(order.slot)
         else {
-            return Ok(None);
+            return Err(unresolved(read::UnresolvedKind::Payload));
         };
-        Ok(list
+        let entry = list
             .as_slice()
             .get(index)
-            .and_then(|node| native(self.anchor.storage, *node)))
+            .ok_or(unresolved(read::UnresolvedKind::Payload))?;
+        native(self.anchor.storage, *entry).map(Some)
     }
     pub fn attribute(
         &self,
         attribute: surgeist_html::KnownHtmlAttribute,
     ) -> Option<HistoryGroup<'a>> {
-        let [kind, media, title, blocking, nonce] = &self.value.attributes;
-        let reference = match attribute {
+        let [kind, media, title, blocking, nonce] = self.attributes;
+        match attribute {
             surgeist_html::KnownHtmlAttribute::Type => kind,
             surgeist_html::KnownHtmlAttribute::Media => media,
             surgeist_html::KnownHtmlAttribute::Title => title,
             surgeist_html::KnownHtmlAttribute::Blocking => blocking,
             surgeist_html::KnownHtmlAttribute::Nonce => nonce,
-            _ => return None,
-        };
-        group(self.anchor.history, reference.as_ref()?)
+            _ => None,
+        }
     }
 }
+/// The context of an occurrence, with the policy, the base facts, the captured
+/// context, the first Base and the input it names resolved when it is lent.
+#[derive(Clone, Copy)]
 pub struct ContextView<'a> {
     anchor: Anchor<'a>,
     slot: usize,
     document: &'a DocumentRef,
     value: &'a Context,
+    csp: Option<&'a surgeist_html::HtmlCspAssociation>,
+    base_facts: Option<&'a crate::HtmlParseBaseFacts>,
+    captured_context: Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext>,
+    first_base: Option<HtmlNode<'a>>,
+    base_input: Option<HistoryGroup<'a>>,
+    observation: Option<&'a surgeist_html_semantics::HtmlBaseParseObservation>,
+    fragment_context: Option<&'a crate::HtmlFragmentContext>,
 }
 impl<'a> ContextView<'a> {
-    /// The exact association applicable at this occurrence, never final policy.
-    /// The policy row was qualified as a CSP policy at publication (`qualify`),
-    /// so `None` here means the occurrence has no association.
-    pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
-        if self.value.policy_missing {
-            return None;
-        }
-        let slot = self.value.csp?;
-        let Some(RetainedPayload::CspPolicy(value)) = self.anchor.storage.payloads.values.get(slot)
-        else {
-            return None;
+    fn new(
+        anchor: Anchor<'a>,
+        slot: usize,
+        document: &'a DocumentRef,
+        value: &'a Context,
+    ) -> Result<Self, Fault> {
+        let storage = anchor.storage;
+        let row = |slot: usize| {
+            storage
+                .payloads
+                .values
+                .get(slot)
+                .ok_or(unresolved(read::UnresolvedKind::Payload))
         };
-        value.value.as_ref()
+        // A policy that is missing from the history has no association.
+        let csp = match value.csp {
+            Some(slot) if !value.policy_missing => match row(slot)? {
+                RetainedPayload::CspPolicy(policy) => policy.value.as_ref(),
+                _ => return Err(unresolved(read::UnresolvedKind::Payload)),
+            },
+            _ => None,
+        };
+        let base_facts = match value.base_document {
+            Some(slot) => match row(slot)? {
+                RetainedPayload::BaseDocument { facts, .. } => Some(facts),
+                _ => return Err(unresolved(read::UnresolvedKind::Payload)),
+            },
+            None => None,
+        };
+        let captured_context = match value.captured {
+            Some(slot) => match row(slot)? {
+                RetainedPayload::AssociationCapturedContext(captured) => Some(&captured.value),
+                _ => return Err(unresolved(read::UnresolvedKind::Payload)),
+            },
+            None => None,
+        };
+        let first_base = value
+            .first_base
+            .map(|index| native(storage, index))
+            .transpose()?;
+        // The observation is consulted only to select a frozen Base of the
+        // facts, for a first Base that names one.
+        let observation = match (base_facts, first_base, value.base_observation) {
+            (Some(facts), Some(_), Some(index)) => Some(
+                facts
+                    .observations()
+                    .get(index)
+                    .ok_or(unresolved(read::UnresolvedKind::Payload))?,
+            ),
+            _ => None,
+        };
+        Ok(Self {
+            anchor,
+            slot,
+            document,
+            value,
+            csp,
+            base_facts,
+            captured_context,
+            first_base,
+            base_input: optional_group(anchor.history, value.base_input.as_ref())?,
+            observation,
+            fragment_context: storage.fragment.as_ref().map(|fragment| &fragment.context),
+        })
+    }
+    /// The exact association applicable at this occurrence, never final policy.
+    /// `None` means the occurrence has no association.
+    pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
+        self.csp
     }
     pub fn epoch(&self) -> ContextEpochId {
         context_epoch(self.anchor, self.slot)
@@ -1639,38 +1762,26 @@ impl<'a> ContextView<'a> {
             epoch: self.input_epoch(role),
             role,
             document,
-            context: &self.anchor.storage.fragment.as_ref()?.context,
+            context: self.fragment_context?,
         })
     }
-    /// The provider row was qualified as base facts of this document at
-    /// publication (`qualify`), so `None` here means the occurrence has none.
+    /// `None` means the occurrence has no base facts of this document.
     pub fn base_facts(&self) -> Option<&'a crate::HtmlParseBaseFacts> {
-        self.value.base_document.and_then(|slot| {
-            match self.anchor.storage.payloads.values.get(slot) {
-                Some(RetainedPayload::BaseDocument { facts, .. }) => Some(facts),
-                _ => None,
-            }
-        })
+        self.base_facts
     }
-    /// The provider row was qualified as this document's captured context at
-    /// publication (`qualify`), so `None` here means the occurrence has none.
+    /// `None` means the occurrence has no captured context of this document.
     pub fn captured_context(
         &self,
     ) -> Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext> {
-        self.value
-            .captured
-            .and_then(|slot| match self.anchor.storage.payloads.values.get(slot) {
-                Some(RetainedPayload::AssociationCapturedContext(value)) => Some(&value.value),
-                _ => None,
-            })
+        self.captured_context
     }
-    /// `None` when there is no first Base or the report no longer holds it.
+    /// `None` when there is no first Base.
     pub fn first_base(&self) -> Option<HtmlNode<'a>> {
-        native(self.anchor.storage, self.value.first_base?)
+        self.first_base
     }
-    /// `None` when there is no input or the history no longer holds it.
+    /// `None` when there is no input.
     pub fn base_input(&self) -> Option<HistoryGroup<'a>> {
-        group(self.anchor.history, self.value.base_input.as_ref()?)
+        self.base_input
     }
     pub fn base_observation(&self) -> Option<usize> {
         self.value.base_observation
@@ -1683,15 +1794,11 @@ impl<'a> ContextView<'a> {
             .base_facts()
             .ok_or(crate::HtmlBaseMissing::DocumentFacts)?;
         if self.value.first_base.is_some() {
-            let index = self
-                .value
-                .base_observation
-                .ok_or(crate::HtmlBaseMissing::FrozenBase)?;
+            if self.value.base_observation.is_none() {
+                return Err(crate::HtmlBaseMissing::FrozenBase);
+            }
             let fallback = facts.document().fallback()?;
-            let observation = facts
-                .observations()
-                .get(index)
-                .ok_or(crate::HtmlBaseMissing::FrozenBase)?;
+            let observation = self.observation.ok_or(crate::HtmlBaseMissing::FrozenBase)?;
             crate::select_frozen_base(fallback, observation.outcome()).map(|(value, _)| value)
         } else {
             surgeist_html_semantics::select_document_base(
@@ -2391,58 +2498,44 @@ mod tests {
         assert!(walk.presented > 0 && walk.skipped > 0);
         assert_eq!(walk.fault, None);
     }
-    fn assert_row_fault(
-        report: &crate::HtmlParseReport,
-        before: &Walk,
-        kind: read::UnresolvedKind,
-    ) {
-        let after = walk(report);
-        assert_eq!(after.fault, Some(fault(kind)));
-        assert_eq!(
-            after.skipped, before.skipped,
-            "a faulted row is not a skipped one"
-        );
+    fn assert_row_fault(report: &crate::HtmlParseReport, kind: read::UnresolvedKind) {
+        assert_eq!(walk(report).fault, Some(fault(kind)));
     }
     #[test]
     fn an_occurrence_whose_subject_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = walk(&report);
         corrupt_style_occurrence(&mut report, |_| true, |row| row.subject = usize::MAX);
-        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::UnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_root_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = walk(&report);
         corrupt_style_occurrence(&mut report, |_| true, |row| row.root = usize::MAX);
-        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::UnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_document_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = walk(&report);
         corrupt_style_occurrence(
             &mut report,
             |_| true,
             |row| row.document = DocumentRef::Owned(usize::MAX),
         );
-        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::UnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_previous_document_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = walk(&report);
         corrupt_style_occurrence(
             &mut report,
             |_| true,
             |row| row.previous_document = Some(DocumentRef::Owned(usize::MAX)),
         );
-        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::UnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_creating_parser_document_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = walk(&report);
         corrupt_style_occurrence(
             &mut report,
             |_| true,
@@ -2450,23 +2543,21 @@ mod tests {
                 row.inputs.as_mut().unwrap().parser_document = Some(DocumentRef::Owned(usize::MAX));
             },
         );
-        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::UnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_cause_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = walk(&report);
         corrupt_style_occurrence(
             &mut report,
             |row| row.cause.is_some(),
             |row| row.cause.as_mut().unwrap().corrupt_for_test(),
         );
-        assert_row_fault(&report, &before, read::UnresolvedKind::Cause);
+        assert_row_fault(&report, read::UnresolvedKind::Cause);
     }
     #[test]
     fn an_occurrence_whose_attribute_group_is_missing_is_a_fault() {
         let mut report = styled_report();
-        let before = walk(&report);
         let with_attribute = |row: &Occurrence| {
             row.inputs
                 .as_ref()
@@ -2476,18 +2567,17 @@ mod tests {
             let attributes = &mut row.inputs.as_mut().unwrap().attributes;
             attributes.iter_mut().flatten().next().unwrap().index = usize::MAX;
         });
-        assert_row_fault(&report, &before, read::UnresolvedKind::Group);
+        assert_row_fault(&report, read::UnresolvedKind::Group);
     }
     #[test]
     fn an_occurrence_whose_policy_row_is_not_a_policy_is_a_fault() {
         let mut report = styled_report();
-        let before = walk(&report);
         corrupt_style_occurrence(
             &mut report,
             |row| !row.context.policy_missing,
             |row| row.context.csp = Some(usize::MAX),
         );
-        assert_row_fault(&report, &before, read::UnresolvedKind::Payload);
+        assert_row_fault(&report, read::UnresolvedKind::Payload);
     }
     #[test]
     fn an_occurrence_whose_base_facts_row_is_not_base_facts_is_a_fault() {
@@ -2495,13 +2585,12 @@ mod tests {
             super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
                 .parse()
                 .unwrap();
-        let before = walk(&report);
         corrupt_style_occurrence(
             &mut report,
             |row| row.context.base_document.is_some(),
             |row| row.context.base_document = Some(usize::MAX),
         );
-        assert_row_fault(&report, &before, read::UnresolvedKind::Payload);
+        assert_row_fault(&report, read::UnresolvedKind::Payload);
     }
     #[test]
     fn a_text_group_that_is_missing_is_a_fault_of_the_text_reader() {
@@ -2572,9 +2661,8 @@ mod tests {
     fn documents_whose_capture_is_missing_are_a_fault() {
         let mut report =
             super::super::fragment_document::tests::fragment_report("<style>a</style>");
-        let before = walk(&report);
         frozen(&mut report).fragment = None;
-        assert_row_fault(&report, &before, read::UnresolvedKind::Fragment);
+        assert_row_fault(&report, read::UnresolvedKind::Fragment);
     }
     #[test]
     fn a_base_observation_that_is_missing_is_a_fault() {
@@ -2582,7 +2670,6 @@ mod tests {
             super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
                 .parse()
                 .unwrap();
-        let before = walk(&report);
         let with_base = |row: &Occurrence| {
             row.context.base_document.is_some()
                 && row.context.first_base.is_some()
@@ -2591,7 +2678,7 @@ mod tests {
         corrupt_style_occurrence(&mut report, with_base, |row| {
             row.context.base_observation = Some(usize::MAX);
         });
-        assert_row_fault(&report, &before, read::UnresolvedKind::Payload);
+        assert_row_fault(&report, read::UnresolvedKind::Payload);
     }
     #[test]
     fn a_first_base_that_is_missing_is_a_fault() {
@@ -2599,11 +2686,10 @@ mod tests {
             super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
                 .parse()
                 .unwrap();
-        let before = walk(&report);
         let with_base = |row: &Occurrence| row.context.first_base.is_some();
         corrupt_style_occurrence(&mut report, with_base, |row| {
             row.context.first_base = Some(usize::MAX);
         });
-        assert_row_fault(&report, &before, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::UnresolvedKind::Node);
     }
 }
