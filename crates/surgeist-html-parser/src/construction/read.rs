@@ -1040,9 +1040,10 @@ impl<'a> report::MetadataRef<'a> {
                 Some(HtmlInputImageSource::Absent)
             }
             input_image::ImageState::Last {
-                source: Some(source),
-                ..
-            } => Some(HtmlInputImageSource::Present(self.raw(source))),
+                source: Some(_), ..
+            } => self
+                .input_image_source_value()
+                .map(HtmlInputImageSource::Present),
         })
     }
     pub fn input_cursor(&self) -> Option<usize> {
