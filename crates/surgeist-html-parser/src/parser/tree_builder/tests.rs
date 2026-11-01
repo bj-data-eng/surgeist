@@ -984,6 +984,49 @@ fn finding_a_listed_template_charges_each_probe_of_the_search() {
 }
 
 #[test]
+fn the_listing_search_agrees_with_the_standard_search_and_counts_its_probes() {
+    // Odd listings, so every query is found, between two listings, or beyond
+    // either end. The result must be the standard search's; the probes must be
+    // at least one and at most one more than the halvings of the range, and
+    // none for an empty list.
+    for len in 0..=40_usize {
+        let listed: Vec<usize> = (0..len).map(|at| 2 * at + 1).collect();
+        let halvings = (usize::BITS - len.leading_zeros()) as usize;
+        for query in 0..=2 * len + 1 {
+            let mut probes = 0;
+            let found = search_listing(&listed, query, || {
+                probes += 1;
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(
+                found,
+                listed.binary_search(&query),
+                "{len} listings, {query}"
+            );
+            if len == 0 {
+                assert_eq!(probes, 0);
+            } else {
+                assert!(
+                    (1..=halvings).contains(&probes),
+                    "{len} listings, {query}: {probes}"
+                );
+            }
+        }
+    }
+    // A refused probe stops the search before it reads a listing.
+    let mut allowed = 2;
+    let refused = search_listing(&[1, 3, 5, 7, 9, 11, 13, 15], 15, || {
+        if allowed == 0 {
+            return Err(ParseStop::Cancelled);
+        }
+        allowed -= 1;
+        Ok(())
+    });
+    assert_eq!(refused, Err(ParseStop::Cancelled));
+}
+
+#[test]
 fn a_failed_stack_release_takes_the_templates_and_clears_the_root_target() {
     let source = HtmlSource::utf8("<html><template>");
     let mut c = control(100);

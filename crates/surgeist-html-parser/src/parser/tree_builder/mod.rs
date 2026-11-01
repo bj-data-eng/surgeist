@@ -150,6 +150,31 @@ pub(crate) struct LocationKernel {
     foster_parenting: bool,
 }
 
+/// Binary search over the ascending `listed` for `index`: the position where it
+/// is found, else where it would be inserted. Each probe calls `probe` before
+/// reading its listing, so a refusal stops the search before that work. The
+/// search stops at the first probe that finds `index`.
+fn search_listing(
+    listed: &[usize],
+    index: usize,
+    mut probe: impl FnMut() -> Result<(), ParseStop>,
+) -> Result<Result<usize, usize>, ParseStop> {
+    let (mut low, mut high) = (0_usize, listed.len());
+    while low < high {
+        probe()?;
+        let middle = low.saturating_add(high.saturating_sub(low) / 2);
+        let Some(entry) = listed.get(middle) else {
+            break;
+        };
+        match entry.cmp(&index) {
+            std::cmp::Ordering::Equal => return Ok(Ok(middle)),
+            std::cmp::Ordering::Less => low = middle.saturating_add(1),
+            std::cmp::Ordering::Greater => high = middle,
+        }
+    }
+    Ok(Err(low))
+}
+
 fn write(bytes: usize, writes: usize, control: &mut ParseControl) -> Result<(), ParseStop> {
     control.admit_atomic_layout(bytes)?;
     control.charge(WorkCategory::CopyByte, bytes as u64)?;
@@ -566,21 +591,20 @@ impl LocationKernel {
         self.template_indices().last().copied()
     }
     /// Searches the listings for the stack entry at `index`, charging one state
-    /// step for each comparison the search can make. State steps are what this
-    /// kernel charges for each entry a loop over its own state examines (the
-    /// duplicate scan, the scope walks); a comparison examines one listing the
-    /// same way. A binary search over `n` listings makes at most
-    /// floor(log2 n) + 1 comparisons, which is `usize::BITS - n.leading_zeros()`
-    /// and is none for an empty list.
+    /// step for each probe the search makes, before the probe reads its listing.
+    /// State steps are what this kernel charges for each entry a loop over its
+    /// own state examines (the duplicate scan, the scope walks); a probe
+    /// examines one listing the same way. The probes are counted by the loop in
+    /// `search_listing`, not derived from the length, so the charge is the work
+    /// whatever the standard library's binary search would do.
     fn search_templates(
         &self,
         index: usize,
         c: &mut ParseControl,
     ) -> Result<Result<usize, usize>, KernelError> {
-        let listed = self.template_indices();
-        let comparisons = u64::from(usize::BITS - listed.len().leading_zeros());
-        c.charge(WorkCategory::StateStep, comparisons)?;
-        Ok(listed.binary_search(&index))
+        Ok(search_listing(self.template_indices(), index, || {
+            c.charge(WorkCategory::StateStep, 1)
+        })?)
     }
     /// Whether the stack entry at `index` is listed as a template.
     fn template_listed(&self, index: usize, c: &mut ParseControl) -> Result<bool, KernelError> {
@@ -616,6 +640,7 @@ impl LocationKernel {
     }
     /// Unlists the listed stack entry at `index`. Only the entries above it move.
     fn template_remove(&mut self, index: usize, c: &mut ParseControl) -> Result<(), KernelError> {
+        self.templates.as_ref().ok_or(KernelError::Consumed)?;
         let Ok(at) = self.search_templates(index, c)? else {
             return Err(KernelError::EmptyStack);
         };
