@@ -4,7 +4,8 @@ use crate::parser::buffer::Utf16Buffer;
 use std::cell::{Cell, RefCell};
 use surgeist_css::component::CssComponentValueLimits;
 use surgeist_css::source::{
-    CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
+    CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission as Admission,
+    CssUtf16ValueStorage as Storage,
 };
 use surgeist_css::values::color_adjust::{CssColorScheme, CssColorSchemeParseReport};
 use surgeist_css::{CssParser, CssParserContext, CssParserMode};
@@ -52,6 +53,63 @@ impl CssSchemeValue {
         let Self { report, receipt } = self;
         drop(report);
         receipt.release(c);
+    }
+}
+
+/// The controller and live-storage cell the CSS parser's admission and release
+/// callbacks act on. The two callbacks are separate closures, so they share
+/// this state through one cell.
+struct SchemeCallbacks<'c> {
+    control: RefCell<&'c mut ParseControl>,
+    live: Cell<(u64, u64)>,
+    owner: ControlIdentity,
+}
+impl<'c> SchemeCallbacks<'c> {
+    fn new(control: &'c mut ParseControl) -> Self {
+        let owner = control.identity();
+        Self {
+            control: RefCell::new(control),
+            live: Cell::new((0, 0)),
+            owner,
+        }
+    }
+    fn admit(&self, event: Admission) -> Result<(), ParseStop> {
+        let mut c = self.control.borrow_mut();
+        c.charge(WorkCategory::StateStep, 1)?;
+        if let Admission::Live(next) = event {
+            let next = (next.bytes() as u64, next.utf16_units() as u64);
+            let old = self.live.get();
+            let bytes = next
+                .0
+                .checked_sub(old.0)
+                .ok_or_else(|| c.fail_invariant(Invariant::ReleaseUnderflow))?;
+            let units = next
+                .1
+                .checked_sub(old.1)
+                .ok_or_else(|| c.fail_invariant(Invariant::ReleaseUnderflow))?;
+            c.acquire_retained_provider(bytes, units, 0)?;
+            self.live.set(next);
+        }
+        Ok(())
+    }
+    fn release(&self, remaining: Storage) {
+        let next = (remaining.bytes() as u64, remaining.utf16_units() as u64);
+        let old = self.live.replace(next);
+        self.control.borrow_mut().release_retained_provider(
+            &self.owner,
+            old.0
+                .checked_sub(next.0)
+                .expect("CSS releases actual bytes"),
+            old.1
+                .checked_sub(next.1)
+                .expect("CSS releases actual units"),
+            0,
+        );
+    }
+    /// Hands the controller, the live storage and the owner back once the
+    /// parser has returned.
+    fn into_parts(self) -> (&'c mut ParseControl, (u64, u64), ControlIdentity) {
+        (self.control.into_inner(), self.live.get(), self.owner)
     }
 }
 
@@ -154,9 +212,7 @@ impl ParseControl {
         let (input, input_receipt) = self.css_scheme_input(raw)?;
         let result = (|| {
             let (limits, syntax) = self.css_scheme_limits()?;
-            let original = self.identity();
-            let live = Cell::new((0_u64, 0_u64));
-            let control = RefCell::new(&mut *self);
+            let callbacks = SchemeCallbacks::new(&mut *self);
             let context = CssParserContext::new(if mode == crate::HtmlDocumentMode::Quirks {
                 CssParserMode::Quirks
             } else {
@@ -166,41 +222,10 @@ impl ParseControl {
                 &CssParser::new(context, syntax),
                 input.clone(),
                 limits,
-                |event| {
-                    let mut c = control.borrow_mut();
-                    c.charge(WorkCategory::StateStep, 1)?;
-                    if let CssUtf16ValueAdmission::Live(next) = event {
-                        let next = (next.bytes() as u64, next.utf16_units() as u64);
-                        let old = live.get();
-                        let bytes = next
-                            .0
-                            .checked_sub(old.0)
-                            .ok_or_else(|| c.fail_invariant(Invariant::ReleaseUnderflow))?;
-                        let units = next
-                            .1
-                            .checked_sub(old.1)
-                            .ok_or_else(|| c.fail_invariant(Invariant::ReleaseUnderflow))?;
-                        c.acquire_retained_provider(bytes, units, 0)?;
-                        live.set(next);
-                    }
-                    Ok(())
-                },
-                |remaining| {
-                    let next = (remaining.bytes() as u64, remaining.utf16_units() as u64);
-                    let old = live.replace(next);
-                    control.borrow_mut().release_retained_provider(
-                        &original,
-                        old.0
-                            .checked_sub(next.0)
-                            .expect("CSS releases actual bytes"),
-                        old.1
-                            .checked_sub(next.1)
-                            .expect("CSS releases actual units"),
-                        0,
-                    );
-                },
+                |event| callbacks.admit(event),
+                |remaining| callbacks.release(remaining),
             );
-            let c = control.into_inner();
+            let (c, live, original) = callbacks.into_parts();
             let report = match result {
                 Ok(report) => report,
                 Err(error) => {
@@ -219,10 +244,7 @@ impl ParseControl {
                 }
             };
             let usage = report.retained_storage();
-            assert_eq!(
-                live.get(),
-                (usage.bytes() as u64, usage.utf16_units() as u64)
-            );
+            assert_eq!(live, (usage.bytes() as u64, usage.utf16_units() as u64));
             // Admit the heap report body while the inline report is still live.
             let header = size_of::<CssColorSchemeParseReport>() as u64;
             if let Err(stop) = c
