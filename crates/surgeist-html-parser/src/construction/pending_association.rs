@@ -149,6 +149,26 @@ pub(super) struct Occurrence {
     may_have_sheet: bool,
 }
 
+#[cfg(test)]
+impl FrozenArena {
+    /// Names, as the first Base of one occurrence, a node the arena does not
+    /// hold. Whether an occurrence was found to name it.
+    pub(crate) fn corrupt_first_base_for_test(&mut self) -> bool {
+        let Some(storage) = self.storage.as_mut() else {
+            return false;
+        };
+        for row in &mut storage.payloads.values {
+            if let RetainedPayload::AssociationOccurrence(values) = row
+                && let Some(first) = values.as_mut_slice_for_test().first_mut()
+            {
+                first.context.first_base = Some(usize::MAX);
+                return true;
+            }
+        }
+        false
+    }
+}
+
 /// The subject of a style occurrence row: one that carries style inputs.
 #[cfg(test)]
 pub(super) fn style_occurrence_subject(row: &RetainedPayload) -> Option<usize> {

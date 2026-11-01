@@ -654,6 +654,45 @@ mod tests {
         super::super::tests::assert_released(&kept.parts.control);
     }
 
+    /// Publication refuses the seal with the registry-row stop latched first,
+    /// keeps the seal, and its release drains every resource.
+    fn assert_unpublishable(
+        literal: &str,
+        corrupt: impl FnOnce(&mut crate::construction::FrozenArena) -> bool,
+    ) {
+        let registry_row = crate::parser::control::ParseStop::InternalInvariant(
+            crate::parser::control::Invariant::RegistryRow,
+        );
+        let mut input = Some(ordinary(literal, true));
+        assert!(corrupt(
+            input.as_mut().unwrap().parts.arena.as_mut().unwrap()
+        ));
+        assert_eq!(
+            ImmutableParseReport::take_document(&mut input).err(),
+            Some(SessionError::Stop(registry_row))
+        );
+        let kept = input.as_mut().unwrap();
+        assert_eq!(kept.parts.control.stop(), Some(registry_row));
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
+    #[test]
+    fn an_occurrence_naming_a_first_base_the_report_lacks_is_not_published() {
+        assert_unpublishable(
+            "<!doctype html><style>b{}</style>",
+            crate::construction::FrozenArena::corrupt_first_base_for_test,
+        );
+    }
+
+    #[test]
+    fn a_document_naming_a_policy_row_the_report_lacks_is_not_published() {
+        assert_unpublishable(
+            "<!doctype html><p>a",
+            crate::construction::FrozenArena::corrupt_meta_policy_for_test,
+        );
+    }
+
     #[test]
     fn metadata_inventory_borrows_actual_family_and_document_facts_one_slot_at_a_time() {
         use crate::construction::report::{MetadataDocument, MetadataStep};

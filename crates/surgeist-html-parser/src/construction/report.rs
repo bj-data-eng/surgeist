@@ -4,6 +4,24 @@
 use super::*;
 use history::{FrozenHistory, PreparedHistory, Unpublishable};
 
+#[cfg(test)]
+impl FrozenArena {
+    /// Names, as the policy of one Document's Meta history, a row the arena
+    /// does not hold. Whether a Document was found to name it.
+    pub(crate) fn corrupt_meta_policy_for_test(&mut self) -> bool {
+        let Some(storage) = self.storage.as_mut() else {
+            return false;
+        };
+        for row in &mut storage.payloads.values {
+            if let RetainedPayload::Document { meta, .. } = row {
+                meta.csp = Some(usize::MAX);
+                return true;
+            }
+        }
+        false
+    }
+}
+
 pub(crate) struct ReportStorage {
     history: FrozenHistory,
     closed_common: bool,
