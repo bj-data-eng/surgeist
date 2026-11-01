@@ -871,6 +871,73 @@ mod tests {
         assert!(stopped_after_element);
         assert!(completed);
     }
+
+    /// One foreign allocation with `credits` of work, its next unsharing
+    /// refused. Returns the work spent after setup and after the allocation,
+    /// and whether the refusal reached the unvalidated attributes, which then
+    /// must stay in the registry for the owner's release to drain.
+    fn allocate_with_refused_unsharing(credits: Option<u64>) -> (u64, u64, bool) {
+        let work = |c: &ParseControl| c.usage().resource(HtmlParseResource::WorkCredits).current;
+        let mut limits = super::super::tests::limits().into_builder();
+        if let Some(credits) = credits {
+            limits = limits.work_credits(credits);
+        }
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<svg a=1 b=2>"),
+            limits.finish().unwrap(),
+        );
+        let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let (lexer, mut input, range) = lexical(request.source(), &mut c);
+        let setup = work(&c);
+        c.refuse_next_shared_release();
+        let _ = session.allocate_foreign_tag_for_creation(
+            &mut c,
+            &mut input,
+            &root,
+            ForeignNamespace::Svg,
+            &range,
+            &capability,
+        );
+        let spent = work(&c);
+        // Only the refused unsharing leaves the staged row emptied (a leak) or
+        // holding the refused Arc and ticket.
+        let reached = session.active().unwrap().payloads.values.iter().any(|row| {
+            matches!(
+                row,
+                RetainedPayload::Attributes(None | Some(AttributeStorage::Unvalidated { .. }))
+            )
+        });
+        let released = lexer.release(&mut c);
+        let mut cleanup = session.release(&mut c);
+        if matches!(cleanup, Err(SessionError::Stop(_))) {
+            cleanup = session.release(&mut c);
+        }
+        // A refusal that no unsharing consumed stays armed and would refuse
+        // the release of an unrelated element's attributes.
+        if reached {
+            released.unwrap();
+            cleanup.unwrap();
+            zero(&c);
+        }
+        (setup, spent, reached)
+    }
+
+    #[test]
+    fn a_stopped_foreign_attribute_validation_with_a_refused_release_keeps_the_shared_attributes() {
+        let (setup, spent, reached) = allocate_with_refused_unsharing(None);
+        assert!(
+            !reached && spent > setup,
+            "an unrestricted allocation validates"
+        );
+        // A work limit between setup and completion stops at some step of the
+        // allocation; one of them stops its validation, whose unsharing the
+        // refusal then rejects. Scan back from the end of the allocation.
+        let reached = (setup..spent)
+            .rev()
+            .any(|credits| allocate_with_refused_unsharing(Some(credits)).2);
+        assert!(reached, "no work limit stopped the validation");
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

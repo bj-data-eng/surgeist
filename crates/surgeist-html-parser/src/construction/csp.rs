@@ -523,3 +523,43 @@ impl SessionStorage {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::construction::effects::tests::{graph, request};
+    use crate::construction::tests::storage_zero;
+
+    #[test]
+    fn a_meta_csp_state_row_replaced_during_its_use_reports_the_registry_row() {
+        let request = request("<body><div id=a>");
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let storage = session.active_mut().unwrap();
+        storage.prepare_payload_slot_owned(&mut c).unwrap();
+        let slot = storage.payloads.values.len();
+        storage
+            .payloads
+            .values
+            .push(RetainedPayload::CspState(Some(Box::new(State {
+                owner: None,
+                account: Account::default(),
+                pending: None,
+                initial_base: false,
+                initial: None,
+                owner_usage: Storage::ZERO,
+            }))));
+        storage.csp_slot = Some(slot);
+        let result = storage.with_csp(&mut c, |this, _, _| {
+            this.payloads.values[slot] =
+                RetainedPayload::CspPolicy(Box::new(Policy { value: None }));
+            Ok(())
+        });
+        let invariant =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
+        assert_eq!(c.stop(), Some(invariant));
+        storage.csp_slot = None;
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+}

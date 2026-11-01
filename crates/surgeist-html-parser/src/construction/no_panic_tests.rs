@@ -257,3 +257,92 @@ fn a_refused_release_after_failed_attribute_validation_keeps_the_shared_attribut
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+/// The first processing-instruction record of a graph.
+fn pi_node(storage: &SessionStorage) -> usize {
+    (0..)
+        .map_while(|position| storage.construction.node_at(position))
+        .find(|record| matches!(record.kind(), HtmlNodeKind::ProcessingInstruction(_)))
+        .expect("processing instruction record")
+        .position()
+}
+
+#[test]
+fn a_meta_csp_state_slot_past_the_registry_reports_the_registry_row_for_the_base_query() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    storage.csp_slot = Some(storage.payloads.values.len());
+    assert_registry_row(storage.csp_base_current(&mut c, 0), &c);
+    storage.csp_slot = None;
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_meta_csp_state_slot_naming_another_row_kind_reports_the_registry_row() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    assert!(!matches!(
+        storage.payloads.values.first(),
+        Some(RetainedPayload::CspState(_))
+    ));
+    storage.csp_slot = Some(0);
+    assert_registry_row(storage.ensure_csp_policy(&mut c, 0), &c);
+    storage.csp_slot = None;
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_document_naming_another_row_kind_as_its_meta_csp_policy_reports_the_registry_row() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    let document = storage.document_slot(&mut c, 0).unwrap();
+    storage.meta_history_mut(document).unwrap().csp = Some(document);
+    assert_registry_row(storage.csp_policy(&mut c, 0), &c);
+    storage.meta_history_mut(document).unwrap().csp = None;
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn an_initial_details_attribute_past_the_attribute_list_reports_the_registry_row() {
+    let request = request("<body><details open>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let details = named(&nodes, "details", 0).index;
+    let storage = session.active_mut().unwrap();
+    assert_registry_row(
+        storage.initial_details_attribute(&mut c, details, usize::MAX / 2),
+        &c,
+    );
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn parsing_a_processing_instruction_into_a_map_past_the_registry_reports_the_registry_row() {
+    let request = request("<body><?x a=\"b\"?>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    let pi = pi_node(storage);
+    let past = storage.payloads.values.len();
+    assert_registry_row(storage.parse_pi_map(&mut c, pi, past), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn finishing_a_processing_instruction_without_pairs_into_a_map_past_the_registry_reports_the_registry_row()
+ {
+    let request = request("<body><?x?>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    let pi = pi_node(storage);
+    let past = storage.payloads.values.len();
+    assert_registry_row(storage.parse_pi_map(&mut c, pi, past), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
