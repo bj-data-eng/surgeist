@@ -5,13 +5,29 @@
 //! caller-owned scratch. This private owner is not a public parse-success seal.
 
 use super::*;
-use provenance::{ConstructionCause, GroupBody, HistoryData, LeafValue, OriginGroup};
+use provenance::{
+    AssociationView, ConstructionCause, GroupBody, HistoryData, LeafValue, NativeAssociation,
+    OriginGroup,
+};
 
 /// Only the metered history qualification paths construct this owner. Generic native freeze does not
 /// establish the complete D1/lexical and history-payload qualification.
+///
+/// It holds what a published report reads from, apart from the arena that
+/// built it. The storage is there, the evidence is there, and the source and
+/// the complete D1 projection are held beside the evidence, so no reader asks
+/// whether any of them is missing.
 pub(crate) struct FrozenHistory {
-    arena: FrozenArena,
+    /// Its evidence is the field below, moved out of it.
+    storage: FrozenStorage,
+    evidence: ParseEvidence,
+    source: crate::HtmlSource,
+    rows: OwnedVec<NativeAssociation>,
 }
+/// A prepared arena that holds no custody of what a published report needs.
+/// The arena stays where it was, for release.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct Unpublishable;
 
 impl ParserArenaSession {
     #[cfg(test)]
@@ -33,9 +49,7 @@ impl ParserArenaSession {
         // Admit the actual new wrapper before the existing recoverable arena
         // transfer. There is no fallible operation after successful freeze.
         payload_write::<FrozenHistory>(c, 1)?;
-        Ok(FrozenHistory {
-            arena: self.freeze(c)?,
-        })
+        FrozenHistory::publish(self.freeze(c)?).map_err(|_| SessionError::WrongToken)
     }
 }
 
@@ -205,35 +219,85 @@ fn qualify(
 }
 
 impl FrozenHistory {
-    pub(super) fn arena(&self) -> &FrozenArena {
-        &self.arena
-    }
-    pub(super) fn arena_mut(&mut self) -> &mut FrozenArena {
-        &mut self.arena
-    }
-    pub(crate) fn view(&self) -> Result<HistoryView<'_>, SessionError> {
-        let storage = self.arena.storage.as_ref().ok_or(SessionError::Consumed)?;
-        let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
-        Ok(HistoryView {
+    /// Moves a qualified arena into its published form. An arena that cannot
+    /// give it up, because it holds no storage, evidence, source or complete
+    /// projection, is returned whole and unchanged.
+    fn publish(mut arena: FrozenArena) -> Result<Self, FrozenArena> {
+        if arena.finalizing.is_some() {
+            return Err(arena);
+        }
+        let Some(mut storage) = arena.storage.take() else {
+            return Err(arena);
+        };
+        let Some(mut evidence) = storage.evidence.take() else {
+            arena.storage = Some(storage);
+            return Err(arena);
+        };
+        let Some((source, rows)) = evidence.take_published() else {
+            storage.evidence = Some(evidence);
+            arena.storage = Some(storage);
+            return Err(arena);
+        };
+        Ok(Self {
             storage,
             evidence,
-            data: evidence.history_data()?,
+            source,
+            rows,
         })
     }
-    pub(crate) fn associations(&self) -> Result<provenance::AssociationView<'_>, SessionError> {
-        self.arena.retained_evidence()?.associations()
+    pub(super) fn storage(&self) -> &FrozenStorage {
+        &self.storage
+    }
+    pub(super) fn storage_mut(&mut self) -> &mut FrozenStorage {
+        &mut self.storage
+    }
+    pub(super) fn evidence(&self) -> &ParseEvidence {
+        &self.evidence
+    }
+    pub(crate) fn view(&self) -> HistoryView<'_> {
+        HistoryView {
+            storage: &self.storage,
+            evidence: &self.evidence,
+            data: self.evidence.published_history(&self.source),
+        }
+    }
+    pub(crate) fn associations(&self) -> AssociationView<'_> {
+        self.evidence
+            .published_associations(&self.source, self.rows.as_slice())
     }
     pub(crate) fn fragment(&self) -> Option<&HtmlFragment> {
-        self.arena.fragment()
+        match &self.storage.view {
+            HtmlConstructionResult::Fragment(view) => Some(view),
+            _ => None,
+        }
     }
     pub(crate) fn document(&self) -> Option<&HtmlDocument> {
-        self.arena.document()
+        match &self.storage.view {
+            HtmlConstructionResult::Document(view) => Some(view),
+            _ => None,
+        }
     }
-    /// Prepublication disposal, retaining the actual frozen owner on refusal.
-    /// A later public report consumes this owner and the execution controller.
+    /// The arena this was published from, with the evidence whole again.
     #[cfg(test)]
-    pub(crate) fn release(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
-        self.arena.release(c)
+    pub(super) fn into_arena(self) -> FrozenArena {
+        let Self {
+            mut storage,
+            mut evidence,
+            source,
+            rows,
+        } = self;
+        evidence.restore_published(source, rows);
+        storage.evidence = Some(evidence);
+        FrozenArena {
+            storage: Some(storage),
+            finalizing: None,
+            sharing_started: false,
+        }
+    }
+    /// Prepublication disposal of the actual frozen owner.
+    #[cfg(test)]
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), SessionError> {
+        self.into_arena().release(c)
     }
 }
 
@@ -288,14 +352,15 @@ impl<'a> PreparedHistory<'a> {
     /// All useful work and receiver admissions precede the consuming caller's
     /// final checkpoint/snapshot. Commit only moves the qualified actual slot.
     ///
-    /// The slot was qualified as occupied and is exclusively borrowed, so an
-    /// empty slot is an impossible custody state, reported as the registry-row
-    /// stop (there is no controller to latch it on here).
-    pub(crate) fn commit(self) -> Result<FrozenHistory, ParseStop> {
-        let arena = self.input.take().ok_or(ParseStop::InternalInvariant(
-            crate::parser::control::Invariant::RegistryRow,
-        ))?;
-        Ok(FrozenHistory { arena })
+    /// The slot was qualified as occupied and complete and is exclusively
+    /// borrowed, so a refusal is an impossible custody state. The arena is put
+    /// back for release, and the caller latches the refusal on its controller.
+    pub(crate) fn commit(self) -> Result<FrozenHistory, Unpublishable> {
+        let arena = self.input.take().ok_or(Unpublishable)?;
+        FrozenHistory::publish(arena).map_err(|arena| {
+            *self.input = Some(arena);
+            Unpublishable
+        })
     }
 }
 
@@ -553,8 +618,7 @@ impl HistoryOrigin<'_> {
 }
 impl FrozenHistory {
     pub(super) fn native_node(&self, index: usize) -> HtmlNode<'_> {
-        let storage = self.arena.storage.as_ref().expect("qualified history");
-        storage
+        self.storage
             .view
             .node_at(index)
             .expect("qualified history destination")
@@ -668,10 +732,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         let before = c.usage().clone();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             assert_eq!(view.source().identity(), source.identity());
             assert!(owner.document().is_none());
             let text = owner.fragment().unwrap().root().children().next().unwrap();
@@ -752,9 +816,9 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         assert!(matches!(session.active(), Err(SessionError::Consumed)));
-        assert!(owner.associations().unwrap().len() > 0);
+        assert!(owner.associations().len() > 0);
         owner.release(&mut c).unwrap();
         zero(&c);
         // A native-only source-free arena cannot certify history either.
@@ -783,7 +847,7 @@ mod tests {
             .evidence
             .as_mut()
             .unwrap()
-            .drop_projection_for_test();
+            .drop_projection_for_test(&mut c);
         assert!(
             prepared.commit().is_err(),
             "a history that lacks its projection is not published"
@@ -798,11 +862,11 @@ mod tests {
         let source = crate::HtmlSource::utf8("AB");
         let (mut c, mut session, group) = projected(&source);
         let (mut foreign_c, mut foreign_session, foreign_group) = projected(&source);
-        let mut owner = session.freeze_history(&mut c).unwrap();
-        let mut foreign = foreign_session.freeze_history(&mut foreign_c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
+        let foreign = foreign_session.freeze_history(&mut foreign_c).unwrap();
         {
-            let view = owner.view().unwrap();
-            let other = foreign.view().unwrap();
+            let view = owner.view();
+            let other = foreign.view();
             assert_eq!(
                 view.header(other.group(foreign_group).unwrap()).err(),
                 Some(HistoryReadError::ForeignOwner)
@@ -855,11 +919,11 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         let before = c.usage().clone();
         old_cancel.cancel();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let mut scratch = [HistoryFrame::default(); 3];
             let query_cancel = HtmlParseCancellation::new();
             let mut cursor = view
@@ -928,10 +992,10 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         let before = c.usage().clone();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let header = view.header(view.group(final_index).unwrap()).unwrap();
             assert_eq!(header.units, 128);
             assert_eq!(
@@ -1112,12 +1176,12 @@ mod tests {
         ));
         assert!(session.active().is_ok() && c.stop().is_none());
         drop(alias);
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         let alias = owner.fragment().unwrap().clone();
-        assert!(owner.release(&mut c).is_err());
-        assert!(owner.view().is_ok());
+        let mut arena = owner.into_arena();
+        assert!(arena.release(&mut c).is_err());
         drop(alias);
-        owner.release(&mut c).unwrap();
+        arena.release(&mut c).unwrap();
         zero(&c);
 
         let signal = HtmlParseCancellation::new();
@@ -1259,9 +1323,9 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let group = view.group(old_group).unwrap();
             assert_eq!(view.header(group).unwrap().units, 2);
             let mut scratch = vec![HistoryFrame::default(); old_group + 1];
@@ -1355,9 +1419,9 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let mut pointers = Vec::new();
             for index in 0..view.len() {
                 let header = view.header(view.group(index).unwrap()).unwrap();
@@ -1473,9 +1537,9 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let mut saw_name = false;
             let mut saw_namespace = false;
             for index in 0..view.len() {
@@ -1590,9 +1654,9 @@ mod tests {
         session
             .prepare_native_associations(&mut c, request.source())
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let header = view.header(view.group(before).unwrap()).unwrap();
             assert!(header.cause.source.is_none());
             let captured = header.cause.captured.as_ref().unwrap();
@@ -1628,16 +1692,12 @@ mod tests {
     }
 
     #[test]
-    fn committing_a_prepared_history_over_an_empty_slot_reports_the_registry_row() {
+    fn committing_a_prepared_history_over_an_empty_slot_is_unpublishable() {
         // The slot is exclusively borrowed and was qualified as occupied; an
-        // empty one is an impossible custody state, never a panic.
+        // empty one is an impossible custody state, never a panic. The caller
+        // latches it on its controller.
         let mut slot: Option<FrozenArena> = None;
         let prepared = PreparedHistory { input: &mut slot };
-        assert_eq!(
-            prepared.commit().err(),
-            Some(ParseStop::InternalInvariant(
-                crate::parser::control::Invariant::RegistryRow
-            ))
-        );
+        assert_eq!(prepared.commit().err(), Some(Unpublishable));
     }
 }

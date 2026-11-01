@@ -222,7 +222,7 @@ impl<'a> HtmlParseAssociations<'a> {
     pub(crate) fn new(history: &'a FrozenHistory) -> Self {
         Self {
             history,
-            view: history.associations().expect("qualified complete D1"),
+            view: history.associations(),
         }
     }
     pub fn len(&self) -> usize {
@@ -269,9 +269,7 @@ impl<'a> HtmlParseAssociation<'a> {
         self.row.relation
     }
     pub fn group(&self) -> Option<HistoryGroup<'a>> {
-        self.row
-            .group
-            .and_then(|i| self.history.view().expect("qualified history").group(i))
+        self.row.group.and_then(|i| self.history.view().group(i))
     }
     pub fn cause(&self) -> HtmlParseCause<'a> {
         HtmlParseCause {
@@ -279,7 +277,6 @@ impl<'a> HtmlParseAssociation<'a> {
             cause: self
                 .history
                 .associations()
-                .expect("qualified D1")
                 .cause(self.row.cause)
                 .expect("qualified cause"),
         }
@@ -394,7 +391,7 @@ fn destination(history: &FrozenHistory, value: NativeDestination) -> HtmlParseDe
             }
         }
         NativeDestination::Lexical { occurrence, part } => {
-            let view = history.associations().expect("qualified lexical D1");
+            let view = history.associations();
             HtmlParseDestination::Lexical {
                 occurrence: HtmlParseLexicalOccurrence {
                     history,
@@ -411,23 +408,18 @@ fn destination(history: &FrozenHistory, value: NativeDestination) -> HtmlParseDe
         NativeDestination::Omission(i) => HtmlParseDestination::Omission(HtmlParseOmission {
             value: history
                 .associations()
-                .expect("qualified D1")
                 .omission(i)
                 .expect("qualified omission"),
         }),
         NativeDestination::LexicalEnd => HtmlParseDestination::LexicalEnd,
         NativeDestination::Cause(i) => HtmlParseDestination::Cause(HtmlParseCause {
             history,
-            cause: history
-                .associations()
-                .expect("qualified D1")
-                .cause(i)
-                .expect("qualified cause"),
+            cause: history.associations().cause(i).expect("qualified cause"),
         }),
     }
 }
 fn attribute_node(history: &FrozenHistory, slot: usize) -> usize {
-    let storage = history.arena().storage.as_ref().expect("published storage");
+    let storage = history.storage();
     let RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
         element: Some(node),
         ..
@@ -438,7 +430,7 @@ fn attribute_node(history: &FrozenHistory, slot: usize) -> usize {
     *node
 }
 fn pi_node(history: &FrozenHistory, slot: usize) -> usize {
-    let storage = history.arena().storage.as_ref().expect("published storage");
+    let storage = history.storage();
     let RetainedPayload::PiAttributes {
         node: Some(node), ..
     } = &storage.payloads.values[slot]
@@ -461,12 +453,9 @@ impl<'a> HtmlParseRangeOperand<'a> {
         self.value.kind()
     }
     pub fn group(&self) -> Option<HistoryGroup<'a>> {
-        self.value.edge().and_then(|edge| {
-            self.history
-                .view()
-                .expect("qualified history")
-                .group(edge.group)
-        })
+        self.value
+            .edge()
+            .and_then(|edge| self.history.view().group(edge.group))
     }
     pub fn cause(&self) -> Option<HtmlParseCause<'a>> {
         self.value.edge().map(|edge| HtmlParseCause {
@@ -474,7 +463,6 @@ impl<'a> HtmlParseRangeOperand<'a> {
             cause: self
                 .history
                 .associations()
-                .expect("qualified D1")
                 .cause(edge.cause)
                 .expect("qualified Range link"),
         })
@@ -490,11 +478,7 @@ impl<'a> HtmlParseRangeComputation<'a> {
     pub fn original_group(&self) -> Option<HistoryGroup<'a>> {
         match self.value.original {
             provenance::RangeOriginal::FreshEmpty => None,
-            provenance::RangeOriginal::Group(edge) => self
-                .history
-                .view()
-                .expect("qualified history")
-                .group(edge.group),
+            provenance::RangeOriginal::Group(edge) => self.history.view().group(edge.group),
         }
     }
     pub fn original_cause(&self) -> Option<HtmlParseCause<'a>> {
@@ -505,7 +489,6 @@ impl<'a> HtmlParseRangeComputation<'a> {
                 cause: self
                     .history
                     .associations()
-                    .expect("qualified D1")
                     .cause(edge.cause)
                     .expect("qualified Range original"),
             }),
@@ -564,20 +547,15 @@ impl<'a> HtmlParseColorComputation<'a> {
         self.value.value
     }
     pub fn original_group(&self) -> Option<HistoryGroup<'a>> {
-        self.value.original.and_then(|edge| {
-            self.history
-                .view()
-                .expect("qualified history")
-                .group(edge.group)
-        })
+        self.value
+            .original
+            .and_then(|edge| self.history.view().group(edge.group))
     }
     pub fn operand_group(&self, role: provenance::ColorOperandRole) -> Option<HistoryGroup<'a>> {
-        self.value.operands.copy(role).and_then(|edge| {
-            self.history
-                .view()
-                .expect("qualified history")
-                .group(edge.group)
-        })
+        self.value
+            .operands
+            .copy(role)
+            .and_then(|edge| self.history.view().group(edge.group))
     }
 }
 impl<'a> HtmlParseCause<'a> {
@@ -621,7 +599,6 @@ impl<'a> HtmlParseCause<'a> {
             cause: self
                 .history
                 .associations()
-                .expect("qualified D1")
                 .cause(i)
                 .expect("qualified cause link"),
         })
@@ -645,12 +622,12 @@ impl<'a> HtmlParseCause<'a> {
     pub fn original_group(&self) -> Option<HistoryGroup<'a>> {
         self.cause
             .original
-            .and_then(|i| self.history.view().expect("qualified history").group(i))
+            .and_then(|i| self.history.view().group(i))
     }
     pub fn incoming_group(&self) -> Option<HistoryGroup<'a>> {
         self.cause
             .incoming
-            .and_then(|i| self.history.view().expect("qualified history").group(i))
+            .and_then(|i| self.history.view().group(i))
     }
     pub fn captured(&self) -> Option<HtmlParseCapturedCause<'a>> {
         self.cause
@@ -679,12 +656,7 @@ impl<'a> HtmlParseCause<'a> {
                 _ => None,
             };
             if let Some((slot, field)) = attribute {
-                let storage = self
-                    .history
-                    .arena()
-                    .storage
-                    .as_ref()
-                    .expect("qualified historical owner");
+                let storage = self.history.storage();
                 return match &storage.payloads.values[slot] {
                     RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
                         element: Some(owner),
@@ -755,7 +727,6 @@ impl<'a> HtmlParseLexicalOccurrence<'a> {
             value: self
                 .history
                 .associations()
-                .expect("qualified D1")
                 .lexical_occurrence(i)
                 .expect("qualified parent"),
         })
@@ -766,7 +737,6 @@ impl<'a> HtmlParseLexicalOccurrence<'a> {
             cause: self
                 .history
                 .associations()
-                .expect("qualified D1")
                 .cause(self.value.cause())
                 .expect("qualified lexical cause"),
         }
@@ -801,7 +771,6 @@ impl<'a> HtmlParseLexicalPart<'a> {
             value: self
                 .history
                 .associations()
-                .expect("qualified D1")
                 .lexical_occurrence(self.value.occurrence)
                 .expect("qualified occurrence"),
         }
@@ -870,7 +839,7 @@ impl<'a> HtmlParseHistory<'a> {
     pub(crate) fn new(history: &'a FrozenHistory) -> Self {
         Self {
             history,
-            view: history.view().expect("qualified history"),
+            view: history.view(),
         }
     }
     pub fn len(&self) -> usize {

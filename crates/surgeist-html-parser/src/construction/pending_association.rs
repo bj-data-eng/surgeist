@@ -1222,12 +1222,11 @@ pub enum Step<'a> {
 }
 impl<'a> Cursor<'a> {
     pub(crate) fn new(history: &'a FrozenHistory) -> Self {
-        let anchor = history.arena().storage.as_ref().and_then(|storage| {
-            Some(Anchor {
-                history,
-                storage,
-                first: native(storage, 0)?,
-            })
+        let storage = history.storage();
+        let anchor = native(storage, 0).map(|first| Anchor {
+            history,
+            storage,
+            first,
         });
         Self { anchor, next: 0 }
     }
@@ -1272,7 +1271,7 @@ fn context_epoch(anchor: Anchor<'_>, slot: usize) -> ContextEpochId {
 }
 /// `None` when the report's history no longer holds the group.
 fn group<'a>(history: &'a FrozenHistory, value: &'a OriginGroupRef) -> Option<HistoryGroup<'a>> {
-    history.view().ok()?.group(value.index)
+    history.view().group(value.index)
 }
 pub struct DocumentView<'a> {
     anchor: Anchor<'a>,
@@ -1396,12 +1395,7 @@ impl<'a> OccurrenceView<'a> {
     /// `None` when the occurrence has no cause or the report no longer holds it.
     pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
         let cause = self.value.cause.as_ref()?;
-        let retained = self
-            .anchor
-            .storage
-            .evidence
-            .as_ref()?
-            .retained_cause(cause)?;
+        let retained = self.anchor.history.evidence().retained_cause(cause)?;
         Some(read::HtmlParseCause::qualified(
             self.anchor.history,
             retained,
@@ -2285,13 +2279,7 @@ mod tests {
         .unwrap()
     }
     fn frozen(report: &mut crate::HtmlParseReport) -> &mut FrozenStorage {
-        report
-            .storage_mut()
-            .history_mut()
-            .arena_mut()
-            .storage
-            .as_mut()
-            .unwrap()
+        report.storage_mut().history_mut().storage_mut()
     }
     /// Edits the first style occurrence a report holds that the filter accepts.
     fn corrupt_style_occurrence(
@@ -2365,16 +2353,6 @@ mod tests {
                 Step::Complete => return,
             }
         }
-    }
-    #[test]
-    fn a_report_without_its_storage_presents_no_associations() {
-        let mut report = styled_report();
-        frozen(&mut report);
-        report.storage_mut().history_mut().arena_mut().storage = None;
-        assert!(matches!(
-            report.pending_associations().advance(),
-            Step::Complete
-        ));
     }
     #[test]
     fn an_occurrence_whose_subject_is_missing_is_not_presented() {

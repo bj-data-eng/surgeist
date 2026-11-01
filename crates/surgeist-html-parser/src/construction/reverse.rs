@@ -1045,6 +1045,62 @@ impl ParseEvidence {
         }
         Ok(())
     }
+    /// Moves out what a published report keeps beside the evidence: the source
+    /// and the complete projection. `None`, with nothing moved, until the D1
+    /// projection and the lexical prefix are both complete.
+    pub(in crate::construction) fn take_published(
+        &mut self,
+    ) -> Option<(crate::HtmlSource, OwnedVec<NativeAssociation>)> {
+        if !self.native.projection_complete || self.native.lexical.end.is_none() {
+            return None;
+        }
+        let source = self.native.source.take()?;
+        let Some(rows) = self.native.projection.take() else {
+            self.native.source = Some(source);
+            return None;
+        };
+        Some((source, rows))
+    }
+    /// Puts back what [`Self::take_published`] moved out.
+    #[cfg(test)]
+    pub(in crate::construction) fn restore_published(
+        &mut self,
+        source: crate::HtmlSource,
+        rows: OwnedVec<NativeAssociation>,
+    ) {
+        self.native.source = Some(source);
+        self.native.projection = Some(rows);
+    }
+    /// The D1 inventory of a published report, whose complete projection and
+    /// source are held beside this evidence.
+    pub(in crate::construction) fn published_associations<'a>(
+        &'a self,
+        source: &'a crate::HtmlSource,
+        rows: &'a [NativeAssociation],
+    ) -> AssociationView<'a> {
+        AssociationView {
+            source,
+            rows,
+            causes: self.native.causes.as_slice(),
+            groups: self.native.groups.as_slice(),
+            occurrences: self.native.lexical.occurrences.as_slice(),
+            parts: self.native.lexical.parts.as_slice(),
+            omissions: self.native.lexical.omissions.as_slice(),
+        }
+    }
+    /// The history of a published report, whose source is held beside this
+    /// evidence.
+    pub(in crate::construction) fn published_history<'a>(
+        &'a self,
+        source: &'a crate::HtmlSource,
+    ) -> HistoryData<'a> {
+        HistoryData {
+            source,
+            origins: self.native.origins.as_slice(),
+            groups: self.native.groups.as_slice(),
+            causes: self.native.causes.as_slice(),
+        }
+    }
     pub(crate) fn associations(&self) -> Result<AssociationView<'_>, SessionError> {
         if !self.native.projection_complete || self.native.lexical.end.is_none() {
             return Err(SessionError::WrongToken);

@@ -4131,7 +4131,7 @@ mod whole_source_comparisons {
                 ),
             );
         }
-        let associations = report.history().associations().unwrap();
+        let associations = report.history().associations();
         let position = |attribute, owner| {
             positions
                 .iter()

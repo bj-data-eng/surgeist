@@ -1031,10 +1031,13 @@ impl ParseEvidence {
             .get(group.index)
             .ok_or(SessionError::WrongToken)
     }
-    /// Drops the complete projection, as a fault in a published report would.
+    /// Releases the complete projection, as the loss of it would leave the
+    /// evidence of a published report.
     #[cfg(test)]
-    pub(super) fn drop_projection_for_test(&mut self) {
-        self.native.projection = None;
+    pub(super) fn drop_projection_for_test(&mut self, c: &mut ParseControl) {
+        if let Some(rows) = self.native.projection.take() {
+            rows.release(c).unwrap();
+        }
     }
     pub(super) fn history_data(&self) -> Result<HistoryData<'_>, SessionError> {
         // Do not mint an immutable history lender from a native-only projection

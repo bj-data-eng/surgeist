@@ -2,7 +2,7 @@
 //! Metadata inventory examines one real slot; no lookup hides a registry scan.
 
 use super::*;
-use history::{FrozenHistory, PreparedHistory};
+use history::{FrozenHistory, PreparedHistory, Unpublishable};
 
 pub(crate) struct ReportStorage {
     history: FrozenHistory,
@@ -22,9 +22,36 @@ impl SharedReportStorage<'_, '_> {
     pub(crate) fn control(&mut self) -> &mut ParseControl {
         self.sharing.control()
     }
-    pub(crate) fn commit(self) -> Result<ReportStorage, ParseStop> {
+    pub(crate) fn commit(self) -> Result<ReportStorage, PublishFault> {
         self.sharing.commit()?;
-        self.storage.commit()
+        Ok(self.storage.commit()?)
+    }
+}
+/// Why a prepared report could not be published.
+pub(crate) enum PublishFault {
+    /// The stop is already the controller's first.
+    Stop(ParseStop),
+    /// The prepared history held no custody of what the report needs.
+    Unpublishable,
+}
+impl From<ParseStop> for PublishFault {
+    fn from(stop: ParseStop) -> Self {
+        Self::Stop(stop)
+    }
+}
+impl From<Unpublishable> for PublishFault {
+    fn from(_: Unpublishable) -> Self {
+        Self::Unpublishable
+    }
+}
+impl PublishFault {
+    /// The refusal as the session error, with a custody fault latched as the
+    /// controller's first stop.
+    pub(crate) fn latch(self, c: &mut ParseControl) -> SessionError {
+        match self {
+            Self::Stop(stop) => SessionError::Stop(stop),
+            Self::Unpublishable => latch_registry_row(c),
+        }
     }
 }
 impl<'a> PreparedReportStorage<'a> {
@@ -590,7 +617,7 @@ impl<'a> PreparedReportStorage<'a> {
             associated_slot,
         })
     }
-    pub(crate) fn commit(self) -> Result<ReportStorage, ParseStop> {
+    pub(crate) fn commit(self) -> Result<ReportStorage, Unpublishable> {
         Ok(ReportStorage {
             history: self.history.commit()?,
             closed_common: self.closed_common,
@@ -731,12 +758,7 @@ impl ReportStorage {
         let Some(slot) = self.associated_slot else {
             return Ok(());
         };
-        let row = self
-            .history
-            .arena_mut()
-            .storage
-            .as_mut()
-            .and_then(|storage| storage.payloads.values.get_mut(slot));
+        let row = self.history.storage_mut().payloads.values.get_mut(slot);
         let Some(row) = row else {
             return Err(c.fail_invariant(crate::parser::control::Invariant::RegistryRow));
         };
@@ -769,19 +791,15 @@ impl ReportStorage {
     pub(crate) fn history_mut(&mut self) -> &mut FrozenHistory {
         &mut self.history
     }
-    pub(crate) fn evidence(&self) -> Result<&ParseEvidence, SessionError> {
-        self.history.arena().retained_evidence()
+    pub(crate) fn evidence(&self) -> &ParseEvidence {
+        self.history.evidence()
     }
-    pub(crate) fn effects(&self) -> Result<context::FrozenFragmentEffects<'_>, SessionError> {
-        self.history.arena().frozen_fragment_effects()
+    /// The effects of a fragment report; a Document report holds none.
+    pub(crate) fn effects(&self) -> Option<context::FrozenFragmentEffects<'_>> {
+        self.history.storage().fragment_effects()
     }
     pub(crate) fn metadata(&self) -> MetadataCursor<'_> {
-        let storage = self
-            .history
-            .arena()
-            .storage
-            .as_ref()
-            .expect("qualified report storage");
+        let storage = self.history.storage();
         MetadataCursor {
             history: &self.history,
             closed_common: self.closed_common,
@@ -883,10 +901,9 @@ impl<'a> MetadataDialogMissing<'a> {
         self.missing.cause.as_ref().map(|cause| {
             read::HtmlParseCause::qualified(
                 self.history,
-                self.storage
-                    .evidence
-                    .as_ref()
-                    .and_then(|e| e.retained_cause(cause))
+                self.history
+                    .evidence()
+                    .retained_cause(cause)
                     .expect("qualified Dialog cause"),
             )
         })
@@ -1010,10 +1027,9 @@ impl<'a> MetadataMetaMissing<'a> {
         self.row().3.as_ref().map(|cause| {
             read::HtmlParseCause::qualified(
                 self.history,
-                self.storage
-                    .evidence
-                    .as_ref()
-                    .and_then(|e| e.retained_cause(cause))
+                self.history
+                    .evidence()
+                    .retained_cause(cause)
                     .expect("qualified Meta cause"),
             )
         })
@@ -1193,10 +1209,9 @@ impl<'a> MetadataImage<'a> {
         self.state.cause.as_ref().map(|cause| {
             read::HtmlParseCause::qualified(
                 self.history,
-                self.storage
-                    .evidence
-                    .as_ref()
-                    .and_then(|e| e.retained_cause(cause))
+                self.history
+                    .evidence()
+                    .retained_cause(cause)
                     .expect("qualified Img cause"),
             )
         })
@@ -1309,10 +1324,9 @@ impl<'a> MetadataRef<'a> {
             cause: state.cause.as_ref().map(|cause| {
                 read::HtmlParseCause::qualified(
                     self.history,
-                    self.storage
-                        .evidence
-                        .as_ref()
-                        .and_then(|e| e.retained_cause(cause))
+                    self.history
+                        .evidence()
+                        .retained_cause(cause)
                         .expect("qualified Style cause"),
                 )
             }),
@@ -1327,10 +1341,9 @@ impl<'a> MetadataRef<'a> {
             cause: state.cause.as_ref().map(|cause| {
                 read::HtmlParseCause::qualified(
                     self.history,
-                    self.storage
-                        .evidence
-                        .as_ref()
-                        .and_then(|e| e.retained_cause(cause))
+                    self.history
+                        .evidence()
+                        .retained_cause(cause)
                         .expect("qualified URL cause"),
                 )
             }),
@@ -1748,10 +1761,7 @@ mod tests {
         let row = report
             .storage_mut()
             .history_mut()
-            .arena_mut()
-            .storage
-            .as_ref()
-            .unwrap()
+            .storage_mut()
             .payloads
             .values
             .iter()
@@ -1762,10 +1772,7 @@ mod tests {
                 &report
                     .storage_mut()
                     .history_mut()
-                    .arena_mut()
-                    .storage
-                    .as_ref()
-                    .unwrap()
+                    .storage_mut()
                     .payloads
                     .values[row],
             )

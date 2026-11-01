@@ -34,7 +34,7 @@ impl<'a> FragmentParserDocument<'a> {
     /// or no longer holds the Document or the completion row it was
     /// qualified against.
     pub(super) fn new(history: &'a FrozenHistory, source: &'a crate::HtmlSource) -> Option<Self> {
-        let storage = history.arena().storage.as_ref()?;
+        let storage = history.storage();
         let fragment = storage.fragment.as_ref()?;
         let document = storage.view.node_at(0)?.as_node();
         let HtmlNodeKind::Document(mode) = document.kind() else {
@@ -177,13 +177,7 @@ pub(super) mod tests {
     #[test]
     fn a_completion_row_that_is_gone_issues_no_parser_document() {
         let mut report = fragment_report("<p>a</p>");
-        let storage = report
-            .storage_mut()
-            .history_mut()
-            .arena_mut()
-            .storage
-            .as_mut()
-            .unwrap();
+        let storage = report.storage_mut().history_mut().storage_mut();
         let completion = storage.fragment.as_ref().unwrap().completion;
         storage.payloads.values[completion] = crate::construction::RetainedPayload::Retired;
         assert!(report.fragment_parser_document().is_none());

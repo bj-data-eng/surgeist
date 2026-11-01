@@ -2437,21 +2437,26 @@ impl<'a> FrozenFragmentEffects<'a> {
         }))
     }
 }
+impl FrozenStorage {
+    /// The effects of the fragment context this storage holds, if it holds one.
+    pub(crate) fn fragment_effects(&self) -> Option<FrozenFragmentEffects<'_>> {
+        let fragment = self.fragment.as_ref()?;
+        Some(FrozenFragmentEffects {
+            storage: self,
+            arena: &self.view,
+            fragment,
+        })
+    }
+}
 impl FrozenArena {
     pub(crate) fn frozen_fragment_effects(
         &self,
     ) -> Result<FrozenFragmentEffects<'_>, SessionError> {
-        let storage = self.storage.as_ref().ok_or(SessionError::Consumed)?;
-        let arena = &storage.view;
-        let fragment = storage
-            .fragment
+        self.storage
             .as_ref()
-            .ok_or(SessionError::ContextUnavailable)?;
-        Ok(FrozenFragmentEffects {
-            storage,
-            arena,
-            fragment,
-        })
+            .ok_or(SessionError::Consumed)?
+            .fragment_effects()
+            .ok_or(SessionError::ContextUnavailable)
     }
     /// Qualified before sealing. All later reads are fixed/indexed borrows of
     /// these same immutable rows, including their original source and capture.

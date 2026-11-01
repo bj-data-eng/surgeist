@@ -93,7 +93,9 @@ impl ImmutableParseReport {
             c,
         )?;
         c.checkpoint()?;
-        let mut storage = storage.commit()?;
+        let mut storage = storage
+            .commit()
+            .map_err(|fault| fault.latch(&mut sealed.parts.control))?;
         let c = &mut sealed.parts.control;
         storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
@@ -146,7 +148,9 @@ impl ImmutableParseReport {
             c,
         )?;
         c.checkpoint()?;
-        let mut storage = storage.commit()?;
+        let mut storage = storage
+            .commit()
+            .map_err(|fault| fault.latch(&mut sealed.parts.control))?;
         let c = &mut sealed.parts.control;
         storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
@@ -246,18 +250,10 @@ impl ImmutableParseReport {
         self.storage.metadata()
     }
     pub fn diagnostics(&self) -> crate::construction::evidence::DiagnosticEvidenceView<'_> {
-        self.storage
-            .evidence()
-            .expect("qualified report evidence")
-            .diagnostics()
+        self.storage.evidence().diagnostics()
     }
     pub fn effects(&self) -> Option<crate::construction::context::FrozenFragmentEffects<'_>> {
-        match &self.context {
-            ReportContext::Fragment(_) => {
-                Some(self.storage.effects().expect("qualified report effects"))
-            }
-            _ => None,
-        }
+        self.storage.effects()
     }
 }
 
@@ -545,7 +541,7 @@ mod tests {
         assert!(
             matches!(output.node(&text).unwrap().kind(), HtmlNodeKind::Text(t) if t.code_units() == [65])
         );
-        assert!(report.history().associations().unwrap().len() > 0);
+        assert!(report.history().associations().len() > 0);
         let mut metadata = report.metadata();
         let mut captured_documents = 0;
         loop {
@@ -604,7 +600,7 @@ mod tests {
                 (3, "#Z")
             ])
         );
-        assert!(report.history().associations().unwrap().len() > 0);
+        assert!(report.history().associations().len() > 0);
         let mut cursor = report.metadata();
         let mut values = Vec::new();
         let mut input_source = false;
