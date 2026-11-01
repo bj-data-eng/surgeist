@@ -19885,3 +19885,42 @@ fn a_token_event_is_taken_only_from_a_token_slot_and_other_content_stays_for_rel
     other.take().unwrap().release(&mut c).unwrap();
     assert_released(&c);
 }
+
+#[test]
+fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
+    use super::head::HeadError;
+    use super::prologue::PrologueError;
+    let lost = [
+        StandaloneError::Consumed,
+        StandaloneError::Head(HeadError::Consumed),
+        StandaloneError::Head(HeadError::MissingInput),
+        StandaloneError::Head(HeadError::MissingTokenizer),
+        StandaloneError::Head(HeadError::Kernel(KernelError::Consumed)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::Consumed)),
+        StandaloneError::Prologue(PrologueError::Consumed),
+        StandaloneError::Prologue(PrologueError::MissingInput),
+        StandaloneError::Prologue(PrologueError::Kernel(KernelError::Consumed)),
+    ];
+    for error in &lost {
+        assert!(error.lost_owner(), "{error:?}");
+    }
+    let named = [
+        StandaloneError::UnsupportedDocumentInitialization,
+        StandaloneError::UnsupportedExecutionProfile,
+        StandaloneError::Stop(ParseStop::Cancelled),
+        StandaloneError::TokenizerExhausted,
+        StandaloneError::Head(HeadError::UnsupportedScriptPause),
+        StandaloneError::Head(HeadError::UnsupportedPendingScript),
+        StandaloneError::Head(HeadError::InvalidScriptNesting),
+        StandaloneError::Head(HeadError::IncompleteCompletion),
+        StandaloneError::Head(HeadError::ConstructionCapabilityUnavailable),
+        StandaloneError::Head(HeadError::Kernel(KernelError::EmptyStack)),
+        StandaloneError::Head(HeadError::Kernel(KernelError::Session(
+            SessionError::ScriptMetadataUnavailable,
+        ))),
+        StandaloneError::Prologue(PrologueError::PendingInput),
+    ];
+    for error in &named {
+        assert!(!error.lost_owner(), "{error:?}");
+    }
+}

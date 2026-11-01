@@ -1079,6 +1079,77 @@ mod tests {
     }
 
     #[test]
+    fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
+        use head::HeadError;
+        let lost = [
+            FragmentExecutionError::Consumed,
+            FragmentExecutionError::Kernel(KernelError::Consumed),
+            FragmentExecutionError::Head(HeadError::Consumed),
+            FragmentExecutionError::Head(HeadError::MissingInput),
+            FragmentExecutionError::Head(HeadError::MissingTokenizer),
+            FragmentExecutionError::Head(HeadError::Kernel(KernelError::Consumed)),
+        ];
+        for error in &lost {
+            assert!(error.lost_owner(), "{error:?}");
+        }
+        let named = [
+            FragmentExecutionError::Stop(ParseStop::Cancelled),
+            FragmentExecutionError::Kernel(KernelError::EmptyStack),
+            FragmentExecutionError::Kernel(KernelError::Session(
+                SessionError::ScriptMetadataUnavailable,
+            )),
+            FragmentExecutionError::Head(HeadError::UnsupportedScriptPause),
+            FragmentExecutionError::Head(HeadError::InvalidScriptNesting),
+            FragmentExecutionError::Head(HeadError::Kernel(KernelError::Session(
+                SessionError::CompletionIncomplete,
+            ))),
+        ];
+        for error in &named {
+            assert!(!error.lost_owner(), "{error:?}");
+        }
+    }
+
+    #[test]
+    fn a_fragment_step_without_its_stage_state_latches_the_registry_row_as_first_stop() {
+        let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
+        let mut driver = initialized_driver(&request);
+        // Private-state fault injection: the stage's state is not where the
+        // step expects it, so the head stage reports a lost owner.
+        let state = driver.head.as_mut().unwrap().state.take().unwrap();
+        let error = driver.step().err().unwrap();
+        assert!(
+            matches!(
+                error,
+                FragmentExecutionError::Head(head::HeadError::Consumed)
+            ),
+            "{error:?}"
+        );
+        let stop = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(driver.control.stop(), Some(stop));
+        driver.head.as_mut().unwrap().state = Some(state);
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), Some(stop));
+    }
+
+    #[test]
+    fn a_fragment_step_without_its_stage_latches_the_registry_row_as_first_stop() {
+        let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
+        let mut driver = initialized_driver(&request);
+        let head = driver.head.take().unwrap();
+        let error = driver.step().err().unwrap();
+        assert!(
+            matches!(error, FragmentExecutionError::Consumed),
+            "{error:?}"
+        );
+        let stop = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(driver.control.stop(), Some(stop));
+        driver.head = Some(head);
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    #[test]
     fn initialization_context_reset_uses_real_stack_template_modes_and_head_pointer() {
         // A single root uses the captured context as the last node: td/th/head
         // do not acquire the modes of a real non-last stack element.
