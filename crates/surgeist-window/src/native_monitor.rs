@@ -126,7 +126,7 @@ fn screen_number(
     DisplayId::new(id)
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 #[derive(Clone, Copy, Debug)]
 struct ColorEstimate {
     depth: u16,
