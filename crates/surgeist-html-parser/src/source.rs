@@ -286,20 +286,29 @@ impl HtmlSource {
         if advance.end > self.len() {
             return Err(ConsumedBoundaryError::InvalidBoundary);
         }
+        let range = advance.start.offset..advance.end;
         let mut equal = true;
         match (&self.text, advance.units) {
             (SourceText::Utf8(text), DecodedSourceUnits::Utf8 { units, length }) => {
-                let supplied = &text.as_bytes()[advance.start.offset..advance.end];
-                for index in 0..length {
+                let supplied = text
+                    .as_bytes()
+                    .get(range)
+                    .ok_or(ConsumedBoundaryError::InvalidBoundary)?;
+                equal &= supplied.len() == length;
+                for (supplied, expected) in supplied.iter().zip(units.iter().take(length)) {
                     // Do not short-circuit: every precharged source read and
                     // comparison is performed, including a mismatch.
-                    equal &= supplied[index] == units[index];
+                    equal &= supplied == expected;
                 }
             }
             (SourceText::Utf16(text), DecodedSourceUnits::Utf16 { units, length }) => {
-                let supplied = &text.code_units()[advance.start.offset..advance.end];
-                for index in 0..length {
-                    equal &= supplied[index] == units[index];
+                let supplied = text
+                    .code_units()
+                    .get(range)
+                    .ok_or(ConsumedBoundaryError::InvalidBoundary)?;
+                equal &= supplied.len() == length;
+                for (supplied, expected) in supplied.iter().zip(units.iter().take(length)) {
+                    equal &= supplied == expected;
                 }
             }
             _ => return Err(ConsumedBoundaryError::ForeignCoordinates),
