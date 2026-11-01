@@ -190,7 +190,8 @@ fn changes_at_the_front_of_an_order_describe_the_shifted_entries() {
     type Change =
         fn(&HtmlBuilderNode, &[HtmlBuilderNode], &HtmlBuilderNode) -> HtmlConstructionCommand;
     // (name, command, entries the order edit writes among n siblings)
-    let cases: [(&str, Change, fn(usize) -> usize); 3] = [
+    type Case = (&'static str, Change, fn(usize) -> usize);
+    let cases: [Case; 3] = [
         (
             "insert before the first child",
             |root, children, fresh| HtmlConstructionCommand::Insert {
@@ -443,7 +444,7 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
             .expect("an HTML template owns contents")
             .handle()
     };
-    let containers = vec![
+    let containers = [
         root,
         nodes[0].clone(),
         nodes[1].clone(),
