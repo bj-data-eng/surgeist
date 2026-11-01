@@ -2159,7 +2159,7 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
     let storage = session.active_mut().unwrap();
     let good = storage.payloads.node_joins[img];
     // A join past the registry names no row: the lookup reports a typed error.
-    storage.payloads.node_joins[img].rows[Join::Image as usize] =
+    *storage.payloads.node_joins[img].rows.get_mut(Join::Image) =
         Some(joined_cell(u32::MAX as usize - 1).unwrap());
     assert_eq!(
         storage.start_img_update(

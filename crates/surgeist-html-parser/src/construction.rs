@@ -22,6 +22,7 @@
 //! preparation ends at step18 and never fabricates a loaded or executed result.
 
 use crate::bounded::{HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError};
+use crate::keyed::{Table, slots};
 use crate::parser::control::{
     ControlIdentity, DocumentStringAllocation, FinalReleaseError, OwnedVec, ParseControl,
     ParseStop, SharedAllocation, StandaloneUnsupported, VectorCapacity, WorkCategory,
@@ -421,11 +422,11 @@ struct PayloadStorage {
 /// that exists, and registry rows are appended but never removed or reordered
 /// while the registry is live; rows of a joined kind are never replaced, so a
 /// join always names a row of its kind (the callers still check what they get).
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 struct NodeJoins {
     text: Option<NonZeroU32>,
     textarea: Option<NonZeroU32>,
-    rows: [Option<NonZeroU32>; JOIN_COUNT],
+    rows: JoinTable<Option<NonZeroU32>>,
     /// Registry slot plus one of the name of the record's last attribute as
     /// registered at creation; see `PayloadStorage::attribute_value_candidate`.
     attribute_strings: Option<NonZeroU32>,
@@ -462,16 +463,43 @@ impl Join {
     }
 }
 const JOIN_COUNT: usize = Join::StyleOccurrence as usize + 1;
+/// One value per [`Join`]; a lookup cannot be out of range.
+type JoinTable<T> = Table<Join, T, JOIN_COUNT>;
+slots!(Join, JOIN_COUNT, {
+    Attributes => 0,
+    NodeDocument => 1,
+    Document => 2,
+    Template => 3,
+    FormAssociation => 4,
+    Script => 5,
+    Image => 6,
+    Hyperlink => 7,
+    Style => 8,
+    Dialog => 9,
+    Nonce => 10,
+    Input => 11,
+    SelectFamily => 12,
+    Base => 13,
+    BaseDocument => 14,
+    LookupRegistry => 15,
+    StyleOccurrence => 16,
+});
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
 /// refused as the registry invariant (see `joined_cell`).
 const _: () = assert!(mem::size_of::<NodeJoins>() == 4 * (JOIN_COUNT + 3));
+impl Default for NodeJoins {
+    fn default() -> Self {
+        Self {
+            text: None,
+            textarea: None,
+            rows: JoinTable::filled(None),
+            attribute_strings: None,
+        }
+    }
+}
 impl NodeJoins {
     fn get(&self, join: Join) -> Option<usize> {
-        self.rows
-            .get(join as usize)
-            .copied()
-            .flatten()
-            .and_then(cell_slot)
+        self.rows.copy(join).and_then(cell_slot)
     }
     /// The registry row holding the record's merged text.
     fn text(&self) -> Option<usize> {
@@ -483,20 +511,13 @@ impl NodeJoins {
     }
     /// Names the latest registry row, the one a back-to-front scan finds.
     fn set_latest(&mut self, join: Join, slot: usize) -> Result<(), SessionError> {
-        let cell = self
-            .rows
-            .get_mut(join as usize)
-            .ok_or_else(SessionError::registry_row)?;
-        *cell = Some(joined_cell(slot)?);
+        *self.rows.get_mut(join) = Some(joined_cell(slot)?);
         Ok(())
     }
     /// Keeps the earliest registry row, the one a front-to-back scan finds, and
     /// reports whether the cell already named another row.
     fn set_first(&mut self, join: Join, slot: usize) -> Result<bool, SessionError> {
-        let cell = self
-            .rows
-            .get_mut(join as usize)
-            .ok_or_else(SessionError::registry_row)?;
+        let cell = self.rows.get_mut(join);
         let slot = joined_cell(slot)?;
         let repeated = cell.is_some_and(|current| current != slot);
         if cell.is_none_or(|current| slot < current) {
