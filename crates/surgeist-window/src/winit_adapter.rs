@@ -1369,13 +1369,14 @@ impl<H: Handler> WinitRunner<H> {
                         })?;
                         let profile = capture_profile_for_target(winit_target(event_loop));
                         let state = state_from_winit(id, &request, &window, profile)?;
-                        let environment = crate::environment_native::observe_environment(
+                        let mut environment = crate::environment_native::observe_environment(
                             &window,
                             state.metrics(),
                             preferences.clone(),
                             profile,
                             CaptureScope::Enriched,
                         )?;
+                        crate::native_input::capture(profile).apply(&mut environment);
                         let state = state.with_environment(environment);
                         let window_id = window.id();
                         #[cfg(feature = "accessibility")]
@@ -2905,6 +2906,7 @@ impl<H: Handler> WinitRunner<H> {
         &mut self,
         preferences: UserPreferences,
     ) -> Result<Vec<BackendCallback>> {
+        let input = crate::native_input::capture(self.capture_profile);
         let mut observations = Vec::new();
         for id in self.windows.values().copied() {
             let Some(window) = self.registry.get(id) else {
@@ -2925,13 +2927,14 @@ impl<H: Handler> WinitRunner<H> {
             })??;
             observations.push((id, environment));
         }
-        self.apply_environment_observations(preferences, observations)
+        self.apply_environment_observations(preferences, observations, input)
     }
 
     fn apply_environment_observations(
         &mut self,
         preferences: UserPreferences,
         observations: Vec<(Id, HostEnvironment)>,
+        input: crate::native_input::InputCapture,
     ) -> Result<Vec<BackendCallback>> {
         self.baseline_preferences = preferences;
         let mut callbacks = Vec::new();
@@ -2939,8 +2942,9 @@ impl<H: Handler> WinitRunner<H> {
             let Some(window) = self.registry.get(id) else {
                 continue;
             };
-            let environment =
+            let mut environment =
                 crate::environment_native::preserve_independent(observed, window.environment());
+            input.apply(&mut environment);
             if &environment == window.environment() {
                 continue;
             }
@@ -4192,7 +4196,11 @@ mod tests {
                 },
             );
             let callbacks = runner
-                .apply_environment_observations(preferences.clone(), vec![(id, observed.clone())])
+                .apply_environment_observations(
+                    preferences.clone(),
+                    vec![(id, observed.clone())],
+                    crate::native_input::InputCapture::Preserve,
+                )
                 .unwrap();
             assert_eq!(
                 callbacks.len(),
@@ -4230,7 +4238,11 @@ mod tests {
             assert_eq!(runner.baseline_preferences, preferences);
             assert!(
                 runner
-                    .apply_environment_observations(preferences, vec![(id, observed)])
+                    .apply_environment_observations(
+                        preferences,
+                        vec![(id, observed)],
+                        crate::native_input::InputCapture::Preserve,
+                    )
                     .unwrap()
                     .is_empty()
             );
@@ -4297,7 +4309,11 @@ mod tests {
             },
         );
         let callbacks = runner
-            .apply_environment_observations(preferences, vec![(id, observed.clone())])
+            .apply_environment_observations(
+                preferences,
+                vec![(id, observed.clone())],
+                crate::native_input::InputCapture::Preserve,
+            )
             .unwrap();
         assert_eq!(callbacks.len(), 1);
         for callback in callbacks {
@@ -4315,6 +4331,75 @@ mod tests {
                 }
             )]
         );
+    }
+
+    #[test]
+    fn idle_input_capture_replaces_native_facts_clears_failed_samples_and_suppresses_equal() {
+        use crate::native_input::InputCapture;
+
+        let id = Id::from_u64(1);
+        let fine = PointerCapability {
+            accuracy: PointerAccuracy::Fine,
+            hover: true,
+        };
+        let coarse = PointerCapability {
+            accuracy: PointerAccuracy::Coarse,
+            hover: false,
+        };
+        let fine = InputCapabilities::new(fine, [fine]).unwrap();
+        let coarse = InputCapabilities::new(coarse, [coarse]).unwrap();
+        let original = HostEnvironment {
+            input: Some(fine.clone()),
+            navigation: Some(NavigationControls::Back),
+            display_mode: Some(DisplayMode::Standalone),
+            ..HostEnvironment::default()
+        };
+        let mut window_loop = Loop::new(EnvironmentObserver::default());
+        window_loop
+            .registry
+            .insert(Instance::new(state(id).with_environment(original.clone())))
+            .unwrap();
+        let mut runner = WinitRunner::from_loop(window_loop);
+        runner.resolve_capabilities_for_test(HostCapabilities::builder().build());
+
+        // A raw move retains the previously committed independent input even
+        // though it invalidates geometry and output observations.
+        let moved = runner
+            .moved_transition(id, PhysicalPoint { x: 40, y: 20 })
+            .unwrap();
+        runner.apply_native_transition_patch_state(moved).unwrap();
+        assert_eq!(
+            runner.registry.get(id).unwrap().environment().input,
+            original.input
+        );
+
+        for (input, expected_callbacks) in
+            [(Some(fine), 0), (Some(coarse), 1), (None, 1), (None, 0)]
+        {
+            let before = runner.registry.get(id).unwrap().environment().clone();
+            let callbacks = runner
+                .apply_environment_observations(
+                    before.preferences.clone(),
+                    vec![(id, before)],
+                    InputCapture::Observed(input.clone()),
+                )
+                .unwrap();
+            assert_eq!(callbacks.len(), expected_callbacks);
+            let committed = runner.registry.get(id).unwrap().environment().clone();
+            assert_eq!(committed.input, input);
+            assert_eq!(committed.navigation, original.navigation);
+            assert_eq!(committed.display_mode, original.display_mode);
+            assert!(
+                runner.handler.order.is_empty(),
+                "sampling does not invoke callbacks"
+            );
+            if let Some(BackendCallback::Event(event)) = callbacks.first() {
+                let EventKind::EnvironmentChanged { environment, .. } = event else {
+                    panic!("input refresh must publish an environment event");
+                };
+                assert_eq!(environment, &committed);
+            }
+        }
     }
 
     fn state(id: Id) -> WindowSnapshot {

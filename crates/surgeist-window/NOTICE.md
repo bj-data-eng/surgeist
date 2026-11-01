@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-This notice covers the ten direct production dependencies and the
+This notice covers the twelve direct production dependencies and the
 `accesskit_consumer` development dependency pinned in [Cargo.toml](Cargo.toml),
 including the optional `accessibility` feature and dependency material for all
 declared platforms. The maintained consumer is bundled under
@@ -106,6 +106,15 @@ platform monotonic clock shared by Window deadlines and receipt timestamps.
 * Homepage: [web-time](https://github.com/daxpedda/web-time)
 * Legal source: [exact package revision](https://github.com/daxpedda/web-time/tree/2d200ded30bbcab66f6a4bfa277ac546685728db)
 
+### windows 0.62.2
+
+This product depends on windows (Rust for Windows). It is a Windows-only direct
+dependency for safe native accessibility-preference and pointer-device
+observations.
+
+* License: [MIT](licenses/windows-rs/license-mit) OR [Apache-2.0](licenses/windows-rs/license-apache-2.0)
+* Homepage: [Rust for Windows](https://github.com/microsoft/windows-rs)
+
 ### winit 0.30.13
 
 This product depends on winit, distributed by The winit contributors and Pierre
@@ -114,3 +123,12 @@ Krieger:
 * License: [Apache-2.0](licenses/winit/LICENSE)
 * Additional material: [W3C license and source attribution notices](licenses/winit/NOTICE.md)
 * Homepage: [winit](https://github.com/rust-windowing/winit)
+
+### winsafe 0.0.29
+
+This product depends on winsafe, distributed by Rodrigo Cesar de Freitas Dias.
+It is a Windows-only direct dependency for safe native monitor enumeration and
+work-area observations; its `user` feature is enabled.
+
+* License: [MIT](licenses/winsafe/LICENSE.md)
+* Homepage: [WinSafe](https://github.com/rodrigocfd/winsafe)

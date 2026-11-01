@@ -201,17 +201,51 @@ An unavailable observation is distinct from a known absent device or a known
 `no-preference` value. The winit adapter supplies monitor and client geometry,
 display scale and the system theme where its platform API supports them. It does
 not infer primary pointer capabilities from the most recent input event or guess
-navigation, reduced-data or output-blending facts. Those remain
-unavailable until a host supplies them. CSS matching, document activity,
+navigation, reduced-data or output-blending facts. Those remain unavailable
+until a host supplies them. Windows supplies the native input observations
+described below. CSS matching, document activity,
 origin preference overlays and coherent downstream publication remain with
 their consuming owners.
+
+On Windows, the native content host samples the complete Windows Runtime
+[`PointerDevice`](https://learn.microsoft.com/en-us/windows/apps/develop/input/identify-input-devices)
+collection at creation and existing safe idle opportunities. Its host policy
+chooses a mouse or touchpad first, a pen second, and touch third. Mouse and
+touchpad report fine accuracy and convenient hover; pens report fine accuracy
+with hover from `MaxPointersWithZDistance`; touch reports coarse accuracy without
+convenient hover. Among pens, a hover-capable pen takes precedence. Selection
+does not depend on enumeration order or the last input event. The union retains
+every device, so coarse and fine can both be true. A successful empty collection
+reports known no-pointer; any failed query or unknown device type leaves the
+complete input report unavailable rather than silently dropping a device.
+
+The Windows API has a documented
+[package-identity restriction](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/winrt-api-desktop-app-support#apis-that-require-package-identity).
+The adapter attempts the observation and preserves failure as unavailable; a
+successful native probe on an unpackaged desktop does not promise universal
+deployment support. Native objects stay on the sampling thread; snapshots retain
+only Rust capability values. Basic geometry events preserve committed input.
+Native creation and idle refresh explicitly own the native input sample, while
+other adapters retain ownership of supplied input, navigation and presentation
+facts. No input-device subscription, independent wakeup or hotplug delivery
+latency is promised.
 
 On macOS, the native adapter samples AppKit's reduced-motion,
 reduced-transparency and increased-contrast flags. A true reduction flag maps to
 `Reduce`, and false maps to `NoPreference`. Increased contrast maps to `More`
 when true and `NoPreference` when false; this flag does not detect `Less` or
-`Custom`. These are explicit host-policy mappings of observed settings. Other
-platforms retain unavailable values for these observations.
+`Custom`. These are explicit host-policy mappings of observed settings.
+
+On Windows, safe Windows Runtime APIs sample `UISettings.AnimationsEnabled`,
+[`UISettings.AdvancedEffectsEnabled`](https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.uisettings.advancedeffectsenabled)
+and [`AccessibilitySettings.HighContrast`](https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.accessibilitysettings.highcontrast).
+Disabled animation or transparency effects map to `Reduce`; enabled effects map
+to `NoPreference`. An active contrast theme maps to `Custom`: this observer does
+not classify the selected palette as particularly high or low contrast. An
+inactive contrast theme maps to `NoPreference`. Each failed observation remains
+independently unavailable, preserving successfully sampled siblings and the
+separately supplied system color scheme. These APIs do not establish reduced-data
+preferences. Other platforms retain unavailable values for these observations.
 
 The complete preference baseline is sampled at resume, native/user events,
 command application and idle opportunities. Changed facts commit before their
@@ -237,12 +271,29 @@ total estimate without inventing a positive RGB media-feature bound; unknown
 color-space semantics retain the public fallback. This estimate does not certify
 renderer formats, HDR, or the complete media-device capability environment.
 
+On Windows, safe WinSafe APIs enumerate native monitors and match the selected
+winit monitor's device name exactly against `MONITORINFOEX.szDevice`.
+[`GetMonitorInfo`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmonitorinfow)
+supplies that monitor's screen and work rectangles in virtual-desktop units.
+An empty, missing or ambiguous device identity, an incomplete native read, or
+invalid work bounds leaves the observation unavailable. No primary-monitor,
+enumeration-order or geometry-based fallback chooses a device.
+
+Windows work rectangles already use top-left/right/down axes. Their offsets
+within the selected monitor are divided by the committed display scale and
+added to the captured logical screen origin. This preserves negative desktop
+origins and each window's scale. Work bounds must be finite, nonnegative and
+contained in a positive-area selected screen. Pixel-storage depth is not treated
+as color precision: Windows color estimates remain unavailable rather than counting
+alpha or storage padding as color bits.
+
 Raw native event captures retain the existing basic geometry but defer these
-new monitor facts. At `about_to_wait`, after queued metric transitions have
+monitor facts. At `about_to_wait`, after queued metric transitions have
 committed, the adapter samples preferences once and captures each live window's
 complete native environment. One changed callback per window carries combined
-preference/output changes; equal samples are suppressed. Input, navigation and
-presentation facts supplied independently remain intact. Refresh returns work
+preference/output/input changes; equal samples are suppressed. Navigation and
+presentation facts, and input outside the native Windows provider, remain
+independently supplied. Refresh returns work
 to the existing callback pump and adds no notification subscription, wakeup or
 latency guarantee. See [the monitor observation owner](../src/native_monitor.rs).
 
