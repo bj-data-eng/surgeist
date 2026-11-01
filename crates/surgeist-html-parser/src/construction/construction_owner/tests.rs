@@ -578,3 +578,44 @@ fn a_refused_frozen_owner_still_releases_every_other_owner_and_reports_the_first
     assert_eq!(c.stop(), Some(registry_row()));
     crate::construction::tests::storage_zero(&c);
 }
+
+#[test]
+fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row() {
+    let (mut control, mut owner) = with_element();
+    owner
+        .begin_attributes(&mut control, 0, HtmlConstructionAttributeEditMode::Slots)
+        .unwrap();
+    let lent = owner.take_attribute_edit(&mut control).unwrap();
+    // A second edit occupies the slot while the first is lent out. Beginning
+    // one through the owner is refused, so another owner supplies it.
+    let mut other = ConstructionOwner::new(&mut control).unwrap();
+    other
+        .apply(
+            &mut control,
+            HtmlConstructionCommand::Create {
+                kind: HtmlNodeKind::Element(HtmlElement::new(
+                    QualifiedName::new(Namespace::none(), None, "y"),
+                    OrderedAttributes::default(),
+                )),
+            },
+            &[(HtmlParseResource::ManagedNodes, 1)],
+        )
+        .unwrap();
+    other
+        .begin_attributes(&mut control, 0, HtmlConstructionAttributeEditMode::Slots)
+        .unwrap();
+    let occupant = other.take_attribute_edit(&mut control).unwrap();
+    owner.attribute_edit = Some(occupant);
+    owner.put_attribute_edit(lent);
+    assert_eq!(
+        control.stop(),
+        Some(registry_row()),
+        "latched as the first stop"
+    );
+    // The occupant was not displaced; giving it back lets both owners finish.
+    let occupant = owner.attribute_edit.take().unwrap();
+    other.attribute_edit = Some(occupant);
+    other.abort_attributes(&mut control).unwrap();
+    other.retire(&mut control).unwrap();
+    drained(owner, &mut control);
+}
