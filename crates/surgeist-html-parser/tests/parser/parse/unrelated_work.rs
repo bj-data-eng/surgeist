@@ -133,6 +133,18 @@ fn a_style_adds_the_same_visits_whatever_other_style_elements_precede_it() {
 const CONTROL: &str = "<input name=a>";
 
 #[test]
+fn an_element_with_an_id_adds_the_same_visits_whatever_form_controls_precede_it() {
+    // An id can resolve the form attribute of a control, so inserting one runs
+    // the id pass; none of these controls has a form attribute to resolve.
+    assert_independent_of_unrelated(CONTROL, "<div id=a>x</div>");
+}
+
+#[test]
+fn an_input_with_an_id_adds_the_same_visits_whatever_form_controls_precede_it() {
+    assert_independent_of_unrelated(CONTROL, "<input id=b name=b>");
+}
+
+#[test]
 fn a_paragraph_adds_the_same_visits_whatever_form_controls_precede_it() {
     assert_independent_of_unrelated(CONTROL, "<p>x</p>");
 }

@@ -336,3 +336,22 @@ fn work_added_by_each_doubling_of_declarative_shadow_roots_is_near_double() {
         ],
     );
 }
+
+#[test]
+fn work_added_by_each_doubling_of_inputs_with_ids_is_near_double() {
+    // Each input with an id runs the id pass over the form controls; none has
+    // a form attribute, so the pass must find nothing to visit.
+    assert_doublings_add_near_double(
+        [200, 400, 800, 1600],
+        |repeats| {
+            format!(
+                "<!doctype html><body>{}",
+                "<input id=a name=a>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
