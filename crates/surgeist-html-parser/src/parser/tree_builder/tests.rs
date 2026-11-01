@@ -148,9 +148,13 @@ fn same(
 /// impersonate insertion-mode dispatch, EOF acceptance, or a parse report.
 fn freeze(kernel: LocationKernel, control: &mut ParseControl) -> FrozenArena {
     let LocationKernel {
-        mut session, open, ..
+        mut session,
+        open,
+        templates,
+        ..
     } = kernel;
     open.unwrap().release(control).unwrap();
+    templates.unwrap().release(control).unwrap();
     session.freeze(control).unwrap()
 }
 pub(crate) fn assert_released(control: &ParseControl) {
@@ -803,6 +807,13 @@ fn the_last_template_is_the_topmost_open_template_after_every_stack_operation() 
             let node = kernel.at(index + 1, &mut c).unwrap();
             same(&kernel, &node, &pool[*id].0, &mut c);
         }
+        let listed: Vec<usize> = open
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| pool[**id].1)
+            .map(|(at, _)| at + 1)
+            .collect();
+        assert_eq!(kernel.template_indices(), listed, "step {step}");
         let expected = open.iter().rposition(|id| pool[*id].1);
         let actual = kernel.last_template(&mut c).unwrap();
         match (expected, actual) {
@@ -6596,10 +6607,11 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     // record1) and html_named's namespace comparison (two plus the header =3,
     // inspecting28 units) and local comparison (one, one choice and the
     // header =3; the length differs from template, so no local units are
-    // read) =17 visits.
+    // read) =17 visits, and one more asking whether the replaced entry is
+    // listed as a template.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        63 + 3 + 2 + 17
+        63 + 3 + 2 + 17 + 1
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
