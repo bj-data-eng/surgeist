@@ -575,6 +575,18 @@ fn prepared_atomic_break_sequence_retains_source_order_in_each_writing_mode() {
 }
 
 #[test]
+fn prepared_capture_rejects_a_different_actual_container_frame() {
+    for (field, different) in [("writingMode", "vertical-lr"), ("direction", "rtl")] {
+        let mut fixture = prepared_atomic_fixture();
+        fixture["style"][field] = json!(different);
+        assert!(
+            decode_fixture(&fixture).is_err(),
+            "a captured paragraph must not borrow a different container {field}"
+        );
+    }
+}
+
+#[test]
 fn prepared_atomic_capture_rejects_actual_break_control_before_xml() {
     let mut fixture = prepared_atomic_fixture();
     // Wire Box is also the envelope role of a real BR. The captured atomic
