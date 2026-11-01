@@ -182,13 +182,13 @@ impl SessionStorage {
                 continue;
             }
             if let Some(fragment) = &self.fragment {
-                for index in 0..fragment.effects.len() {
+                for (index, effect) in fragment.effects.as_slice().iter().enumerate() {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     if let context::ContextEffect::AttachShadow {
                         contents: Some(contents),
                         host,
                         ..
-                    } = &fragment.effects.as_slice()[index]
+                    } = effect
                         && *contents == root
                     {
                         match host {
@@ -201,7 +201,7 @@ impl SessionStorage {
                             }
                         }
                     }
-                    if index + 1 == fragment.effects.len() {
+                    if index.saturating_add(1) == fragment.effects.len() {
                         return Ok((C::NotBrowsingContextConnected, P::Unavailable));
                     }
                 }
@@ -219,14 +219,11 @@ impl SessionStorage {
         host: &crate::HtmlCaptureElementId,
     ) -> Result<(crate::HtmlNonceConnection, crate::HtmlHeaderDeliveredCsp), SessionError> {
         use crate::{HtmlHeaderDeliveredCsp as P, HtmlNonceConnection as C};
-        let node = match self.captured_shadow_including_document(c, host) {
-            Ok(Some(node)) => node,
+        let document = match self.captured_shadow_including_document(c, host) {
+            Ok(Some(document)) => document,
             Ok(None) => return Ok((C::NotBrowsingContextConnected, P::Unavailable)),
             Err(SessionError::ContextUnavailable) => return Ok((C::Unavailable, P::Unavailable)),
             Err(error) => return Err(error),
-        };
-        let crate::HtmlCapturedNodeKind::Document(document) = node.kind() else {
-            unreachable!("qualified shadow-including root")
         };
         let environment = document.nonce_environment();
         Ok((
@@ -244,7 +241,7 @@ impl SessionStorage {
         &'a self,
         c: &mut ParseControl,
         host: &crate::HtmlCaptureElementId,
-    ) -> Result<Option<crate::HtmlCapturedNode<'a>>, SessionError> {
+    ) -> Result<Option<&'a crate::HtmlCapturedDocument>, SessionError> {
         let capture = self
             .fragment
             .as_ref()
@@ -257,8 +254,8 @@ impl SessionStorage {
             .map_err(|_| SessionError::ForeignNode)?;
         for _ in 0..capture.usage().subjects() {
             c.charge(WorkCategory::RecordVisit, 2)?;
-            if matches!(node.kind(), crate::HtmlCapturedNodeKind::Document(_)) {
-                return Ok(Some(node));
+            if let crate::HtmlCapturedNodeKind::Document(document) = node.kind() {
+                return Ok(Some(document));
             }
             payload_write::<crate::HtmlCapturedParent>(c, 1)?;
             match node.parent() {
@@ -312,13 +309,12 @@ impl SessionStorage {
             return Ok(());
         };
         let mut selected = None;
-        for position in 0..element.attributes().len() {
+        for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
             c.charge(
                 WorkCategory::InspectByte,
                 surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
             )?;
-            let attribute = &element.attributes().as_slice()[position];
             if !matches!(
                 crate::nonce_attribute_change(
                     element.name(),
@@ -342,17 +338,11 @@ impl SessionStorage {
             WorkCategory::InspectByte,
             surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
         )?;
-        let HtmlNodeKind::Element(element) = &self
-            .construction
-            .node_at(node)
-            .ok_or_else(|| latch_registry_row(c))?
-            .kind()
-        else {
-            unreachable!()
-        };
+        let element = element_record(&self.construction, c, node)?;
+        let attribute = element_attribute(&self.construction, c, node, position)?;
         match crate::nonce_insertion_effect(
             element.name(),
-            Some(element.attributes().as_slice()[position].value()),
+            Some(attribute.value()),
             connection,
             policy,
         ) {
@@ -560,9 +550,8 @@ impl SessionStorage {
             return Err(SessionError::NonceMetadataUnavailable);
         }
         let mut position = None;
-        for index in 0..element.attributes().len() {
+        for (index, attribute) in element.attributes().as_slice().iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let attribute = &element.attributes().as_slice()[index];
             c.charge(
                 WorkCategory::InspectByte,
                 surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,

@@ -69,7 +69,9 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let attr = &element.attributes().as_slice()[position];
+        let Some(attr) = element.attributes().as_slice().get(position) else {
+            return Err(latch_registry_row(c));
+        };
         if attr.name().namespace().uri().is_some() {
             return Ok(());
         }
@@ -280,7 +282,7 @@ impl SessionStorage {
         })();
         if result.is_ok() {
             if position.is_some() {
-                shifted += 1;
+                shifted = shifted.saturating_add(1);
             } else {
                 popped = true;
             }
@@ -291,7 +293,15 @@ impl SessionStorage {
             .node_at(node)
             .map(|record| record.kind())
         else {
-            return Err(latch_registry_row(c));
+            // The record was an element before ownership left the row and the
+            // edit only rearranges its attributes. The shared attributes live
+            // in that record, so no Arc exists to hand back to the row; the
+            // construction owner's open edit is returned instead.
+            let invariant = latch_registry_row(c);
+            // The invariant is the reported first stop; an abort refusal is
+            // secondary and latched by its owner.
+            let _ = self.construction.abort_attributes(c);
+            return Err(invariant);
         };
         c.restore_attribute_weak(element_record.attributes().shared_attributes(), &mut shared);
         let values = element_record.attributes().clone();

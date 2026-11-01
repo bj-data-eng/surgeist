@@ -7902,7 +7902,7 @@ impl ParserArenaSession {
                 StringLocation::ProcessingInstructionData(node.index),
             )
             .map_err(|_| latch_registry_row(control))?;
-        storage.bind_pi_map(map, node.index);
+        storage.bind_pi_map(control, map, node.index)?;
         storage.parse_pi_map(control, node.index, map)?;
         Ok(node)
     }

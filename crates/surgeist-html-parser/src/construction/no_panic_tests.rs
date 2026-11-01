@@ -346,3 +346,43 @@ fn finishing_a_processing_instruction_without_pairs_into_a_map_past_the_registry
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+#[test]
+fn binding_a_processing_instruction_map_to_a_row_that_is_not_one_reports_the_registry_row() {
+    let request = request("<body><?x a=\"b\"?>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    let pi = pi_node(storage);
+    let past = storage.payloads.values.len();
+    assert_registry_row(storage.bind_pi_map(&mut c, past, pi), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn binding_a_processing_instruction_map_to_another_row_kind_reports_the_registry_row() {
+    let request = request("<body><?x a=\"b\"?>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    let pi = pi_node(storage);
+    assert!(!matches!(
+        storage.payloads.values.first(),
+        Some(RetainedPayload::PiAttributes { .. })
+    ));
+    assert_registry_row(storage.bind_pi_map(&mut c, 0, pi), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn binding_an_svg_script_slot_to_a_row_that_is_not_one_reports_the_registry_row() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let div = named(&nodes, "div", 0).index;
+    let storage = session.active_mut().unwrap();
+    let past = storage.payloads.values.len();
+    assert_registry_row(storage.bind_svg_slot(&mut c, past, div), &c);
+    assert_registry_row(storage.bind_svg_slot(&mut c, 0, div), &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

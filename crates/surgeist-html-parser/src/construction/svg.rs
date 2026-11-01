@@ -105,11 +105,17 @@ impl SessionStorage {
         Ok(slot)
     }
     /// Caller preadmits this fixed binding before actual native allocation.
-    pub(super) fn bind_svg_slot(&mut self, slot: usize, node: usize) {
-        let RetainedPayload::SvgScript { node: bound, .. } = &mut self.payloads.values[slot] else {
-            unreachable!("owned admitted SVG slot")
+    pub(super) fn bind_svg_slot(
+        &mut self,
+        c: &mut ParseControl,
+        slot: usize,
+        node: usize,
+    ) -> Result<(), SessionError> {
+        let RetainedPayload::SvgScript { node: bound, .. } = self.payloads.row_mut(c, slot)? else {
+            return Err(latch_registry_row(c));
         };
         *bound = Some(node);
+        Ok(())
     }
     /// Effect frames already own readiness; the same sealed domain and source
     /// identity still qualify each invocation before the flag can change.
@@ -149,9 +155,9 @@ impl SessionStorage {
         // listener/observer or retained SVG notification producer. No Tiny load
         // event or failed-load claim is fabricated, and no intrinsic FIFO is drained.
         payload_write::<SvgScriptFlags>(c, 1)?;
-        let RetainedPayload::SvgScript { state: stored, .. } = &mut self.payloads.values[slot]
+        let RetainedPayload::SvgScript { state: stored, .. } = self.payloads.row_mut(c, slot)?
         else {
-            unreachable!("qualified SVG slot")
+            return Err(latch_registry_row(c));
         };
         stored.flags.mark_processed();
         Ok(SvgScriptProcessing::RestrictedProcessed)

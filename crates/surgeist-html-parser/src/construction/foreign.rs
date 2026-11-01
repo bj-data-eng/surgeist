@@ -62,7 +62,7 @@ fn adjusted_text(
                 c,
                 TextOrigin {
                     start: origin.start.saturating_sub(skip),
-                    end: origin.end - skip,
+                    end: origin.end.saturating_sub(skip),
                     source: origin.source.clone(),
                     kind: crate::parser::tokenizer::token::OriginKind::RecoverySyntax,
                 },
@@ -221,10 +221,9 @@ impl ParserArenaSession {
                 return Err(stop.into());
             }
         };
-        let original = input
-            .replace(Text { value, origins })
-            .expect("qualified original");
-        original.release(c)?;
+        let adjusted = Text { value, origins };
+        // The original is replaced in place through the borrow that read it.
+        mem::replace(original, adjusted).release(c)?;
         Ok(())
     }
 }
@@ -249,11 +248,11 @@ impl SessionStorage {
         let original = match self.register_text(c, original) {
             Ok((value, slot)) => {
                 drop(value);
-                match &self.payloads.values[slot] {
-                    RetainedPayload::String {
+                match self.payloads.values.get(slot) {
+                    Some(RetainedPayload::String {
                         origins: Some(group),
                         ..
-                    } => match self
+                    }) => match self
                         .evidence
                         .as_ref()
                         .ok_or(SessionError::WrongToken)
@@ -265,7 +264,11 @@ impl SessionStorage {
                             return Err(error);
                         }
                     },
-                    _ => None,
+                    Some(RetainedPayload::String { origins: None, .. }) => None,
+                    _ => {
+                        adjusted.release(c)?;
+                        return Err(latch_registry_row(c));
+                    }
                 }
             }
             Err(error) => {
@@ -317,7 +320,7 @@ impl SessionStorage {
                 if exact_ascii(c, Some(original.value.text()), input)? {
                     return Ok((
                         if prefix.is_some() {
-                            Some((local, input.len() - local.len()))
+                            Some((local, input.len().saturating_sub(local.len())))
                         } else {
                             None
                         },
@@ -1138,13 +1141,13 @@ impl SessionStorage {
                     .ok_or_else(|| {
                         control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
-                let RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                     values,
                     allocation,
                     ..
-                })) = &mut self.payloads.values[container]
+                }))) = self.payloads.values.get_mut(container)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(control));
                 };
                 control.reserve_vector_geometric_toward(values, allocation, 1, original_len)?;
                 payload_write::<Attribute>(control, 1)?;
@@ -1178,17 +1181,21 @@ impl SessionStorage {
             }
             self.reverse_attributes(control, container)?;
             payload_write::<Option<AttributeStorage>>(control, 2)?;
-            let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-                unreachable!()
+            let Some(RetainedPayload::Attributes(storage)) =
+                self.payloads.values.get_mut(container)
+            else {
+                return Err(latch_registry_row(control));
             };
-            let AttributeStorage::Building {
+            let taken = storage.take();
+            let Some(AttributeStorage::Building {
                 values,
                 allocation,
                 original_len,
                 reversed_pairs,
-            } = storage.take().expect("attribute builder phase")
+            }) = taken
             else {
-                unreachable!()
+                *storage = taken;
+                return Err(latch_registry_row(control));
             };
             let (backing, shared) = match control.share_owned(values) {
                 Ok(value) => value,
@@ -1207,11 +1214,22 @@ impl SessionStorage {
                 Err((error, backing)) => {
                     // Preserve the admitted shared wrapper in the owning phase
                     // even when intrinsic duplicate checking or work stops.
-                    let Ok(values) = control.release_shared(backing, shared) else {
-                        // Unpublished backing is uniquely owned; a refusal is an
-                        // invariant stop, and the container row stays empty for
-                        // cleanup to report.
-                        return Err(latch_registry_row(control));
+                    let values = match control.release_shared(backing, shared) {
+                        Ok(values) => values,
+                        Err(refused) => {
+                            // Unpublished backing is uniquely owned, so a
+                            // refusal is an invariant stop. The refused Arc and
+                            // ticket stay in the row for cleanup to retry.
+                            let (_, backing, shared) = refused.into_parts();
+                            *storage = Some(AttributeStorage::Unvalidated {
+                                backing,
+                                allocation,
+                                shared,
+                                original_len,
+                                reversed_pairs,
+                            });
+                            return Err(latch_registry_row(control));
+                        }
                     };
                     *storage = Some(AttributeStorage::Building {
                         values,
@@ -1233,16 +1251,20 @@ impl SessionStorage {
                 WorkCategory::CopyByte,
                 mem::size_of::<OrderedAttributes>() as u64,
             )?;
-            let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { values, .. })) =
-                &self.payloads.values[container]
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+                values, ..
+            }))) = self.payloads.values.get(container)
             else {
-                unreachable!()
+                return Err(latch_registry_row(control));
             };
             let attributes = values.clone();
             let template = false;
             // Preadmit the actual native-alias bindings and both usage writes.
             // Successful allocation and binding have no fallible alias gap.
-            payload_write::<StringLocation>(control, 1 + u64::from(namespace_ticket.is_some()))?;
+            payload_write::<StringLocation>(
+                control,
+                u64::from(namespace_ticket.is_some()).saturating_add(1),
+            )?;
             payload_write::<Option<usize>>(control, 1)?;
             payload_write::<[usize; 2]>(control, 2)?;
             if svg.is_some() {
@@ -1260,16 +1282,17 @@ impl SessionStorage {
                 prepared,
             )?;
             if let Some(slot) = svg {
-                self.bind_svg_slot(slot, node.index);
+                self.bind_svg_slot(control, slot, node.index)?;
             }
             self.bind_string(name_ticket, StringLocation::ElementName(node.index))?;
             if let Some(ticket) = namespace_ticket {
                 self.bind_string(ticket, StringLocation::Namespace(node.index))?;
             }
-            let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. })) =
-                &mut self.payloads.values[container]
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+                element, ..
+            }))) = self.payloads.values.get_mut(container)
             else {
-                unreachable!()
+                return Err(latch_registry_row(control));
             };
             *element = Some(node.index);
             self.payloads.join_row(container)?;

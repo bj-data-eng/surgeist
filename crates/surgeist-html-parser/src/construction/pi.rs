@@ -35,7 +35,7 @@ impl SessionStorage {
         c.charge(WorkCategory::RecordVisit, 1)?;
         let RetainedPayload::String {
             value, allocation, ..
-        } = &self.payloads.values[slot]
+        } = self.payloads.row(c, slot)?
         else {
             return Err(SessionError::WrongToken);
         };
@@ -58,12 +58,18 @@ impl SessionStorage {
         });
         Ok(map)
     }
-    pub(super) fn bind_pi_map(&mut self, map: usize, node: usize) {
-        let RetainedPayload::PiAttributes { node: bound, .. } = &mut self.payloads.values[map]
+    pub(super) fn bind_pi_map(
+        &mut self,
+        c: &mut ParseControl,
+        map: usize,
+        node: usize,
+    ) -> Result<(), SessionError> {
+        let RetainedPayload::PiAttributes { node: bound, .. } = self.payloads.row_mut(c, map)?
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *bound = Some(node);
+        Ok(())
     }
 
     pub(super) fn parse_pi_map(
@@ -103,13 +109,13 @@ impl SessionStorage {
                         else {
                             return Err(SessionError::WrongToken);
                         };
-                        let unit = if offset < pi.data().len() {
-                            c.charge(WorkCategory::InspectByte, 2)?;
-                            Some(pi.data().code_units()[offset])
-                        } else if offset == pi.data().len() {
-                            None
-                        } else {
-                            return Err(SessionError::WrongToken);
+                        let unit = match pi.data().code_units().get(offset) {
+                            Some(&unit) => {
+                                c.charge(WorkCategory::InspectByte, 2)?;
+                                Some(unit)
+                            }
+                            None if offset == pi.data().len() => None,
+                            None => return Err(SessionError::WrongToken),
                         };
                         Reply::Unit(unit)
                     }
@@ -136,7 +142,9 @@ impl SessionStorage {
                         }
                         .ok_or(SessionError::WrongToken)?;
                         let begin = pending.buffer.len();
-                        pending.buffer.extend_units(&units[..len], c)?;
+                        pending
+                            .buffer
+                            .extend_units(units.get(..len).ok_or(SessionError::WrongToken)?, c)?;
                         self.pi_piece_origins(
                             c,
                             node,
@@ -150,7 +158,7 @@ impl SessionStorage {
                     Action::NameLength(index) => {
                         c.charge(WorkCategory::RecordVisit, 1)?;
                         let RetainedPayload::PiAttributes { values, .. } =
-                            &self.payloads.values[map]
+                            self.payloads.row(c, map)?
                         else {
                             return Err(SessionError::WrongToken);
                         };
@@ -173,7 +181,7 @@ impl SessionStorage {
                                 .units(),
                             Name::Pair(index) => {
                                 let RetainedPayload::PiAttributes { values, .. } =
-                                    &self.payloads.values[map]
+                                    self.payloads.row(c, map)?
                                 else {
                                     return Err(SessionError::WrongToken);
                                 };
@@ -185,11 +193,11 @@ impl SessionStorage {
                                     .code_units()
                             }
                         };
-                        if offset >= units.len() {
+                        let Some(&unit) = units.get(offset) else {
                             return Err(SessionError::WrongToken);
-                        }
+                        };
                         c.charge(WorkCategory::InspectByte, 2)?;
-                        Reply::Unit(Some(units[offset]))
+                        Reply::Unit(Some(unit))
                     }
                     Action::Commit => {
                         self.commit_pi_pair(
@@ -217,7 +225,7 @@ impl SessionStorage {
                     Action::Ready(_) => {
                         payload_write::<bool>(c, 1)?;
                         let RetainedPayload::PiAttributes { ready, .. } =
-                            &mut self.payloads.values[map]
+                            self.payloads.row_mut(c, map)?
                         else {
                             return Err(SessionError::WrongToken);
                         };
@@ -291,8 +299,8 @@ impl SessionStorage {
         payload_write::<[StringLocation; 2]>(c, 2)?;
         let name = self.raw_value(c, name_slot)?;
         let value = self.raw_value(c, value_slot)?;
-        let RetainedPayload::PiAttributes { values, .. } = &mut self.payloads.values[map] else {
-            unreachable!()
+        let RetainedPayload::PiAttributes { values, .. } = self.payloads.row_mut(c, map)? else {
+            return Err(latch_registry_row(c));
         };
         let index = values.len();
         if let Err((stop, pair)) = values.try_push_recover(
@@ -317,7 +325,7 @@ impl SessionStorage {
     fn pop_pi_pair(&mut self, c: &mut ParseControl, map: usize) -> Result<(), SessionError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
         payload_write::<[StringLocation; 2]>(c, 2)?;
-        let RetainedPayload::PiAttributes { values, .. } = &mut self.payloads.values[map] else {
+        let RetainedPayload::PiAttributes { values, .. } = self.payloads.row_mut(c, map)? else {
             return Err(SessionError::WrongToken);
         };
         let pair = values.try_pop(c)?.ok_or(SessionError::WrongToken)?;
