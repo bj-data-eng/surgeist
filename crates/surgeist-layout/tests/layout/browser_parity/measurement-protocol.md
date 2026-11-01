@@ -16,6 +16,11 @@ UTF-16 code units. This profile precisely refuses isolated surrogates and source
 without the pinned nominal coverage. It never normalizes them to replacement
 characters or substitutes a different string.
 
+Prepared fixtures explicitly author `unicode-bidi: normal` on the formatting
+container, alongside the pinned font context. The opt-in does not override a
+computed UA `isolate` value or authorize unrepresented isolation boundaries;
+the helper validates the actual normal-bidi context before capture.
+
 The capture records:
 
 - The exact font resource, face index, CSS descriptors, feature/variation and
@@ -45,7 +50,7 @@ requests `data-surgeist-br-observation="font-band"` retains the browser's select
 BR rectangle as `<browser-br-font-band x="…" y="…" width="…" height="…"/>`
 alongside its `<browser-control>` identity and line relations. These coordinates
 use the same actual parent-local and rounding basis as ordinary measured
-geometry. The four atomic/BR metric fixtures explicitly retain this request;
+geometry. Atomic/BR and empty-line metric fixtures explicitly retain this request;
 deliberately relation-only fixtures do not acquire one implicitly. Unknown
 requests and non-BR/hidden/block/contradictory measurement roles refuse.
 
@@ -118,9 +123,13 @@ font capture. Clean full generation classifies them as unsupported and omits
 their current XML outputs; their original bytes remain under the historical Git
 basis. This fixture-profile refusal does not establish native Text support or
 reproduce those inputs through the new Text protocol.
-The pinned browser generated 16 native variants and the production
-adapter executed all 16:14 matched and two retain the observation difference
-below. Schema checks alone do not establish browser parity.
+The accounting also records four migrated successors and twelve additional native
+representatives. The pinned browser generated and the production adapter executed
+all 16:14 matched and two retain the observation difference below. The additional
+atomic/BR metric fixtures are separate from those 16 cases and do not replace any
+of the historical 124 variants; their selected font-band observation is the
+separate capability boundary described above. Schema checks alone do not
+establish browser parity.
 
 ## Executed Range observation difference
 
