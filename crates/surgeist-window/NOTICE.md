@@ -109,7 +109,8 @@ platform monotonic clock shared by Window deadlines and receipt timestamps.
 ### windows 0.62.2
 
 This product depends on windows (Rust for Windows). It is a Windows-only direct
-dependency for safe native accessibility-preference observations.
+dependency for safe native accessibility-preference and pointer-device
+observations.
 
 * License: [MIT](licenses/windows-rs/license-mit) OR [Apache-2.0](licenses/windows-rs/license-apache-2.0)
 * Homepage: [Rust for Windows](https://github.com/microsoft/windows-rs)
