@@ -1088,6 +1088,7 @@ mod tests {
             FragmentExecutionError::Head(HeadError::Consumed),
             FragmentExecutionError::Head(HeadError::MissingInput),
             FragmentExecutionError::Head(HeadError::MissingTokenizer),
+            FragmentExecutionError::Head(HeadError::InvalidFormattingState),
             FragmentExecutionError::Head(HeadError::Kernel(KernelError::Consumed)),
         ];
         for error in &lost {
@@ -1108,6 +1109,28 @@ mod tests {
         for error in &named {
             assert!(!error.lost_owner(), "{error:?}");
         }
+    }
+
+    #[test]
+    fn a_fragment_completion_without_its_stage_state_latches_the_registry_row() {
+        let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
+        let mut driver = initialized_driver(&request);
+        let state = driver.head.as_mut().unwrap().state.take().unwrap();
+        let mut slot = Some(driver);
+        let error = ContextFragmentDriver::take_completed(&mut slot)
+            .err()
+            .unwrap();
+        assert!(
+            matches!(error, FragmentExecutionError::Consumed),
+            "{error:?}"
+        );
+        let mut driver = slot.unwrap();
+        let stop = ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(driver.control.stop(), Some(stop));
+        driver.head.as_mut().unwrap().state = Some(state);
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
+        assert_eq!(driver.control.stop(), Some(stop));
     }
 
     #[test]

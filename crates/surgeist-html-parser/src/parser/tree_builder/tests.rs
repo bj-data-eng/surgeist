@@ -19895,6 +19895,7 @@ fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
         StandaloneError::Head(HeadError::Consumed),
         StandaloneError::Head(HeadError::MissingInput),
         StandaloneError::Head(HeadError::MissingTokenizer),
+        StandaloneError::Head(HeadError::InvalidFormattingState),
         StandaloneError::Head(HeadError::Kernel(KernelError::Consumed)),
         StandaloneError::Head(HeadError::Prologue(PrologueError::Consumed)),
         StandaloneError::Prologue(PrologueError::Consumed),
@@ -19923,4 +19924,34 @@ fn only_errors_naming_a_lost_owner_are_classified_as_lost_owners() {
     for error in &named {
         assert!(!error.lost_owner(), "{error:?}");
     }
+}
+
+#[test]
+fn an_ordinary_completion_without_its_stage_state_latches_the_registry_row() {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits(100));
+    let mut driver = entry::initialized_driver(&request);
+    for _ in 0..100 {
+        if driver.head.is_some() {
+            break;
+        }
+        driver.step().unwrap();
+    }
+    // Private-state fault injection: the stage's state is not where completion
+    // expects it, and the refusal is not a document or a limit.
+    let state = driver.head.as_mut().unwrap().state.take().unwrap();
+    let mut slot = Some(driver);
+    let error = StandaloneDocumentDriver::take_completed(&mut slot)
+        .err()
+        .unwrap();
+    assert!(
+        matches!(error, StandaloneError::Head(head::HeadError::Consumed)),
+        "{error:?}"
+    );
+    let mut driver = slot.unwrap();
+    let stop = ParseStop::InternalInvariant(Invariant::RegistryRow);
+    assert_eq!(driver.control.stop(), Some(stop));
+    driver.head.as_mut().unwrap().state = Some(state);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.stop(), Some(stop));
 }
