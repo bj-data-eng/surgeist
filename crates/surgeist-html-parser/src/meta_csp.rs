@@ -1,6 +1,6 @@
 //! Explicit caller-supplied processing for original Meta CSP transitions.
 use crate::construction::SessionError;
-use crate::parser::control::{ParseControl, ParseStop, WorkCategory};
+use crate::parser::control::{Invariant, ParseControl, ParseStop, WorkCategory};
 use crate::{HtmlDocumentParseRequest, HtmlParseFailure, HtmlParseReport};
 use std::{
     cell::{Cell, RefCell},
@@ -212,21 +212,35 @@ pub(crate) trait Service {
 struct Shared<'c, 'a> {
     state: RefCell<(&'c mut ParseControl, &'a mut Account)>,
     release_error: Cell<Option<ParseStop>>,
+    reentered: Cell<bool>,
 }
 impl<'c, 'a> Shared<'c, 'a> {
     fn new(c: &'c mut ParseControl, account: &'a mut Account) -> Self {
         Self {
             state: RefCell::new((c, account)),
             release_error: Cell::new(None),
+            reentered: Cell::new(false),
         }
     }
+    /// The stop handed back to a processor that entered a callback while
+    /// another still held the state. The controller is out of reach there, so
+    /// `finish` latches it as the first stop once the processor has returned.
+    fn refuse_reentry(&self) -> ParseStop {
+        self.reentered.set(true);
+        ParseStop::InternalInvariant(Invariant::ReentrantProviderCallback)
+    }
     fn admit(&self, layout: HtmlCspLayout) -> Result<(), ParseStop> {
-        let mut state = self.state.borrow_mut();
+        let Ok(mut state) = self.state.try_borrow_mut() else {
+            return Err(self.refuse_reentry());
+        };
         let (c, account) = &mut *state;
         account.admit(c, layout)
     }
     fn release(&self, storage: HtmlCspStorage) {
-        let mut state = self.state.borrow_mut();
+        let Ok(mut state) = self.state.try_borrow_mut() else {
+            self.refuse_reentry();
+            return;
+        };
         let (c, account) = &mut *state;
         if let Err(e) = account.release(c, storage) {
             self.release_error.set(Some(e));
@@ -234,8 +248,14 @@ impl<'c, 'a> Shared<'c, 'a> {
     }
     /// Hands the controller and aggregate back once the processor has returned.
     fn finish(self) -> Result<(&'c mut ParseControl, &'a mut Account), SessionError> {
+        let reentered = self.reentered.get();
         let release_error = self.release_error.get();
         let (c, account) = self.state.into_inner();
+        if reentered {
+            return Err(c
+                .fail_invariant(Invariant::ReentrantProviderCallback)
+                .into());
+        }
         match release_error {
             Some(e) => Err(e.into()),
             None => Ok((c, account)),
@@ -354,7 +374,6 @@ pub(crate) fn parse<P: HtmlMetaCspProcessor>(
 mod tests {
     use super::*;
     use crate::HtmlParseCancellation;
-    use crate::parser::control::Invariant;
 
     fn control() -> ParseControl {
         let limits = crate::HtmlParseLimits::builder()
