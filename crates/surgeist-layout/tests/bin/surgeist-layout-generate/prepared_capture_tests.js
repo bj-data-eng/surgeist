@@ -110,6 +110,8 @@ function atomicBreakCapture(spec) {
   const rootRect=rect(100,200,vertical?80:120,vertical?30:60);
   const root=element('DIV', {display:'block',width:vertical?'80px':'120px'},
     {display:'block',...spec.rootChanges},rootRect);
+  root.attributes.id='test-root';
+  if(spec.brObservation!==undefined) root.attributes['data-surgeist-br-observation']=spec.brObservation;
   root.attributes['data-surgeist-layout-ready-inline']='true';
   root.attributes['data-surgeist-prepared-text']='ahem-ttf-v1';
   body.append(root);
@@ -163,7 +165,7 @@ function atomicBreakCapture(spec) {
   };
   const context=vm.createContext({
     window:{innerWidth:800},Node:{COMMENT_NODE:8,TEXT_NODE:3,ELEMENT_NODE:1},
-    CSSRule:{STYLE_RULE:1},document,root,fontBytes:input.fontBytes,
+    CSSRule:{STYLE_RULE:1},document,root,br,before,fontBytes:input.fontBytes,
     getComputedStyle:node=>node.computed,
   });
   vm.runInContext(input.helperSource,context);
@@ -171,7 +173,21 @@ function atomicBreakCapture(spec) {
   // existing adapter/browser boundary, never by this focused DOM recorder.
   vm.runInContext("pinnedTextFontState={face:{status:'loaded'},bytes:Uint8Array.from(fontBytes)}",context);
   const captured=JSON.parse(JSON.stringify(vm.runInContext('capturePreparedChildren(root)',context)));
-  return {captured,reads};
+  let observation;
+  if(spec.observationProbe) {
+    const describe=name=>JSON.parse(JSON.stringify(vm.runInContext('describeElement('+name+')',context)));
+    const participating=describe('br');
+    const atomic=describe('before');
+    delete root.attributes['data-surgeist-layout-ready-inline'];
+    delete root.attributes['data-surgeist-prepared-text'];
+    const unparticipating=describe('br');
+    br.computed.display='none';
+    const hidden=describe('br');
+    br.computed.display='block';
+    const block=describe('br');
+    observation={participating,atomic,unparticipating,hidden,block};
+  }
+  return {captured,reads,observation};
 }
 
 function atomicBreakProfileTests() {
@@ -265,8 +281,44 @@ function atomicBreakProfileTests() {
   }
 }
 
+function explicitBreakObservationTests() {
+  const rows=[];
+  for(const request of [undefined,'font-band']) {
+    const {captured,observation}=atomicBreakCapture({
+      mode:'horizontal-tb',direction:'ltr',brObservation:request,observationProbe:true,
+    });
+    assert.equal(captured.unsupportedReason,undefined);
+    assert.deepEqual(captured.paragraph.order,[
+      {kind:'atomic',index:0,affinity:'before'},
+      {kind:'control',index:0,affinity:'before'},
+      {kind:'atomic',index:1,affinity:'before'},
+    ]);
+    assert.equal(captured.children[1].browserBrObservation,request);
+    assert.deepEqual(observation.participating.lineControlParticipation,{kind:'forced-break'});
+    assert.equal(observation.unparticipating.lineControlParticipation,undefined);
+    assert.equal(observation.participating.browserBrObservation,request);
+    assert.equal(observation.unparticipating.browserBrObservation,request);
+    // A real opaque box, display:none BR and block BR do not acquire an inline
+    // font band. Neither input kind nor controlled rectangles donate a request.
+    assert.equal(observation.atomic.browserBrObservation,undefined);
+    assert.equal(captured.children[0].browserBrObservation,undefined);
+    assert.equal(captured.children[2].browserBrObservation,undefined);
+    assert.equal(observation.hidden.browserBrObservation,undefined);
+    assert.equal(observation.block.browserBrObservation,undefined);
+    rows.push({request:request ?? null,
+      participating:observation.participating.browserBrObservation ?? null,
+      unparticipating:observation.unparticipating.browserBrObservation ?? null});
+  }
+  assert.throws(()=>atomicBreakCapture({
+    mode:'horizontal-tb',direction:'ltr',brObservation:'unknown',observationProbe:true,
+  }),/Unsupported explicit BR observation request/);
+  process.stdout.write(JSON.stringify(rows)+'\n');
+}
+
 if(input.suite==='atomic-br') {
   atomicBreakProfileTests();
+} else if(input.suite==='br-observation') {
+  explicitBreakObservationTests();
 } else {
 const cases = [
   ['plain inherited metrics and unshifted relative position', {}, true],

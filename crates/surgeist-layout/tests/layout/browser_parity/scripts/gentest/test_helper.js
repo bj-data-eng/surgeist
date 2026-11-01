@@ -975,6 +975,7 @@ function describeElement(e, expectedElement = null) {
     layoutReadyInlineRoot: layoutReadyInlineRoot || undefined,
     layoutReadyAnonymousGridTextWrapper: layoutReadyAnonymousGridTextWrapper(e, computedStyle, children),
     lineControlParticipation,
+    browserBrObservation: browserBrObservationForElement(e, computedStyle),
     unsupportedReason: preparedCapture?.unsupportedReason || unsupportedElementReason(e, computedStyle) ||
       (!preparedCapture && hasTypedInlineText ? 'Historical measured-width inline input lacks original source and pinned font capture' : unsupportedChildNodesReason(e)),
     style: {
@@ -1872,6 +1873,19 @@ function layoutReadyInlineContainingRoot(e) {
   return undefined;
 }
 
+// Observation intent belongs to the actual fixture, independently of which
+// native input profile represents its break. Only an inline BR has this band.
+function browserBrObservationForElement(e, computedStyle) {
+  for (let containing = e; containing; containing = containing.parentElement) {
+    if (containing.getAttribute?.('id') !== 'test-root') continue;
+    const request = containing.getAttribute('data-surgeist-br-observation');
+    if (request === null) return undefined;
+    if (request !== 'font-band') throw new Error('Unsupported explicit BR observation request');
+    return e.tagName === 'BR' && computedStyle.display === 'inline' ? request : undefined;
+  }
+  return undefined;
+}
+
 function layoutReadyLineControlParticipation(e, computedStyle) {
   if (e.tagName !== 'BR' || computedStyle.display !== 'inline' ||
       !layoutReadyInlineContainingRoot(e.parentElement)) {
@@ -2005,13 +2019,16 @@ function capturedTextStyle(parent) {
   if (family !== PINNED_TEXT_FONT.family || style.fontStyle !== 'normal' || style.fontWeight !== '400' ||
       !['normal', '100%'].includes(style.fontStretch) || style.fontFeatureSettings !== 'normal' ||
       style.fontVariationSettings !== 'normal' || style.fontSynthesis !== 'none' ||
-      style.writingMode !== 'horizontal-tb' || !['normal', ''].includes(style.unicodeBidi)) {
-    throw new Error('Prepared text requires the exact unsynthesized pinned face and horizontal normal-bidi style profile');
+      !['horizontal-tb', 'vertical-lr', 'vertical-rl'].includes(style.writingMode) ||
+      (style.writingMode !== 'horizontal-tb' &&
+        (style.textOrientation !== 'mixed' || style.textCombineUpright !== 'none')) ||
+      !['normal', ''].includes(style.unicodeBidi)) {
+    throw new Error('Prepared text requires the exact unsynthesized pinned face and supported normal-bidi frame');
   }
   const fontSize = parseCssPx(style.fontSize);
   const lineHeight = parseCssPx(style.lineHeight);
   const whitespace = { normal: 'collapse', nowrap: 'collapse', pre: 'preserve', 'pre-wrap': 'preserve', 'break-spaces': 'preserve-spaces' }[style.whiteSpace];
-  if (!whitespace || !Number.isFinite(fontSize) || Math.fround(fontSize) !== fontSize ||
+  if (!whitespace || (style.writingMode !== 'horizontal-tb' && whitespace !== 'collapse') || !Number.isFinite(fontSize) || Math.fround(fontSize) !== fontSize ||
       !Number.isFinite(lineHeight) || fontSize <= 0 || lineHeight < 0 ||
       style.wordBreak !== 'normal' || style.overflowWrap !== 'normal') {
     throw new Error('Prepared text style is outside the closed finite source profile');
@@ -2053,9 +2070,44 @@ function qualifyTransparentPreparedInline(node, containingElement) {
   }
 }
 
+// The prepared wire carries one containing writing frame. In the vertical
+// extension only opaque empty boxes and collapsed original formatting source
+// are admitted; visible glyph observations remain a separate profile.
+function qualifyPreparedFrame(node, containingFrame) {
+  const style = getComputedStyle(node);
+  if (style.writingMode !== containingFrame.writingMode ||
+      (containingFrame.writingMode !== 'horizontal-tb' &&
+        (style.direction !== containingFrame.direction || style.textOrientation !== 'mixed' ||
+          style.textCombineUpright !== 'none' || !['normal', ''].includes(style.unicodeBidi)))) {
+    throw new Error('Prepared participant requires the actual containing writing frame');
+  }
+  return style;
+}
+
+function qualifyPreparedBreak(node, containingFrame, containingText) {
+  const style = qualifyPreparedFrame(node, containingFrame);
+  const own = capturedTextStyle(node);
+  if (own.fontSize !== containingText.fontSize || own.lineHeight !== containingText.lineHeight ||
+      style.display !== 'inline' || style.verticalAlign !== 'baseline' ||
+      style.cssFloat !== 'none' || style.clear !== 'none' || style.transform !== 'none' ||
+      !['static', 'relative'].includes(style.position) ||
+      (style.position === 'relative' && ['top', 'right', 'bottom', 'left'].some(edge =>
+        style[edge] !== 'auto' && parseCssPx(style[edge]) !== 0))) {
+    throw new Error('Prepared BR requires the containing font strut and undisplaced baseline control context');
+  }
+  const edges = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'];
+  if (edges.some(edge => parseCssPx(style[edge]) !== 0)) {
+    throw new Error('Prepared BR cannot discard independently authored box edges');
+  }
+}
+
 function capturePreparedChildren(root) {
+  const frame = getComputedStyle(root);
+  const vertical = frame.writingMode !== 'horizontal-tb';
   const paragraph = { font: { ...PINNED_TEXT_FONT, loaded: pinnedTextFontState?.face.status === 'loaded' },
-    direction: getComputedStyle(root).direction, writingMode: 'horizontal-tb', baseStyle: undefined,
+    direction: frame.direction, writingMode: frame.writingMode, baseStyle: undefined,
     origins: [], connections: [], atomics: [], controls: [], order: [] };
   const children = [];
   let sourceEnd = 0;
@@ -2063,6 +2115,7 @@ function capturePreparedChildren(root) {
   try {
     if (!paragraph.font.loaded) throw new Error('Pinned FontFace must load before capture');
     paragraph.baseStyle = capturedTextStyle(root);
+    if (!['ltr', 'rtl'].includes(frame.direction)) throw new Error('Prepared text requires the actual resolved computed direction');
     resetLayoutReadyRangeLineRegistry(root);
     const capture = (element) => {
       for (const node of element.childNodes) {
@@ -2070,6 +2123,10 @@ function capturePreparedChildren(root) {
         const child = children.length;
         if (node.nodeType === Node.TEXT_NODE) {
           const text = node.textContent;
+          qualifyPreparedFrame(node.parentElement, frame);
+          if (vertical && !/^[\n\r ]*$/.test(text)) {
+            throw new Error('Vertical prepared text admits only original LF, CR and SPACE formatting source');
+          }
           const units = Array.from({ length: text.length }, (_, index) => text.charCodeAt(index));
           for (const character of text) {
             const cp = character.codePointAt(0);
@@ -2093,13 +2150,16 @@ function capturePreparedChildren(root) {
           const rootRect = root.getBoundingClientRect();
           const rangeRectangles = Array.from(range.getClientRects()).map(rect => ({
             origin: index, line: layoutReadyRangeLineIndex(root, rect),
-            physicalStartEdge: 'left', start: rect.left - rootRect.left, advance: rect.width,
+            physicalStartEdge: vertical ? 'top' : 'left',
+            start: vertical ? rect.top - rootRect.top : rect.left - rootRect.left,
+            advance: vertical ? rect.height : rect.width,
           }));
           range.detach();
           children.push({ layoutInput: 'prepared-text', preparedOccurrence: index, rangeFragments: rangeRectangles, children: [] });
         } else if (node.nodeType === Node.ELEMENT_NODE) {
           const style = getComputedStyle(node);
           if (node.tagName === 'BR') {
+            qualifyPreparedBreak(node, frame, paragraph.baseStyle);
             const index = paragraph.controls.length;
             paragraph.controls.push({ child, at: sourceEnd, kind: 'forced-break' });
             paragraph.order.push({ kind: 'control', index, affinity: 'before' });
@@ -2107,6 +2167,12 @@ function capturePreparedChildren(root) {
             if (measured.style) delete measured.style.inlineMetrics;
             children.push(measured);
           } else if (['inline-block', 'inline-grid', 'inline-grid-lanes'].includes(style.display)) {
+            if (vertical) qualifyPreparedFrame(node, frame);
+            if (vertical && (style.display !== 'inline-block' || style.cssFloat !== 'none' ||
+                ['absolute', 'fixed'].includes(style.position) ||
+                Array.from(node.childNodes).some(child => child.nodeType !== Node.COMMENT_NODE))) {
+              throw new Error('Vertical prepared atomics require same-frame empty in-flow inline-blocks');
+            }
             const width = /^\d+(?:\.\d+)?px$/.test(node.style.width) ? parseCssPx(node.style.width) : NaN;
             const height = /^\d+(?:\.\d+)?px$/.test(node.style.height) ? parseCssPx(node.style.height) : NaN;
             if (![width, height].every(Number.isFinite) || node.textContent.length !== 0) throw new Error('Prepared atomic profile needs explicit finite pixel input dimensions and no unbound text subtree');
@@ -2118,6 +2184,8 @@ function capturePreparedChildren(root) {
             const measured = describeElement(node); delete measured.atomicInlineParticipation;
             children.push(measured);
           } else if (style.display === 'inline' && node.getAttribute('data-surgeist-transparent-inline-container') === 'true') {
+            if (vertical) throw new Error('Vertical prepared profile does not admit independent inline boundary controls');
+            qualifyPreparedFrame(node, frame);
             qualifyTransparentPreparedInline(node, element);
             // A qualified transparent boundary has no independent strut. Source
             // continuity and style are captured from its actual text children.

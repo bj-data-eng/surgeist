@@ -20,12 +20,41 @@ The capture records:
 
 - The exact font resource, face index, CSS descriptors, feature/variation and
   synthesis policy, and explicit successful FontFace loading.
-- Resolved base direction, horizontal writing mode, canonical font size, logical
+- Resolved base direction, supported writing mode, canonical font size, logical
   line height and spacing, whitespace/wrap policy, inherited language and color.
 - Original text occurrences, exact aggregate ranges, incident connections and
   captured containing wrap policies.
 - Actual inline controls, atomic roles and original anchors, with one complete
   occurrence order. Empty origins are retained, including their identity.
+
+The horizontal profile admits the covered original text described below. The
+bounded vertical profile admits `vertical-lr` and `vertical-rl` with actual
+computed `text-orientation: mixed`, fixed-pixel empty in-flow inline-blocks, forced
+breaks and original collapsing formatting whitespace (LF, CR and SPACE). It preserves each
+original whitespace occurrence and its exact position among the controls and
+atomics. Visible vertical glyph text, other orientations and conflicting child
+frames refuse. Capture direction and writing mode must match the actual
+container; a generated variant name supplies neither fact. Vertical Range
+observations use the physical top edge and height, independently of preparation.
+Other vertical boundary controls remain outside this profile. Prepared whitespace
+units can persist until Text selects and finalizes their line-edge disposition;
+their preparation inventory is not a visibility test.
+
+BR input participation does not select its observation contract. A fixture that
+requests `data-surgeist-br-observation="font-band"` retains the browser's selected
+BR rectangle as `<browser-br-font-band x="…" y="…" width="…" height="…"/>`
+alongside its `<browser-control>` identity and line relations. These coordinates
+use the same actual parent-local and rounding basis as ordinary measured
+geometry. The four atomic/BR metric fixtures explicitly retain this request;
+deliberately relation-only fixtures do not acquire one implicitly. Unknown
+requests and non-BR/hidden/block/contradictory measurement roles refuse.
+
+Native control points and aggregate line metrics are different observations.
+Until an authentic retained control-font metric-frame query is available, the
+reader reports a precise unsupported BR font-band **observation** after actual
+layout, ordinary geometry and control-relation checks. It retains all four
+measured values and does not count that result as engine or metric-band
+conformance. This does not make the source, font or native input unsupported.
 
 Only the byte-identical [pinned font](fonts/PROVENANCE.md) is admitted. The
 adapter hashes the **captured** `fonts/Ahem.ttf` input before injecting those

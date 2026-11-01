@@ -220,3 +220,20 @@ fn prepared_atomic_br_profile_preserves_vertical_source_and_rejects_unrepresente
         row["writingMode"] == "vertical-lr" && row["direction"] == "ltr" && row["admitted"] == true
     }));
 }
+
+#[test]
+fn explicit_br_font_band_observation_is_independent_of_input_participation() {
+    // The actual producer receives controlled DOM facts. These assertions
+    // qualify explicit observation intent, not browser metrics or font loading.
+    let observed = run_node(
+        include_str!("prepared_capture_tests.js"),
+        json!({"suite":"br-observation", "helperSource":TEST_HELPER_SOURCE, "fontBytes":include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf").as_slice()}),
+    );
+    assert_eq!(
+        observed,
+        json!([
+            {"request":null,"participating":null,"unparticipating":null},
+            {"request":"font-band","participating":"font-band","unparticipating":"font-band"},
+        ]),
+    );
+}
