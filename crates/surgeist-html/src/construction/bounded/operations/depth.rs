@@ -342,3 +342,82 @@ impl Plan {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn drive(
+        storage: HtmlConstructionStorage,
+        command: HtmlConstructionCommand,
+    ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
+        let mut operation = Some(
+            storage
+                .prepare(command)
+                .unwrap_or_else(|_| panic!("retained command")),
+        );
+        while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        let HtmlConstructionCommit::Changed {
+            storage, created, ..
+        } = HtmlConstructionOperation::try_ready(&mut operation)
+            .unwrap()
+            .commit()
+        else {
+            panic!("mutation published")
+        };
+        (storage, created)
+    }
+
+    fn storage() -> HtmlConstructionStorage {
+        let mut initialization = Some(HtmlConstructionStorage::begin());
+        initialization
+            .as_mut()
+            .unwrap()
+            .next_action()
+            .unwrap()
+            .unwrap()
+            .perform()
+            .accept();
+        HtmlConstructionInitialization::try_ready(&mut initialization)
+            .unwrap()
+            .commit()
+    }
+
+    fn element(local: &str) -> HtmlConstructionCommand {
+        HtmlConstructionCommand::Create {
+            kind: HtmlNodeKind::Element(HtmlElement::new(
+                QualifiedName::new(Namespace::html(), None, local),
+                OrderedAttributes::default(),
+            )),
+        }
+    }
+
+    /// Whether every histogram bucket equals the records actually at its depth.
+    fn histogram_is_exact(arena: &Arena) -> bool {
+        (0..arena.records.len()).all(|depth| {
+            arena.population(depth)
+                == arena
+                    .records
+                    .iter()
+                    .filter(|record| record.depth == depth)
+                    .count()
+        })
+    }
+
+    #[test]
+    fn rolling_back_a_native_append_removes_its_records_from_the_histogram() {
+        let (storage, _) = drive(storage(), HtmlConstructionCommand::CreateFragment);
+        let (len, usage) = (storage.len(), storage.usage());
+        assert!(histogram_is_exact(&storage.arena));
+        // A template creates two records, at depths 0 and 1.
+        let (mut storage, _) = drive(storage, element("template"));
+        assert_eq!(storage.len(), len + 2);
+        assert!(histogram_is_exact(&storage.arena));
+        storage.rollback_native_append(len, usage);
+        assert_eq!(storage.len(), len);
+        assert!(histogram_is_exact(&storage.arena));
+        assert_eq!(storage.arena.population(0), 1);
+    }
+}

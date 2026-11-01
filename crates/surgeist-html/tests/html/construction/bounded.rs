@@ -148,13 +148,24 @@ fn driven_insert(
     parent: &HtmlBuilderNode,
     before: Option<&HtmlBuilderNode>,
 ) -> (HtmlConstructionStorage, DescribedWork) {
+    driven(
+        storage,
+        HtmlConstructionCommand::Insert {
+            node: node.clone(),
+            parent: parent.clone(),
+            before: before.cloned(),
+        },
+    )
+}
+
+/// Performs every action of `command` and returns the steady work it described.
+fn driven(
+    storage: HtmlConstructionStorage,
+    command: HtmlConstructionCommand,
+) -> (HtmlConstructionStorage, DescribedWork) {
     let mut operation = Some(
         storage
-            .prepare(HtmlConstructionCommand::Insert {
-                node: node.clone(),
-                parent: parent.clone(),
-                before: before.cloned(),
-            })
+            .prepare(command)
             .unwrap_or_else(|_| panic!("preparation")),
     );
     let mut work = DescribedWork::default();

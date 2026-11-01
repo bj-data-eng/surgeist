@@ -425,3 +425,150 @@ fn depth_stays_exact_after_template_shadow_and_contents_reassignment() {
     let owner = append(owner, &template, &v);
     assert_eq!(owner.usage().depth(), 12);
 }
+
+/// A detached chain of `len` elements, each the only child of the one above.
+fn chain(
+    mut storage: HtmlConstructionStorage,
+    len: usize,
+) -> (HtmlConstructionStorage, HtmlBuilderNode) {
+    let (next, top) = create(storage, element("link"));
+    storage = next;
+    let mut parent = top.clone();
+    for _ in 1..len {
+        let (next, node) = create(storage, element("link"));
+        storage = append(next, &node, &parent);
+        parent = node;
+    }
+    (storage, top)
+}
+
+#[test]
+fn moving_a_subtree_describes_at_least_three_writes_per_record_it_moves() {
+    // Each moved record's depth and the two histogram counts it leaves and
+    // joins are three writes, so the described writes grow by at least that
+    // for every record a longer chain adds to the move.
+    let mut writes = Vec::new();
+    for length in [4usize, 36] {
+        let (owner, from) = create(storage(), element("from"));
+        let (owner, below) = create(owner, element("below"));
+        let (owner, to) = create(owner, element("to"));
+        let owner = append(owner, &to, &below);
+        let (owner, top) = chain(owner, length);
+        let owner = append(owner, &top, &from);
+        // The chain moves one level deeper, below `to` rather than `from`.
+        let (_, work) = driven_insert(owner, &top, &to, None);
+        writes.push((length, work.record_writes));
+    }
+    let (short, short_writes) = writes[0];
+    let (long, long_writes) = writes[1];
+    assert!(
+        long_writes >= short_writes + 3 * (long - short),
+        "moving {long} records described {long_writes} writes, moving {short} described \
+         {short_writes}"
+    );
+}
+
+#[test]
+fn detaching_a_subtree_describes_the_same_work_at_every_unrelated_record_count() {
+    let mut measured = Vec::new();
+    for unrelated in [16, 128, 1024] {
+        let (owner, unrelated_root) = fragment(storage());
+        let owner = filler(owner, &unrelated_root, unrelated);
+        let (owner, parent) = create(owner, element("parent"));
+        let (owner, moved) = subtree_with_child(owner, &parent);
+        let (_, work) = driven(owner, HtmlConstructionCommand::Detach { node: moved });
+        measured.push((unrelated, work));
+    }
+    let (first_count, first) = measured[0];
+    for (count, work) in &measured {
+        assert_eq!(
+            *work, first,
+            "detaching a subtree beside {count} unrelated records described different work \
+             than beside {first_count}"
+        );
+    }
+}
+
+#[test]
+fn attaching_a_shadow_root_describes_the_same_work_at_every_unrelated_record_count() {
+    let mut measured = Vec::new();
+    for unrelated in [16, 128, 1024] {
+        let (owner, unrelated_root) = fragment(storage());
+        let owner = filler(owner, &unrelated_root, unrelated);
+        let (owner, host) = create(owner, element("host"));
+        let (owner, shadow) = create(
+            owner,
+            HtmlConstructionCommand::CreateShadowContents {
+                properties: properties(),
+            },
+        );
+        // Non-shallow contents, so attaching walks a subtree.
+        let (owner, child) = create(owner, element("child"));
+        let owner = append(owner, &child, &shadow);
+        let (_, work) = driven(
+            owner,
+            HtmlConstructionCommand::AttachShadow {
+                host,
+                contents: shadow,
+            },
+        );
+        measured.push((unrelated, work));
+    }
+    let (first_count, first) = measured[0];
+    for (count, work) in &measured {
+        assert_eq!(
+            *work, first,
+            "attaching a shadow root beside {count} unrelated records described different work \
+             than beside {first_count}"
+        );
+    }
+}
+
+#[test]
+fn lifting_the_deepest_record_out_of_template_contents_leaves_the_contents_level() {
+    // The template is at depth 0 and its contents at 1: after the leaf below
+    // the contents is lifted out, the contents are the deepest record.
+    let (owner, template) = create(storage(), element("template"));
+    let contents = owner
+        .node(&template)
+        .unwrap()
+        .template_contents()
+        .unwrap()
+        .handle();
+    let (owner, leaf) = create(owner, element("leaf"));
+    let owner = append(owner, &leaf, &contents);
+    assert_eq!(owner.usage().depth(), 2);
+    let (owner, _) = change(owner, HtmlConstructionCommand::Detach { node: leaf });
+    assert_eq!(owner.usage().depth(), 1);
+}
+
+#[test]
+fn lifting_the_deepest_record_after_a_full_recomputation_counts_each_level_once() {
+    let (owner, root) = fragment(storage());
+    let (owner, a) = create(owner, element("a"));
+    let (owner, b) = create(owner, element("b"));
+    let (owner, c) = create(owner, element("c"));
+    let owner = append(owner, &c, &b);
+    let owner = append(owner, &b, &a);
+    let owner = append(owner, &a, &root);
+    assert_eq!(owner.usage().depth(), 3);
+    // Giving a template shadow contents rewrites every record's depth.
+    let (owner, template) = create(owner, element("template"));
+    let (owner, shadow) = create(
+        owner,
+        HtmlConstructionCommand::CreateShadowContents {
+            properties: properties(),
+        },
+    );
+    let (owner, _) = change(
+        owner,
+        HtmlConstructionCommand::SetTemplateShadowContents {
+            template,
+            contents: shadow,
+        },
+    );
+    assert_eq!(owner.usage().depth(), 3);
+    // Only b, at depth 2, remains as deep as the lifted leaf's old level less one.
+    let (owner, _) = change(owner, HtmlConstructionCommand::Detach { node: c });
+    assert_eq!(owner.usage().depth(), 2);
+}
