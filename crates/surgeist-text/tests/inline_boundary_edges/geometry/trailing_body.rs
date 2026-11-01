@@ -249,3 +249,6 @@ mod supplement;
 
 #[path = "trailing_body/direction.rs"]
 mod direction;
+
+#[path = "trailing_body/native_contribution.rs"]
+mod native_contribution;
