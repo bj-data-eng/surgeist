@@ -669,7 +669,7 @@ fn a_stopped_append_releases_its_buffer_when_the_terminal_owner_is_already_taken
     let value = DocumentString::default();
     let allocation = c.prepare_text_append_allocation().unwrap();
     session.active_mut().unwrap().failed_text_append =
-        Some(text_append::FailedTextAppend { value, allocation });
+        Some(text_append::FailedTextAppend::held(value, allocation));
     let mut next = Some(owned_text(&mut c, &[66]));
     let result = session.insert_text(&mut c, &root, None, &mut next, None);
     let limit = ParseStop::LimitExceeded {

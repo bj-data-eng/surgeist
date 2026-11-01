@@ -28,10 +28,15 @@ fn admit_work(
 
 /// One actual stopped pending allocation, kept until explicit owner cleanup.
 pub(super) struct FailedTextAppend {
-    pub(super) value: DocumentString,
-    pub(super) allocation: DocumentStringAllocation,
+    value: DocumentString,
+    allocation: DocumentStringAllocation,
 }
 impl FailedTextAppend {
+    /// A terminal owner holding a ticket, for tests that need the slot taken.
+    #[cfg(test)]
+    pub(super) fn held(value: DocumentString, allocation: DocumentStringAllocation) -> Self {
+        Self { value, allocation }
+    }
     pub(super) fn release(self, control: &mut ParseControl) -> Result<(), SessionError> {
         drop(self.value);
         Ok(control.release_document_string(self.allocation)?)
