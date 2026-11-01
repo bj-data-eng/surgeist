@@ -765,9 +765,7 @@ impl SessionStorage {
         for (name, state) in [
             (
                 "select",
-                SelectMetadata::Select(select::SelectState {
-                    flags: crate::HtmlSelectFlags::default(),
-                }),
+                SelectMetadata::Select(select::SelectState::fresh()),
             ),
             (
                 "option",

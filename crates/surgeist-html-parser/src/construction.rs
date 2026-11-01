@@ -394,6 +394,9 @@ struct PayloadStorage {
     /// `check_new_aliases`; the completed-freeze preflight and release audit
     /// every row again.
     audited_rows: usize,
+    /// Registry rows of selectedcontent metadata. Rows are never removed, so zero
+    /// proves that no select has a selectedcontent descendant to update.
+    selectedcontent_rows: usize,
     /// Times a second row of a family that report preparation requires to be
     /// unique per record joined that record. Zero proves the join names the
     /// only row, so preparation need not scan the registry to count them.
@@ -992,6 +995,18 @@ impl PayloadStorage {
             return Err(SessionError::registry_row());
         }
         let slot = self.values.len();
+        if matches!(
+            row,
+            RetainedPayload::SelectFamily {
+                state: SelectMetadata::Selectedcontent(_),
+                ..
+            }
+        ) {
+            self.selectedcontent_rows = self
+                .selectedcontent_rows
+                .checked_add(1)
+                .ok_or_else(SessionError::registry_row)?;
+        }
         self.values.push(row);
         if let Some(kind) = list.and_then(|list| self.kind_slots.get_mut(list as usize)) {
             kind.slots.push(slot);
@@ -1735,6 +1750,7 @@ impl SessionStorage {
                 preexisting_units: 0,
                 preexisting_attributes: 0,
                 audited_rows: 0,
+                selectedcontent_rows: 0,
                 repeated_unique_rows: 0,
             },
         };

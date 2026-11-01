@@ -10542,6 +10542,50 @@ fn select_family_native_states_follow_size_multiple_disabled_and_last_selected_r
 }
 
 #[test]
+fn select_option_appends_agree_with_the_full_selectedness_algorithm_over_every_short_sequence() {
+    // Every option appended in test builds is compared with the full algorithm
+    // run on the options before it, so parsing each sequence is the check.
+    let options = [
+        "<option>A",
+        "<option selected>A",
+        "<option disabled>A",
+        "<optgroup disabled><option>A</optgroup>",
+        "<optgroup><option selected>A</optgroup>",
+    ];
+    let mut sequences = vec![String::new()];
+    let mut layer = vec![String::new()];
+    for _ in 0..3 {
+        layer = layer
+            .iter()
+            .flat_map(|prefix| {
+                options
+                    .iter()
+                    .map(move |option| format!("{prefix}{option}"))
+            })
+            .collect();
+        sequences.extend(layer.iter().cloned());
+    }
+    for attributes in ["", "size=0", "size=2", "multiple"] {
+        for sequence in &sequences {
+            let request = crate::HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8(format!(
+                    "<!doctype html><select {attributes}>{sequence}</select>"
+                )),
+                limits(100),
+            );
+            let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+            assert_eq!(
+                standalone_boundary(&mut driver),
+                super::head::HeadStep::Complete
+            );
+            let (mut c, mut frozen) = body_document(driver);
+            frozen.release(&mut c).unwrap();
+            assert_released(&c);
+        }
+    }
+}
+
+#[test]
 fn select_family_modern_body_dispatch_keeps_generic_children_and_hidden_guard() {
     for (source, expected) in [
         (

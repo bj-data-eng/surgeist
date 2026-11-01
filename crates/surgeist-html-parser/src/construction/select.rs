@@ -12,6 +12,26 @@ use surgeist_html::bounded::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SelectState {
     pub(crate) flags: HtmlSelectFlags,
+    /// What the last selectedness setting run left true of the list of options,
+    /// while only appends of one more option since have changed that list.
+    settled: Option<SettledOptions>,
+}
+impl SelectState {
+    pub(super) fn fresh() -> Self {
+        Self {
+            flags: HtmlSelectFlags::default(),
+            settled: None,
+        }
+    }
+}
+/// The facts about a single-select's list of options that one more option
+/// appended at its end can change, as the selectedness setting algorithm
+/// (HTML 877d, "selectedness setting algorithm", step 5) leaves them: the last
+/// selected option, which is the only one, and whether any option is enabled.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SettledOptions {
+    selected: Option<usize>,
+    enabled: bool,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OptionState {
@@ -46,12 +66,7 @@ pub(super) fn initial_metadata(
     tag: &Tag,
 ) -> Result<Option<SelectMetadata>, SessionError> {
     for (name, state) in [
-        (
-            "select",
-            Some(SelectMetadata::Select(SelectState {
-                flags: HtmlSelectFlags::default(),
-            })),
-        ),
+        ("select", Some(SelectMetadata::Select(SelectState::fresh()))),
         (
             "option",
             Some(SelectMetadata::Option(OptionState {
@@ -356,6 +371,16 @@ impl SessionStorage {
         {
             return Ok(());
         }
+        // The update visits the select's selectedcontent descendants; with no
+        // selectedcontent row in the registry there are none to visit.
+        if self.payloads.selectedcontent_rows == 0 {
+            #[cfg(test)]
+            assert!(
+                self.uncharged_selectedcontent_descendants(select)
+                    .is_empty()
+            );
+            return Ok(());
+        }
         let list = self.retain_work_list(c, select, WorkListKind::SelectedTargets)?;
         self.start_effect(
             c,
@@ -396,9 +421,23 @@ impl SessionStorage {
             let new = self.nearest_select(c, node, detached)?;
             state.nearest_select = new;
             self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
-            if old != new {
+            if old == new {
+                // The option moved without changing its select, so its place in
+                // the list or its disabledness may have changed unobserved.
+                if let Some(select) = old {
+                    self.unsettle_select(c, select)?;
+                }
+            } else {
                 for select in [old, new].into_iter().flatten() {
-                    let changed = self.selectedness_setting(c, select, detached)?;
+                    let appended = if !removal && detached.is_none() && old.is_none() {
+                        self.selectedness_after_append(c, select, node)?
+                    } else {
+                        None
+                    };
+                    let changed = match appended {
+                        Some(changed) => changed,
+                        None => self.selectedness_setting(c, select, detached)?,
+                    };
                     let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
                         return Err(SessionError::SelectMetadataUnavailable);
                     };
@@ -726,6 +765,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<bool, SessionError> {
         if self.form_attribute(c, select, "multiple")?.is_some() {
+            self.unsettle_select(c, select)?;
             return Ok(false);
         }
         let list = self.retain_work_list(c, select, WorkListKind::Options { detached })?;
@@ -733,6 +773,10 @@ impl SessionStorage {
         payload_write::<HtmlSelectCursor>(c, 1)?;
         let mut cursor = HtmlSelectCursor::new(HtmlSelectOperation::Normalize, false, count)
             .map_err(|_| SessionError::WrongToken)?;
+        // What the run leaves true of the list, for the settled summary.
+        let mut last_selected = None;
+        let mut selected_by_fallback = None;
+        let mut enabled = false;
         let changed = loop {
             let reply = match cursor.action() {
                 HtmlSelectAction::ReadSelectedness { ordinal } => {
@@ -742,6 +786,9 @@ impl SessionStorage {
                     let (_, SelectMetadata::Option(state)) = self.select_metadata(c, node)? else {
                         return Err(SessionError::SelectMetadataUnavailable);
                     };
+                    if state.flags.selectedness() {
+                        last_selected = Some(node);
+                    }
                     HtmlSelectReply::Selectedness(state.flags.selectedness())
                 }
                 HtmlSelectAction::WriteSelectedness { ordinal, selected } => {
@@ -755,13 +802,18 @@ impl SessionStorage {
                     };
                     state.flags.set_selectedness_for_select(selected);
                     self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
+                    if selected {
+                        selected_by_fallback = Some(node);
+                    }
                     HtmlSelectReply::Applied
                 }
                 HtmlSelectAction::ReadDisabled { ordinal } => {
                     let node = self
                         .work_list_node(c, list, ordinal)?
                         .ok_or(SessionError::WrongToken)?;
-                    HtmlSelectReply::Disabled(self.option_disabled(c, node, detached)?)
+                    let disabled = self.option_disabled(c, node, detached)?;
+                    enabled |= !disabled;
+                    HtmlSelectReply::Disabled(disabled)
                 }
                 HtmlSelectAction::ReadDisplaySize => {
                     HtmlSelectReply::DisplaySizeIsOne(self.select_size(c, select)? == 1)
@@ -777,7 +829,378 @@ impl SessionStorage {
             cursor.reply(reply).map_err(|_| SessionError::WrongToken)?;
         };
         self.release_work_list(c, list)?;
+        // The run keeps the last option read selected, and the fallback writes
+        // selectedness only when it read none.
+        self.settle_select(
+            c,
+            select,
+            SettledOptions {
+                selected: selected_by_fallback.or(last_selected),
+                enabled,
+            },
+        )?;
         Ok(changed)
+    }
+    fn settle_select(
+        &mut self,
+        c: &mut ParseControl,
+        select: usize,
+        settled: SettledOptions,
+    ) -> Result<(), SessionError> {
+        let (slot, SelectMetadata::Select(mut state)) = self.select_metadata(c, select)? else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        if state.settled != Some(settled) {
+            state.settled = Some(settled);
+            self.set_select_metadata(c, slot, SelectMetadata::Select(state))?;
+        }
+        Ok(())
+    }
+    /// Forgets the settled summary of a select whose list or options changed in
+    /// a way only a full selectedness setting run can account for.
+    fn unsettle_select(&mut self, c: &mut ParseControl, select: usize) -> Result<(), SessionError> {
+        let (slot, SelectMetadata::Select(mut state)) = self.select_metadata(c, select)? else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        if state.settled.is_some() {
+            state.settled = None;
+            self.set_select_metadata(c, slot, SelectMetadata::Select(state))?;
+        }
+        Ok(())
+    }
+    /// Whether no option can follow `option` in `select`'s list: it ends every
+    /// ancestor's children up to the select, and an option's own descendants
+    /// are not in the list.
+    fn ends_option_list(
+        &self,
+        c: &mut ParseControl,
+        select: usize,
+        option: usize,
+    ) -> Result<bool, SessionError> {
+        let mut node = option;
+        for _ in 0..self.construction.storage().len() {
+            let Some(parent) = self.ordinary_parent(c, node, None)? else {
+                return Ok(false);
+            };
+            c.charge(WorkCategory::RecordVisit, 2)?;
+            let record = self
+                .construction
+                .node_at(parent)
+                .ok_or_else(|| latch_registry_row(c))?;
+            let last = record
+                .child_count()
+                .checked_sub(1)
+                .and_then(|last| record.child_at(last))
+                .map(|child| child.position());
+            if last != Some(node) {
+                return Ok(false);
+            }
+            if parent == select {
+                return Ok(true);
+            }
+            node = parent;
+        }
+        Err(SessionError::Cycle)
+    }
+    /// The selectedness setting algorithm's result after `option` was inserted
+    /// as the last option of `select`'s list, from the settled summary alone
+    /// (HTML 877d, steps 5 to 7: the earlier options keep their selectedness and
+    /// disabledness, `option` is the last selected if it is selected, and the
+    /// first enabled option matters only while none is selected). None when the
+    /// summary or the placement cannot establish that result, so the full
+    /// algorithm runs instead.
+    pub(super) fn selectedness_after_append(
+        &mut self,
+        c: &mut ParseControl,
+        select: usize,
+        option: usize,
+    ) -> Result<Option<bool>, SessionError> {
+        if self.form_attribute(c, select, "multiple")?.is_some() {
+            return Ok(None);
+        }
+        let (select_slot, SelectMetadata::Select(mut select_state)) =
+            self.select_metadata(c, select)?
+        else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        let Some(settled) = select_state.settled else {
+            return Ok(None);
+        };
+        if !self.ends_option_list(c, select, option)? {
+            return Ok(None);
+        }
+        let (option_slot, SelectMetadata::Option(mut option_state)) =
+            self.select_metadata(c, option)?
+        else {
+            return Err(SessionError::SelectMetadataUnavailable);
+        };
+        #[cfg(test)]
+        let before = self.uncharged_option_list(select)?;
+        let mut next = settled;
+        let mut changed = false;
+        let disabled = if settled.enabled {
+            None
+        } else {
+            Some(self.option_disabled(c, option, None)?)
+        };
+        #[cfg(test)]
+        let mut size_read = None;
+        if option_state.flags.selectedness() {
+            if let Some(previous) = settled.selected {
+                let (slot, SelectMetadata::Option(mut state)) =
+                    self.select_metadata(c, previous)?
+                else {
+                    return Err(SessionError::SelectMetadataUnavailable);
+                };
+                state.flags.set_selectedness_for_select(false);
+                self.set_select_metadata(c, slot, SelectMetadata::Option(state))?;
+                changed = true;
+            }
+            next.selected = Some(option);
+        } else if settled.selected.is_none() {
+            let one = match disabled {
+                // An earlier option is enabled, so the settled state with a
+                // display size of one would have selected it.
+                None | Some(false) => self.select_size(c, select)? == 1,
+                Some(true) => false,
+            };
+            #[cfg(test)]
+            {
+                size_read = (disabled != Some(true)).then_some(one);
+            }
+            if disabled.is_none() && one {
+                return Ok(None);
+            }
+            if disabled == Some(false) && one {
+                option_state.flags.set_selectedness_for_select(true);
+                self.set_select_metadata(c, option_slot, SelectMetadata::Option(option_state))?;
+                next.selected = Some(option);
+                changed = true;
+            }
+        }
+        if let Some(disabled) = disabled {
+            next.enabled |= !disabled;
+        }
+        if select_state.settled != Some(next) {
+            select_state.settled = Some(next);
+            self.set_select_metadata(c, select_slot, SelectMetadata::Select(select_state))?;
+        }
+        #[cfg(test)]
+        self.assert_matches_full_walk(select, before, size_read, changed);
+        Ok(Some(changed))
+    }
+}
+
+#[cfg(test)]
+impl SessionStorage {
+    /// Uncharged: `node` is an HTML element named `local`.
+    fn uncharged_html_local(&self, node: usize, local: &str) -> bool {
+        let Some(record) = self.construction.node_at(node) else {
+            return false;
+        };
+        let HtmlNodeKind::Element(element) = record.kind() else {
+            return false;
+        };
+        element
+            .name()
+            .namespace()
+            .uri()
+            .is_some_and(|uri| uri.to_utf8().as_deref() == Ok("http://www.w3.org/1999/xhtml"))
+            && element.name().local_name().to_utf8().as_deref() == Ok(local)
+    }
+    fn uncharged_attribute(&self, node: usize, local: &str) -> bool {
+        let Some(HtmlNodeKind::Element(element)) =
+            self.construction.node_at(node).map(|record| record.kind())
+        else {
+            return false;
+        };
+        element.attributes().as_slice().iter().any(|attribute| {
+            attribute.name().namespace().uri().is_none()
+                && attribute.name().local_name().to_utf8().as_deref() == Ok(local)
+        })
+    }
+    fn uncharged_parent(&self, node: usize) -> Option<usize> {
+        self.construction
+            .node_at(node)
+            .and_then(|record| record.parent())
+            .map(|parent| parent.position())
+    }
+    fn uncharged_selectedness(&self, node: usize) -> bool {
+        let slot = self
+            .payloads
+            .node_joins
+            .get(node)
+            .and_then(|joins| joins.get(Join::SelectFamily))
+            .expect("an option has select metadata");
+        match self.payloads.values.get(slot) {
+            Some(RetainedPayload::SelectFamily {
+                state: SelectMetadata::Option(state),
+                ..
+            }) => state.flags.selectedness(),
+            _ => panic!("an option's select metadata row"),
+        }
+    }
+    /// Uncharged: HTML's option disabledness of `node`.
+    fn uncharged_option_disabled(&self, node: usize) -> bool {
+        if self.uncharged_attribute(node, "disabled") {
+            return true;
+        }
+        let mut next = self.uncharged_parent(node);
+        while let Some(ancestor) = next {
+            for kind in [
+                KnownHtmlElement::Option,
+                KnownHtmlElement::Select,
+                KnownHtmlElement::Datalist,
+                KnownHtmlElement::Hr,
+                KnownHtmlElement::Optgroup,
+            ] {
+                if self.uncharged_html_local(ancestor, kind.local_name()) {
+                    match surgeist_html::bounded::option_disabled_ancestor(Some(kind)) {
+                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Enabled => {
+                            return false;
+                        }
+                        surgeist_html::bounded::HtmlOptionDisabledAncestor::ReadOptgroupDisabled => {
+                            return self.uncharged_attribute(ancestor, "disabled");
+                        }
+                        surgeist_html::bounded::HtmlOptionDisabledAncestor::Continue => {}
+                    }
+                }
+            }
+            next = self.uncharged_parent(ancestor);
+        }
+        false
+    }
+    /// Uncharged: the selectedcontent elements below `select` in tree order.
+    fn uncharged_selectedcontent_descendants(&self, select: usize) -> Vec<usize> {
+        let mut found = Vec::new();
+        let mut stack = vec![select];
+        while let Some(node) = stack.pop() {
+            let record = self.construction.node_at(node).expect("a retained node");
+            if node != select && self.uncharged_html_local(node, "selectedcontent") {
+                found.push(node);
+            }
+            stack.extend(
+                (0..record.child_count())
+                    .rev()
+                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
+            );
+        }
+        found
+    }
+    /// Uncharged HTML "get the list of options" of `select` in tree order, with
+    /// each option's selectedness and disabledness.
+    fn uncharged_option_list(
+        &self,
+        select: usize,
+    ) -> Result<Vec<(usize, bool, bool)>, SessionError> {
+        let mut options = Vec::new();
+        let mut stack = vec![select];
+        let mut roots = true;
+        while let Some(node) = stack.pop() {
+            let record = self
+                .construction
+                .node_at(node)
+                .ok_or(SessionError::ForeignNode)?;
+            let mut descend = roots;
+            if !roots {
+                descend = if self.uncharged_html_local(node, "option") {
+                    options.push((
+                        node,
+                        self.uncharged_selectedness(node),
+                        self.uncharged_option_disabled(node),
+                    ));
+                    false
+                } else if ["select", "hr", "datalist"]
+                    .into_iter()
+                    .any(|local| self.uncharged_html_local(node, local))
+                {
+                    false
+                } else if self.uncharged_html_local(node, "optgroup") {
+                    let mut inside = false;
+                    let mut next = self.uncharged_parent(node);
+                    while let Some(ancestor) = next.filter(|&ancestor| ancestor != select) {
+                        inside |= self.uncharged_html_local(ancestor, "optgroup");
+                        next = self.uncharged_parent(ancestor);
+                    }
+                    !inside
+                } else {
+                    true
+                };
+            }
+            roots = false;
+            if descend {
+                for position in (0..record.child_count()).rev() {
+                    stack.push(
+                        record
+                            .child_at(position)
+                            .ok_or(SessionError::ForeignNode)?
+                            .position(),
+                    );
+                }
+            }
+        }
+        Ok(options)
+    }
+    /// Test builds: the state `selectedness_after_append` left equals the state
+    /// and result of the full algorithm run on the options as they were before.
+    fn assert_matches_full_walk(
+        &self,
+        select: usize,
+        before: Vec<(usize, bool, bool)>,
+        size_is_one: Option<bool>,
+        changed: bool,
+    ) {
+        let mut selected: Vec<bool> = before.iter().map(|&(_, selected, _)| selected).collect();
+        let (mut expected_changed, mut first_enabled, mut last_selected) = (false, None, None);
+        for (index, &(_, _, disabled)) in before.iter().enumerate() {
+            if selected[index] {
+                if let Some(previous) = last_selected {
+                    selected[previous] = false;
+                    expected_changed = true;
+                }
+                last_selected = Some(index);
+            }
+            if first_enabled.is_none() && !disabled {
+                first_enabled = Some(index);
+            }
+        }
+        if last_selected.is_none()
+            && let Some(first) = first_enabled
+            && size_is_one.expect("the full walk reads the display size")
+        {
+            selected[first] = true;
+            last_selected = Some(first);
+            expected_changed = true;
+        }
+        assert_eq!(changed, expected_changed, "result of the full walk");
+        for (&(node, ..), &expected) in before.iter().zip(&selected) {
+            assert_eq!(
+                self.uncharged_selectedness(node),
+                expected,
+                "selectedness of option {node} after the full walk"
+            );
+        }
+        let slot = self
+            .payloads
+            .node_joins
+            .get(select)
+            .and_then(|joins| joins.get(Join::SelectFamily))
+            .expect("a select has select metadata");
+        let Some(RetainedPayload::SelectFamily {
+            state: SelectMetadata::Select(state),
+            ..
+        }) = self.payloads.values.get(slot)
+        else {
+            panic!("a select's select metadata row");
+        };
+        assert_eq!(
+            state.settled,
+            Some(SettledOptions {
+                selected: last_selected.map(|index| before[index].0),
+                enabled: before.iter().any(|&(.., disabled)| !disabled),
+            }),
+            "settled summary of the full walk"
+        );
     }
 }
 
