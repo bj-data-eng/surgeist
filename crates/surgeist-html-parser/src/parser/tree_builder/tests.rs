@@ -148,9 +148,13 @@ fn same(
 /// impersonate insertion-mode dispatch, EOF acceptance, or a parse report.
 fn freeze(kernel: LocationKernel, control: &mut ParseControl) -> FrozenArena {
     let LocationKernel {
-        mut session, open, ..
+        mut session,
+        open,
+        templates,
+        ..
     } = kernel;
     open.unwrap().release(control).unwrap();
+    templates.unwrap().release(control).unwrap();
     session.freeze(control).unwrap()
 }
 pub(crate) fn assert_released(control: &ParseControl) {
@@ -647,6 +651,400 @@ fn literal_surrogates_and_supplementary_text_survive_real_transfer_and_merge() {
     );
     frozen.release(&mut c).unwrap();
     assert_released(&c);
+}
+
+#[test]
+fn pushing_a_node_created_after_every_pushed_node_examines_no_stack_entry() {
+    let source = HtmlSource::utf8(format!("<html>{}", "<div>".repeat(40)));
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let mut steps = Vec::new();
+    for _ in 0..40 {
+        let node = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+        let before = c.usage().work(WorkCategory::StateStep);
+        kernel.push(&node, &mut c).unwrap();
+        steps.push(c.usage().work(WorkCategory::StateStep) - before);
+    }
+    assert_eq!(steps, vec![0; 40]);
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn a_node_already_on_the_stack_is_a_duplicate_wherever_it_sits_and_however_it_got_there() {
+    let source = HtmlSource::utf8("<html><body><p><span><b>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, html) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let body = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    let p = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    for on_stack in [&html, &body, &p] {
+        assert!(matches!(
+            kernel.push(on_stack, &mut c),
+            Err(KernelError::DuplicateOpenElement)
+        ));
+    }
+    // A popped node may be pushed again, and then it is a duplicate again.
+    kernel.pop(&mut c, None).unwrap();
+    kernel.push(&p, &mut c).unwrap();
+    assert!(matches!(
+        kernel.push(&p, &mut c),
+        Err(KernelError::DuplicateOpenElement)
+    ));
+    // A node written into the stack by replacement is on the stack too.
+    let span = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    kernel.replace_stack(2, &span, &mut c, None).unwrap();
+    assert!(matches!(
+        kernel.push(&span, &mut c),
+        Err(KernelError::DuplicateOpenElement)
+    ));
+    // And so is one written by insertion at a position below the top.
+    let b = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    kernel.insert_stack(1, &b, &mut c).unwrap();
+    assert!(matches!(
+        kernel.push(&b, &mut c),
+        Err(KernelError::DuplicateOpenElement)
+    ));
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+/// Applies a long deterministic sequence of every stack operation to a kernel
+/// and to a plain vector of the same nodes, and requires the kernel's answer to
+/// "which template is last" to be the vector's after each one. The vector's
+/// answer is a scan from the top, so it is independent of how the kernel
+/// derives its own.
+#[test]
+fn the_last_template_is_the_topmost_open_template_after_every_stack_operation() {
+    const POOL: [&str; 12] = [
+        "<template>",
+        "<div>",
+        "<template>",
+        "<div>",
+        "<div>",
+        "<template>",
+        "<div>",
+        "<template>",
+        "<div>",
+        "<div>",
+        "<template>",
+        "<div>",
+    ];
+    let source = HtmlSource::utf8(format!("<html>{}", POOL.concat()));
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let pool: Vec<(ParserNode, bool)> = POOL
+        .iter()
+        .map(|tag| {
+            let node = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+            (node, *tag == "<template>")
+        })
+        .collect();
+    // `open` holds pool indices; the html element below them is not a template.
+    let mut open: Vec<usize> = Vec::new();
+    let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+    let mut pick = |bound: usize| {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((seed >> 33) as usize) % bound
+    };
+    let mut seen_template_last = false;
+    let mut seen_no_template = false;
+    let mut ran = [0_u32; 5];
+    for step in 0..600 {
+        let unused: Vec<usize> = (0..pool.len()).filter(|id| !open.contains(id)).collect();
+        let operation = pick(5);
+        match operation {
+            0 if !unused.is_empty() => {
+                let id = unused[pick(unused.len())];
+                kernel.push(&pool[id].0, &mut c).unwrap();
+                open.push(id);
+            }
+            1 if !open.is_empty() => {
+                kernel.pop(&mut c, None).unwrap();
+                open.pop();
+            }
+            2 if !open.is_empty() && !unused.is_empty() => {
+                let at = pick(open.len());
+                let id = unused[pick(unused.len())];
+                kernel
+                    .replace_stack(at + 1, &pool[id].0, &mut c, None)
+                    .unwrap();
+                open[at] = id;
+            }
+            3 if !unused.is_empty() => {
+                let at = pick(open.len() + 1);
+                let id = unused[pick(unused.len())];
+                kernel.insert_stack(at + 1, &pool[id].0, &mut c).unwrap();
+                open.insert(at, id);
+            }
+            4 if !open.is_empty() => {
+                let at = pick(open.len());
+                kernel
+                    .remove_stack_identity(&pool[open[at]].0, &mut c, None)
+                    .unwrap();
+                open.remove(at);
+            }
+            _ => continue,
+        }
+        ran[operation] += 1;
+        assert_eq!(kernel.stack().unwrap().len(), open.len() + 1, "step {step}");
+        for (index, id) in open.iter().enumerate() {
+            let node = kernel.at(index + 1, &mut c).unwrap();
+            same(&kernel, &node, &pool[*id].0, &mut c);
+        }
+        let listed: Vec<usize> = open
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| pool[**id].1)
+            .map(|(at, _)| at + 1)
+            .collect();
+        assert_eq!(kernel.template_indices(), listed, "step {step}");
+        let expected = open.iter().rposition(|id| pool[*id].1);
+        let actual = kernel.last_template(&mut c).unwrap();
+        match (expected, actual) {
+            (None, None) => seen_no_template = true,
+            (Some(at), Some(node)) => {
+                same(&kernel, &node, &pool[open[at]].0, &mut c);
+                seen_template_last = true;
+            }
+            (expected, actual) => panic!(
+                "step {step}: expected stack index {expected:?}, found {}",
+                actual.is_some()
+            ),
+        }
+        assert_eq!(
+            kernel.contains_html_template(&mut c).unwrap(),
+            expected.is_some(),
+            "step {step}"
+        );
+    }
+    // The sequence visited both answers, so the comparison was not vacuous.
+    assert!(seen_template_last && seen_no_template);
+    assert!(ran.iter().all(|count| *count > 20), "{ran:?}");
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn checking_a_new_element_for_insertion_costs_the_same_at_every_depth() {
+    // A new element has no children, so it can be a host-including ancestor of
+    // the target only by being the target: the check visits no ancestor.
+    let chunks = [5_usize, 15, 60];
+    let tags: String = chunks
+        .iter()
+        .map(|divs| format!("{}<p>", "<div>".repeat(*divs)))
+        .collect();
+    let source = HtmlSource::utf8(format!("<html>{tags}"));
+    let mut c = control(200);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let mut visits = Vec::new();
+    for divs in chunks {
+        for _ in 0..divs {
+            add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+        }
+        let mut p = tag(&mut tokenizer, &mut c);
+        let node = kernel.session.allocate_html_tag(&mut c, &mut p).unwrap();
+        let top = kernel.current(&mut c).unwrap();
+        let before = c.usage().work(WorkCategory::RecordVisit);
+        let ignored = kernel
+            .session
+            .element_insertion_ignored(&mut c, &node, &top)
+            .unwrap();
+        assert!(ignored.is_none());
+        visits.push(c.usage().work(WorkCategory::RecordVisit) - before);
+    }
+    assert!(
+        visits.windows(2).all(|pair| pair[0] == pair[1]),
+        "visits at depths {chunks:?}: {visits:?}"
+    );
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn popping_the_last_template_costs_the_same_at_every_depth() {
+    // Each chunk opens more elements and a template on top of the previous
+    // template; popping it makes the previous one last again, wherever it lies.
+    let chunks = [5_usize, 15, 60];
+    let tags: String = chunks
+        .iter()
+        .map(|divs| format!("{}<template>", "<div>".repeat(*divs)))
+        .collect();
+    let source = HtmlSource::utf8(format!("<html><template>{tags}"));
+    let mut c = control(200);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    let mut costs = Vec::new();
+    for divs in chunks {
+        for _ in 0..divs {
+            add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+        }
+        let template = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+        let last = kernel.last_template(&mut c).unwrap().unwrap();
+        same(&kernel, &last, &template, &mut c);
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        kernel.pop(&mut c, None).unwrap();
+        costs.push(c.usage().resource(HtmlParseResource::WorkCredits).current - before);
+        // The template below is last again.
+        assert!(kernel.last_template(&mut c).unwrap().is_some());
+    }
+    assert!(
+        costs.windows(2).all(|pair| pair[0] == pair[1]),
+        "work of popping a template at depths {chunks:?}: {costs:?}"
+    );
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn finding_a_listed_template_charges_each_probe_of_the_search() {
+    // Sixteen nested templates are listed at stack indices 1 through 16, and a
+    // div sits on top at 17. The search probes the middle of the range still
+    // open, `low + (high - low) / 2` over the listing positions, and stops at
+    // the first probe that finds the entry; each probe is one state step.
+    // Replacing or removing a listed entry searches the list once, to learn
+    // that the entry is listed and where, and unlists it at that position.
+    //
+    // 1. Replace the template at stack index 9 (position 8 of 16): the first
+    //    probe is position 8, which holds 9, so the search takes 1 probe: 1.
+    //    Unlisting leaves 15 listings: 1-8 and 10-16.
+    // 2. Remove the template at index 8 (position 7 of 15): the first probe is
+    //    position 7, which holds 8, so the search takes 1 probe: 1. The
+    //    entries above move down, leaving 14 listings: 1-7 and 9-15.
+    // 3. Replace the div, now at index 16, which is not listed. The range
+    //    0..14 probes position 7 (holds 9, less than 16), then 8..14 probes
+    //    position 11 (holds 13), then 12..14 probes position 13 (holds 15),
+    //    and 14..14 is empty: 3 probes and not found. Nothing is unlisted: 3.
+    let source = HtmlSource::utf8(format!("<html>{}<div><div><div>", "<template>".repeat(16)));
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    for _ in 0..17 {
+        add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    }
+    assert_eq!(kernel.template_indices(), (1..=16).collect::<Vec<_>>());
+    let steps = |c: &ParseControl| c.usage().work(WorkCategory::StateStep);
+
+    let first = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    let before = steps(&c);
+    kernel.replace_stack(9, &first, &mut c, None).unwrap();
+    assert_eq!(steps(&c) - before, 1);
+    assert_eq!(
+        kernel.template_indices(),
+        (1..=8).chain(10..=16).collect::<Vec<_>>()
+    );
+
+    let eighth = kernel.at(8, &mut c).unwrap();
+    let before = steps(&c);
+    kernel.remove_stack_identity(&eighth, &mut c, None).unwrap();
+    assert_eq!(steps(&c) - before, 1);
+    assert_eq!(
+        kernel.template_indices(),
+        (1..=7).chain(9..=15).collect::<Vec<_>>()
+    );
+
+    let second = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    let before = steps(&c);
+    kernel.replace_stack(16, &second, &mut c, None).unwrap();
+    assert_eq!(steps(&c) - before, 3);
+    assert_eq!(kernel.template_indices().len(), 14);
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn the_listing_search_agrees_with_the_standard_search_and_counts_its_probes() {
+    // Odd listings, so every query is found, between two listings, or beyond
+    // either end. The result must be the standard search's; the probes must be
+    // at least one and at most one more than the halvings of the range, and
+    // none for an empty list.
+    for len in 0..=40_usize {
+        let listed: Vec<usize> = (0..len).map(|at| 2 * at + 1).collect();
+        let halvings = (usize::BITS - len.leading_zeros()) as usize;
+        for query in 0..=2 * len + 1 {
+            let mut probes = 0;
+            let found = search_listing(&listed, query, || {
+                probes += 1;
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(
+                found,
+                listed.binary_search(&query),
+                "{len} listings, {query}"
+            );
+            if len == 0 {
+                assert_eq!(probes, 0);
+            } else {
+                assert!(
+                    (1..=halvings).contains(&probes),
+                    "{len} listings, {query}: {probes}"
+                );
+            }
+        }
+    }
+    // A refused probe stops the search before it reads a listing.
+    let mut allowed = 2;
+    let refused = search_listing(&[1, 3, 5, 7, 9, 11, 13, 15], 15, || {
+        if allowed == 0 {
+            return Err(ParseStop::Cancelled);
+        }
+        allowed -= 1;
+        Ok(())
+    });
+    assert_eq!(refused, Err(ParseStop::Cancelled));
+}
+
+#[test]
+fn a_failed_stack_release_takes_the_templates_and_clears_the_root_target() {
+    let source = HtmlSource::utf8("<html><template>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    assert_eq!(kernel.template_indices(), [1]);
+    assert!(kernel.root_target.is_some());
+    // A foreign controller cannot release the stack, which is the first failure.
+    let mut foreign = control(100);
+    assert!(kernel.release_stack(&mut foreign).is_err());
+    // The refusal handed back neither owner: both were taken and the target
+    // was dropped, rather than the first refusal leaving the others behind.
+    assert!(kernel.open.is_none());
+    assert!(kernel.templates.is_none());
+    assert!(kernel.root_target.is_none());
 }
 
 #[test]
@@ -6329,9 +6727,16 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     // Actual Style-pop qualification adds html_local's3 record reads plus the
     // two comparison headers =5 visits, and one28-unit namespace comparison
     // at3 bytes per pair. It mutates no Style row for this p element.
+    // The replacement is also asked whether it is a template, so the kernel
+    // can keep the last template exact: its name read (index10 plus the
+    // record1) and html_named's namespace comparison (two plus the header =3,
+    // inspecting28 units) and local comparison (one, one choice and the
+    // header =3; the length differs from template, so no local units are
+    // read) =17 visits, and one more asking whether the replaced entry is
+    // listed as a template.
     assert_eq!(
         c.usage().work(WorkCategory::RecordVisit) - before.work(WorkCategory::RecordVisit),
-        63 + 3 + 2
+        63 + 3 + 2 + 17 + 1
     );
     assert_eq!(
         c.usage().work(WorkCategory::RecordWrite) - before.work(WorkCategory::RecordWrite),
@@ -6347,7 +6752,7 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     );
     assert_eq!(
         c.usage().work(WorkCategory::InspectByte) - before.work(WorkCategory::InspectByte),
-        (4 + 1) * 28 * 3
+        (4 + 1 + 1) * 28 * 3
     );
     assert_eq!(
         c.usage().work(WorkCategory::StateStep) - before.work(WorkCategory::StateStep),
@@ -13379,14 +13784,13 @@ fn in_table_form_pointer_copy_fee_covers_the_actual_retained_receiver() {
     // The independent common envelope is real trigger retention, one diagnostic,
     // native form creation/insertion, stack removal and pending-token disposal.
     // Tag comparisons add no CopyByte/RecordWrite. The no-template predicate
-    // additionally clones each actual html/body/table stack handle once.
+    // reads the kernel's tracked last template and clones no stack handle.
     // This envelope does not
     // call table_rules or install a form pointer; the two extra source actions
     // are one ParserNode clone and one actual Option<FormPointer> receiver write.
     let mut common = ready(&request);
     let before = common.control.usage().clone();
     let state = common.head.as_mut().unwrap().state.as_mut().unwrap();
-    let template_scan_nodes = state.before.kernel.stack().unwrap().len();
     state
         .record_trigger(
             ParserRule::Tree(InsertionMode::InTable),
@@ -13430,13 +13834,10 @@ fn in_table_form_pointer_copy_fee_covers_the_actual_retained_receiver() {
     assert_eq!(common_outcome, HeadStep::Consumed);
     assert!(pointer_installed);
     assert_eq!(actual_stack, common_stack);
-    assert_eq!(template_scan_nodes, 3);
     assert_eq!(actual_writes, common_writes + 1);
     assert_eq!(
         actual_copy,
-        common_copy
-            + (size_of::<ParserNode>() * (template_scan_nodes + 1)
-                + size_of::<Option<FormPointer>>()) as u64,
+        common_copy + (size_of::<ParserNode>() + size_of::<Option<FormPointer>>()) as u64,
         "the installed receiver needs its actual compiled byte fee: Option<FormPointer>={}, Option<ParserNode>={} bytes",
         size_of::<Option<FormPointer>>(),
         size_of::<Option<ParserNode>>()
