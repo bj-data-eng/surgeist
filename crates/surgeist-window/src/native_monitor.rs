@@ -4,6 +4,9 @@
 use crate::Size;
 use crate::{Point, Rect, ScaleFactor};
 
+#[cfg(any(target_os = "windows", test))]
+mod windows;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct MonitorFacts {
     pub(crate) available_area: Option<Rect>,
@@ -74,7 +77,11 @@ pub(crate) fn observe(
         }
         facts_for(Some(id), &candidates, origin, scale)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        windows::observe(monitor, origin, scale)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (monitor, origin, scale);
         MonitorFacts::default()
