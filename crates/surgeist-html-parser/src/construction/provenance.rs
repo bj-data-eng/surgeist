@@ -510,7 +510,7 @@ impl GroupOriginCursor {
                     .start
                     .checked_add(self.position)
                     .and_then(|position| evidence.native.origins.as_slice().get(position))
-                    .ok_or(SessionError::WrongToken)?;
+                    .ok_or_else(|| latch_registry_row(c))?;
                 if origin.start >= origin.end || origin.end > leaf.units {
                     return Err(SessionError::WrongToken);
                 }
@@ -1924,7 +1924,7 @@ impl ParseEvidence {
                         .causes
                         .as_slice()
                         .get(header.cause)
-                        .ok_or(SessionError::WrongToken)?;
+                        .ok_or_else(|| latch_registry_row(c))?;
                     c.charge(
                         WorkCategory::InspectByte,
                         mem::size_of::<ConstructionCause>() as u64,

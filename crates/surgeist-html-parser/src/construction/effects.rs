@@ -869,13 +869,15 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         payload_write::<RetainedPayload>(c, 2)?;
         let row = self.payloads.row_mut(c, slot)?;
-        if !matches!(row, RetainedPayload::WorkList(Some(_))) {
-            return Err(SessionError::WrongToken);
-        }
-        let RetainedPayload::WorkList(Some(list)) = mem::replace(row, RetainedPayload::Retired)
-        else {
+        // Only a work list that is still held is taken; any other row stays.
+        let list = match row {
+            RetainedPayload::WorkList(list) => list.take(),
+            _ => None,
+        };
+        let Some(list) = list else {
             return Err(SessionError::WrongToken);
         };
+        *row = RetainedPayload::Retired;
         list.release(c)?;
         Ok(())
     }

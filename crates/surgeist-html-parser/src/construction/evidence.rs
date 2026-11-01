@@ -121,13 +121,14 @@ impl DiagnosticEvidenceView<'_> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    /// The committed record at `index` with the location it names, or `None`
+    /// past the last record. Every committed record names a committed
+    /// location; a record that did not would also read as `None`.
     pub fn retained_record(
         &self,
         index: usize,
     ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
         let record = self.records.get(index)?;
-        // Committed rows name a committed location; a row that does not reads
-        // as absent rather than panicking.
         Some((record, self.locations.get(record.location)?))
     }
     #[cfg(test)]

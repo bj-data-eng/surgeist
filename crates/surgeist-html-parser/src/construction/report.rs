@@ -242,7 +242,8 @@ impl<'a> PreparedReportStorage<'a> {
                 }
                 RetainedPayload::Base { node, frozen, .. } => {
                     let node = node.ok_or(SessionError::WrongToken)?;
-                    if !base::is_base(arena.node_at(node).expect("qualified metadata node")) {
+                    // The node was checked against the result with the row's other nodes.
+                    if !base::is_base(arena.node_at(node).ok_or(SessionError::ForeignNode)?) {
                         return Err(SessionError::WrongToken);
                     }
                     if let base::BaseValue::Unavailable { missing, .. } = frozen {
@@ -270,11 +271,9 @@ impl<'a> PreparedReportStorage<'a> {
                     parser_document,
                 } => {
                     let node = node.ok_or(SessionError::WrongToken)?;
-                    checked_node(arena, node, c)?;
+                    let record = checked_node(arena, node, c)?;
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    let HtmlNodeKind::Element(element) =
-                        arena.node_at(node).expect("qualified metadata node").kind()
-                    else {
+                    let HtmlNodeKind::Element(element) = record.kind() else {
                         return Err(SessionError::WrongToken);
                     };
                     if element.link_flags().is_none() {
@@ -333,14 +332,12 @@ impl<'a> PreparedReportStorage<'a> {
                 }
                 RetainedPayload::Nonce { node, raw } => {
                     let node = node.ok_or(SessionError::NonceMetadataUnavailable)?;
-                    checked_node(arena, node, c)?;
+                    let record = checked_node(arena, node, c)?;
                     c.charge(
                         WorkCategory::InspectByte,
                         surgeist_html::bounded::HTML_NONCE_INSPECTION_BOUND as u64,
                     )?;
-                    let HtmlNodeKind::Element(element) =
-                        arena.node_at(node).expect("qualified metadata node").kind()
-                    else {
+                    let HtmlNodeKind::Element(element) = record.kind() else {
                         return Err(SessionError::NonceMetadataUnavailable);
                     };
                     if !surgeist_html::bounded::is_nonce_element(element.name()) {
@@ -421,7 +418,8 @@ impl<'a> PreparedReportStorage<'a> {
                                         | (3, RetainedPayload::Style {node, ..})
                                         | (4, RetainedPayload::Dialog {node, ..}) if *node == subject)
                                     {
-                                        count += 1;
+                                        // At most one per registry row.
+                                        count = count.saturating_add(1);
                                     }
                                 }
                                 Ok::<_, SessionError>(count)
@@ -631,27 +629,23 @@ fn checked_document(
 fn arena(storage: &FrozenStorage) -> &HtmlConstructionResult {
     &storage.view
 }
-fn checked_node(
-    arena: &HtmlConstructionResult,
+/// The record `node` names, which must belong to this result.
+fn checked_node<'a>(
+    arena: &'a HtmlConstructionResult,
     node: usize,
     c: &mut ParseControl,
-) -> Result<(), SessionError> {
+) -> Result<crate::bounded::HtmlConstructionNode<'a>, SessionError> {
     c.charge(WorkCategory::RecordVisit, 1)?;
-    if node >= arena.len() {
-        return Err(SessionError::ForeignNode);
-    }
-    Ok(())
+    arena.node_at(node).ok_or(SessionError::ForeignNode)
 }
 fn checked_select(
     arena: &HtmlConstructionResult,
     node: usize,
     c: &mut ParseControl,
 ) -> Result<(), SessionError> {
-    checked_node(arena, node, c)?;
+    let record = checked_node(arena, node, c)?;
     c.charge(WorkCategory::RecordVisit, 1)?;
-    let HtmlNodeKind::Element(element) =
-        arena.node_at(node).expect("qualified metadata node").kind()
-    else {
+    let HtmlNodeKind::Element(element) = record.kind() else {
         return Err(SessionError::SelectMetadataUnavailable);
     };
     if !exact_ascii(
@@ -734,23 +728,32 @@ impl ReportStorage {
         &mut self,
         c: &mut ParseControl,
     ) -> Result<(), ParseStop> {
-        if let Some(slot) = self.associated_slot.take() {
-            let storage = self
-                .history
-                .arena_mut()
-                .storage
-                .as_mut()
-                .expect("qualified report");
-            let payload =
-                mem::replace(&mut storage.payloads.values[slot], RetainedPayload::Retired);
-            let RetainedPayload::AssociatedInputs { usage, .. } = &payload else {
-                unreachable!("qualified execution bank");
-            };
-            let resources = usage.resources();
-            drop(payload);
-            c.commit_prepared_release(&resources)?;
+        let Some(slot) = self.associated_slot else {
+            return Ok(());
+        };
+        let row = self
+            .history
+            .arena_mut()
+            .storage
+            .as_mut()
+            .and_then(|storage| storage.payloads.values.get_mut(slot));
+        let Some(row) = row else {
+            return Err(c.fail_invariant(crate::parser::control::Invariant::RegistryRow));
+        };
+        match mem::replace(row, RetainedPayload::Retired) {
+            RetainedPayload::AssociatedInputs { inputs, usage } => {
+                self.associated_slot = None;
+                let resources = usage.resources();
+                drop((inputs, usage));
+                c.commit_prepared_release(&resources)?;
+                Ok(())
+            }
+            // Another kind of row is put back where it was.
+            other => {
+                *row = other;
+                Err(c.fail_invariant(crate::parser::control::Invariant::RegistryRow))
+            }
         }
-        Ok(())
     }
     pub(crate) fn fragment_parser_document<'a>(
         &'a self,
@@ -806,7 +809,8 @@ impl<'a> MetadataCursor<'a> {
         let Some(payload) = self.storage.payloads.values.get(self.next) else {
             return MetadataStep::Complete;
         };
-        self.next += 1;
+        // `next` named a registry row, so it is below the address space.
+        self.next = self.next.saturating_add(1);
         if metadata_node(payload).is_some() {
             MetadataStep::Record(MetadataRef {
                 history: self.history,

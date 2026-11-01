@@ -64,7 +64,8 @@ impl<'a> ReverseCursor<'a> {
             self.state = CursorState::Complete;
             return ReverseStep::Complete;
         };
-        self.index += 1;
+        // `index` named a row of the slice, so it is below the address space.
+        self.index = self.index.saturating_add(1);
         let Some(range) = &row.source else {
             return ReverseStep::Skipped;
         };
@@ -161,7 +162,12 @@ impl<'a> AssociationView<'a> {
             // Each interior endpoint requires one byte inspection. Boundary
             // zero/len require none; no scan, decode, handle clone or allocation.
             for offset in [start, end] {
-                if offset > 0 && offset < text.len() && text.as_bytes()[offset] & 0xc0 == 0x80 {
+                if offset > 0
+                    && text
+                        .as_bytes()
+                        .get(offset)
+                        .is_some_and(|byte| byte & 0xc0 == 0x80)
+                {
                     return Err(ReverseQueryError::Utf8Boundary);
                 }
             }
@@ -204,8 +210,8 @@ impl SpatialLink {
                 AssociationRelation::LexicalAnchor => 7,
                 AssociationRelation::Omission => 8,
                 AssociationRelation::Cause => 9,
-                AssociationRelation::RangeDependency(role) => 10 + role.index(),
-                AssociationRelation::ColorDependency(role) => 14 + role.index(),
+                AssociationRelation::RangeDependency(role) => 10usize.wrapping_add(role.index()),
+                AssociationRelation::ColorDependency(role) => 14usize.wrapping_add(role.index()),
             },
             self.start,
             self.end,
@@ -314,7 +320,8 @@ impl SpatialIndex {
             payload_write::<Option<SpatialEntry>>(c, 1)?;
             *slot = Some(SpatialEntry { key, visits: mask });
             payload_write::<usize>(c, 1)?;
-            self.count += 1;
+            // One entry per occupied slot, so the count is below the slot count.
+            self.count = self.count.saturating_add(1);
             Ok((true, true))
         }
     }
@@ -327,7 +334,11 @@ impl SpatialIndex {
             WorkCategory::InspectByte,
             mem::size_of::<SpatialLink>() as u64,
         )?;
-        let mut index = key.hash() % slots.len();
+        let length = slots.len();
+        let mut index = key
+            .hash()
+            .checked_rem(length)
+            .ok_or_else(|| latch_registry_row(c))?;
         loop {
             let slot = slots.get_mut(index, c)?.ok_or(SessionError::WrongToken)?;
             c.charge(
@@ -337,7 +348,10 @@ impl SpatialIndex {
             if slot.is_none() || slot.as_ref().is_some_and(|entry| entry.key == key) {
                 return Ok(index);
             }
-            index = (index + 1) % slots.len();
+            index = index
+                .saturating_add(1)
+                .checked_rem(length)
+                .ok_or_else(|| latch_registry_row(c))?;
         }
     }
 }
@@ -463,18 +477,20 @@ impl ParseEvidence {
                     end: row.end,
                     historical: false,
                 };
-                index += 1;
+                index = next_cursor(index);
                 // project_field emits each actual field contiguously. Group and
                 // destination qualification remain distinct from atom boundaries.
                 if root.group.is_some() {
                     while index < self.native.native_rows {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        let next = &self
+                        let next = self
                             .native
                             .projection
                             .as_ref()
                             .ok_or(SessionError::WrongToken)?
-                            .as_slice()[index];
+                            .as_slice()
+                            .get(index)
+                            .ok_or_else(|| latch_registry_row(c))?;
                         c.charge(
                             WorkCategory::InspectByte,
                             mem::size_of::<NativeAssociation>() as u64,
@@ -487,7 +503,7 @@ impl ParseEvidence {
                         }
                         payload_write::<usize>(c, 1)?;
                         root.end = next.end;
-                        index += 1;
+                        index = next_cursor(index);
                     }
                 }
                 self.validate_spatial_link(c, root)?;
@@ -664,7 +680,13 @@ impl ParseEvidence {
                     rows.try_push(c, row)?;
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                let cause = &self.native.causes.as_slice()[link.cause];
+                // `validate_spatial_link` named this cause above.
+                let cause = self
+                    .native
+                    .causes
+                    .as_slice()
+                    .get(link.cause)
+                    .ok_or_else(|| latch_registry_row(c))?;
                 payload_write::<(ConstructionOperation, [Option<usize>; 4])>(c, 1)?;
                 let (operation, original, incoming, original_cause, trigger) = (
                     cause.operation,
@@ -713,7 +735,15 @@ impl ParseEvidence {
                 let body = if let Some(group) = link.group {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     payload_write::<GroupBody>(c, 1)?;
-                    Some(self.native.groups.as_slice()[group].body)
+                    // `validate_spatial_link` named this group above.
+                    Some(
+                        self.native
+                            .groups
+                            .as_slice()
+                            .get(group)
+                            .ok_or_else(|| latch_registry_row(c))?
+                            .body,
+                    )
                 } else {
                     None
                 };
@@ -785,14 +815,12 @@ impl ParseEvidence {
                             .get(right)
                             .ok_or(SessionError::WrongToken)?
                             .units;
-                        if left_units != offset
-                            || offset.checked_add(right_units)
-                                != Some(
-                                    self.native.groups.as_slice()
-                                        [link.group.ok_or(SessionError::WrongToken)?]
-                                    .units,
-                                )
-                        {
+                        let total = link
+                            .group
+                            .and_then(|group| self.native.groups.as_slice().get(group))
+                            .ok_or_else(|| latch_registry_row(c))?
+                            .units;
+                        if left_units != offset || offset.checked_add(right_units) != Some(total) {
                             return Err(SessionError::WrongToken);
                         }
                         let middle = if link.historical {
@@ -905,8 +933,9 @@ impl ParseEvidence {
                 .as_slice()
                 .get(index)
                 .ok_or(SessionError::WrongToken)?;
+            // `start <= end` was checked above.
             if group.cause != link.cause
-                || (!link.historical && link.end - link.start != group.units)
+                || (!link.historical && link.end.checked_sub(link.start) != Some(group.units))
             {
                 return Err(SessionError::WrongToken);
             }
@@ -982,7 +1011,12 @@ impl ParseEvidence {
     pub(super) fn project_causes(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         for index in 0..self.native.causes.len() {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let cause = &self.native.causes.as_slice()[index];
+            let cause = self
+                .native
+                .causes
+                .as_slice()
+                .get(index)
+                .ok_or_else(|| latch_registry_row(c))?;
             if let Some(source) = &cause.source {
                 c.require_source_range(source)?;
             }
