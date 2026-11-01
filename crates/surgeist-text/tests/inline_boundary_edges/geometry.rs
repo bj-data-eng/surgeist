@@ -997,3 +997,6 @@ mod deleted_only_box_family;
 
 #[path = "native_endpoint_uniqueness.rs"]
 mod native_endpoint_uniqueness;
+
+#[path = "geometry/trailing_body.rs"]
+mod trailing_body;
