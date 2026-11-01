@@ -183,6 +183,47 @@ impl SessionError {
 fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))
 }
+/// The position after `cursor`. Every caller reaches it only after the work
+/// list yielded an entry at `cursor`, so `cursor` is below an in-memory length
+/// (at most `isize::MAX`) and the successor cannot overflow.
+fn next_cursor(cursor: usize) -> usize {
+    cursor.saturating_add(1)
+}
+/// The successor of a record count or position, or the registry-row stop when
+/// it would overflow.
+fn successor(control: &mut ParseControl, value: usize) -> Result<usize, SessionError> {
+    value
+        .checked_add(1)
+        .ok_or_else(|| latch_registry_row(control))
+}
+/// How many of the flags are set; at most `N`.
+fn count_set<const N: usize>(flags: [bool; N]) -> usize {
+    flags.into_iter().filter(|flag| *flag).count()
+}
+impl PayloadStorage {
+    /// The registry row at `slot`. A slot past the registry is an impossible
+    /// registry state, latched as the controller's first stop.
+    fn row(
+        &self,
+        control: &mut ParseControl,
+        slot: usize,
+    ) -> Result<&RetainedPayload, SessionError> {
+        self.values
+            .get(slot)
+            .ok_or_else(|| latch_registry_row(control))
+    }
+    /// As [`Self::row`], for editing.
+    fn row_mut(
+        &mut self,
+        control: &mut ParseControl,
+        slot: usize,
+    ) -> Result<&mut RetainedPayload, SessionError> {
+        match self.values.get_mut(slot) {
+            Some(row) => Ok(row),
+            None => Err(latch_registry_row(control)),
+        }
+    }
+}
 /// The element record at `node`. A missing position or a record of another
 /// kind is an impossible registry state, latched as the controller's first stop.
 fn element_record<'a>(

@@ -113,7 +113,7 @@ impl SessionStorage {
                     Some(EffectFrame::UpdateSelect {
                         select,
                         list,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                     }),
                 )?;
                 let (_, SelectMetadata::Selectedcontent(state)) =
@@ -277,7 +277,7 @@ impl SessionStorage {
                     Some(EffectFrame::CloneOptionChildren {
                         option,
                         fragment,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                     }),
                 )?;
                 self.start_effect(
@@ -732,33 +732,39 @@ impl SessionStorage {
         payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
         payload_write::<usize>(c, 1)?;
         let mut scanner = surgeist_html::bounded::IntegerPrefixScanner::new(true);
-        let mut position = 0;
-        while position < value.len() {
+        for &unit in value.code_units() {
             c.charge(WorkCategory::InspectByte, 2)?;
             payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
-            let unit = value.code_units()[position];
             if !scanner.feed(unit) {
                 break;
             }
             payload_write::<usize>(c, 1)?;
-            position += 1;
         }
         let Ok(prefix) = scanner.finish() else {
             return Ok(fallback);
         };
         payload_write::<(usize, usize)>(c, 2)?;
         let mut result = 0usize;
-        let mut position = prefix.start();
-        while position < prefix.end() {
+        let digits = value
+            .code_units()
+            .get(prefix.start()..prefix.end())
+            .ok_or_else(|| latch_registry_row(c))?;
+        for &unit in digits {
             c.charge(WorkCategory::InspectByte, 2)?;
-            let unit = value.code_units()[position];
             if prefix.is_negative() && unit != b'0' as u16 {
                 return Ok(fallback);
             }
             payload_write::<usize>(c, 1)?;
-            result = (result * 10 + usize::from(unit - b'0' as u16)).min(2);
+            // The scanner admits only ASCII digits in the prefix.
+            let Some(digit) = unit.checked_sub(b'0' as u16).filter(|digit| *digit <= 9) else {
+                return Err(latch_registry_row(c));
+            };
+            // `result` is at most 2 before the step, so nothing saturates.
+            result = result
+                .saturating_mul(10)
+                .saturating_add(usize::from(digit))
+                .min(2);
             payload_write::<usize>(c, 1)?;
-            position += 1;
         }
         Ok(result)
     }

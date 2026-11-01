@@ -222,20 +222,24 @@ impl RangeStaging {
             WorkCategory::CopyByte,
             mem::size_of::<RangeNumericHeaders>() as u64,
         )?;
-        fn actual_header(len: usize, capacity: usize) -> RangeBufferHeader {
-            RangeBufferHeader::new(len, capacity)
-                .expect("actual non-ZST Vec length/capacity obey allocation invariants")
+        // An actual non-ZST Vec obeys the header's allocation invariants; a
+        // violation is reported as the capacity-mismatch stop.
+        fn actual_header(
+            c: &mut ParseControl,
+            len: usize,
+            capacity: usize,
+        ) -> Result<RangeBufferHeader, SessionError> {
+            RangeBufferHeader::new(len, capacity).map_err(|error| numeric_failure(c, error))
         }
-        Ok(RangeNumericHeaders::new(
-            self.buffers
-                .as_array()
-                .each_ref()
-                .map(|buffer| actual_header(buffer.len(), buffer.capacity())),
-            self.output.as_ref().map_or_else(
-                || actual_header(0, 0),
-                |output| actual_header(output.len(), output.capacity()),
-            ),
-        ))
+        let mut buffers = [RangeBufferHeader::default(); SCRATCH_COUNT];
+        for (header, buffer) in buffers.iter_mut().zip(self.buffers.as_array()) {
+            *header = actual_header(c, buffer.len(), buffer.capacity())?;
+        }
+        let output = match &self.output {
+            Some(output) => actual_header(c, output.len(), output.capacity())?,
+            None => actual_header(c, 0, 0)?,
+        };
+        Ok(RangeNumericHeaders::new(buffers, output))
     }
     fn scratch_empty(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         for role in RangeScratchRole::ALL {
@@ -815,13 +819,13 @@ impl SessionStorage {
                             c.charge(WorkCategory::RecordVisit, 1)?;
                             let mut any = raw.len() == keyword_len;
                             if any {
-                                for index in 0..keyword_len {
+                                // The lengths are equal, so the enumeration covers
+                                // the keyword exactly.
+                                for (index, &unit) in raw.code_units().iter().enumerate() {
                                     c.charge(WorkCategory::InspectByte, 2)?;
                                     c.charge(WorkCategory::StateStep, 1)?;
-                                    if !HtmlInputNumericStep::any_keyword_unit_matches(
-                                        index,
-                                        raw.code_units()[index],
-                                    ) {
+                                    if !HtmlInputNumericStep::any_keyword_unit_matches(index, unit)
+                                    {
                                         any = false;
                                         break;
                                     }

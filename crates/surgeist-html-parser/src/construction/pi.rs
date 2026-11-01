@@ -115,7 +115,7 @@ impl SessionStorage {
                                 Some(unit)
                             }
                             None if offset == pi.data().len() => None,
-                            None => return Err(SessionError::WrongToken),
+                            None => return Err(latch_registry_row(c)),
                         };
                         Reply::Unit(unit)
                     }
@@ -142,9 +142,10 @@ impl SessionStorage {
                         }
                         .ok_or(SessionError::WrongToken)?;
                         let begin = pending.buffer.len();
-                        pending
-                            .buffer
-                            .extend_units(units.get(..len).ok_or(SessionError::WrongToken)?, c)?;
+                        pending.buffer.extend_units(
+                            units.get(..len).ok_or_else(|| latch_registry_row(c))?,
+                            c,
+                        )?;
                         self.pi_piece_origins(
                             c,
                             node,

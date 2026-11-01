@@ -105,14 +105,16 @@ fn qualify(
     }
     for (index, group) in data.groups.iter().enumerate() {
         header(c)?;
-        if group.cause >= data.causes.len()
-            || group
-                .retirement
-                .is_some_and(|cause| cause >= data.causes.len())
+        let Some(group_cause) = data.causes.get(group.cause) else {
+            return Err(SessionError::WrongToken);
+        };
+        if group
+            .retirement
+            .is_some_and(|cause| cause >= data.causes.len())
         {
             return Err(SessionError::WrongToken);
         }
-        if let Some(range) = data.causes[group.cause].computation {
+        if let Some(range) = group_cause.computation {
             for edge in range.edges() {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if edge.is_some_and(|edge| edge.group >= index) {
@@ -127,9 +129,9 @@ fn qualify(
                 value,
             } => {
                 let end = start.checked_add(length).ok_or(SessionError::WrongToken)?;
-                if end > data.origins.len() {
+                let Some(origins) = data.origins.get(start..end) else {
                     return Err(SessionError::WrongToken);
-                }
+                };
                 match value {
                     LeafValue::Pending => return Err(SessionError::WrongToken),
                     LeafValue::Empty if group.units == 0 => {}
@@ -148,7 +150,7 @@ fn qualify(
                         }
                     }
                 }
-                for origin in &data.origins[start..end] {
+                for origin in origins {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     c.charge(
                         WorkCategory::InspectByte,
@@ -165,7 +167,11 @@ fn qualify(
                     return Err(SessionError::WrongToken);
                 }
                 header(c)?;
-                if data.groups[original].units != group.units {
+                if data
+                    .groups
+                    .get(original)
+                    .is_none_or(|original| original.units != group.units)
+                {
                     return Err(SessionError::WrongToken);
                 }
             }
@@ -178,9 +184,17 @@ fn qualify(
                     return Err(SessionError::WrongToken);
                 }
                 header(c)?;
-                let left = data.groups[original].units;
+                let left = data
+                    .groups
+                    .get(original)
+                    .ok_or(SessionError::WrongToken)?
+                    .units;
                 header(c)?;
-                let right = data.groups[incoming].units;
+                let right = data
+                    .groups
+                    .get(incoming)
+                    .ok_or(SessionError::WrongToken)?
+                    .units;
                 if left != offset || offset.checked_add(right) != Some(group.units) {
                     return Err(SessionError::WrongToken);
                 }
@@ -268,10 +282,15 @@ impl<'a> PreparedHistory<'a> {
     }
     /// All useful work and receiver admissions precede the consuming caller's
     /// final checkpoint/snapshot. Commit only moves the qualified actual slot.
-    pub(crate) fn commit(self) -> FrozenHistory {
-        FrozenHistory {
-            arena: self.input.take().expect("exclusive qualified history slot"),
-        }
+    ///
+    /// The slot was qualified as occupied and is exclusively borrowed, so an
+    /// empty slot is an impossible custody state, reported as the registry-row
+    /// stop (there is no controller to latch it on here).
+    pub(crate) fn commit(self) -> Result<FrozenHistory, ParseStop> {
+        let arena = self.input.take().ok_or(ParseStop::InternalInvariant(
+            crate::parser::control::Invariant::RegistryRow,
+        ))?;
+        Ok(FrozenHistory { arena })
     }
 }
 
@@ -1576,5 +1595,19 @@ mod tests {
         }
         owner.release(&mut c).unwrap();
         zero(&c);
+    }
+
+    #[test]
+    fn committing_a_prepared_history_over_an_empty_slot_reports_the_registry_row() {
+        // The slot is exclusively borrowed and was qualified as occupied; an
+        // empty one is an impossible custody state, never a panic.
+        let mut slot: Option<FrozenArena> = None;
+        let prepared = PreparedHistory { input: &mut slot };
+        assert_eq!(
+            prepared.commit().err(),
+            Some(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::RegistryRow
+            ))
+        );
     }
 }

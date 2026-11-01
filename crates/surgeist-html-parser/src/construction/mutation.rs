@@ -2,31 +2,6 @@
 //! Family policies remain source-specific; this owner is the single backing edit.
 use super::*;
 
-impl PayloadStorage {
-    /// The registry row at `slot`. A slot past the registry is an impossible
-    /// registry state, latched as the controller's first stop.
-    pub(super) fn row(
-        &self,
-        control: &mut ParseControl,
-        slot: usize,
-    ) -> Result<&RetainedPayload, SessionError> {
-        self.values
-            .get(slot)
-            .ok_or_else(|| latch_registry_row(control))
-    }
-    /// As [`Self::row`], for editing.
-    pub(super) fn row_mut(
-        &mut self,
-        control: &mut ParseControl,
-        slot: usize,
-    ) -> Result<&mut RetainedPayload, SessionError> {
-        match self.values.get_mut(slot) {
-            Some(row) => Ok(row),
-            None => Err(latch_registry_row(control)),
-        }
-    }
-}
-
 #[cfg(test)]
 #[derive(Clone, Copy)]
 pub(super) enum ManagedFamily {

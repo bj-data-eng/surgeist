@@ -244,6 +244,16 @@ impl SessionStorage {
         else {
             return Err(latch_registry_row(c));
         };
+        // The count this swap will record, settled before anything is taken so
+        // an overflow leaves the row and the edit untouched.
+        let next_shifted = match (position, &*storage) {
+            (Some(_), Some(AttributeStorage::Removing { shifted, .. })) => Some(
+                shifted
+                    .checked_add(1)
+                    .ok_or_else(|| latch_registry_row(c))?,
+            ),
+            _ => None,
+        };
         let taken = storage.take();
         let Some(AttributeStorage::Removing {
             values,
@@ -281,8 +291,8 @@ impl SessionStorage {
             Ok::<_, SessionError>(())
         })();
         if result.is_ok() {
-            if position.is_some() {
-                shifted = shifted.saturating_add(1);
+            if let Some(next) = next_shifted {
+                shifted = next;
             } else {
                 popped = true;
             }
@@ -1181,6 +1191,30 @@ mod tests {
         assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
         assert_eq!(c.stop(), Some(invariant), "latched as the first stop");
         assert!(!storage.construction.has_attribute_edit());
+        // The refusal came before anything was taken: the row still holds the
+        // state it was given. Put the frozen state back for the release check.
+        let Some(RetainedPayload::Attributes(slot)) = storage.payloads.values.get_mut(container)
+        else {
+            panic!("attribute container")
+        };
+        let Some(AttributeStorage::Removing {
+            values,
+            allocation,
+            shared,
+            element,
+            shifted: usize::MAX,
+            popped: false,
+            ..
+        }) = slot.take()
+        else {
+            panic!("untouched removing attributes")
+        };
+        *slot = Some(AttributeStorage::Frozen {
+            values,
+            allocation,
+            shared,
+            element,
+        });
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         zero(&c);

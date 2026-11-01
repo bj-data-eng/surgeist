@@ -293,6 +293,21 @@ impl ParseEvidence {
         }
         Ok(reference.index)
     }
+    /// The occurrence a validated reference names. A position past the
+    /// occurrences cannot follow `require_lexical`; it is reported as the same
+    /// foreign-evidence stop.
+    fn lexical_occurrence(
+        &self,
+        c: &mut ParseControl,
+        index: usize,
+    ) -> Result<&LexicalOccurrence, ParseStop> {
+        self.native
+            .lexical
+            .occurrences
+            .as_slice()
+            .get(index)
+            .ok_or_else(|| c.fail_invariant(Invariant::ForeignEvidence))
+    }
     pub(crate) fn lexical_data_offset(
         &self,
         c: &mut ParseControl,
@@ -301,7 +316,7 @@ impl ParseEvidence {
         let index = self.require_lexical(c, reference)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         c.charge(WorkCategory::InspectByte, mem::size_of::<usize>() as u64)?;
-        Ok(self.native.lexical.occurrences.as_slice()[index].data_units)
+        Ok(self.lexical_occurrence(c, index)?.data_units)
     }
     pub(crate) fn lexical_data_commit(
         &mut self,
@@ -312,7 +327,7 @@ impl ParseEvidence {
     ) -> Result<(), ParseStop> {
         let index = self.require_lexical(c, reference)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let occurrence = &self.native.lexical.occurrences.as_slice()[index];
+        let occurrence = self.lexical_occurrence(c, index)?;
         if occurrence.disposition != LexicalDisposition::Draft
             || occurrence.data_units != old
             || new < old
@@ -325,7 +340,7 @@ impl ParseEvidence {
             .lexical
             .occurrences
             .get_mut(index, c)?
-            .expect("qualified data occurrence")
+            .ok_or_else(|| c.fail_invariant(Invariant::ForeignEvidence))?
             .data_units = new;
         Ok(())
     }
@@ -460,7 +475,7 @@ impl ParseEvidence {
             return Ok(());
         };
         let index = self.require_lexical(c, reference)?;
-        let record = &self.native.lexical.occurrences.as_slice()[index];
+        let record = self.lexical_occurrence(c, index)?;
         if record.kind != LexicalKind::Attribute
             || record.disposition != LexicalDisposition::StoredAttribute
         {
@@ -475,7 +490,7 @@ impl ParseEvidence {
             .lexical
             .occurrences
             .get_mut(index, c)?
-            .expect("qualified attribute")
+            .ok_or_else(|| c.fail_invariant(Invariant::ForeignEvidence))?
             .disposition = LexicalDisposition::AlreadyPresentAttribute;
         Ok(())
     }
@@ -489,7 +504,7 @@ impl ParseEvidence {
             return Ok(());
         };
         let index = self.require_lexical(c, reference)?;
-        let record = &self.native.lexical.occurrences.as_slice()[index];
+        let record = self.lexical_occurrence(c, index)?;
         if record.disposition == LexicalDisposition::Emitted {
             c.charge(WorkCategory::RecordWrite, 1)?;
             c.charge(
@@ -500,7 +515,7 @@ impl ParseEvidence {
                 .lexical
                 .occurrences
                 .get_mut(index, c)?
-                .expect("qualified occurrence")
+                .ok_or_else(|| c.fail_invariant(Invariant::ForeignEvidence))?
                 .disposition = if ignored {
                 LexicalDisposition::Ignored
             } else {
@@ -538,9 +553,15 @@ impl ParseEvidence {
                 .ok_or(SessionError::WrongToken)?
                 .try_push(c, row)?;
         }
-        for index in 0..self.native.lexical.occurrences.len() {
+        for (index, occurrence) in self
+            .native
+            .lexical
+            .occurrences
+            .as_slice()
+            .iter()
+            .enumerate()
+        {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let occurrence = &self.native.lexical.occurrences.as_slice()[index];
             if matches!(
                 occurrence.disposition,
                 LexicalDisposition::Draft | LexicalDisposition::Emitted
@@ -574,9 +595,8 @@ impl ParseEvidence {
                 .ok_or(SessionError::WrongToken)?
                 .try_push(c, row)?;
         }
-        for index in 0..self.native.lexical.parts.len() {
+        for (index, part) in self.native.lexical.parts.as_slice().iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 2)?;
-            let part = &self.native.lexical.parts.as_slice()[index];
             let occurrence = self
                 .native
                 .lexical
@@ -617,9 +637,8 @@ impl ParseEvidence {
                 .ok_or(SessionError::WrongToken)?
                 .try_push(c, row)?;
         }
-        for index in 0..self.native.lexical.omissions.len() {
+        for (index, omission) in self.native.lexical.omissions.as_slice().iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let omission = &self.native.lexical.omissions.as_slice()[index];
             c.require_source_range(&omission.source)?;
             payload_write::<NativeAssociation>(c, 1)?;
             c.charge(WorkCategory::ProviderCall, 1)?;

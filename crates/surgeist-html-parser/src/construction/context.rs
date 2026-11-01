@@ -149,6 +149,22 @@ pub(super) enum ContextEffect {
 }
 
 impl SessionStorage {
+    /// The fragment context of a parse that has one. Every captured reference
+    /// belongs to such a parse, so its absence is an impossible registry state
+    /// latched as the controller's first stop.
+    fn fragment_storage(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<&FragmentContextStorage, SessionError> {
+        self.fragment.as_ref().ok_or_else(|| latch_registry_row(c))
+    }
+    /// As [`Self::fragment_storage`], for editing.
+    fn fragment_storage_mut(
+        &mut self,
+        c: &mut ParseControl,
+    ) -> Result<&mut FragmentContextStorage, SessionError> {
+        self.fragment.as_mut().ok_or_else(|| latch_registry_row(c))
+    }
     pub(super) fn captured_contents_document(
         &mut self,
         c: &mut ParseControl,
@@ -182,7 +198,7 @@ impl SessionStorage {
             .node(document.subject())
             .map_err(|_| SessionError::ContextUnavailable)?;
         let crate::HtmlCapturedNodeKind::Document(facts) = node.kind() else {
-            unreachable!("qualified captured document")
+            return Err(latch_registry_row(c));
         };
         let created_by_template_owner_algorithm = match facts.template_role() {
             crate::HtmlTemplateDocumentRole::InertTemplate => true,
@@ -225,7 +241,9 @@ impl SessionStorage {
         if template_contents_owner_document(false, cached.is_some())
             == HtmlTemplateContentsOwnerDocument::AssociatedInertDocument
         {
-            let index = cached.expect("shared rule selected actual captured associated owner");
+            let Some(index) = cached else {
+                return Err(latch_registry_row(c));
+            };
             self.validate_captured_document(c, &index)?;
             return Ok(DocumentRef::Captured(index));
         }
@@ -303,12 +321,10 @@ impl SessionStorage {
             .fragment
             .as_mut()
             .ok_or(SessionError::ContextUnavailable)?;
-        let ContextEffect::TemplateCache { inert, .. } = fragment
-            .effects
-            .get_mut(effect, c)?
-            .expect("retained cache effect")
+        let Some(ContextEffect::TemplateCache { inert, .. }) =
+            fragment.effects.get_mut(effect, c)?
         else {
-            unreachable!()
+            return Err(latch_registry_row(c));
         };
         *inert = Some(node.index);
         fragment.unbound_effects = fragment.unbound_effects.saturating_sub(1);
@@ -396,11 +412,13 @@ impl ParserArenaSession {
         payload_write::<Option<FragmentContextStorage>>(c, 1)?;
         c.charge(
             WorkCategory::ProviderCall,
-            5 + u64::from(context.nearest_form().is_some())
-                + u64::from(matches!(
+            // Five unconditional handles plus at most two present ones.
+            5_u64
+                .saturating_add(u64::from(context.nearest_form().is_some()))
+                .saturating_add(u64::from(matches!(
                     context.root_registry(),
                     crate::HtmlCapturedRegistry::Registry(_)
-                )),
+                ))),
         )?;
         // One admitted source-created opaque origin. Its zero-sized shared
         // payload uses the existing provider boundary: Arc allocator/header
@@ -450,7 +468,7 @@ impl ParserArenaSession {
             Some(target),
         )?;
         payload_write::<Option<usize>>(c, 1)?;
-        storage.fragment.as_mut().expect("retained context").output = Some(output.index);
+        storage.fragment_storage_mut(c)?.output = Some(output.index);
         payload_write::<FragmentBootstrap>(c, 2)?;
         Ok(FragmentBootstrap { root, output })
     }
@@ -656,11 +674,7 @@ impl SessionStorage {
             match evidence.retain_captured_namespace(
                 c,
                 provenance::CapturedParserTrigger::new(
-                    &self
-                        .fragment
-                        .as_ref()
-                        .expect("qualified actual context")
-                        .context,
+                    context,
                     provenance::CapturedCauseRole::ContextNamespace,
                 ),
                 frozen.text(),
@@ -791,7 +805,7 @@ impl SessionStorage {
         // second lookup is possible only for a non-null internal is.
         let potential_definition = html && (is_value.is_some() || charged_custom_name(name, c)?);
         if potential_definition && let RegistryRef::Captured(index) = registry {
-            let context = &self.fragment.as_ref().expect("qualified fragment").context;
+            let context = &self.fragment_storage(c)?.context;
             let id = index;
             c.charge(WorkCategory::RecordVisit, 1)?;
             if matches!(
@@ -938,7 +952,7 @@ impl SessionStorage {
         if matches!(previous, RegistryRef::Null) && shadow.is_some_and(|s| s.keep_registry_null) {
             return Ok(());
         }
-        let context = &self.fragment.as_ref().expect("actual context").context;
+        let context = &self.fragment_storage(c)?.context;
         let global = match &previous {
             RegistryRef::Null => true,
             RegistryRef::Unavailable => {
@@ -987,7 +1001,7 @@ impl SessionStorage {
                 DocumentRef::Owned(_) => RegistryRef::Null,
                 DocumentRef::Captured(index) => {
                     c.charge(WorkCategory::RecordVisit, 1)?;
-                    let context = &self.fragment.as_ref().expect("actual context").context;
+                    let context = &self.fragment_storage(c)?.context;
                     let document = context
                         .capture()
                         .node(index.subject())
@@ -1103,11 +1117,11 @@ fn insensitive(
     if value.len() != literal.len() {
         return Ok(false);
     }
-    for (offset, right) in literal.bytes().enumerate() {
+    // The lengths are equal, so the pairs cover both sequences exactly.
+    for (&left, right) in value.code_units().iter().zip(literal.bytes()) {
         c.charge(WorkCategory::InspectByte, 3)?;
-        let left = value.code_units()[offset];
         let left = if matches!(left, 65..=90) {
-            left + 32
+            left | 0x20
         } else {
             left
         };
@@ -1173,7 +1187,8 @@ impl ParserArenaSession {
             .ok_or_else(|| latch_registry_row(c))?
             .kind()
         else {
-            unreachable!()
+            // `template_slot` qualified this record as an element.
+            return Err(latch_registry_row(c));
         };
         let mut mode = None;
         let mut delegates = false;
@@ -1270,11 +1285,11 @@ impl ParserArenaSession {
                 (ShadowHostKey::Owned(host), document)
             }
             DeclarativeShadowHost::Captured(host) => {
-                let context = &storage
+                let fragment = storage
                     .fragment
                     .as_ref()
-                    .ok_or(SessionError::ContextUnavailable)?
-                    .context;
+                    .ok_or(SessionError::ContextUnavailable)?;
+                let context = &fragment.context;
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 if host != context.context_element() {
                     return Err(SessionError::ContextUnavailable);
@@ -1290,13 +1305,7 @@ impl ParserArenaSession {
                 if !eligible {
                     return Ok(false);
                 }
-                for effect in storage
-                    .fragment
-                    .as_ref()
-                    .expect("context")
-                    .effects
-                    .as_slice()
-                {
+                for effect in fragment.effects.as_slice() {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     if let ContextEffect::AttachShadow {
                         host: ShadowHostKey::Captured(actual),
@@ -1388,7 +1397,9 @@ impl ParserArenaSession {
             let _ = release_logical(c, &storage.control, HtmlParseResource::SourceMapEntries, 1);
             return Err(stop.into());
         }
-        fragment.source_entries += 1;
+        // Each entry pairs with one successful `acquire` above, so the count
+        // never exceeds the resource's own checked total.
+        fragment.source_entries = fragment.source_entries.saturating_add(1);
         fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
         let result = (|| {
             storage.prepare_payload_slot_owned(c)?;
@@ -1418,25 +1429,20 @@ impl ParserArenaSession {
                     creation: None,
                 })
                 .map_err(|_| latch_registry_row(c))?;
-            let local_host = match &storage
-                .fragment
-                .as_ref()
-                .expect("context")
-                .effects
-                .as_slice()[slot]
-            {
-                ContextEffect::AttachShadow {
+            let local_host = match storage.fragment_storage(c)?.effects.as_slice().get(slot) {
+                Some(ContextEffect::AttachShadow {
                     host: ShadowHostKey::Owned(host),
                     ..
-                } => Some(*host),
-                _ => None,
+                }) => Some(*host),
+                Some(_) => None,
+                None => return Err(latch_registry_row(c)),
             };
             payload_write::<Option<usize>>(c, 1)?;
             payload_write::<usize>(c, 1)?;
             payload_write::<[bool; 3]>(c, 3)?;
             c.charge(
                 WorkCategory::ProviderCall,
-                2 + u64::from(local_host.is_some()),
+                2_u64.saturating_add(u64::from(local_host.is_some())),
             )?;
             let template_handle = storage
                 .construction
@@ -1465,22 +1471,20 @@ impl ParserArenaSession {
                 }
             };
             // Preflight the real effect receiver before the fixed native commit.
-            let effect = storage
-                .fragment
-                .as_mut()
-                .expect("context")
-                .effects
-                .get_mut(slot, c)?
-                .expect("owned effect");
-            let ContextEffect::AttachShadow {
+            let Some(ContextEffect::AttachShadow {
                 contents,
                 declarative,
                 available_to_internals,
                 keep_registry_null,
                 ..
-            } = effect
+            }) = storage
+                .fragment
+                .as_mut()
+                .ok_or_else(|| latch_registry_row(c))?
+                .effects
+                .get_mut(slot, c)?
             else {
-                unreachable!("prepared attachment effect")
+                return Err(latch_registry_row(c));
             };
             storage.construction.apply(c, command, &[])?;
             *contents = Some(root.index);
@@ -1782,7 +1786,7 @@ impl SessionStorage {
     ) -> Result<RegistryRef, SessionError> {
         Ok(match registry {
             RegistryRef::Captured(index) => {
-                let context = &self.fragment.as_ref().expect("actual context").context;
+                let context = &self.fragment_storage(c)?.context;
                 let id = &index;
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 match context
@@ -2491,7 +2495,7 @@ impl FrozenArena {
                     if !matches!(
                         view.arena
                             .node_at(*inert)
-                            .expect("qualified context node")
+                            .ok_or(SessionError::ForeignNode)?
                             .kind(),
                         HtmlNodeKind::Document(_)
                     ) {
@@ -2553,12 +2557,16 @@ impl FrozenArena {
 }
 
 impl<'a> FrozenFragmentEffects<'a> {
+    /// The effect at `index`. Every row is qualified before publication and the
+    /// report is immutable afterwards; a row that no longer qualifies reads as
+    /// absent rather than panicking.
     pub fn effect(&self, index: usize) -> Option<FrozenFragmentEffect<'a>> {
-        self.get(index).expect("prepublication-qualified effect")
+        self.get(index).ok().flatten()
     }
+    /// The registry binding at `index`, with the same qualification rule as
+    /// [`Self::effect`].
     pub fn registry(&self, index: usize) -> Option<FrozenFragmentRegistryBinding<'a>> {
-        self.registry_binding(index)
-            .expect("prepublication-qualified registry")
+        self.registry_binding(index).ok().flatten()
     }
 }
 impl FrozenFragmentRegistryBinding<'_> {

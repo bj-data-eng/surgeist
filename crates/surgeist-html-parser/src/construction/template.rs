@@ -204,7 +204,7 @@ impl SessionStorage {
                     .construction
                     .node_at(parent)
                     .ok_or_else(|| latch_registry_row(c))?
-                    .child_at(position + 1)
+                    .child_at(successor(c, position)?)
                     .map(|node| node.position()));
             }
         }
@@ -411,7 +411,9 @@ impl SessionStorage {
         ) {
             HtmlTemplateContentsOwnerDocument::CurrentDocument => Ok(DocumentRef::Owned(document)),
             HtmlTemplateContentsOwnerDocument::AssociatedInertDocument => {
-                let inert = inert.expect("shared rule selected actual associated owner");
+                let Some(inert) = inert else {
+                    return Err(latch_registry_row(c));
+                };
                 self.document_slot(c, inert)?;
                 Ok(DocumentRef::Owned(inert))
             }
@@ -511,11 +513,13 @@ impl SessionStorage {
             }
             self.prepare_payload_slot_owned(c)?;
             let facts = self.payloads.values.len();
+            let records = self.construction.storage(c)?.len();
+            let contents = successor(c, records)?;
             self.payloads
                 .push_row(RetainedPayload::Template {
                     node: None,
                     state: TemplateMetadata::fresh(
-                        self.construction.storage(c)?.len() + 1,
+                        contents,
                         HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
                     ),
                 })
@@ -542,14 +546,15 @@ impl SessionStorage {
         } else {
             false
         };
-        let native = 1 + usize::from(template) + usize::from(inert_missing);
-        let facts = 1 + 2 * usize::from(template) + 2 * usize::from(inert_missing);
+        let native = count_set([true, template, inert_missing]);
+        let facts = count_set([true, template, template, inert_missing, inert_missing]);
         c.check_acquire_many(&[
             (HtmlParseResource::ManagedNodes, native as u64),
             (HtmlParseResource::ManagedEdges, u64::from(template)),
             (
                 HtmlParseResource::AuxiliaryEntries,
-                (2 * native + facts) as u64,
+                // At most 3 native records and 5 facts.
+                native.saturating_mul(2).saturating_add(facts) as u64,
             ),
         ])?;
         self.construction.reserve_records(c, native)?;
@@ -588,11 +593,13 @@ impl SessionStorage {
         let facts = if template {
             self.prepare_payload_slot_owned(c)?;
             let slot = self.payloads.values.len();
+            let records = self.construction.storage(c)?.len();
+            let contents = successor(c, records)?;
             self.payloads
                 .push_row(RetainedPayload::Template {
                     node: None,
                     state: TemplateMetadata::fresh(
-                        self.construction.storage(c)?.len() + 1,
+                        contents,
                         HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
                     ),
                 })
@@ -655,10 +662,12 @@ impl SessionStorage {
         };
         payload_write::<Option<usize>>(
             c,
-            u64::from(binding.is_some())
-                + u64::from(contents_binding.is_some())
-                + u64::from(facts.is_some())
-                + u64::from(registry.is_some()),
+            count_set([
+                binding.is_some(),
+                contents_binding.is_some(),
+                facts.is_some(),
+                registry.is_some(),
+            ]) as u64,
         )?;
         if facts.is_some() {
             payload_write::<usize>(c, 1)?;
@@ -692,7 +701,7 @@ impl SessionStorage {
             else {
                 return Err(latch_registry_row(c));
             };
-            *bound = Some(node.index + 1);
+            *bound = Some(successor(c, node.index)?);
             self.payloads
                 .join_row(slot)
                 .map_err(|_| latch_registry_row(c))?;
@@ -704,7 +713,7 @@ impl SessionStorage {
                 return Err(latch_registry_row(c));
             };
             *bound = Some(node.index);
-            state.contents = node.index + 1;
+            state.contents = successor(c, node.index)?;
             self.payloads
                 .join_row(slot)
                 .map_err(|_| latch_registry_row(c))?;

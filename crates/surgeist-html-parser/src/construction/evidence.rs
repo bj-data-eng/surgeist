@@ -125,9 +125,10 @@ impl DiagnosticEvidenceView<'_> {
         &self,
         index: usize,
     ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
-        self.records
-            .get(index)
-            .map(|record| (record, &self.locations[record.location]))
+        let record = self.records.get(index)?;
+        // Committed rows name a committed location; a row that does not reads
+        // as absent rather than panicking.
+        Some((record, self.locations.get(record.location)?))
     }
     #[cfg(test)]
     pub fn records_pointer(&self) -> *const DiagnosticRecord {
@@ -348,27 +349,34 @@ impl ParseEvidence {
         if c.stop().is_none() {
             return Err(SessionError::WrongToken);
         }
-        let Some(evidence) = input.as_ref() else {
+        let Some(evidence) = input.take() else {
             return Ok(None);
         };
-        evidence.records.require_disposal_owner(c)?;
-        evidence.locations.require_disposal_owner(c)?;
-        evidence.native.preflight_failed_disposal(c)?;
-        let Some(Self {
+        // Every refusal gives the evidence back to its slot untouched.
+        let preflight = (|| {
+            evidence.records.require_disposal_owner(c)?;
+            evidence.locations.require_disposal_owner(c)?;
+            evidence.native.preflight_failed_disposal(c)?;
+            Ok::<(), ParseStop>(())
+        })();
+        if let Err(stop) = preflight {
+            *input = Some(evidence);
+            return Err(stop.into());
+        }
+        let Self {
             identity,
             identity_allocation,
             records,
             locations,
             native,
             diagnostics_taken: _,
-        }) = input.take()
-        else {
-            unreachable!("the exclusively borrowed slot was preflighted")
-        };
+        } = evidence;
         // Same-owner flat vectors, exact checked capacities and their aggregate
         // logical/capacity totals were proved above. No ledger mutation intervenes,
-        // so each cleanup subtraction is covered by that aggregate proof.
-        native.release(c).expect("preflighted native cleanup");
+        // so each cleanup subtraction is covered by that aggregate proof. The
+        // controller is already stopped, so a refusal here would be secondary
+        // (latched by its owner); the diagnostics are handed on regardless.
+        let _ = native.release(c);
         Ok(Some(FailureDiagnosticEvidence {
             _identity: identity,
             _identity_allocation: Some(identity_allocation),
@@ -415,18 +423,19 @@ impl ParserArenaSession {
         if storage.evidence.is_some() {
             return Err(SessionError::WrongToken);
         }
-        storage.evidence = Some(ParseEvidence::prepare(c)?);
+        // The evidence is retained before it is initialized, so a refusal
+        // leaves it with the session for cleanup.
         storage
             .evidence
-            .as_mut()
-            .expect("retained evidence")
+            .insert(ParseEvidence::prepare(c)?)
             .initialize_native_source(c, source)?;
         let slots = storage.prepare_node_causes(c, 1)?;
-        if let Some(slot) = slots[0] {
+        let [first, _] = slots;
+        if let Some(slot) = first {
             let RetainedPayload::ConstructionCause { node, .. } =
-                &mut storage.payloads.values[slot]
+                storage.payloads.row_mut(c, slot)?
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             *node = Some(0);
         }

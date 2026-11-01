@@ -324,7 +324,11 @@ impl SessionStorage {
                         self.meta_document_url(c, document)?
                     }
                     Some(bounded::HtmlMetaRefreshSyntaxTarget::UrlString(range)) => {
-                        self.meta_refresh_url(c, node, &content.code_units()[range])?
+                        let units = content
+                            .code_units()
+                            .get(range)
+                            .ok_or_else(|| latch_registry_row(c))?;
+                        self.meta_refresh_url(c, node, units)?
                     }
                 };
                 match outcome {
@@ -719,19 +723,19 @@ fn theme_color(
     Result<Option<surgeist_color::Color>, crate::parser::control::HtmlColorProcessingError>,
     SessionError,
 > {
-    while let Some(unit) = input.first() {
+    while let Some((unit, rest)) = input.split_first() {
         c.charge(WorkCategory::InspectByte, 2)?;
         if !bounded::is_ascii_whitespace(*unit) {
             break;
         }
-        input = &input[1..];
+        input = rest;
     }
-    while let Some(unit) = input.last() {
+    while let Some((unit, rest)) = input.split_last() {
         c.charge(WorkCategory::InspectByte, 2)?;
         if !bounded::is_ascii_whitespace(*unit) {
             break;
         }
-        input = &input[..input.len() - 1];
+        input = rest;
     }
     let mut owner = surgeist_css::color::controlled::CssColorOperationOwner::new();
     let facts = surgeist_css::color::CssColorFacts::new(

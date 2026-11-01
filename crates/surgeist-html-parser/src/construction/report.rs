@@ -24,7 +24,7 @@ impl SharedReportStorage<'_, '_> {
     }
     pub(crate) fn commit(self) -> Result<ReportStorage, ParseStop> {
         self.sharing.commit()?;
-        Ok(self.storage.commit())
+        self.storage.commit()
     }
 }
 impl<'a> PreparedReportStorage<'a> {
@@ -118,7 +118,7 @@ impl<'a> PreparedReportStorage<'a> {
                             return Err(SessionError::WrongToken);
                         }
                     }
-                    associated_usage.checked_sum(state.diagnostic_usage(), c)?;
+                    associated_usage.checked_sum(state.diagnostic_usage(c)?, c)?;
                 }
                 RetainedPayload::Dialog { node, state } => {
                     checked_raw(storage, state.value, c)?;
@@ -592,12 +592,12 @@ impl<'a> PreparedReportStorage<'a> {
             associated_slot,
         })
     }
-    pub(crate) fn commit(self) -> ReportStorage {
-        ReportStorage {
-            history: self.history.commit(),
+    pub(crate) fn commit(self) -> Result<ReportStorage, ParseStop> {
+        Ok(ReportStorage {
+            history: self.history.commit()?,
             closed_common: self.closed_common,
             associated_slot: self.associated_slot,
-        }
+        })
     }
 }
 fn checked_document(

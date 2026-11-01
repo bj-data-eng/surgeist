@@ -377,7 +377,12 @@ impl GroupLeafCursor {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     c.charge(WorkCategory::InspectByte, mem::size_of::<usize>() as u64)?;
                     if original >= frame.index
-                        || evidence.native.groups.as_slice()[original].units != group.units
+                        || evidence
+                            .native
+                            .groups
+                            .as_slice()
+                            .get(original)
+                            .is_none_or(|original| original.units != group.units)
                     {
                         return Err(SessionError::WrongToken);
                     }
@@ -405,8 +410,11 @@ impl GroupLeafCursor {
                     if original >= frame.index || incoming >= frame.index {
                         return Err(SessionError::WrongToken);
                     }
-                    let left = &evidence.native.groups.as_slice()[original];
-                    let right = &evidence.native.groups.as_slice()[incoming];
+                    let groups = evidence.native.groups.as_slice();
+                    let (Some(left), Some(right)) = (groups.get(original), groups.get(incoming))
+                    else {
+                        return Err(SessionError::WrongToken);
+                    };
                     if left.units != offset || offset.checked_add(right.units) != Some(group.units)
                     {
                         return Err(SessionError::WrongToken);
@@ -497,7 +505,12 @@ impl GroupOriginCursor {
                     WorkCategory::InspectByte,
                     mem::size_of::<TextOrigin>() as u64,
                 )?;
-                let origin = &evidence.native.origins.as_slice()[leaf.start + self.position];
+                // Leaf chunks are issued only for ranges inside the origins.
+                let origin = leaf
+                    .start
+                    .checked_add(self.position)
+                    .and_then(|position| evidence.native.origins.as_slice().get(position))
+                    .ok_or(SessionError::WrongToken)?;
                 if origin.start >= origin.end || origin.end > leaf.units {
                     return Err(SessionError::WrongToken);
                 }
@@ -512,7 +525,8 @@ impl GroupOriginCursor {
                 payload_write::<TextOrigin>(c, 1)?;
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 payload_write::<usize>(c, 1)?;
-                self.position += 1;
+                // `position < leaf.length` held on entry to this branch.
+                self.position = self.position.saturating_add(1);
                 return Ok(Some(TextOrigin {
                     start,
                     end,
@@ -860,7 +874,8 @@ impl ParseEvidence {
                     OriginKind::Literal | OriginKind::AsciiLowercase => {
                         c.charge(
                             WorkCategory::InspectByte,
-                            (end - begin) as u64 * if source.as_utf8().is_some() { 1 } else { 2 },
+                            (origin.source.len() as u64)
+                                .saturating_mul(if source.as_utf8().is_some() { 1 } else { 2 }),
                         )?;
                         let mut offset = 0;
                         let mut compare = |unit: u16| -> Result<(), SessionError> {
@@ -868,14 +883,16 @@ impl ParseEvidence {
                             let expected = if origin.kind == OriginKind::AsciiLowercase
                                 && (65..=90).contains(&unit)
                             {
-                                unit + 32
+                                unit | 0x20
                             } else {
                                 unit
                             };
                             if output.get(offset) != Some(&expected) {
                                 return Err(SessionError::WrongToken);
                             }
-                            offset += 1;
+                            // `output.get(offset)` just matched, so `offset` is
+                            // below the output length.
+                            offset = offset.saturating_add(1);
                             Ok(())
                         };
                         if let Some(text) = source.as_utf8() {
@@ -939,7 +956,10 @@ impl ParseEvidence {
                     OriginKind::CharacterReference
                     | OriginKind::RecoverySyntax
                     | OriginKind::InputValueNormalization => {
-                        c.charge(WorkCategory::InspectByte, output.len() as u64 * 2)?;
+                        c.charge(
+                            WorkCategory::InspectByte,
+                            (output.len() as u64).saturating_mul(2),
+                        )?;
                         if output.is_empty() || begin == end {
                             return Err(SessionError::WrongToken);
                         }
@@ -1279,10 +1299,10 @@ impl ParseEvidence {
             self.native.origins.reserve_geometric(c, 1)?;
             self.native.origins.try_push(c, origin)?;
         }
-        for position in 0..length / 2 {
-            self.native
-                .origins
-                .swap_slots(start + position, start + length - position - 1, c)?;
+        // The loop above appended exactly `length` entries after `start`.
+        let end = self.native.origins.len();
+        for (left, right) in (start..end).zip((start..end).rev()).take(length / 2) {
+            self.native.origins.swap_slots(left, right, c)?;
         }
         let index = self.native.groups.len();
         let reference = self.group_ref(index, c)?;
@@ -1441,7 +1461,7 @@ impl SessionStorage {
         let RetainedPayload::String {
             origins: Some(original),
             ..
-        } = &self.payloads.values[slot]
+        } = self.payloads.row(c, slot)?
         else {
             return Ok(());
         };
@@ -1465,11 +1485,24 @@ impl SessionStorage {
                 if !transformed {
                     payload_write::<TextOrigin>(c, 1)?;
                     c.charge(WorkCategory::ProviderCall, 1)?;
+                    // `origin.start == covered >= begin`, and `origin.end > origin.start`.
+                    let (Some(from_start), Some(from_end)) = (
+                        origin.start.checked_sub(begin),
+                        origin.end.checked_sub(begin),
+                    ) else {
+                        return Err(SessionError::OriginSplitUnavailable);
+                    };
+                    let start = output_start.checked_add(from_start).ok_or_else(|| {
+                        c.stop_representation(HtmlParseResource::ManagedUtf16Units)
+                    })?;
+                    let end = output_start.checked_add(from_end).ok_or_else(|| {
+                        c.stop_representation(HtmlParseResource::ManagedUtf16Units)
+                    })?;
                     maps.try_push(
                         c,
                         TextOrigin {
-                            start: output_start + origin.start - begin,
-                            end: output_start + origin.end - begin,
+                            start,
+                            end,
                             source: origin.source.clone(),
                             kind: origin.kind,
                         },
@@ -1500,8 +1533,10 @@ impl SessionStorage {
             if source.as_utf8().is_some() {
                 c.charge(
                     WorkCategory::InputUnitRead,
-                    u64::from(first != 0 && first != source.len())
-                        + u64::from(last != 0 && last != source.len()),
+                    count_set([
+                        first != 0 && first != source.len(),
+                        last != 0 && last != source.len(),
+                    ]) as u64,
                 )?;
             }
             let source = source
@@ -1608,7 +1643,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
-        let RetainedPayload::String { origins, .. } = &self.payloads.values[slot] else {
+        let RetainedPayload::String { origins, .. } = self.payloads.row(c, slot)? else {
             return Err(SessionError::WrongToken);
         };
         origins
@@ -1628,7 +1663,7 @@ impl SessionStorage {
         incoming: Option<OriginGroupRef>,
         units: usize,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
-        let RetainedPayload::String { origins: old, .. } = &self.payloads.values[old_slot] else {
+        let RetainedPayload::String { origins: old, .. } = self.payloads.row(c, old_slot)? else {
             return Err(SessionError::WrongToken);
         };
         let Some(evidence) = &mut self.evidence else {
@@ -1706,7 +1741,7 @@ impl SessionStorage {
         slot: usize,
         suspended: Option<StringLocation>,
     ) -> Result<(), SessionError> {
-        let (group, location) = match &self.payloads.values[slot] {
+        let (group, location) = match self.payloads.row(c, slot)? {
             RetainedPayload::String {
                 origins: Some(group),
                 location,
@@ -1762,12 +1797,12 @@ impl SessionStorage {
         if self.evidence.is_none() {
             return Ok(None);
         }
-        let left = match &self.payloads.values[old] {
+        let left = match self.payloads.row(c, old)? {
             RetainedPayload::String { origins, .. } => origins.as_ref(),
             RetainedPayload::HistoricalString { origins } => Some(origins),
             _ => return Err(SessionError::WrongToken),
         };
-        let RetainedPayload::String { origins: right, .. } = &self.payloads.values[incoming] else {
+        let RetainedPayload::String { origins: right, .. } = self.payloads.row(c, incoming)? else {
             return Err(SessionError::WrongToken);
         };
         let Some(evidence) = &mut self.evidence else {
@@ -1787,7 +1822,10 @@ impl SessionStorage {
         };
         let missing_right = if right.is_none() {
             {
-                let group = evidence.source_independent_group(c, total - offset)?;
+                let units = total
+                    .checked_sub(offset)
+                    .ok_or_else(|| latch_registry_row(c))?;
+                let group = evidence.source_independent_group(c, units)?;
                 evidence.bind_leaf_value(c, &group, incoming)?;
                 Some(group)
             }
@@ -1905,9 +1943,13 @@ impl ParseEvidence {
                     )?;
                 } else {
                     let mut covered = 0;
-                    for atom in
-                        &self.native.origins.as_slice()[leaf.start..leaf.start + leaf.length]
-                    {
+                    // Leaf chunks are issued only for ranges inside the origins.
+                    let atoms = leaf
+                        .start
+                        .checked_add(leaf.length)
+                        .and_then(|end| self.native.origins.as_slice().get(leaf.start..end))
+                        .ok_or(SessionError::WrongToken)?;
+                    for atom in atoms {
                         c.charge(
                             WorkCategory::InspectByte,
                             mem::size_of::<TextOrigin>() as u64,
@@ -3535,7 +3577,7 @@ pub(super) fn copy_generated_input_value(
     let RetainedPayload::String {
         origins: Some(group),
         ..
-    } = &payloads.values[slot]
+    } = payloads.row(c, slot)?
     else {
         return Err(SessionError::WrongToken);
     };

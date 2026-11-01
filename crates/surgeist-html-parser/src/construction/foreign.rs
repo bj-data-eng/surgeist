@@ -266,8 +266,11 @@ impl SessionStorage {
                     },
                     Some(RetainedPayload::String { origins: None, .. }) => None,
                     _ => {
-                        adjusted.release(c)?;
-                        return Err(latch_registry_row(c));
+                        // The invariant is the first stop; a release refusal
+                        // is secondary and latched by its owner.
+                        let invariant = latch_registry_row(c);
+                        let _ = adjusted.release(c);
+                        return Err(invariant);
                     }
                 }
             }

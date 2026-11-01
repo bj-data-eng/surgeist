@@ -40,9 +40,9 @@ impl SessionStorage {
                 // This original closed constructor issues the fresh ordinary
                 // parser Document, including the distinct §13.4 auxiliary
                 // Document. Its completion record cannot qualify another owner.
-                Ok(match self.payloads.values[completion] {
+                Ok(match self.payloads.row(c, completion)? {
                     RetainedPayload::StandaloneDocumentCompletion { node, .. }
-                        if node == document =>
+                        if *node == document =>
                     {
                         Some(false)
                     }

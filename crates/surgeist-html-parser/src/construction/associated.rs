@@ -141,7 +141,7 @@ impl Inputs {
         }
         for (i, facts) in self.encoding_urls.iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            for previous in &self.encoding_urls[..i] {
+            for previous in self.encoding_urls.iter().take(i) {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if previous.base() == facts.base()
                     && previous.encoding() == facts.encoding()
@@ -183,15 +183,15 @@ pub(super) struct HyperlinkMetadata {
     pub(super) usage: AssociatedStorageUsage,
 }
 impl HyperlinkMetadata {
-    pub(super) fn diagnostic_usage(&self) -> AssociatedStorageUsage {
+    pub(super) fn diagnostic_usage(
+        &self,
+        c: &mut ParseControl,
+    ) -> Result<AssociatedStorageUsage, SessionError> {
         let mut usage = self.usage;
         if matches!(self.value, HyperlinkValue::Observed(_)) {
-            usage.bytes = usage
-                .bytes
-                .checked_add(mem::size_of::<HtmlHyperlinkUrlSnapshot>() as u64)
-                .expect("owner-computed complete snapshot footprint");
+            usage.add(mem::size_of::<HtmlHyperlinkUrlSnapshot>(), 0, 0, c)?;
         }
-        usage
+        Ok(usage)
     }
 }
 pub(super) struct ImageMetadata {
@@ -224,7 +224,7 @@ impl ParserArenaSession {
             if capture.document_id(context.document().subject()).is_err() {
                 return Err(c.stop_invalid_associated_facts().into());
             }
-            for previous in &inputs.captured[..index] {
+            for previous in inputs.captured.iter().take(index) {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if previous.document() == context.document() {
                     return Err(c.stop_invalid_associated_facts().into());
@@ -682,7 +682,7 @@ impl SessionStorage {
                     match &result {
                         Some(Ok(value)) => Reply::Parsed(value.url().is_some()),
                         Some(Err(_)) => break,
-                        None => unreachable!(),
+                        None => return Err(latch_registry_row(c)),
                     }
                 }
                 Action::StoreParsedUrl => Reply::Applied,
