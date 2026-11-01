@@ -3512,24 +3512,42 @@ impl SessionStorage {
             return Ok(None);
         }
         let mut preceding = None;
-        for position in 0..self
-            .construction
-            .node_at(parent_index)
-            .ok_or_else(|| latch_registry_row(control))?
-            .child_count()
-        {
+        if before_index.is_none() {
+            // Appending: the preceding sibling is the last child, which needs
+            // no walk over the parent's other children.
             control.charge(WorkCategory::RecordVisit, 1)?;
-            let child = self
+            let parent = self
+                .construction
+                .node_at(parent_index)
+                .ok_or_else(|| latch_registry_row(control))?;
+            if let Some(last) = parent.child_count().checked_sub(1) {
+                preceding = Some(
+                    parent
+                        .child_at(last)
+                        .ok_or_else(|| latch_registry_row(control))?
+                        .position(),
+                );
+            }
+        } else {
+            for position in 0..self
                 .construction
                 .node_at(parent_index)
                 .ok_or_else(|| latch_registry_row(control))?
-                .child_at(position)
-                .ok_or_else(|| latch_registry_row(control))?
-                .position();
-            if Some(child) == before_index {
-                break;
+                .child_count()
+            {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                let child = self
+                    .construction
+                    .node_at(parent_index)
+                    .ok_or_else(|| latch_registry_row(control))?
+                    .child_at(position)
+                    .ok_or_else(|| latch_registry_row(control))?
+                    .position();
+                if Some(child) == before_index {
+                    break;
+                }
+                preceding = Some(child);
             }
-            preceding = Some(child);
         }
         control.charge(WorkCategory::RecordVisit, 1)?;
         let preceding = preceding.filter(|&index| {
@@ -27206,23 +27224,42 @@ mod tests {
         let a = session
             .allocate_element(&mut c, element(Namespace::none(), "a"))
             .unwrap();
+        let scratch_before = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
         let owner = &mut session.active_mut().unwrap().construction;
         let mut pending = start_test_insert(&mut c, owner, &root, &a, None);
-        stage_test_order_body(&mut c, owner, &mut pending);
-        let before = c.usage().work(WorkCategory::CopyByte);
-        drive_test_order_body(&mut c, owner, &mut pending);
-        // The actual append has one inserted index and no source index.
-        assert_eq!(c.usage().work(WorkCategory::CopyByte) - before, word);
-        assert_eq!(
-            c.usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
-            5
-        );
-        let committed = owner
-            .continue_pending(&mut c, pending, &[(HtmlParseResource::ManagedEdges, 1)])
-            .unwrap();
-        owner.adopt_mutation(&mut c, committed).unwrap();
+        // An append is one push onto the parent's own order at the atomic
+        // commit: no index is copied or pushed through a scratch slot.
+        loop {
+            let edges = pending.before_edges();
+            let action = pending.action(&mut c).unwrap().unwrap();
+            assert!(!matches!(
+                action.description(),
+                bounded::HtmlConstructionActionDescription::CopyChildOrderSource { .. }
+                    | bounded::HtmlConstructionActionDescription::PushChildOrder { .. }
+                    | bounded::HtmlConstructionActionDescription::InitializeChildOrder { .. }
+            ));
+            assert_eq!(
+                c.usage()
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current,
+                scratch_before
+            );
+            if owner
+                .perform_action(
+                    &mut c,
+                    action,
+                    &[(HtmlParseResource::ManagedEdges, 1)],
+                    edges,
+                )
+                .unwrap()
+            {
+                break;
+            }
+        }
+        owner.finish_pending(&mut c, pending).unwrap();
         assert_eq!(
             owner
                 .node_at(root.index)
@@ -27236,7 +27273,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            4
+            scratch_before
         );
         let b = session
             .allocate_element(&mut c, element(Namespace::none(), "b"))
@@ -27277,23 +27314,142 @@ mod tests {
         assert_eq!(c.usage().actual_capacity_bytes, 0);
     }
 
-    #[test]
-    fn inserted_index_copy_work_boundary_stops_before_any_scratch_slot_is_initialized() {
-        let selected = limits()
+    /// Appends `pairs` elements, each followed by a new text node, under `parent`
+    /// and returns the work that charged, by category.
+    fn append_element_text_pairs(
+        c: &mut ParseControl,
+        session: &mut ParserArenaSession,
+        parent: &ParserNode,
+        lexer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
+        pairs: usize,
+    ) -> [u64; 7] {
+        const MEASURED: [WorkCategory; 7] = [
+            WorkCategory::InputUnitRead,
+            WorkCategory::InspectByte,
+            WorkCategory::CopyByte,
+            WorkCategory::StateStep,
+            WorkCategory::RecordVisit,
+            WorkCategory::RecordWrite,
+            WorkCategory::ProviderCall,
+        ];
+        let before = MEASURED.map(|category| c.usage().work(category));
+        for _ in 0..pairs {
+            let span = session.allocate_element(c, html("span")).unwrap();
+            session.insert(c, parent, &span, None, None).unwrap();
+            let mut text = next_text(lexer, c);
+            session
+                .insert_text(c, parent, None, &mut text, None)
+                .unwrap();
+        }
+        let after = MEASURED.map(|category| c.usage().work(category));
+        std::array::from_fn(|i| after[i] - before[i])
+    }
+
+    /// Bytes the reservations of `count` appended children charged, counting
+    /// only the insertions.
+    fn append_reserve_bytes(count: usize) -> u64 {
+        let caps = limits()
             .into_builder()
-            .auxiliary_entries(5)
+            .auxiliary_entries(1_000_000)
+            .managed_nodes(1_000_000)
+            .managed_edges(1_000_000)
+            .managed_capacity_bytes(1_000_000_000)
+            .peak_transient_bytes(2_000_000_000)
+            .atomic_layout_bytes(1_000_000_000)
+            .work_credits(100_000_000_000)
             .finish()
             .unwrap();
+        let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+        let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+        let root = session.root(&mut c).unwrap();
+        let mut reserved = 0;
+        for _ in 0..count {
+            let child = session
+                .allocate_element(&mut c, element(Namespace::none(), "x"))
+                .unwrap();
+            let before = c.usage().work(WorkCategory::ReserveByte);
+            session.insert(&mut c, &root, &child, None, None).unwrap();
+            reserved += c.usage().work(WorkCategory::ReserveByte) - before;
+        }
+        session.release(&mut c).unwrap();
+        reserved
+    }
+
+    #[test]
+    fn doubling_the_children_appended_to_one_parent_at_most_triples_their_reservation_work() {
+        // Linear reservation work doubles with the count (a geometric series of
+        // growth steps), exact per-append reservation quadruples it; three is
+        // the midpoint, as in the whole-document linearity tests.
+        let single = append_reserve_bytes(600);
+        let double = append_reserve_bytes(1_200);
+        assert!(
+            double <= 3 * single,
+            "appending 1200 children reserved {double} bytes, 600 reserved {single}"
+        );
+    }
+
+    #[test]
+    fn appending_children_to_a_wide_parent_charges_no_more_work_than_to_a_narrow_one() {
+        const BLOCK: usize = 32;
+        let source = crate::HtmlSource::utf8(format!("<output>{}", "x".repeat(2_000)));
+        let caps = limits()
+            .into_builder()
+            .source_units(1_000_000)
+            .buffered_utf16_units(1_000_000)
+            .auxiliary_entries(1_000_000)
+            .managed_nodes(1_000_000)
+            .managed_edges(1_000_000)
+            .managed_utf16_units(1_000_000)
+            .source_map_entries(1_000_000)
+            .source_map_payload_units(1_000_000)
+            .diagnostics(1_000_000)
+            .diagnostic_payload_units(1_000_000)
+            .managed_capacity_bytes(1_000_000_000)
+            .peak_transient_bytes(2_000_000_000)
+            .atomic_layout_bytes(1_000_000_000)
+            .work_credits(100_000_000_000)
+            .finish()
+            .unwrap();
+        let (mut c, mut session, output, mut lexer) = output_owner(&source, caps);
+        let narrow = append_element_text_pairs(&mut c, &mut session, &output, &mut lexer, BLOCK);
+        for _ in 0..15 {
+            append_element_text_pairs(&mut c, &mut session, &output, &mut lexer, BLOCK);
+        }
+        let wide = append_element_text_pairs(&mut c, &mut session, &output, &mut lexer, BLOCK);
+        let owner = &session.active().unwrap().construction;
+        assert!(owner.node_at(output.index).unwrap().child_count() > 1_000);
+        // Capacity growth is rarer at a higher fanout, so a wide parent can
+        // cost less, never more: no category depends on the existing children.
+        assert!(
+            wide.iter()
+                .zip(narrow)
+                .all(|(wide, narrow)| *wide <= narrow),
+            "work added to a wide parent {wide:?} exceeds the narrow parent's {narrow:?}"
+        );
+        session.release(&mut c).unwrap();
+    }
+
+    #[test]
+    fn inserted_index_copy_work_boundary_stops_before_any_scratch_slot_is_initialized() {
+        let selected = limits();
         let work_limit = selected.work_credits();
         let mut c = ParseControl::new(selected, HtmlParseCancellation::new());
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let root = session.root(&mut c).unwrap();
+        let b = session
+            .allocate_element(&mut c, element(Namespace::none(), "b"))
+            .unwrap();
+        session.insert(&mut c, &root, &b, None, None).unwrap();
         let a = session
             .allocate_element(&mut c, element(Namespace::none(), "a"))
             .unwrap();
         let capacity_before = c.usage().actual_capacity_bytes;
+        let scratch_before = c
+            .usage()
+            .resource(HtmlParseResource::AuxiliaryEntries)
+            .current;
         let owner = &mut session.active_mut().unwrap().construction;
-        let mut pending = start_test_insert(&mut c, owner, &root, &a, None);
+        let mut pending = start_test_insert(&mut c, owner, &root, &a, Some(&b));
         loop {
             let edges = pending.before_edges();
             let action = pending.action(&mut c).unwrap().unwrap();
@@ -27314,7 +27470,7 @@ mod tests {
                     c.usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .current,
-                    4
+                    scratch_before
                 );
                 break;
             }
@@ -27326,15 +27482,63 @@ mod tests {
         assert_eq!(c.stop(), first);
         assert_eq!(c.usage().resource(HtmlParseResource::WorkCredits), work);
         assert_eq!(c.usage().actual_capacity_bytes, capacity_before);
-        assert_eq!(owner.node_at(root.index).unwrap().child_count(), 0);
+        assert_eq!(
+            owner
+                .node_at(root.index)
+                .unwrap()
+                .children()
+                .map(bounded::HtmlConstructionNode::position)
+                .collect::<Vec<_>>(),
+            [b.index]
+        );
         assert!(owner.node_at(a.index).unwrap().parent().is_none());
         session.release(&mut c).unwrap();
         assert_eq!(c.usage().actual_capacity_bytes, 0);
     }
 
     #[test]
+    fn append_succeeds_at_the_auxiliary_limit_because_it_uses_no_scratch_slot() {
+        let selected = limits()
+            .into_builder()
+            .auxiliary_entries(4)
+            .finish()
+            .unwrap();
+        let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
+        let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
+        let root = session.root(&mut control).unwrap();
+        let child = session
+            .allocate_element(&mut control, element(Namespace::none(), "x"))
+            .unwrap();
+        session
+            .insert(&mut control, &root, &child, None, None)
+            .unwrap();
+        assert_eq!(
+            session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(0)
+                .expect("retained construction position")
+                .children()
+                .map(|node| node.position())
+                .collect::<Vec<_>>(),
+            [child.index]
+        );
+        let usage = control.usage();
+        assert_eq!(usage.resource(HtmlParseResource::ManagedEdges).current, 1);
+        assert_eq!(
+            usage
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .high_water,
+            4
+        );
+        session.release(&mut control).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes, 0);
+    }
+
+    #[test]
     fn one_scratch_slot_exact_limit_succeeds_and_one_short_preserves_topology() {
-        for (auxiliary_limit, succeeds) in [(5, true), (4, false)] {
+        for (auxiliary_limit, succeeds) in [(8, true), (7, false)] {
             let mut selected = limits();
             selected = selected
                 .into_builder()
@@ -27344,10 +27548,16 @@ mod tests {
             let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
             let mut session = ParserArenaSession::new(&mut control, RootKind::Fragment).unwrap();
             let root = session.root(&mut control).unwrap();
+            let sibling = session
+                .allocate_element(&mut control, element(Namespace::none(), "y"))
+                .unwrap();
+            session
+                .insert(&mut control, &root, &sibling, None, None)
+                .unwrap();
             let child = session
                 .allocate_element(&mut control, element(Namespace::none(), "x"))
                 .unwrap();
-            let result = session.insert(&mut control, &root, &child, None, None);
+            let result = session.insert(&mut control, &root, &child, Some(&sibling), None);
             if succeeds {
                 result.unwrap();
                 assert_eq!(
@@ -27360,28 +27570,28 @@ mod tests {
                         .children()
                         .map(|node| node.position())
                         .collect::<Vec<_>>(),
-                    [child.index]
+                    [child.index, sibling.index]
                 );
                 assert_eq!(
                     control
                         .usage()
                         .resource(HtmlParseResource::ManagedEdges)
                         .current,
-                    1
+                    2
                 );
                 assert_eq!(
                     control
                         .usage()
                         .resource(HtmlParseResource::AuxiliaryEntries)
                         .high_water,
-                    5
+                    8
                 );
             } else {
                 assert!(matches!(
                     result,
                     Err(SessionError::Stop(ParseStop::LimitExceeded {
                         resource: HtmlParseResource::AuxiliaryEntries,
-                        current: 4,
+                        current: 7,
                         requested_delta: 1,
                         ..
                     }))
@@ -27393,8 +27603,9 @@ mod tests {
                         .construction
                         .node_at(0)
                         .expect("retained construction position")
-                        .child_count()
-                        == 0
+                        .children()
+                        .map(|node| node.position())
+                        .eq([sibling.index])
                 );
                 assert!(
                     session
@@ -27412,7 +27623,7 @@ mod tests {
                         .usage()
                         .resource(HtmlParseResource::ManagedEdges)
                         .current,
-                    0
+                    1
                 );
             }
             assert_eq!(
@@ -27420,7 +27631,7 @@ mod tests {
                     .usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                4
+                6
             );
             session.release(&mut control).unwrap();
             assert_eq!(
@@ -27435,7 +27646,7 @@ mod tests {
                     .usage()
                     .resource(HtmlParseResource::ManagedNodes)
                     .current,
-                2
+                3
             );
             assert_eq!(control.usage().actual_capacity_bytes, 0);
         }
@@ -27604,7 +27815,7 @@ mod tests {
             .unwrap();
         let capacity_before = c.usage().actual_capacity_bytes;
         let owner = &mut session.active_mut().unwrap().construction;
-        let mut pending = start_test_insert(&mut c, owner, &root, &candidate, None);
+        let mut pending = start_test_insert(&mut c, owner, &root, &candidate, Some(&a));
         loop {
             let edges = pending.before_edges();
             let action = pending.action(&mut c).unwrap().unwrap();

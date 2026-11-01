@@ -129,6 +129,487 @@ fn refuse(
     owner.unwrap().abort().into_parts().0
 }
 
+/// What the actions of one driven operation describe, excluding the
+/// capacity-growth actions an amortizing consumer pays only occasionally.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct DescribedWork {
+    actions: usize,
+    record_visits: usize,
+    copied_bytes: usize,
+    record_writes: usize,
+}
+
+/// Inserts `node` under `parent` before `before`, performing every action, and
+/// returns the steady work the operation described.
+fn driven_insert(
+    storage: HtmlConstructionStorage,
+    node: &HtmlBuilderNode,
+    parent: &HtmlBuilderNode,
+    before: Option<&HtmlBuilderNode>,
+) -> (HtmlConstructionStorage, DescribedWork) {
+    let mut operation = Some(
+        storage
+            .prepare(HtmlConstructionCommand::Insert {
+                node: node.clone(),
+                parent: parent.clone(),
+                before: before.cloned(),
+            })
+            .unwrap_or_else(|_| panic!("preparation")),
+    );
+    let mut work = DescribedWork::default();
+    while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+        let (visits, copied, writes, growth) = match action.description() {
+            HtmlConstructionActionDescription::Inspect { record_visits, .. } => {
+                (record_visits, 0, 0, false)
+            }
+            HtmlConstructionActionDescription::CopyChildOrderSource {
+                record_visits,
+                copied_bytes,
+            } => (record_visits, copied_bytes, 0, false),
+            HtmlConstructionActionDescription::PushChildOrder {
+                copied_bytes,
+                record_writes,
+                ..
+            } => (0, copied_bytes, record_writes, false),
+            HtmlConstructionActionDescription::PrepareChildOrderTransfers {
+                record_writes,
+                copied_bytes,
+                ..
+            } => (0, copied_bytes, record_writes, false),
+            HtmlConstructionActionDescription::InitializeChildOrder {
+                initialized_bytes, ..
+            } => (0, initialized_bytes, 0, false),
+            HtmlConstructionActionDescription::Commit {
+                record_writes,
+                copied_bytes,
+                ..
+            } => (0, copied_bytes, record_writes, false),
+            // Reserving and reporting a bank's capacity is amortized growth.
+            HtmlConstructionActionDescription::Reserve { .. }
+            | HtmlConstructionActionDescription::PrepareAllocationReport { .. } => (0, 0, 0, true),
+            _ => (0, 0, 0, false),
+        };
+        if !growth {
+            work.actions += 1;
+            work.record_visits += visits;
+            work.copied_bytes += copied;
+            work.record_writes += writes;
+        }
+        action.perform().unwrap().accept();
+    }
+    let ready = HtmlConstructionOperation::try_ready(&mut operation).unwrap();
+    let HtmlConstructionCommit::Changed {
+        storage,
+        mut retired_orders,
+        ..
+    } = ready.commit()
+    else {
+        panic!("mutation produced publication")
+    };
+    while let Some(action) = retired_orders.next_action() {
+        action.perform();
+    }
+    (storage, work)
+}
+
+#[test]
+fn appending_a_child_describes_the_same_work_at_every_fanout() {
+    let (mut owner, root) = fragment(storage());
+    let mut children = 0;
+    let mut measured = Vec::new();
+    for fanout in [1, 16, 128, 1024] {
+        while children < fanout {
+            let (next, node) = create(owner, element("c"));
+            owner = driven_insert(next, &node, &root, None).0;
+            children += 1;
+        }
+        let (next, node) = create(owner, element("measured"));
+        let (next, work) = driven_insert(next, &node, &root, None);
+        owner = next;
+        children += 1;
+        measured.push((fanout, work));
+    }
+    let (first_fanout, first) = measured[0];
+    for (fanout, work) in &measured {
+        assert_eq!(
+            *work, first,
+            "appending under {fanout} children described different work than under {first_fanout}"
+        );
+    }
+}
+
+/// Appends `node` last under `parent`, admitting each growth action with a
+/// doubled capacity, and returns the slots the growth requested.
+fn append_amortized(
+    storage: HtmlConstructionStorage,
+    node: &HtmlBuilderNode,
+    parent: &HtmlBuilderNode,
+) -> (HtmlConstructionStorage, Vec<usize>) {
+    let mut operation = Some(
+        storage
+            .prepare(HtmlConstructionCommand::Insert {
+                node: node.clone(),
+                parent: parent.clone(),
+                before: None,
+            })
+            .unwrap_or_else(|_| panic!("preparation")),
+    );
+    let mut requested = Vec::new();
+    while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+        let capacity = match action.description() {
+            HtmlConstructionActionDescription::Reserve {
+                allocation,
+                minimum_capacity,
+                growth: HtmlConstructionGrowth::Geometric,
+                ..
+            } => Some(minimum_capacity.max(2 * allocation.capacity())),
+            _ => None,
+        };
+        let observation = match capacity {
+            Some(capacity) => {
+                requested.push(capacity);
+                action.perform_with_capacity(capacity).unwrap()
+            }
+            None => action.perform().unwrap(),
+        };
+        observation.accept();
+    }
+    let HtmlConstructionCommit::Changed { storage, .. } =
+        HtmlConstructionOperation::try_ready(&mut operation)
+            .unwrap()
+            .commit()
+    else {
+        panic!("mutation produced publication")
+    };
+    (storage, requested)
+}
+
+#[test]
+fn amortized_appends_grow_the_child_order_geometrically_and_keep_their_order() {
+    let (mut owner, root) = fragment(storage());
+    let mut appended = Vec::new();
+    let mut growth = Vec::new();
+    for _ in 0..1024 {
+        let (next, node) = create(owner, element("c"));
+        let (next, requested) = append_amortized(next, &node, &root);
+        owner = next;
+        appended.push(node);
+        growth.extend(requested);
+    }
+    // One growth at each power of two, never one per append.
+    assert_eq!(growth.len(), 11, "{growth:?}");
+    assert!(growth.iter().sum::<usize>() <= 2 * appended.len());
+    assert_eq!(
+        owner
+            .node(&root)
+            .unwrap()
+            .children()
+            .map(HtmlConstructionNode::handle)
+            .collect::<Vec<_>>(),
+        appended
+    );
+    assert!(
+        appended
+            .iter()
+            .all(|node| owner.node(node).unwrap().parent().unwrap().handle() == root)
+    );
+}
+
+#[test]
+fn append_with_spare_child_order_capacity_requests_no_growth() {
+    let (mut owner, root) = fragment(storage());
+    let mut requests = Vec::new();
+    for _ in 0..4 {
+        let (next, node) = create(owner, element("c"));
+        let (next, requested) = append_amortized(next, &node, &root);
+        owner = next;
+        requests.push(requested);
+    }
+    // Capacity 1, 2 and 4 fill at lengths 1, 2 and 3; the fourth child fits.
+    assert_eq!(requests, [vec![1], vec![2], vec![4], vec![]]);
+}
+
+#[test]
+fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() {
+    let (owner, root) = fragment(storage());
+    let (owner, a) = create(owner, element("a"));
+    let (owner, b) = create(owner, element("b"));
+    let (owner, _) = change(
+        owner,
+        HtmlConstructionCommand::Insert {
+            node: a.clone(),
+            parent: root.clone(),
+            before: None,
+        },
+    );
+    let usage = owner.usage();
+    let mut operation = Some(
+        owner
+            .prepare(HtmlConstructionCommand::Insert {
+                node: b.clone(),
+                parent: root.clone(),
+                before: None,
+            })
+            .unwrap_or_else(|_| panic!()),
+    );
+    let mut before = None;
+    let grown = loop {
+        let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+        let reserve = match action.description() {
+            HtmlConstructionActionDescription::Reserve {
+                allocation,
+                required_len,
+                minimum_capacity,
+                growth,
+                ..
+            } => {
+                assert_eq!(growth, HtmlConstructionGrowth::Geometric);
+                assert_eq!((required_len, minimum_capacity), (2, 2));
+                assert_eq!(allocation.role(), HtmlConstructionAllocationRole::Children);
+                assert_eq!(allocation.child_position(), Some(0));
+                assert_eq!(allocation.initialized_len(), 1);
+                before = Some(allocation.clone());
+                true
+            }
+            _ => false,
+        };
+        if reserve {
+            let observation = action.perform_with_capacity(8).unwrap();
+            let grown = observation.allocation().unwrap().clone();
+            observation.accept();
+            break grown;
+        }
+        action.perform().unwrap().accept();
+    };
+    let before = before.unwrap();
+    assert_eq!(grown.child_position(), Some(0));
+    assert_eq!((grown.capacity(), grown.initialized_len()), (8, 1));
+    assert_ne!(grown.id(), before.id());
+    assert!(grown.id().same_owner_role(before.id()));
+    let (owner, command, wrapper, mut orders) = operation.unwrap().abort().into_parts();
+    assert!(matches!(command, HtmlConstructionCommand::Insert { .. }));
+    assert!(wrapper.is_none());
+    // The grown bank is the parent's actual bank, not a pending scratch order.
+    assert!(orders.next_action().is_none());
+    assert_eq!(owner.usage(), usage);
+    assert_eq!(
+        owner
+            .node(&root)
+            .unwrap()
+            .children()
+            .map(HtmlConstructionNode::handle)
+            .collect::<Vec<_>>()
+            .as_slice(),
+        std::slice::from_ref(&a)
+    );
+    assert!(owner.node(&b).unwrap().parent().is_none());
+    // The retry needs no growth and commits into the retained capacity.
+    let mut operation = Some(
+        owner
+            .prepare(HtmlConstructionCommand::Insert {
+                node: b.clone(),
+                parent: root.clone(),
+                before: None,
+            })
+            .unwrap_or_else(|_| panic!()),
+    );
+    while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+        assert!(!matches!(
+            action.description(),
+            HtmlConstructionActionDescription::Reserve { .. }
+        ));
+        action.perform().unwrap().accept();
+    }
+    let HtmlConstructionCommit::Changed {
+        storage: owner,
+        transfers,
+        retired_orders: mut retired,
+        ..
+    } = HtmlConstructionOperation::try_ready(&mut operation)
+        .unwrap()
+        .commit()
+    else {
+        panic!()
+    };
+    assert!(transfers.into_iter().all(|transfer| transfer.is_none()));
+    assert!(retired.next_action().is_none());
+    assert_eq!(
+        owner
+            .node(&root)
+            .unwrap()
+            .children()
+            .map(HtmlConstructionNode::handle)
+            .collect::<Vec<_>>(),
+        [a, b]
+    );
+    let mut retirement = owner.retire();
+    let mut capacity = None;
+    while let Some(action) = retirement.next_action().unwrap() {
+        if let HtmlConstructionRetirementDescription::Allocation(report) = action.description()
+            && report.child_position() == Some(0)
+        {
+            assert_eq!(report.id(), grown.id());
+            capacity = Some(report.capacity());
+        }
+        action.perform();
+    }
+    assert_eq!(capacity, Some(8));
+}
+
+#[test]
+fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failure() {
+    let (owner, root) = fragment(storage());
+    let (owner, a) = create(owner, element("a"));
+    let (owner, b) = create(owner, element("b"));
+    let (owner, _) = change(
+        owner,
+        HtmlConstructionCommand::Insert {
+            node: a.clone(),
+            parent: root.clone(),
+            before: None,
+        },
+    );
+    let usage = owner.usage();
+    let mut operation = Some(
+        owner
+            .prepare(HtmlConstructionCommand::Insert {
+                node: b.clone(),
+                parent: root.clone(),
+                before: None,
+            })
+            .unwrap_or_else(|_| panic!()),
+    );
+    let failure = loop {
+        let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+        let before = match action.description() {
+            HtmlConstructionActionDescription::Reserve { allocation, .. } => {
+                Some(allocation.clone())
+            }
+            _ => None,
+        };
+        let Some(before) = before else {
+            action.perform().unwrap().accept();
+            continue;
+        };
+        // Below the described minimum is refused before any provider call.
+        let refused = action.perform_with_capacity(1).err().unwrap();
+        assert_eq!(refused.reason(), &HtmlConstructionError::CapacityMismatch);
+        assert!(refused.allocation().is_none());
+        assert_eq!(
+            operation.as_mut().unwrap().next_action().err(),
+            Some(HtmlConstructionError::CapacityMismatch)
+        );
+        break before;
+    };
+    assert_eq!(failure.capacity(), 1);
+    let owner = operation.unwrap().abort().into_parts().0;
+    assert_eq!(owner.usage(), usage);
+    // A capacity no provider can supply returns the unchanged bank report.
+    let mut operation = Some(
+        owner
+            .prepare(HtmlConstructionCommand::Insert {
+                node: b.clone(),
+                parent: root.clone(),
+                before: None,
+            })
+            .unwrap_or_else(|_| panic!()),
+    );
+    loop {
+        let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+        if !matches!(
+            action.description(),
+            HtmlConstructionActionDescription::Reserve { .. }
+        ) {
+            action.perform().unwrap().accept();
+            continue;
+        }
+        let failed = action
+            .perform_with_capacity(isize::MAX as usize / size_of::<usize>())
+            .err()
+            .unwrap();
+        assert_eq!(failed.reason(), &HtmlConstructionError::AllocationFailed);
+        let report = failed.allocation().unwrap();
+        assert_eq!(report.id(), failure.id());
+        assert_eq!((report.capacity(), report.initialized_len()), (1, 1));
+        break;
+    }
+    assert_eq!(
+        operation.as_mut().unwrap().next_action().err(),
+        Some(HtmlConstructionError::AllocationFailed)
+    );
+    let owner = operation.unwrap().abort().into_parts().0;
+    assert_eq!(owner.usage(), usage);
+    assert_eq!(owner.node(&root).unwrap().child_count(), 1);
+    assert!(owner.node(&b).unwrap().parent().is_none());
+}
+
+#[test]
+fn capacity_is_only_accepted_by_a_described_geometric_reserve() {
+    let (owner, root) = fragment(storage());
+    let (owner, a) = create(owner, element("a"));
+    let mut operation = Some(
+        owner
+            .prepare(HtmlConstructionCommand::Insert {
+                node: a,
+                parent: root,
+                before: None,
+            })
+            .unwrap_or_else(|_| panic!()),
+    );
+    let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+    let refused = action.perform_with_capacity(64).err().unwrap();
+    assert_eq!(refused.reason(), &HtmlConstructionError::CapacityMismatch);
+    assert!(refused.allocation().is_none());
+    assert!(matches!(
+        HtmlConstructionOperation::try_ready(&mut operation),
+        Err(HtmlConstructionError::CapacityMismatch)
+    ));
+    let owner = operation.unwrap().abort().into_parts().0;
+    assert_eq!(owner.len(), 2);
+}
+
+#[test]
+fn append_cycle_refuses_before_any_child_order_growth() {
+    let (owner, outer) = create(storage(), element("outer"));
+    let (owner, inner) = create(owner, element("inner"));
+    let (owner, _) = change(
+        owner,
+        HtmlConstructionCommand::Insert {
+            node: inner.clone(),
+            parent: outer.clone(),
+            before: None,
+        },
+    );
+    // `inner` has no spare child capacity, yet the cycle is reached first.
+    let mut operation = Some(
+        owner
+            .prepare(HtmlConstructionCommand::Insert {
+                node: outer.clone(),
+                parent: inner.clone(),
+                before: None,
+            })
+            .unwrap_or_else(|_| panic!()),
+    );
+    let error = loop {
+        let action = match operation.as_mut().unwrap().next_action() {
+            Ok(Some(action)) => action,
+            Ok(None) => panic!("a cycle became ready"),
+            Err(error) => break error,
+        };
+        assert!(!matches!(
+            action.description(),
+            HtmlConstructionActionDescription::Reserve { .. }
+        ));
+        match action.perform() {
+            Ok(observation) => observation.accept(),
+            Err(failure) => break failure.into_parts().0,
+        }
+    };
+    assert_eq!(error, HtmlConstructionError::Cycle);
+    let owner = operation.unwrap().abort().into_parts().0;
+    assert!(owner.node(&outer).unwrap().parent().is_none());
+}
+
 #[test]
 fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal() {
     let mut initialization = Some(HtmlConstructionStorage::begin());
@@ -727,7 +1208,7 @@ fn grown_pending_order_bank_never_reissues_retired_identity_after_abort() {
                 .prepare(HtmlConstructionCommand::Insert {
                     node: b.clone(),
                     parent: root.clone(),
-                    before: None,
+                    before: Some(a.clone()),
                 })
                 .unwrap_or_else(|_| panic!()),
         );
