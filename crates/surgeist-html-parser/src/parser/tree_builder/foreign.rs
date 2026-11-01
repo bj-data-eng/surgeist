@@ -454,7 +454,7 @@ impl HeadState<'_> {
                 }
             }
             write(
-                size_of::<Option<crate::construction::TextRun>>() + size_of::<Option<Text>>(),
+                const { size_of::<Option<crate::construction::TextRun>>() + size_of::<Option<Text>>() },
                 2,
                 c,
             )?;

@@ -1108,7 +1108,7 @@ impl SessionStorage {
             {
                 c.charge(
                     WorkCategory::CopyByte,
-                    (mem::size_of::<usize>() + mem::size_of::<InputState>()) as u64,
+                    const { (mem::size_of::<usize>() + mem::size_of::<InputState>()) as u64 },
                 )?;
                 return Ok((slot, *raw, *state));
             }

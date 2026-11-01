@@ -636,7 +636,7 @@ impl<'source> InputCursor<'source> {
         }
         c.charge(
             WorkCategory::CopyByte,
-            (2 * size_of::<ConsumedSourceBoundary>()) as u64,
+            const { 2 * size_of::<ConsumedSourceBoundary>() } as u64,
         )?;
         Ok(Some(self.current_span().cloned().unwrap_or_else(|| {
             let boundary = self.boundary().expect("progressive boundary");

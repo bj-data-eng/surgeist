@@ -85,7 +85,7 @@ impl SessionStorage {
         control.charge(WorkCategory::RecordVisit, 2)?;
         control.charge(
             WorkCategory::CopyByte,
-            (2 * mem::size_of::<DocumentString>()) as u64,
+            const { (2 * mem::size_of::<DocumentString>()) as u64 },
         )?;
         let mut original_allocation = if dispose_old {
             let RetainedPayload::String {
@@ -267,7 +267,9 @@ impl SessionStorage {
                         return Err(match error {
                             HtmlConstructionError::AllocationFailed => control
                                 .construction_allocation_failed(
-                                    expected_capacity.unwrap_or(0) * mem::size_of::<u16>(),
+                                    expected_capacity
+                                        .unwrap_or(0)
+                                        .saturating_mul(mem::size_of::<u16>()),
                                 )
                                 .into(),
                             error => construction_error(control, error),

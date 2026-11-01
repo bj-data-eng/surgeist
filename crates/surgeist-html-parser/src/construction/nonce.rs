@@ -41,7 +41,10 @@ impl SessionStorage {
             }) = self.payloads.values.get(slot)
                 && *owner == node
             {
-                c.charge(WorkCategory::CopyByte, (2 * mem::size_of::<usize>()) as u64)?;
+                c.charge(
+                    WorkCategory::CopyByte,
+                    const { (2 * mem::size_of::<usize>()) as u64 },
+                )?;
                 return Ok(Some((slot, *raw)));
             }
         }
@@ -949,7 +952,7 @@ mod tests {
                     resource: HtmlParseResource::WorkCredits,
                     requested_delta,
                     ..
-                } if requested_delta == (2 * mem::size_of::<usize>()) as u64));
+                } if requested_delta == const { (2 * mem::size_of::<usize>()) as u64 }));
                 assert_eq!(result, Err(SessionError::Stop(first)));
                 let snapshot = c.first_stop_usage().cloned();
                 cancellation.cancel();
@@ -962,7 +965,7 @@ mod tests {
                 assert_eq!(result.unwrap().unwrap().0, slot);
                 assert_eq!(
                     c.usage().work(WorkCategory::CopyByte) - before.work(WorkCategory::CopyByte),
-                    (2 * mem::size_of::<usize>()) as u64
+                    const { (2 * mem::size_of::<usize>()) as u64 }
                 );
                 // Exact useful-work budget exhausted; stop before disposing admitted owners.
                 c.charge(WorkCategory::StateStep, 1).unwrap_err();

@@ -427,10 +427,12 @@ impl ParseEvidence {
             .ok_or_else(|| c.fail_invariant(Invariant::ForeignEvidence))?;
         c.charge(
             WorkCategory::CopyByte,
-            (mem::size_of::<Option<crate::HtmlSourceRange>>()
-                + mem::size_of::<crate::HtmlSourceRange>()
-                + mem::size_of::<LexicalKind>()
-                + mem::size_of::<LexicalDisposition>()) as u64,
+            const {
+                (mem::size_of::<Option<crate::HtmlSourceRange>>()
+                    + mem::size_of::<crate::HtmlSourceRange>()
+                    + mem::size_of::<LexicalKind>()
+                    + mem::size_of::<LexicalDisposition>()) as u64
+            },
         )?;
         c.charge(WorkCategory::RecordWrite, 2)?;
         c.charge(WorkCategory::ProviderCall, 2)?;

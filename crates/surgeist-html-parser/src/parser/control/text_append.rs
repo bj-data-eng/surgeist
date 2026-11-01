@@ -20,8 +20,10 @@ impl ParseControl {
             (WorkCategory::ProviderCall, 1),
             (
                 WorkCategory::CopyByte,
-                (size_of::<u64>() + size_of::<usize>() + size_of::<Option<Weak<Vec<u16>>>>())
-                    as u64,
+                const {
+                    (size_of::<u64>() + size_of::<usize>() + size_of::<Option<Weak<Vec<u16>>>>())
+                        as u64
+                },
             ),
             (WorkCategory::RecordWrite, 3),
         ])
@@ -50,7 +52,7 @@ impl ParseControl {
             (WorkCategory::ProviderCall, 1),
             (
                 WorkCategory::CopyByte,
-                (size_of::<DocumentStringAllocation>() + 2 * size_of::<usize>()) as u64,
+                const { (size_of::<DocumentStringAllocation>() + 2 * size_of::<usize>()) as u64 },
             ),
             (WorkCategory::RecordWrite, 3),
         ])?;
@@ -100,14 +102,21 @@ impl ParseControl {
         else {
             return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
         };
+        let Some(reserve_bytes) = plan.old_bytes.checked_add(plan.new_bytes) else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
         self.charge_many(&[
-            (WorkCategory::ReserveByte, plan.old_bytes + plan.new_bytes),
+            (WorkCategory::ReserveByte, reserve_bytes),
             // HTML's descriptor charges its provider and native fields.
-            (WorkCategory::CopyByte, (2 * size_of::<usize>()) as u64),
+            (
+                WorkCategory::CopyByte,
+                const { (2 * size_of::<usize>()) as u64 },
+            ),
             (WorkCategory::RecordWrite, 2),
         ])?;
         self.preflight_construction_capacity(plan.old_bytes, plan.new_bytes)?;
-        Ok((plan.new_bytes / size_of::<u16>() as u64) as usize)
+        const UNIT_BYTES: u64 = size_of::<u16>() as u64;
+        Ok((plan.new_bytes / UNIT_BYTES) as usize)
     }
     fn require_suspended_text_append(
         &mut self,
@@ -138,7 +147,10 @@ impl ParseControl {
         if !Arc::ptr_eq(&allocation.owner, &self.identity) || allocation.backing.is_some() {
             return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
         }
-        let old = allocation.vector_capacity as u64 * size_of::<u16>() as u64;
+        const UNIT_BYTES: u64 = size_of::<u16>() as u64;
+        let Some(old) = (allocation.vector_capacity as u64).checked_mul(UNIT_BYTES) else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
         let actual = value.payload_bytes() as u64;
         let current = self
             .usage
@@ -160,7 +172,7 @@ impl ParseControl {
         if value.capacity() > expected_capacity {
             return self.fail(ParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
-                limit: (expected_capacity * size_of::<u16>()) as u64,
+                limit: expected_capacity.saturating_mul(size_of::<u16>()) as u64,
                 current: old,
                 requested_delta: actual.saturating_sub(old),
             });

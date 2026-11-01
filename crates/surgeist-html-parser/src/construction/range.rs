@@ -271,9 +271,11 @@ impl SessionStorage {
             c.charge(WorkCategory::RecordVisit, 2)?;
             c.charge(
                 WorkCategory::InspectByte,
-                (mem::size_of::<Option<RangeNumericRequest>>()
-                    + mem::size_of::<MachineKind>()
-                    + mem::size_of::<usize>()) as u64,
+                const {
+                    (mem::size_of::<Option<RangeNumericRequest>>()
+                        + mem::size_of::<MachineKind>()
+                        + mem::size_of::<usize>()) as u64
+                },
             )?;
             let stage = self
                 .effects

@@ -446,9 +446,11 @@ fn ordinary_attempt(
     // Actual output receivers are admitted on this public-only path before
     // its first token pull; no heap indirection is introduced.
     let mut reason = super::write(
-        std::mem::size_of::<Option<FrozenStandaloneParts>>()
-            + std::mem::size_of::<Option<DetachedStandaloneFailure>>()
-            + std::mem::size_of::<OrdinaryAttempt>(),
+        const {
+            std::mem::size_of::<Option<FrozenStandaloneParts>>()
+                + std::mem::size_of::<Option<DetachedStandaloneFailure>>()
+                + std::mem::size_of::<OrdinaryAttempt>()
+        },
         3,
         &mut driver.as_mut().expect("actual driver").control,
     )
@@ -797,15 +799,17 @@ pub(crate) fn fragment(
     }
 }
 /// Exact added physical terminal envelope, admitted before first token pull.
-pub(super) fn terminal_layout() -> (usize, usize) {
-    use std::mem::size_of;
-    (
-        size_of::<HtmlParseFailure>()
-            + size_of::<FailureStorage>()
-            + size_of::<HtmlParseFailureReason>()
-            + size_of::<Option<HtmlParseEngineCondition>>(),
-        4,
-    )
+pub(super) const fn terminal_layout() -> (usize, usize) {
+    const {
+        use std::mem::size_of;
+        (
+            size_of::<HtmlParseFailure>()
+                + size_of::<FailureStorage>()
+                + size_of::<HtmlParseFailureReason>()
+                + size_of::<Option<HtmlParseEngineCondition>>(),
+            4,
+        )
+    }
 }
 
 #[derive(Clone, Copy)]

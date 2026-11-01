@@ -41,10 +41,12 @@ impl<'source> StandaloneDocumentDriver<'source> {
             .ok_or(StandaloneError::Consumed)?
             .require_owner(&mut driver.control)?;
         write(
-            size_of::<CompletedStandaloneDocument>()
-                + size_of::<Self>()
-                + size_of::<Option<Self>>(),
-            4 + usize::from(cfg!(test)),
+            const {
+                size_of::<CompletedStandaloneDocument>()
+                    + size_of::<Self>()
+                    + size_of::<Option<Self>>()
+            },
+            const { 4 + cfg!(test) as usize },
             &mut driver.control,
         )?;
         driver.control.require_source(driver.source)?;
@@ -386,11 +388,13 @@ impl<'source> CompletedStandaloneDocument<'source> {
         // Every fixed output/failure slot is submitted before active storage can
         // move. The fixed usage snapshots contain arrays, never variable clones.
         write(
-            size_of::<FrozenStandaloneParts>()
-                + size_of::<Option<crate::construction::FrozenArena>>()
-                + size_of::<Option<StandaloneDocumentDriver>>()
-                + size_of::<ParseControl>()
-                + size_of::<FrozenSourceBinding>(),
+            const {
+                size_of::<FrozenStandaloneParts>()
+                    + size_of::<Option<crate::construction::FrozenArena>>()
+                    + size_of::<Option<StandaloneDocumentDriver>>()
+                    + size_of::<ParseControl>()
+                    + size_of::<FrozenSourceBinding>()
+            },
             13,
             c,
         )?;
@@ -466,11 +470,13 @@ impl FrozenStandaloneParts {
         self.control.charge(WorkCategory::RecordVisit, 7)?;
         self.control.charge(
             WorkCategory::InspectByte,
-            (2 * size_of::<crate::HtmlSourceId>()
-                + 2 * size_of::<crate::HtmlSourceCoordinates>()
-                + 2 * size_of::<usize>()
-                + 2 * size_of::<crate::HtmlParseCancellation>()
-                + size_of::<StandaloneDocumentState>()) as u64,
+            const {
+                2 * size_of::<crate::HtmlSourceId>()
+                    + 2 * size_of::<crate::HtmlSourceCoordinates>()
+                    + 2 * size_of::<usize>()
+                    + 2 * size_of::<crate::HtmlParseCancellation>()
+                    + size_of::<StandaloneDocumentState>()
+            } as u64,
         )?;
         if !request.is_offline()
             || !self.control.owns_request(request.cancellation())
@@ -543,11 +549,13 @@ impl FrozenStandaloneParts {
             return Err(StandaloneError::Consumed);
         }
         write(
-            size_of::<super::seal::SealedOrdinaryConstruction>()
-                + size_of::<Option<Self>>()
-                + size_of::<Option<crate::HtmlDocumentParseRequest>>()
-                + size_of::<crate::request::DocumentRequestParts>()
-                + size_of::<super::super::control::ParseUsage>(),
+            const {
+                size_of::<super::seal::SealedOrdinaryConstruction>()
+                    + size_of::<Option<Self>>()
+                    + size_of::<Option<crate::HtmlDocumentParseRequest>>()
+                    + size_of::<crate::request::DocumentRequestParts>()
+                    + size_of::<super::super::control::ParseUsage>()
+            },
             9,
             &mut self.control,
         )?;

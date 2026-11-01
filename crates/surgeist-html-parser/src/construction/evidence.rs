@@ -236,7 +236,9 @@ impl ParseEvidence {
         // Handle and descriptor preparation precedes the atomic pair commit.
         c.charge(
             WorkCategory::CopyByte,
-            (mem::size_of::<ControlIdentity>() + mem::size_of::<Arc<EvidenceIdentity>>()) as u64,
+            const {
+                (mem::size_of::<ControlIdentity>() + mem::size_of::<Arc<EvidenceIdentity>>()) as u64
+            },
         )?;
         let owner = c.identity();
         let evidence = self.identity.clone();

@@ -327,7 +327,7 @@ impl<'source> HeadStage<'source> {
         // Preserve the existing enclosing ownership-transfer admission and add
         // the actual end-continuation field, removing the former diagnostic vector. The table constructor separately
         // admits its four field writes. All admissions precede the first take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 29, c) {
+        if let Err(stop) = write(const { size_of::<Self>() + size_of::<HeadState>() }, 29, c) {
             lexical.release(c)?;
             formatting.release(c)?;
             table.entries.release(c)?;
@@ -633,7 +633,11 @@ impl<'source> HeadStage<'source> {
             c.charge(WorkCategory::RecordVisit, 1)?;
             if let Some(token) = event.token() {
                 validate_source(self.source, token, c)?;
-                write(size_of::<Option<Event>>() + size_of::<PendingToken>(), 4, c)?;
+                write(
+                    const { size_of::<Option<Event>>() + size_of::<PendingToken>() },
+                    4,
+                    c,
+                )?;
                 let Event::Token(event) = state.lexical_pending.take().expect("retained event")
                 else {
                     unreachable!("actual token variant inspected")
@@ -715,10 +719,12 @@ impl<'source> HeadStage<'source> {
             // Normal owner transfer is admitted before mutation; terminal
             // disposal only deallocates/account-releases retained owners.
             write(
-                size_of::<Option<HeadState>>()
-                    + size_of::<Option<Tokenizer>>()
-                    + size_of::<Option<Text>>()
-                    + size_of::<Option<Event>>(),
+                const {
+                    size_of::<Option<HeadState>>()
+                        + size_of::<Option<Tokenizer>>()
+                        + size_of::<Option<Text>>()
+                        + size_of::<Option<Event>>()
+                },
                 4,
                 c,
             )?;
@@ -923,7 +929,7 @@ impl HeadState<'_> {
                 c.charge(WorkCategory::RecordVisit, 2)?;
                 c.charge(
                     WorkCategory::InspectByte,
-                    (size_of::<TagKind>() + size_of::<bool>()) as u64,
+                    const { size_of::<TagKind>() + size_of::<bool>() } as u64,
                 )?;
                 let kind = tag.kind;
                 let self_closing = tag.self_closing;
@@ -1408,7 +1414,7 @@ impl HeadState<'_> {
             .ok_or(HeadError::Consumed)?
             .checked_next_input_position(script.capability.source, c)?;
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
@@ -1439,7 +1445,7 @@ impl HeadState<'_> {
             script.pause = false;
         }
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
@@ -1498,7 +1504,7 @@ impl HeadState<'_> {
             .ok_or(HeadError::Consumed)?
             .checked_next_input_position(script.capability.source, c)?;
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
@@ -1529,7 +1535,7 @@ impl HeadState<'_> {
             script.pause = false;
         }
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;

@@ -494,11 +494,15 @@ impl<'source> Tokenizer<'source> {
         // Each taken source slot is written to None, each subsequent event
         // replaces a destination slot, and the persistent length is updated.
         // This fixed bulk move is admitted before any slot is taken.
-        admit_record_write(
-            size_of::<Option<Event>>() * self.pending_len + size_of::<usize>(),
-            2 * self.pending_len,
-            c,
-        )?;
+        let (Some(bytes), Some(writes)) = (
+            size_of::<Option<Event>>()
+                .checked_mul(self.pending_len)
+                .and_then(|bytes| bytes.checked_add(size_of::<usize>())),
+            self.pending_len.checked_mul(2),
+        ) else {
+            return c.representation(HtmlParseResource::AtomicLayoutBytes);
+        };
+        admit_record_write(bytes, writes, c)?;
         let first = self.pending[0].take();
         for i in 1..self.pending_len {
             self.pending[i - 1] = self.pending[i].take();
@@ -614,7 +618,11 @@ impl<'source> Tokenizer<'source> {
             return Ok(());
         }
         if let Some(pair) = self.cursor.consumed_span(c)? {
-            admit_record_write(4 * size_of::<crate::source::ConsumedSourceBoundary>(), 2, c)?;
+            admit_record_write(
+                const { 4 * size_of::<crate::source::ConsumedSourceBoundary>() },
+                2,
+                c,
+            )?;
             let p = self.proofs.as_mut().expect("progressive owner");
             p.previous = p.current.clone();
             p.current = pair;
@@ -638,12 +646,12 @@ impl<'source> Tokenizer<'source> {
         } else {
             None
         };
-        let endpoints = if middle.is_some() { 3 } else { 2 };
-        admit_record_write(
-            endpoints * size_of::<crate::source::ConsumedSourceBoundary>(),
-            1,
-            c,
-        )?;
+        let bytes = if middle.is_some() {
+            const { 3 * size_of::<crate::source::ConsumedSourceBoundary>() }
+        } else {
+            const { 2 * size_of::<crate::source::ConsumedSourceBoundary>() }
+        };
+        admit_record_write(bytes, 1, c)?;
         let p = self.proofs.as_mut().expect("progressive owner");
         match role {
             ProofRole::LessThan => p.less_than = (a, b),
@@ -728,8 +736,11 @@ impl<'source> Tokenizer<'source> {
             event.release(c)?;
             return Err(c.fail_invariant(Invariant::InputCursorState));
         }
-        if let Err(stop) = admit_record_write(size_of::<Option<Event>>() + size_of::<usize>(), 2, c)
-        {
+        if let Err(stop) = admit_record_write(
+            const { size_of::<Option<Event>>() + size_of::<usize>() },
+            2,
+            c,
+        ) {
             event.release(c)?;
             return Err(stop);
         }
@@ -1042,7 +1053,7 @@ impl<'source> Tokenizer<'source> {
             && !a.name_checked
         {
             let duplicate = t.names.insert(a.name.value.units(), c)?;
-            admit_record_write(2 * size_of::<bool>(), 2, c)?;
+            admit_record_write(const { 2 * size_of::<bool>() }, 2, c)?;
             a.duplicate = duplicate;
             a.name_checked = true;
             if a.duplicate {
@@ -1551,7 +1562,7 @@ impl<'source> Tokenizer<'source> {
     ) -> Result<(), ParseStop> {
         self.set_state(State::Data, c)?;
         // Admit both removals before taking either nested owner.
-        admit_record_write(2 * size_of::<Option<DraftText>>(), 2, c)?;
+        admit_record_write(const { 2 * size_of::<Option<DraftText>>() }, 2, c)?;
         let target = self
             .pi_target
             .take()
@@ -1580,7 +1591,7 @@ impl<'source> Tokenizer<'source> {
         // Temporary removal, target insertion, and data insertion are a single
         // bounded transfer with no fallible operation after admission.
         if let Err(stop) = admit_record_write(
-            size_of::<DraftText>() + 2 * size_of::<Option<DraftText>>(),
+            const { size_of::<DraftText>() + 2 * size_of::<Option<DraftText>>() },
             3,
             c,
         ) {

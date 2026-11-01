@@ -142,16 +142,20 @@ pub(super) fn parse<'facts, E: From<SessionError> + From<ParseStop>>(
     #[cfg(test)] mut slot_commit: impl FnMut(),
 ) -> Result<CssColorParseOutcome<'facts>, E> {
     let layout = CssColorParse::initialization_layout();
-    frame(
-        c,
-        layout.register_bytes,
-        layout.owner_bytes
-            + layout.fact_identity_bytes
-            + mem::size_of::<CssColorFacts<'_>>()
-            + mem::size_of::<Banks<'_>>()
-            + mem::size_of_val(&on_processing)
-            + consumer_layout,
-    )?;
+    let Some(guard) = [
+        layout.owner_bytes,
+        layout.fact_identity_bytes,
+        const { mem::size_of::<CssColorFacts<'_>>() + mem::size_of::<Banks<'_>>() },
+        mem::size_of_val(&on_processing),
+        consumer_layout,
+    ]
+    .into_iter()
+    .try_fold(0usize, usize::checked_add) else {
+        return Err(c
+            .stop_representation(HtmlParseResource::AtomicLayoutBytes)
+            .into());
+    };
+    frame(c, layout.register_bytes, guard)?;
     let parse = CssColorParse::start(
         owner,
         CssColorInputKind::Utf16,

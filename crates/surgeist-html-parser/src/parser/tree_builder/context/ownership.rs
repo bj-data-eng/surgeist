@@ -60,10 +60,12 @@ impl<'source> FragmentEntry<'source> {
         target.admit(c)?;
         // Actual owning slots, error receiver and terminal transfers. No
         // stopped extraction allocates variable storage or copies source text.
-        let (terminal_bytes, terminal_writes) = initialization_transfer_layout();
+
         write(
-            size_of::<Self>() + terminal_bytes + 2 * size_of::<ParseUsage>(),
-            6 + terminal_writes + 2,
+            const {
+                size_of::<Self>() + initialization_transfer_layout().0 + 2 * size_of::<ParseUsage>()
+            },
+            const { 6 + initialization_transfer_layout().1 + 2 },
             c,
         )?;
         c.charge(
@@ -173,19 +175,21 @@ impl<'source> FragmentEntry<'source> {
             .require_source(driver.request.source())
             .and_then(|()| {
                 write(
-                    size_of::<ContextFragmentDriver>()
-                        + size_of::<Option<ContextFragmentDriver>>()
-                        + execution_transfer_layout().0
-                        + size_of::<FailedContextFragment>()
-                        + 2 * size_of::<ParseUsage>(),
-                    2 + execution_transfer_layout().1 + 8,
+                    const {
+                        size_of::<ContextFragmentDriver>()
+                            + size_of::<Option<ContextFragmentDriver>>()
+                            + execution_transfer_layout().0
+                            + size_of::<FailedContextFragment>()
+                            + 2 * size_of::<ParseUsage>()
+                    },
+                    const { 2 + execution_transfer_layout().1 + 8 },
                     &mut driver.control,
                 )
             });
         let transfer = transfer.and_then(|()| {
             driver.control.charge(
                 WorkCategory::InspectByte,
-                2 * terminal_qualification_bytes() as u64,
+                const { 2 * terminal_qualification_bytes() as u64 },
             )
         });
         if let Err(stop) = transfer {
@@ -385,63 +389,73 @@ impl<'owner> FragmentInitializationAttempt<'owner> {
 
 /// Original request fields (7), two owning Option clears and joined fields
 /// (2). This compiled fixed envelope precedes every terminal request join.
-fn request_join_layout() -> (usize, usize) {
-    (
-        size_of::<Option<HtmlFragmentParseRequest>>()
-            + size_of::<Option<StoppedFragmentConstruction>>()
-            + size_of::<FragmentRequestParts>()
-            + size_of::<OwnedFragmentFailure>(),
-        2 + 7 + 2,
-    )
+const fn request_join_layout() -> (usize, usize) {
+    const {
+        (
+            size_of::<Option<HtmlFragmentParseRequest>>()
+                + size_of::<Option<StoppedFragmentConstruction>>()
+                + size_of::<FragmentRequestParts>()
+                + size_of::<OwnedFragmentFailure>(),
+            2 + 7 + 2,
+        )
+    }
 }
 /// Initialization clears actual binding/driver/reason/cleanup snapshot slots
 /// (4), writes seven detached fields, then performs the request join.
-fn initialization_transfer_layout() -> (usize, usize) {
-    let (join_bytes, join_writes) = request_join_layout();
-    (
-        size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-            + size_of::<Option<ContextFragmentDriver>>()
-            + size_of::<Option<FragmentExecutionError>>()
-            + size_of::<Option<ParseUsage>>()
-            + size_of::<StoppedFragmentConstruction>()
-            + join_bytes,
-        4 + 7 + join_writes,
-    )
+const fn initialization_transfer_layout() -> (usize, usize) {
+    const {
+        let (join_bytes, join_writes) = request_join_layout();
+        (
+            size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                + size_of::<Option<ContextFragmentDriver>>()
+                + size_of::<Option<FragmentExecutionError>>()
+                + size_of::<Option<ParseUsage>>()
+                + size_of::<StoppedFragmentConstruction>()
+                + join_bytes,
+            4 + 7 + join_writes,
+        )
+    }
 }
 /// Ready execution also retains the original six-field failure receiver and
 /// two actual usage snapshots before the first token pull.
 /// Active failure clears its actual binding, cleaned failure and supplied
 /// error slots (3), writes seven carrier fields, then joins the original request.
-fn execution_transfer_layout() -> (usize, usize) {
-    let (join_bytes, join_writes) = request_join_layout();
-    (
-        size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-            + size_of::<Option<FailedContextFragment>>()
-            + size_of::<Option<FragmentExecutionError>>()
-            + size_of::<StoppedFragmentConstruction>()
-            + 2 * size_of::<Option<StoppedFragmentConstruction>>()
-            + join_bytes,
-        3 + 7 + 2 + join_writes,
-    )
+const fn execution_transfer_layout() -> (usize, usize) {
+    const {
+        let (join_bytes, join_writes) = request_join_layout();
+        (
+            size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                + size_of::<Option<FailedContextFragment>>()
+                + size_of::<Option<FragmentExecutionError>>()
+                + size_of::<StoppedFragmentConstruction>()
+                + 2 * size_of::<Option<StoppedFragmentConstruction>>()
+                + join_bytes,
+            3 + 7 + 2 + join_writes,
+        )
+    }
 }
 /// A frozen failure has its own actual Option receiver, not an active failed
 /// execution receiver. This envelope is admitted before freezing that owner.
-pub(super) fn frozen_failure_layout() -> (usize, usize) {
-    let (join_bytes, join_writes) = request_join_layout();
-    (
-        size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-            + size_of::<Option<FrozenContextFragmentParts>>()
-            + size_of::<Option<FragmentExecutionError>>()
-            + size_of::<StoppedFragmentConstruction>()
-            + 2 * size_of::<Option<StoppedFragmentConstruction>>()
-            + join_bytes,
-        3 + 7 + 2 + join_writes,
-    )
+pub(super) const fn frozen_failure_layout() -> (usize, usize) {
+    const {
+        let (join_bytes, join_writes) = request_join_layout();
+        (
+            size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                + size_of::<Option<FrozenContextFragmentParts>>()
+                + size_of::<Option<FragmentExecutionError>>()
+                + size_of::<StoppedFragmentConstruction>()
+                + 2 * size_of::<Option<StoppedFragmentConstruction>>()
+                + join_bytes,
+            3 + 7 + 2 + join_writes,
+        )
+    }
 }
-fn terminal_qualification_bytes() -> usize {
-    2 * size_of::<crate::HtmlParseCancellation>()
-        + 2 * size_of::<crate::HtmlSourceId>()
-        + 2 * size_of::<crate::HtmlSourceCoordinates>()
+const fn terminal_qualification_bytes() -> usize {
+    const {
+        2 * size_of::<crate::HtmlParseCancellation>()
+            + 2 * size_of::<crate::HtmlSourceId>()
+            + 2 * size_of::<crate::HtmlSourceCoordinates>()
+    }
 }
 pub(crate) struct StoppedFragmentConstruction {
     control: ParseControl,

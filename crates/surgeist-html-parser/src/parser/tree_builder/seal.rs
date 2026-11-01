@@ -190,48 +190,56 @@ impl<'request> InitializationAttempt<'request> {
 /// plus the exact entry transfer slots. All are fixed bootstrap storage, not
 /// variable source/native copies. Running admission follows source precedence;
 /// an earlier stop cannot pretend this layout was admitted.
-pub(super) fn initialization_bootstrap_layout() -> (usize, usize) {
-    use std::mem::size_of;
-    let (bytes, writes) = super::entry::initialization_transfer_layout();
-    (
-        bytes
-            + size_of::<OrdinaryInitializationOwner>()
-            + size_of::<InitializationAttempt>()
-            + 3 * size_of::<InitializationPhase>()
-            + size_of::<Option<HtmlDocumentParseRequest>>(),
-        writes + 3 + 4 + 3 + 1,
-    )
+pub(super) const fn initialization_bootstrap_layout() -> (usize, usize) {
+    const {
+        use std::mem::size_of;
+        let (bytes, writes) = super::entry::initialization_transfer_layout();
+        (
+            bytes
+                + size_of::<OrdinaryInitializationOwner>()
+                + size_of::<InitializationAttempt>()
+                + 3 * size_of::<InitializationPhase>()
+                + size_of::<Option<HtmlDocumentParseRequest>>(),
+            writes + 3 + 4 + 3 + 1,
+        )
+    }
 }
 /// One cancellation identity and two source identity/basis comparisons, plus
 /// six fixed phase/slot/stop/optional-binding visits, precede the stopped moves.
-pub(super) fn initialization_qualification_bytes() -> usize {
-    2 * std::mem::size_of::<crate::HtmlParseCancellation>()
-        + 4 * std::mem::size_of::<crate::HtmlSourceId>()
-        + 4 * std::mem::size_of::<crate::HtmlSourceCoordinates>()
+pub(super) const fn initialization_qualification_bytes() -> usize {
+    const {
+        2 * std::mem::size_of::<crate::HtmlParseCancellation>()
+            + 4 * std::mem::size_of::<crate::HtmlSourceId>()
+            + 4 * std::mem::size_of::<crate::HtmlSourceCoordinates>()
+    }
 }
 
 /// Exact physical transfer layouts are prepaid by the initialization owner.
 /// Four cleared owning options, five detached fields, four request fields and
 /// two joined fields: every terminal move is fixed and needs no new admission.
-pub(super) fn terminal_transfer_layout() -> (usize, usize) {
-    use std::mem::size_of;
-    (
-        size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-            + size_of::<Option<super::terminal::FailedStandaloneDocument>>()
-            + size_of::<super::terminal::DetachedStandaloneFailure>()
-            + size_of::<Option<HtmlDocumentParseRequest>>()
-            + size_of::<Option<super::terminal::DetachedStandaloneFailure>>()
-            + size_of::<DocumentRequestParts>()
-            + size_of::<OwnedOrdinaryFailure>(),
-        4 + 5 + 4 + 2,
-    )
+pub(super) const fn terminal_transfer_layout() -> (usize, usize) {
+    const {
+        use std::mem::size_of;
+        (
+            size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                + size_of::<Option<super::terminal::FailedStandaloneDocument>>()
+                + size_of::<super::terminal::DetachedStandaloneFailure>()
+                + size_of::<Option<HtmlDocumentParseRequest>>()
+                + size_of::<Option<super::terminal::DetachedStandaloneFailure>>()
+                + size_of::<DocumentRequestParts>()
+                + size_of::<OwnedOrdinaryFailure>(),
+            4 + 5 + 4 + 2,
+        )
+    }
 }
 /// The terminal join reads two actual Arc identities and coordinate tags, with
 /// two fixed offline-context predicates. Admission precedes the first pull.
-pub(super) fn terminal_qualification_bytes() -> usize {
-    2 * std::mem::size_of::<crate::HtmlParseCancellation>()
-        + 2 * std::mem::size_of::<crate::HtmlSourceId>()
-        + 2 * std::mem::size_of::<crate::HtmlSourceCoordinates>()
+pub(super) const fn terminal_qualification_bytes() -> usize {
+    const {
+        2 * std::mem::size_of::<crate::HtmlParseCancellation>()
+            + 2 * std::mem::size_of::<crate::HtmlSourceId>()
+            + 2 * std::mem::size_of::<crate::HtmlSourceCoordinates>()
+    }
 }
 
 pub(crate) struct SealedOrdinaryConstruction {

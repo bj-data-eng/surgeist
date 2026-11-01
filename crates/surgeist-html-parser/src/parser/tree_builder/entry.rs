@@ -166,13 +166,16 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         }
         write(size_of::<StandaloneDocumentDriver>(), 11, c)?;
         write(
-            size_of::<Option<ParseUsage>>()
-                + 2 * size_of::<Option<crate::construction::evidence::FailureDiagnosticEvidence>>()
-                + size_of::<super::terminal::FailedStandaloneDocument>()
-                + super::seal::terminal_transfer_layout().0
-                + size_of::<Option<StandaloneDocumentDriver>>()
-                + size_of::<Self>(),
-            1 + 2 + 6 + super::seal::terminal_transfer_layout().1 + 1 + 4,
+            const {
+                size_of::<Option<ParseUsage>>()
+                    + 2 * size_of::<Option<crate::construction::evidence::FailureDiagnosticEvidence>>(
+                    )
+                    + size_of::<super::terminal::FailedStandaloneDocument>()
+                    + super::seal::terminal_transfer_layout().0
+                    + size_of::<Option<StandaloneDocumentDriver>>()
+                    + size_of::<Self>()
+            },
+            const { 1 + 2 + 6 + super::seal::terminal_transfer_layout().1 + 1 + 4 },
             c,
         )?;
         c.charge(
@@ -293,9 +296,11 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         let driver = self.driver.as_mut().expect("ready actual driver");
         let result = driver.control.require_source(self.source).and_then(|()| {
             write(
-                size_of::<StandaloneDocumentDriver>()
-                    + size_of::<Option<StandaloneDocumentDriver>>()
-                    + size_of::<Phase>(),
+                const {
+                    size_of::<StandaloneDocumentDriver>()
+                        + size_of::<Option<StandaloneDocumentDriver>>()
+                        + size_of::<Phase>()
+                },
                 3,
                 &mut driver.control,
             )
@@ -446,16 +451,18 @@ impl StoppedInitialization {
 /// Actual fixed transfer: four stopped fields, three cleared owner/binding/
 /// observation slots, one output write and one entry phase write. This layout
 /// is included only by the real source-owning bootstrap consumer.
-pub(super) fn initialization_transfer_layout() -> (usize, usize) {
-    (
-        size_of::<StoppedInitialization>()
-            + size_of::<Option<StandaloneDocumentDriver>>()
-            + size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-            + size_of::<Option<ParseUsage>>()
-            + size_of::<Option<StoppedInitialization>>()
-            + size_of::<Phase>(),
-        4 + 3 + 1 + 1,
-    )
+pub(super) const fn initialization_transfer_layout() -> (usize, usize) {
+    const {
+        (
+            size_of::<StoppedInitialization>()
+                + size_of::<Option<StandaloneDocumentDriver>>()
+                + size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                + size_of::<Option<ParseUsage>>()
+                + size_of::<Option<StoppedInitialization>>()
+                + size_of::<Phase>(),
+            4 + 3 + 1 + 1,
+        )
+    }
 }
 
 #[cfg(test)]

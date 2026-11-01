@@ -769,7 +769,7 @@ impl ParseEvidence {
                         c.charge(WorkCategory::RecordVisit, 2)?;
                         c.charge(
                             WorkCategory::InspectByte,
-                            (2 * mem::size_of::<usize>()) as u64,
+                            const { (2 * mem::size_of::<usize>()) as u64 },
                         )?;
                         let left_units = self
                             .native

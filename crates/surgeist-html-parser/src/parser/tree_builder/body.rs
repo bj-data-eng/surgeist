@@ -173,7 +173,7 @@ impl HeadState<'_> {
         let tag = input.as_ref().ok_or(HeadError::MissingInput)?;
         c.charge(
             WorkCategory::InspectByte,
-            (size_of::<TagKind>() + size_of::<bool>()) as u64,
+            const { size_of::<TagKind>() + size_of::<bool>() } as u64,
         )?;
         Ok(Some((tag.kind, tag.self_closing)))
     }
@@ -308,7 +308,7 @@ impl HeadState<'_> {
                     )?;
                 }
                 write(
-                    size_of::<Option<TextRun>>() + size_of::<Option<Text>>(),
+                    const { size_of::<Option<TextRun>>() + size_of::<Option<Text>>() },
                     2,
                     c,
                 )?;
@@ -317,7 +317,7 @@ impl HeadState<'_> {
             } else {
                 let other = kind == BodyTextKind::Other;
                 write(
-                    size_of::<Option<TextRun>>() + size_of::<Option<Text>>(),
+                    const { size_of::<Option<TextRun>>() + size_of::<Option<Text>>() },
                     2,
                     c,
                 )?;
@@ -1838,7 +1838,7 @@ impl HeadState<'_> {
     pub(super) fn release_body(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         if c.stop().is_none() {
             write(
-                size_of::<Option<TextRun>>() + size_of::<Option<ParserNode>>(),
+                const { size_of::<Option<TextRun>>() + size_of::<Option<ParserNode>>() },
                 2,
                 c,
             )?;

@@ -162,7 +162,7 @@ impl HeadState<'_> {
                 // Admit final cursor/token writes before marking completion. No
                 // fallible gap follows that stamp or can orphan the EOF anchor.
                 write(
-                    size_of::<Option<EndPhase>>() + size_of::<Option<prologue::PendingToken>>(),
+                    const { size_of::<Option<EndPhase>>() + size_of::<Option<prologue::PendingToken>>() },
                     2,
                     c,
                 )?;

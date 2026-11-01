@@ -817,10 +817,12 @@ impl SessionStorage {
             loop {
                 let cost = cursor.next_cost();
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                c.charge(
-                    WorkCategory::InspectByte,
-                    (cost * mem::size_of::<u16>()) as u64,
-                )?;
+                let Some(bytes) = cost.checked_mul(mem::size_of::<u16>()) else {
+                    return Err(c
+                        .stop_representation(crate::HtmlParseResource::WorkCredits)
+                        .into());
+                };
+                c.charge(WorkCategory::InspectByte, bytes as u64)?;
                 if cursor.next_clones_registry() {
                     c.charge(WorkCategory::ProviderCall, 1)?;
                     payload_write::<surgeist_html_semantics::HtmlDefinitionLookupStep>(c, 1)?;
@@ -1604,7 +1606,12 @@ impl SessionStorage {
         loop {
             let cost = cursor.next_cost();
             c.charge(WorkCategory::RecordVisit, 1)?;
-            c.charge(WorkCategory::InspectByte, (cost * 2) as u64)?;
+            let Some(bytes) = cost.checked_mul(2) else {
+                return Err(c
+                    .stop_representation(crate::HtmlParseResource::WorkCredits)
+                    .into());
+            };
+            c.charge(WorkCategory::InspectByte, bytes as u64)?;
             if cursor.next_clones_registry() {
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 payload_write::<surgeist_html_semantics::HtmlDefinitionLookupStep>(c, 1)?;
@@ -1853,7 +1860,7 @@ impl SessionStorage {
         }
         c.charge(
             WorkCategory::CopyByte,
-            mem::size_of::<HtmlShadowRootProperties>() as u64 + mem::size_of::<usize>() as u64,
+            const { mem::size_of::<HtmlShadowRootProperties>() as u64 + mem::size_of::<usize>() as u64 },
         )?;
         let properties = shadow.properties();
         let original = shadow_contents;
@@ -2528,7 +2535,7 @@ impl FrozenArena {
             };
             c.charge(
                 WorkCategory::InspectByte,
-                (mem::size_of::<usize>() + mem::size_of::<RegistryRef>()) as u64,
+                const { (mem::size_of::<usize>() + mem::size_of::<RegistryRef>()) as u64 },
             )?;
             c.charge(WorkCategory::RecordVisit, 1)?;
             view.node(*node)?;

@@ -51,7 +51,7 @@ fn adjusted_text(
             c.charge(WorkCategory::RecordVisit, 1)?;
             c.charge(
                 WorkCategory::InspectByte,
-                (2 * mem::size_of::<usize>()) as u64,
+                const { (2 * mem::size_of::<usize>()) as u64 },
             )?;
             if origin.end <= skip {
                 continue;

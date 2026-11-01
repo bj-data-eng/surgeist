@@ -400,7 +400,7 @@ impl GroupLeafCursor {
                     c.charge(WorkCategory::RecordVisit, 2)?;
                     c.charge(
                         WorkCategory::InspectByte,
-                        (2 * mem::size_of::<usize>()) as u64,
+                        const { (2 * mem::size_of::<usize>()) as u64 },
                     )?;
                     if original >= frame.index || incoming >= frame.index {
                         return Err(SessionError::WrongToken);
@@ -487,7 +487,7 @@ impl GroupOriginCursor {
             c.charge(WorkCategory::RecordVisit, 1)?;
             c.charge(
                 WorkCategory::InspectByte,
-                (mem::size_of::<Option<LeafChunk>>() + mem::size_of::<usize>()) as u64,
+                const { (mem::size_of::<Option<LeafChunk>>() + mem::size_of::<usize>()) as u64 },
             )?;
             if let Some(leaf) = self.current
                 && self.position < leaf.length

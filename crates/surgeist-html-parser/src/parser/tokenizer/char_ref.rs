@@ -107,7 +107,7 @@ impl Tokenizer<'_> {
         let initial = self.reference_mark(c)?;
         let query = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         admit_record_write(
-            size_of::<ReferenceContinuation>() + size_of::<Option<ReferenceContinuation>>(),
+            const { size_of::<ReferenceContinuation>() + size_of::<Option<ReferenceContinuation>>() },
             2,
             c,
         )?;
@@ -134,7 +134,7 @@ impl Tokenizer<'_> {
         evidence: &mut ParseEvidence,
     ) -> Result<StepProgress, ParseStop> {
         admit_record_write(
-            size_of::<Option<ReferenceContinuation>>() + size_of::<ReferenceContinuation>(),
+            const { size_of::<Option<ReferenceContinuation>>() + size_of::<ReferenceContinuation>() },
             2,
             c,
         )?;
@@ -143,7 +143,10 @@ impl Tokenizer<'_> {
         match result {
             Ok(false) => {
                 if let Err(stop) = admit_record_write(
-                    size_of::<Option<ReferenceContinuation>>() + size_of::<ReferenceContinuation>(),
+                    const {
+                        size_of::<Option<ReferenceContinuation>>()
+                            + size_of::<ReferenceContinuation>()
+                    },
                     2,
                     c,
                 ) {
@@ -253,7 +256,7 @@ impl Tokenizer<'_> {
                     if let Some((value, semicolon, mark)) = &r.longest {
                         self.reference_rewind(mark, c)?;
                         admit_record_write(
-                            size_of::<Option<ReferenceValue>>() + size_of::<bool>(),
+                            const { size_of::<Option<ReferenceValue>>() + size_of::<bool>() },
                             2,
                             c,
                         )?;
@@ -439,7 +442,11 @@ impl Tokenizer<'_> {
                         };
                         if let Some(digit) = digit {
                             self.read(c, evidence)?;
-                            admit_record_write(size_of::<bool>() + size_of::<u32>(), 2, c)?;
+                            admit_record_write(
+                                const { size_of::<bool>() + size_of::<u32>() },
+                                2,
+                                c,
+                            )?;
                             r.digits = true;
                             r.value = r
                                 .value

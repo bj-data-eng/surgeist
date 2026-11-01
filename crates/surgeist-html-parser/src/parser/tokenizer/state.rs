@@ -59,7 +59,11 @@ impl Tokenizer<'_> {
                 LexicalDisposition::LiteralRecovery,
             )?;
         }
-        admit_record_write(size_of::<usize>() + size_of::<HtmlSourceRange>(), 2, c)?;
+        admit_record_write(
+            const { size_of::<usize>() + size_of::<HtmlSourceRange>() },
+            2,
+            c,
+        )?;
         self.save_proof_range(
             ProofRole::LessThan,
             self.current.start(),

@@ -139,7 +139,11 @@ impl<'source> ContextFragmentDriver<'source> {
             .ok_or(FragmentExecutionError::Consumed)?;
         state.qualify_completed(&mut driver.control)?;
         write(
-            size_of::<CompletedContextFragment>() + size_of::<Self>() + size_of::<Option<Self>>(),
+            const {
+                size_of::<CompletedContextFragment>()
+                    + size_of::<Self>()
+                    + size_of::<Option<Self>>()
+            },
             2,
             &mut driver.control,
         )?;
@@ -348,10 +352,12 @@ impl FrozenContextFragmentParts {
         self.control.charge(WorkCategory::RecordVisit, 5)?;
         self.control.charge(
             WorkCategory::InspectByte,
-            (2 * size_of::<crate::HtmlSourceId>()
-                + 2 * size_of::<crate::HtmlSourceCoordinates>()
-                + 2 * size_of::<usize>()
-                + 2 * size_of::<crate::HtmlParseCancellation>()) as u64,
+            const {
+                2 * size_of::<crate::HtmlSourceId>()
+                    + 2 * size_of::<crate::HtmlSourceCoordinates>()
+                    + 2 * size_of::<usize>()
+                    + 2 * size_of::<crate::HtmlParseCancellation>()
+            } as u64,
         )?;
         if !self.control.owns_request(request.cancellation())
             || self.source_binding()
@@ -380,12 +386,14 @@ impl FrozenContextFragmentParts {
         self.control.charge(WorkCategory::RecordVisit, 11)?;
         self.control.charge(
             WorkCategory::InspectByte,
-            (2 * size_of::<crate::HtmlFragmentContext>()
-                + 2 * size_of::<crate::HtmlSourceId>()
-                + 2 * size_of::<crate::HtmlSourceCoordinates>()
-                + 2 * size_of::<usize>()
-                + 4 * size_of::<HtmlParserScriptingMode>()
-                + 2 * size_of::<bool>()) as u64,
+            const {
+                2 * size_of::<crate::HtmlFragmentContext>()
+                    + 2 * size_of::<crate::HtmlSourceId>()
+                    + 2 * size_of::<crate::HtmlSourceCoordinates>()
+                    + 2 * size_of::<usize>()
+                    + 4 * size_of::<HtmlParserScriptingMode>()
+                    + 2 * size_of::<bool>()
+            } as u64,
         )?;
         let arena = self
             .arena
@@ -418,11 +426,13 @@ impl FrozenContextFragmentParts {
         arena.retained_evidence()?;
         arena.prepare_fragment_effects(&mut self.control)?;
         write(
-            size_of::<ownership::SealedFragmentConstruction>()
-                + size_of::<crate::request::FragmentRequestParts>()
-                + size_of::<Option<HtmlFragmentParseRequest>>()
-                + size_of::<Option<Self>>()
-                + size_of::<super::super::control::ParseUsage>(),
+            const {
+                size_of::<ownership::SealedFragmentConstruction>()
+                    + size_of::<crate::request::FragmentRequestParts>()
+                    + size_of::<Option<HtmlFragmentParseRequest>>()
+                    + size_of::<Option<Self>>()
+                    + size_of::<super::super::control::ParseUsage>()
+            },
             12,
             &mut self.control,
         )?;
@@ -612,12 +622,14 @@ impl<'source> CompletedContextFragment<'source> {
             .session
             .preflight_completed_freeze(&mut driver.control)?;
         write(
-            size_of::<FrozenContextFragmentParts>()
-                + size_of::<Option<crate::construction::FrozenArena>>()
-                + size_of::<Option<ContextFragmentDriver>>()
-                + size_of::<ParseControl>()
-                + ownership::frozen_failure_layout().0,
-            13 + ownership::frozen_failure_layout().1,
+            const {
+                size_of::<FrozenContextFragmentParts>()
+                    + size_of::<Option<crate::construction::FrozenArena>>()
+                    + size_of::<Option<ContextFragmentDriver>>()
+                    + size_of::<ParseControl>()
+                    + ownership::frozen_failure_layout().0
+            },
+            const { 13 + ownership::frozen_failure_layout().1 },
             &mut driver.control,
         )?;
         driver.control.charge(WorkCategory::RecordVisit, 3)?;

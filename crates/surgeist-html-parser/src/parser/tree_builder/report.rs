@@ -77,11 +77,13 @@ impl ImmutableParseReport {
         )?;
         let c = storage.control();
         super::write(
-            size_of::<Self>()
-                + size_of::<Option<SealedOrdinaryConstruction>>()
-                + size_of::<SealedOrdinaryConstruction>()
-                + size_of::<ReportContext>()
-                + size_of::<ParseUsage>(),
+            const {
+                size_of::<Self>()
+                    + size_of::<Option<SealedOrdinaryConstruction>>()
+                    + size_of::<SealedOrdinaryConstruction>()
+                    + size_of::<ReportContext>()
+                    + size_of::<ParseUsage>()
+            },
             5,
             c,
         )?;
@@ -124,11 +126,13 @@ impl ImmutableParseReport {
         )?;
         let c = storage.control();
         super::write(
-            size_of::<Self>()
-                + size_of::<Option<SealedFragmentConstruction>>()
-                + size_of::<SealedFragmentConstruction>()
-                + size_of::<ReportContext>()
-                + size_of::<ParseUsage>(),
+            const {
+                size_of::<Self>()
+                    + size_of::<Option<SealedFragmentConstruction>>()
+                    + size_of::<SealedFragmentConstruction>()
+                    + size_of::<ReportContext>()
+                    + size_of::<ParseUsage>()
+            },
             5,
             c,
         )?;

@@ -934,7 +934,7 @@ impl ParseControl {
             (WorkCategory::ProviderCall, 9),
             (
                 WorkCategory::CopyByte,
-                (2 * size_of::<Weak<Vec<crate::Attribute>>>()) as u64,
+                const { (2 * size_of::<Weak<Vec<crate::Attribute>>>()) as u64 },
             ),
             (WorkCategory::RecordWrite, 2),
         ])?;
@@ -1567,8 +1567,15 @@ impl ParseControl {
             }
         }
         let (text, allocation) = self.freeze_document_string(buffer)?;
-        let bytes =
-            allocation.vector_capacity * size_of::<u16>() + allocation.wrapper_bytes as usize;
+        let Some(bytes) = allocation
+            .vector_capacity
+            .checked_mul(size_of::<u16>())
+            .and_then(|bytes| bytes.checked_add(allocation.wrapper_bytes as usize))
+        else {
+            drop(text);
+            self.release_document_string(allocation)?;
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
         let units = text.shared_code_units().capacity();
         let admitted = self
             .charge(WorkCategory::ProviderCall, 2)
@@ -2141,7 +2148,7 @@ impl<T> OwnedVec<T> {
                 (WorkCategory::RecordWrite, 1),
                 (WorkCategory::CopyByte, bytes),
             ])?;
-            if size_of::<T>() + 2 > WORK_QUANTUM {
+            if const { size_of::<T>() + 2 > WORK_QUANTUM } {
                 control.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
                 control.set(HtmlParseResource::AtomicLayoutBytes, bytes);
                 control.usage.largest_atomic_layout =
@@ -2231,7 +2238,12 @@ impl<T: Copy> OwnedVec<T> {
     ) -> Result<(), ParseStop> {
         control.checkpoint()?;
         self.prepare(control, values.len(), 0, 0, Growth::Exact)?;
-        let stride = (WORK_QUANTUM / size_of::<T>()).max(1);
+        // A zero-sized element has no byte stride; refuse it when this is compiled.
+        let stride = const {
+            assert!(size_of::<T>() != 0);
+            WORK_QUANTUM / size_of::<T>()
+        }
+        .max(1);
         for chunk in values.chunks(stride) {
             let bytes = std::mem::size_of_val(chunk) as u64;
             control.charge(WorkCategory::CopyByte, bytes)?;

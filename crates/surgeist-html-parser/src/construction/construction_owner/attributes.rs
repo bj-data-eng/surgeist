@@ -175,7 +175,13 @@ impl ConstructionOwner {
                         attribute_plan.as_ref(),
                     )?;
                     ticket_work(control)?;
-                    Some(minimum_capacity * allocation.element_size())
+                    let Some(expected) = minimum_capacity.checked_mul(allocation.element_size())
+                    else {
+                        return Err(control
+                            .stop_representation(crate::HtmlParseResource::ManagedCapacityBytes)
+                            .into());
+                    };
+                    Some(expected)
                 } else {
                     None
                 };

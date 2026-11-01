@@ -294,8 +294,10 @@ impl<'a> DocumentPrologue<'a> {
         c.charge(WorkCategory::RecordVisit, 3)?;
         c.charge(
             WorkCategory::InspectByte,
-            (size_of::<PrologueMode>()
-                + size_of::<crate::construction::evidence::DiagnosticToken>()) as u64,
+            const {
+                size_of::<PrologueMode>()
+                    + size_of::<crate::construction::evidence::DiagnosticToken>()
+            } as u64,
         )?;
         let pending = self.pending.as_ref().ok_or(PrologueError::MissingInput)?;
         let source = &pending.source;

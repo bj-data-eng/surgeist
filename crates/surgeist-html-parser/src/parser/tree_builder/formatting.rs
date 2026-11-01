@@ -249,7 +249,11 @@ impl HeadState<'_> {
         Ok(())
     }
     fn noah(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
-        write(size_of::<usize>() + size_of::<Option<usize>>(), 2, c)?;
+        write(
+            const { size_of::<usize>() + size_of::<Option<usize>>() },
+            2,
+            c,
+        )?;
         let mut matches = 0usize;
         let mut earliest = None;
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -276,7 +280,11 @@ impl HeadState<'_> {
                 .session
                 .same_formatting_creation(c, creation, pending)?
             {
-                write(size_of::<usize>() + size_of::<Option<usize>>(), 2, c)?;
+                write(
+                    const { size_of::<usize>() + size_of::<Option<usize>>() },
+                    2,
+                    c,
+                )?;
                 matches += 1;
                 earliest = Some(index);
             }
@@ -565,12 +573,12 @@ impl HeadState<'_> {
             let mut last = copy_node(&furthest, c)?;
             let mut inner = 0usize;
             write(
-                size_of::<Bookmark>() + size_of::<usize>() * 2 + size_of::<ParserNode>(),
+                const { size_of::<Bookmark>() + size_of::<usize>() * 2 + size_of::<ParserNode>() },
                 4,
                 c,
             )?;
             loop {
-                write(size_of::<usize>() * 2, 2, c)?;
+                write(const { size_of::<usize>() * 2 }, 2, c)?;
                 inner += 1;
                 cursor = cursor
                     .checked_sub(1)
@@ -729,7 +737,7 @@ impl HeadState<'_> {
     pub(super) fn release_formatting(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         if c.stop().is_none() {
             self.formatting.require_owner(c)?;
-            write(size_of::<Option<FormattingEntry>>() * 2, 2, c)?;
+            write(const { size_of::<Option<FormattingEntry>>() * 2 }, 2, c)?;
         }
         if let Some(entry) = &mut self.formatting_pending {
             entry.release(c)?;
@@ -745,7 +753,7 @@ impl HeadState<'_> {
                 if self.formatting.len() == 0 {
                     break;
                 }
-                write(size_of::<Option<FormattingEntry>>() * 2, 2, c)?;
+                write(const { size_of::<Option<FormattingEntry>>() * 2 }, 2, c)?;
             }
             let entry = if c.stop().is_some() {
                 self.formatting.cleanup_pop(c)?

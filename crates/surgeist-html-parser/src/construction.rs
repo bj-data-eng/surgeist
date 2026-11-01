@@ -4212,7 +4212,8 @@ impl SessionStorage {
                 control.reserve_vector_geometric_toward(values, allocation, 1, count)?;
                 control.charge(
                     WorkCategory::CopyByte,
-                    (mem::size_of::<Attribute>() + 2 * mem::size_of::<StringLocation>()) as u64,
+                    (const { mem::size_of::<Attribute>() + 2 * mem::size_of::<StringLocation>() })
+                        as u64,
                 )?;
                 control.charge(WorkCategory::RecordWrite, 3)?;
                 control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
@@ -4418,7 +4419,7 @@ impl SessionStorage {
         {
             control.charge(
                 WorkCategory::CopyByte,
-                (2 * mem::size_of::<StringLocation>()) as u64,
+                (const { 2 * mem::size_of::<StringLocation>() }) as u64,
             )?;
             control.charge(WorkCategory::RecordWrite, 1)?;
             #[cfg(test)]
@@ -4673,10 +4674,10 @@ impl SessionStorage {
         let len = values.len();
         for left in 0..len / 2 {
             let right = len - 1 - left;
-            control.admit_atomic_layout(mem::size_of::<Attribute>() * 2)?;
+            control.admit_atomic_layout(const { mem::size_of::<Attribute>() * 2 })?;
             control.charge(
                 WorkCategory::CopyByte,
-                (mem::size_of::<Attribute>() * 2) as u64,
+                (const { mem::size_of::<Attribute>() * 2 }) as u64,
             )?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             control.charge(WorkCategory::RecordWrite, 3)?;
@@ -5536,8 +5537,9 @@ impl SessionStorage {
                         {
                             control.charge(
                                 WorkCategory::CopyByte,
-                                (mem::size_of::<usize>() + mem::size_of::<FormAssociationState>())
-                                    as u64,
+                                (const {
+                                    mem::size_of::<usize>() + mem::size_of::<FormAssociationState>()
+                                }) as u64,
                             )?;
                             let candidate = *candidate;
                             let state = *state;

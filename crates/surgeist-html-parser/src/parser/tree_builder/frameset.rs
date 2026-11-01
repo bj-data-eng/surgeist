@@ -95,7 +95,7 @@ impl HeadState<'_> {
             let kind = run.kind;
             if kind == BodyTextKind::Whitespace {
                 write(
-                    size_of::<Option<TextRun>>() + size_of::<Option<Text>>(),
+                    const { size_of::<Option<TextRun>>() + size_of::<Option<Text>>() },
                     2,
                     c,
                 )?;
@@ -143,7 +143,7 @@ impl HeadState<'_> {
                 }
                 // Preserve actual omitted text evidence under the existing owner.
                 write(
-                    size_of::<Option<TextRun>>() + size_of::<Option<Text>>(),
+                    const { size_of::<Option<TextRun>>() + size_of::<Option<Text>>() },
                     2,
                     c,
                 )?;

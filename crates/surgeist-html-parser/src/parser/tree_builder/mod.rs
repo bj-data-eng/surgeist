@@ -1289,8 +1289,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if event.token().is_some() {
                     write(
-                        size_of::<Option<Event>>()
-                            + size_of::<Option<super::tokenizer::token::Token>>(),
+                        const {
+                            size_of::<Option<Event>>()
+                                + size_of::<Option<super::tokenizer::token::Token>>()
+                        },
                         2,
                         c,
                     )?;
@@ -1332,8 +1334,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
             }
             c.charge(WorkCategory::RecordVisit, 1)?;
             write(
-                size_of::<Option<prologue::BeforeHead>>()
-                    + size_of::<Option<prologue::DocumentPrologue>>(),
+                const {
+                    size_of::<Option<prologue::BeforeHead>>()
+                        + size_of::<Option<prologue::DocumentPrologue>>()
+                },
                 2,
                 c,
             )?;
@@ -1376,7 +1380,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         // Swap retained real lexical evidence into the same head owner; leave
         // its original empty vector in this driver for release, without cloning.
         c.charge(WorkCategory::RecordVisit, 2)?;
-        write(size_of::<OwnedVec<Event>>() * 2, 2, c)?;
+        write(const { size_of::<OwnedVec<Event>>() * 2 }, 2, c)?;
         std::mem::swap(
             &mut head.state.as_mut().expect("active head").lexical,
             self.lexical.as_mut().expect("retained lexical evidence"),
@@ -1521,8 +1525,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
         if c.stop().is_none() {
             c.charge(WorkCategory::RecordVisit, 2)?;
             write(
-                size_of::<Option<super::tokenizer::token::Event>>()
-                    + size_of::<Option<super::tokenizer::Tokenizer>>(),
+                const {
+                    size_of::<Option<super::tokenizer::token::Event>>()
+                        + size_of::<Option<super::tokenizer::Tokenizer>>()
+                },
                 2,
                 c,
             )?;
@@ -1567,11 +1573,21 @@ fn dispose_token(
 ) -> Result<(), StandaloneError> {
     if c.stop().is_none() {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let slot_bytes = size_of::<Option<super::tokenizer::token::Token>>();
         if input.is_some() {
-            write(slot_bytes + size_of::<prologue::PendingToken>(), 3, c)?;
+            write(
+                const {
+                    size_of::<Option<super::tokenizer::token::Token>>()
+                        + size_of::<prologue::PendingToken>()
+                },
+                3,
+                c,
+            )?;
         } else {
-            write(slot_bytes, 1, c)?;
+            write(
+                const { size_of::<Option<super::tokenizer::token::Token>>() },
+                1,
+                c,
+            )?;
         }
     }
     if let Some(token) = input.take() {

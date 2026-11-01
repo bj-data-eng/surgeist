@@ -400,9 +400,11 @@ impl ConstructionOwner {
                 control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
                 control.charge(
                     WorkCategory::CopyByte,
-                    (mem::size_of::<Vec<usize>>()
-                        + mem::size_of::<Option<ConstructionAllocation>>())
-                        as u64,
+                    const {
+                        (mem::size_of::<Vec<usize>>()
+                            + mem::size_of::<Option<ConstructionAllocation>>())
+                            as u64
+                    },
                 )?;
                 control.charge(WorkCategory::RecordWrite, 2)?;
                 ticket_work(control)?;

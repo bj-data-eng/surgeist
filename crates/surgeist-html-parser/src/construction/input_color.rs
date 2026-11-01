@@ -120,8 +120,10 @@ fn execute(
         frame(
             c,
             Serialization::register_bytes(),
-            mem::size_of::<Option<Utf16Buffer>>()
-                + mem::size_of::<Option<OwnedVec<DigitSlot<'_>>>>(),
+            const {
+                mem::size_of::<Option<Utf16Buffer>>()
+                    + mem::size_of::<Option<OwnedVec<DigitSlot<'_>>>>()
+            },
         )?;
         let request = if sequence.html_compatible() {
             SerializationRequest::HtmlCompatible
