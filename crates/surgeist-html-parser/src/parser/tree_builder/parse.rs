@@ -879,6 +879,87 @@ mod tests {
         assert_eq!(failed.retained_usage().cloned(), retained);
     }
 
+    /// An ordinary failure whose controller was holding processor storage when
+    /// a cancellation stopped the parse, built through the real driver chain.
+    fn ordinary_failure_holding(storage: crate::meta_csp::Storage) -> HtmlParseFailure {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        let mut driver = Some(super::super::entry::initialized_driver(&request));
+        storage
+            .acquire(&mut driver.as_mut().unwrap().control)
+            .unwrap();
+        request.cancellation().cancel();
+        assert!(driver.as_mut().unwrap().step().is_err());
+        let mut failed = Some(StandaloneDocumentDriver::take_failed(&mut driver).unwrap());
+        let detached = FailedStandaloneDocument::detach(&mut failed).unwrap();
+        drop(failed);
+        drop(driver);
+        let owned = OwnedOrdinaryFailure::take(&mut Some(request), &mut Some(detached)).unwrap();
+        HtmlParseFailure {
+            reason: HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            storage: FailureStorage::Ordinary(owned),
+            cleanup_error: None,
+        }
+    }
+
+    #[test]
+    fn csp_storage_the_ordinary_controller_admitted_is_claimed_and_returned_in_full() {
+        let storage = crate::meta_csp::Storage {
+            bytes: 8,
+            units: 2,
+            entries: 1,
+        };
+        let mut failed = ordinary_failure_holding(storage);
+        assert!(matches!(failed.storage, FailureStorage::Ordinary(_)));
+        let held = failed.retained_usage().cloned().unwrap();
+        let claimed = failed.claim_csp_storage(storage);
+        assert_eq!(claimed, ReturnableCspStorage(storage));
+        assert_eq!(failed.cleanup_error(), None);
+        // Claiming decides; it changes no accounting.
+        assert_eq!(failed.retained_usage().cloned().unwrap(), held);
+        failed.return_csp_storage(claimed).unwrap();
+        let returned = failed.retained_usage().unwrap();
+        for (resource, amount) in [
+            (HtmlParseResource::ManagedCapacityBytes, 8),
+            (HtmlParseResource::PeakTransientBytes, 8),
+            (HtmlParseResource::ManagedUtf16Units, 2),
+            (HtmlParseResource::AuxiliaryEntries, 1),
+        ] {
+            assert_eq!(
+                returned.resource(resource).current,
+                held.resource(resource).current - amount,
+                "{resource:?}"
+            );
+        }
+        assert_eq!(failed.cleanup_error(), None);
+        assert_eq!(
+            failed.reason(),
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled)
+        );
+    }
+
+    #[test]
+    fn a_csp_failure_envelope_keeps_the_claim_it_returns_when_dropped() {
+        let storage = crate::meta_csp::Storage {
+            bytes: 8,
+            units: 2,
+            entries: 1,
+        };
+        let failure = crate::meta_csp::HtmlParseCspFailure::<()>::new(
+            ordinary_failure_holding(storage),
+            None,
+            crate::meta_csp::HtmlParseCspFailureKind::Cancelled,
+            storage,
+        );
+        // The drop returns exactly this claim, and the caller can see that
+        // nothing was left unreleased.
+        assert_ne!(failure.storage, ReturnableCspStorage::NONE);
+        assert_eq!(failure.parse_failure().cleanup_error(), None);
+        drop(failure);
+    }
+
     #[test]
     fn csp_storage_the_ordinary_controller_never_admitted_is_reported_not_claimed() {
         let tight = super::super::tests::limits(100)

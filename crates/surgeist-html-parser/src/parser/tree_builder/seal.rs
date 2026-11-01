@@ -443,6 +443,39 @@ mod tests {
     }
 
     #[test]
+    fn a_stopped_phase_without_its_failure_reads_as_no_failure_and_the_request_stays() {
+        let mut owner = OrdinaryInitializationOwner::new(request());
+        // Private-state fault injection: the phase names a stopped owner that
+        // the carrier no longer holds.
+        owner.phase = InitializationPhase::Stopped;
+        assert!(owner.failure().is_none());
+        assert_eq!(owner.source_admitted(), None);
+        assert!(owner.at_stop().is_none());
+        assert!(owner.request().is_some());
+    }
+    #[test]
+    fn a_slot_missing_beside_a_present_one_is_not_taken_and_both_stay_in_place() {
+        let mut parts = Some(frozen(&request()));
+        let mut no_request = None;
+        assert!(matches!(
+            SealedOrdinaryConstruction::take(&mut no_request, &mut parts),
+            Err(StandaloneError::Consumed)
+        ));
+        assert!(no_request.is_none() && parts.is_some());
+        let mut original = Some(request());
+        let mut no_parts = None;
+        assert!(matches!(
+            SealedOrdinaryConstruction::take(&mut original, &mut no_parts),
+            Err(StandaloneError::Consumed)
+        ));
+        assert!(original.is_some() && no_parts.is_none());
+        // The frozen parts belong to another request, so the real owner refuses
+        // and keeps both slots.
+        assert!(SealedOrdinaryConstruction::take(&mut original, &mut parts).is_err());
+        assert!(original.is_some() && parts.is_some());
+        parts.as_mut().unwrap().release_sealed().unwrap();
+    }
+    #[test]
     fn owned_cancelled_initialization_retains_exact_source_without_admitted_binding() {
         let request = HtmlDocumentParseRequest::offline(
             HtmlSource::utf16(crate::DocumentString::from_utf16(vec![

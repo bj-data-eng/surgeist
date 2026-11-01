@@ -2494,3 +2494,53 @@ mod event_retention_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod stage_custody_tests {
+    use super::super::{
+        entry,
+        tests::{assert_released, limits},
+    };
+    use super::*;
+    use crate::parser::tokenizer::{Tokenizer, states::State};
+    use crate::{HtmlDocumentParseRequest, HtmlParseCancellation, HtmlSource};
+
+    #[test]
+    fn a_head_stage_without_the_before_head_owner_reports_missing_input_and_keeps_the_tokenizer() {
+        let source = HtmlSource::utf8("<p>x");
+        let mut c = ParseControl::new(limits(100), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut tokenizer = Some(Tokenizer::new(&source, State::Data, None, &mut c).unwrap());
+        let mut before = None;
+        let error = HeadStage::new(&source, &mut before, &mut tokenizer, &mut c)
+            .err()
+            .unwrap();
+        assert!(matches!(error, HeadError::MissingInput), "{error:?}");
+        assert!(before.is_none());
+        // The tokenizer was neither taken nor charged for, so it still releases.
+        tokenizer.take().unwrap().release(&mut c).unwrap();
+        assert_released(&c);
+    }
+
+    #[test]
+    fn releasing_a_head_stage_without_its_state_reports_consumed_and_the_state_releases_later() {
+        let request =
+            HtmlDocumentParseRequest::offline(HtmlSource::utf8("<html><p>x"), limits(100));
+        let mut driver = entry::initialized_driver(&request);
+        for _ in 0..100 {
+            if driver.head.is_some() {
+                break;
+            }
+            driver.step().unwrap();
+        }
+        let head = driver.head.as_mut().unwrap();
+        // Private-state fault injection: the stage's state is not where release
+        // expects it.
+        let state = head.state.take().unwrap();
+        let error = head.release(&mut driver.control).unwrap_err();
+        assert!(matches!(error, HeadError::Consumed), "{error:?}");
+        head.state = Some(state);
+        driver.release().unwrap();
+        assert_released(&driver.control);
+    }
+}

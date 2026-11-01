@@ -721,6 +721,42 @@ mod tests {
         }
     }
     #[test]
+    fn a_ready_entry_whose_driver_is_gone_reports_consumed_and_the_driver_still_releases() {
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits());
+        let mut entry = OrdinaryDocumentEntry::new(&request);
+        assert!(entry.failure().is_none());
+        // Private-state fault injection: the driver is not where a ready entry
+        // keeps it, so there is no controller to latch on.
+        let lost = entry.driver.take().unwrap();
+        assert!(matches!(
+            entry.take_driver(),
+            Err(StandaloneError::Consumed)
+        ));
+        entry.driver = Some(lost);
+        let mut driver = entry.take_driver().unwrap();
+        driver.release().unwrap();
+        released(driver.control.usage());
+    }
+    #[test]
+    fn a_failed_entry_whose_driver_is_gone_reports_consumed_and_the_driver_still_cleans() {
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8("x"), limits());
+        request.cancellation().cancel();
+        let mut entry = OrdinaryDocumentEntry::new(&request);
+        assert!(entry.failure().is_some());
+        let lost = entry.driver.take().unwrap();
+        assert!(matches!(
+            entry.cleanup_failure(),
+            Err(StandaloneError::Consumed)
+        ));
+        assert!(matches!(
+            entry.take_driver(),
+            Err(StandaloneError::Consumed)
+        ));
+        entry.driver = Some(lost);
+        entry.release_failure().unwrap();
+        released(entry.retained_usage().unwrap());
+    }
+    #[test]
     fn empty_ready_entry_transfers_actual_driver_once_and_reaches_real_completion() {
         let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits());
         let mut entry = OrdinaryDocumentEntry::new(&request);

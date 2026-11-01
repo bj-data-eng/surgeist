@@ -15608,9 +15608,7 @@ fn progressive_successfully_released_driver_refuses_feed_once(seal: bool) {
     }
     .unwrap_err();
     assert!(matches!(error, StandaloneError::Consumed));
-    let expected = ParseStop::UnsupportedStandaloneState(
-        crate::parser::control::StandaloneUnsupported::InvalidNesting,
-    );
+    let expected = ParseStop::InternalInvariant(Invariant::RegistryRow);
     assert_eq!(driver.control.stop(), Some(expected));
     let first = driver.control.first_stop_usage().unwrap().clone();
     assert_eq!(driver.control.usage(), &first);
@@ -19850,13 +19848,12 @@ fn the_fresh_head_transition_without_retained_lexical_evidence_reports_consumed(
         .unwrap();
     let error = driver.step().err().unwrap();
     assert!(matches!(error, StandaloneError::Consumed), "{error:?}");
-    // The driver latches every error outside its named mappings as the generic
-    // unsupported-state stop; that first stop is the one cleanup runs under.
+    // A lost owner is an impossible state, not an unsupported document: the
+    // driver latches it as an invariant stop, and that first stop is the one
+    // cleanup runs under.
     assert_eq!(
         driver.control.stop(),
-        Some(ParseStop::UnsupportedStandaloneState(
-            crate::parser::control::StandaloneUnsupported::InvalidNesting
-        ))
+        Some(ParseStop::InternalInvariant(Invariant::RegistryRow))
     );
     driver.release().unwrap();
     assert_released(&driver.control);
