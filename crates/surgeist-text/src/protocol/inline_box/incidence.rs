@@ -126,20 +126,7 @@ pub(crate) fn visit_base_event(
             }
         }
         RelationEvent::PhaseIDeleted { source, .. } => {
-            paragraph.visit_origin_indices(source, |visit| {
-                match visit {
-                    crate::protocol::paragraph::OriginVisit::Inspect => account::work(ledger, 1)?,
-                    crate::protocol::paragraph::OriginVisit::Intersection { origin, .. } => emit(
-                        SourceIncidence::Event(
-                            paragraph.captured_origin_event(origin).ok_or_else(|| {
-                                invalid(InlineBoxEdgeError::UnrepresentedIncidence)
-                            })?,
-                        ),
-                        ledger,
-                    )?,
-                }
-                Ok(())
-            })?
+            visit_deleted_source(prepared, source, ledger, emit)?
         }
         RelationEvent::Anchor { order } => {
             use crate::protocol::paragraph::SemanticAnchorItem as A;
@@ -218,4 +205,64 @@ pub(crate) fn visit_bidi_owner(
             Ok(())
         }
     }
+}
+
+/// Visits an actual raw logical occurrence, including nonemitting custody.
+/// This is the same Source projection used for selected relation events.
+pub(crate) fn visit_logical_event(
+    prepared: &crate::engine::PreparedData,
+    event: crate::engine::analysis::wrapping::Event,
+    ledger: &mut Ledger,
+    emit: &mut impl FnMut(SourceIncidence, &mut Ledger) -> Result<()>,
+) -> Result<()> {
+    use crate::engine::analysis::{BidiOwner as B, wrapping::Event as E};
+    use crate::protocol::paragraph::SemanticAnchorItem;
+    match event {
+        E::Text(atom) => visit_bidi_owner(prepared, B::Atom(atom), ledger, emit),
+        E::Anchor(anchor) => match anchor.item {
+            SemanticAnchorItem::Atomic(index) => {
+                visit_bidi_owner(prepared, B::Atomic(index), ledger, emit)
+            }
+            SemanticAnchorItem::Control(index) => {
+                visit_bidi_owner(prepared, B::Control(index), ledger, emit)
+            }
+            SemanticAnchorItem::ComputedLineBoundary(index) => {
+                visit_bidi_owner(prepared, B::ComputedLineBoundary(index), ledger, emit)
+            }
+            SemanticAnchorItem::EmptyOrigin(origin) => emit(
+                SourceIncidence::Event(
+                    prepared
+                        .analyzed
+                        .paragraph
+                        .captured_origin_event(origin)
+                        .ok_or_else(|| invalid(InlineBoxEdgeError::UnrepresentedIncidence))?,
+                ),
+                ledger,
+            ),
+        },
+        E::Deleted(source, ..) => visit_deleted_source(prepared, source, ledger, emit),
+    }
+}
+
+fn visit_deleted_source(
+    prepared: &crate::engine::PreparedData,
+    source: crate::Range,
+    ledger: &mut Ledger,
+    emit: &mut impl FnMut(SourceIncidence, &mut Ledger) -> Result<()>,
+) -> Result<()> {
+    let paragraph = &prepared.analyzed.paragraph;
+    paragraph.visit_origin_indices(source, |visit| {
+        match visit {
+            crate::protocol::paragraph::OriginVisit::Inspect => account::work(ledger, 1)?,
+            crate::protocol::paragraph::OriginVisit::Intersection { origin, .. } => emit(
+                SourceIncidence::Event(
+                    paragraph
+                        .captured_origin_event(origin)
+                        .ok_or_else(|| invalid(InlineBoxEdgeError::UnrepresentedIncidence))?,
+                ),
+                ledger,
+            )?,
+        }
+        Ok(())
+    })
 }

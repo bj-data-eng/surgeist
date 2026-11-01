@@ -1,5 +1,6 @@
 //! Prepared family authority and retained native bidi-fragment identity.
 mod admission;
+mod bodies;
 mod build;
 mod overlay;
 mod project;
@@ -145,7 +146,7 @@ pub(crate) struct FamilyData {
     pub(crate) fragments: Vec<Fragment>,
     pub(crate) row_owners: Vec<Owner>,
     pub(crate) row_lookup: Vec<(BidiOwner, usize)>,
-    pub(crate) empty_lookup: Vec<(Owner, usize)>,
+    pub(crate) empty_lookup: Vec<((usize, Owner), usize)>,
     pub(crate) row_fragments: Vec<(usize, usize)>,
     pub(crate) retention: Option<ScopeAlignmentRetention>,
     pub(crate) usage: Option<ScopeAlignmentUsage>,

@@ -63,22 +63,24 @@ fn row(data: &FamilyData, key: BidiOwner, ledger: &mut Ledger) -> Result<Option<
     }
     Ok(data.row_lookup.get(a).filter(|v| v.0 == key).map(|v| v.1))
 }
-fn empty(data: &FamilyData, owner: Owner, ledger: &mut Ledger) -> Result<Option<usize>> {
+fn empty(
+    data: &FamilyData,
+    body: usize,
+    owner: Owner,
+    ledger: &mut Ledger,
+) -> Result<Option<usize>> {
+    let key = (body, owner);
     let (mut a, mut b) = (0, data.empty_lookup.len());
     while a < b {
         account::work(ledger, 1)?;
         let m = a + (b - a) / 2;
-        if data.empty_lookup[m].0 < owner {
+        if data.empty_lookup[m].0 < key {
             a = m + 1
         } else {
             b = m
         }
     }
-    Ok(data
-        .empty_lookup
-        .get(a)
-        .filter(|v| v.0 == owner)
-        .map(|v| v.1))
+    Ok(data.empty_lookup.get(a).filter(|v| v.0 == key).map(|v| v.1))
 }
 fn associations(
     data: &FamilyData,
@@ -119,6 +121,7 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
     let mut indications = selected.presentation.domains.iter().peekable();
     for (unit, value) in selected.presentation.units.iter().enumerate() {
         account::work(ledger, 1)?;
+        let source_body = super::bodies::selected_body(selected, unit, ledger)?;
         let mut represented = false;
         let mut body = false;
         let key = match value.kind {
@@ -208,7 +211,9 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
                     let mut at = Some(owner);
                     while let Some(owner) = at {
                         account::work(ledger, 1)?;
-                        if let Some(row) = empty(data, owner, ledger)? {
+                        if let Some(body_index) = source_body
+                            && let Some(row) = empty(data, body_index, owner, ledger)?
+                        {
                             associations(data, row, unit, &mut found, ledger)?;
                             body = true;
                             break;
@@ -232,7 +237,13 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
             continue;
         };
         let owner = data.owner(&context.owner, ledger)?;
-        let Some(row) = empty(data, owner, ledger)? else {
+        let source_body = super::bodies::control_body(
+            &selected.prepared,
+            &selected.request,
+            allocation.occurrence.index,
+            ledger,
+        )?;
+        let Some(row) = empty(data, source_body, owner, ledger)? else {
             continue;
         };
         let occurrence = selected.prepared.tables.controls[allocation.occurrence.index].occurrence;
@@ -315,6 +326,12 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
                 continue;
             };
             let owner = data.owner(&context.owner, ledger)?;
+            let source_body = super::bodies::control_body(
+                &selected.prepared,
+                &selected.request,
+                allocation.occurrence.index,
+                ledger,
+            )?;
             let actual = allocation
                 .occurrence
                 .captured_control()
@@ -332,7 +349,9 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
             let mut target = None;
             for (index, piece) in projected.pieces.iter().enumerate() {
                 account::work(ledger, 1)?;
-                if data.fragments[piece.fragment].owner != owner {
+                if data.fragments[piece.fragment].owner != owner
+                    || data.fragments[piece.fragment].body != source_body
+                {
                     continue;
                 }
                 if target.is_none_or(|other: usize| {

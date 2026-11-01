@@ -106,16 +106,28 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
         )
     })?;
     account::drop_vec(ledger, positions)?;
-    // A terminal real box needs one opaque ordering row even with no glyphs.
-    // Ancestors borrow that descendant incidence; they do not get duplicate rows.
-    for &owner in &owners {
+    let presence = super::bodies::prepare(data, &owners, &first, ledger)?;
+    // Actual body-local content/child-box incidence decides whether a terminal
+    // box needs an opaque representative. Another body's text is irrelevant.
+    for occurrence in &presence {
         account::work(ledger, 1)?;
+        let owner = occurrence.owner;
+        let body = occurrence.body;
         if !data.source(owner).is_inline() {
             continue;
         }
-        let (begin, end) = data.interval(owner);
+        let row_start = crate::processing::contextual::alignment::operations::partition_point(
+            &data.rows,
+            ledger.as_mut(),
+            |row| row.body < body,
+        )?;
+        let row_end = crate::processing::contextual::alignment::operations::partition_point(
+            &data.rows,
+            ledger.as_mut(),
+            |row| row.body <= body,
+        )?;
         let mut content = false;
-        for row in &data.rows {
+        for row in &data.rows[row_start..row_end] {
             account::work(ledger, 1)?;
             if row.content && member(data, row, owner, ledger)? {
                 content = true;
@@ -125,30 +137,69 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
         if content {
             continue;
         }
+        let first_owner = crate::processing::contextual::alignment::operations::partition_point(
+            &presence,
+            ledger.as_mut(),
+            |entry| entry.body < body,
+        )?;
+        let last_owner = crate::processing::contextual::alignment::operations::partition_point(
+            &presence,
+            ledger.as_mut(),
+            |entry| entry.body <= body,
+        )?;
         let mut descendant = false;
-        for &other in &owners {
+        for other in &presence[first_owner..last_owner] {
             account::work(ledger, 1)?;
-            let (c, d) = data.interval(other);
-            if data.source(other).is_inline() && begin < c && d < end {
-                descendant = true;
+            if other.owner == owner || !data.source(other.owner).is_inline() {
+                continue;
+            }
+            let mut parent = data.parent(other.owner, ledger)?;
+            while let Some(value) = parent {
+                account::work(ledger, 1)?;
+                if value == owner {
+                    descendant = true;
+                    break;
+                }
+                parent = data.parent(value, ledger)?;
+            }
+            if descendant {
                 break;
             }
         }
         if descendant {
             continue;
         }
-        let section = analysis::structural::section_at_order(begin, &a.sections, ledger.as_mut())?
-            .ok_or_else(|| invalid(InlineBoxFragmentationError::InvalidIncidence))?;
-        let mut index = data.rows.len();
-        for (i, row) in data.rows.iter().enumerate() {
-            account::work(ledger, 1)?;
-            if row.section > section
-                || (row.section == section && first[i].is_some_and(|at| begin <= at))
-            {
-                index = i;
-                break;
+        let (begin, _) = data.interval(owner);
+        let mut index = row_start;
+        if occurrence.opening {
+            index = row_end;
+            for (offset, position) in first[row_start..row_end].iter().enumerate() {
+                account::work(ledger, 1)?;
+                if position.is_some_and(|at| begin <= at) {
+                    index = row_start + offset;
+                    break;
+                }
             }
         }
+        // Opening order is the established real entry-event convention.
+        // Continuation order is this canonical body's authentic start cut;
+        // no opening event is copied from an earlier body.
+        let section = if let Some(row) = data.rows.get(index).filter(|row| row.body == body) {
+            row.section
+        } else {
+            let mut found = None;
+            for section in 0..a.sections.len() {
+                account::work(ledger, 1)?;
+                if a.direction
+                    .body_indices(section)
+                    .is_some_and(|range| range.contains(&body))
+                {
+                    found = Some(section);
+                    break;
+                }
+            }
+            found.ok_or_else(|| invalid(InlineBoxFragmentationError::InvalidIncidence))?
+        };
         let start = data.row_owners.len();
         account::push_fallible(ledger, &mut data.row_owners, owner)?;
         insert(
@@ -157,7 +208,7 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
             index,
             Row {
                 source: RowSource::Empty(owner),
-                body: 0,
+                body,
                 level: a.analysis.base_level,
                 content: true,
                 section,
@@ -166,27 +217,31 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
                 owners: start..start + 1,
             },
         )?;
-        insert(ledger, &mut first, index, Some(begin))?;
+        insert(
+            ledger,
+            &mut first,
+            index,
+            occurrence.opening.then_some(begin),
+        )?;
     }
+    account::drop_vec(ledger, presence)?;
     account::drop_vec(ledger, first)?;
     let mut start = 0;
-    while start < data.rows.len() {
-        let section = data.rows[start].section;
+    for index in 0..data.bodies.len() {
+        account::work(ledger, 1)?;
         let mut end = start;
-        while end < data.rows.len() && data.rows[end].section == section {
+        while end < data.rows.len() {
             account::work(ledger, 1)?;
-            let delimiter = data.rows[end].ends_body;
-            end += 1;
-            if delimiter {
+            if data.rows[end].body != index {
                 break;
             }
+            end += 1;
         }
-        body(data, start..end, ledger)?;
+        body(data, index, start..end, ledger)?;
         start = end;
     }
-    // Real demanded empty complete bodies remain an observable admitted family.
-    if data.rows.is_empty() {
-        body(data, 0..0, ledger)?;
+    if start != data.rows.len() {
+        return Err(invalid(InlineBoxFragmentationError::InvalidIncidence));
     }
     let root = Owner::Scope(topology.capture.domain_scopes[topology.domain]);
     for body in 0..data.bodies.len() {
@@ -273,7 +328,7 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
                 account::push_fallible(ledger, &mut data.row_lookup, (owner, row))?
             }
             RowSource::Empty(owner) => {
-                account::push_fallible(ledger, &mut data.empty_lookup, (owner, row))?
+                account::push_fallible(ledger, &mut data.empty_lookup, ((value.body, owner), row))?
             }
         }
     }
@@ -336,7 +391,12 @@ fn member(data: &FamilyData, row: &Row, owner: Owner, ledger: &mut Ledger) -> Re
     }
     Ok(false)
 }
-fn body(data: &mut FamilyData, logical: Range<usize>, ledger: &mut Ledger) -> Result<()> {
+fn body(
+    data: &mut FamilyData,
+    body: usize,
+    logical: Range<usize>,
+    ledger: &mut Ledger,
+) -> Result<()> {
     let base = data.prepared.inner.analyzed.analysis.base_level;
     let mut levels = Vec::new();
     let mut roles = Vec::new();
@@ -349,7 +409,6 @@ fn body(data: &mut FamilyData, logical: Range<usize>, ledger: &mut Ledger) -> Re
     }
     account::work(ledger, levels.len().saturating_mul(3))?;
     bidi::reset_line_levels(&mut levels, &roles, base);
-    let body = data.bodies.len();
     let mut next = 0;
     for row in &mut data.rows[logical.clone()] {
         account::work(ledger, 1)?;
@@ -407,7 +466,7 @@ fn body(data: &mut FamilyData, logical: Range<usize>, ledger: &mut Ledger) -> Re
         account::push_fallible(ledger, &mut data.order, logical.start + index)?;
     }
     let end = data.order.len();
-    account::push_fallible(ledger, &mut data.bodies, Body { visual: begin..end })?;
+    data.bodies[body].visual = begin..end;
     account::drop_vec(ledger, order)?;
     account::drop_vec(ledger, slots)
 }

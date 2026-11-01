@@ -198,6 +198,33 @@ impl FamilyData {
         }
         Ok(None)
     }
+    /// Endpoint custody is not the half-open content interval. The actual
+    /// control event must equal an admitted pair's own Start or End event.
+    pub(super) fn native_endpoint(
+        &self,
+        position: usize,
+        start: bool,
+        ledger: &mut Ledger,
+    ) -> Result<Option<usize>> {
+        if start {
+            let found = crate::processing::contextual::alignment::operations::binary_search_by(
+                &self.native_boxes,
+                ledger.as_mut(),
+                |source| source.interval().0.index.cmp(&position),
+            )?;
+            return Ok(found.ok());
+        }
+        let mut at = self.preceding_native(position, ledger)?;
+        while let Some(index) = at {
+            account::work(ledger, 1)?;
+            if self.interval(Owner::Native(index)).1 == position {
+                return Ok(Some(index));
+            }
+            at = self.native_ancestors[index].enclosing;
+        }
+        Ok(None)
+    }
+
     pub(super) fn native_at(
         &self,
         site: SourceIncidence,
