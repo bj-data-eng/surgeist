@@ -6226,7 +6226,7 @@ impl SessionStorage {
         // returned at the end.
         let mut refused = None;
         if let Some(failed) = failed_text_append {
-            failed.release(control);
+            keep_first(&mut refused, failed.release(control));
         }
         if let Some(fragment) = fragment {
             keep_first(&mut refused, fragment.release(control, &owner));

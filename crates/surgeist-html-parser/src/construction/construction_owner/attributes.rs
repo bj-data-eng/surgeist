@@ -215,7 +215,10 @@ impl ConstructionOwner {
                     description,
                     HtmlConstructionAttributeDescription::ReservePlan { .. }
                 ) {
-                    work.provider_calls -= 1;
+                    let Some(calls) = work.provider_calls.checked_sub(1) else {
+                        return Err(latch_registry_row(control));
+                    };
+                    work.provider_calls = calls;
                 }
                 control.admit_attribute_work(work)?;
                 let prior = description.prior_index();
