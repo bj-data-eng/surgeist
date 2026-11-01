@@ -703,6 +703,13 @@ mod tests {
     }
 
     #[test]
+    fn a_metadata_row_left_bound_to_no_node_is_not_published() {
+        for kind in crate::construction::report::UnboundRow::ALL {
+            assert_unpublishable(kind.literal(), |arena| arena.unbind_row_for_test(kind));
+        }
+    }
+
+    #[test]
     fn a_document_naming_a_policy_row_the_report_lacks_is_not_published() {
         assert_unpublishable(
             "<!doctype html><p>a",

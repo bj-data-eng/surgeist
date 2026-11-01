@@ -993,3 +993,87 @@ fn a_history_error_describes_itself_and_names_the_fault_as_its_source() {
         "the history cursor needs 3 scratch frames and was given 2"
     );
 }
+
+// ---- a link's node document and flags ----
+
+#[test]
+fn a_link_whose_node_document_row_is_not_its_own_faults_the_cursor() {
+    let mut report = parse("<link rel=x href=y>");
+    let link = frozen(&mut report)
+        .payloads
+        .values
+        .iter()
+        .find_map(|row| match row {
+            RetainedPayload::Link { node, .. } => *node,
+            _ => None,
+        })
+        .unwrap();
+    // The row the join names is bound to another node, so the link has none.
+    corrupt_row(&mut report, |row| match row {
+        RetainedPayload::NodeDocument { node, .. } if *node == Some(link) => {
+            *node = Some(0);
+            true
+        }
+        _ => false,
+    });
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
+}
+
+#[test]
+fn a_link_that_names_a_node_with_no_link_flags_faults_the_cursor() {
+    let mut report = parse("<link rel=x href=y>");
+    corrupt_row(&mut report, |row| match row {
+        RetainedPayload::Link { node, .. } => {
+            *node = Some(0);
+            true
+        }
+        _ => false,
+    });
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Node)));
+}
+
+#[test]
+fn an_uncorrupted_link_reports_its_flags_and_its_node_document_join() {
+    let report = parse("<link rel=x href=y>");
+    let mut cursor = report.metadata();
+    let mut checked = false;
+    loop {
+        match cursor.advance() {
+            MetadataStep::Record(record) if record.link_flags().is_some() => {
+                assert!(record.link_history().is_some());
+                checked = true;
+            }
+            MetadataStep::Complete => break,
+            MetadataStep::Fault(fault) => panic!("{fault}"),
+            _ => {}
+        }
+    }
+    assert!(checked);
+}
+
+// ---- a metadata row bound to no node ----
+
+#[test]
+fn a_metadata_row_bound_to_no_node_faults_the_cursor_instead_of_being_skipped() {
+    use report::UnboundRow;
+    for kind in UnboundRow::ALL {
+        let mut report = parse(kind.literal());
+        corrupt_row(&mut report, |row| kind.unbind(row));
+        assert_eq!(metadata_fault(&report), Some(fault(Kind::Node)), "{kind:?}");
+    }
+}
+
+// ---- the effects of a contextual report ----
+
+#[test]
+fn a_contextual_report_without_its_fragment_storage_reports_it_from_the_effects_reader() {
+    let mut report = super::fragment_document::tests::fragment_report("<p>a</p>");
+    frozen(&mut report).fragment = None;
+    assert_eq!(report.effects().err(), Some(fault(Kind::Fragment)));
+}
+
+#[test]
+fn an_ordinary_report_holds_no_effects_and_that_is_not_a_fault() {
+    let report = parse("<p>a</p>");
+    assert!(matches!(report.effects(), Ok(None)));
+}

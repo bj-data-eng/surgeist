@@ -22,6 +22,87 @@ impl FrozenArena {
     }
 }
 
+/// A kind of metadata row that publication must find bound to a node.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum UnboundRow {
+    Textarea,
+    Output,
+    Input,
+    InputSource,
+    FormAssociation,
+    SelectFamily,
+    Script,
+    Template,
+    LookupRegistry,
+    NodeDocument,
+    SvgScript,
+}
+#[cfg(test)]
+impl UnboundRow {
+    pub(crate) const ALL: [Self; 11] = [
+        Self::Textarea,
+        Self::Output,
+        Self::Input,
+        Self::InputSource,
+        Self::FormAssociation,
+        Self::SelectFamily,
+        Self::Script,
+        Self::Template,
+        Self::LookupRegistry,
+        Self::NodeDocument,
+        Self::SvgScript,
+    ];
+    /// A source that creates a row of this kind.
+    pub(crate) fn literal(self) -> &'static str {
+        match self {
+            Self::Textarea => "<!doctype html><textarea>t</textarea>",
+            Self::Output => "<!doctype html><output>a</output>",
+            Self::Input | Self::InputSource | Self::FormAssociation => {
+                "<!doctype html><form><input value=x></form>"
+            }
+            Self::SelectFamily => "<!doctype html><select><option>a</select>",
+            Self::Script => "<!doctype html><script>a</script>",
+            Self::Template => "<!doctype html><template>a</template>",
+            Self::LookupRegistry | Self::NodeDocument => "<!doctype html><p>a",
+            Self::SvgScript => "<!doctype html><svg><script/></svg>",
+        }
+    }
+    /// Leaves the first row of this kind bound to no node. Whether one was found.
+    pub(super) fn unbind(self, row: &mut RetainedPayload) -> bool {
+        let node = match (self, row) {
+            (Self::Textarea, RetainedPayload::Textarea { node, .. })
+            | (Self::Output, RetainedPayload::Output { node, .. })
+            | (Self::Input, RetainedPayload::Input { node, .. })
+            | (Self::InputSource, RetainedPayload::InputSource { node, .. })
+            | (Self::FormAssociation, RetainedPayload::FormAssociation { node, .. })
+            | (Self::SelectFamily, RetainedPayload::SelectFamily { node, .. })
+            | (Self::Script, RetainedPayload::Script { node, .. })
+            | (Self::Template, RetainedPayload::Template { node, .. })
+            | (Self::LookupRegistry, RetainedPayload::LookupRegistry { node, .. })
+            | (Self::NodeDocument, RetainedPayload::NodeDocument { node, .. })
+            | (Self::SvgScript, RetainedPayload::SvgScript { node, .. }) => node,
+            _ => return false,
+        };
+        *node = None;
+        true
+    }
+}
+#[cfg(test)]
+impl FrozenArena {
+    /// Leaves the first row of `kind` bound to no node. Whether one was found.
+    pub(crate) fn unbind_row_for_test(&mut self, kind: UnboundRow) -> bool {
+        let Some(storage) = self.storage.as_mut() else {
+            return false;
+        };
+        storage
+            .payloads
+            .values
+            .iter_mut()
+            .any(|row| kind.unbind(row))
+    }
+}
+
 pub(crate) struct ReportStorage {
     history: FrozenHistory,
     closed_common: bool,
