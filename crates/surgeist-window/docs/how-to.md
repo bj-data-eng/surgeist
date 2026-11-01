@@ -20,6 +20,20 @@ Normal headless
 checks print an explicit skip for this probe; the ordinary library tests cover
 preference mapping and callback publication without a display.
 
+In a Windows desktop session, run the same opt-in probe from PowerShell:
+
+```powershell
+$env:SURGEIST_RUN_NATIVE_PREFERENCES_PROBE = '1'
+cargo test --offline --locked -j 1 -p surgeist-window --test native_preferences_native
+Remove-Item Env:SURGEIST_RUN_NATIVE_PREFERENCES_PROBE
+```
+
+The Windows probe opens an invisible window through the production loop and
+compares its `Ready` preference snapshot with Windows Runtime animation,
+transparency and contrast-theme observations. Keep those settings stable during
+the probe. It reads settings without changing them. It does not qualify monitor
+enrichment, notification wakeups or rendering behavior.
+
 See [host observations](explanation.md#host-observations-and-consumer-inputs) for
 the supported values, sampling opportunities and unavailable observations.
 
