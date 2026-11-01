@@ -353,6 +353,43 @@ pub(crate) fn parse<P: HtmlMetaCspProcessor>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::HtmlParseCancellation;
+    use crate::parser::control::Invariant;
+
+    fn control() -> ParseControl {
+        let limits = crate::HtmlParseLimits::builder()
+            .source_units(1_000)
+            .buffered_utf16_units(1_000)
+            .token_attributes(1_000)
+            .auxiliary_entries(1_000)
+            .managed_nodes(1_000)
+            .managed_edges(1_000)
+            .managed_attributes(1_000)
+            .managed_utf16_units(1_000)
+            .source_map_entries(1_000)
+            .source_map_payload_units(1_000)
+            .diagnostics(1_000)
+            .diagnostic_payload_units(1_000)
+            .context_effects(1_000)
+            .open_elements(1_000)
+            .tree_depth(1_000)
+            .managed_capacity_bytes(16_000)
+            .peak_transient_bytes(32_000)
+            .atomic_layout_bytes(16_000)
+            .work_credits(100_000)
+            .finish()
+            .unwrap();
+        ParseControl::new(limits, HtmlParseCancellation::new())
+    }
+    fn layout() -> HtmlCspLayout {
+        HtmlCspLayout::processing(
+            3,
+            HtmlCspStorage::default(),
+            HtmlCspDisposalWork::default(),
+            8,
+        )
+        .unwrap()
+    }
 
     fn storage(bytes: usize, units: usize, entries: usize) -> Storage {
         Storage {
@@ -380,5 +417,43 @@ mod tests {
             Storage::overlap(storage(9, 9, 9), storage(3, 3, 3), storage(4, 4, 4));
         assert_eq!(extra, Storage::ZERO);
         assert_eq!(overlap, storage(5, 5, 5));
+    }
+
+    #[test]
+    fn a_callback_entered_while_another_runs_stops_the_parse_without_panicking() {
+        let mut c = control();
+        let mut account = Account::default();
+        let before = c.usage().clone();
+        let shared = Shared::new(&mut c, &mut account);
+        {
+            // A processor cannot reach this through the closures it is given:
+            // neither closure calls out while it holds the state. The guard
+            // stands in for foreign code still running inside one callback.
+            let _running = shared.state.borrow_mut();
+            assert_eq!(
+                shared.admit(layout()),
+                Err(ParseStop::InternalInvariant(
+                    Invariant::ReentrantProviderCallback
+                ))
+            );
+            shared.release(HtmlCspStorage::default());
+        }
+        let stop = ParseStop::InternalInvariant(Invariant::ReentrantProviderCallback);
+        assert!(matches!(shared.finish(), Err(SessionError::Stop(s)) if s == stop));
+        assert_eq!(c.stop(), Some(stop));
+        assert_eq!(c.usage(), &before);
+        assert_eq!(account.live, Storage::ZERO);
+        assert_eq!(account.last, Storage::ZERO);
+    }
+
+    #[test]
+    fn callbacks_run_in_turn_without_reporting_reentry() {
+        let mut c = control();
+        let mut account = Account::default();
+        let shared = Shared::new(&mut c, &mut account);
+        assert_eq!(shared.admit(layout()), Ok(()));
+        shared.release(HtmlCspStorage::default());
+        assert!(shared.finish().is_ok());
+        assert_eq!(c.stop(), None);
     }
 }
