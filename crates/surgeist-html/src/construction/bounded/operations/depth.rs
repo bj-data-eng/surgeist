@@ -635,25 +635,16 @@ mod tests {
             }
         }
         if refused {
-            let (storage, _, _, mut orders) = operation.take().unwrap().abort().into_parts();
-            while let Some(action) = orders.next_action() {
-                action.perform();
-            }
+            let (storage, _, _) = operation.take().unwrap().abort().into_parts();
             return (storage, false);
         }
-        let HtmlConstructionCommit::Changed {
-            storage,
-            mut retired_orders,
-            ..
-        } = HtmlConstructionOperation::try_ready(&mut operation)
-            .unwrap()
-            .commit()
+        let HtmlConstructionCommit::Changed { storage, .. } =
+            HtmlConstructionOperation::try_ready(&mut operation)
+                .unwrap()
+                .commit()
         else {
             panic!("mutation published")
         };
-        while let Some(action) = retired_orders.next_action() {
-            action.perform();
-        }
         (storage, true)
     }
 

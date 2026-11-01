@@ -669,28 +669,18 @@ impl ParseControl {
     ) -> Result<(), ParseStop> {
         self.plan_storage(requests).map(|_| ())
     }
-    /// Transfers admitted replacement child-order slots out of scratch storage
-    /// and commits their actual ordinary-edge delta together. The construction
-    /// owner precharges the bounded swaps/backlinks/copies before this final
-    /// checkpoint, then changes topology immediately after success, without an
-    /// intervening allocation, poll or fallible operation. Rejection retains all
-    /// scratch and edge admission for terminal cleanup of the unchanged graph.
+    /// Commits the actual ordinary-edge delta of a child-order change. The
+    /// construction owner precharges the bounded in-place edits before this
+    /// final checkpoint, then changes topology immediately after success,
+    /// without an intervening allocation, poll or fallible operation. Rejection
+    /// retains the edge admission for terminal cleanup of the unchanged graph.
     pub(crate) fn commit_construction_edges(
         &mut self,
         owner: &ControlIdentity,
-        scratch_entries: u64,
         edge_add: u64,
         edge_remove: u64,
     ) -> Result<(), ParseStop> {
         self.require_identity(owner)?;
-        let Some(auxiliary) = self
-            .usage
-            .resource(HtmlParseResource::AuxiliaryEntries)
-            .current
-            .checked_sub(scratch_entries)
-        else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
-        };
         let Some(retained_edges) = self
             .usage
             .resource(HtmlParseResource::ManagedEdges)
@@ -703,7 +693,6 @@ impl ParseControl {
             return self.representation(HtmlParseResource::ManagedEdges);
         };
         self.check_value(HtmlParseResource::ManagedEdges, edges, edge_add)?;
-        self.set(HtmlParseResource::AuxiliaryEntries, auxiliary);
         self.set(HtmlParseResource::ManagedEdges, edges);
         Ok(())
     }
@@ -5170,12 +5159,11 @@ mod tests {
         assert_eq!(owner.stop(), Some(stop));
     }
     #[test]
-    fn child_order_commit_transfers_scratch_and_edge_delta_without_other_refunds() {
+    fn child_order_commit_changes_only_the_edge_counter() {
         let mut owner = control();
         let identity = owner.identity();
         owner
             .acquire_many(&[
-                (HtmlParseResource::AuxiliaryEntries, 3),
                 (HtmlParseResource::ManagedEdges, 2),
                 (HtmlParseResource::ManagedNodes, 4),
             ])
@@ -5184,14 +5172,7 @@ mod tests {
             .charge_many(&[(WorkCategory::RecordWrite, 3), (WorkCategory::CopyByte, 24)])
             .unwrap();
         let before = owner.usage().clone();
-        owner.commit_construction_edges(&identity, 3, 2, 1).unwrap();
-        assert_eq!(
-            owner.usage().resource(HtmlParseResource::AuxiliaryEntries),
-            ResourceUsage {
-                current: 0,
-                high_water: 3,
-            }
-        );
+        owner.commit_construction_edges(&identity, 2, 1).unwrap();
         assert_eq!(
             owner.usage().resource(HtmlParseResource::ManagedEdges),
             ResourceUsage {
@@ -5200,9 +5181,7 @@ mod tests {
             }
         );
         for resource in RESOURCES {
-            if resource != HtmlParseResource::AuxiliaryEntries
-                && resource != HtmlParseResource::ManagedEdges
-            {
+            if resource != HtmlParseResource::ManagedEdges {
                 assert_eq!(owner.usage().resource(resource), before.resource(resource));
             }
         }
@@ -5216,19 +5195,9 @@ mod tests {
         let mut owner = ParseControl::new(caps, HtmlParseCancellation::new());
         let identity = owner.identity();
         owner
-            .acquire_many(&[
-                (HtmlParseResource::AuxiliaryEntries, 2),
-                (HtmlParseResource::ManagedEdges, 2),
-            ])
+            .acquire_many(&[(HtmlParseResource::ManagedEdges, 2)])
             .unwrap();
-        owner.commit_construction_edges(&identity, 2, 1, 1).unwrap();
-        assert_eq!(
-            owner
-                .usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
-            0
-        );
+        owner.commit_construction_edges(&identity, 1, 1).unwrap();
         assert_eq!(
             owner.usage().resource(HtmlParseResource::ManagedEdges),
             ResourceUsage {
@@ -5237,20 +5206,17 @@ mod tests {
             }
         );
         let before = owner.usage().clone();
-        owner.commit_construction_edges(&identity, 0, 0, 0).unwrap();
+        owner.commit_construction_edges(&identity, 0, 0).unwrap();
         assert_eq!(owner.usage(), &before);
     }
     #[test]
-    fn child_order_cap_failure_retains_scratch_edges_and_first_stop() {
+    fn child_order_cap_failure_retains_edges_and_first_stop() {
         let mut caps = limits();
         caps = caps.into_builder().managed_edges(1).finish().unwrap();
         let mut owner = ParseControl::new(caps, HtmlParseCancellation::new());
         let identity = owner.identity();
         owner
-            .acquire_many(&[
-                (HtmlParseResource::AuxiliaryEntries, 2),
-                (HtmlParseResource::ManagedEdges, 1),
-            ])
+            .acquire_many(&[(HtmlParseResource::ManagedEdges, 1)])
             .unwrap();
         let before = owner.usage().clone();
         let stop = ParseStop::LimitExceeded {
@@ -5259,38 +5225,11 @@ mod tests {
             current: 1,
             requested_delta: 1,
         };
-        assert_eq!(
-            owner.commit_construction_edges(&identity, 2, 1, 0),
-            Err(stop)
-        );
+        assert_eq!(owner.commit_construction_edges(&identity, 1, 0), Err(stop));
         assert_eq!(owner.usage(), &before);
         owner.cancellation.cancel();
-        assert_eq!(
-            owner.commit_construction_edges(&identity, 0, 0, 0),
-            Err(stop)
-        );
+        assert_eq!(owner.commit_construction_edges(&identity, 0, 0), Err(stop));
         assert_eq!(owner.usage(), &before);
-        owner
-            .cleanup_release(&identity, HtmlParseResource::AuxiliaryEntries, 2)
-            .unwrap();
-        assert_eq!(
-            owner
-                .usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
-            0
-        );
-        assert_eq!(
-            owner
-                .usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .high_water,
-            2
-        );
-        assert_eq!(
-            owner.usage().resource(HtmlParseResource::ManagedEdges),
-            before.resource(HtmlParseResource::ManagedEdges)
-        );
         assert_eq!(owner.stop(), Some(stop));
     }
     #[test]
@@ -5298,50 +5237,39 @@ mod tests {
         let mut owner = control();
         let foreign_identity = control().identity();
         owner
-            .acquire_many(&[
-                (HtmlParseResource::AuxiliaryEntries, 2),
-                (HtmlParseResource::ManagedEdges, 1),
-            ])
+            .acquire_many(&[(HtmlParseResource::ManagedEdges, 1)])
             .unwrap();
         let before = owner.usage().clone();
         assert_eq!(
-            owner.commit_construction_edges(&foreign_identity, 2, 0, 1),
+            owner.commit_construction_edges(&foreign_identity, 0, 1),
             Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
         );
         assert_eq!(owner.usage(), &before);
     }
     #[test]
-    fn child_order_underflow_rejects_all_counters_before_edge_arithmetic() {
-        for (scratch, removal) in [(3, 0), (2, 2)] {
-            let mut owner = control();
-            let identity = owner.identity();
-            owner
-                .acquire_many(&[
-                    (HtmlParseResource::AuxiliaryEntries, 2),
-                    (HtmlParseResource::ManagedEdges, 1),
-                ])
-                .unwrap();
-            let before = owner.usage().clone();
-            assert_eq!(
-                owner.commit_construction_edges(&identity, scratch, u64::MAX, removal),
-                Err(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow))
-            );
-            assert_eq!(owner.usage(), &before);
-        }
-    }
-    #[test]
-    fn child_order_edge_addition_overflow_retains_scratch_and_existing_edges() {
+    fn child_order_underflow_rejects_the_counter_before_edge_arithmetic() {
         let mut owner = control();
         let identity = owner.identity();
         owner
-            .acquire_many(&[
-                (HtmlParseResource::AuxiliaryEntries, 2),
-                (HtmlParseResource::ManagedEdges, 1),
-            ])
+            .acquire_many(&[(HtmlParseResource::ManagedEdges, 1)])
             .unwrap();
         let before = owner.usage().clone();
         assert_eq!(
-            owner.commit_construction_edges(&identity, 2, u64::MAX, 0),
+            owner.commit_construction_edges(&identity, u64::MAX, 2),
+            Err(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow))
+        );
+        assert_eq!(owner.usage(), &before);
+    }
+    #[test]
+    fn child_order_edge_addition_overflow_retains_existing_edges() {
+        let mut owner = control();
+        let identity = owner.identity();
+        owner
+            .acquire_many(&[(HtmlParseResource::ManagedEdges, 1)])
+            .unwrap();
+        let before = owner.usage().clone();
+        assert_eq!(
+            owner.commit_construction_edges(&identity, u64::MAX, 0),
             Err(ParseStop::RepresentationExhausted {
                 resource: HtmlParseResource::ManagedEdges,
             })
@@ -5350,24 +5278,21 @@ mod tests {
     }
     #[test]
     fn child_order_final_checkpoint_cancellation_precedes_validation_even_for_empty_commit() {
-        for (scratch, addition, removal) in [(0, 0, 0), (3, u64::MAX, 2)] {
+        for (addition, removal) in [(0, 0), (u64::MAX, 2)] {
             let mut owner = control();
             let identity = owner.identity();
             owner
-                .acquire_many(&[
-                    (HtmlParseResource::AuxiliaryEntries, 2),
-                    (HtmlParseResource::ManagedEdges, 1),
-                ])
+                .acquire_many(&[(HtmlParseResource::ManagedEdges, 1)])
                 .unwrap();
             owner.cancellation.cancel();
             let before = owner.usage().clone();
             assert_eq!(
-                owner.commit_construction_edges(&identity, scratch, addition, removal),
+                owner.commit_construction_edges(&identity, addition, removal),
                 Err(ParseStop::Cancelled)
             );
             assert_eq!(owner.usage(), &before);
             assert_eq!(
-                owner.commit_construction_edges(&identity, 2, 0, 1),
+                owner.commit_construction_edges(&identity, 0, 1),
                 Err(ParseStop::Cancelled)
             );
             assert_eq!(owner.usage(), &before);

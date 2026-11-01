@@ -3,7 +3,6 @@ mod depth;
 mod orders;
 use crate::{Attribute, bounded::HtmlValidatedAttributes};
 use depth::{DepthPlan, owning_parent};
-pub use orders::*;
 
 /// Closed generic changes; parser policy and source evidence are not operands.
 #[derive(Debug)]
@@ -173,28 +172,6 @@ pub enum HtmlConstructionActionDescription<'a> {
         provider_calls: usize,
         copied_bytes: usize,
     },
-    CopyChildOrderSource {
-        record_visits: usize,
-        copied_bytes: usize,
-    },
-    InitializeChildOrder {
-        provider_calls: usize,
-        slot: usize,
-        parent_position: usize,
-        initialized_bytes: usize,
-    },
-    PrepareChildOrderTransfers {
-        count: usize,
-        record_writes: usize,
-        provider_calls: usize,
-        copied_bytes: usize,
-    },
-    PushChildOrder {
-        slot: usize,
-        copied_bytes: usize,
-        record_writes: usize,
-        auxiliary_entries: usize,
-    },
     InitializeChildren {
         provider_calls: usize,
         copied_bytes: usize,
@@ -203,7 +180,7 @@ pub enum HtmlConstructionActionDescription<'a> {
         element_size: usize,
         element_alignment: usize,
     },
-    /// Computed Insert usage, before any pending child-order initialization.
+    /// Computed Insert usage, before any child-order growth.
     Preflight {
         usage: HtmlConstructionUsage,
     },
@@ -216,7 +193,6 @@ pub enum HtmlConstructionActionDescription<'a> {
         copied_bytes: usize,
         initialized_bytes: usize,
         usage: HtmlConstructionUsage,
-        auxiliary_entries_released: usize,
     },
 }
 /// How a reserve action's capacity is selected.
@@ -241,9 +217,12 @@ enum Phase {
     Command,
     NewAttribute(usize),
     OldAttribute(usize),
+    /// Backward walk over `parent`'s child order, `remaining` entries of which
+    /// are unexamined, for the moving node's place in its old parent (`old`)
+    /// or for the reference sibling in the new parent.
     Order {
         parent: usize,
-        offset: usize,
+        remaining: usize,
         old: bool,
     },
     Cycle {
@@ -289,23 +268,6 @@ enum Phase {
     ReserveRecords,
     PrepareChildrenReport,
     ReserveChildren,
-    InitializeOrder(usize),
-    ReserveOrder(usize),
-    CopyOrder {
-        slot: usize,
-        offset: usize,
-    },
-    PushInserted {
-        slot: usize,
-        offset: usize,
-        following: Option<usize>,
-    },
-    PushExisting {
-        slot: usize,
-        offset: usize,
-        child: usize,
-    },
-    TransferOrders,
     Preflight,
     Layout,
     References,
@@ -333,9 +295,10 @@ struct Plan {
     old_attributes: usize,
     old_parent: Option<usize>,
     old_position: usize,
+    /// The place in the new parent's order, counted without the moving node.
     insertion_position: usize,
-    before_found: bool,
-    old_found: bool,
+    inserts: bool,
+    has_before: bool,
     old_contents: Option<usize>,
     no_op: bool,
     record_count: usize,
@@ -349,20 +312,11 @@ struct Plan {
     created: Option<HtmlBuilderNode>,
     new_children: [Vec<usize>; 2],
     new_children_generations: [u64; 2],
-    orders: [Vec<usize>; 2],
-    /// A detached node placed last commits one push onto the parent's actual
-    /// child order, after its capacity admits it; no scratch order exists.
-    append: bool,
+    /// Insert and detach edit the parents' actual child orders in place, in
+    /// the atomic commit, after the new parent's capacity admits the push; no
+    /// scratch order exists.
+    edits_order: bool,
     children_capacity: Option<usize>,
-    order_count: usize,
-    order_parents: [usize; 2],
-    order_required: [usize; 2],
-    order_source_len: [usize; 2],
-    order_inserted: [bool; 2],
-    order_snapshots: [Option<HtmlConstructionAllocationSnapshot>; 2],
-    order_retired_snapshots: [Option<HtmlConstructionAllocationSnapshot>; 2],
-    transfers: [Option<HtmlConstructionChildOrderTransfer>; 2],
-    scratch_entries: usize,
 }
 enum StorageOwner {
     Mutable(HtmlConstructionStorage),
@@ -415,7 +369,6 @@ pub struct HtmlConstructionAbort {
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
     retired: Option<HtmlConstructionRetired>,
-    orders: HtmlConstructionOrderRetirement,
 }
 impl HtmlConstructionAbort {
     pub fn into_parts(
@@ -424,21 +377,17 @@ impl HtmlConstructionAbort {
         HtmlConstructionStorage,
         HtmlConstructionCommand,
         Option<HtmlConstructionRetired>,
-        HtmlConstructionOrderRetirement,
     ) {
-        (self.storage, self.command, self.retired, self.orders)
+        (self.storage, self.command, self.retired)
     }
 }
 pub struct HtmlConstructionReadyOperation {
     operation: HtmlConstructionOperation,
 }
-#[expect(clippy::large_enum_variant)] // Owns actual pending banks; boxing would add an unadmitted allocation.
 pub enum HtmlConstructionCommit {
     Changed {
         storage: HtmlConstructionStorage,
         created: Option<HtmlBuilderNode>,
-        transfers: [Option<HtmlConstructionChildOrderTransfer>; 2],
-        retired_orders: HtmlConstructionOrderRetirement,
     },
     Published {
         result: HtmlConstructionResult,
@@ -514,8 +463,8 @@ impl HtmlConstructionOperation {
             _ => Err(HtmlConstructionError::OperationConsumed),
         }
     }
-    /// The least child-order capacity that holds the appended child.
-    fn append_required(&self) -> usize {
+    /// The least child-order capacity that holds the pushed child.
+    fn push_required(&self) -> usize {
         self.arena()
             .records
             .get(self.plan.positions[1])
@@ -598,12 +547,10 @@ impl HtmlConstructionOperation {
                 )
             }
         };
-        let orders = self.abort_orders();
         HtmlConstructionAbort {
             storage,
             command: self.command.take().expect("pending command"),
             retired,
-            orders,
         }
     }
 }
@@ -648,63 +595,13 @@ impl<'a> HtmlConstructionAction<'a> {
                 }
             }
             Phase::ReserveChildren => {
-                let required = operation.append_required();
+                let required = operation.push_required();
                 HtmlConstructionActionDescription::Reserve {
                     report_provider_calls: 1,
                     allocation: operation.snapshot.as_ref().expect("issued actual snapshot"),
                     required_len: required,
                     minimum_capacity: required,
                     growth: HtmlConstructionGrowth::Geometric,
-                }
-            }
-            Phase::InitializeOrder(slot) => {
-                HtmlConstructionActionDescription::InitializeChildOrder {
-                    provider_calls: 2,
-                    slot,
-                    parent_position: operation.plan.order_parents[slot],
-                    initialized_bytes: size_of::<Vec<usize>>() + size_of::<u64>(),
-                }
-            }
-            Phase::ReserveOrder(slot) => HtmlConstructionActionDescription::Reserve {
-                report_provider_calls: 1,
-                allocation: operation.plan.order_snapshots[slot]
-                    .as_ref()
-                    .expect("actual pending order"),
-                required_len: operation.plan.order_required[slot],
-                minimum_capacity: operation.plan.order_required[slot],
-                growth: HtmlConstructionGrowth::Exact,
-            },
-            Phase::CopyOrder { slot, offset } => {
-                HtmlConstructionActionDescription::CopyChildOrderSource {
-                    record_visits: 1,
-                    copied_bytes: if offset < operation.plan.order_source_len[slot] {
-                        size_of::<usize>()
-                    } else {
-                        0
-                    },
-                }
-            }
-            Phase::PushInserted { slot, .. } => HtmlConstructionActionDescription::PushChildOrder {
-                slot,
-                copied_bytes: size_of::<usize>(),
-                record_writes: 1,
-                auxiliary_entries: 1,
-            },
-            Phase::PushExisting { slot, .. } => HtmlConstructionActionDescription::PushChildOrder {
-                slot,
-                copied_bytes: 0,
-                record_writes: 1,
-                auxiliary_entries: 1,
-            },
-            Phase::TransferOrders => {
-                HtmlConstructionActionDescription::PrepareChildOrderTransfers {
-                    count: operation.plan.order_count,
-                    record_writes: operation.plan.order_count,
-                    provider_calls: 3 * operation.plan.order_count,
-                    copied_bytes: operation.plan.order_count
-                        * (size_of::<HtmlConstructionChildOrderTransfer>()
-                            + size_of::<HtmlConstructionAllocationSnapshot>()
-                            + size_of::<u64>()),
                 }
             }
             Phase::ReserveRecords => HtmlConstructionActionDescription::Reserve {
@@ -744,7 +641,6 @@ impl<'a> HtmlConstructionAction<'a> {
                 copied_bytes: operation.plan.copied_bytes,
                 initialized_bytes: operation.plan.initialized_bytes,
                 usage: operation.plan.usage,
-                auxiliary_entries_released: operation.plan.scratch_entries,
             },
             Phase::NewAttribute(_) => HtmlConstructionActionDescription::Inspect {
                 record_visits: 6,
@@ -804,7 +700,7 @@ impl<'a> HtmlConstructionAction<'a> {
     ) -> Result<HtmlConstructionObservation<'a>, HtmlConstructionActionFailure> {
         let operation = self.operation;
         if !matches!(operation.phase, Phase::ReserveChildren)
-            || capacity < operation.append_required()
+            || capacity < operation.push_required()
         {
             let reason = operation
                 .fail::<()>(HtmlConstructionError::CapacityMismatch)
@@ -836,15 +732,6 @@ impl<'a> HtmlConstructionAction<'a> {
     }
 }
 
-/// Whether an append's one push can be applied: the node and the parent exist
-/// and the parent's child order has spare capacity, so it cannot reallocate.
-fn append_fits(arena: &Arena, node: usize, parent: usize) -> bool {
-    arena.records.get(node).is_some()
-        && arena
-            .records
-            .get(parent)
-            .is_some_and(|record| record.children.len() < record.children.capacity())
-}
 fn add(left: usize, right: usize) -> Result<usize, HtmlConstructionError> {
     left.checked_add(right)
         .ok_or(HtmlConstructionError::RepresentationExhausted)
@@ -1030,6 +917,8 @@ impl HtmlConstructionOperation {
                             .check_reference_child_of(HtmlConstructionNode { arena, index: b })?;
                     }
                     plan.old_parent = arena.records[a].parent;
+                    plan.inserts = true;
+                    plan.has_before = before.is_some();
                     if before.is_some() && c == a {
                         plan.no_op = true;
                     }
@@ -1204,29 +1093,46 @@ impl HtmlConstructionOperation {
             plan.copied_bytes = 0;
             return Ok(Phase::Commit);
         }
+        plan.edits_order = matches!(
+            self.command(),
+            Command::Insert { .. } | Command::Detach { .. }
+        );
         if let Some(parent) = plan.old_parent {
+            let remaining = self
+                .arena()
+                .records
+                .get(parent)
+                .ok_or(HtmlConstructionError::UnknownNode)?
+                .children
+                .len();
             return Ok(Phase::Order {
                 parent,
-                offset: 0,
+                remaining,
                 old: true,
             });
         }
         match self.command() {
             // A detached node with no reference sibling goes last; finding its
             // place requires no walk over the parent's existing children.
-            Command::Insert { before: None, .. } => {
-                plan.append = true;
-                Ok(Phase::Cycle {
-                    cursor: Some(plan.positions[1]),
-                    target: plan.positions[0],
-                    steps: 0,
+            Command::Insert { before: None, .. } => Ok(Phase::Cycle {
+                cursor: Some(plan.positions[1]),
+                target: plan.positions[0],
+                steps: 0,
+            }),
+            Command::Insert { .. } => {
+                let remaining = self
+                    .arena()
+                    .records
+                    .get(plan.positions[1])
+                    .ok_or(HtmlConstructionError::UnknownNode)?
+                    .children
+                    .len();
+                Ok(Phase::Order {
+                    parent: plan.positions[1],
+                    remaining,
+                    old: false,
                 })
             }
-            Command::Insert { .. } => Ok(Phase::Order {
-                parent: plan.positions[1],
-                offset: 0,
-                old: false,
-            }),
             Command::AttachShadow { .. } => Ok(Phase::Cycle {
                 cursor: Some(plan.positions[0]),
                 target: plan.positions[1],
@@ -1279,38 +1185,16 @@ impl HtmlConstructionOperation {
         let mut plan = std::mem::take(&mut self.plan);
         let result = (|| {
             match self.command() {
-                Command::Insert { .. } if plan.append => {
-                    // Usage, the child push and the parent link.
-                    plan.record_writes = add(plan.record_writes, 2)?;
-                    plan.copied_bytes = add(plan.copied_bytes, 2 * size_of::<usize>())?;
-                }
                 Command::Insert { .. } | Command::Detach { .. } => {
-                    let target = if matches!(self.command(), Command::Insert { .. }) {
-                        plan.positions[1]
-                    } else {
-                        plan.old_parent.expect("nonempty detach")
-                    };
-                    plan.order_count = 1;
-                    plan.order_parents[0] = target;
-                    if let Some(old) = plan.old_parent.filter(|old| *old != target) {
-                        plan.order_count = 2;
-                        plan.order_parents[1] = old;
-                    }
-                    for slot in 0..plan.order_count {
-                        let len = self.arena().records[plan.order_parents[slot]]
-                            .children
-                            .len();
-                        plan.order_source_len[slot] = len;
-                        plan.order_required[slot] = add(len, 1)?;
-                    }
-                    plan.record_writes = if matches!(self.command(), Command::Insert { .. }) {
-                        8
-                    } else {
-                        4
-                    };
+                    // The parent link, the removed and inserted entries and
+                    // every entry shifted, each one write of one entry.
+                    let writes = plan.order_writes(self.arena())?;
+                    plan.record_writes = add(plan.record_writes, writes)?;
                     plan.copied_bytes = add(
                         plan.copied_bytes,
-                        plan.order_count * 2 * size_of::<Vec<usize>>(),
+                        writes
+                            .checked_mul(size_of::<usize>())
+                            .ok_or(HtmlConstructionError::RepresentationExhausted)?,
                     )?;
                 }
                 Command::AttachShadow { .. } | Command::AttachTemplateShadow { .. } => {
@@ -1373,24 +1257,25 @@ impl HtmlConstructionOperation {
                 } else {
                     Phase::References
                 })
-            } else if plan.append {
-                let children = &self
-                    .arena()
-                    .records
-                    .get(plan.positions[1])
-                    .ok_or(HtmlConstructionError::UnknownNode)?
-                    .children;
-                Ok(if children.len() == children.capacity() {
+            } else if plan.edits_order && !plan.no_op {
+                // Only a push into an order without spare room allocates.
+                let grows = plan.inserts && {
+                    let target = plan.positions[1];
+                    plan.old_parent != Some(target) && {
+                        let children = &self
+                            .arena()
+                            .records
+                            .get(target)
+                            .ok_or(HtmlConstructionError::UnknownNode)?
+                            .children;
+                        children.len() >= children.capacity()
+                    }
+                };
+                Ok(if grows {
                     Phase::PrepareChildrenReport
                 } else {
                     Phase::Commit
                 })
-            } else if matches!(
-                self.command(),
-                Command::Insert { .. } | Command::Detach { .. }
-            ) && !plan.no_op
-            {
-                Ok(Phase::InitializeOrder(0))
             } else if matches!(self.command(), Command::Publish { .. }) {
                 Ok(Phase::PrepareWrapperReport)
             } else {
@@ -1466,8 +1351,6 @@ impl HtmlConstructionOperation {
                 Ok((Phase::ReserveChildren, None))
             }
             Phase::ReserveChildren => self.reserve_children(),
-            Phase::InitializeOrder(slot) => self.initialize_order(slot),
-            Phase::ReserveOrder(slot) => self.reserve_order(slot),
             Phase::ReserveRecords => {
                 let required = self.plan.reserve_required;
                 let reserve_only = matches!(
@@ -1654,24 +1537,11 @@ impl HtmlConstructionOperation {
                 steps,
             } => self.shift_step(slot, node, level, steps),
             Phase::Settle { level } => self.settle_step(level),
-            Phase::CopyOrder { slot, offset } => self.read_order(slot, offset),
-            Phase::PushInserted {
-                slot,
-                offset,
-                following,
-            } => Ok(self.push_inserted(slot, offset, following)),
-            Phase::PushExisting {
-                slot,
-                offset,
-                child,
-            } => {
-                self.push_order(slot, child);
-                Ok(Phase::CopyOrder {
-                    slot,
-                    offset: offset + 1,
-                })
-            }
-            Phase::TransferOrders => self.prepare_order_transfers(),
+            Phase::Order {
+                parent,
+                remaining,
+                old,
+            } => self.locate_order(parent, remaining, old),
             Phase::References => {
                 let arena = self.arena();
                 let p = self.plan.positions;
@@ -1743,68 +1613,6 @@ impl HtmlConstructionOperation {
                     let result = self.after_counts(&mut plan);
                     self.plan = plan;
                     result
-                }
-            }
-            Phase::Order {
-                parent,
-                offset,
-                old,
-            } => {
-                let children = &self.arena().records[parent].children;
-                if offset < children.len() {
-                    let value = children[offset];
-                    if old && value == self.plan.positions[0] {
-                        if self.plan.old_found {
-                            return Err(HtmlConstructionError::ParentChildConflict);
-                        }
-                        self.plan.old_found = true;
-                        self.plan.old_position = offset;
-                    }
-                    if !old
-                        && self.command().operand(2).is_some()
-                        && value == self.plan.positions[2]
-                    {
-                        if self.plan.before_found {
-                            return Err(HtmlConstructionError::ParentChildConflict);
-                        }
-                        self.plan.before_found = true;
-                        self.plan.insertion_position = offset;
-                    }
-                    return Ok(Phase::Order {
-                        parent,
-                        offset: offset + 1,
-                        old,
-                    });
-                }
-                if old {
-                    if !self.plan.old_found {
-                        return Err(HtmlConstructionError::ParentChildConflict);
-                    }
-                    if matches!(self.command(), Command::Insert { .. }) {
-                        return Ok(Phase::Order {
-                            parent: self.plan.positions[1],
-                            offset: 0,
-                            old: false,
-                        });
-                    }
-                    let mut plan = std::mem::take(&mut self.plan);
-                    let result = self.after_topology(&mut plan);
-                    self.plan = plan;
-                    result
-                } else {
-                    if self.command().operand(2).is_some() && !self.plan.before_found {
-                        return Err(HtmlConstructionError::WrongSibling);
-                    }
-                    if self.plan.old_parent == Some(parent)
-                        && self.plan.old_position < self.plan.insertion_position
-                    {
-                        self.plan.insertion_position -= 1;
-                    }
-                    Ok(Phase::Cycle {
-                        cursor: Some(parent),
-                        target: self.plan.positions[0],
-                        steps: 0,
-                    })
                 }
             }
             Phase::Cycle {
@@ -1933,13 +1741,10 @@ impl HtmlConstructionOperation {
             }
             Phase::Preflight => Ok(Phase::Layout),
             Phase::Commit => {
-                if self.plan.append && !self.plan.no_op {
-                    // The commit's one push must neither index outside the
-                    // records nor reallocate the parent's child order.
-                    let [node, parent, _] = self.plan.positions;
-                    if !append_fits(self.arena(), node, parent) {
-                        return Err(HtmlConstructionError::CapacityMismatch);
-                    }
+                if self.plan.edits_order && !self.plan.no_op {
+                    // The commit's edits must find every entry where planning
+                    // did and must not reallocate the parent's child order.
+                    self.plan.check_order_edits(self.arena())?;
                 }
                 Ok(Phase::Ready)
             }
@@ -2097,15 +1902,12 @@ impl HtmlConstructionReadyOperation {
         };
         let plan = &mut operation.plan;
         let p = plan.positions;
-        let mut retired_orders = HtmlConstructionOrderRetirement::default();
-        if plan.append && !plan.no_op && !append_fits(&storage.arena, p[0], p[1]) {
+        if plan.edits_order && !plan.no_op && plan.check_order_edits(&storage.arena).is_err() {
             // The Commit action refuses this state first; were it ever reached,
-            // no write may land, so the parent link and the list cannot diverge.
+            // no write may land, so the parent link and the lists cannot diverge.
             return HtmlConstructionCommit::Changed {
                 storage,
                 created: plan.created.take(),
-                transfers: std::mem::take(&mut plan.transfers),
-                retired_orders,
             };
         }
         if !plan.no_op {
@@ -2159,18 +1961,12 @@ impl HtmlConstructionReadyOperation {
                     arena.populate(0);
                 }
                 Command::Insert { .. } => {
-                    if plan.append {
-                        // The guard above the match proved this push fits.
-                        if let Some(record) = arena.records.get_mut(p[1]) {
-                            record.children.push(p[0]);
-                        }
-                    } else {
-                        retired_orders = plan.commit_orders(arena);
-                    }
+                    // The guard above the match proved these edits apply.
+                    plan.apply_order_edits(arena);
                     arena.records[p[0]].parent = Some(p[1]);
                 }
                 Command::Detach { .. } => {
-                    retired_orders = plan.commit_orders(arena);
+                    plan.apply_order_edits(arena);
                     arena.records[p[0]].parent = None;
                 }
                 Command::ReplaceContent { content, .. } => match content {
@@ -2256,8 +2052,6 @@ impl HtmlConstructionReadyOperation {
         HtmlConstructionCommit::Changed {
             storage,
             created: plan.created.take(),
-            transfers: std::mem::take(&mut plan.transfers),
-            retired_orders,
         }
     }
 }
@@ -2632,11 +2426,17 @@ mod publish_membership_tests {
 }
 
 #[cfg(test)]
-mod append_commit_guard_tests {
+mod order_commit_guard_tests {
     use super::*;
 
-    /// A fragment `root` with one child, and a detached element `node`.
-    fn parts() -> (HtmlConstructionStorage, HtmlBuilderNode, HtmlBuilderNode) {
+    /// A fragment `root` with children `first` and `second`, and a detached
+    /// element `node`.
+    fn parts() -> (
+        HtmlConstructionStorage,
+        HtmlBuilderNode,
+        [HtmlBuilderNode; 2],
+        HtmlBuilderNode,
+    ) {
         fn drive(
             storage: HtmlConstructionStorage,
             command: HtmlConstructionCommand,
@@ -2682,31 +2482,81 @@ mod append_commit_guard_tests {
         let (storage, root) = drive(storage, HtmlConstructionCommand::CreateFragment);
         let root = root.unwrap();
         let (storage, first) = drive(storage, element("first"));
-        let (storage, _) = drive(
-            storage,
-            HtmlConstructionCommand::Insert {
-                node: first.unwrap(),
-                parent: root.clone(),
-                before: None,
-            },
-        );
+        let (storage, second) = drive(storage, element("second"));
+        let (first, second) = (first.unwrap(), second.unwrap());
+        let mut storage = storage;
+        for child in [&first, &second] {
+            storage = drive(
+                storage,
+                HtmlConstructionCommand::Insert {
+                    node: child.clone(),
+                    parent: root.clone(),
+                    before: None,
+                },
+            )
+            .0;
+        }
         let (storage, node) = drive(storage, element("node"));
-        (storage, root, node.unwrap())
+        (storage, root, [first, second], node.unwrap())
     }
 
-    /// Drives an append of `node` under `root` up to, but not through, its
-    /// Commit action, then lets `spoil` corrupt the pending storage or plan.
+    /// The command `pending_commit` drives, from `root`, its children and `node`.
+    type Build =
+        fn(&HtmlBuilderNode, &[HtmlBuilderNode; 2], &HtmlBuilderNode) -> HtmlConstructionCommand;
+
+    fn append(
+        root: &HtmlBuilderNode,
+        _: &[HtmlBuilderNode; 2],
+        node: &HtmlBuilderNode,
+    ) -> HtmlConstructionCommand {
+        HtmlConstructionCommand::Insert {
+            node: node.clone(),
+            parent: root.clone(),
+            before: None,
+        }
+    }
+    fn insert_before_first(
+        root: &HtmlBuilderNode,
+        children: &[HtmlBuilderNode; 2],
+        node: &HtmlBuilderNode,
+    ) -> HtmlConstructionCommand {
+        HtmlConstructionCommand::Insert {
+            node: node.clone(),
+            parent: root.clone(),
+            before: Some(children[0].clone()),
+        }
+    }
+    fn move_first_to_end(
+        root: &HtmlBuilderNode,
+        children: &[HtmlBuilderNode; 2],
+        _: &HtmlBuilderNode,
+    ) -> HtmlConstructionCommand {
+        HtmlConstructionCommand::Insert {
+            node: children[0].clone(),
+            parent: root.clone(),
+            before: None,
+        }
+    }
+    fn detach_first(
+        _: &HtmlBuilderNode,
+        children: &[HtmlBuilderNode; 2],
+        _: &HtmlBuilderNode,
+    ) -> HtmlConstructionCommand {
+        HtmlConstructionCommand::Detach {
+            node: children[0].clone(),
+        }
+    }
+
+    /// Drives `build`'s command up to, but not through, its Commit action,
+    /// then lets `spoil` corrupt the pending storage or plan.
     fn pending_commit(
+        build: Build,
         spoil: impl FnOnce(&mut HtmlConstructionOperation),
     ) -> (HtmlConstructionOperation, Vec<usize>, HtmlConstructionUsage) {
-        let (storage, root, node) = parts();
+        let (storage, root, children, node) = parts();
         let usage = storage.usage();
         let mut operation = storage
-            .prepare(HtmlConstructionCommand::Insert {
-                node,
-                parent: root,
-                before: None,
-            })
+            .prepare(build(&root, &children, &node))
             .unwrap_or_else(|_| panic!("retained command"));
         loop {
             let action = operation.next_action().unwrap().unwrap();
@@ -2735,10 +2585,18 @@ mod append_commit_guard_tests {
         operation.plan.positions[1] = usize::MAX;
     }
 
+    fn stale_old_position(operation: &mut HtmlConstructionOperation) {
+        operation.plan.old_position += 1;
+    }
+
+    fn stale_insertion_position(operation: &mut HtmlConstructionOperation) {
+        operation.plan.insertion_position += 1;
+    }
+
     #[test]
     fn commit_action_refuses_an_append_whose_parent_order_is_full_or_missing() {
         for spoil in [fill_child_order, lose_parent] {
-            let (mut operation, children, usage) = pending_commit(spoil);
+            let (mut operation, children, usage) = pending_commit(append, spoil);
             let node = operation.plan.positions[0];
             let action = operation.next_action().unwrap().unwrap();
             let failure = action.perform().err().expect("guarded commit");
@@ -2757,7 +2615,7 @@ mod append_commit_guard_tests {
     #[test]
     fn ready_commit_applies_nothing_when_the_append_cannot_be_pushed() {
         for spoil in [fill_child_order, lose_parent] {
-            let (mut operation, children, usage) = pending_commit(spoil);
+            let (mut operation, children, usage) = pending_commit(append, spoil);
             let node = operation.plan.positions[0];
             // Bypass the refusing action to reach the commit itself.
             operation.phase = Phase::Ready;
@@ -2770,6 +2628,63 @@ mod append_commit_guard_tests {
             };
             assert_eq!(storage.arena.records[0].children, children);
             assert_eq!(storage.arena.records[node].parent, None);
+            assert_eq!(storage.usage(), usage);
+        }
+    }
+
+    /// Corrupts a pending operation's plan or storage.
+    type Spoil = fn(&mut HtmlConstructionOperation);
+
+    /// Edits whose planned places no longer hold what planning found.
+    const STALE: [(Build, Spoil); 4] = [
+        (insert_before_first, stale_insertion_position),
+        (move_first_to_end, stale_old_position),
+        (move_first_to_end, stale_insertion_position),
+        (detach_first, stale_old_position),
+    ];
+
+    #[test]
+    fn commit_action_refuses_edits_whose_planned_places_are_stale() {
+        for (build, spoil) in STALE {
+            let (mut operation, children, usage) = pending_commit(build, spoil);
+            let action = operation.next_action().unwrap().unwrap();
+            let failure = action.perform().err().expect("guarded commit");
+            assert_eq!(
+                failure.reason(),
+                &HtmlConstructionError::ParentChildConflict
+            );
+            let storage = operation.abort().storage;
+            assert_eq!(storage.arena.records[0].children, children);
+            assert_eq!(storage.usage(), usage);
+        }
+    }
+
+    #[test]
+    fn ready_commit_applies_nothing_when_planned_places_are_stale() {
+        for (build, spoil) in STALE {
+            let (mut operation, children, usage) = pending_commit(build, spoil);
+            let nodes: Vec<usize> = operation
+                .arena()
+                .records
+                .iter()
+                .map(|record| record.parent.unwrap_or(usize::MAX))
+                .collect();
+            operation.phase = Phase::Ready;
+            let HtmlConstructionCommit::Changed { storage, .. } =
+                HtmlConstructionOperation::try_ready(&mut Some(operation))
+                    .unwrap()
+                    .commit()
+            else {
+                panic!("mutation published")
+            };
+            assert_eq!(storage.arena.records[0].children, children);
+            let after: Vec<usize> = storage
+                .arena
+                .records
+                .iter()
+                .map(|record| record.parent.unwrap_or(usize::MAX))
+                .collect();
+            assert_eq!(after, nodes, "no parent link changes");
             assert_eq!(storage.usage(), usage);
         }
     }

@@ -17,7 +17,6 @@ pub(super) struct ConstructionOwner {
     children: Vec<Option<ConstructionAllocation>>,
     children_allocation: VectorCapacity<Option<ConstructionAllocation>>,
     wrapper: Option<ConstructionAllocation>,
-    pending_orders: [Option<ConstructionAllocation>; 2],
 }
 
 #[derive(Clone, Copy)]
@@ -25,7 +24,6 @@ enum Bank {
     Identity,
     Records,
     Children(usize),
-    PendingOrder(usize),
     Wrapper,
 }
 
@@ -171,7 +169,6 @@ impl ConstructionOwner {
             children,
             children_allocation,
             wrapper: None,
-            pending_orders: [None, None],
         })
     }
     pub(super) fn len(&self) -> usize {
@@ -240,7 +237,6 @@ impl ConstructionOwner {
             Bank::Records => &mut self.records,
             Bank::Children(position) => &mut self.children[position],
             Bank::Wrapper => &mut self.wrapper,
-            Bank::PendingOrder(slot) => &mut self.pending_orders[slot],
         }
     }
     pub(super) fn apply(
@@ -250,60 +246,16 @@ impl ConstructionOwner {
         requests: &[(HtmlParseResource, u64)],
     ) -> Result<Option<HtmlBuilderNode>, SessionError> {
         let committed = self.run(control, command, requests)?;
-        self.adopt_mutation(control, committed)
+        Ok(self.adopt_mutation(committed))
     }
     pub(super) fn adopt_mutation(
         &mut self,
-        control: &mut ParseControl,
         committed: HtmlConstructionCommit,
-    ) -> Result<Option<HtmlBuilderNode>, SessionError> {
+    ) -> Option<HtmlBuilderNode> {
         match committed {
-            HtmlConstructionCommit::Changed {
-                storage,
-                created,
-                transfers,
-                mut retired_orders,
-            } => {
+            HtmlConstructionCommit::Changed { storage, created } => {
                 self.owner = Some(storage);
-                let mut old: [Option<(usize, ConstructionAllocation)>; 2] = [None, None];
-                for (slot, transfer) in transfers.into_iter().enumerate() {
-                    if let Some(transfer) = transfer {
-                        let position = transfer.position();
-                        let pending = self.pending_orders[slot]
-                            .take()
-                            .expect("real pending order ticket");
-                        let ticket = control.adopt_construction_order(pending, transfer);
-                        old[slot] = Some((
-                            position,
-                            self.children[position]
-                                .replace(ticket)
-                                .expect("original child bank ticket"),
-                        ));
-                    }
-                }
-                while let Some(action) = retired_orders.next_action() {
-                    let position = action
-                        .allocation()
-                        .child_position()
-                        .expect("actual retired child bank");
-                    let slot = old
-                        .iter()
-                        .position(|value| {
-                            value
-                                .as_ref()
-                                .is_some_and(|(parent, _)| *parent == position)
-                        })
-                        .expect("same real replaced bank");
-                    control.require_order_retirement(
-                        &old[slot].as_ref().expect("retained old bank ticket").1,
-                        action.allocation(),
-                    )?;
-                    control.retire_order_allocation(
-                        old[slot].take().expect("retained old bank ticket").1,
-                        action.perform(),
-                    )?;
-                }
-                Ok(created)
+                created
             }
             HtmlConstructionCommit::Published { .. } => {
                 unreachable!("mutation command cannot publish")
@@ -379,13 +331,9 @@ impl ConstructionOwner {
                 growth,
             } => {
                 control.charge(WorkCategory::RecordVisit, 2)?;
-                let bank = if let Some(slot) = snapshot.pending_child_order_slot() {
-                    Bank::PendingOrder(slot)
-                } else {
-                    snapshot
-                        .child_position()
-                        .map_or(Bank::Records, Bank::Children)
-                };
+                let bank = snapshot
+                    .child_position()
+                    .map_or(Bank::Records, Bank::Children);
                 // A geometric bank grows by the parser's own amortized plan,
                 // which never reserves spare capacity the limits cannot hold.
                 let capacity = match growth {
@@ -475,48 +423,6 @@ impl ConstructionOwner {
                 self.children.push(None);
                 allocation = Some(Bank::Children(position));
             }
-            HtmlConstructionActionDescription::CopyChildOrderSource {
-                record_visits,
-                copied_bytes,
-            } => {
-                control.charge(WorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
-            }
-            HtmlConstructionActionDescription::InitializeChildOrder {
-                provider_calls,
-                slot,
-                initialized_bytes,
-                ..
-            } => {
-                control.charge(WorkCategory::CopyByte, initialized_bytes as u64)?;
-                control.charge(WorkCategory::RecordWrite, 2)?;
-                ticket_work(control)?;
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
-                allocation = Some(Bank::PendingOrder(slot));
-            }
-            HtmlConstructionActionDescription::PushChildOrder {
-                copied_bytes,
-                record_writes,
-                auxiliary_entries,
-                ..
-            } => {
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
-                control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
-                control.acquire(
-                    HtmlParseResource::AuxiliaryEntries,
-                    auxiliary_entries as u64,
-                )?;
-            }
-            HtmlConstructionActionDescription::PrepareChildOrderTransfers {
-                record_writes,
-                provider_calls,
-                copied_bytes,
-                ..
-            } => {
-                control.charge(WorkCategory::RecordWrite, record_writes as u64)?;
-                control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
-                control.charge(WorkCategory::CopyByte, copied_bytes as u64)?;
-            }
             HtmlConstructionActionDescription::Preflight { usage } => {
                 control.observe_tree_depth(usage.depth() as u64)?;
                 control.check_acquire_many(requests)?;
@@ -528,7 +434,6 @@ impl ConstructionOwner {
                 copied_bytes,
                 initialized_bytes,
                 usage,
-                auxiliary_entries_released,
             } => {
                 if let Some(depth) = depth_observation {
                     control.observe_tree_depth(depth as u64)?;
@@ -542,7 +447,6 @@ impl ConstructionOwner {
                     &self.control,
                     requests,
                     before_edges.saturating_sub(usage.edges()) as u64,
-                    auxiliary_entries_released as u64,
                 )?;
                 final_action = true;
             }
@@ -607,7 +511,7 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         aborted: HtmlConstructionAbort,
     ) -> Result<(), SessionError> {
-        let (storage, _, retired, mut orders) = aborted.into_parts();
+        let (storage, _, retired) = aborted.into_parts();
         while self.children.len() > storage.len() {
             if let Some(ticket) = self.children.pop().expect("uncommitted child bank row") {
                 assert_eq!(
@@ -618,24 +522,6 @@ impl ConstructionOwner {
             }
         }
         self.owner = Some(storage);
-        while let Some(action) = orders.next_action() {
-            let slot = action
-                .allocation()
-                .pending_child_order_slot()
-                .expect("aborted actual pending order");
-            control.require_order_retirement(
-                self.pending_orders[slot]
-                    .as_ref()
-                    .expect("actual pending bank ticket"),
-                action.allocation(),
-            )?;
-            control.retire_order_allocation(
-                self.pending_orders[slot]
-                    .take()
-                    .expect("actual pending bank ticket"),
-                action.perform(),
-            )?;
-        }
         if let Some(receipt) = retired {
             control.retire_construction_allocation(
                 self.wrapper.take().expect("actual wrapper ticket"),
@@ -656,12 +542,11 @@ impl ConstructionOwner {
     }
     pub(super) fn finish_pending(
         &mut self,
-        control: &mut ParseControl,
         mut pending: PendingConstruction,
-    ) -> Result<Option<HtmlBuilderNode>, SessionError> {
+    ) -> Option<HtmlBuilderNode> {
         let ready = HtmlConstructionOperation::try_ready(&mut pending.operation)
             .unwrap_or_else(|_| unreachable!("all actual observations accepted"));
-        self.adopt_mutation(control, ready.commit())
+        self.adopt_mutation(ready.commit())
     }
     pub(super) fn continue_pending(
         &mut self,
