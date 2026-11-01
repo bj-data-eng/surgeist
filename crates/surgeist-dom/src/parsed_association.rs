@@ -113,10 +113,40 @@ pub enum DomParsedHtmlAssociationAdmissionError {
     StaleDocument {
         document: DocumentId,
     },
-    History(surgeist_html_parser::HtmlParseHistoryError),
+    /// A history read that the installer itself set up wrongly. A reference the
+    /// report cannot resolve is [`Self::UnresolvedReport`], never this.
+    History(DomParsedHtmlHistoryReadError),
     /// The report holds a reference to a record its own tables cannot resolve,
     /// so the contribution cannot be classified.
     UnresolvedReport(surgeist_html_parser::HtmlParseUnresolvedReference),
+}
+/// How an installer's own history read was set up wrongly. The report cannot
+/// cause either: the installer names a group of the report it reads and sizes
+/// its scratch from that report.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum DomParsedHtmlHistoryReadError {
+    /// The group belongs to another report.
+    ForeignOwner,
+    /// The scratch frames supplied are fewer than the history needs.
+    InsufficientScratch { required: usize, supplied: usize },
+}
+impl From<surgeist_html_parser::HtmlParseHistoryError> for DomParsedHtmlAssociationAdmissionError {
+    /// A reference the report cannot resolve takes the one shape every other
+    /// reader fault takes; only the installer's own misuse is a history error.
+    fn from(value: surgeist_html_parser::HtmlParseHistoryError) -> Self {
+        use surgeist_html_parser::HtmlParseHistoryError as Read;
+        match value {
+            Read::Unresolved(fault) => Self::UnresolvedReport(fault),
+            Read::ForeignOwner => Self::History(DomParsedHtmlHistoryReadError::ForeignOwner),
+            Read::InsufficientScratch { required, supplied } => {
+                Self::History(DomParsedHtmlHistoryReadError::InsufficientScratch {
+                    required,
+                    supplied,
+                })
+            }
+        }
+    }
 }
 impl From<surgeist_html_parser::HtmlParseUnresolvedReference>
     for DomParsedHtmlAssociationAdmissionError

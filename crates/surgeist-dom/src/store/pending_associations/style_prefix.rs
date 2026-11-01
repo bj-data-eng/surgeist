@@ -654,7 +654,7 @@ fn append_group(
     }
     let mut reader = history
         .cursor(group, &mut frames, None)
-        .map_err(crate::DomParsedHtmlAssociationAdmissionError::History)?;
+        .map_err(crate::DomParsedHtmlAssociationAdmissionError::from)?;
     loop {
         meter.step(cancel)?;
         match reader.advance() {

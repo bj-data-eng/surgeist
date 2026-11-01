@@ -1187,7 +1187,7 @@ impl Dom {
             draft
                 .private_node_mut(key)
                 .document_fields_mut()
-                .expect("new owned Document")
+                .ok_or(Error::UnsupportedState { subject: node.id() })?
                 .focused_area_designation = focused_area_designation;
             // Only this genuinely new owned Document receives its original
             // qualified history. Captured current Documents are never reset.
@@ -1250,7 +1250,13 @@ impl Dom {
         }
         for row in &source.rows {
             c.step(1)?;
-            let key = row.key.expect("complete private allocation pass");
+            let Some(key) = row.key else {
+                // The allocation pass above keys every row; an unkeyed one
+                // is a fault of this installer, not a state of the report.
+                return Err(Error::UnsupportedState {
+                    subject: row.source.id(),
+                });
+            };
             let parent = row
                 .source
                 .parent()
@@ -1307,14 +1313,23 @@ impl Dom {
         )?;
         let mut bindings = Vec::new();
         c.reserve(&mut bindings, source.rows.len())?;
+        // The pass over the rows above refused an unkeyed row, so each row
+        // yields its key. Were one missing anyway, it maps to the root and the
+        // installation is refused below instead of publishing that mapping.
+        let mut unkeyed = None;
         let (prepared, mapped) = draft.finish_with_mapping(
             self,
             cancelled,
-            source
-                .rows
-                .iter()
-                .map(|row| row.key.expect("allocated source row")),
+            source.rows.iter().map(|row| {
+                row.key.unwrap_or_else(|| {
+                    unkeyed.get_or_insert(row.source.id());
+                    root
+                })
+            }),
         )?;
+        if let Some(subject) = unkeyed {
+            return Err(Error::UnsupportedState { subject });
+        }
         // finish owns the actual vector; account its observed backing rather
         // than replacing it with an uncharged collector.
         if mapped.capacity() > source.rows.len() {
@@ -1324,18 +1339,34 @@ impl Dom {
                     .ok_or(Error::RepresentationExhausted)?,
             )?;
         }
-        let root_index = source.index(&root_id, &mut c)?.expect("collected root");
-        let document = if let Some(capture) = capture {
-            let context = report.context().expect("qualified contextual report");
-            DocumentId(
-                capture
-                    .node(context.target_document().subject())
-                    .map_err(|_| Error::ForeignContext)?,
-            )
-        } else {
-            DocumentId(mapped[root_index])
-        };
-        let root_id_canonical = mapped[root_index];
+        let root_index =
+            source
+                .index(&root_id, &mut c)?
+                .ok_or_else(|| Error::UnsupportedState {
+                    subject: root_id.clone(),
+                })?;
+        let document =
+            if let Some(capture) = capture {
+                let context = report.context().ok_or(Error::NotCompletedFragmentReport)?;
+                DocumentId(
+                    capture
+                        .node(context.target_document().subject())
+                        .map_err(|_| Error::ForeignContext)?,
+                )
+            } else {
+                DocumentId(mapped.get(root_index).copied().ok_or_else(|| {
+                    Error::UnsupportedState {
+                        subject: root_id.clone(),
+                    }
+                })?)
+            };
+        let root_id_canonical =
+            mapped
+                .get(root_index)
+                .copied()
+                .ok_or_else(|| Error::UnsupportedState {
+                    subject: root_id.clone(),
+                })?;
         let mut association_documents = Vec::new();
         let mut association_cursor = report.pending_associations();
         loop {

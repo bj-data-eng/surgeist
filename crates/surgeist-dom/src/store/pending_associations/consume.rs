@@ -315,7 +315,7 @@ pub(super) fn decode_occurrence(
         .expect("sealed ChangePreferred has its original name");
     let mut reader = history
         .cursor(group, &mut frames, None)
-        .map_err(DomParsedHtmlAssociationAdmissionError::History)?;
+        .map_err(DomParsedHtmlAssociationAdmissionError::from)?;
     let mut units = Vec::new();
     loop {
         meter.step(cancel)?;
