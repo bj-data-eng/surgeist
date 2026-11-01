@@ -629,6 +629,50 @@ fn canonical_control_metadata_lends_actual_nodes_flags_raw_values_and_form_ident
 }
 
 #[test]
+fn a_form_inserted_after_its_controls_owns_only_the_control_naming_it_by_id() {
+    // The id event of the later form re-resolves the form attribute of the
+    // first input; the sixty inputs without a form attribute are not owned by
+    // the form, which is not their ancestor either.
+    let literal = format!(
+        "<!doctype html><body><input form=f>{}<form id=f></form>",
+        "<input name=a>".repeat(60)
+    );
+    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(literal), limits())
+        .parse()
+        .unwrap();
+    let document = report.document().unwrap();
+    let mut form = None;
+    let mut stack = vec![document.root().id()];
+    while let Some(id) = stack.pop() {
+        let node = document.node(&id).unwrap();
+        if matches!(node.kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("form"))
+        {
+            form = Some(id.clone());
+        }
+        stack.extend(node.children());
+    }
+    let form = form.unwrap();
+    let mut metadata = report.metadata();
+    let (mut associations, mut owned) = (0, 0);
+    loop {
+        match metadata.advance() {
+            HtmlParseMetadataStep::Record(record) => {
+                if let Some(owner) = record.form_owner() {
+                    associations += 1;
+                    if let Some(owner) = owner {
+                        assert_eq!(owner.id(), form);
+                        owned += 1;
+                    }
+                }
+            }
+            HtmlParseMetadataStep::Skipped => {}
+            HtmlParseMetadataStep::Complete => break,
+        }
+    }
+    assert_eq!((associations, owned), (61, 1));
+}
+
+#[test]
 fn handoff_resource_stop_remains_typed_in_public_failure() {
     let literal =
         "<!doctype html><form id=f><input type=hidden value=x><textarea>A&amp;B</textarea></form>";
