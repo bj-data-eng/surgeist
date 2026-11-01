@@ -1664,6 +1664,23 @@ impl SessionStorage {
         let Some(fragment) = &self.fragment else {
             return Ok(());
         };
+        // No record visit is charged: this reads one counter of the already
+        // visited session and visits no effect record.
+        #[cfg(test)]
+        assert_eq!(
+            fragment.unbound_effects,
+            fragment
+                .effects
+                .as_slice()
+                .iter()
+                .filter(|effect| matches!(
+                    effect,
+                    ContextEffect::TemplateCache { inert: None, .. }
+                        | ContextEffect::AttachShadow { contents: None, .. }
+                ))
+                .count(),
+            "unbound effects differ from the effects still unbound"
+        );
         if fragment.unbound_effects != 0 {
             c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
             return Err(SessionError::ContextUnavailable);
