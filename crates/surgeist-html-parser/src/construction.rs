@@ -391,6 +391,13 @@ struct PayloadStorage {
     /// Every row of a kind that is also searched across all nodes, in registry
     /// order. A scan of these lists visits only rows of that kind.
     kind_slots: [KindSlots; KIND_LISTS],
+    /// The `FormAssociation` rows of listed controls that have a `form`
+    /// attribute, in registry order: the only rows an id event can affect.
+    /// Created with the first such row. Only creation and cloning give a
+    /// control its `form` attribute (the attribute mutators change `value`,
+    /// `nonce`, `open` and `checked`, and a merge touches only html and body),
+    /// so rows enter the list when they are registered.
+    explicit_forms: Option<KindSlots>,
     preexisting_units: usize,
     preexisting_attributes: usize,
     /// Registry rows below this slot were audited by an earlier creation-time
@@ -727,7 +734,8 @@ enum FormEffectPass {
     Local,
     Intrinsic,
     Global {
-        /// Position in the registry's list of form association rows.
+        /// Position in the registry's list of rows of listed controls with a
+        /// form attribute.
         next_form: usize,
         tree: Option<usize>,
     },
@@ -950,6 +958,43 @@ impl SessionStorage {
         }
         found
     }
+    /// Every listed control with a `form` attribute is in the explicit-form
+    /// list, which holds only rows of the registry's form-association list,
+    /// each once and in registry order.
+    fn assert_explicit_forms_exact(&self) {
+        let listed = self.payloads.kind_list(KindList::FormAssociation);
+        let explicit = self.payloads.explicit_form_list();
+        let expected: Vec<usize> = listed
+            .iter()
+            .copied()
+            .filter(|slot| {
+                matches!(
+                    self.payloads.values.get(*slot),
+                    Some(RetainedPayload::FormAssociation { node: Some(node), state })
+                        if state.kind.listed() && self.uncharged_attribute(*node, "form")
+                )
+            })
+            .collect();
+        let held: Vec<usize> = explicit
+            .iter()
+            .copied()
+            .filter(|slot| {
+                matches!(
+                    self.payloads.values.get(*slot),
+                    Some(RetainedPayload::FormAssociation { node: Some(_), .. })
+                )
+            })
+            .collect();
+        assert_eq!(
+            held, expected,
+            "explicit form rows differ from the registry"
+        );
+        assert!(
+            explicit.windows(2).all(|pair| pair[0] < pair[1])
+                && explicit.iter().all(|slot| listed.contains(slot)),
+            "explicit form rows are a subsequence of the form association rows"
+        );
+    }
     /// Uncharged, from the registry rather than the joins: whether a Base or form
     /// association row's node lies in the subtree at `root`, or the subtree holds
     /// an id while some listed control has a form attribute.
@@ -1101,6 +1146,25 @@ impl PayloadStorage {
         self.kind_slots
             .get(list as usize)
             .map_or(&[], |kind| kind.slots.as_slice())
+    }
+    /// The `FormAssociation` rows of listed controls with a `form` attribute.
+    fn explicit_form_list(&self) -> &[usize] {
+        self.explicit_forms
+            .as_ref()
+            .map_or(&[], |kind| kind.slots.as_slice())
+    }
+    /// Lists the `FormAssociation` row at `slot` as one of a listed control
+    /// with a `form` attribute. The entry was admitted with the row; a row
+    /// without an admitted entry is refused before anything is appended.
+    fn index_explicit_form(&mut self, slot: usize) -> Result<(), SessionError> {
+        let Some(kind) = self.explicit_forms.as_mut() else {
+            return Err(SessionError::registry_row());
+        };
+        if kind.slots.len() >= kind.slots.capacity() {
+            return Err(SessionError::registry_row());
+        }
+        kind.slots.push(slot);
+        Ok(())
     }
     /// Appends a row whose slot was admitted by `prepare_payload_slot*`. A row
     /// already bound to a record is joined; rows of a registry-wide kind enter
@@ -1377,6 +1441,7 @@ impl PayloadStorage {
             node_joins,
             node_joins_allocation,
             kind_slots,
+            explicit_forms,
             ..
         } = self;
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
@@ -1394,7 +1459,7 @@ impl PayloadStorage {
                 join_entries,
             ),
         );
-        for list in kind_slots {
+        for list in kind_slots.into_iter().chain(explicit_forms) {
             let list_entries = list.slots.len() as u64;
             if let Err(error) = release_vector(control, list.slots, list.allocation) {
                 refused.get_or_insert(error);
@@ -1875,6 +1940,7 @@ impl SessionStorage {
                 node_joins,
                 node_joins_allocation,
                 kind_slots,
+                explicit_forms: None,
                 preexisting_units: 0,
                 preexisting_attributes: 0,
                 audited_rows: 0,
@@ -2175,12 +2241,37 @@ impl SessionStorage {
         control: &mut ParseControl,
         list: Option<KindList>,
     ) -> Result<(), SessionError> {
+        self.prepare_payload_slot_with(control, list, false)
+    }
+    /// As `prepare_payload_slot_for`, also admitting the entry of the
+    /// explicit-form list when the row is of a listed control with a `form`
+    /// attribute. All reservations precede the one acquisition.
+    fn prepare_payload_slot_with(
+        &mut self,
+        control: &mut ParseControl,
+        list: Option<KindList>,
+        explicit_form: bool,
+    ) -> Result<(), SessionError> {
         control.require_identity(&self.control)?;
         control.reserve_vector_geometric(
             &mut self.payloads.values,
             &mut self.payloads.allocation,
             1,
         )?;
+        if explicit_form {
+            if self.payloads.explicit_forms.is_none() {
+                let (slots, allocation) = control.new_vector()?;
+                self.payloads.explicit_forms = Some(KindSlots { slots, allocation });
+            }
+            let Some(KindSlots { slots, allocation }) = self.payloads.explicit_forms.as_mut()
+            else {
+                return Err(latch_registry_row(control));
+            };
+            control.reserve_vector_geometric(slots, allocation, 1)?;
+            control.admit_atomic_layout(mem::size_of::<usize>())?;
+            control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
+            control.charge(WorkCategory::RecordWrite, 1)?;
+        }
         if let Some(list) = list {
             let Some(KindSlots { slots, allocation }) =
                 self.payloads.kind_slots.get_mut(list as usize)
@@ -2200,7 +2291,7 @@ impl SessionStorage {
         control.charge(WorkCategory::RecordWrite, 1)?;
         control.acquire(
             HtmlParseResource::AuxiliaryEntries,
-            1 + u64::from(list.is_some()),
+            1 + u64::from(list.is_some()) + u64::from(explicit_form),
         )?;
         Ok(())
     }
@@ -4412,7 +4503,9 @@ impl SessionStorage {
         if attribute.value().is_empty() {
             return Ok(None);
         }
-        for &index in self.payloads.kind_list(KindList::FormAssociation) {
+        #[cfg(test)]
+        self.assert_explicit_forms_exact();
+        for &index in self.payloads.explicit_form_list() {
             control.charge(WorkCategory::RecordVisit, 1)?;
             if let Some(RetainedPayload::FormAssociation {
                 node: Some(node),
@@ -4843,7 +4936,9 @@ impl SessionStorage {
         }
         let mut listed_explicit = false;
         if !joined && identified {
-            for &slot in self.payloads.kind_list(KindList::FormAssociation) {
+            #[cfg(test)]
+            self.assert_explicit_forms_exact();
+            for &slot in self.payloads.explicit_form_list() {
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 if let Some(RetainedPayload::FormAssociation {
                     node: Some(node),
@@ -5440,11 +5535,9 @@ impl SessionStorage {
                     return Ok(());
                 }
                 FormEffectPass::Global { next_form, tree } => {
-                    let next_slot = self
-                        .payloads
-                        .kind_list(KindList::FormAssociation)
-                        .get(next_form)
-                        .copied();
+                    #[cfg(test)]
+                    self.assert_explicit_forms_exact();
+                    let next_slot = self.payloads.explicit_form_list().get(next_form).copied();
                     if let Some(next_slot) = next_slot {
                         control.charge(WorkCategory::RecordVisit, 1)?;
                         if let Some(RetainedPayload::FormAssociation {
@@ -6933,7 +7026,11 @@ impl ParserArenaSession {
             || kind == Some(HtmlNativeFormAssociationKind::Select);
         let slot = if let Some(kind) = kind {
             storage.require(control)?;
-            storage.prepare_payload_slot_for(control, Some(KindList::FormAssociation))?;
+            storage.prepare_payload_slot_with(
+                control,
+                Some(KindList::FormAssociation),
+                explicit_form,
+            )?;
             let slot = storage.payloads.values.len();
             storage
                 .payloads
@@ -6955,6 +7052,12 @@ impl ParserArenaSession {
                     },
                 })
                 .map_err(|_| latch_registry_row(control))?;
+            if explicit_form {
+                storage
+                    .payloads
+                    .index_explicit_form(slot)
+                    .map_err(|_| latch_registry_row(control))?;
+            }
             Some(slot)
         } else {
             None
@@ -7923,6 +8026,15 @@ impl ParserArenaSession {
         self.active()?.index(control, node)?;
         Ok(())
     }
+    /// The validated arena position that is the node's identity: two nodes are
+    /// the same node exactly when their positions are equal.
+    pub(crate) fn node_position(
+        &self,
+        control: &mut ParseControl,
+        node: &ParserNode,
+    ) -> Result<usize, SessionError> {
+        self.active()?.index(control, node)
+    }
     pub(crate) fn same_node(
         &self,
         control: &mut ParseControl,
@@ -7991,36 +8103,59 @@ impl ParserArenaSession {
         if record.parent().is_some() {
             return Ok(Some(ElementInsertionIgnored::ParentAlreadyPresent));
         }
-        let mut ancestor = Some(target);
-        for _ in 0..storage.construction.storage().len() {
-            let Some(index) = ancestor else { break };
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            if index == element {
+        // An element with no children, no shadow root and, if it owns template
+        // contents, empty and shadowless ones has nothing below it but those
+        // contents. It is then a host-including inclusive ancestor of the
+        // target only as the target itself or as the owner of the target that
+        // is its contents. Every element the parser inserts is such an element.
+        let contents = match record.template_contents_kind() {
+            Some(HtmlTemplateContentsKind::Owned) => record.template_contents(),
+            _ => None,
+        };
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let shallow = record.child_count() == 0
+            && record.shadow_root().is_none()
+            && contents.is_none_or(|contents| {
+                contents.child_count() == 0 && contents.shadow_root().is_none()
+            });
+        if shallow {
+            if target == element || contents.is_some_and(|contents| contents.position() == target) {
                 return Ok(Some(
                     ElementInsertionIgnored::HostIncludingInclusiveAncestor,
                 ));
             }
-            let record = storage
-                .construction
-                .node_at(index)
-                .ok_or(SessionError::ForeignNode)?;
-            ancestor = if let Some(owner) = &record.fragment_owner() {
-                let (HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) =
-                    owner;
-                control.charge(WorkCategory::ProviderCall, 1)?;
-                let owner_position = storage
+        } else {
+            let mut ancestor = Some(target);
+            for _ in 0..storage.construction.storage().len() {
+                let Some(index) = ancestor else { break };
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                if index == element {
+                    return Ok(Some(
+                        ElementInsertionIgnored::HostIncludingInclusiveAncestor,
+                    ));
+                }
+                let record = storage
                     .construction
-                    .storage()
-                    .node_by_result_id(owner)
-                    .map_err(|_| SessionError::ForeignNode)?
-                    .position();
-                Some(owner_position)
-            } else {
-                record.parent().map(|node| node.position())
-            };
-        }
-        if ancestor.is_some() {
-            return Err(SessionError::Cycle);
+                    .node_at(index)
+                    .ok_or(SessionError::ForeignNode)?;
+                ancestor = if let Some(owner) = &record.fragment_owner() {
+                    let (HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) =
+                        owner;
+                    control.charge(WorkCategory::ProviderCall, 1)?;
+                    let owner_position = storage
+                        .construction
+                        .storage()
+                        .node_by_result_id(owner)
+                        .map_err(|_| SessionError::ForeignNode)?
+                        .position();
+                    Some(owner_position)
+                } else {
+                    record.parent().map(|node| node.position())
+                };
+            }
+            if ancestor.is_some() {
+                return Err(SessionError::Cycle);
+            }
         }
         control.charge(WorkCategory::RecordVisit, 1)?;
         if matches!(
@@ -24201,8 +24336,9 @@ mod tests {
             ))
         );
         // Sixteen readiness (two Radio and two Range phase reads) visits + two handles + element kind +
-        // child/contents/template ancestors.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 24);
+        // the shallow-element test, which fails here because the template's
+        // contents hold the child, + child/contents/template ancestors.
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 25);
         assert_eq!(c.usage().work(WorkCategory::ProviderCall) - providers, 1);
         assert_eq!(
             session.element_insertion_ignored(&mut c, &template, &template),
@@ -24237,6 +24373,57 @@ mod tests {
                 .collect::<Vec<_>>(),
             [child.index]
         );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn element_guard_on_an_element_with_nothing_below_it_finds_only_itself_and_its_contents() {
+        let mut c = control();
+        let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+        let root = session.root(&mut c).unwrap();
+        let template = session.allocate_element(&mut c, html("template")).unwrap();
+        let contents = session
+            .template_contents(&mut c, &template)
+            .unwrap()
+            .unwrap();
+        let div = session.allocate_element(&mut c, html("div")).unwrap();
+        let ancestor = Ok(Some(
+            ElementInsertionIgnored::HostIncludingInclusiveAncestor,
+        ));
+        // The element itself, and a template's own empty contents.
+        assert_eq!(
+            session.element_insertion_ignored(&mut c, &div, &div),
+            ancestor
+        );
+        assert_eq!(
+            session.element_insertion_ignored(&mut c, &template, &template),
+            ancestor
+        );
+        assert_eq!(
+            session.element_insertion_ignored(&mut c, &template, &contents),
+            ancestor
+        );
+        // Nothing else lies below them: neither the root, an unrelated element
+        // nor another element's contents.
+        let other = session.allocate_element(&mut c, html("template")).unwrap();
+        let other_contents = session.template_contents(&mut c, &other).unwrap().unwrap();
+        for (element, target) in [
+            (&div, &root),
+            (&div, &template),
+            (&div, &contents),
+            (&template, &root),
+            (&template, &div),
+            (&template, &other_contents),
+        ] {
+            assert_eq!(
+                session.element_insertion_ignored(&mut c, element, target),
+                Ok(None),
+                "{} below {}",
+                element.index,
+                target.index
+            );
+        }
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }

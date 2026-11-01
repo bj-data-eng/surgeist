@@ -859,3 +859,44 @@ fn giving_a_template_a_shadow_host_describes_both_moved_subtrees() {
         (8, 12)
     );
 }
+
+#[test]
+fn attaching_a_new_templates_contents_as_a_shadow_describes_the_same_work_at_every_host_depth() {
+    // The host ends a chain of `depth` elements. The template is new, so it is
+    // detached and its contents are empty: the host cannot lie inside them, and
+    // its depth is the one the chain gives it, whatever the chain's length.
+    let mut measured = Vec::new();
+    for depth in [16, 128, 1024] {
+        let (mut owner, root) = fragment(storage());
+        let mut host = root;
+        for _ in 0..depth {
+            let (next, node) = create(owner, element("div"));
+            owner = append(next, &node, &host);
+            host = node;
+        }
+        let (owner, template) = create(owner, element("template"));
+        let (owner, shadow) = create(
+            owner,
+            HtmlConstructionCommand::CreateShadowContents {
+                properties: properties(),
+            },
+        );
+        let (_, work) = driven(
+            owner,
+            HtmlConstructionCommand::AttachTemplateShadow {
+                template,
+                host,
+                contents: shadow,
+            },
+        );
+        measured.push((depth, work));
+    }
+    let (first_depth, first) = measured[0];
+    for (depth, work) in &measured {
+        assert_eq!(
+            *work, first,
+            "attaching a shadow to a host at depth {depth} described different work \
+             than at depth {first_depth}"
+        );
+    }
+}

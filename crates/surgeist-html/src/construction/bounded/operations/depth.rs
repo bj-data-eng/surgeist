@@ -251,6 +251,23 @@ impl HtmlConstructionOperation {
             Command::AttachTemplateShadow { .. } => attached.map(|(_, host)| host),
             _ => None,
         };
+        // A record is inside the contents only through a child of theirs, so a
+        // host cannot be inside contents that have none: the change leaves its
+        // cached depth exact, and no walk is needed. A template the parser has
+        // just created has empty contents.
+        let host = match (host, old) {
+            (Some(_), Some(old))
+                if arena
+                    .records
+                    .get(old)
+                    .ok_or(HtmlConstructionError::UnknownNode)?
+                    .children
+                    .is_empty() =>
+            {
+                None
+            }
+            (host, _) => host,
+        };
         let second = match attached {
             Some((root, _)) if host.is_some() => Some(root_move(root, 0)?),
             Some((root, parent)) => Some(root_move(root, add(depth_of(parent)?, 1)?)?),

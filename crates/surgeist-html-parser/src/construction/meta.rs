@@ -598,7 +598,31 @@ impl SessionStorage {
             self.meta_pragma(c, node, document, service)?;
             self.meta_referrer(c, node)?;
         }
-        self.meta_candidates(c, document, detached, true, true)
+        // Inserting or removing a meta that is no candidate for a selection
+        // changes nothing the selection depends on, so that walk is not run.
+        let theme = self.meta_candidate(c, node, "theme-color")?;
+        let scheme = self.meta_candidate(c, node, "color-scheme")?;
+        if !theme && !scheme {
+            return Ok(());
+        }
+        self.meta_candidates(c, document, detached, theme, scheme)
+    }
+    /// Whether `meta_candidates` takes `node` as a candidate for the selection
+    /// named `expected`: the exact `name` and some `content` attribute. Whether
+    /// its content then selects anything is for that walk to decide.
+    fn meta_candidate(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+        expected: &str,
+    ) -> Result<bool, SessionError> {
+        let Some(name) = self.form_attribute(c, node, "name")? else {
+            return Ok(false);
+        };
+        if !meta_ascii(c, name, expected)? {
+            return Ok(false);
+        }
+        Ok(self.form_attribute(c, node, "content")?.is_some())
     }
     pub(super) fn initial_meta_attributes(
         &mut self,
@@ -671,6 +695,12 @@ impl SessionStorage {
                 DocumentRef::Owned(node) => node,
                 DocumentRef::Captured(_) => return Ok(()),
             };
+            // The selection walks the document's own tree. A meta outside it,
+            // such as one still being created, is no candidate yet, and its
+            // insertion will recompute the selection.
+            if self.ordinary_root(c, node, None)? != document {
+                return Ok(());
+            }
             self.meta_candidates(c, document, None, true, name_or_content)?;
         }
         Ok(())

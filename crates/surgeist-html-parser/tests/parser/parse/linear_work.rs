@@ -5,8 +5,17 @@
 //! exact (non-geometric) reservation that charges the whole old plus new vector
 //! on every element violates it.
 
+use surgeist_html::{
+    HtmlDocumentMode, HtmlParserScriptingMode, Namespace, OrderedAttributes, QualifiedName,
+};
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseResource, HtmlParseWorkCategory, HtmlSource,
+    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlParseResource,
+    HtmlParseWorkCategory, HtmlSource,
+};
+use surgeist_html_semantics::{
+    HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureTemplateCacheInput,
+    HtmlCapturedIsValue, HtmlDocumentClass, HtmlFragmentContext, HtmlHostFactsRevision,
+    HtmlScriptingStatus, HtmlTemplateDocumentRole,
 };
 
 /// One element subtree with attributes, nested elements and two text nodes.
@@ -51,12 +60,77 @@ pub(super) fn roomy_limits() -> HtmlParseLimits {
         .unwrap()
 }
 
+/// `roomy_limits` with room for the stack of open elements that nested shadow
+/// roots fill: each layer keeps its host and its template open.
+fn deep_limits() -> HtmlParseLimits {
+    roomy_limits()
+        .into_builder()
+        .open_elements(5_000)
+        .finish()
+        .unwrap()
+}
+
 fn parse_work(raw: String) -> Work {
     let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), roomy_limits());
     let report = request
         .parse()
         .unwrap_or_else(|_| panic!("the document parses within roomy limits"));
-    let usage = report.usage();
+    work_of(report.usage())
+}
+
+/// A `div` captured as the context element of a fragment parse.
+fn div_context() -> HtmlFragmentContext {
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let document = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder
+        .establish_document_template_facts(
+            &document,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Absent,
+        )
+        .unwrap();
+    let div = builder
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::html(), None, "div"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder.establish_root(&div).unwrap();
+    builder.establish_no_shadow_root(&div).unwrap();
+    let capture = builder.finish().unwrap();
+    HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap()
+}
+
+/// Parses `raw` as a fragment that allows declarative shadow roots.
+fn parse_fragment_work(raw: String) -> Work {
+    let request = HtmlFragmentParseRequest::with_options(
+        HtmlSource::utf8(raw),
+        div_context(),
+        deep_limits(),
+        HtmlParserScriptingMode::Inert,
+        true,
+    )
+    .unwrap();
+    let report = request
+        .parse()
+        .unwrap_or_else(|_| panic!("the fragment parses within roomy limits"));
+    work_of(report.usage())
+}
+
+fn work_of(usage: &surgeist_html_parser::HtmlParseUsage) -> Work {
     Work {
         total: usage.resource(HtmlParseResource::WorkCredits).current(),
         reserved: usage.work(HtmlParseWorkCategory::ReserveByte),
@@ -79,8 +153,18 @@ fn assert_doublings_add_near_double(
     document: impl Fn(usize) -> String,
     measures: &[Measure],
 ) {
+    assert_parses_add_near_double(sizes, document, parse_work, measures);
+}
+
+/// As `assert_doublings_add_near_double`, with the parse that measures each size.
+fn assert_parses_add_near_double(
+    sizes: [usize; 4],
+    document: impl Fn(usize) -> String,
+    parse: impl Fn(String) -> Work,
+    measures: &[Measure],
+) {
     const BOUND: u64 = 3;
-    let measured: Vec<Work> = sizes.iter().map(|&n| parse_work(document(n))).collect();
+    let measured: Vec<Work> = sizes.iter().map(|&n| parse(document(n))).collect();
     for (name, pick) in measures {
         let work: Vec<u64> = measured.iter().map(pick).collect();
         for (pair, window) in sizes.windows(3).zip(work.windows(3)) {
@@ -245,5 +329,103 @@ fn work_added_by_each_doubling_of_repeated_tables_with_cells_is_near_double() {
             ("total work", |work| work.total),
             ("reservation work", |work| work.reserved),
         ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_declarative_shadow_roots_is_near_double() {
+    // Each template becomes the shadow root of its parent div: the parser gives
+    // the host a shadow root and releases the template's contents.
+    assert_parses_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| "<div><template shadowrootmode=open><p>x</p></template></div>".repeat(repeats),
+        parse_fragment_work,
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_inputs_with_ids_is_near_double() {
+    // Each input with an id runs the id pass over the form controls; none has
+    // a form attribute, so the pass must find nothing to visit.
+    assert_doublings_add_near_double(
+        [200, 400, 800, 1600],
+        |repeats| {
+            format!(
+                "<!doctype html><body>{}",
+                "<input id=a name=a>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_meta_elements_is_near_double() {
+    // None of these is a theme-color or color-scheme candidate, so inserting
+    // one never recomputes the document's selected theme color or scheme.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><head>{}",
+                "<meta name=viewport content=x>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+/// One layer of nested declarative shadow roots: a host whose template becomes
+/// its shadow root, and the template and host still open.
+const SHADOW_LAYER: &str = "<div><template shadowrootmode=open><p>x</p>";
+const SHADOW_LAYER_END: &str = "</template></div>";
+
+fn nested_shadow_roots(layers: usize, innermost: &str) -> String {
+    format!(
+        "{}{innermost}{}",
+        SHADOW_LAYER.repeat(layers),
+        SHADOW_LAYER_END.repeat(layers)
+    )
+}
+
+#[test]
+fn work_added_by_each_doubling_of_nested_declarative_shadow_roots_is_near_double() {
+    // Each host sits inside the shadow root of the one before it, so the tree
+    // and the stack of open elements deepen with every repeat.
+    assert_parses_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| nested_shadow_roots(repeats, ""),
+        parse_fragment_work,
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn a_declarative_shadow_root_adds_the_same_visits_whatever_shadow_roots_enclose_it() {
+    // The layers deepen both the tree and the stack, and the scope checks the
+    // added layer makes end at its own template, so nothing the layer does
+    // needs to look beyond the layers around it.
+    let added = |layers: usize| {
+        let layer = format!("{SHADOW_LAYER}{SHADOW_LAYER_END}");
+        parse_fragment_work(nested_shadow_roots(layers, &layer)).visited as i64
+            - parse_fragment_work(nested_shadow_roots(layers, "")).visited as i64
+    };
+    let measures = [25, 100, 400].map(added);
+    assert!(
+        measures.iter().all(|visits| *visits == measures[0]),
+        "one more shadow root added {measures:?} record visits inside 25, 100 and 400"
     );
 }

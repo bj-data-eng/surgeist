@@ -749,9 +749,14 @@ impl SessionStorage {
         }
         if let Some((_, state)) = find_form_association_state(&self.payloads, c, source)? {
             payload_write::<Option<usize>>(c, 1)?;
-            result.association = Some(self.retain_clone_metadata(
-                c,
-                RetainedPayload::FormAssociation {
+            // The clone copies the source's attributes, so it has a form
+            // attribute exactly when the source has.
+            let explicit_form =
+                state.kind.listed() && self.form_attribute(c, source, "form")?.is_some();
+            self.prepare_payload_slot_with(c, Some(KindList::FormAssociation), explicit_form)?;
+            let slot = self
+                .payloads
+                .push_row(RetainedPayload::FormAssociation {
                     node: None,
                     state: FormAssociationState {
                         kind: state.kind,
@@ -759,8 +764,14 @@ impl SessionStorage {
                         parser_inserted: false,
                         evidence: FormAssociationEvidence::Created,
                     },
-                },
-            )?);
+                })
+                .map_err(|_| latch_registry_row(c))?;
+            if explicit_form {
+                self.payloads
+                    .index_explicit_form(slot)
+                    .map_err(|_| latch_registry_row(c))?;
+            }
+            result.association = Some(slot);
         }
         for (name, state) in [
             (
