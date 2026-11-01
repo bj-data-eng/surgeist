@@ -20,9 +20,38 @@ use provenance::{
 pub(crate) struct FrozenHistory {
     /// Its evidence is the field below, moved out of it.
     storage: FrozenStorage,
-    evidence: ParseEvidence,
+    evidence: PublishedEvidence,
     source: crate::HtmlSource,
     rows: OwnedVec<NativeAssociation>,
+}
+/// The evidence of a published report. Publication moves the source and the
+/// complete projection out of it and into the report beside it, so what is
+/// left cannot answer a question about either. This type exposes only what a
+/// published report reads from the rest, and the evidence it wraps is
+/// reachable only to the tests that corrupt a report.
+pub(crate) struct PublishedEvidence(ParseEvidence);
+impl PublishedEvidence {
+    /// The construction cause a reference names, when this evidence issued it.
+    pub(crate) fn retained_cause(
+        &self,
+        reference: &provenance::ConstructionCauseRef,
+    ) -> Option<&ConstructionCause> {
+        self.0.retained_cause(reference)
+    }
+    /// The committed diagnostics.
+    pub(crate) fn diagnostics(&self) -> evidence::DiagnosticEvidenceView<'_> {
+        self.0.diagnostics()
+    }
+    fn history<'a>(&'a self, source: &'a crate::HtmlSource) -> HistoryData<'a> {
+        self.0.published_history(source)
+    }
+    fn associations<'a>(
+        &'a self,
+        source: &'a crate::HtmlSource,
+        rows: &'a [NativeAssociation],
+    ) -> AssociationView<'a> {
+        self.0.published_associations(source, rows)
+    }
 }
 /// A prepared arena that holds no custody of what a published report needs.
 /// The arena stays where it was, for release.
@@ -241,7 +270,7 @@ impl FrozenHistory {
         *slot = None;
         Some(Self {
             storage,
-            evidence,
+            evidence: PublishedEvidence(evidence),
             source,
             rows,
         })
@@ -252,13 +281,13 @@ impl FrozenHistory {
     pub(super) fn storage_mut(&mut self) -> &mut FrozenStorage {
         &mut self.storage
     }
-    pub(super) fn evidence(&self) -> &ParseEvidence {
+    pub(super) fn evidence(&self) -> &PublishedEvidence {
         &self.evidence
     }
     /// The published evidence, for tests that corrupt a report.
     #[cfg(test)]
     pub(super) fn evidence_mut(&mut self) -> &mut ParseEvidence {
-        &mut self.evidence
+        &mut self.evidence.0
     }
     /// The published association rows, for tests that corrupt a report.
     #[cfg(test)]
@@ -269,12 +298,12 @@ impl FrozenHistory {
         HistoryView {
             storage: &self.storage,
             evidence: &self.evidence,
-            data: self.evidence.published_history(&self.source),
+            data: self.evidence.history(&self.source),
         }
     }
     pub(crate) fn associations(&self) -> AssociationView<'_> {
         self.evidence
-            .published_associations(&self.source, self.rows.as_slice())
+            .associations(&self.source, self.rows.as_slice())
     }
     pub(crate) fn fragment(&self) -> Option<&HtmlFragment> {
         match &self.storage.view {
@@ -293,7 +322,7 @@ impl FrozenHistory {
     pub(super) fn into_arena(self) -> FrozenArena {
         let Self {
             mut storage,
-            mut evidence,
+            evidence: PublishedEvidence(mut evidence),
             source,
             rows,
         } = self;
@@ -375,12 +404,12 @@ impl<'a> PreparedHistory<'a> {
 /// slot or a caller assertion about the identity of another report.
 #[derive(Clone, Copy)]
 pub struct HistoryGroup<'a> {
-    evidence: &'a ParseEvidence,
+    evidence: &'a PublishedEvidence,
     index: usize,
 }
 pub(crate) struct HistoryView<'a> {
     storage: &'a FrozenStorage,
-    evidence: &'a ParseEvidence,
+    evidence: &'a PublishedEvidence,
     data: HistoryData<'a>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

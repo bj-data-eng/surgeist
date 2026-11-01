@@ -951,7 +951,7 @@ impl ReportStorage {
     pub(crate) fn history_mut(&mut self) -> &mut FrozenHistory {
         &mut self.history
     }
-    pub(crate) fn evidence(&self) -> &ParseEvidence {
+    pub(crate) fn evidence(&self) -> &history::PublishedEvidence {
         self.history.evidence()
     }
     /// The effects of a fragment report; a Document report holds none.

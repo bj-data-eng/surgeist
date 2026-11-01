@@ -458,6 +458,8 @@ struct FrozenStorage {
     lease: Option<bounded::HtmlConstructionLease>,
     payloads: PayloadStorage,
     effects: ConstructionEffects,
+    /// Present until publication moves the evidence into the published history
+    /// beside this storage, where only its `PublishedEvidence` form is read.
     evidence: Option<ParseEvidence>,
     fragment: Option<FragmentContextStorage>,
 }
