@@ -136,7 +136,7 @@ fn a_leaf_whose_backing_is_not_a_string_row_faults_the_cursor() {
         panic!("a Leaf")
     };
     *value = LeafValue::Payload(other);
-    assert_eq!(walk(&report, index), Some(fault(Kind::Payload)));
+    assert_eq!(walk(&report, index), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -156,7 +156,7 @@ fn a_leaf_whose_backing_is_past_the_registry_faults_the_cursor() {
         panic!("a Leaf")
     };
     *value = LeafValue::Payload(usize::MAX);
-    assert_eq!(walk(&report, index), Some(fault(Kind::Payload)));
+    assert_eq!(walk(&report, index), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn a_leaf_that_is_still_pending_faults_the_cursor() {
         panic!("a Leaf")
     };
     *value = LeafValue::Pending;
-    assert_eq!(walk(&report, index), Some(fault(Kind::Payload)));
+    assert_eq!(walk(&report, index), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -256,12 +256,12 @@ fn a_row_with_an_unresolvable_destination_is_reported_when_it_is_lent() {
         (
             "attribute field",
             NativeDestination::Field(Location::AttributeName(usize::MAX, 0)),
-            Kind::Payload,
+            Kind::Fact,
         ),
         (
             "detached field",
             NativeDestination::Field(Location::Detached),
-            Kind::Payload,
+            Kind::Fact,
         ),
         (
             "lexical occurrence",
@@ -404,7 +404,7 @@ fn a_cause_naming_an_unresolvable_retired_destination_reports_it() {
         (
             "attribute",
             Location::AttributeValue(usize::MAX, 0),
-            Kind::Payload,
+            Kind::Fact,
         ),
     ];
     for (name, location, kind) in cases {
@@ -633,7 +633,7 @@ fn a_metadata_record_naming_a_raw_value_that_is_not_a_string_faults_the_cursor()
         }
         _ => false,
     });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Payload)));
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -646,7 +646,7 @@ fn a_textarea_naming_a_raw_value_that_is_not_a_string_faults_the_cursor() {
         }
         _ => false,
     });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Payload)));
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -707,7 +707,7 @@ fn a_hyperlink_naming_a_missing_document_or_value_faults_the_cursor() {
         }
         _ => false,
     });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Payload)));
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -749,7 +749,7 @@ fn a_dialog_naming_a_value_that_is_not_a_string_faults_the_cursor() {
         }
         _ => false,
     });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Payload)));
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -762,7 +762,7 @@ fn a_document_naming_a_policy_row_that_is_not_one_faults_the_cursor() {
         }
         _ => false,
     });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Payload)));
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -775,7 +775,7 @@ fn a_document_naming_a_language_row_that_is_not_a_string_faults_the_cursor() {
         }
         _ => false,
     });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Payload)));
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -788,7 +788,7 @@ fn a_document_naming_a_missing_gap_row_faults_the_cursor() {
         }
         _ => false,
     });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Payload)));
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -802,7 +802,7 @@ fn a_document_whose_first_gap_has_no_row_faults_the_cursor() {
         }
         _ => false,
     });
-    assert_eq!(metadata_fault(&report), Some(fault(Kind::Payload)));
+    assert_eq!(metadata_fault(&report), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -849,7 +849,7 @@ fn an_effect_whose_cache_was_never_bound_is_reported() {
     };
     *inert = None;
     let effects = report.effects().unwrap();
-    assert_eq!(effects.effect(0).err(), Some(fault(Kind::Payload)));
+    assert_eq!(effects.effect(0).err(), Some(fault(Kind::Fact)));
 }
 
 #[test]
@@ -920,7 +920,7 @@ fn a_contextual_report_without_its_completion_row_is_reported_not_skipped() {
     storage.payloads.values[completion] = RetainedPayload::Retired;
     assert_eq!(
         report.fragment_parser_document().err(),
-        Some(fault(Kind::Payload))
+        Some(fault(Kind::Fact))
     );
 }
 
@@ -938,4 +938,58 @@ fn a_contextual_report_without_its_fragment_storage_is_reported_not_skipped() {
 fn an_ordinary_report_has_no_parser_document_and_that_is_not_a_fault() {
     let report = parse("<p>a</p>");
     assert!(matches!(report.fragment_parser_document(), Ok(None)));
+}
+
+// ---- how the fault describes itself ----
+
+#[test]
+fn an_unresolved_reference_names_what_it_denotes_in_words() {
+    use std::error::Error;
+    let cases = [
+        (Kind::Node, "a node of its tree"),
+        (Kind::Cause, "a construction cause"),
+        (Kind::Group, "an origin group of its text history"),
+        (Kind::LexicalOccurrence, "a lexical occurrence"),
+        (Kind::LexicalPart, "a part of a lexical occurrence"),
+        (Kind::Omission, "a lexical omission"),
+        (Kind::Fact, "a fact it retains"),
+        (Kind::CapturedNode, "a node of its captured context"),
+        (Kind::Fragment, "its fragment context"),
+        (Kind::Diagnostic, "the location of a diagnostic"),
+    ];
+    for (kind, words) in cases {
+        let message = fault(kind).to_string();
+        assert_eq!(
+            message,
+            format!("a published parse report refers to {words} that it does not hold")
+        );
+        assert!(fault(kind).source().is_none());
+    }
+}
+
+#[test]
+fn a_history_error_describes_itself_and_names_the_fault_as_its_source() {
+    use std::error::Error;
+    let unresolved = HistoryReadError::Unresolved(fault(Kind::Cause));
+    assert_eq!(
+        unresolved.to_string(),
+        "the report's history holds a reference it cannot resolve"
+    );
+    assert_eq!(
+        unresolved.source().map(ToString::to_string),
+        Some(fault(Kind::Cause).to_string())
+    );
+    assert_eq!(
+        HistoryReadError::ForeignOwner.to_string(),
+        "the group belongs to another report"
+    );
+    assert!(HistoryReadError::ForeignOwner.source().is_none());
+    assert_eq!(
+        HistoryReadError::InsufficientScratch {
+            required: 3,
+            supplied: 2
+        }
+        .to_string(),
+        "the history cursor needs 3 scratch frames and was given 2"
+    );
 }

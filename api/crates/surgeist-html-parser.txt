@@ -218,6 +218,10 @@ pub surgeist_html_parser::HtmlParseHistoryError::InsufficientScratch
 pub surgeist_html_parser::HtmlParseHistoryError::InsufficientScratch::required: usize
 pub surgeist_html_parser::HtmlParseHistoryError::InsufficientScratch::supplied: usize
 pub surgeist_html_parser::HtmlParseHistoryError::Unresolved(surgeist_html_parser::HtmlParseUnresolvedReference)
+impl core::error::Error for surgeist_html_parser::HtmlParseHistoryError
+pub fn surgeist_html_parser::HtmlParseHistoryError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html_parser::HtmlParseHistoryError
+pub fn surgeist_html_parser::HtmlParseHistoryError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_parser::HtmlParseHistoryStep<'a>
 pub surgeist_html_parser::HtmlParseHistoryStep::Cancelled
 pub surgeist_html_parser::HtmlParseHistoryStep::Complete
@@ -458,17 +462,19 @@ pub surgeist_html_parser::HtmlParseTokenFamily::Eof
 pub surgeist_html_parser::HtmlParseTokenFamily::ProcessingInstruction
 pub surgeist_html_parser::HtmlParseTokenFamily::Tag
 pub surgeist_html_parser::HtmlParseTokenFamily::Text
-pub enum surgeist_html_parser::HtmlParseUnresolvedKind
+#[non_exhaustive] pub enum surgeist_html_parser::HtmlParseUnresolvedKind
 pub surgeist_html_parser::HtmlParseUnresolvedKind::CapturedNode
 pub surgeist_html_parser::HtmlParseUnresolvedKind::Cause
 pub surgeist_html_parser::HtmlParseUnresolvedKind::Diagnostic
+pub surgeist_html_parser::HtmlParseUnresolvedKind::Fact
 pub surgeist_html_parser::HtmlParseUnresolvedKind::Fragment
 pub surgeist_html_parser::HtmlParseUnresolvedKind::Group
 pub surgeist_html_parser::HtmlParseUnresolvedKind::LexicalOccurrence
 pub surgeist_html_parser::HtmlParseUnresolvedKind::LexicalPart
 pub surgeist_html_parser::HtmlParseUnresolvedKind::Node
 pub surgeist_html_parser::HtmlParseUnresolvedKind::Omission
-pub surgeist_html_parser::HtmlParseUnresolvedKind::Payload
+impl core::fmt::Display for surgeist_html_parser::HtmlParseUnresolvedKind
+pub fn surgeist_html_parser::HtmlParseUnresolvedKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_parser::HtmlParseUnsupportedState
 pub surgeist_html_parser::HtmlParseUnsupportedState::Completion
 pub surgeist_html_parser::HtmlParseUnsupportedState::DetailsNotification

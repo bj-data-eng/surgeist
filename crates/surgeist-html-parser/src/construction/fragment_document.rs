@@ -54,7 +54,7 @@ impl<'a> FragmentParserDocument<'a> {
         let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
             storage.payloads.values.get(fragment.completion)
         else {
-            return Err(fault(read::UnresolvedKind::Payload));
+            return Err(fault(read::UnresolvedKind::Fact));
         };
         Ok(Self {
             source,

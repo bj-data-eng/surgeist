@@ -3,8 +3,9 @@ use super::*;
 use history::{FrozenHistory, HistoryGroup, HistoryView};
 use provenance::{AssociationView, ConstructionCause, NativeAssociation, NativeDestination};
 
-/// The table a reference of a published report named.
+/// What a reference of a published report denotes to a reader.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum UnresolvedKind {
     /// A node of the report's tree.
     Node,
@@ -18,14 +19,31 @@ pub enum UnresolvedKind {
     LexicalPart,
     /// A lexical omission.
     Omission,
-    /// A retained payload slot, or the leaf value, origins or string it holds.
-    Payload,
+    /// A fact the report retains: a string, a policy, an attribute map, a
+    /// metadata row or an effect binding.
+    Fact,
     /// A node of the captured fragment context.
     CapturedNode,
-    /// The fragment context storage of a contextual report.
+    /// The fragment context of a contextual report.
     Fragment,
-    /// A committed diagnostic location.
+    /// The location of a committed diagnostic.
     Diagnostic,
+}
+impl std::fmt::Display for UnresolvedKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Node => "a node of its tree",
+            Self::Cause => "a construction cause",
+            Self::Group => "an origin group of its text history",
+            Self::LexicalOccurrence => "a lexical occurrence",
+            Self::LexicalPart => "a part of a lexical occurrence",
+            Self::Omission => "a lexical omission",
+            Self::Fact => "a fact it retains",
+            Self::CapturedNode => "a node of its captured context",
+            Self::Fragment => "its fragment context",
+            Self::Diagnostic => "the location of a diagnostic",
+        })
+    }
 }
 
 /// A reference that a published report holds but that its own tables cannot
@@ -45,7 +63,7 @@ impl UnresolvedReference {
     pub(crate) const fn new(kind: UnresolvedKind) -> Self {
         Self { kind }
     }
-    /// The table the reference named.
+    /// What the reference denotes.
     pub const fn kind(&self) -> UnresolvedKind {
         self.kind
     }
@@ -54,7 +72,7 @@ impl std::fmt::Display for UnresolvedReference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "a published parse report holds a reference to a {:?} that it cannot resolve",
+            "a published parse report refers to {} that it does not hold",
             self.kind
         )
     }
@@ -467,7 +485,7 @@ fn field_of(
             HtmlParseField::ProcessingInstructionAttributeValue(a),
         ),
         // A detached payload is not a native destination.
-        StringLocation::Detached => return Err(UnresolvedReference::new(UnresolvedKind::Payload)),
+        StringLocation::Detached => return Err(UnresolvedReference::new(UnresolvedKind::Fact)),
     };
     Ok((history.native_node(node)?, field))
 }
@@ -522,7 +540,7 @@ fn attribute_node(history: &FrozenHistory, slot: usize) -> Result<usize, Unresol
             element: Some(node),
             ..
         }))) => Ok(*node),
-        _ => Err(UnresolvedReference::new(UnresolvedKind::Payload)),
+        _ => Err(UnresolvedReference::new(UnresolvedKind::Fact)),
     }
 }
 fn pi_node(history: &FrozenHistory, slot: usize) -> Result<usize, UnresolvedReference> {
@@ -530,7 +548,7 @@ fn pi_node(history: &FrozenHistory, slot: usize) -> Result<usize, UnresolvedRefe
         Some(RetainedPayload::PiAttributes {
             node: Some(node), ..
         }) => Ok(*node),
-        _ => Err(UnresolvedReference::new(UnresolvedKind::Payload)),
+        _ => Err(UnresolvedReference::new(UnresolvedKind::Fact)),
     }
 }
 /// The origin group a stored index names, or the fault.
@@ -794,7 +812,7 @@ impl<'a> HtmlParseCause<'a> {
                     AttributeStorage::Building { .. }
                     | AttributeStorage::Frozen { element: None, .. },
                 ))) => Ok(Some(HtmlParseRetiredDestination::StagedField { field })),
-                _ => Err(UnresolvedReference::new(UnresolvedKind::Payload)),
+                _ => Err(UnresolvedReference::new(UnresolvedKind::Fact)),
             };
         }
         let (node, field) = field_of(self.history, location)?;

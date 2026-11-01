@@ -1302,7 +1302,7 @@ impl<'a> Cursor<'a> {
             RetainedPayload::AssociationOccurrence(values) => values
                 .as_slice()
                 .first()
-                .ok_or(unresolved(read::UnresolvedKind::Payload))
+                .ok_or(unresolved(read::UnresolvedKind::Fact))
                 .and_then(|value| OccurrenceView::new(anchor, slot, value))
                 .map(Step::Occurrence),
             _ => return Step::Skipped,
@@ -1566,12 +1566,12 @@ impl<'a> StyleInputs<'a> {
         let Some(RetainedPayload::StyleOrder(list)) =
             self.anchor.storage.payloads.values.get(order.slot)
         else {
-            return Err(unresolved(read::UnresolvedKind::Payload));
+            return Err(unresolved(read::UnresolvedKind::Fact));
         };
         let entry = list
             .as_slice()
             .get(index)
-            .ok_or(unresolved(read::UnresolvedKind::Payload))?;
+            .ok_or(unresolved(read::UnresolvedKind::Fact))?;
         native(self.anchor.storage, *entry).map(Some)
     }
     pub fn attribute(
@@ -1618,27 +1618,27 @@ impl<'a> ContextView<'a> {
                 .payloads
                 .values
                 .get(slot)
-                .ok_or(unresolved(read::UnresolvedKind::Payload))
+                .ok_or(unresolved(read::UnresolvedKind::Fact))
         };
         // A policy that is missing from the history has no association.
         let csp = match value.csp {
             Some(slot) if !value.policy_missing => match row(slot)? {
                 RetainedPayload::CspPolicy(policy) => policy.value.as_ref(),
-                _ => return Err(unresolved(read::UnresolvedKind::Payload)),
+                _ => return Err(unresolved(read::UnresolvedKind::Fact)),
             },
             _ => None,
         };
         let base_facts = match value.base_document {
             Some(slot) => match row(slot)? {
                 RetainedPayload::BaseDocument { facts, .. } => Some(facts),
-                _ => return Err(unresolved(read::UnresolvedKind::Payload)),
+                _ => return Err(unresolved(read::UnresolvedKind::Fact)),
             },
             None => None,
         };
         let captured_context = match value.captured {
             Some(slot) => match row(slot)? {
                 RetainedPayload::AssociationCapturedContext(captured) => Some(&captured.value),
-                _ => return Err(unresolved(read::UnresolvedKind::Payload)),
+                _ => return Err(unresolved(read::UnresolvedKind::Fact)),
             },
             None => None,
         };
@@ -1653,7 +1653,7 @@ impl<'a> ContextView<'a> {
                 facts
                     .observations()
                     .get(index)
-                    .ok_or(unresolved(read::UnresolvedKind::Payload))?,
+                    .ok_or(unresolved(read::UnresolvedKind::Fact))?,
             ),
             _ => None,
         };
@@ -2581,7 +2581,7 @@ mod tests {
             |row| !row.context.policy_missing,
             |row| row.context.csp = Some(usize::MAX),
         );
-        assert_row_fault(&report, read::UnresolvedKind::Payload);
+        assert_row_fault(&report, read::UnresolvedKind::Fact);
     }
     #[test]
     fn an_occurrence_whose_base_facts_row_is_not_base_facts_is_a_fault() {
@@ -2594,7 +2594,7 @@ mod tests {
             |row| row.context.base_document.is_some(),
             |row| row.context.base_document = Some(usize::MAX),
         );
-        assert_row_fault(&report, read::UnresolvedKind::Payload);
+        assert_row_fault(&report, read::UnresolvedKind::Fact);
     }
     #[test]
     fn a_text_group_that_is_missing_is_a_fault_of_the_text_reader() {
@@ -2682,7 +2682,7 @@ mod tests {
         corrupt_style_occurrence(&mut report, with_base, |row| {
             row.context.base_observation = Some(usize::MAX);
         });
-        assert_row_fault(&report, read::UnresolvedKind::Payload);
+        assert_row_fault(&report, read::UnresolvedKind::Fact);
     }
     #[test]
     fn a_first_base_that_is_missing_is_a_fault() {

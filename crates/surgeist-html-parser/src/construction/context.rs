@@ -2413,9 +2413,7 @@ impl<'a> FrozenFragmentEffects<'a> {
             },
             // The record the effect binds was never bound.
             _ => {
-                return Err(read::UnresolvedReference::new(
-                    read::UnresolvedKind::Payload,
-                ));
+                return Err(read::UnresolvedReference::new(read::UnresolvedKind::Fact));
             }
         }))
     }

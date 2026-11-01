@@ -912,13 +912,13 @@ impl<'a> Resolver<'a> {
     fn raw(&self, slot: usize) -> Result<&'a DocumentString, Fault> {
         match self.storage.payloads.values.get(slot) {
             Some(RetainedPayload::String { value, .. }) => Ok(value),
-            _ => Err(unresolved(read::UnresolvedKind::Payload)),
+            _ => Err(unresolved(read::UnresolvedKind::Fact)),
         }
     }
     fn policy(&self, slot: usize) -> Result<Option<&'a surgeist_html::HtmlCspAssociation>, Fault> {
         match self.storage.payloads.values.get(slot) {
             Some(RetainedPayload::CspPolicy(value)) => Ok(value.value.as_ref()),
-            _ => Err(unresolved(read::UnresolvedKind::Payload)),
+            _ => Err(unresolved(read::UnresolvedKind::Fact)),
         }
     }
     fn cause(
@@ -985,7 +985,7 @@ impl<'a> Resolver<'a> {
             cause,
         }) = self.storage.payloads.values.get(slot)
         else {
-            return Err(unresolved(read::UnresolvedKind::Payload));
+            return Err(unresolved(read::UnresolvedKind::Fact));
         };
         Ok(MetadataMetaMissing {
             document: self.native(*document)?,
@@ -1034,7 +1034,7 @@ impl<'a> Resolver<'a> {
             .first
             .map(|domain| {
                 gaps.copy(domain)
-                    .ok_or(unresolved(read::UnresolvedKind::Payload))
+                    .ok_or(unresolved(read::UnresolvedKind::Fact))
             })
             .transpose()?;
         Ok(MetadataDocumentMeta {

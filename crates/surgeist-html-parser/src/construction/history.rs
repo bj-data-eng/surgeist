@@ -394,6 +394,29 @@ pub enum HistoryReadError {
     Unresolved(read::UnresolvedReference),
 }
 
+impl std::fmt::Display for HistoryReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ForeignOwner => f.write_str("the group belongs to another report"),
+            Self::InsufficientScratch { required, supplied } => write!(
+                f,
+                "the history cursor needs {required} scratch frames and was given {supplied}"
+            ),
+            Self::Unresolved(_) => {
+                f.write_str("the report's history holds a reference it cannot resolve")
+            }
+        }
+    }
+}
+impl std::error::Error for HistoryReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unresolved(fault) => Some(fault),
+            _ => None,
+        }
+    }
+}
+
 pub(crate) struct HistoryHeader<'a> {
     pub(crate) units: usize,
     pub(crate) cause: &'a ConstructionCause,
@@ -480,12 +503,12 @@ impl<'a> HistoryView<'a> {
                 let Some(RetainedPayload::String { value, .. }) =
                     self.storage.payloads.values.get(slot)
                 else {
-                    return Err(unresolved(read::UnresolvedKind::Payload));
+                    return Err(unresolved(read::UnresolvedKind::Fact));
                 };
                 value.code_units()
             }
             // A pending leaf cannot freeze into a history.
-            LeafValue::Pending => return Err(unresolved(read::UnresolvedKind::Payload)),
+            LeafValue::Pending => return Err(unresolved(read::UnresolvedKind::Fact)),
         };
         let origins = start
             .checked_add(length)
