@@ -57,7 +57,14 @@ impl HtmlParseFailure {
     pub(crate) fn release_csp_storage(&mut self, storage: crate::meta_csp::Storage) {
         match &mut self.storage {
             FailureStorage::Ordinary(owner) => owner.release_csp_storage(storage),
-            _ => panic!("native error was issued only by the original ordinary driver"),
+            // A native error is issued only by the original ordinary driver, so
+            // no other owner holds the controller its storage was charged to.
+            // The storage stays unreleased and the cleanup records why; the
+            // original stop and retained evidence are untouched.
+            _ => {
+                self.cleanup_error
+                    .get_or_insert(HtmlParseEngineCondition::Ownership);
+            }
         }
     }
 
