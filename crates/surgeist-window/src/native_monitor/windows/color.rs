@@ -236,6 +236,65 @@ mod tests {
         estimate.map(|color| (color.depth, color.rgb_component_bits))
     }
 
+    fn remapped_monitor_state() -> StateObservation {
+        let mut first = target("A");
+        first.wire = Some(WireObservation {
+            encoding: DisplayWireFormatPixelEncoding::Rgb444,
+            bits_per_channel: 8,
+        });
+        state(vec![first, target("B")])
+    }
+
+    #[test]
+    fn capture_remap_at_snapshot_creation_selects_the_current_monitors_precision() {
+        use std::cell::Cell;
+
+        let mapping = Cell::new("A");
+        let generation = Cell::new(0_u64);
+        let observed = capture(
+            || {
+                // The display system has remapped the GDI output by the time
+                // its new snapshot exists. A remains present on another output.
+                mapping.set("B");
+                generation.set(generation.get() + 1);
+                Some((generation.get(), remapped_monitor_state()))
+            },
+            || Some(vec![mapping.get().to_owned()]),
+            |(captured_generation, snapshot), interfaces| {
+                if *captured_generation != generation.get() {
+                    return None;
+                }
+                select_color(interfaces, snapshot)
+            },
+        );
+        // The selected output now belongs to RGB10 monitor B, not RGB8 A.
+        assert_eq!(values(observed), Some((30, Some(10))));
+    }
+
+    #[test]
+    fn capture_remap_during_interface_enumeration_rejects_the_invalidated_snapshot() {
+        use std::cell::Cell;
+
+        let mapping = Cell::new("A");
+        let generation = Cell::new(0_u64);
+        let observed = capture(
+            || Some((generation.get(), remapped_monitor_state())),
+            || {
+                mapping.set("B");
+                generation.set(generation.get() + 1);
+                Some(vec![mapping.get().to_owned()])
+            },
+            |(captured_generation, snapshot), interfaces| {
+                // This models DisplayState.IsStale after a system remap.
+                if *captured_generation != generation.get() {
+                    return None;
+                }
+                select_color(interfaces, snapshot)
+            },
+        );
+        assert_eq!(values(observed), None);
+    }
+
     #[test]
     fn rgb_wire_precision_counts_three_color_channels_without_alpha() {
         for (bits, depth, component) in [

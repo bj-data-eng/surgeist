@@ -293,24 +293,6 @@ fn main() {
         InputCapabilities::new(primary, pointers).map_err(|error| error.to_string())
     }
     fn expected_color(device_name: &str) -> std::result::Result<Option<u32>, String> {
-        // Collect the HWND monitor's interface independently of winit monitor
-        // selection. No WinRT call is interleaved with WinSafe enumeration.
-        let mut interfaces = Vec::new();
-        let mut devices = winsafe::EnumDisplayDevices(
-            Some(device_name),
-            Some(winsafe::co::EDD::GET_DEVICE_INTERFACE_NAME),
-        );
-        loop {
-            winsafe::SetLastError(winsafe::co::ERROR::SUCCESS);
-            let Some(device) = devices.next() else { break };
-            interfaces.push(device.map_err(|error| error.to_string())?.DeviceID());
-        }
-        let [interface] = interfaces.as_slice() else {
-            return Ok(None);
-        };
-        if interface.is_empty() {
-            return Ok(None);
-        }
         let manager = DisplayManager::Create(DisplayManagerOptions::None)
             .map_err(|error| error.to_string())?;
         let observed = (|| -> windows::core::Result<Option<u32>> {
@@ -320,6 +302,31 @@ fn main() {
             }
             let state = result.State()?;
             if !state.IsReadOnly()? || state.IsStale()? {
+                return Ok(None);
+            }
+            // The snapshot's freshness interval must include the independent
+            // HWND monitor mapping. Do not interleave WinRT calls with this
+            // complete WinSafe enumeration, which consults the error slot.
+            let mut interfaces = Vec::new();
+            let mut devices = winsafe::EnumDisplayDevices(
+                Some(device_name),
+                Some(winsafe::co::EDD::GET_DEVICE_INTERFACE_NAME),
+            );
+            loop {
+                winsafe::SetLastError(winsafe::co::ERROR::SUCCESS);
+                match devices.next() {
+                    None => break,
+                    Some(Ok(device)) => interfaces.push(device.DeviceID()),
+                    Some(Err(error)) => {
+                        eprintln!("Native color witness interface read failed: {error}");
+                        return Ok(None);
+                    }
+                }
+            }
+            let [interface] = interfaces.as_slice() else {
+                return Ok(None);
+            };
+            if interface.is_empty() {
                 return Ok(None);
             }
             let targets = state.Targets()?;
