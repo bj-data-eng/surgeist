@@ -19900,11 +19900,17 @@ fn only_invariant_faults_are_classified_as_invariant_faults() {
         StandaloneError::Head(HeadError::MissingReturnMode),
         StandaloneError::Head(HeadError::InvalidScriptNesting),
         StandaloneError::Head(HeadError::TokenizerExhausted),
+        StandaloneError::Head(HeadError::AlreadyAtBoundary),
         StandaloneError::TokenizerExhausted,
         StandaloneError::Head(HeadError::Kernel(KernelError::Consumed)),
         StandaloneError::Head(HeadError::Prologue(PrologueError::Consumed)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::MissingInput)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::AlreadyAtBeforeHead)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::PendingInput)),
         StandaloneError::Prologue(PrologueError::Consumed),
         StandaloneError::Prologue(PrologueError::MissingInput),
+        StandaloneError::Prologue(PrologueError::AlreadyAtBeforeHead),
+        StandaloneError::Prologue(PrologueError::PendingInput),
         StandaloneError::Prologue(PrologueError::Kernel(KernelError::Consumed)),
     ];
     for error in &lost {
@@ -19916,14 +19922,25 @@ fn only_invariant_faults_are_classified_as_invariant_faults() {
         StandaloneError::Stop(ParseStop::Cancelled),
         StandaloneError::Head(HeadError::UnsupportedScriptPause),
         StandaloneError::Head(HeadError::UnsupportedPendingScript),
-        StandaloneError::Head(HeadError::AlreadyAtBoundary),
         StandaloneError::Head(HeadError::IncompleteCompletion),
         StandaloneError::Head(HeadError::ConstructionCapabilityUnavailable),
+        StandaloneError::Head(HeadError::Handoff(
+            crate::parser::tokenizer::TokenizerHandoffError::PendingEvents,
+        )),
+        StandaloneError::Head(HeadError::Kernel(KernelError::Stop(ParseStop::Cancelled))),
         StandaloneError::Head(HeadError::Kernel(KernelError::EmptyStack)),
+        StandaloneError::Head(HeadError::Kernel(KernelError::NotElement)),
+        StandaloneError::Head(HeadError::Kernel(KernelError::FirstOpenElementNotHtml)),
+        StandaloneError::Head(HeadError::Kernel(KernelError::DuplicateOpenElement)),
         StandaloneError::Head(HeadError::Kernel(KernelError::Session(
             SessionError::ScriptMetadataUnavailable,
         ))),
-        StandaloneError::Prologue(PrologueError::PendingInput),
+        StandaloneError::Head(HeadError::Kernel(KernelError::Session(
+            SessionError::WrongToken,
+        ))),
+        StandaloneError::Prologue(PrologueError::Kernel(KernelError::Stop(
+            ParseStop::Cancelled,
+        ))),
     ];
     for error in &named {
         assert!(!error.invariant_fault(), "{error:?}");
@@ -19975,4 +19992,43 @@ fn enabling_meta_csp_without_the_prologue_latches_the_registry_row() {
     driver.release().unwrap();
     assert_released(&driver.control);
     assert_eq!(driver.control.stop(), Some(stop));
+}
+
+#[test]
+fn stepping_a_driver_whose_stage_waits_at_a_boundary_latches_the_registry_row() {
+    // The parse functions stop at the first boundary a stage returns, and the
+    // driver itself consumes the after-head one, so a driver stepped while its
+    // stage waits at a boundary has lost its place; no document puts it there.
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits(100));
+    let mut driver = entry::initialized_driver(&request);
+    for _ in 0..100 {
+        if driver.head.is_some() {
+            break;
+        }
+        driver.step().unwrap();
+    }
+    // Private-state fault injection: the stage is left at a boundary.
+    driver
+        .head
+        .as_mut()
+        .unwrap()
+        .state
+        .as_mut()
+        .unwrap()
+        .boundary = Some(super::head::HeadBoundary::Script);
+    assert_eq!(driver.control.stop(), None);
+    let error = driver.step().err().unwrap();
+    assert!(
+        matches!(
+            error,
+            StandaloneError::Head(super::head::HeadError::AlreadyAtBoundary)
+        ),
+        "{error:?}"
+    );
+    assert_eq!(
+        driver.control.stop(),
+        Some(ParseStop::InternalInvariant(Invariant::RegistryRow))
+    );
+    driver.release().unwrap();
+    assert_released(&driver.control);
 }

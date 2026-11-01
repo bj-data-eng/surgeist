@@ -1132,6 +1132,7 @@ mod tests {
     #[test]
     fn only_invariant_faults_are_classified_as_invariant_faults() {
         use head::HeadError;
+        use prologue::PrologueError;
         let lost = [
             FragmentExecutionError::Consumed,
             FragmentExecutionError::Kernel(KernelError::Consumed),
@@ -1143,7 +1144,12 @@ mod tests {
             FragmentExecutionError::Head(HeadError::MissingReturnMode),
             FragmentExecutionError::Head(HeadError::InvalidScriptNesting),
             FragmentExecutionError::Head(HeadError::TokenizerExhausted),
+            FragmentExecutionError::Head(HeadError::AlreadyAtBoundary),
             FragmentExecutionError::Head(HeadError::Kernel(KernelError::Consumed)),
+            FragmentExecutionError::Head(HeadError::Prologue(PrologueError::Consumed)),
+            FragmentExecutionError::Head(HeadError::Prologue(PrologueError::MissingInput)),
+            FragmentExecutionError::Head(HeadError::Prologue(PrologueError::AlreadyAtBeforeHead)),
+            FragmentExecutionError::Head(HeadError::Prologue(PrologueError::PendingInput)),
         ];
         for error in &lost {
             assert!(error.invariant_fault(), "{error:?}");
@@ -1155,14 +1161,59 @@ mod tests {
                 SessionError::ScriptMetadataUnavailable,
             )),
             FragmentExecutionError::Head(HeadError::UnsupportedScriptPause),
-            FragmentExecutionError::Head(HeadError::AlreadyAtBoundary),
+            FragmentExecutionError::Head(HeadError::UnsupportedPendingScript),
+            FragmentExecutionError::Head(HeadError::IncompleteCompletion),
+            FragmentExecutionError::Head(HeadError::ConstructionCapabilityUnavailable),
+            FragmentExecutionError::Head(HeadError::Handoff(
+                crate::parser::tokenizer::TokenizerHandoffError::NotData,
+            )),
+            FragmentExecutionError::Head(HeadError::Kernel(KernelError::Stop(
+                ParseStop::Cancelled,
+            ))),
+            FragmentExecutionError::Head(HeadError::Kernel(KernelError::NotElement)),
             FragmentExecutionError::Head(HeadError::Kernel(KernelError::Session(
                 SessionError::CompletionIncomplete,
+            ))),
+            FragmentExecutionError::Head(HeadError::Kernel(KernelError::Session(
+                SessionError::WrongToken,
             ))),
         ];
         for error in &named {
             assert!(!error.invariant_fault(), "{error:?}");
         }
+    }
+
+    #[test]
+    fn stepping_a_fragment_driver_whose_stage_waits_at_a_boundary_latches_the_registry_row() {
+        let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
+        let mut driver = initialized_driver(&request);
+        // Private-state fault injection: the stage is left at a boundary, which
+        // the parse functions never step past and no fragment puts it at.
+        driver
+            .head
+            .as_mut()
+            .unwrap()
+            .state
+            .as_mut()
+            .unwrap()
+            .boundary = Some(head::HeadBoundary::Script);
+        assert_eq!(driver.control.stop(), None);
+        let error = driver.step().err().unwrap();
+        assert!(
+            matches!(
+                error,
+                FragmentExecutionError::Head(head::HeadError::AlreadyAtBoundary)
+            ),
+            "{error:?}"
+        );
+        assert_eq!(
+            driver.control.stop(),
+            Some(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::RegistryRow
+            ))
+        );
+        driver.release().unwrap();
+        super::super::tests::assert_released(&driver.control);
     }
 
     #[test]
