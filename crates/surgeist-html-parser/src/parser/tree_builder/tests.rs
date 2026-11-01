@@ -923,6 +923,63 @@ fn popping_the_last_template_costs_the_same_at_every_depth() {
 }
 
 #[test]
+fn finding_a_listed_template_charges_the_comparisons_of_the_search() {
+    // Sixteen nested templates are listed at stack indices 1 through 16. A
+    // binary search over n listings makes at most floor(log2 n) + 1
+    // comparisons, so five over sixteen and four over fifteen. Replacing or
+    // removing a listed entry searches the list twice: once to learn that the
+    // entry is listed and once to unlist it. The kernel charges one state step
+    // for each comparison, as it does for each stack entry a scan examines.
+    let source = HtmlSource::utf8(format!("<html>{}<div>", "<template>".repeat(16)));
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    for _ in 0..16 {
+        add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    }
+    assert_eq!(kernel.template_indices().len(), 16);
+    let replacement = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
+    let steps = |c: &ParseControl| c.usage().work(WorkCategory::StateStep);
+    let before = steps(&c);
+    kernel.replace_stack(1, &replacement, &mut c, None).unwrap();
+    assert_eq!(steps(&c) - before, 2 * 5);
+    assert_eq!(kernel.template_indices().len(), 15);
+    let lowest = kernel.at(2, &mut c).unwrap();
+    let before = steps(&c);
+    kernel.remove_stack_identity(&lowest, &mut c, None).unwrap();
+    assert_eq!(steps(&c) - before, 2 * 4);
+    assert_eq!(kernel.template_indices().len(), 14);
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn a_failed_stack_release_still_releases_the_templates_and_clears_the_root_target() {
+    let source = HtmlSource::utf8("<html><template>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    assert_eq!(kernel.template_indices(), [1]);
+    assert!(kernel.root_target.is_some());
+    // A foreign controller cannot release the stack, which is the first failure.
+    let mut foreign = control(100);
+    assert!(kernel.release_stack(&mut foreign).is_err());
+    // The refusal handed back neither owner: both were taken and the target
+    // was dropped, rather than the first refusal leaving the others behind.
+    assert!(kernel.open.is_none());
+    assert!(kernel.templates.is_none());
+    assert!(kernel.root_target.is_none());
+}
+
+#[test]
 fn empty_wrong_kind_duplicate_and_foreign_handles_preserve_stack() {
     let source = HtmlSource::utf8("<html><body>");
     let mut c = control(100);
