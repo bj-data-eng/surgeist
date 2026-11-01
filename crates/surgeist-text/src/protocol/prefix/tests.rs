@@ -44,7 +44,7 @@ fn selected_end(
                         crate::ParagraphControlKind::InlineBoundaryStart
                             | crate::ParagraphControlKind::InlineBoundaryEnd
                     )
-                    .then_some(crate::InlineBoundaryAllocation::ZERO),
+                    .then_some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                     occurrence,
                     strut: None,
                 }
@@ -509,7 +509,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
                 .map(|(occurrence, advance)| ControlAllocation {
                     occurrence,
                     strut: None,
-                    boundary: Some(InlineBoundaryAllocation::try_new(advance).unwrap()),
+                    boundary: Some(InlineBoundaryAllocation::contribution(advance).unwrap()),
                 })
                 .collect(),
             line_box_struts: vec![],
@@ -593,7 +593,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
             .request()
             .controls
             .iter()
-            .map(|control| control.boundary.unwrap().advance())
+            .map(|control| control.boundary.as_ref().unwrap().advance())
             .collect::<Vec<_>>(),
         [EPSILON, 0.0]
     );

@@ -38,7 +38,7 @@ pub(crate) fn select_neutral(
             .boundary_context
             .push(crate::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: crate::InlineBoundaryAllocation::ZERO,
+                boundary: crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
             });
     }
     prepared.select(request)

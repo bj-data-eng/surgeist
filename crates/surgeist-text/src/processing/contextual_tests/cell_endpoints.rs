@@ -116,7 +116,7 @@ fn finish(prepared: &PreparedText, advances: &[f64]) -> FinalizedLine {
         .map(|(occurrence, &advance)| ControlAllocation {
             occurrence,
             strut: None,
-            boundary: Some(InlineBoundaryAllocation::try_new(advance).unwrap()),
+            boundary: Some(InlineBoundaryAllocation::contribution(advance).unwrap()),
         })
         .collect();
     prepared
@@ -401,3 +401,6 @@ fn nested_empty_inline_endpoint_pairs_do_not_split_a_cross_box_egc_or_create_cel
     assert_eq!(glyphs, [(35, 10.0), (100, 0.0)]);
     assert_eq!(prepared.analyzed_source().source(), processed.source());
 }
+
+#[path = "cell_endpoints/box_edge.rs"]
+mod box_edge;

@@ -197,10 +197,12 @@ impl LineDisposition {
         let request = selected.request();
         if request.context.end == LineEnd::Forced
             || line.has_in_flow_content()
-            || request
-                .controls
-                .iter()
-                .any(|control| control.boundary.is_some_and(|edge| edge.advance() != 0.0))
+            || request.controls.iter().any(|control| {
+                control
+                    .boundary
+                    .as_ref()
+                    .is_some_and(|edge| edge.advance() != 0.0)
+            })
         {
             Ok(Self::Formatted)
         } else {
@@ -468,7 +470,7 @@ fn resolve_boundary_context(
         let boundary = controls
             .iter()
             .find(|row| row.occurrence == occurrence)
-            .and_then(|row| row.boundary)
+            .and_then(|row| row.boundary.clone())
             .ok_or(FitError::Dependency)?;
         // An issued demand must add a new fact. Preserve bounded progress if
         // an inconsistent preparation ever repeats an already supplied handle.

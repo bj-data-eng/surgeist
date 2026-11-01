@@ -317,7 +317,7 @@ fn text_tree<S: LayoutScalar>(
                         InlineBoundaryKind::End
                     };
                 LayoutInputOf::inline_boundary(
-                    InlineBoundaryInputOf::new(
+                    InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
                             crate::InlineBaselineContext::Physical,
@@ -812,7 +812,7 @@ fn numeric_tree<S: LayoutScalar>(
             tree = tree.children(node, []).input(
                 node,
                 LayoutInputOf::inline_boundary(
-                    InlineBoundaryInputOf::new(
+                    InlineBoundaryInputOf::contribution(
                         kind,
                         InlineMetricsOf::try_new(
                             crate::InlineBaselineContext::Physical,

@@ -318,6 +318,20 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
     ) -> Option<&SemanticParagraphSlot<Node>> {
         self.slots.iter().find(|slot| &slot.prepared == prepared)
     }
+    pub(crate) fn box_for_endpoint(
+        &self,
+        node: Node,
+        mut inspect: impl FnMut() -> surgeist_text::Result<()>,
+    ) -> surgeist_text::Result<Option<CapturedScope>> {
+        for row in &self.inline {
+            inspect()?;
+            if row.start == node || row.end == node {
+                return Ok(Some(row.scope.clone()));
+            }
+        }
+        Ok(None)
+    }
+
     pub(crate) fn native_pairs(&self) -> impl Iterator<Item = (&CapturedScope, (Node, Node))> {
         self.inline
             .iter()
@@ -606,12 +620,22 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     };
     proof.index()?;
     proof.activation = activation;
-    if !wrapping_scopes.is_empty() || !inventory_scopes.is_empty() || !alignment_inputs.is_empty() {
+    let box_edges = paragraphs.iter().flat_map(|paragraph| &paragraph.controls).any(|binding| {
+        matches!(tree.layout_input(binding.node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some())
+    });
+    if box_edges
+        || !wrapping_scopes.is_empty()
+        || !inventory_scopes.is_empty()
+        || !alignment_inputs.is_empty()
+    {
         proof.index_scope_inventory(wrapping_scopes.is_empty() && inventory_scopes.is_empty())?;
     }
     proof.activate_alignments(alignment_inputs)?;
     proof.activate_computed()?;
     proof.activate_wrapping(wrapping_scopes, inventory_scopes)?;
+    if box_edges {
+        proof.activate_box_edges()?;
+    }
     proof.prepare_observations()?;
     // A is selected from producer topology before resolving its supplied rows.
     let (regions, region_copy) = if let Some(work) = proof.activation.as_deref_mut() {
@@ -1183,6 +1207,95 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         Ok(())
     }
 
+    fn activate_box_edges(&mut self) -> ResultOf<Tree, ()> {
+        for index in 0..self.controls.len() {
+            let node = self.controls[index].node;
+            let crate::LayoutInputViewOf::InlineBoundary(input) = self.tree.layout_input(node)
+            else {
+                continue;
+            };
+            let Some(parent_axes) = input.parent_edge_axes() else {
+                continue;
+            };
+            let captured = self.controls[index].captured.clone();
+            if let Some(work) = self.activation.as_deref_mut() {
+                work.visits(self.known.len())
+                    .map_err(|error| activation_error::<Tree>(node, error))?;
+            }
+            let owner = self
+                .known
+                .iter()
+                .find(|scope| {
+                    scope.entry_control().as_ref() == Some(&captured)
+                        || scope.exit_control().as_ref() == Some(&captured)
+                })
+                .cloned();
+            let pair = if let Some(scope) = &owner {
+                let (start, end) = (
+                    scope
+                        .entry_control()
+                        .ok_or_else(|| binding_error(node, E::ScopeBoundaryCapture))?,
+                    scope
+                        .exit_control()
+                        .ok_or_else(|| binding_error(node, E::ScopeBoundaryCapture))?,
+                );
+                if let Some(work) = self.activation.as_deref_mut() {
+                    work.visits(self.controls.len())
+                        .map_err(|error| activation_error::<Tree>(node, error))?;
+                }
+                let start = self
+                    .controls
+                    .iter()
+                    .find(|row| row.captured == start)
+                    .map(|row| row.node)
+                    .ok_or_else(|| binding_error(node, E::ScopeAssociation))?;
+                if let Some(work) = self.activation.as_deref_mut() {
+                    work.visits(self.controls.len())
+                        .map_err(|error| activation_error::<Tree>(node, error))?;
+                }
+                let end = self
+                    .controls
+                    .iter()
+                    .find(|row| row.captured == end)
+                    .map(|row| row.node)
+                    .ok_or_else(|| binding_error(node, E::ScopeAssociation))?;
+                (start, end)
+            } else {
+                if let Some(work) = self.activation.as_deref_mut() {
+                    work.visits(self.native.len())
+                        .map_err(|error| activation_error::<Tree>(node, error))?;
+                }
+                self.native
+                    .iter()
+                    .find(|row| row.pair.0 == node || row.pair.1 == node)
+                    .map(|row| row.pair)
+                    .ok_or_else(|| binding_error(node, E::ScopeAssociation))?
+            };
+            for peer in [pair.0, pair.1] {
+                let actual = match self.tree.layout_input(peer) {
+                    crate::LayoutInputViewOf::InlineBoundary(peer) => peer.parent_edge_axes(),
+                    _ => None,
+                };
+                if actual != Some(parent_axes) {
+                    return Err(crate::LayoutErrorOf::new(
+                        crate::LayoutErrorSiteOf::Node(peer),
+                        crate::LayoutOperation::TextCapture,
+                        crate::LayoutErrorKindOf::InvalidInput(
+                            crate::LayoutInvalidInputOf::InlineBoundaryParentMismatch {
+                                expected: Some(parent_axes),
+                                actual,
+                            },
+                        ),
+                    ));
+                }
+            }
+            if let Some(scope) = owner {
+                self.activate_scope(&scope, true)?;
+            }
+        }
+        Ok(())
+    }
+
     fn activate_wrapping(
         &mut self,
         inputs: &[WrappingScopeInput<Tree::Node>],
@@ -1272,7 +1385,8 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                             metric_contribution,
                             ..
                         } => {
-                            *wrap_inside == WrapInside::Avoid
+                            [*start, *end].iter().any(|node| matches!(self.tree.layout_input(*node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()))
+                                || *wrap_inside == WrapInside::Avoid
                                 || metric_contribution.is_some()
                                 || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)
                         }

@@ -347,7 +347,7 @@ impl Case {
             tree = tree.children(control.node, []).input(
                 control.node,
                 LayoutInputOf::inline_boundary(
-                    InlineBoundaryInputOf::new(
+                    InlineBoundaryInputOf::contribution(
                         if control.node == 20 {
                             InlineBoundaryKind::Start
                         } else {
@@ -2436,3 +2436,6 @@ fn nested_auto_edges_keep_exactly_one_of_the_two_whole_coupled_metric_outcomes()
     nested_auto_coupling::<f32>();
     nested_auto_coupling::<f64>();
 }
+
+#[path = "box_incidence_cases/parent_geometry.rs"]
+mod parent_geometry;

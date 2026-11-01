@@ -87,7 +87,7 @@ fn bind(
             tree.insert_children(node, []);
             tree.insert_input(
                 node,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
                         .unwrap(),

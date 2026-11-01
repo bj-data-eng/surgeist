@@ -62,6 +62,7 @@ fn numeric_input<S: LayoutScalar>(
             metrics(),
             InlineControlAlignment::Baseline,
             InlineBoundaryEdgeOf::ZERO,
+            None,
         ))
     };
     MixedInlineRunInputOf {
@@ -250,7 +251,7 @@ fn assert_layout_placement<S: LayoutScalar>(
         tree = tree.input(
             node,
             LayoutInputOf::inline_boundary(
-                InlineBoundaryInputOf::new(kind, metrics(), InlineBoundaryEdgeOf::ZERO)
+                InlineBoundaryInputOf::contribution(kind, metrics(), InlineBoundaryEdgeOf::ZERO)
                     .with_direction(direction),
             ),
         );

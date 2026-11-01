@@ -138,6 +138,16 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
         expected: FlowAxes,
         actual: FlowAxes,
     },
+    /// Paired box-edge requests disagree on their actual parent operation/basis.
+    InlineBoundaryParentMismatch {
+        expected: Option<FlowAxes>,
+        actual: Option<FlowAxes>,
+    },
+    /// The requested non-atomic parent edge runs on an incompatible physical axis.
+    InlineBoundaryParentAxis {
+        parent: FlowAxes,
+        formatter: FlowAxes,
+    },
     AtomicInlineParticipation {
         reason: AtomicInlineParticipationRoleError,
     },
@@ -488,6 +498,10 @@ pub(crate) fn wrapping_error<Node, S: LayoutScalar, M>(
     LayoutErrorOf::new(
         LayoutErrorSiteOf::Node(node),
         LayoutOperation::InlineWrapping,
-        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(reason)),
+        if reason == crate::inline_wrapping::WrappingScopeError::Allocation {
+            LayoutErrorKindOf::Allocation
+        } else {
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(reason))
+        },
     )
 }

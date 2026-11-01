@@ -714,7 +714,7 @@ fn edge_request(prepared: &PreparedText) -> LineSelectionRequest {
         .enumerate()
         .map(|(i, view)| ControlAllocation {
             occurrence: view.handle(),
-            boundary: Some(InlineBoundaryAllocation::ZERO),
+            boundary: Some(InlineBoundaryAllocation::CONTRIBUTION_ZERO),
             strut: Some(ControlStrut {
                 baseline: 8.0,
                 line_extent: 10.0,
@@ -732,7 +732,7 @@ fn edge_request(prepared: &PreparedText) -> LineSelectionRequest {
             .boundary_context
             .push(InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: InlineBoundaryAllocation::ZERO,
+                boundary: InlineBoundaryAllocation::CONTRIBUTION_ZERO,
             });
     }
     request

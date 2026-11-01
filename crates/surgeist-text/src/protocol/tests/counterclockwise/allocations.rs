@@ -223,7 +223,7 @@ fn shifted_inflow_boxes_move_left_while_positioned_boxes_keep_their_actual_physi
 fn controls(p: &PreparedText, shift: f64) -> FinalizedLine {
     let mut r = selected_request(p, start(p), terminal(p));
     for row in &mut r.controls {
-        row.boundary = Some(crate::InlineBoundaryAllocation::ZERO);
+        row.boundary = Some(crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO);
         if *row.occurrence.view().kind() == crate::ParagraphControlKind::InlineBoundaryStart {
             row.strut = Some(crate::ControlStrut {
                 baseline: 2.0,
@@ -236,7 +236,7 @@ fn controls(p: &PreparedText, shift: f64) -> FinalizedLine {
         r.boundary_context
             .push(crate::InlineBoundaryContextAllocation {
                 occurrence,
-                boundary: crate::InlineBoundaryAllocation::ZERO,
+                boundary: crate::InlineBoundaryAllocation::CONTRIBUTION_ZERO,
             });
     }
     p.select(r)

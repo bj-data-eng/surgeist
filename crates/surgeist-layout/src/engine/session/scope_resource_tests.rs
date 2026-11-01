@@ -215,7 +215,7 @@ impl Fixture {
             };
             tree = tree.children(control.node, []).input(
                 control.node,
-                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+                LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                     kind,
                     InlineMetricsOf::try_new(
                         InlineBaselineContext::Named(BaselineName::Alphabetic),
@@ -360,7 +360,7 @@ fn publication(batch: &CompletedLayoutBatchOf<u32, f64>, fixture: &Fixture) {
             );
             assert_eq!(
                 allocation.boundary,
-                Some(text::InlineBoundaryAllocation::ZERO)
+                Some(text::InlineBoundaryAllocation::CONTRIBUTION_ZERO)
             );
             assert_eq!(
                 allocation.strut,

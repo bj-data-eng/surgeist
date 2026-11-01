@@ -1863,7 +1863,7 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
     ] {
         tree = tree.children(node, []).input(
             node,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 kind,
                 metrics,
                 crate::InlineBoundaryEdgeOf::ZERO,
@@ -1928,7 +1928,7 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
     assert!(terminal.atomics.is_empty());
     assert_eq!(terminal.controls.len(), 2);
     for control in &terminal.controls {
-        assert_eq!(control.boundary.unwrap().advance(), 0.0);
+        assert_eq!(control.boundary.as_ref().unwrap().advance(), 0.0);
         let strut = control.strut.unwrap();
         assert_eq!(strut.baseline, 0.0);
         assert_eq!(strut.line_extent, 0.0);

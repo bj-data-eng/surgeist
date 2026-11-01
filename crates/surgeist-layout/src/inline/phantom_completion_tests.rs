@@ -30,6 +30,7 @@ fn boundary<S: LayoutScalar>(
         .unwrap(),
         InlineControlAlignment::Baseline,
         InlineBoundaryEdgeOf::try_new(n(border), n(padding)).unwrap(),
+        None,
     )
 }
 fn input<S: LayoutScalar>(
@@ -389,7 +390,7 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
         tree.insert_input(
             control.source_index() as u32,
             crate::LayoutInputOf::inline_boundary(
-                crate::InlineBoundaryInputOf::new(
+                crate::InlineBoundaryInputOf::contribution(
                     control.kind(),
                     control.metrics(),
                     control.edge(),
@@ -502,7 +503,7 @@ fn scoped_metric_witness<S: LayoutScalar>(
         tree.insert_input(
             control.source_index() as u32,
             crate::LayoutInputOf::inline_boundary(
-                crate::InlineBoundaryInputOf::new(
+                crate::InlineBoundaryInputOf::contribution(
                     control.kind(),
                     control.metrics(),
                     control.edge(),

@@ -429,8 +429,12 @@ fn explicit_control_offsets<S: l::LayoutScalar>() {
                 host.push(
                     Some(0),
                     l::LayoutInputOf::inline_boundary(
-                        l::InlineBoundaryInputOf::new(kind, metrics, l::InlineBoundaryEdgeOf::ZERO)
-                            .with_vertical_align(alignment),
+                        l::InlineBoundaryInputOf::contribution(
+                            kind,
+                            metrics,
+                            l::InlineBoundaryEdgeOf::ZERO,
+                        )
+                        .with_vertical_align(alignment),
                     ),
                 );
             }

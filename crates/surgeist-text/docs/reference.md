@@ -31,7 +31,7 @@ private implementation organization.
 | Composition | `source`, `compose`, `Composer`, `Mark` | [composer.rs](../src/composer.rs) |
 | Pre-font source processing | `process_source_whitespace`, `process_contextual_source`, `ProcessedSource`, issued `ProcessedParagraph` views and partial plaintext | [processing.rs](../src/processing.rs), [contextual capture](../src/processing/contextual.rs) |
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
-| Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::inline_bounds` | [protocol types](../src/protocol/mod.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
+| Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoxSource`, `InlineBoxEdgeContext`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::inline_bounds` | [protocol types](../src/protocol/mod.rs), [checked box ownership](../src/protocol/inline_box.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
 | Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Original analysis and layout | `AnalyzedSource`, `AnalyzedDomain`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
@@ -881,17 +881,38 @@ and [native determination](../../../references/text-hanging-punctuation--native-
 
 ## Native inline endpoint geometry
 
-Layout owns each Start/End endpoint's actual used border and padding on its own
-inline side. [InlineBoundaryEdgeOf](../../surgeist-layout/src/node_input/inline.rs)
-checks the nonnegative finite components and their sum in Layout scalar `S`;
-`InlineBoundaryInputOf::new(kind, metrics, edge)` requires that explicit edge.
+Layout owns each Start/End endpoint's actual used border and padding.
+[InlineBoundaryEdgeOf](../../surgeist-layout/src/node_input/inline.rs)
+checks the nonnegative finite components and their sum in Layout scalar `S`.
 Its `ZERO` is affirmative used zero, not unavailable Style geometry. Lower
 `edge.advance()` once to Text's `f64`; separately widening and adding `f32`
 components would change the used sum and potentially a tab threshold.
 
+Choose the operation explicitly. `InlineBoundaryInputOf::contribution` and
+Text's `InlineBoundaryAllocation::contribution` supply one endpoint's advance;
+uncaptured, unpaired and strut-only Native controls remain valid. Full box-side
+geometry uses Layout's `box_edge(..., parent_axes)` and Text's
+`InlineBoundaryAllocation::box_edge(context, advance)`. Layout's existing
+writing-mode/direction fields still describe the containing Block formatter.
+The immediate parent's axes are a separate resolved fact, including when its
+direction opposes that formatter.
+
+For BoxEdge, obtain an `InlineBoxSource` from a genuine captured Inline scope or
+`PreparedText::native_inline_box` over actual captured Start/End controls. Exact
+scope nominations canonicalize to that scope; matching cuts do not establish a
+pair. `PreparedText::inline_box_edge_context` checks the source owner and actual
+immediate parent, retaining the caller's resolved physical source-Start side.
+The domain is a legal parent, not an inline owner. Selection checks the supplied
+family, paired-side consistency and selected
+incidence. Both constructors check finite nonnegative advances and normalize
+negative zero. Zero BoxEdge still needs its context; zero Contribution does not
+acquire box authority from capture. A refused BoxEdge is never retried as a
+Contribution by the implementation.
+
 | Text input | Admission and custody |
 | --- | --- |
-| `InlineBoundaryAllocation::try_new(advance)` / `ZERO` | Checked nonnegative finite total; negative zero normalizes to zero. No authored lengths or duplicated components. |
+| `InlineBoundaryAllocation::contribution(advance)` | One real endpoint's Native advance, without an inferred box or parent. |
+| `InlineBoundaryAllocation::box_edge(context, advance)` | Checked actual owner/parent/side plus the used advance, including zero. |
 | `ControlAllocation::boundary` | Every selected InlineBoundaryStart/End requires `Some`, including zero; all other controls require `None`. Struts remain independent vertical metrics. |
 | `LineSelectionRequest::boundary_context` | Only demanded off-selection endpoint facts; no selected flow, strut, fragment or placement. Selected endpoints belong only in `controls`. |
 
@@ -910,12 +931,25 @@ control yields `InvalidControlGeometry`. Missing demanded context yields
 `DuplicateBoundaryContext`, and wrong-role, out-of-order or surplus rows yield
 `UnexpectedBoundaryContext`. Foreign preparation and numeric failures remain
 typed. Missing geometry cannot be replaced with zero.
+`ProtocolError::InlineBoxEdge` distinguishes missing/foreign capture, wrong domain,
+invalid owner/pair/parent, inconsistent context and unrepresented incidence.
 
 Positive inter-unit edges bound selection-local original and presentation joining
-context. An edge inside one indivisible typographic unit keeps its own numeric
-contribution without splitting the unit's shared provider positions. Selected
-edges count once in actual flow, tabs, prefixes and all purpose measurements;
-zero edges remain transparent to hanging, and positive edges stop it locally.
+context. A Contribution inside one indivisible typographic unit keeps its Native
+numeric contribution without splitting shared provider positions. BoxEdges use
+actual selected membership and packet extrema: the assigned sides surround the
+whole grapheme/provider/Cell packet, preserving non-edge payload order and original
+Source levels. An empty or deleted-only owner needs an authentic captured gap;
+unrepresentable incidence refuses. One schedule supplies spacing, TAB pens,
+measurements and geometry. Only selected endpoints add flow. Finalized
+`prefix_at` retains original-logical receipts from that complete frozen execution,
+including its actual TAB advances; a new partial selection executes separately.
+Zero edges remain transparent to hanging, and positive edges stop it locally.
+
+Operation and context remain part of request, conditional/frame and replay
+identity, even at zero advance. The operation accounts its actual retained records,
+source owners and derived plan/scratch through the existing resource owner;
+Contribution-only requests need no box-family scan or topology buffer.
 
 `FinalizedControlView::inline_bounds()` returns the checked physical left/right
 interval; `slot().x` is its left end. The source-free

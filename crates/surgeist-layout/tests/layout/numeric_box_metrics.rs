@@ -99,7 +99,7 @@ impl<S: LayoutScalar> NumericTree<S> {
     fn boundary(&mut self, kind: InlineBoundaryKind, actual: LineBoxStrut) -> usize {
         let node = self.inputs.len();
         self.inputs.push(LayoutInputOf::inline_boundary(
-            InlineBoundaryInputOf::new(
+            InlineBoundaryInputOf::contribution(
                 kind,
                 InlineMetricsOf::try_new(
                     surgeist_layout::InlineBaselineContext::Physical,

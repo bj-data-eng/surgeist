@@ -64,7 +64,7 @@ fn exercise<S: LayoutScalar>(
         )
         .input(
             2,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::Start,
                 metrics,
                 InlineBoundaryEdgeOf::ZERO,
@@ -72,7 +72,7 @@ fn exercise<S: LayoutScalar>(
         )
         .input(
             5,
-            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
+            LayoutInputOf::inline_boundary(InlineBoundaryInputOf::contribution(
                 InlineBoundaryKind::End,
                 metrics,
                 InlineBoundaryEdgeOf::ZERO,
@@ -122,6 +122,7 @@ fn exercise<S: LayoutScalar>(
             metrics,
             InlineControlAlignment::Baseline,
             InlineBoundaryEdgeOf::ZERO,
+            None,
         )),
         atomic(2, second),
         atomic(3, InlineBreakOpportunity::Allowed),
@@ -132,6 +133,7 @@ fn exercise<S: LayoutScalar>(
             metrics,
             InlineControlAlignment::Baseline,
             InlineBoundaryEdgeOf::ZERO,
+            None,
         )),
     ];
     let supplied = project_inline_participants(&participants);
@@ -288,6 +290,7 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
             .unwrap(),
             InlineControlAlignment::Baseline,
             InlineBoundaryEdgeOf::ZERO,
+            None,
         );
         accumulator.push(MixedInlineParticipantOf::Boundary(end), axes);
         let second_atomic = atomic(2);

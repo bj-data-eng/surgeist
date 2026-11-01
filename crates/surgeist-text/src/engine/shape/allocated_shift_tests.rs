@@ -189,7 +189,7 @@ fn allocated(
         Row::Control => {
             r.controls = vec![ControlAllocation {
                 occurrence: p.control_views().next().unwrap().handle(),
-                boundary: Some(InlineBoundaryAllocation::ZERO),
+                boundary: Some(InlineBoundaryAllocation::CONTRIBUTION_ZERO),
                 strut: Some(ControlStrut {
                     baseline: 6.0,
                     line_extent: 10.0,

@@ -241,7 +241,7 @@ fn capture() -> (
     assert_eq!(prepared[1].virtual_separators().count(), 0);
 
     let boundary = |kind| {
-        layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::new(
+        layout::LayoutInput::InlineBoundary(layout::InlineBoundaryInput::contribution(
             kind,
             layout::InlineMetrics::try_new(
                 surgeist_layout::InlineBaselineContext::Physical,
