@@ -1,6 +1,8 @@
 use super::*;
+mod depth;
 mod orders;
 use crate::{Attribute, bounded::HtmlValidatedAttributes};
+use depth::{Shift, owning_parent};
 pub use orders::*;
 
 /// Closed generic changes; parser policy and source evidence are not operands.
@@ -266,6 +268,17 @@ enum Phase {
         depth: usize,
         steps: usize,
     },
+    /// Planning walk over the moved subtree, which entered `node` at `level`
+    /// below the subtree's root.
+    Shift {
+        node: usize,
+        level: usize,
+        steps: usize,
+    },
+    /// Scan for the deepest record outside the moved subtree.
+    Settle {
+        level: usize,
+    },
     Topology,
     PrepareRecordsReport,
     PrepareWrapperReport,
@@ -306,6 +319,12 @@ struct Plan {
     template: bool,
     output_document: bool,
     fast_depth: Option<usize>,
+    /// The moved subtree, when its depths shift by walking it.
+    shift: Option<Shift>,
+    /// Every record's depth is recomputed in the planning pass and adopted.
+    rebuild: bool,
+    /// Records whose depth the commit rewrites beyond the fixed writes.
+    depth_writes: usize,
     link: bool,
     local_expected: &'static [u8],
     usage: HtmlConstructionUsage,
@@ -762,12 +781,13 @@ impl<'a> HtmlConstructionAction<'a> {
                 record_visits: 12,
                 inspected_bytes: 0,
             },
-            Phase::Depth { .. } | Phase::PublishChild { .. } => {
-                HtmlConstructionActionDescription::Inspect {
-                    record_visits: 2,
-                    inspected_bytes: 0,
-                }
-            }
+            Phase::Depth { .. }
+            | Phase::PublishChild { .. }
+            | Phase::Shift { .. }
+            | Phase::Settle { .. } => HtmlConstructionActionDescription::Inspect {
+                record_visits: 2,
+                inspected_bytes: 0,
+            },
             _ => HtmlConstructionActionDescription::Inspect {
                 record_visits: 1,
                 inspected_bytes: 0,
@@ -890,13 +910,7 @@ pub(in crate::construction) fn created_usage(
     Ok((element.attributes().len(), units))
 }
 fn structural_parent(arena: &Arena, index: usize) -> Option<usize> {
-    let record = &arena.records[index];
-    record.parent.or(match &record.owner {
-        Some(HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) => {
-            Some(owner.index)
-        }
-        None => None,
-    })
+    arena.records.get(index).and_then(owning_parent)
 }
 fn ordinary_owned_contents(arena: &Arena, template: usize) -> Result<usize, HtmlConstructionError> {
     let record = &arena.records[template];
@@ -1251,51 +1265,6 @@ impl HtmlConstructionOperation {
             Ok(Phase::Layout)
         }
     }
-    fn topology(&mut self) -> Result<Phase, HtmlConstructionError> {
-        use HtmlConstructionCommand as Command;
-        let arena = self.arena();
-        let p = self.plan.positions;
-        if arena.depths_valid {
-            if matches!(self.command(), Command::Publish { .. }) {
-                return Ok(Phase::Layout);
-            }
-            let indices = match self.command() {
-                Command::Insert { .. } if self.plan.old_parent.is_none() => Some((p[0], p[1])),
-                Command::AttachShadow { .. } => Some((p[1], p[0])),
-                _ => None,
-            };
-            if let Some((node, parent)) = indices {
-                let record = &arena.records[node];
-                let contents = record.template_contents.and_then(|value| match value {
-                    TemplateContents::Owned(index) => Some(index),
-                    TemplateContents::ShadowReference(_) => None,
-                });
-                let shallow = record.children.is_empty()
-                    && record.shadow.is_none()
-                    && contents.is_none_or(|index| {
-                        let contents = &arena.records[index];
-                        contents.children.is_empty() && contents.shadow.is_none()
-                    });
-                if shallow {
-                    let depth = add(arena.records[parent].depth, 1)?;
-                    self.plan.usage.depth = self
-                        .plan
-                        .usage
-                        .depth
-                        .max(add(depth, usize::from(contents.is_some()))?);
-                    self.plan.fast_depth = Some(depth);
-                    return self.before_writes();
-                }
-            }
-        }
-        self.plan.max_depth = 0;
-        Ok(Phase::Depth {
-            node: 0,
-            cursor: 0,
-            depth: 0,
-            steps: 0,
-        })
-    }
     fn before_writes(&self) -> Result<Phase, HtmlConstructionError> {
         Ok(
             if matches!(self.command(), HtmlConstructionCommand::Insert { .. }) {
@@ -1316,14 +1285,15 @@ impl HtmlConstructionOperation {
                         .records
                         .get(plan.positions[0])
                         .ok_or(HtmlConstructionError::UnknownNode)?;
-                    // Usage, the child push, the parent link and the depth cache.
+                    // Usage, the child push, the parent link and the depth cache
+                    // of a fresh leaf, which has no walked subtree to count.
                     let depth_writes = if plan.fast_depth.is_some() {
                         1 + usize::from(matches!(
                             node.template_contents,
                             Some(TemplateContents::Owned(_))
                         ))
                     } else {
-                        1
+                        0
                     };
                     plan.record_writes = add(plan.record_writes, add(2, depth_writes)?)?;
                     plan.copied_bytes = add(plan.copied_bytes, 2 * size_of::<usize>())?;
@@ -1392,6 +1362,15 @@ impl HtmlConstructionOperation {
                 }
                 _ => {}
             }
+            // A walked subtree or a full recomputation rewrites one depth per
+            // record; a fresh leaf's few writes were counted with its arm.
+            plan.record_writes = add(plan.record_writes, plan.depth_writes)?;
+            plan.copied_bytes = add(
+                plan.copied_bytes,
+                plan.depth_writes
+                    .checked_mul(size_of::<usize>())
+                    .ok_or(HtmlConstructionError::RepresentationExhausted)?,
+            )?;
             if self.command().creates() {
                 plan.initialized_bytes = plan
                     .record_count
@@ -1690,6 +1669,8 @@ impl HtmlConstructionOperation {
             Phase::Command => self.command_phase(),
             Phase::Layout => self.layout(),
             Phase::Topology => self.topology(),
+            Phase::Shift { node, level, steps } => self.shift_step(node, level, steps),
+            Phase::Settle { level } => self.settle_step(level),
             Phase::CopyOrder { slot, offset } => self.read_order(slot, offset),
             Phase::PushInserted {
                 slot,
@@ -1988,6 +1969,11 @@ impl HtmlConstructionOperation {
                     })
                 } else {
                     self.plan.max_depth = self.plan.max_depth.max(depth);
+                    self.arena_mut()?
+                        .records
+                        .get_mut(node)
+                        .ok_or(HtmlConstructionError::UnknownNode)?
+                        .planned_depth = depth;
                     if node + 1 < self.arena().records.len() {
                         Ok(Phase::Depth {
                             node: node + 1,
@@ -1997,6 +1983,7 @@ impl HtmlConstructionOperation {
                         })
                     } else {
                         self.plan.usage.depth = self.plan.max_depth;
+                        self.plan.depth_writes = self.arena().records.len();
                         self.before_writes()
                     }
                 }
@@ -2211,6 +2198,10 @@ impl HtmlConstructionReadyOperation {
                         ));
                         arena.records.push(contents);
                     }
+                    arena.populate(0);
+                    if plan.template {
+                        arena.populate(1);
+                    }
                 }
                 Command::CreateDocument { mode } => {
                     let mut record = Record::new(HtmlNodeKind::Document(mode), None, 0);
@@ -2221,6 +2212,7 @@ impl HtmlConstructionReadyOperation {
                     record.children = std::mem::take(&mut plan.new_children[0]);
                     record.children_generation = plan.new_children_generations[0];
                     arena.records.push(record);
+                    arena.populate(0);
                 }
                 Command::CreateFragment | Command::CreateShadowContents { .. } => {
                     let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
@@ -2230,6 +2222,7 @@ impl HtmlConstructionReadyOperation {
                         record.shadow_properties = Some(properties);
                     }
                     arena.records.push(record);
+                    arena.populate(0);
                 }
                 Command::Insert { .. } => {
                     if plan.append {
@@ -2324,16 +2317,8 @@ impl HtmlConstructionReadyOperation {
                 }
                 Command::Publish { .. } => unreachable!("publication handled separately"),
             }
-            if let Some(depth) = plan.fast_depth {
-                let index = if attach_shadow { p[1] } else { p[0] };
-                arena.records[index].depth = depth;
-                if let Some(TemplateContents::Owned(contents)) =
-                    arena.records[index].template_contents
-                {
-                    arena.records[contents].depth = depth + 1;
-                }
-            } else if changes_topology {
-                arena.depths_valid = false;
+            if changes_topology {
+                plan.commit_depths(arena, attach_shadow);
             }
             arena.usage = plan.usage;
         }

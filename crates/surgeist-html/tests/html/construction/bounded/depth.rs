@@ -311,3 +311,117 @@ fn depth_stays_exact_after_shadow_and_template_changes_that_move_whole_subtrees(
     let (result, _) = publish(owner, root);
     assert_eq!(result.usage().depth(), 6);
 }
+
+#[test]
+fn lifting_the_deepest_subtree_leaves_the_deepest_record_elsewhere() {
+    let (mut owner, tree) = fragment(storage());
+    let (next, other) = fragment(owner);
+    owner = next;
+    // A chain of four below `other`: its deepest record is at depth 4.
+    let mut parent = other;
+    for _ in 0..4 {
+        let (next, node) = create(owner, element("g"));
+        owner = append(next, &node, &parent);
+        parent = node;
+    }
+    let chain_end = parent;
+    // A chain of three below `tree`, then a chain s1 > s2 > s3 below those:
+    // s1 is at depth 4 and s3, the deepest record, at 6.
+    let mut parent = tree;
+    for _ in 0..3 {
+        let (next, node) = create(owner, element("t"));
+        owner = append(next, &node, &parent);
+        parent = node;
+    }
+    let (next, top) = create(owner, element("s"));
+    owner = append(next, &top, &parent);
+    parent = top.clone();
+    for _ in 0..2 {
+        let (next, node) = create(owner, element("s"));
+        owner = append(next, &node, &parent);
+        parent = node;
+    }
+    assert_eq!(owner.usage().depth(), 6);
+    // Lifting s1 to a root leaves the other chain's depth 4 as the deepest.
+    let (owner, _) = change(owner, HtmlConstructionCommand::Detach { node: top.clone() });
+    assert_eq!(owner.usage().depth(), 4);
+    // Moving it below the other chain's end puts s1 at 5 and s3 at 7.
+    let owner = append(owner, &top, &chain_end);
+    assert_eq!(owner.usage().depth(), 7);
+}
+
+#[test]
+fn depth_stays_exact_after_template_shadow_and_contents_reassignment() {
+    let (owner, root) = fragment(storage());
+    let (owner, host) = create(owner, element("div"));
+    let owner = append(owner, &host, &root);
+    let (owner, template) = create(owner, element("template"));
+    let owner = append(owner, &template, &root);
+    let contents = owner
+        .node(&template)
+        .unwrap()
+        .template_contents()
+        .unwrap()
+        .handle();
+    // A chain p > q below the template contents: p at 3 and q at 4.
+    let (owner, p) = create(owner, element("p"));
+    let (owner, q) = create(owner, element("q"));
+    let owner = append(owner, &p, &contents);
+    let owner = append(owner, &q, &p);
+    assert_eq!(owner.usage().depth(), 4);
+    let (owner, shadow) = create(
+        owner,
+        HtmlConstructionCommand::CreateShadowContents {
+            properties: properties(),
+        },
+    );
+    let (owner, r) = create(owner, element("r"));
+    let owner = append(owner, &r, &shadow);
+    let (owner, _) = change(
+        owner,
+        HtmlConstructionCommand::AttachTemplateShadow {
+            template: template.clone(),
+            host: host.clone(),
+            contents: shadow.clone(),
+        },
+    );
+    // The old contents are a root again: p at 1 and q at 2. The shadow
+    // contents sit below the host at 2, and r at 3.
+    assert_eq!(owner.usage().depth(), 3);
+    let (owner, s) = create(owner, element("s"));
+    let owner = append(owner, &s, &q);
+    assert_eq!(owner.usage().depth(), 3);
+    let (owner, t) = create(owner, element("t"));
+    let owner = append(owner, &t, &s);
+    assert_eq!(owner.usage().depth(), 4);
+    let (owner, u) = create(owner, element("u"));
+    let (owner, v) = create(owner, element("v"));
+    let owner = append(owner, &u, &r);
+    let owner = append(owner, &v, &u);
+    assert_eq!(owner.usage().depth(), 5);
+    // Reassigning the old contents puts them below the template at depth 2:
+    // p at 3, q 4, s 5 and t 6.
+    let (owner, _) = change(
+        owner,
+        HtmlConstructionCommand::ReassignTemplateContents {
+            template: template.clone(),
+            contents: contents.clone(),
+        },
+    );
+    assert_eq!(owner.usage().depth(), 6);
+    let (owner, w) = create(owner, element("w"));
+    let owner = append(owner, &w, &t);
+    assert_eq!(owner.usage().depth(), 7);
+    // Lifting the template to a root lowers its records: contents 1, p 2,
+    // q 3, s 4, t 5 and w 6, while the shadow chain reaches 5.
+    let (owner, _) = change(
+        owner,
+        HtmlConstructionCommand::Detach {
+            node: template.clone(),
+        },
+    );
+    assert_eq!(owner.usage().depth(), 6);
+    // Under v at 5 it puts the template at 6, its contents at 7 and w at 12.
+    let owner = append(owner, &template, &v);
+    assert_eq!(owner.usage().depth(), 12);
+}
