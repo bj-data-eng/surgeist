@@ -243,3 +243,6 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
     assert_eq!(local_second.feedback().advance, 5.0);
     assert_eq!(originals[0].view().source().text(), &t::Text::from("A"));
 }
+
+#[path = "trailing_body/supplement.rs"]
+mod supplement;
