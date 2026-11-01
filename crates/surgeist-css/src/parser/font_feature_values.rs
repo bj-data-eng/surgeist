@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use cssparser::{ParseError, Parser, ParserState};
-use surgeist_css_parser::Token;
+use cssparser::{ParseError, Parser};
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
+use surgeist_css_parser::{Offset, Token};
 
 use super::Recovered;
 use super::block_units::{
@@ -14,7 +14,7 @@ use super::descriptor_stream::{
     Boundary, DescriptorGrammar, DescriptorRecovery, NativeValueError, Value, comma_list,
     consume_remaining, declaration_position, drive_descriptors_into, expect_exhausted, fail,
     from_remaining, native, parse_descriptor_checked, parse_descriptor_text, parse_scope,
-    validate_root,
+    read_scope, validate_root,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -46,20 +46,28 @@ pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("later.rule.font-feature-values")];
 
 pub(super) fn parse_families<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
 ) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, CssError>> {
-    parse_families_observed(source, input, recovery, |_, _| Ok(()))
+    recovery.check_specialized_components_from(
+        source,
+        offset_of(input.site()),
+        "later.rule.font-feature-values",
+    )?;
+    read_scope(input, recovery.source_snapshot(), |input, numeric| {
+        families(input, numeric, |_, _| Ok(()))
+    })
+    .map_err(families_context)
 }
 
 // One grammar for rule ingress and raw family-list ingress. Observation adds
 // provenance only; existing rule parsing needs no member-origin allocation.
 pub(super) fn parse_families_observed<'i>(
-    source: &'i str,
+    source: &str,
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
-    mut observe: impl FnMut(
+    observe: impl FnMut(
         std::ops::Range<usize>,
         cssparser::SourceLocation,
     ) -> Result<(), ParseError<'static, CssError>>,
@@ -67,61 +75,71 @@ pub(super) fn parse_families_observed<'i>(
     recovery.check_specialized_components(source, input, "later.rule.font-feature-values")?;
     let snapshot = recovery.source_snapshot().clone();
     parse_scope(input, &snapshot, |input, numeric| {
-        comma_list(input, |input| {
-            let start = input.site();
-            let location = input.site();
-            let name = from_remaining(
-                numeric,
-                input,
-                super::typography::parse_non_generic_font_family_name,
-            )?;
-            expect_exhausted(input)?;
-            let family = CssFontFaceFamily::try_new(name.as_str())
-                .ok_or_else(|| fail(numeric, location, invalid_syntax))?;
-            let at = input.site();
-            observe(
-                offset_of(start)..offset_of(at),
-                super::descriptor_stream::location(numeric, location),
-            )
-            .map_err(|error| SyntaxError::custom(at, error))?;
-            Ok(family)
-        })
+        families(input, numeric, observe)
     })
-    .map_err(|error| {
-        with_at_rule_prelude_context(
-            error,
-            "font-feature-values",
-            "later.rule.font-feature-values",
-            "a nonempty list of non-generic font family names",
+    .map_err(families_context)
+}
+
+fn families<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+    mut observe: impl FnMut(
+        std::ops::Range<usize>,
+        cssparser::SourceLocation,
+    ) -> Result<(), ParseError<'static, CssError>>,
+) -> Value<'i, Vec<CssFontFaceFamily>> {
+    comma_list(input, |input| {
+        let start = input.site();
+        let location = input.site();
+        let name = from_remaining(
+            numeric,
+            input,
+            super::typography::parse_non_generic_font_family_name,
+        )?;
+        expect_exhausted(input)?;
+        let family = CssFontFaceFamily::try_new(name.as_str())
+            .ok_or_else(|| fail(numeric, location, invalid_syntax))?;
+        let at = input.site();
+        observe(
+            offset_of(start)..offset_of(at),
+            super::descriptor_stream::location(numeric, location),
         )
+        .map_err(|error| SyntaxError::custom(at, error))?;
+        Ok(family)
     })
+}
+
+fn families_context(error: ParseError<'_, CssError>) -> ParseError<'_, CssError> {
+    with_at_rule_prelude_context(
+        error,
+        "font-feature-values",
+        "later.rule.font-feature-values",
+        "a nonempty list of non-generic font family names",
+    )
 }
 
 pub(super) fn parse_rule<'i>(
-    source: &'i str,
+    source: &str,
     families: Vec<CssFontFaceFamily>,
-    input: &mut Parser<'i, '_>,
-    start: &ParserState,
+    contents: &mut Stream<'i>,
+    position: CssSourcePosition,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssFontFeatureValuesRule, ParseError<'i, CssError>> {
-    let recovered = parse_outer_body(source, input, recovery)?;
+    let recovered = parse_outer_body(source, contents, recovery);
     diagnostics.extend(recovered.diagnostics);
     CssFontFeatureValuesRule::try_new(families, recovered.syntax)
-        .map(|rule| rule.with_position(position(start)))
-        .map_err(|_| invalid_syntax(start.source_location()))
+        .map(|rule| rule.with_position(position))
+        .map_err(|_| invalid_syntax(super::block_units::location_of(position)))
 }
 
-/// The items of the outer block the native parser `input` is inside.
+/// The items of the outer block `contents` holds.
 pub(super) fn parse_outer_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    contents: &mut Stream<'i>,
     recovery: RecoveryState,
-) -> Result<Recovered<Vec<CssFontFeatureValuesItem>>, ParseError<'i, CssError>> {
-    let snapshot = recovery.source_snapshot().clone();
-    let (members, diagnostics) = parse_scope(input, &snapshot, |contents, _| {
-        Ok(drive_members(contents, source, None, &recovery))
-    })?;
+) -> Recovered<Vec<CssFontFeatureValuesItem>> {
+    let (members, diagnostics) = drive_members(contents, source, None, &recovery);
     let items = members
         .into_iter()
         .map(|member| match member {
@@ -129,23 +147,20 @@ pub(super) fn parse_outer_body<'i>(
             Member::Definition(_) => unreachable!("outer body returns only mixed rule items"),
         })
         .collect();
-    Ok(Recovered {
+    Recovered {
         syntax: items,
         diagnostics,
-    })
+    }
 }
 
-/// The definitions of the block of `kind` the native parser `input` is inside.
+/// The definitions of the block `contents` of `kind` holds.
 pub(super) fn parse_definition_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    contents: &mut Stream<'i>,
     kind: CssFontFeatureValueKind,
     recovery: RecoveryState,
-) -> Result<Recovered<Vec<CssFontFeatureValueDefinition>>, ParseError<'i, CssError>> {
-    let snapshot = recovery.source_snapshot().clone();
-    let (members, diagnostics) = parse_scope(input, &snapshot, |contents, _| {
-        Ok(drive_members(contents, source, Some(kind), &recovery))
-    })?;
+) -> Recovered<Vec<CssFontFeatureValueDefinition>> {
+    let (members, diagnostics) = drive_members(contents, source, Some(kind), &recovery);
     let definitions = members
         .into_iter()
         .map(|member| match member {
@@ -153,10 +168,10 @@ pub(super) fn parse_definition_body<'i>(
             Member::Item(_) => unreachable!("subsidiary bodies return only definitions"),
         })
         .collect();
-    Ok(Recovered {
+    Recovered {
         syntax: definitions,
         diagnostics,
-    })
+    }
 }
 
 /// Drives the units of the contents of a block: the outer block when `kind` is
@@ -195,10 +210,6 @@ fn drive_members<'i>(
     );
     drop((grammar, readmit));
     (members, sink.take())
-}
-
-fn position(start: &ParserState) -> CssSourcePosition {
-    CssSourcePosition::from_cssparser(start.position(), start.source_location())
 }
 
 enum Member {
@@ -251,7 +262,11 @@ impl<'i> RuleGrammar<'i, Attached<'i>> for BodyParser<'_> {
         let opening = offset_of(block.start_site()).saturating_sub(1);
         let mut depth = self
             .recovery
-            .enter_rule_block_at(self.source, opening, "later.rule.font-feature-values")
+            .enter_rule_block(
+                self.source,
+                Offset::new(opening),
+                "later.rule.font-feature-values",
+            )
             .map_err(|error| grammar_error(at, error))?;
         let (definitions, recovered) =
             drive_members(&mut block, self.source, Some(kind), &self.recovery);

@@ -3,6 +3,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use cssparser::{ParseError, Parser, ParserInput, Token};
+use surgeist_css_parser::Offset;
 
 use crate::diagnostic::CssError;
 use crate::diagnostic::error::{is_nesting_limit_error, nesting_limit};
@@ -398,6 +399,8 @@ pub(crate) struct RecoveryState {
     retained_navigation_diagnostics: Rc<RefCell<Vec<crate::diagnostic::CssRecoveryDiagnostic>>>,
     syntax_base_depth: u32,
     syntax_document: Rc<RefCell<Option<Rc<crate::parser::syntax_types::Document<'static>>>>>,
+    /// The last position [`source_position`](Self::source_position) found.
+    position_cursor: Rc<Cell<Option<(usize, crate::source::CssSourcePosition)>>>,
 }
 
 impl RecoveryState {
@@ -432,6 +435,7 @@ impl RecoveryState {
             retained_navigation_diagnostics: Rc::new(RefCell::new(Vec::new())),
             syntax_base_depth: depth,
             syntax_document: Rc::new(RefCell::new(None)),
+            position_cursor: Rc::new(Cell::new(None)),
         }
     }
 
@@ -456,6 +460,7 @@ impl RecoveryState {
             retained_navigation_diagnostics: Rc::new(RefCell::new(Vec::new())),
             syntax_base_depth: self.syntax_base_depth,
             syntax_document: Rc::clone(&self.syntax_document),
+            position_cursor: Rc::clone(&self.position_cursor),
         }
     }
 
@@ -474,6 +479,7 @@ impl RecoveryState {
             retained_navigation_diagnostics: Rc::new(RefCell::new(Vec::new())),
             syntax_base_depth: self.depth.get(),
             syntax_document: Rc::new(RefCell::new(None)),
+            position_cursor: Rc::new(Cell::new(None)),
         }
     }
 
@@ -505,11 +511,26 @@ impl RecoveryState {
         &self.source_snapshot
     }
 
+    /// The position of the byte `byte_offset` of the source. Positions are asked
+    /// for in source order, so the walk continues from the last one found.
     pub(super) fn source_position(&self, byte_offset: usize) -> crate::source::CssSourcePosition {
-        crate::source::CssSourcePosition::from_byte_offset_in(
-            self.source_snapshot.as_str(),
-            byte_offset,
-        )
+        let text = self.source_snapshot.as_str();
+        let target = byte_offset.min(text.len());
+        if text.is_char_boundary(target) {
+            if let Some((at, position)) = self.position_cursor.get()
+                && at <= target
+                // A walk that stopped between the bytes of a CRLF restarts.
+                && (at == 0 || text.as_bytes()[at - 1] != b'\r')
+            {
+                let found = position.advanced_by(&text[at..target]);
+                self.position_cursor.set(Some((target, found)));
+                return found;
+            }
+            let found = crate::source::CssSourcePosition::from_byte_offset_in(text, target);
+            self.position_cursor.set(Some((target, found)));
+            return found;
+        }
+        crate::source::CssSourcePosition::from_byte_offset_in(text, byte_offset)
     }
 
     pub(super) fn activate_namespace(
@@ -545,40 +566,20 @@ impl RecoveryState {
         self.style_context_captures.record(content_start);
     }
 
+    /// Enters the rule block whose opening token starts at `at`.
     pub(super) fn enter_rule_block<'i>(
         &self,
         source: &str,
-        input: &Parser<'i, '_>,
+        at: Offset,
         enclosing_production: &'static str,
     ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
-        let opening_offset = input.position().byte_index().saturating_sub(1);
-        self.enter(source, opening_offset, enclosing_production)
-    }
-
-    /// Enters the rule block whose opening token starts at `opening_offset`.
-    pub(super) fn enter_rule_block_at<'i>(
-        &self,
-        source: &str,
-        opening_offset: usize,
-        enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
-        self.enter(source, opening_offset, enclosing_production)
+        self.enter(source, at.value(), enclosing_production)
     }
 
     /// Current entered structural block depth, including the active rule body.
     #[cfg(test)]
     pub(super) fn structural_depth(&self) -> u32 {
         self.depth.get()
-    }
-
-    pub(super) fn enter_component_block<'i>(
-        &self,
-        source: &str,
-        input: &Parser<'i, '_>,
-        enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, ParseError<'i, CssError>> {
-        let opening_offset = input.position().byte_index().saturating_sub(1);
-        self.enter(source, opening_offset, enclosing_production)
     }
 
     /// Enters the component block whose opening token ends at the byte
@@ -780,17 +781,8 @@ impl RecoveryState {
         diagnostics
     }
 
-    pub(super) fn check_failed_rule_block<'i>(
-        &self,
-        source: &'i str,
-        input: &Parser<'i, '_>,
-        enclosing_production: &'static str,
-    ) -> Option<ParseError<'i, CssError>> {
-        self.check_failed_rule_block_at(source, input.position().byte_index(), enclosing_production)
-    }
-
-    /// [`check_failed_rule_block`](Self::check_failed_rule_block) for a failed
-    /// rule whose block contents start at the byte `content_start`.
+    /// Checks a failed rule whose block contents start at the byte
+    /// `content_start` for the resources entering it would have been charged.
     pub(super) fn check_failed_rule_block_at<'i>(
         &self,
         source: &str,
@@ -816,15 +808,17 @@ impl RecoveryState {
         .err()
     }
 
+    /// Checks the contents of an entered `{}`-block that start at the byte
+    /// `start` for the resources they would be charged.
     pub(super) fn check_entered_curly_contents<'i>(
         &self,
-        source: &'i str,
-        input: &Parser<'i, '_>,
+        source: &str,
+        start: usize,
         enclosing_production: &'static str,
     ) -> Result<(), ParseError<'i, CssError>> {
         scan_nested_tokens(
             source,
-            input.position().byte_index(),
+            start,
             self.depth.get(),
             enclosing_production,
             ScanBoundary::FailedCurlyBlock,
@@ -1454,35 +1448,24 @@ pub(crate) enum RecoveryLoopOutcome {
     Terminated,
 }
 
-/// One iteration's byte-progress witness for a bounded recovery coordinator.
+/// One iteration's progress witness for a bounded recovery coordinator: the
+/// offset it started at.
 pub(crate) struct RecoveryProgress {
-    start_byte: usize,
+    start: Offset,
 }
 
 impl RecoveryProgress {
-    pub(super) fn record(input: &Parser<'_, '_>) -> Self {
-        Self {
-            start_byte: input.position().byte_index(),
-        }
+    pub(super) const fn record(at: Offset) -> Self {
+        Self { start: at }
     }
 
-    pub(super) fn finish(self, input: &mut Parser<'_, '_>, retained: bool) -> RecoveryLoopOutcome {
-        if retained {
-            return if input.position().byte_index() > self.start_byte {
-                RecoveryLoopOutcome::Retained
-            } else {
-                RecoveryLoopOutcome::Terminated
-            };
-        }
-        if input.position().byte_index() > self.start_byte {
-            return RecoveryLoopOutcome::Advanced;
-        }
-        if input.next_including_whitespace_and_comments().is_ok()
-            && input.position().byte_index() > self.start_byte
-        {
-            RecoveryLoopOutcome::Advanced
-        } else {
-            RecoveryLoopOutcome::Terminated
+    /// Judges an iteration that ended at `at`: progress is the comparison of
+    /// the two offsets.
+    pub(super) fn finish(self, at: Offset, retained: bool) -> RecoveryLoopOutcome {
+        match (at > self.start, retained) {
+            (true, true) => RecoveryLoopOutcome::Retained,
+            (true, false) => RecoveryLoopOutcome::Advanced,
+            (false, _) => RecoveryLoopOutcome::Terminated,
         }
     }
 }
@@ -1549,7 +1532,7 @@ pub(super) fn comma_member_span(
 
 #[cfg(test)]
 mod tests {
-    use cssparser::{Parser, ParserInput};
+    use surgeist_css_parser::Offset;
 
     use super::{RecoveryLoopOutcome, RecoveryProgress, unclosed_openings};
 
@@ -1647,33 +1630,23 @@ mod tests {
 
     #[test]
     fn denied_curly_keeps_actual_units_and_charges_only_its_opaque_boundary() {
-        use crate::syntax_consumption::{
-            self as syntax, DocumentExt, GenericRule, RuleTermination,
-        };
+        use crate::syntax_consumption::{self as syntax, DocumentExt};
         use surgeist_css_parser::document::Component;
         let source = "@page {😀\r\nnot parsed}@layer kept;";
         let state =
             super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
         let document = state.syntax_document(source).unwrap();
-        let selected = syntax::consume_rules(
-            &mut document.cursor(document.root_list()),
-            syntax::RuleListSyntax::Stylesheet,
-        );
-        let [Ok(GenericRule::At(page)), Ok(GenericRule::At(layer))] = selected.as_slice() else {
-            panic!("denied Page and independent same-parent Layer units");
-        };
-        assert!(matches!(page.termination, RuleTermination::Block));
-        assert!(page.fault.is_none());
-        assert!(matches!(layer.termination, RuleTermination::Semicolon(_)));
-        assert_eq!(
-            document.kind(layer.name),
-            syntax::TokenKind::AtKeyword("layer")
-        );
-        let denied = page.block.unwrap();
-        assert!(matches!(
-            document.component(denied),
-            Component::Denied { .. }
-        ));
+        let root = document.root_list();
+        let nodes = document.list(root);
+        let layer_index = nodes
+            .iter()
+            .position(|node| document.kind(*node) == syntax::TokenKind::AtKeyword("layer"))
+            .expect("the independent same-parent Layer unit");
+        let layer_name = nodes[layer_index];
+        let denied = *nodes
+            .iter()
+            .find(|node| matches!(document.component(**node), Component::Denied { .. }))
+            .expect("the denied Page block");
         assert!(document.children(denied).is_none());
         let opening = source.find('{').unwrap();
         let next = source.find("@layer").unwrap();
@@ -1683,13 +1656,7 @@ mod tests {
                 .map(|range| range.start.value()..range.end.value()),
             Some(opening..next)
         );
-        assert_eq!(
-            document
-                .boundary(page.range.list, page.range.end)
-                .offset
-                .unwrap(),
-            next
-        );
+        assert_eq!(document.boundary(root, layer_index).offset.unwrap(), next);
         assert_eq!(document.metrics().components(), 7);
         // The tree counts depth from its base (the state's depth); the denied
         // block adds none.
@@ -1706,7 +1673,7 @@ mod tests {
         assert_eq!(origin.span().start().column().value(), 6);
         assert_eq!(origin.span().end().byte_offset().value(), 7);
         assert_eq!(origin.span().end().column().value(), 7);
-        let crate::component::CssValueOrigin::Parsed(layer_origin) = &document.origin(layer.name)
+        let crate::component::CssValueOrigin::Parsed(layer_origin) = &document.origin(layer_name)
         else {
             panic!("original Layer coordinates after Unicode and CRLF");
         };
@@ -1737,69 +1704,53 @@ mod tests {
 
     #[test]
     fn denied_curly_ends_qualified_units_and_preserves_true_statement_eof() {
-        use crate::syntax_consumption::{
-            self as syntax, DocumentExt, GenericRule, RuleTermination,
+        use crate::syntax_consumption::{self as syntax, DocumentExt};
+        use surgeist_css_parser::document::Component;
+        let denied_of = |document: &crate::parser::syntax_types::Document<'_>| {
+            let nodes = document.list(document.root_list());
+            nodes
+                .iter()
+                .position(|node| matches!(document.component(*node), Component::Denied { .. }))
+                .map(|index| (index, nodes[index]))
         };
         let source = "bad{}@layer kept;";
         let state =
             super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
         let document = state.syntax_document(source).unwrap();
-        let selected = syntax::consume_rules(
-            &mut document.cursor(document.root_list()),
-            syntax::RuleListSyntax::Stylesheet,
-        );
-        let [
-            Ok(GenericRule::Qualified(qualified)),
-            Ok(GenericRule::At(layer)),
-        ] = selected.as_slice()
-        else {
-            panic!("denied qualified body and independent Layer unit");
-        };
+        let (index, denied) = denied_of(&document).expect("the denied qualified body");
         assert_eq!(
             document
-                .range(qualified.block)
+                .range(denied)
                 .map(|range| range.start.value()..range.end.value()),
             Some(3..5)
         );
         assert_eq!(
             document
-                .boundary(qualified.range.list, qualified.range.end)
+                .boundary(document.root_list(), index + 1)
                 .offset
                 .unwrap(),
             5
         );
-        assert!(matches!(layer.termination, RuleTermination::Semicolon(_)));
+        assert_eq!(
+            document.kind(document.list(document.root_list())[index + 1]),
+            syntax::TokenKind::AtKeyword("layer")
+        );
 
         for source in ["@page{unclosed payload", "@layer kept"] {
             let state =
                 super::RecoveryState::at_depth(source, 256, super::StyleContextCaptures::default());
             let document = state.syntax_document(source).unwrap();
-            let selected = syntax::consume_rules(
-                &mut document.cursor(document.root_list()),
-                syntax::RuleListSyntax::Stylesheet,
-            );
-            let [Ok(GenericRule::At(rule))] = selected.as_slice() else {
-                panic!("one selected unit");
-            };
             assert_eq!(document.metrics().spelling_bytes(), source.len());
             if source.starts_with("@page") {
-                assert!(matches!(rule.termination, RuleTermination::Block));
-                assert!(rule.fault.is_none());
+                let (_, block) = denied_of(&document).expect("the unterminated denied block");
                 assert_eq!(
                     document
-                        .range(rule.block.unwrap())
+                        .range(block)
                         .map(|range| range.start.value()..range.end.value()),
                     Some(5..source.len())
                 );
             } else {
-                let RuleTermination::EndOfInput(at) = &rule.termination else {
-                    panic!("actual source EOF");
-                };
-                assert_eq!(at.offset, Some(source.len()));
-                assert_eq!(
-                    rule.fault.as_ref().unwrap().kind,
-                    syntax::GenericFaultKind::AtRuleEndOfInput
-                );
+                assert!(denied_of(&document).is_none());
             }
         }
     }
@@ -1827,12 +1778,9 @@ mod tests {
         assert!(state.has_default_namespace());
         probe.record_style_context(9);
         assert!(captures.contains_parsed(9));
-        let mut input = ParserInput::new("(");
-        let mut parser = Parser::new(&mut input);
-        parser.next().unwrap();
         {
             let _guard = probe
-                .enter_component_block("(", &parser, "baseline.selector.complex")
+                .enter_component_block_at("(", 0, "baseline.selector.complex")
                 .unwrap();
             assert_eq!(state.structural_depth(), 8);
         }
@@ -1860,27 +1808,76 @@ mod tests {
     }
 
     #[test]
-    fn structural_recovery_zero_progress_failure_advances_one_token() {
-        let mut input = ParserInput::new(";later");
-        let mut parser = Parser::new(&mut input);
-        let progress = RecoveryProgress::record(&parser);
-
+    fn structural_recovery_progress_is_the_comparison_of_two_offsets() {
+        let start = Offset::new(3);
+        let after = Offset::new(4);
         assert_eq!(
-            progress.finish(&mut parser, false),
+            RecoveryProgress::record(start).finish(after, true),
+            RecoveryLoopOutcome::Retained
+        );
+        assert_eq!(
+            RecoveryProgress::record(start).finish(after, false),
             RecoveryLoopOutcome::Advanced
         );
-        assert_eq!(parser.position().byte_index(), 1);
-    }
-
-    #[test]
-    fn structural_recovery_zero_progress_at_bounded_end_terminates() {
-        let mut input = ParserInput::new("");
-        let mut parser = Parser::new(&mut input);
-        let progress = RecoveryProgress::record(&parser);
-
         assert_eq!(
-            progress.finish(&mut parser, false),
+            RecoveryProgress::record(start).finish(start, false),
             RecoveryLoopOutcome::Terminated
         );
+        assert_eq!(
+            RecoveryProgress::record(start).finish(start, true),
+            RecoveryLoopOutcome::Terminated
+        );
+    }
+
+    // Positions are found by continuing from the last one found. Whatever the
+    // order of the queries, a stop between the bytes of a CRLF, a clone that
+    // shares the cursor and a probe of another text, every answer is the
+    // position of a walk from the start.
+    #[test]
+    fn source_position_equals_a_walk_from_the_start_in_any_query_order() {
+        use crate::source::CssSourcePosition;
+        let source = "a\r\nbé😀\n\u{c}x\ry\r\n\r\r\nz";
+        let state =
+            super::RecoveryState::at_depth(source, 0, super::StyleContextCaptures::default());
+        let shared = state.clone();
+        let probe = state.detached_probe();
+        let mut offsets: Vec<usize> = (0..=source.len())
+            .filter(|offset| source.is_char_boundary(*offset))
+            .collect();
+        let walk = |offset: usize| CssSourcePosition::from_byte_offset_in(source, offset);
+        // Ascending, with every stop between a CR and an LF.
+        for offset in &offsets {
+            assert_eq!(state.source_position(*offset), walk(*offset), "up {offset}");
+        }
+        // Descending: each query is behind the last one found.
+        for offset in offsets.iter().rev() {
+            assert_eq!(
+                shared.source_position(*offset),
+                walk(*offset),
+                "down {offset}"
+            );
+        }
+        // Interleaved through the state, its clone and its probe.
+        offsets.sort_by_key(|offset| (offset * 7919) % 31);
+        for (index, offset) in offsets.iter().enumerate() {
+            let asked = [&state, &shared, &probe][index % 3];
+            assert_eq!(
+                asked.source_position(*offset),
+                walk(*offset),
+                "mixed {offset}"
+            );
+        }
+        // A probe of another text finds its own positions.
+        let other = state.generated_selector_probe("x\ny");
+        assert_eq!(
+            other.source_position(3),
+            CssSourcePosition::from_byte_offset_in("x\ny", 3)
+        );
+        assert_eq!(
+            other.source_position(1),
+            CssSourcePosition::from_byte_offset_in("x\ny", 1)
+        );
+        // Past the end is the end.
+        assert_eq!(state.source_position(source.len() + 9), walk(source.len()));
     }
 }

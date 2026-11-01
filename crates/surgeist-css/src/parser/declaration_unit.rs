@@ -22,20 +22,25 @@ use super::{
 use crate::declaration::CssImportance;
 use crate::diagnostic::CssError;
 use crate::diagnostic::error::property::SyntaxErrorExt;
+use crate::diagnostic::error::{unexpected_syntax_end, unexpected_syntax_token};
 use crate::parser::syntax_types::Site;
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::DocumentExt;
 
 /// The importance annotation of a declaration, as the shell reads it.
-struct Annotation {
+pub(super) struct Annotation {
     /// Where the `!` is.
     bang: usize,
     /// Whether it is followed by `important` and nothing else.
-    complete: bool,
+    pub(super) complete: bool,
+    /// What a reader of the annotation that finds it malformed meets first: the
+    /// first token after the `!` that is not `important`, the first token after
+    /// `important`, or the end of the declaration.
+    pub(super) malformed: Option<ParseError<'static, CssError>>,
 }
 
 /// Where the parts of a declaration are in the source text.
-pub(super) struct DeclarationText {
+pub(crate) struct DeclarationText {
     name: Range<usize>,
     /// Where the declaration ends: at the `;` that ends it, or at the end of its list.
     pub(super) end: usize,
@@ -43,13 +48,18 @@ pub(super) struct DeclarationText {
     pub(super) value_start: usize,
     /// Where the value ends: at the first `!`, or at the end of the declaration.
     value_end: usize,
-    annotation: Option<Annotation>,
+    pub(super) annotation: Option<Annotation>,
 }
 
 impl DeclarationText {
     /// Where the declaration's name begins.
     pub(super) fn name_start(&self) -> usize {
         self.name.start
+    }
+
+    /// Where the value ends: at the first `!`, or at the end of the declaration.
+    pub(super) const fn value_end(&self) -> usize {
+        self.value_end
     }
 
     /// The bytes of the declaration's name.
@@ -93,15 +103,33 @@ impl DeclarationText {
             while index < end && document.is_trivia(nodes[index]) {
                 index += 1;
             }
+            let word_at = index;
             let word = index < end
                 && matches!(document.token(nodes[index]), Token::Ident(word) if word.eq_ignore_ascii_case("important"));
             index += 1;
             while index < end && document.is_trivia(nodes[index]) {
                 index += 1;
             }
+            let complete = word && index >= end;
+            let malformed = (!complete).then(|| {
+                let snapshot = document
+                    .snapshot()
+                    .expect("a source declaration has its snapshot");
+                // The token a reader meets: the first that is not `important`
+                // after the `!`, the first after `important`, or the end.
+                let meets = if word { index } else { word_at };
+                match nodes.get(meets).filter(|_| meets < end) {
+                    Some(node) => unexpected_syntax_token(
+                        location_at(snapshot, boundary(meets)),
+                        document.token(*node),
+                    ),
+                    None => unexpected_syntax_end(location_at(snapshot, boundary(end))),
+                }
+            });
             Annotation {
                 bang: boundary(bang),
-                complete: word && index >= end,
+                complete,
+                malformed,
             }
         });
         Self {

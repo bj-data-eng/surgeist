@@ -3,7 +3,7 @@ use crate::component::CssComponentValueLimits;
 use crate::diagnostic::CssRecoveryDiagnostic;
 use crate::parser::reconstruction::{BoundedParseContext, BoundedParseSyntax, parse_bounded};
 use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
-use crate::parser::rule_candidate::{RuleEnvelope, classify_rule_syntax_with_limits};
+use crate::parser::rule_candidate::classify_rule_syntax_with_limits;
 use crate::parser::{conditional_chains, fragments, recovery};
 use crate::rule::CssRule;
 use crate::rule::CssStyleAncestor;
@@ -55,7 +55,6 @@ pub enum CssRuleAdmissionContext {
 pub struct CssRuleSyntax {
     pub(crate) origin: CssParsedOrigin,
     pub(crate) name: Option<Box<str>>,
-    pub(crate) envelope: RuleEnvelope,
     pub(crate) limits: CssComponentValueLimits,
     pub(crate) metrics: surgeist_css_parser::document::Metrics,
     pub(crate) diagnostics: Vec<CssRecoveryDiagnostic>,
@@ -123,10 +122,7 @@ impl CssRuleSyntax {
                 source,
                 self.origin.source(),
                 0,
-                BoundedParseContext::Candidate {
-                    envelope: self.envelope.clone(),
-                    context,
-                },
+                BoundedParseContext::Candidate { context },
                 StyleContextCaptures::with_namespaces(namespaces),
                 parser_context,
             )

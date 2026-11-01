@@ -73,7 +73,6 @@ fn eof(document: &Document<'_>, list: ListId, offset: usize) {
     };
     assert_eq!(boundary.offset, Some(offset));
     assert_eq!(cursor.peek(), end);
-    cursor.reconsume_current();
     assert_eq!(cursor.consume(), end);
     assert_eq!(cursor.consume(), end);
 }

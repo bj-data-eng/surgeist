@@ -3,21 +3,24 @@ use super::block_units::{
     location_at, offset_of, refused_declaration,
 };
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
-use super::descriptor_stream::{Value, fail, from_component, from_here, parse_scope};
-use super::syntax_types::{Attached, Stream, SyntaxError};
-use cssparser::{AtRuleParser, ParseError, Parser, ParserState, QualifiedRuleParser};
+use super::descriptor_stream::{Value, fail, from_component, from_here, parse_scope, read_scope};
+use super::rule_list::{
+    RuleBlock, RuleListGrammar, RuleListKind, RuleListSink, UnitState, recover_rule_list,
+};
+use super::syntax_types::{Attached, Site, Stream, SyntaxError};
+use cssparser::{ParseError, Parser};
+use surgeist_css_parser::Offset;
 use surgeist_css_parser::Token;
-use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar, UnitKind};
+use surgeist_css_parser::grammar::{
+    AtRule, BlockGrammar, QualifiedRule, RuleEnd, RuleGrammar, UnitKind,
+};
 use surgeist_css_parser::match_ignore_ascii_case;
 
-use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
+use super::recovery::RecoveryState;
 use super::values::{
     checked_percentage_value, parse_custom_ident_from_str_at_source, parse_numeric_function,
 };
-use super::{
-    DeclarationMode, consume_failed_rule_block, is_declaration_recovery_unit,
-    structural_recovery_production, structural_rule_diagnostic,
-};
+use super::{DeclarationMode, is_declaration_recovery_unit, structural_rule_diagnostic};
 use crate::diagnostic::error::{invalid_at_rule_placement, invalid_syntax, unexpected_at};
 use crate::diagnostic::{CssError, CssFeatureId};
 use crate::numeric::expression::{CalculationRoot, NumericInputContext};
@@ -31,14 +34,12 @@ use crate::rule::keyframes::{
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.rule.keyframes")];
 
-/// The name of a `@keyframes` rule that the native parser `input` holds next.
-pub(crate) fn parse_keyframes_name<'i, 't>(
-    input: &mut Parser<'i, 't>,
+/// The name of a `@keyframes` rule that the stream `input` holds next.
+pub(crate) fn parse_keyframes_name<'i>(
+    input: &mut Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
 ) -> std::result::Result<CssKeyframesName, ParseError<'i, CssError>> {
-    super::descriptor_stream::parse_scope(input, snapshot, |stream, numeric| {
-        keyframes_name(stream, numeric)
-    })
+    read_scope(input, snapshot, keyframes_name)
 }
 
 fn keyframes_name<'i>(
@@ -62,109 +63,67 @@ fn keyframes_name<'i>(
     )))
 }
 
-pub(crate) fn parse_keyframes_rule<'i, 't>(
-    source: &'i str,
+pub(crate) fn parse_keyframes_rule<'i>(
+    source: &str,
     name: CssKeyframesName,
-    input: &mut Parser<'i, 't>,
-    start: &ParserState,
+    contents: &mut Stream<'i>,
+    position: crate::source::CssSourcePosition,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> std::result::Result<CssKeyframesRule, ParseError<'i, CssError>> {
-    let blocks = parse_body(source, input, diagnostics, recovery)?;
-    Ok(CssKeyframesRule::new(
-        name,
-        blocks,
-        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
-    ))
+) -> CssKeyframesRule {
+    let blocks = parse_body(source, contents, diagnostics, recovery);
+    CssKeyframesRule::new(name, blocks, position)
 }
 
-// Syntax 3 (2026 CRD) §5.5.2 consumes the @keyframes block with consume a
-// block's contents; the <qualified-rule-list> grammar then admits only
-// keyframe rules, so every other selected unit is one dropped keyframe block.
+/// The keyframe blocks of the block `contents` holds. Syntax 3 (2026 CRD)
+/// §5.5.2 consumes the @keyframes block with consume a block's contents; the
+/// <qualified-rule-list> grammar then admits only keyframe rules, so every
+/// other unit is one dropped keyframe block.
 pub(super) fn parse_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<Vec<CssKeyframeBlock>, ParseError<'i, CssError>> {
-    let mut parser = KeyframeBlockParser {
+) -> Vec<CssKeyframeBlock> {
+    let mut grammar = KeyframeBlockParser::new(source, recovery);
+    let mut sink = BlockSink(Vec::new());
+    recover_rule_list(
         source,
-        diagnostics: Vec::new(),
-        recovery: recovery.clone(),
-    };
-    let mut blocks = Vec::new();
-    let (document, selected) = super::syntax_bridge::rules(
-        source,
-        input,
-        &recovery,
-        crate::syntax_consumption::RuleListSyntax::BlockContents,
-    )
-    .map_err(|error| {
-        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
-    })?;
-    for selected in &selected {
-        let progress = RecoveryProgress::record(input);
-        let (unit_start, item) = super::syntax_bridge::parse_selected(
-            source,
-            input,
-            &mut parser,
-            &recovery,
-            &document,
-            selected,
-        );
-        let failed_block_error = item.as_ref().err().and_then(|(_, failed_unit)| {
-            consume_failed_rule_block(
-                source,
-                input,
-                unit_start,
-                &parser.recovery,
-                structural_recovery_production(failed_unit),
-            )
-            .1
-        });
-        let retained = item.is_ok();
-        let progress_outcome = progress.finish(input, retained);
-        let unit_end = input.position().byte_index();
-        match item {
-            Ok(block) => blocks.push(block),
-            Err((error, failed_unit)) => {
-                let error = failed_block_error.unwrap_or(*error);
-                if let Some(diagnostic) = structural_rule_diagnostic(
-                    source,
-                    error,
-                    failed_unit,
-                    unit_start,
-                    unit_end,
-                    crate::diagnostic::CssRecoveryAction::DropKeyframeBlock,
-                ) {
-                    parser.diagnostics.push(diagnostic);
-                }
-            }
-        }
-        if progress_outcome == RecoveryLoopOutcome::Terminated {
-            break;
-        }
-    }
-    super::syntax_bridge::discard_block_contents_tail(input);
-    diagnostics.append(&mut parser.diagnostics);
-
-    Ok(blocks)
+        contents.clone(),
+        RuleListKind::Rules,
+        &mut grammar,
+        &mut sink,
+    );
+    super::descriptor_stream::consume_remaining(contents);
+    diagnostics.append(&mut grammar.diagnostics);
+    sink.0
 }
 
-/// The declarations of a keyframe's block, from the native callback that was
-/// handed the block: the contents of the block are the scope.
+/// The keyframe blocks of a list of them.
+struct BlockSink(Vec<CssKeyframeBlock>);
+
+impl RuleListSink<CssKeyframeBlock> for BlockSink {
+    fn retain(
+        &mut self,
+        item: CssKeyframeBlock,
+        _: &str,
+        _: usize,
+        _: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+    ) {
+        self.0.push(item);
+    }
+}
+
+/// The declarations of a keyframe's block `contents`.
 pub(super) fn parse_declarations<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssKeyframeDeclarationList, ParseError<'i, CssError>> {
-    let (declarations, mut recovered) =
-        super::property_input::adapt_native(input, recovery.source_snapshot(), |contents| {
-            Ok(drive_declarations(contents, source, &recovery))
-        })?;
+) -> CssKeyframeDeclarationList {
+    let (declarations, mut recovered) = drive_declarations(contents, source, &recovery);
     diagnostics.append(&mut recovered);
-    Ok(declarations)
+    declarations
 }
 
 /// Consumes the declarations of a keyframe's block, with the recovery of
@@ -249,76 +208,190 @@ pub(super) fn drive_declarations<'i>(
     (CssKeyframeDeclarationList::new(declarations), diagnostics)
 }
 
-pub(super) fn parse_detached_rule<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
-    recovery: RecoveryState,
-) -> Result<
-    (
-        CssKeyframeBlock,
-        Vec<crate::diagnostic::CssRecoveryDiagnostic>,
-    ),
-    ParseError<'i, CssError>,
-> {
-    let mut parser = KeyframeBlockParser {
-        source,
-        diagnostics: Vec::new(),
-        recovery: recovery.clone(),
-    };
-    let block = super::syntax_bridge::one(source, input, &mut parser, &recovery)?;
-    Ok((block, parser.diagnostics))
+/// The grammar of the one keyframe block a detached rule is.
+pub(super) fn detached_grammar(source: &str, recovery: RecoveryState) -> KeyframeBlockParser<'_> {
+    KeyframeBlockParser::new(source, recovery)
 }
 
-struct KeyframeBlockParser<'s> {
+/// The grammar of a list of keyframe blocks: qualified rules whose preludes are
+/// keyframe selectors and whose blocks hold declarations.
+pub(super) struct KeyframeBlockParser<'s> {
     source: &'s str,
-    diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+    pub(super) diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
+    unit: UnitState,
 }
 
-impl<'i> AtRuleParser<'i> for KeyframeBlockParser<'i> {
-    type Prelude = ();
-    type AtRule = CssKeyframeBlock;
-    type Error = CssError;
-}
-
-impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
-    type Prelude = CssKeyframeSelectorList;
-    type QualifiedRule = CssKeyframeBlock;
-    type Error = CssError;
-
-    fn parse_prelude<'t>(
-        &mut self,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        parse_keyframe_selector_list(input, self.recovery.source_snapshot())
+impl<'s> KeyframeBlockParser<'s> {
+    fn new(source: &'s str, recovery: RecoveryState) -> Self {
+        Self {
+            source,
+            diagnostics: Vec::new(),
+            recovery,
+            unit: UnitState::new(),
+        }
     }
 
-    fn parse_block<'t>(
+    /// The block of a keyframe whose selectors were read.
+    fn block<'i>(
         &mut self,
-        selectors: Self::Prelude,
-        start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
-        let mut depth =
-            self.recovery
-                .enter_rule_block(self.source, input, "baseline.keyframes.block")?;
+        selectors: CssKeyframeSelectorList,
+        start: Site<'i>,
+        opening: usize,
+        block: RuleBlock<'i>,
+    ) -> Result<CssKeyframeBlock, NativeError<'i>> {
+        let mut depth = self.recovery.enter_rule_block(
+            self.source,
+            Offset::new(opening),
+            "baseline.keyframes.block",
+        )?;
+        let RuleBlock::Open { mut contents, .. } = block else {
+            return Err(crate::diagnostic::error::nesting_limit(
+                self.source,
+                opening,
+                super::recovery::STRUCTURAL_NESTING_LIMIT,
+                "baseline.keyframes.block",
+            ));
+        };
         let declarations = parse_declarations(
             self.source,
-            input,
+            &mut contents,
             &mut self.diagnostics,
             self.recovery.clone(),
-        )?;
-
+        );
         let result = CssKeyframeBlock::new(
             selectors,
             declarations,
-            crate::source::CssSourcePosition::from_cssparser(
-                start.position(),
-                start.source_location(),
-            ),
+            self.recovery.source_position(offset_of(start)),
         );
         depth.retain();
         Ok(result)
+    }
+}
+
+impl<'i> RuleListGrammar<'i> for KeyframeBlockParser<'_> {
+    fn unit(&mut self) -> &mut UnitState {
+        &mut self.unit
+    }
+
+    fn recovery(&self) -> &RecoveryState {
+        &self.recovery
+    }
+
+    fn diagnostics(&mut self) -> &mut Vec<crate::diagnostic::CssRecoveryDiagnostic> {
+        &mut self.diagnostics
+    }
+
+    // No at-rule is a keyframe: the name is the failure of its prelude.
+    fn admit_at_rule(
+        &mut self,
+        name: &'i str,
+        start: Site<'i>,
+        _: RuleEnd,
+        _: Site<'i>,
+        prelude: &mut Stream<'i>,
+        block: RuleBlock<'i>,
+    ) -> Result<CssKeyframeBlock, NativeError<'i>> {
+        self.unit.start_index = Some(start.index());
+        let error = ParseError {
+            kind: cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::AtRuleInvalid(
+                cssparser::CowRcStr::from(name),
+            )),
+            location: location_at(self.recovery.source_snapshot(), offset_of(prelude.site())),
+        };
+        if let Some(opening) = block_opening_of(&block) {
+            self.unit.prelude_failed = true;
+            self.unit.block_error =
+                self.recovery
+                    .check_failed_rule_block_at(self.source, opening + 1, "css.at-rule");
+        }
+        Err(error)
+    }
+
+    fn admit_qualified(
+        &mut self,
+        start: Site<'i>,
+        prelude: &mut Stream<'i>,
+        block: RuleBlock<'i>,
+    ) -> Result<CssKeyframeBlock, NativeError<'i>> {
+        self.unit.start_index = Some(start.index());
+        let Some(opening) = block_opening_of(&block) else {
+            return Err(crate::diagnostic::error::unexpected_syntax_end(
+                location_at(self.recovery.source_snapshot(), offset_of(start)),
+            ));
+        };
+        let selectors =
+            match parse_keyframe_selector_list_stream(prelude, self.recovery.source_snapshot()) {
+                Ok(selectors) => selectors,
+                Err(error) => {
+                    self.unit.prelude_failed = true;
+                    self.unit.block_error = self.recovery.check_failed_rule_block_at(
+                        self.source,
+                        opening + 1,
+                        "css.qualified-rule",
+                    );
+                    return Err(error);
+                }
+            };
+        self.block(selectors, start, opening, block)
+    }
+
+    fn admit_declaration(
+        &mut self,
+        _: &str,
+        _: &DeclarationText,
+    ) -> Result<CssKeyframeBlock, NativeError<'i>> {
+        unreachable!("a list of keyframe blocks is read as rules")
+    }
+
+    fn drop_action(&self, _: &str) -> crate::diagnostic::CssRecoveryAction {
+        crate::diagnostic::CssRecoveryAction::DropKeyframeBlock
+    }
+}
+
+/// Where the block of a rule opens, when it has one.
+fn block_opening_of(block: &RuleBlock<'_>) -> Option<usize> {
+    match block {
+        RuleBlock::Absent => None,
+        RuleBlock::Open { opening, .. } | RuleBlock::Denied { opening } => Some(*opening),
+    }
+}
+
+impl<'i> RuleGrammar<'i, Attached<'i>> for KeyframeBlockParser<'_> {
+    type Item = CssKeyframeBlock;
+    type Error = NativeError<'i>;
+
+    fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
+        let at = rule.start();
+        let block = super::rule_list::rule_block_of(rule.block(), rule.end());
+        let mut prelude = rule.prelude();
+        self.admit_at_rule(
+            rule.name(),
+            at,
+            rule.rule_end(),
+            rule.end(),
+            &mut prelude,
+            block,
+        )
+        .map_err(|error| grammar_error(at, error))
+    }
+
+    fn qualified_rule(
+        &mut self,
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let at = rule.start();
+        let block = super::rule_list::rule_block_of(Some(rule.block()), rule.end());
+        let mut prelude = rule.prelude();
+        self.admit_qualified(at, &mut prelude, block)
+            .map_err(|error| grammar_error(at, error))
+    }
+}
+
+impl<'i> BlockGrammar<'i, Attached<'i>> for KeyframeBlockParser<'_> {
+    fn declaration(&mut self, d: DeclarationUnit<'i>) -> Result<Self::Item, GrammarError<'i>> {
+        // A declaration is no keyframe: the unit is read again as a rule.
+        Err(SyntaxError::invalid_qualified_rule_error(d.start()))
     }
 }
 
@@ -329,6 +402,14 @@ pub(super) fn parse_keyframe_selector_list<'i, 't>(
     snapshot: &crate::source::CssSourceSnapshot,
 ) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, CssError>> {
     parse_scope(input, snapshot, read_keyframe_selector_list)
+}
+
+/// The selector list of a keyframe block that the stream `input` holds.
+pub(super) fn parse_keyframe_selector_list_stream<'i>(
+    input: &mut Stream<'i>,
+    snapshot: &crate::source::CssSourceSnapshot,
+) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, CssError>> {
+    read_scope(input, snapshot, read_keyframe_selector_list)
 }
 
 fn read_keyframe_selector_list<'i>(

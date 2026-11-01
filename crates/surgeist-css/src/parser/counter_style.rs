@@ -1,4 +1,4 @@
-use cssparser::{BasicParseErrorKind, CowRcStr, ParseError, ParseErrorKind, Parser, ParserState};
+use cssparser::{BasicParseErrorKind, CowRcStr, ParseError, ParseErrorKind, Parser};
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
@@ -9,7 +9,7 @@ use super::block_units::{
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
     Boundary, DescriptorGrammar, Value, consume_remaining, drive_block_items, expect_exhausted,
-    fail, from_component, native, parse_descriptor_checked, parse_descriptor_text, parse_scope,
+    fail, from_component, native, parse_descriptor_checked, parse_descriptor_text, read_scope,
     validate_root,
 };
 use super::property_input::StreamExt;
@@ -40,11 +40,11 @@ pub(crate) struct CounterStylePrelude {
     origin: crate::source::CssParsedOrigin,
 }
 
-pub(crate) fn parse_counter_style_name<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(crate) fn parse_counter_style_name<'i>(
+    input: &mut Stream<'i>,
     source_snapshot: &crate::source::CssSourceSnapshot,
 ) -> Result<CounterStylePrelude, ParseError<'i, CssError>> {
-    parse_scope(input, source_snapshot, |input, numeric| {
+    read_scope(input, source_snapshot, |input, numeric| {
         input.discard_whitespace();
         let token_start = input.site();
         let location = input.site();
@@ -69,36 +69,28 @@ pub(crate) fn parse_counter_style_name<'i, 't>(
     })
 }
 
-pub(crate) fn parse_counter_style_rule<'i, 't>(
-    source: &'i str,
+pub(crate) fn parse_counter_style_rule<'i>(
+    source: &str,
     prelude: CounterStylePrelude,
-    input: &mut Parser<'i, 't>,
-    start: &ParserState,
+    contents: &mut Stream<'i>,
+    position: crate::source::CssSourcePosition,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssCounterStyleRule, ParseError<'i, CssError>> {
-    let descriptors = parse_body(source, input, diagnostics, recovery)?;
-    Ok(CssCounterStyleRule::from_parsed(
-        prelude.name,
-        descriptors,
-        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
-        prelude.origin,
-    ))
+) -> CssCounterStyleRule {
+    let descriptors = parse_body(source, contents, diagnostics, recovery);
+    CssCounterStyleRule::from_parsed(prelude.name, descriptors, position, prelude.origin)
 }
 
-/// The descriptors of the block the native parser `input` is inside.
+/// The descriptors of the block `contents` holds.
 pub(super) fn parse_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssCounterStyleDescriptors, ParseError<'i, CssError>> {
-    let snapshot = recovery.source_snapshot().clone();
-    let (occurrences, mut recovered) = parse_scope(input, &snapshot, |contents, _| {
-        Ok(drive_body(contents, source, &recovery))
-    })?;
+) -> CssCounterStyleDescriptors {
+    let (occurrences, mut recovered) = drive_body(contents, source, &recovery);
     diagnostics.append(&mut recovered);
-    Ok(CssCounterStyleDescriptors::from_occurrences(occurrences))
+    CssCounterStyleDescriptors::from_occurrences(occurrences)
 }
 
 fn drive_body<'i>(

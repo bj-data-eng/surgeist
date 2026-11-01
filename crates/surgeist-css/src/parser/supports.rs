@@ -2,7 +2,7 @@ use super::boolean_condition::{
     BooleanConditionGrammar, ConditionFailure, parse_boolean_condition,
 };
 use super::descriptor_stream::{
-    Value, byte_offset, collect_scope, consume_remaining, location, native, parse_scope,
+    Value, byte_offset, collect_scope, consume_remaining, location, native, read_scope,
 };
 use super::recovery::{RecoveryState, StyleContextCaptures};
 use super::selectors::{SelectorRecovery, read_rule_selector};
@@ -15,7 +15,6 @@ use crate::component::{
 };
 use crate::declaration::{CssDeclarationBody, CssImportance};
 use crate::diagnostic::CssError;
-use crate::diagnostic::CssRecoveryDiagnostic;
 use crate::diagnostic::error::ErrorKind;
 use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{
@@ -33,7 +32,7 @@ use crate::rule::font_face::{
     CssFontFormat, CssFontFormatHint, CssFontFormatString, CssFontTechHint,
 };
 use crate::selector::CssNamespaceContext;
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::diagnostic::CssFeatureId] = &[
     crate::diagnostic::CssFeatureId::new("ext.supports.general-enclosed"),
@@ -80,13 +79,12 @@ pub(crate) fn with_supports_prelude_context<'i>(
 }
 
 /// The `<supports-condition>` that the native parser `input` holds to its end.
-pub(crate) fn parse_supports_condition<'i, 't>(
-    source: &'i str,
-    input: &mut Parser<'i, 't>,
-    _diagnostics: &mut Vec<CssRecoveryDiagnostic>,
+pub(crate) fn parse_supports_condition<'i>(
+    source: &str,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
 ) -> Result<CssCondition<CssSupportsLeaf>, ParseError<'i, CssError>> {
-    parse_scope(input, recovery.source_snapshot(), |stream, numeric| {
+    read_scope(input, recovery.source_snapshot(), |stream, numeric| {
         supports_condition(source, stream, numeric, recovery)
     })
 }

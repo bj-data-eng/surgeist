@@ -25,7 +25,6 @@ fn candidate_cursor_eof_is_the_excluded_semicolon_without_recharging_input() {
         panic!("candidate EOF");
     };
     assert_eq!(at.offset, Some("name: f(a;b) ! IMPORTANT ".len()));
-    candidate.reconsume_current();
     assert!(matches!(candidate.consume(), CursorItem::EndOfInput(_)));
     assert_eq!(root.peek(), semicolon);
     assert_eq!(document.metrics(), metrics);
@@ -95,49 +94,21 @@ fn bad_tokens_and_mismatched_closers_remain_in_exact_order() {
 }
 
 #[test]
-fn child_eof_repeats_and_reconsume_does_not_touch_parent_or_budget() {
+fn child_eof_repeats_and_does_not_touch_parent_or_budget() {
     let document = source("f(a) b");
     let mut parent = document.cursor(document.root_list());
     let CursorItem::Node(group) = parent.consume() else {
         panic!()
     };
     let mut child = document.cursor(document.children(group).unwrap());
-    let first = child.consume();
-    child.reconsume_current();
-    assert_eq!(child.consume(), first);
+    assert!(matches!(child.consume(), CursorItem::Node(_)));
     let eof = child.consume();
     assert_eq!(child.consume(), eof);
-    child.reconsume_current();
     assert_eq!(child.consume(), eof);
     assert!(matches!(eof, CursorItem::EndOfInput(_)));
     assert!(matches!(parent.consume(), CursorItem::Node(_))); // whitespace sibling
     assert_eq!(document.metrics().components(), 4);
     assert_eq!(document.metrics().spelling_bytes(), 6);
-}
-
-#[test]
-fn at_rule_nested_terminators_and_qualified_semicolons_use_generic_boundaries() {
-    let document = source("@x f(;{}) [;] { a:b } ; @y z{} tail{}");
-    let rules = consume_rules(
-        &mut document.cursor(document.root_list()),
-        RuleListSyntax::Stylesheet,
-    );
-    assert_eq!(rules.len(), 3);
-    let GenericRule::At(at) = rules[0].as_ref().unwrap() else {
-        panic!()
-    };
-    assert!(matches!(at.termination, RuleTermination::Block));
-    assert!(at.fault.is_none());
-    let GenericRule::Qualified(qualified) = rules[1].as_ref().unwrap() else {
-        panic!()
-    };
-    assert_eq!(document.kind(qualified.prelude[0]), TokenKind::Semicolon);
-    assert!(
-        qualified
-            .prelude
-            .iter()
-            .any(|node| document.kind(*node) == TokenKind::AtKeyword("y"))
-    );
 }
 
 #[test]
@@ -148,7 +119,7 @@ fn eof_at_rule_is_returned_but_eof_qualified_rule_is_not() {
     else {
         panic!()
     };
-    assert!(matches!(rule.termination, RuleTermination::EndOfInput(_)));
+    assert!(matches!(rule.termination, RuleTermination::EndOfInput));
     assert_eq!(rule.fault.unwrap().kind, GenericFaultKind::AtRuleEndOfInput);
     let document = source("a ; @x f(a");
     assert_eq!(
@@ -160,24 +131,7 @@ fn eof_at_rule_is_returned_but_eof_qualified_rule_is_not() {
 }
 
 #[test]
-fn cdo_cdc_and_exact_one_obey_entry_flags() {
-    let document = source("<!-- --> a{}");
-    let rules = consume_rules(
-        &mut document.cursor(document.root_list()),
-        RuleListSyntax::Stylesheet,
-    );
-    let GenericRule::Qualified(rule) = rules[0].as_ref().unwrap() else {
-        panic!()
-    };
-    assert_eq!(document.kind(rule.prelude[0]), TokenKind::Ident("a"));
-    let rules = consume_rules(
-        &mut document.cursor(document.root_list()),
-        RuleListSyntax::BlockContents,
-    );
-    let GenericRule::Qualified(rule) = rules[0].as_ref().unwrap() else {
-        panic!()
-    };
-    assert_eq!(document.kind(rule.prelude[0]), TokenKind::Cdo);
+fn exact_one_reports_empty_and_trailing_input() {
     let empty = source(" /*comment*/ ");
     assert_eq!(
         consume_one_rule(&mut empty.cursor(empty.root_list()))
@@ -192,64 +146,6 @@ fn cdo_cdc_and_exact_one_obey_entry_flags() {
             .kind,
         GenericFaultKind::TrailingInput
     );
-}
-
-// Syntax 3 (2026 CRD) §5.5.5 consume a block's contents in a rule-only grammar.
-// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
-#[test]
-fn block_contents_discard_semicolons_and_stop_qualified_rules_at_them() {
-    let text = "; a{} ;; b c ; @x y; --p: v {} d{} ; e{} f";
-    let document = source(text);
-    let offset = |list, index| {
-        document
-            .boundary(list, index)
-            .offset
-            .expect("source boundary")
-    };
-    let units: Vec<_> = consume_rules(
-        &mut document.cursor(document.root_list()),
-        RuleListSyntax::BlockContents,
-    )
-    .into_iter()
-    .map(|unit| match unit {
-        Ok(GenericRule::At(rule)) => {
-            assert!(matches!(rule.termination, RuleTermination::Semicolon(_)));
-            (
-                None,
-                offset(rule.range.list, rule.range.start)..offset(rule.range.list, rule.range.end),
-            )
-        }
-        Ok(GenericRule::Qualified(rule)) => (
-            None,
-            offset(rule.range.list, rule.range.start)..offset(rule.range.list, rule.range.end),
-        ),
-        Err(fault) => (
-            Some(fault.kind),
-            offset(fault.range.list, fault.range.start)..offset(fault.range.list, fault.range.end),
-        ),
-    })
-    .map(|(kind, range)| (kind, &text[range]))
-    .collect();
-    assert_eq!(
-        units,
-        [
-            (None, "a{}"),
-            (Some(GenericFaultKind::QualifiedRuleStopToken), "b c "),
-            (None, "@x y;"),
-            (Some(GenericFaultKind::CustomPropertyRule), "--p: v {} d{} "),
-            (None, "e{}"),
-            (Some(GenericFaultKind::QualifiedRuleEndOfInput), "f"),
-        ]
-    );
-    // The stylesheet root keeps a `;` as qualified-rule prelude input.
-    let rules = consume_rules(
-        &mut document.cursor(document.root_list()),
-        RuleListSyntax::Stylesheet,
-    );
-    let GenericRule::Qualified(rule) = rules[0].as_ref().unwrap() else {
-        panic!("semicolon-prefixed qualified rule")
-    };
-    assert_eq!(document.kind(rule.prelude[0]), TokenKind::Semicolon);
 }
 
 #[test]

@@ -1,7 +1,14 @@
-use cssparser::{
-    AtRuleParser, CowRcStr, DeclarationParser, ParseError, ParseErrorKind, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser,
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use cssparser::{ParseError, ParseErrorKind, Parser};
+use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
+
+use super::block_units::{
+    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, offset_of,
 };
+use super::declaration_unit::DeclarationText;
+use super::descriptor_stream::{DescriptorGrammar, DescriptorRecovery, drive_descriptors};
 use surgeist_css_parser::Token;
 use surgeist_css_parser::match_ignore_ascii_case;
 use surgeist_css_parser::stream::StopToken;
@@ -16,18 +23,14 @@ use super::descriptor_stream::{
 use super::font_controls::parse_font_language_override;
 use super::font_settings::{parse_font_feature_settings, parse_font_variation_settings};
 use super::property_input::StreamExt;
-use super::recovery::{
-    RecoveryLoopOutcome, RecoveryProgress, RecoveryState, comma_member_span,
-    recovery_action_for_error,
-};
-use super::syntax_types::{Stream, SyntaxError};
+use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
+use super::syntax_types::{Attached, Stream, SyntaxError};
 use super::typography::{
     common_font_style_keyword, parse_absolute_font_weight, parse_font_oblique_angle,
     parse_font_width, parse_non_generic_font_family_name,
 };
 use super::url::parse_url;
 use super::values::parse_nonnegative_percentage;
-use super::{consume_failed_rule_block, is_declaration_recovery_unit, structural_rule_diagnostic};
 use crate::diagnostic::error::{
     descriptor_name_error, from_parse_error, unexpected_at, with_descriptor_context,
 };
@@ -77,93 +80,60 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("ext.value.font-source-modern-hints"),
 ];
 
-pub(crate) fn parse_font_face_rule<'i, 't>(
-    source: &'i str,
-    input: &mut Parser<'i, 't>,
-    start: &ParserState,
+pub(crate) fn parse_font_face_rule<'i>(
+    source: &str,
+    contents: &mut Stream<'i>,
+    position: crate::source::CssSourcePosition,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> std::result::Result<CssFontFaceRule, ParseError<'i, CssError>> {
-    let descriptors = parse_body(source, input, diagnostics, recovery)?;
-    Ok(CssFontFaceRule::new(descriptors).with_position(
-        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
-    ))
+) -> CssFontFaceRule {
+    let descriptors = parse_body(source, contents, diagnostics, recovery);
+    CssFontFaceRule::new(descriptors).with_position(position)
 }
 
+/// The descriptors of the block `contents` holds. Syntax 3 (2026 CRD) §7.1:
+/// qualified rules and at-rules are invalid in this `<declaration-list>` and
+/// are dropped one by one.
 pub(super) fn parse_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> std::result::Result<CssFontFaceDescriptors, ParseError<'i, CssError>> {
-    let mut descriptors = Vec::new();
-    let mut descriptor_parser = FontFaceDescriptorParser {
+) -> CssFontFaceDescriptors {
+    let shared = Rc::new(RefCell::new(Vec::new()));
+    let mut grammar = FontFaceDescriptorParser {
         source,
-        recovery,
-        diagnostics: Vec::new(),
+        recovery: recovery.clone(),
+        diagnostics: Rc::clone(&shared),
     };
-
-    let mut items = RuleBodyParser::new(input, &mut descriptor_parser);
-    loop {
-        let progress = RecoveryProgress::record(items.input);
-        let unit_start = super::rule_list::skip_block_contents_trivia(items.input);
-        let Some(item) = items.next() else {
-            break;
-        };
-        // A failed nested rule leaves its block pending; consume it as part
-        // of the dropped unit so the recovery span covers the whole unit.
-        let failed_block_error = item.as_ref().err().and_then(|_| {
-            consume_failed_rule_block(
-                source,
-                items.input,
-                unit_start,
-                &items.parser.recovery,
-                "baseline.rule.font-face",
-            )
-            .1
-        });
-        let retained = item.is_ok();
-        let progress_outcome = progress.finish(items.input, retained);
-        let unit_end = items.input.position().byte_index();
-        match item {
-            Ok(descriptor) => {
-                descriptors.push(descriptor);
-            }
-            // Syntax 3 (2026 CRD) §7.1: qualified rules and at-rules are
-            // invalid in this `<declaration-list>` and are dropped one by one.
-            Err((error, failed_unit)) => {
-                let action = if is_declaration_recovery_unit(failed_unit) {
-                    crate::diagnostic::CssRecoveryAction::DropDescriptor
-                } else if failed_unit.trim_start().starts_with('@') {
-                    crate::diagnostic::CssRecoveryAction::DropAtRule
-                } else {
-                    crate::diagnostic::CssRecoveryAction::DropQualifiedRule
-                };
-                if let Some(diagnostic) = structural_rule_diagnostic(
-                    source,
-                    failed_block_error.unwrap_or(error),
-                    failed_unit,
-                    unit_start,
-                    unit_end,
-                    action,
-                ) {
-                    diagnostics.push(diagnostic);
-                }
-            }
-        }
-        if progress_outcome == RecoveryLoopOutcome::Terminated {
-            break;
-        }
-    }
-
-    diagnostics.extend(descriptor_parser.diagnostics);
-    Ok(CssFontFaceDescriptors::new(descriptors))
+    let mut readmit = FontFaceDescriptorParser {
+        source,
+        recovery: recovery.clone(),
+        diagnostics: Rc::clone(&shared),
+    };
+    let (descriptors, mut dropped) = drive_descriptors(
+        contents,
+        &mut grammar,
+        &mut readmit,
+        &DescriptorRecovery {
+            source,
+            recovery: &recovery,
+            production: "baseline.rule.font-face",
+            declaration: crate::diagnostic::CssRecoveryAction::DropDescriptor,
+            at_rule_first: false,
+        },
+    );
+    diagnostics.append(&mut dropped);
+    drop((grammar, readmit));
+    diagnostics.extend(shared.take());
+    CssFontFaceDescriptors::new(descriptors)
 }
 
 struct FontFaceDescriptorParser<'s> {
     source: &'s str,
     recovery: RecoveryState,
-    diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+    /// What the recovery of the members of descriptor values reported.
+    diagnostics: Rc<RefCell<Vec<crate::diagnostic::CssRecoveryDiagnostic>>>,
 }
 
 pub(super) fn parse_contents(
@@ -177,7 +147,7 @@ pub(super) fn parse_contents(
         |recovery| FontFaceDescriptorParser {
             source,
             recovery,
-            diagnostics: Vec::new(),
+            diagnostics: Rc::default(),
         },
     )
     .into_parts();
@@ -193,20 +163,16 @@ impl super::declaration_block::Receiver for FontFaceDescriptorParser<'_> {
     ) -> Result<(), ParseError<'i, CssError>> {
         descriptor_kind(name, location).map(|_| ())
     }
-    fn parse_value<'i>(
+    fn admit<'i>(
         &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, '_>,
-        start: &ParserState,
+        name: &str,
+        text: &DeclarationText,
         _recovery: &RecoveryState,
-    ) -> Result<CssFontFaceDescriptor, ParseError<'i, CssError>>
-    where
-        Self: 'i,
-    {
-        DeclarationParser::parse_value(self, name, input, start)
+    ) -> Result<CssFontFaceDescriptor, ParseError<'i, CssError>> {
+        FontFaceDescriptorParser::admit(self, name, text)
     }
     fn take_diagnostics(&mut self) -> Vec<crate::diagnostic::CssRecoveryDiagnostic> {
-        std::mem::take(&mut self.diagnostics)
+        self.diagnostics.take()
     }
 }
 
@@ -218,97 +184,143 @@ fn descriptor_kind<'i>(
         .ok_or_else(|| descriptor_name_error(location, "font-face", name))
 }
 
-impl<'i> AtRuleParser<'i> for FontFaceDescriptorParser<'i> {
-    type Prelude = ();
-    type AtRule = CssFontFaceDescriptor;
-    type Error = CssError;
+// Fonts 4 §4.1: the body is a descriptor list, so a recognized at-rule is
+// misplaced here; an unrecognized one stays unknown.
+impl<'i> RuleGrammar<'i, Attached<'i>> for FontFaceDescriptorParser<'_> {
+    type Item = CssFontFaceDescriptor;
+    type Error = NativeError<'i>;
 
-    // Fonts 4 §4.1: the body is a descriptor list, so a recognized at-rule
-    // is misplaced here; an unrecognized one stays unknown.
-    fn parse_prelude<'t>(
-        &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        let location = input.current_source_location();
-        if super::rule_list::at_rule_production(&name).is_some() {
-            return Err(crate::diagnostic::error::invalid_at_rule_placement(
-                location,
-                name.as_ref(),
-                "a font-face descriptor list",
-            ));
-        }
-        Err(location.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name)))
-    }
-}
-
-impl<'i> QualifiedRuleParser<'i> for FontFaceDescriptorParser<'i> {
-    type Prelude = ();
-    type QualifiedRule = CssFontFaceDescriptor;
-    type Error = CssError;
-}
-
-impl<'i> RuleBodyItemParser<'i, CssFontFaceDescriptor, CssError> for FontFaceDescriptorParser<'i> {
-    fn parse_declarations(&self) -> bool {
-        true
-    }
-
-    // Syntax 3 (2026 CRD) §5.5.5 reconsumes a failed declaration, and any
-    // other non-at-rule unit, as a nested qualified rule with a `;` stop token.
-    fn parse_qualified(&self) -> bool {
-        true
-    }
-}
-
-impl<'i, 's: 'i> DeclarationParser<'i> for FontFaceDescriptorParser<'s> {
-    type Declaration = CssFontFaceDescriptor;
-    type Error = CssError;
-
-    fn parse_value<'t>(
-        &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-        declaration_start: &ParserState,
-    ) -> std::result::Result<Self::Declaration, ParseError<'i, Self::Error>> {
-        let mut implicit_closures =
-            self.recovery
-                .check_component_values(self.source, input, "css.descriptor")?;
-        let position = crate::source::CssSourcePosition::from_cssparser(
-            declaration_start.position(),
-            declaration_start.source_location(),
-        );
-        let kind = descriptor_kind(name.as_ref(), declaration_start.source_location())?;
-        let mut member_diagnostics = Vec::new();
-        let value = parse_authored_font_face_value(
-            self.source,
-            input,
-            kind,
+    fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
+        let name = rule.name();
+        let location = location_at(
             self.recovery.source_snapshot(),
-            &mut member_diagnostics,
-            &mut implicit_closures,
-        )
-        .map_err(|error| {
-            if name.eq_ignore_ascii_case("font-stretch")
-                && matches!(
-                    &error.kind,
-                    ParseErrorKind::Custom(error)
-                        if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidDeclarationAnnotation(_))
-                )
-            {
-                // The legacy spelling is the actual authored descriptor name.
-                crate::diagnostic::error::invalid_descriptor_annotation(
-                    error.location,
-                    "font-face",
-                    name.as_ref(),
+            offset_of(rule.prelude().start_site()),
+        );
+        Err(grammar_error(
+            rule.prelude().start_site(),
+            if super::rule_list::at_rule_production(name).is_some() {
+                crate::diagnostic::error::invalid_at_rule_placement(
+                    location,
+                    name,
+                    "a font-face descriptor list",
                 )
             } else {
-                with_descriptor_context(error, "font-face", name.as_ref())
-            }
-        })?;
+                ParseError {
+                    kind: ParseErrorKind::Basic(cssparser::BasicParseErrorKind::AtRuleInvalid(
+                        cssparser::CowRcStr::from(name),
+                    )),
+                    location,
+                }
+            },
+        ))
+    }
+
+    // Syntax 3 (2026 CRD) §5.5.5 reads a unit that is not a declaration as a
+    // qualified rule, which a descriptor list does not admit.
+    fn qualified_rule(
+        &mut self,
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        Err(SyntaxError::invalid_qualified_rule_error(rule.start()))
+    }
+}
+
+impl<'i> BlockGrammar<'i, Attached<'i>> for FontFaceDescriptorParser<'_> {
+    fn declaration(
+        &mut self,
+        declaration: DeclarationUnit<'i>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let at = declaration.start();
+        self.admit(declaration.name(), &DeclarationText::of(&declaration))
+            .map_err(|error| grammar_error(at, error))
+    }
+}
+
+impl<'i> DescriptorGrammar<'i, CssFontFaceDescriptor> for FontFaceDescriptorParser<'_> {
+    fn readmit(
+        &mut self,
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<CssFontFaceDescriptor, NativeError<'i>> {
+        self.admit(name, text)
+    }
+}
+
+impl FontFaceDescriptorParser<'_> {
+    /// Admits the descriptor named `name` that lies at `text`.
+    fn admit<'i>(
+        &mut self,
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<CssFontFaceDescriptor, NativeError<'i>> {
+        let snapshot = self.recovery.source_snapshot();
+        let mut implicit_closures = self.recovery.check_component_values_from(
+            self.source,
+            text.value_start,
+            "css.descriptor",
+        )?;
+        let position = self.recovery.source_position(text.name_start());
+        let kind = descriptor_kind(name, location_at(snapshot, text.name_start()))?;
+        let mut member_diagnostics = Vec::new();
+        let value = self
+            .read_value(
+                text,
+                kind,
+                &mut member_diagnostics,
+                &mut implicit_closures,
+            )
+            .map_err(|error| {
+                if name.eq_ignore_ascii_case("font-stretch")
+                    && matches!(
+                        &error.kind,
+                        ParseErrorKind::Custom(error)
+                            if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidDeclarationAnnotation(_))
+                    )
+                {
+                    // The legacy spelling is the actual authored descriptor name.
+                    crate::diagnostic::error::invalid_descriptor_annotation(
+                        error.location,
+                        "font-face",
+                        name,
+                    )
+                } else {
+                    with_descriptor_context(error, "font-face", name)
+                }
+            })?;
         // Only an enclosing value that passed its complete boundary retains members.
-        self.diagnostics.extend(member_diagnostics);
+        self.diagnostics.borrow_mut().extend(member_diagnostics);
         self.recovery.retain_component_closures(implicit_closures);
         Ok(CssFontFaceDescriptor::new(value).with_position(position))
+    }
+
+    /// The value of the descriptor `kind` at `text`, whose whole text up to the
+    /// end of the declaration is the scope the value grammar reads.
+    fn read_value(
+        &self,
+        text: &DeclarationText,
+        kind: CssFontFaceDescriptorKind,
+        member_diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+        implicit_closures: &mut Vec<usize>,
+    ) -> Result<CssAuthoredFontFaceDescriptorValue, NativeValueError> {
+        let snapshot = self.recovery.source_snapshot();
+        let numeric = NumericInputContext::parsed(snapshot);
+        let document =
+            crate::syntax_consumption::source_scope_document(snapshot, text.value_start..text.end)
+                .map_err(|error| {
+                    crate::diagnostic::error::invalid_component_value(
+                        location_at(snapshot, text.value_start),
+                        error,
+                    )
+                })?;
+        let mut value = document.root();
+        read_authored_value(
+            self.source,
+            &mut value,
+            kind,
+            &numeric,
+            member_diagnostics,
+            implicit_closures,
+        )
     }
 }
 

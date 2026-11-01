@@ -5,16 +5,24 @@
 //! regard to where the rule appears; placement is a separate rule of each
 //! owning specification (Nesting 1 §3.2, Cascade 5 §6.1, Conditional 5 §8,
 //! Cascade 6 §2.5). A [`RuleListContext`] therefore selects admission and the
-//! body grammar, while [`parse_at_rule_prelude`] owns every prelude.
+//! body grammar, while [`parse_at_rule_prelude`] owns every prelude. The units
+//! of a list are the parser crate's: the recovery loop reads them from its
+//! iterators over the document, and the grammar is handed each rule with its
+//! prelude and block already delimited.
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule>
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents>
 use crate::declaration::{CssDeclaration, CssDeclarationList};
 use crate::diagnostic::CssError;
 use crate::diagnostic::error::{
-    invalid_at_rule_block, invalid_at_rule_placement, invalid_syntax, with_at_rule_prelude_context,
-    with_media_query_context,
+    invalid_at_rule_body_at, invalid_at_rule_placement, invalid_syntax, unexpected_syntax_end,
+    unexpected_syntax_token, with_at_rule_prelude_context, with_media_query_context,
+};
+use crate::parser::block_units::{
+    DeclarationUnit, Failure, GrammarError, NativeError, dropped_unit, grammar_error, location_at,
+    native_error, offset_of, refused_declaration,
 };
 use crate::parser::counter_style::{CounterStylePrelude, parse_counter_style_rule};
+use crate::parser::declaration_unit::DeclarationText;
 use crate::parser::font_face::parse_font_face_rule;
 use crate::parser::import::{CssImportPrelude, parse_import_prelude};
 use crate::parser::keyframes::parse_keyframes_rule;
@@ -23,21 +31,19 @@ use crate::parser::page::parse_page_rule;
 use crate::parser::queries::parse_media_query_list as parse_media_query_list_inner;
 use crate::parser::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use crate::parser::selectors::{
-    SelectorRecovery, parse_rule_selector_list, parse_scoped_style_selector_list,
+    SelectorRecovery, parse_rule_selector_list_stream, parse_scoped_style_selector_list_stream,
 };
 use crate::parser::supports::{parse_supports_condition, with_supports_prelude_context};
-use crate::parser::syntax_types::Document;
+use crate::parser::syntax_types::{Attached, Site, Stream, SyntaxError};
 use crate::parser::{
     CssNamespacePrelude, CssScopePrelude, CustomMediaPrelude, ScopedBodyKind,
     StrictDeclarationParser, TopLevelPreludePhase, block_item_diagnostic, color_profile,
-    consume_failed_rule_block, finish_custom_media, font_feature_values, font_palette_values,
-    is_declaration_recovery_unit, named_supports, nesting, parse_container_prelude,
-    parse_counter_style_prelude, parse_custom_media_prelude, parse_font_face_prelude,
-    parse_keyframes_prelude, parse_layer_prelude, parse_namespace_prelude,
-    parse_nested_group_rules, parse_page_prelude, parse_scope_prelude, parse_scoped_rule_list,
-    queries, selectors, structural_recovery_action, structural_recovery_production,
-    structural_rule_diagnostic, syntax_bridge, when, with_container_prelude_context,
-    with_scope_prelude_context,
+    finish_custom_media, font_feature_values, font_palette_values, is_declaration_recovery_unit,
+    named_supports, nesting, parse_container_prelude, parse_counter_style_prelude,
+    parse_custom_media_prelude, parse_font_face_prelude, parse_keyframes_prelude,
+    parse_layer_prelude, parse_namespace_prelude, parse_nested_group_rules, parse_page_prelude,
+    parse_scope_prelude, parse_scoped_rule_list, queries, selectors, structural_recovery_action,
+    structural_rule_diagnostic, when, with_container_prelude_context, with_scope_prelude_context,
 };
 use crate::query::container::CssContainerPrelude;
 use crate::query::media::CssMediaQueryList;
@@ -56,13 +62,13 @@ use crate::rule::{
     CssNestedDeclarationsRule, CssRule, CssScopeRule, CssSheet, CssSupportsRule,
 };
 use crate::selector::CssStyleSelectorList;
-use crate::syntax_consumption::GenericRuleResult;
-use crate::syntax_consumption::RuleListSyntax;
-use cssparser::{
-    AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserInput, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
+use cssparser::ParseError;
+use surgeist_css_parser::Offset;
+use surgeist_css_parser::grammar::{
+    AtRule, BlockGrammar, QualifiedRule, RuleEnd, RuleGrammar, UnitKind,
 };
 use surgeist_css_parser::match_ignore_ascii_case;
+use surgeist_css_parser::stream::{StopToken, StopTokens};
 
 /// Where a rule list appears.
 #[derive(Clone, Copy)]
@@ -206,14 +212,20 @@ const PAGE_PLACEMENT: &str =
     "a rule list without a style-rule ancestor that is not itself a @scope body";
 const STYLESHEET_TOP_LEVEL: &str = "the stylesheet top level";
 
+/// Where the stream `input` stands, as the native errors say it.
+fn here(input: &Stream<'_>, recovery: &RecoveryState) -> cssparser::SourceLocation {
+    location_at(recovery.source_snapshot(), offset_of(input.site()))
+}
+
 fn reject_with_style_ancestor<'i>(
     context: RuleListContext,
-    input: &Parser<'i, '_>,
+    input: &Stream<'i>,
+    recovery: &RecoveryState,
     name: &str,
-) -> Result<(), ParseError<'i, CssError>> {
+) -> Result<(), NativeError<'i>> {
     if context.style_ancestor() {
         Err(invalid_at_rule_placement(
-            input.current_source_location(),
+            here(input, recovery),
             name,
             WITHOUT_STYLE_ANCESTOR,
         ))
@@ -224,7 +236,8 @@ fn reject_with_style_ancestor<'i>(
 
 /// Parses one at-rule prelude and decides its admission in `context`.
 /// `phase` is the stylesheet's import/namespace ordering state, present only
-/// in [`RuleListContext::Stylesheet`].
+/// in [`RuleListContext::Stylesheet`]. `input` is the prelude the driver
+/// delimited.
 #[expect(
     clippy::too_many_lines,
     reason = "one arm per admitted at-rule keeps the single prelude table visible"
@@ -232,29 +245,29 @@ fn reject_with_style_ancestor<'i>(
 pub(super) fn parse_at_rule_prelude<'i>(
     context: RuleListContext,
     phase: Option<TopLevelPreludePhase>,
-    source: &'i str,
-    name: CowRcStr<'i>,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    name: &'i str,
+    input: &mut Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<AtRulePrelude, ParseError<'i, CssError>> {
-    match_ignore_ascii_case! { &name,
+) -> Result<AtRulePrelude, NativeError<'i>> {
+    match_ignore_ascii_case! { name,
         "import" => {
             let Some(phase) = phase else {
                 return Err(invalid_at_rule_placement(
-                    input.current_source_location(),
+                    here(input, recovery),
                     "import",
                     STYLESHEET_TOP_LEVEL,
                 ));
             };
             if !phase.accepts_import() {
                 return Err(invalid_at_rule_placement(
-                    input.current_source_location(),
+                    here(input, recovery),
                     "import",
                     "before every non-import top-level rule",
                 ));
             }
-            let prelude = parse_import_prelude(source, input, diagnostics, recovery).map_err(
+            let prelude = parse_import_prelude(source, input, recovery).map_err(
                 |error| {
                     if queries::media_terminal_error(&error) {
                         return error;
@@ -272,19 +285,19 @@ pub(super) fn parse_at_rule_prelude<'i>(
         "namespace" => {
             let Some(phase) = phase else {
                 return Err(invalid_at_rule_placement(
-                    input.current_source_location(),
+                    here(input, recovery),
                     "namespace",
                     STYLESHEET_TOP_LEVEL,
                 ));
             };
             if phase.after_namespace().is_none() {
                 return Err(invalid_at_rule_placement(
-                    input.current_source_location(),
+                    here(input, recovery),
                     "namespace",
                     "after initial layer statements and imports, before later layers or body rules",
                 ));
             }
-            let prelude = parse_namespace_prelude(input).map_err(|error| {
+            let prelude = parse_namespace_prelude(input, recovery.source_snapshot()).map_err(|error| {
                 with_at_rule_prelude_context(
                     error,
                     "namespace",
@@ -295,7 +308,7 @@ pub(super) fn parse_at_rule_prelude<'i>(
             Ok(AtRulePrelude::Namespace(prelude))
         },
         "counter-style" => {
-            reject_with_style_ancestor(context, input, "counter-style")?;
+            reject_with_style_ancestor(context, input, recovery, "counter-style")?;
             Ok(AtRulePrelude::CounterStyle(parse_counter_style_prelude(
                 source,
                 input,
@@ -305,7 +318,7 @@ pub(super) fn parse_at_rule_prelude<'i>(
         "page" => {
             if context.style_ancestor() || context.scope_body() {
                 return Err(invalid_at_rule_placement(
-                    input.current_source_location(),
+                    here(input, recovery),
                     "page",
                     PAGE_PLACEMENT,
                 ));
@@ -317,36 +330,36 @@ pub(super) fn parse_at_rule_prelude<'i>(
             )?))
         },
         "custom-media" => {
-            reject_with_style_ancestor(context, input, "custom-media")?;
+            reject_with_style_ancestor(context, input, recovery, "custom-media")?;
             Ok(AtRulePrelude::CustomMedia(Box::new(parse_custom_media_prelude(
                 source, input, recovery,
             )?)))
         },
         "font-feature-values" => {
-            reject_with_style_ancestor(context, input, "font-feature-values")?;
+            reject_with_style_ancestor(context, input, recovery, "font-feature-values")?;
             Ok(AtRulePrelude::FontFeatureValues(font_feature_values::parse_families(
                 source, input, recovery,
             )?))
         },
         "font-palette-values" => {
-            reject_with_style_ancestor(context, input, "font-palette-values")?;
+            reject_with_style_ancestor(context, input, recovery, "font-palette-values")?;
             Ok(AtRulePrelude::FontPaletteValues(font_palette_values::parse_name(
                 source, input, recovery,
             )?))
         },
         "color-profile" => {
-            reject_with_style_ancestor(context, input, "color-profile")?;
+            reject_with_style_ancestor(context, input, recovery, "color-profile")?;
             Ok(AtRulePrelude::ColorProfile(color_profile::parse_name(
                 source, input, recovery,
             )?))
         },
         "font-face" => {
-            reject_with_style_ancestor(context, input, "font-face")?;
-            parse_font_face_prelude(input)?;
+            reject_with_style_ancestor(context, input, recovery, "font-face")?;
+            parse_font_face_prelude(input, recovery)?;
             Ok(AtRulePrelude::FontFace)
         },
         "keyframes" => {
-            reject_with_style_ancestor(context, input, "keyframes")?;
+            reject_with_style_ancestor(context, input, recovery, "keyframes")?;
             Ok(AtRulePrelude::Keyframes(parse_keyframes_prelude(
                 input,
                 recovery.source_snapshot(),
@@ -362,16 +375,16 @@ pub(super) fn parse_at_rule_prelude<'i>(
         })?)),
         "media" => {
             let query = parse_media_query_list_inner(source, input, diagnostics, recovery)?;
-            if !input.is_exhausted() {
+            if !input.only_whitespace_remains() {
                 return Err(with_media_query_context(
-                    invalid_syntax(input.current_source_location()),
+                    invalid_syntax(here(input, recovery)),
                     None,
                 ));
             }
             Ok(AtRulePrelude::Media(query))
         },
         "supports" => Ok(AtRulePrelude::Supports(
-            parse_supports_condition(source, input, diagnostics, recovery)
+            parse_supports_condition(source, input, recovery)
                 .map_err(with_supports_prelude_context)?,
         )),
         "supports-condition" => Ok(AtRulePrelude::SupportsCondition(
@@ -379,20 +392,20 @@ pub(super) fn parse_at_rule_prelude<'i>(
         )),
         "when" => {
             let (condition, implicit) =
-                when::parse_prelude(source, input, recovery, name.as_ref(), false)?;
+                when::parse_prelude(source, input, recovery, name, false)?;
             Ok(AtRulePrelude::When(condition.expect("required condition"), implicit))
         },
         "else" => {
             let (condition, implicit) =
-                when::parse_prelude(source, input, recovery, name.as_ref(), true)?;
+                when::parse_prelude(source, input, recovery, name, true)?;
             Ok(AtRulePrelude::Else(condition, implicit))
         },
         "container" => {
             let prelude = parse_container_prelude(source, input, recovery)
                 .map_err(with_container_prelude_context)?;
-            if !input.is_exhausted() {
+            if !input.only_whitespace_remains() {
                 return Err(with_at_rule_prelude_context(
-                    invalid_syntax(input.current_source_location()),
+                    invalid_syntax(here(input, recovery)),
                     "container",
                     "baseline.rule.container",
                     "the end of the @container prelude",
@@ -407,59 +420,56 @@ pub(super) fn parse_at_rule_prelude<'i>(
                     .map_err(with_scope_prelude_context)?,
             ))
         },
-        _ => Err(input.new_error(cssparser::BasicParseErrorKind::AtRuleInvalid(name))),
+        _ => Err(ParseError {
+            kind: cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::AtRuleInvalid(
+                cssparser::CowRcStr::from(name),
+            )),
+            location: here(input, recovery),
+        }),
     }
 }
 
 /// Per-unit observations a grammar records for its recovery step.
-pub(crate) struct UnitState<'i> {
+pub(crate) struct UnitState {
     pub(super) boundary: nesting::StyleRuleBoundary,
-    /// A typed resource failure from a qualified-rule attempt, which a native
+    /// A typed resource failure from a qualified-rule attempt, which a
     /// declaration fallback would otherwise discard.
-    pub(super) qualified_resource_error: Option<ParseError<'i, CssError>>,
-    /// The prelude failure of a nested qualified-rule attempt (Syntax 3 (2026
-    /// CRD) §5.5.5 reparses a failed declaration as a qualified rule).
-    pub(super) qualified_prelude_error: Option<ParseError<'i, CssError>>,
-    pub(super) rejected_at_rule_start: Option<usize>,
+    pub(super) qualified_resource_error: Option<ParseError<'static, CssError>>,
+    /// The resource failure found in the block of a rule whose prelude failed,
+    /// which is what entering the block would have been charged.
+    pub(super) block_error: Option<ParseError<'static, CssError>>,
+    /// The prelude of a rule that has a block failed, so the block was left
+    /// pending.
+    pub(super) prelude_failed: bool,
+    /// The index in its list of the first node of the unit the grammar was
+    /// handed.
+    pub(super) start_index: Option<usize>,
 }
 
-impl<'i> UnitState<'i> {
+impl UnitState {
     pub(super) const fn new() -> Self {
         Self {
             boundary: nesting::StyleRuleBoundary::None,
             qualified_resource_error: None,
-            qualified_prelude_error: None,
-            rejected_at_rule_start: None,
+            block_error: None,
+            prelude_failed: false,
+            start_index: None,
         }
     }
 
-    /// Records a qualified-rule attempt's failure: a resource failure from its
-    /// prelude or block, or any other failure of its prelude.
-    pub(super) fn record_qualified_failure<T>(
-        &mut self,
-        result: &Result<T, ParseError<'i, CssError>>,
-        prelude: bool,
-    ) {
-        if let Err(error) = result {
-            if crate::diagnostic::error::is_nesting_limit_error(error) {
-                self.qualified_resource_error = Some(error.clone());
-            } else if prelude {
-                self.qualified_prelude_error = Some(error.clone());
-            }
+    /// Records a qualified-rule attempt's resource failure from its prelude or
+    /// block.
+    pub(super) fn record_qualified_failure<T>(&mut self, result: &Result<T, NativeError<'_>>) {
+        if let Err(error) = result
+            && crate::diagnostic::error::is_nesting_limit_error(error)
+            && let cssparser::ParseErrorKind::Custom(custom) = &error.kind
+        {
+            self.qualified_resource_error = Some(ParseError {
+                kind: cssparser::ParseErrorKind::Custom(custom.clone()),
+                location: error.location,
+            });
         }
     }
-}
-
-/// A rule-list grammar: native callbacks plus the unit state its recovery reads.
-pub(crate) trait RuleListGrammar<'i, I>:
-    RuleBodyItemParser<'i, I, CssError>
-    + AtRuleParser<'i, AtRule = I, Error = CssError>
-    + QualifiedRuleParser<'i, QualifiedRule = I, Error = CssError>
-    + DeclarationParser<'i, Declaration = I, Error = CssError>
-{
-    fn unit(&mut self) -> &mut UnitState<'i>;
-    fn recovery(&self) -> &RecoveryState;
-    fn diagnostics(&mut self) -> &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>;
 }
 
 /// Receives a rule list's retained items in source order.
@@ -475,213 +485,537 @@ pub(crate) trait RuleListSink<I> {
     );
 }
 
-/// How a list's units are delimited.
-pub(crate) enum RuleListUnits {
-    /// Units selected by the generic Syntax 3 consumer; declarations are not
-    /// admitted in this list.
-    Selected {
-        document: std::rc::Rc<Document<'static>>,
-        selected: Vec<GenericRuleResult>,
-    },
-    /// Native block contents that try each ident-started unit as a
-    /// declaration before a nested rule (Syntax 3 (2026 CRD) §5.5.5).
+/// A grammar of a rule list: the parser crate's block grammar, and what the
+/// recovery loop reads of it and asks of it.
+pub(crate) trait RuleListGrammar<'i>:
+    BlockGrammar<'i, Attached<'i>, Error = NativeError<'i>>
+{
+    /// What the grammar recorded of the unit it was last handed.
+    fn unit(&mut self) -> &mut UnitState;
+    fn recovery(&self) -> &RecoveryState;
+    fn diagnostics(&mut self) -> &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>;
+    /// Admits the at-rule `name` whose prelude and block the driver delimited:
+    /// the grammar's at-rule callback, and the way the recovery asks for a rule
+    /// whose block the document denied.
+    fn admit_at_rule(
+        &mut self,
+        name: &'i str,
+        start: Site<'i>,
+        rule_end: RuleEnd,
+        end: Site<'i>,
+        prelude: &mut Stream<'i>,
+        block: RuleBlock<'i>,
+    ) -> Result<Self::Item, NativeError<'i>>;
+    /// Admits a qualified rule, as [`admit_at_rule`](Self::admit_at_rule) does.
+    fn admit_qualified(
+        &mut self,
+        start: Site<'i>,
+        prelude: &mut Stream<'i>,
+        block: RuleBlock<'i>,
+    ) -> Result<Self::Item, NativeError<'i>>;
+    /// Reads the prelude of a qualified rule that met no block, for what
+    /// reading it records.
+    fn read_prelude(&mut self, _prelude: &mut Stream<'i>) {}
+    /// Admits the declaration named `name` that lies at `text`.
+    fn admit_declaration(
+        &mut self,
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<Self::Item, NativeError<'i>>;
+    /// What a dropped unit with the text `text` is reported as dropped.
+    fn drop_action(&self, text: &str) -> crate::diagnostic::CssRecoveryAction {
+        structural_recovery_action(text)
+    }
+}
+
+/// How a rule list's units are delimited.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RuleListKind {
+    /// A stylesheet's contents (Syntax 3 (2026 CRD) §5.5.1): a stray `;` or `}`
+    /// begins a qualified rule, and a custom-property look-alike returns
+    /// nothing.
+    Stylesheet,
+    /// A block's contents whose grammar admits rules and no declaration
+    /// (§5.5.5): a declaration attempt is never valid, so every unit is read as
+    /// a rule.
+    Rules,
+    /// A block's contents that try each unit as a declaration before a nested
+    /// rule (§5.5.5).
     Declarations,
 }
 
-impl RuleListUnits {
-    /// Selects the generic units of the list that starts at `input`.
-    pub(super) fn select<'i>(
-        source: &str,
-        input: &Parser<'i, '_>,
-        recovery: &RecoveryState,
-        list: RuleListSyntax,
-    ) -> Result<Self, crate::component::CssComponentValueError> {
-        let (document, selected) = syntax_bridge::rules(source, input, recovery, list)?;
-        Ok(Self::Selected { document, selected })
-    }
+/// The unit a rule list's driver reads next, and the stream after it.
+type NextUnit<'i, I> = (Option<Result<I, Failure<'i>>>, Stream<'i>);
 
-    pub(super) fn select_block_contents<'i>(
-        source: &str,
-        input: &Parser<'i, '_>,
-        recovery: &RecoveryState,
-    ) -> Result<Self, ParseError<'i, CssError>> {
-        Self::select(source, input, recovery, RuleListSyntax::BlockContents).map_err(|error| {
-            crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                error,
-            )
-        })
+fn next_unit<'i, G: RuleListGrammar<'i>>(
+    grammar: &mut G,
+    stream: Stream<'i>,
+    kind: RuleListKind,
+) -> NextUnit<'i, G::Item> {
+    match kind {
+        RuleListKind::Stylesheet => {
+            let mut units = stream.stylesheet_contents(grammar);
+            let unit = units.next();
+            (unit, units.stream())
+        }
+        RuleListKind::Rules | RuleListKind::Declarations => {
+            let mut units = stream.block_contents(grammar);
+            let unit = units.next();
+            (unit, units.stream())
+        }
     }
 }
 
 /// The single rule-list recovery loop: each unit is admitted by `grammar`,
 /// retained into `sink` or dropped with one diagnostic spanning exactly that
 /// unit, and the loop always makes progress.
-pub(crate) fn recover_rule_list<'i, I, G, S>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+pub(crate) fn recover_rule_list<'i, G, S>(
+    source: &str,
+    contents: Stream<'i>,
+    kind: RuleListKind,
     grammar: &mut G,
     sink: &mut S,
-    units: &RuleListUnits,
 ) where
-    G: RuleListGrammar<'i, I>,
-    S: RuleListSink<I>,
+    G: RuleListGrammar<'i>,
+    S: RuleListSink<G::Item>,
 {
-    let recovery = grammar.recovery().clone();
-    let mut next_selected = 0;
+    let snapshot = grammar.recovery().source_snapshot().clone();
+    let mut stream = contents;
     loop {
-        let progress = RecoveryProgress::record(input);
+        let before = stream.clone();
+        let progress = RecoveryProgress::record(Offset::new(offset_of(before.site())));
         *grammar.unit() = UnitState::new();
-        let (item, unit_start) = match units {
-            RuleListUnits::Selected { document, selected } => {
-                let Some(unit) = selected.get(next_selected) else {
-                    break;
-                };
-                next_selected += 1;
-                let (unit_start, item) = syntax_bridge::parse_selected(
-                    source, input, grammar, &recovery, document, unit,
-                );
-                (item, unit_start)
+        let (next, after) = next_unit(grammar, stream, kind);
+        stream = after;
+        let after_offset = Offset::new(offset_of(stream.site()));
+        let Some(unit) = next else {
+            if kind == RuleListKind::Stylesheet {
+                report_returned_nothing(source, grammar, &before, usize::MAX);
             }
-            RuleListUnits::Declarations => {
-                let unit_start = skip_block_contents_trivia(input);
-                let Some(item) = RuleBodyParser::new(input, grammar).next() else {
-                    break;
-                };
-                (
-                    item.map_err(|(error, failed_unit)| (Box::new(error), failed_unit)),
-                    unit_start,
-                )
-            }
-        };
-        let unit = std::mem::replace(grammar.unit(), UnitState::new());
-        let declarations = matches!(units, RuleListUnits::Declarations);
-        if recover_unit(
-            source,
-            input,
-            grammar,
-            sink,
-            item,
-            unit,
-            unit_start,
-            progress,
-            declarations,
-        ) == RecoveryLoopOutcome::Terminated
-        {
             break;
+        };
+        let boundary = grammar.unit().boundary;
+        let failed = match unit {
+            Ok(item) => {
+                if kind == RuleListKind::Stylesheet
+                    && let Some(index) = grammar.unit().start_index
+                {
+                    report_returned_nothing(source, grammar, &before, index);
+                }
+                let outcome = progress.finish(after_offset, true);
+                if boundary.partitions(false) {
+                    sink.partition();
+                }
+                sink.retain(item, source, after_offset.value(), grammar.diagnostics());
+                if outcome == RecoveryLoopOutcome::Terminated {
+                    break;
+                }
+                continue;
+            }
+            Err(failed) => failed,
+        };
+        if kind == RuleListKind::Stylesheet {
+            report_returned_nothing(source, grammar, &before, failed.start().index());
         }
-    }
-    if matches!(units, RuleListUnits::Selected { .. }) {
-        syntax_bridge::discard_block_contents_tail(input);
-    }
-}
-
-/// Skips what native block-contents iteration skips before a unit, returning
-/// the unit's start: whitespace, comments, `;` and a stray `}`.
-pub(super) fn skip_block_contents_trivia(input: &mut Parser<'_, '_>) -> usize {
-    loop {
-        let state = input.state();
-        match input.next_including_whitespace_and_comments() {
-            Ok(
-                Token::WhiteSpace(_)
-                | Token::Comment(_)
-                | Token::Semicolon
-                | Token::CloseCurlyBracket,
-            ) => {}
-            Ok(_) | Err(_) => {
-                input.reset(&state);
-                return input.position().byte_index();
+        // A declaration that Syntax 3 §5.5.6 step 8 refuses is read to its
+        // `;` all the same, and the grammar's verdict on it is reported (until
+        // the declaration paths follow step 8).
+        let mut replaced = None;
+        if kind == RuleListKind::Declarations
+            && let Some((start, end)) = refused_declaration(&failed)
+        {
+            let text = DeclarationText::read(start, end);
+            let name = match start.token() {
+                Some(surgeist_css_parser::Token::Ident(name)) => name,
+                _ => "",
+            };
+            match grammar.admit_declaration(name, &text) {
+                Ok(item) => {
+                    while stream.site().index() < end
+                        && stream.consume_token_with_comments().is_ok()
+                    {}
+                    let outcome = progress.finish(Offset::new(offset_of(stream.site())), true);
+                    sink.retain(
+                        item,
+                        source,
+                        offset_of(stream.site()),
+                        grammar.diagnostics(),
+                    );
+                    if outcome == RecoveryLoopOutcome::Terminated {
+                        break;
+                    }
+                    continue;
+                }
+                Err(error) => replaced = Some(error),
             }
         }
-    }
-}
-
-// Keep failure temporaries out of the loop's recursive frame.
-#[inline(never)]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one recovery step reads the unit, its parser and its sink"
-)]
-fn recover_unit<'i, I, G, S>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
-    grammar: &mut G,
-    sink: &mut S,
-    item: Result<I, (Box<ParseError<'i, CssError>>, &'i str)>,
-    unit: UnitState<'i>,
-    unit_start: usize,
-    progress: RecoveryProgress,
-    declarations: bool,
-) -> RecoveryLoopOutcome
-where
-    G: RuleListGrammar<'i, I>,
-    S: RuleListSink<I>,
-{
-    let (failed_at_block, failed_block_error) = item
-        .as_ref()
-        .err()
-        .map(|(_, failed_unit)| {
-            consume_failed_rule_block(
-                source,
-                input,
-                unit_start,
-                grammar.recovery(),
-                structural_recovery_production(failed_unit),
-            )
-        })
-        .unwrap_or((false, None));
-    let outcome = progress.finish(input, item.is_ok());
-    let unit_end = input.position().byte_index();
-    if unit.boundary.partitions(failed_at_block) {
-        sink.partition();
-    }
-    match item {
-        Ok(item) => sink.retain(item, source, unit_end, grammar.diagnostics()),
-        Err((error, failed_unit))
-            if declarations
-                && is_declaration_recovery_unit(failed_unit)
-                && !failed_at_block
-                && unit.qualified_resource_error.is_none() =>
-        {
+        let facts = read_failure(source, &snapshot, kind, grammar, &before, &failed, replaced);
+        let mut unit_state = std::mem::replace(grammar.unit(), UnitState::new());
+        let outcome = progress.finish(after_offset, false);
+        if unit_state.boundary.partitions(facts.at_block) {
+            sink.partition();
+        }
+        let declaration_unit = kind == RuleListKind::Declarations
+            && is_declaration_recovery_unit(facts.text)
+            && !facts.at_block
+            && unit_state.qualified_resource_error.is_none();
+        if declaration_unit {
             if let Some(diagnostic) = block_item_diagnostic(
                 source,
-                *error,
-                failed_unit,
-                unit_end,
+                facts.error,
+                facts.text,
+                facts.unit_end,
                 crate::diagnostic::CssRecoveryAction::DropDeclaration,
             ) {
                 grammar.diagnostics().push(diagnostic);
             }
-        }
-        Err((error, failed_unit)) => {
-            let error = if let Some(resource) = unit.qualified_resource_error.or(failed_block_error)
+        } else {
+            let error = if let Some(resource) = unit_state
+                .qualified_resource_error
+                .take()
+                .or(unit_state.block_error.take())
             {
                 resource
-            } else if let Some(prelude) = unit.qualified_prelude_error.filter(|_| failed_at_block) {
-                // The unit was consumed as a nested qualified rule whose
-                // prelude failed; that is the failure of the dropped rule.
-                prelude
             } else {
-                syntax_bridge::rejected_at_rule_error(
-                    source,
-                    grammar.recovery(),
-                    unit.rejected_at_rule_start,
-                    *error,
-                )
+                facts.error
             };
             if let Some(diagnostic) = structural_rule_diagnostic(
                 source,
                 error,
-                failed_unit,
-                unit_start,
-                unit_end,
-                structural_recovery_action(failed_unit),
+                facts.text,
+                facts.unit_start,
+                facts.unit_end,
+                grammar.drop_action(facts.text),
             ) {
                 grammar.diagnostics().push(diagnostic);
             }
         }
+        if outcome == RecoveryLoopOutcome::Terminated {
+            break;
+        }
     }
-    outcome
+}
+
+/// What the recovery of a dropped unit reads: the failure the grammar's
+/// callbacks would have returned for it, and where they would have left the
+/// unit.
+struct Facts<'i, 's> {
+    error: NativeError<'i>,
+    /// The text of the unit up to where the callbacks left it.
+    text: &'s str,
+    unit_start: usize,
+    unit_end: usize,
+    /// Whether the unit's block was left pending: the prelude of a rule with a
+    /// block failed.
+    at_block: bool,
+}
+
+/// The reporting of a rule that returned nothing in a stylesheet because it
+/// began like a custom property: it consumed its block and is dropped with an
+/// invalid-rule error. The driver skips it without a unit, so it is found
+/// between where the previous unit ended (`before`) and the node `until` of
+/// the list.
+fn report_returned_nothing<'i, G: RuleListGrammar<'i>>(
+    source: &str,
+    grammar: &mut G,
+    before: &Stream<'i>,
+    until: usize,
+) {
+    use crate::syntax_consumption::DocumentExt as _;
+    let site = before.site();
+    let document = site.document();
+    let list = site.list();
+    let nodes = document.list(list);
+    let snapshot = grammar.recovery().source_snapshot().clone();
+    let mut index = site.index();
+    let limit = until.min(nodes.len());
+    while index < limit {
+        let node = nodes[index];
+        if matches!(
+            document.token(node),
+            surgeist_css_parser::Token::Whitespace
+                | surgeist_css_parser::Token::Comment
+                | surgeist_css_parser::Token::Cdo
+                | surgeist_css_parser::Token::Cdc
+        ) {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        while index < nodes.len() && !document.is_curly_block(nodes[index]) {
+            index += 1;
+        }
+        let end = (index + 1).min(nodes.len());
+        let (Some(from), Some(to)) = (document.site(list, start), document.site(list, end)) else {
+            return;
+        };
+        let (from, to) = (offset_of(from), offset_of(to));
+        let error = ParseError {
+            kind: cssparser::ParseErrorKind::Basic(
+                cssparser::BasicParseErrorKind::QualifiedRuleInvalid,
+            ),
+            location: location_at(&snapshot, from),
+        };
+        if let Some(diagnostic) = structural_rule_diagnostic(
+            source,
+            error,
+            &source[from..to],
+            from,
+            to,
+            crate::diagnostic::CssRecoveryAction::DropQualifiedRule,
+        ) {
+            grammar.diagnostics().push(diagnostic);
+        }
+        index = end;
+    }
+}
+
+/// Reads the facts of a failed unit of `kind`.
+fn read_failure<'i, 's, G: RuleListGrammar<'i>>(
+    source: &'s str,
+    snapshot: &crate::source::CssSourceSnapshot,
+    kind: RuleListKind,
+    grammar: &mut G,
+    before: &Stream<'i>,
+    failed: &Failure<'i>,
+    replaced: Option<NativeError<'i>>,
+) -> Facts<'i, 's> {
+    use crate::syntax_consumption::DocumentExt as _;
+    let mut dropped = dropped_unit(snapshot, source, failed);
+    if let Some(replaced) = replaced {
+        dropped.error = replaced;
+    }
+    let unit_start = dropped.start;
+    // A block the document denied for nesting too deep was never shown to the
+    // grammar: the prelude is read, and the block refused, here.
+    if failed.error().is_denied_block() {
+        return denied_facts(grammar, before, failed, &dropped);
+    }
+    match failed.kind() {
+        UnitKind::AtRule | UnitKind::QualifiedRule => {
+            let (text, at_block) = if kind == RuleListKind::Declarations
+                && grammar.unit().prelude_failed
+                && dropped.block_contents.is_some()
+            {
+                if failed.kind() == UnitKind::AtRule {
+                    // The prelude was rejected before the block.
+                    (dropped.text_to_prelude_end(), true)
+                } else {
+                    (dropped.text_to_block().0, true)
+                }
+            } else if kind == RuleListKind::Declarations
+                && failed.kind() == UnitKind::AtRule
+                && grammar.unit().prelude_failed
+            {
+                // The prelude was rejected before the `;` that ended it.
+                (dropped.text_to_prelude_end(), false)
+            } else {
+                (dropped.text(), false)
+            };
+            let error = if kind != RuleListKind::Declarations
+                || (at_block && failed.kind() == UnitKind::QualifiedRule)
+            {
+                // The unit was consumed as a nested qualified rule whose
+                // prelude failed (or is no declaration at all): that is the
+                // failure of the dropped rule.
+                native_error(snapshot, failed.error())
+            } else {
+                dropped.error.clone()
+            };
+            // A qualified rule that met the end of its list read the prelude as
+            // well: the grammar did not see the unit.
+            if failed.kind() == UnitKind::QualifiedRule
+                && failed.rule_end() != Some(RuleEnd::Block)
+                && kind != RuleListKind::Declarations
+            {
+                replay_prelude(grammar, before, failed.start(), StopToken::OpenCurly.into());
+            }
+            Facts {
+                error,
+                text,
+                unit_start,
+                unit_end: dropped.end,
+                at_block,
+            }
+        }
+        // A unit that met no block: a declaration, or what a later edition of the
+        // parser crate adds.
+        _ => {
+            let start = failed.start();
+            let end = failed.end();
+            let document = start.document();
+            let list = start.list();
+            let nodes = document.list(list);
+            let returned_nothing = nodes
+                .get(start.index()..end.index())
+                .unwrap_or_default()
+                .iter()
+                .any(|node| document.is_curly_block(*node));
+            let semicolon_consumed = end.index() > 0
+                && nodes.get(end.index() - 1).is_some_and(|node| {
+                    matches!(document.token(*node), surgeist_css_parser::Token::Semicolon)
+                });
+            match kind {
+                RuleListKind::Declarations => {
+                    // The unit was tried as a declaration and then as a
+                    // qualified rule that met no block: the prelude was read.
+                    // A custom-property look-alike returns nothing without its
+                    // prelude being read (Syntax 3 §5.5.3).
+                    let custom = crate::syntax_consumption::custom_property_rule_prelude(
+                        document,
+                        &nodes[start.index()..end.index()],
+                    );
+                    if !returned_nothing && !custom {
+                        replay_prelude(
+                            grammar,
+                            before,
+                            start,
+                            StopToken::Semicolon | StopToken::OpenCurly,
+                        );
+                    }
+                    Facts {
+                        error: dropped.error.clone(),
+                        text: dropped.text(),
+                        unit_start,
+                        unit_end: dropped.end,
+                        at_block: false,
+                    }
+                }
+                _ => {
+                    // A rule list admits no declaration: the unit was read as a
+                    // qualified rule that a `;` stopped, that met the end of
+                    // its list, or that began like a custom property.
+                    let before_semicolon = if semicolon_consumed {
+                        document
+                            .site(list, end.index() - 1)
+                            .map_or_else(|| offset_of(end), offset_of)
+                    } else {
+                        offset_of(end)
+                    };
+                    let (error, unit_end) = if returned_nothing {
+                        (
+                            ParseError {
+                                kind: cssparser::ParseErrorKind::Basic(
+                                    cssparser::BasicParseErrorKind::QualifiedRuleInvalid,
+                                ),
+                                location: location_at(snapshot, unit_start),
+                            },
+                            before_semicolon,
+                        )
+                    } else if failed.rule_end() == Some(RuleEnd::Semicolon) {
+                        (
+                            unexpected_syntax_token(
+                                location_at(snapshot, offset_of(end)),
+                                surgeist_css_parser::Token::Semicolon,
+                            ),
+                            offset_of(end),
+                        )
+                    } else {
+                        replay_prelude(grammar, before, start, StopToken::OpenCurly.into());
+                        (
+                            unexpected_syntax_end(location_at(snapshot, offset_of(end))),
+                            offset_of(end),
+                        )
+                    };
+                    Facts {
+                        error,
+                        text: &source[unit_start..unit_end],
+                        unit_start,
+                        unit_end,
+                        at_block: false,
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The error of the one rule of a detached source whose block the document
+/// denied for nesting too deep: the grammar reads its prelude and refuses its
+/// block.
+pub(super) fn denied_rule_error<'i, G: RuleListGrammar<'i>>(
+    source: &str,
+    grammar: &mut G,
+    before: &Stream<'i>,
+    failed: &Failure<'i>,
+) -> NativeError<'i> {
+    let snapshot = grammar.recovery().source_snapshot().clone();
+    let dropped = dropped_unit(&snapshot, source, failed);
+    denied_facts(grammar, before, failed, &dropped).error
+}
+
+/// The facts of a rule whose block the document denied for nesting too deep.
+fn denied_facts<'i, 's, G: RuleListGrammar<'i>>(
+    grammar: &mut G,
+    before: &Stream<'i>,
+    failed: &Failure<'i>,
+    dropped: &crate::parser::block_units::DroppedUnit<'s, 'i>,
+) -> Facts<'i, 's> {
+    let start = failed.start();
+    let end = failed.end();
+    // The block the document denied ends the rule; its opening is where the
+    // rule ends if the document does not know it.
+    let opening = block_opening(end).unwrap_or_else(|| offset_of(end));
+    let mut stream = before.clone();
+    while stream.site().index() < start.index() && stream.consume_token_with_comments().is_ok() {}
+    let name = match start.token() {
+        Some(surgeist_css_parser::Token::AtKeyword(name)) => Some(name),
+        _ => None,
+    };
+    if name.is_some() {
+        // The at-keyword is the rule's name; its prelude follows.
+        let _ = stream.consume_token_with_comments();
+    }
+    let mut result = None;
+    let _ = stream.within_list_until(StopToken::Semicolon | StopToken::OpenCurly, |prelude| {
+        result = Some(match name {
+            Some(name) => grammar
+                .admit_at_rule(
+                    name,
+                    start,
+                    failed.rule_end().unwrap_or(RuleEnd::Block),
+                    end,
+                    prelude,
+                    RuleBlock::Denied { opening },
+                )
+                .map(drop),
+            None => grammar
+                .admit_qualified(start, prelude, RuleBlock::Denied { opening })
+                .map(drop),
+        });
+        Ok::<(), SyntaxError<'i, ()>>(())
+    });
+    let error = result
+        .and_then(Result::err)
+        .unwrap_or_else(|| native_error(grammar.recovery().source_snapshot(), failed.error()));
+    let at_block = grammar.unit().prelude_failed;
+    Facts {
+        error,
+        text: if at_block {
+            dropped.text_to_block().0
+        } else {
+            dropped.text()
+        },
+        unit_start: dropped.start,
+        unit_end: dropped.end,
+        at_block,
+    }
+}
+
+/// Reads again, for what reading it records, the prelude of a qualified rule
+/// that met no block.
+fn replay_prelude<'i, G: RuleListGrammar<'i>>(
+    grammar: &mut G,
+    before: &Stream<'i>,
+    start: Site<'i>,
+    stops: StopTokens,
+) {
+    let mut stream = before.clone();
+    while stream.site().index() < start.index() && stream.consume_token_with_comments().is_ok() {}
+    let _ = stream.within_list_until(stops, |prelude| {
+        grammar.read_prelude(prelude);
+        Ok::<(), SyntaxError<'i, ()>>(())
+    });
 }
 
 /// A rule whose body is not a rule list. Every list that admits one holds
@@ -712,6 +1046,24 @@ impl From<LeafRule> for CssRule {
     }
 }
 
+/// The error of a block that an at-rule whose body is a statement refuses,
+/// located at the block's opening token.
+fn block_refused<'i>(
+    recovery: &RecoveryState,
+    contents: usize,
+    name: &str,
+    production: &'static str,
+    expectation: &'static str,
+) -> NativeError<'i> {
+    let snapshot = recovery.source_snapshot();
+    let position =
+        crate::source::CssSourcePosition::from_byte_offset_in(snapshot.as_str(), contents)
+            .previous_ascii_byte();
+    let mut location = location_at(snapshot, contents);
+    location.column = location.column.saturating_sub(1).max(1);
+    invalid_at_rule_body_at(position, location, name, production, expectation)
+}
+
 /// Parses the block of a leaf rule, or rejects the block of a statement-only
 /// rule. A group prelude is returned for its list's own body grammar.
 // Keep descriptor parsing off the recursive group-rule frame. Deep rule
@@ -719,59 +1071,66 @@ impl From<LeafRule> for CssRule {
 #[inline(never)]
 pub(super) fn parse_leaf_block<'i>(
     prelude: AtRulePrelude,
-    source: &'i str,
-    start: &ParserState,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    start: Site<'i>,
+    mut contents: Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<Result<LeafRule, AtRulePrelude>, ParseError<'i, CssError>> {
+) -> Result<Result<LeafRule, AtRulePrelude>, NativeError<'i>> {
+    let refused = |name, production, expectation| {
+        Err(block_refused(
+            recovery,
+            offset_of(contents.start_site()),
+            name,
+            production,
+            expectation,
+        ))
+    };
+    let position = recovery.source_position(offset_of(start));
     let rule = match prelude {
         AtRulePrelude::CustomMedia(_) => {
-            return Err(invalid_at_rule_block(
-                input,
+            return refused(
                 "custom-media",
                 "ext.rule.custom-media",
                 "a statement-form custom-media rule",
-            ));
+            );
         }
         AtRulePrelude::Import(_) => {
-            return Err(invalid_at_rule_block(
-                input,
+            return refused(
                 "import",
                 "baseline.rule.import",
                 "a semicolon-terminated @import rule",
-            ));
+            );
         }
         AtRulePrelude::Namespace(_) => {
-            return Err(invalid_at_rule_block(
-                input,
+            return refused(
                 "namespace",
                 "later.rule.namespace",
                 "a semicolon-terminated @namespace rule",
-            ));
+            );
         }
         AtRulePrelude::CounterStyle(name) => LeafRule::CounterStyle(parse_counter_style_rule(
             source,
             name,
-            input,
-            start,
+            &mut contents,
+            position,
             diagnostics,
             recovery.clone(),
-        )?),
+        )),
         AtRulePrelude::Page(selector) => LeafRule::Page(parse_page_rule(
             source,
             selector,
-            input,
-            start,
+            &mut contents,
+            position,
             diagnostics,
             recovery.clone(),
-        )?),
+        )),
         AtRulePrelude::FontFeatureValues(families) => {
             LeafRule::FontFeatureValues(font_feature_values::parse_rule(
                 source,
                 families,
-                input,
-                start,
+                &mut contents,
+                position,
                 diagnostics,
                 recovery.clone(),
             )?)
@@ -780,8 +1139,8 @@ pub(super) fn parse_leaf_block<'i>(
             LeafRule::FontPaletteValues(font_palette_values::parse_rule(
                 source,
                 name,
-                input,
-                start,
+                &mut contents,
+                position,
                 diagnostics,
                 recovery.clone(),
             )?)
@@ -789,29 +1148,36 @@ pub(super) fn parse_leaf_block<'i>(
         AtRulePrelude::ColorProfile(name) => LeafRule::ColorProfile(color_profile::parse_rule(
             source,
             name,
-            input,
-            start,
+            &mut contents,
+            position,
             diagnostics,
             recovery.clone(),
-        )?),
+        )),
         AtRulePrelude::FontFace => LeafRule::FontFace(parse_font_face_rule(
             source,
-            input,
-            start,
+            &mut contents,
+            position,
             diagnostics,
             recovery.clone(),
-        )?),
+        )),
         AtRulePrelude::Keyframes(name) => LeafRule::Keyframes(parse_keyframes_rule(
             source,
             name,
-            input,
-            start,
+            &mut contents,
+            position,
             diagnostics,
             recovery.clone(),
-        )?),
-        AtRulePrelude::SupportsCondition(prelude) => LeafRule::SupportsCondition(
-            named_supports::parse_rule(source, prelude, start, input, diagnostics, recovery)?,
-        ),
+        )),
+        AtRulePrelude::SupportsCondition(prelude) => {
+            LeafRule::SupportsCondition(named_supports::parse_rule(
+                source,
+                prelude,
+                start,
+                &mut contents,
+                diagnostics,
+                recovery,
+            )?)
+        }
         group => return Ok(Err(group)),
     };
     Ok(Ok(rule))
@@ -832,6 +1198,29 @@ impl RuleListItem {
     }
 }
 
+/// The block of a rule as its grammar sees it.
+pub(crate) enum RuleBlock<'i> {
+    /// The rule has no block.
+    Absent,
+    /// The contents of the rule's block, which opens at the byte `opening`.
+    Open {
+        opening: usize,
+        contents: Stream<'i>,
+    },
+    /// A block that nested too deep for the document to keep, which opens at
+    /// the byte `opening`.
+    Denied { opening: usize },
+}
+
+impl RuleBlock<'_> {
+    const fn opening(&self) -> Option<usize> {
+        match self {
+            Self::Absent => None,
+            Self::Open { opening, .. } | Self::Denied { opening } => Some(*opening),
+        }
+    }
+}
+
 /// The ordinary rule grammar of a stylesheet, group or style-rule body.
 pub(crate) struct RuleParser<'s> {
     source: &'s str,
@@ -842,7 +1231,9 @@ pub(crate) struct RuleParser<'s> {
     scope: Option<ScopedBodyKind>,
     pub(super) diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     pub(super) recovery: RecoveryState,
-    unit: UnitState<'s>,
+    pub(super) unit: UnitState,
+    /// Whether the last rule the grammar was handed was admitted.
+    pub(super) completed: bool,
 }
 
 impl<'s> RuleParser<'s> {
@@ -890,6 +1281,7 @@ impl<'s> RuleParser<'s> {
             diagnostics: Vec::new(),
             recovery,
             unit: UnitState::new(),
+            completed: false,
         }
     }
 
@@ -947,109 +1339,134 @@ impl<'s> RuleParser<'s> {
         true
     }
 
-    fn position(&self, start: &ParserState) -> crate::source::CssSourcePosition {
-        self.recovery.source_position(start.position().byte_index())
+    fn position(&self, start: Site<'_>) -> crate::source::CssSourcePosition {
+        self.recovery.source_position(offset_of(start))
     }
 
     // A group rule's body: block contents with this list's style ancestry.
     // Kept out of `parse_block`'s recursive frame.
     #[inline(never)]
-    fn group_body<'i>(
-        &mut self,
-        input: &mut Parser<'s, 'i>,
-    ) -> Result<Vec<CssRule>, ParseError<'s, CssError>> {
+    fn group_body(&mut self, contents: Stream<'_>) -> Vec<CssRule> {
         if self.scope.is_some() {
             let recovered = parse_scoped_rule_list(
                 self.source,
-                input,
+                contents,
                 self.recovery.clone(),
                 self.style,
                 ScopedBodyKind::OrdinaryGroup,
-            )?;
+            );
             self.diagnostics.extend(recovered.diagnostics);
-            Ok(recovered.syntax)
+            recovered.syntax
         } else if self.style {
-            let recovered = parse_style_contents(self.source, input, self.recovery.clone())?;
+            let recovered = parse_style_contents(self.source, contents, self.recovery.clone());
             self.diagnostics.extend(recovered.diagnostics);
-            Ok(recovered.syntax.into_nested_rules())
+            recovered.syntax.into_nested_rules()
         } else {
-            let recovered = parse_nested_group_rules(self.source, input, self.recovery.clone())?;
+            let recovered = parse_nested_group_rules(self.source, contents, self.recovery.clone());
             self.diagnostics.extend(recovered.diagnostics);
-            Ok(recovered.syntax)
+            recovered.syntax
         }
     }
 
     #[inline(never)]
-    fn scope_body<'i>(
-        &mut self,
-        input: &mut Parser<'s, 'i>,
-    ) -> Result<Vec<CssRule>, ParseError<'s, CssError>> {
+    fn scope_body(&mut self, contents: Stream<'_>) -> Vec<CssRule> {
         let recovered = parse_scoped_rule_list(
             self.source,
-            input,
+            contents,
             self.recovery.clone(),
             self.style,
             ScopedBodyKind::Scope,
-        )?;
+        );
         self.diagnostics.extend(recovered.diagnostics);
-        Ok(recovered.syntax)
+        recovered.syntax
     }
-}
 
-impl<'i> RuleListGrammar<'i, RuleListItem> for RuleParser<'i> {
-    fn unit(&mut self) -> &mut UnitState<'i> {
-        &mut self.unit
-    }
-    fn recovery(&self) -> &RecoveryState {
-        &self.recovery
-    }
-    fn diagnostics(&mut self) -> &mut Vec<crate::diagnostic::CssRecoveryDiagnostic> {
-        &mut self.diagnostics
-    }
-}
-
-impl<'i> AtRuleParser<'i> for RuleParser<'i> {
-    type Prelude = AtRulePrelude;
-    type AtRule = RuleListItem;
-    type Error = CssError;
-
-    fn parse_prelude<'t>(
+    /// Admits the at-rule `name`, whose prelude is `prelude` and whose block
+    /// is `block`.
+    pub(super) fn admit_at_rule<'i>(
         &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        name: &'i str,
+        start: Site<'i>,
+        rule_end: RuleEnd,
+        end: Site<'i>,
+        prelude: &mut Stream<'i>,
+        block: RuleBlock<'i>,
+    ) -> Result<RuleListItem, NativeError<'i>> {
         self.unit.boundary = nesting::StyleRuleBoundary::AtRule;
-        parse_at_rule_prelude(
+        self.unit.start_index = Some(start.index());
+        let parsed = parse_at_rule_prelude(
             self.context(),
             self.top_level_phase,
             self.source,
             name,
-            input,
+            prelude,
             &mut self.diagnostics,
             &self.recovery,
-        )
+        );
+        let snapshot = self.recovery.source_snapshot().clone();
+        let Some(opening) = block.opening() else {
+            let prelude = match parsed {
+                Ok(prelude) => prelude,
+                Err(error) => {
+                    self.unit.prelude_failed = true;
+                    return Err(error);
+                }
+            };
+            let rules = self.rule_without_block(prelude, start, rule_end, end);
+            return match rules {
+                Ok(rules) => {
+                    self.completed = true;
+                    Ok(RuleListItem::Rules(rules))
+                }
+                Err(()) if rule_end == RuleEnd::Semicolon => Err(unexpected_syntax_token(
+                    location_at(&snapshot, offset_of(end)),
+                    surgeist_css_parser::Token::Semicolon,
+                )),
+                Err(()) => Err(unexpected_syntax_end(location_at(
+                    &snapshot,
+                    offset_of(end),
+                ))),
+            };
+        };
+        let prelude = match parsed {
+            Ok(prelude) => prelude,
+            Err(error) => {
+                self.unit.prelude_failed = true;
+                self.unit.block_error = self.recovery.check_failed_rule_block_at(
+                    self.source,
+                    opening + 1,
+                    "css.at-rule",
+                );
+                return Err(error);
+            }
+        };
+        let result = self.parse_block(prelude, start, opening, block);
+        self.completed = result.is_ok();
+        result
     }
 
-    fn rule_without_block(
+    fn rule_without_block<'i>(
         &mut self,
-        prelude: Self::Prelude,
-        start: &ParserState,
-    ) -> Result<Self::AtRule, ()> {
+        prelude: AtRulePrelude,
+        start: Site<'i>,
+        rule_end: RuleEnd,
+        end: Site<'i>,
+    ) -> Result<Vec<CssRule>, ()> {
         let result = match prelude {
             AtRulePrelude::CustomMedia(prelude) => {
-                let rule = finish_custom_media(
-                    self.source,
-                    *prelude,
-                    start,
-                    &self.recovery,
-                    &mut self.diagnostics,
-                );
+                let Some(rule) =
+                    finish_custom_media(*prelude, start, &self.recovery, &mut self.diagnostics)
+                else {
+                    return Err(());
+                };
                 self.mark_successful_body_rule();
                 Ok(vec![CssRule::CustomMedia(rule)])
             }
             AtRulePrelude::Import(prelude) => {
+                let Some(at_keyword) = collect_at_keyword(start) else {
+                    return Err(());
+                };
                 self.diagnostics.extend(prelude.diagnostics);
-                let at_keyword = collect_at_keyword(self.source, start, &self.recovery);
                 self.recovery
                     .retain_component_closures(prelude.implicit_media_closures);
                 let rule = CssRule::Import(CssImportRule::new(
@@ -1098,30 +1515,34 @@ impl<'i> AtRuleParser<'i> for RuleParser<'i> {
             | AtRulePrelude::Else(_, _)
             | AtRulePrelude::Scope(_) => Err(()),
         };
-        match &result {
-            Ok(_) => syntax_bridge::retain_statement_eof(
-                self.source,
-                &self.recovery,
-                start,
-                &mut self.diagnostics,
-            ),
-            Err(()) if self.style || self.scope.is_some() => {
-                self.unit.rejected_at_rule_start = Some(start.position().byte_index());
-            }
-            Err(()) => {}
+        if result.is_ok() {
+            retain_statement_eof(self.source, rule_end, start, end, &mut self.diagnostics);
         }
-        result.map(RuleListItem::Rules)
+        result
     }
 
-    fn parse_block<'t>(
+    fn parse_block<'i>(
         &mut self,
-        prelude: Self::Prelude,
-        start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::AtRule, ParseError<'i, Self::Error>> {
-        let mut depth = self
-            .recovery
-            .enter_rule_block(self.source, input, prelude.production())?;
+        prelude: AtRulePrelude,
+        start: Site<'i>,
+        opening: usize,
+        block: RuleBlock<'i>,
+    ) -> Result<RuleListItem, NativeError<'i>> {
+        let mut depth = self.recovery.enter_rule_block(
+            self.source,
+            Offset::new(opening),
+            prelude.production(),
+        )?;
+        let RuleBlock::Open { contents, .. } = block else {
+            // The document kept no contents for the block, so the structural
+            // ceiling is the failure.
+            return Err(crate::diagnostic::error::nesting_limit(
+                self.source,
+                opening,
+                crate::parser::recovery::STRUCTURAL_NESTING_LIMIT,
+                prelude.production(),
+            ));
+        };
         // An `@else` continues its chain and a named supports condition is a
         // definition: neither ends the import/namespace prelude.
         let body_rule = !matches!(
@@ -1132,7 +1553,7 @@ impl<'i> AtRuleParser<'i> for RuleParser<'i> {
             prelude,
             self.source,
             start,
-            input,
+            contents.clone(),
             &mut self.diagnostics,
             &self.recovery,
         )? {
@@ -1145,65 +1566,58 @@ impl<'i> AtRuleParser<'i> for RuleParser<'i> {
             }
             Err(group) => group,
         };
+        // Positions are found in source order: the rule's own, then its body's.
+        let position = self.position(start);
         let rules = match prelude {
             AtRulePrelude::Layer(names) => {
                 if names.len() > 1 {
-                    return Err(invalid_at_rule_block(
-                        input,
+                    return Err(block_refused(
+                        &self.recovery,
+                        offset_of(contents.start_site()),
                         "layer",
                         "baseline.rule.layer-block",
                         "at most one layer name before a block",
                     ));
                 }
                 let name = names.into_iter().next();
-                let rules = self.group_body(input)?;
+                let rules = self.group_body(contents);
                 vec![CssRule::LayerBlock(CssLayerBlockRule::new(
-                    name,
-                    rules,
-                    self.position(start),
+                    name, rules, position,
                 ))]
             }
             AtRulePrelude::Media(query) => {
-                let rules = self.group_body(input)?;
-                vec![CssRule::Media(CssMediaRule::new(
-                    query,
-                    rules,
-                    self.position(start),
-                ))]
+                let rules = self.group_body(contents);
+                vec![CssRule::Media(CssMediaRule::new(query, rules, position))]
             }
             AtRulePrelude::Supports(condition) => {
-                let rules = self.group_body(input)?;
+                let rules = self.group_body(contents);
                 vec![CssRule::Supports(CssSupportsRule::new(
-                    condition,
-                    rules,
-                    self.position(start),
+                    condition, rules, position,
                 ))]
             }
             AtRulePrelude::When(condition, implicit) => {
-                let rules = self.group_body(input)?;
+                let rules = self.group_body(contents);
                 self.recovery.retain_component_closures(implicit);
-                when::assemble_when_rule(condition, rules, self.position(start))
+                when::assemble_when_rule(condition, rules, position)
             }
             AtRulePrelude::Else(condition, implicit) => {
-                let rules = self.group_body(input)?;
+                let rules = self.group_body(contents);
                 self.recovery.retain_component_closures(implicit);
-                when::assemble_else_rule(condition, rules, self.position(start))
+                when::assemble_else_rule(condition, rules, position)
             }
             AtRulePrelude::Container(prelude) => {
-                let rules = self.group_body(input)?;
+                let rules = self.group_body(contents);
                 vec![CssRule::Container(CssContainerRule::new(
-                    prelude,
-                    rules,
-                    self.position(start),
+                    prelude, rules, position,
                 ))]
             }
             AtRulePrelude::Scope(prelude) => {
-                let rules = self.scope_body(input)?;
+                let rules = self.scope_body(contents);
                 vec![CssRule::Scope(CssScopeRule::new(
                     prelude.root,
                     prelude.limit,
                     rules,
-                    self.position(start),
+                    position,
                 ))]
             }
             leaf => unreachable!("{} has a leaf body", leaf.name()),
@@ -1214,109 +1628,274 @@ impl<'i> AtRuleParser<'i> for RuleParser<'i> {
         depth.retain();
         Ok(RuleListItem::Rules(rules))
     }
-}
 
-impl<'i> QualifiedRuleParser<'i> for RuleParser<'i> {
-    type Prelude = CssStyleSelectorList;
-    type QualifiedRule = RuleListItem;
-    type Error = CssError;
-
-    fn parse_prelude<'t>(
+    /// Reads the prelude of a qualified rule as selectors.
+    pub(super) fn qualified_prelude<'i>(
         &mut self,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        input: &mut Stream<'i>,
+    ) -> Result<CssStyleSelectorList, NativeError<'i>> {
         self.unit.boundary = nesting::StyleRuleBoundary::QualifiedPrelude;
         let mut recovery =
             SelectorRecovery::new(self.source, &mut self.diagnostics, self.recovery.clone());
         if self.scope.is_some() {
             // A scope body's selectors keep scope anchors, and are relative to the scope.
-            let result = parse_scoped_style_selector_list(input, &mut recovery);
-            self.unit.record_qualified_failure(&result, true);
+            let result = parse_scoped_style_selector_list_stream(input, &mut recovery);
+            self.unit.record_qualified_failure(&result);
             return result;
         }
         if !self.style {
-            return parse_rule_selector_list(input, &mut recovery)
+            return parse_rule_selector_list_stream(input, &mut recovery)
                 .map(CssStyleSelectorList::absolute);
         }
-        let result = selectors::parse_nested_style_selector_list(input, &mut recovery)
+        let result = selectors::parse_nested_style_selector_list_stream(input, &mut recovery)
             .map(CssStyleSelectorList::new);
-        self.unit.record_qualified_failure(&result, true);
+        self.unit.record_qualified_failure(&result);
         result
     }
 
-    fn parse_block<'t>(
+    /// Admits a qualified rule whose prelude is `prelude` and whose block is
+    /// `block`.
+    pub(super) fn admit_qualified<'i>(
         &mut self,
-        selectors: Self::Prelude,
-        start: &ParserState,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
+        start: Site<'i>,
+        prelude: &mut Stream<'i>,
+        block: RuleBlock<'i>,
+    ) -> Result<RuleListItem, NativeError<'i>> {
+        self.unit.start_index = Some(start.index());
+        let parsed = self.qualified_prelude(prelude);
+        let Some(opening) = block.opening() else {
+            // A qualified rule ends at its block; without one the rule ended
+            // where its prelude did.
+            return Err(unexpected_syntax_end(location_at(
+                self.recovery.source_snapshot(),
+                offset_of(start),
+            )));
+        };
+        let selectors = match parsed {
+            Ok(selectors) => selectors,
+            Err(error) => {
+                self.unit.prelude_failed = true;
+                self.unit.block_error = self.recovery.check_failed_rule_block_at(
+                    self.source,
+                    opening + 1,
+                    "css.qualified-rule",
+                );
+                return Err(error);
+            }
+        };
         self.unit.boundary = nesting::StyleRuleBoundary::QualifiedBlock;
-        let result = (|| {
-            let mut depth =
-                self.recovery
-                    .enter_rule_block(self.source, input, "baseline.rule.style")?;
-            let recovered = parse_style_rule_block(
-                self.source,
-                selectors,
-                self.position(start),
-                input,
-                self.recovery.clone(),
-            )?;
-            self.diagnostics.extend(recovered.diagnostics);
-            self.mark_successful_body_rule();
-            depth.retain();
-            Ok(RuleListItem::Rules(recovered.syntax))
-        })();
+        let result = self.qualified_block(selectors, start, opening, block);
         if self.style || self.scope.is_some() {
-            self.unit.record_qualified_failure(&result, false);
+            self.unit.record_qualified_failure(&result);
         }
+        self.completed = result.is_ok();
         result
     }
-}
 
-impl<'i> DeclarationParser<'i> for RuleParser<'i> {
-    type Declaration = RuleListItem;
-    type Error = CssError;
-
-    fn parse_value<'t>(
+    fn qualified_block<'i>(
         &mut self,
-        name: CowRcStr<'i>,
-        input: &mut Parser<'i, 't>,
-        declaration_start: &ParserState,
-    ) -> Result<Self::Declaration, ParseError<'i, Self::Error>> {
+        selectors: CssStyleSelectorList,
+        start: Site<'i>,
+        opening: usize,
+        block: RuleBlock<'i>,
+    ) -> Result<RuleListItem, NativeError<'i>> {
+        let mut depth = self.recovery.enter_rule_block(
+            self.source,
+            Offset::new(opening),
+            "baseline.rule.style",
+        )?;
+        let RuleBlock::Open { contents, .. } = block else {
+            return Err(crate::diagnostic::error::nesting_limit(
+                self.source,
+                opening,
+                crate::parser::recovery::STRUCTURAL_NESTING_LIMIT,
+                "baseline.rule.style",
+            ));
+        };
+        let recovered = parse_style_rule_block(
+            self.source,
+            selectors,
+            self.position(start),
+            contents,
+            self.recovery.clone(),
+        );
+        self.diagnostics.extend(recovered.diagnostics);
+        self.mark_successful_body_rule();
+        depth.retain();
+        Ok(RuleListItem::Rules(recovered.syntax))
+    }
+
+    /// The resource failure found in the block of the rule that failed, which
+    /// is what entering the block would have been charged. It takes
+    /// precedence over the rule's own failure.
+    pub(super) fn take_block_resource_error<'i>(&mut self) -> Option<NativeError<'i>> {
+        self.unit
+            .qualified_resource_error
+            .take()
+            .or_else(|| self.unit.block_error.take())
+    }
+
+    /// Admits the declaration named `name` that lies at `text`.
+    pub(super) fn admit_declaration<'i>(
+        &mut self,
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<RuleListItem, NativeError<'i>> {
         StrictDeclarationParser::new(self.source, self.recovery.clone())
-            .parse_value(name, input, declaration_start)
+            .admit(name, text)
             .map(Box::new)
             .map(RuleListItem::Declaration)
     }
 }
 
-impl<'i> RuleBodyItemParser<'i, RuleListItem, CssError> for RuleParser<'i> {
-    fn parse_declarations(&self) -> bool {
-        self.style
-    }
-
-    fn parse_qualified(&self) -> bool {
-        true
+/// The block of a rule that ends at `end`, whose contents are `contents` when it
+/// has a block.
+pub(super) fn rule_block_of<'i>(contents: Option<Stream<'i>>, end: Site<'i>) -> RuleBlock<'i> {
+    match (contents, block_opening(end)) {
+        (Some(contents), Some(opening)) => RuleBlock::Open { opening, contents },
+        _ => RuleBlock::Absent,
     }
 }
 
-/// Collects a statement's at-keyword from its original source.
-pub(super) fn collect_at_keyword(
-    source: &str,
-    start: &ParserState,
-    recovery: &RecoveryState,
-) -> crate::component::CssComponentValue {
-    // An at-keyword never holds a URL repair, so the unprepared source is
-    // its exact token stream; reading it is bounded by the token itself.
-    let mut token_input = ParserInput::new(source);
-    let mut token_parser = Parser::new(&mut token_input);
-    token_parser.reset(start);
-    crate::component::CssComponentValue::collect_from_parser(
-        &mut token_parser,
-        recovery.source_snapshot(),
+/// The byte where the `{}`-block that ends the rule `end` opens.
+fn block_opening(end: Site<'_>) -> Option<usize> {
+    let document = end.document();
+    let block = *document.list(end.list()).get(end.index().checked_sub(1)?)?;
+    Some(document.range(block)?.start.value())
+}
+
+impl<'i> RuleGrammar<'i, Attached<'i>> for RuleParser<'_> {
+    type Item = RuleListItem;
+    type Error = NativeError<'i>;
+
+    fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
+        let at = rule.start();
+        let block = rule_block_of(rule.block(), rule.end());
+        let mut prelude = rule.prelude();
+        self.admit_at_rule(
+            rule.name(),
+            at,
+            rule.rule_end(),
+            rule.end(),
+            &mut prelude,
+            block,
+        )
+        .map_err(|error| grammar_error(at, error))
+    }
+
+    fn qualified_rule(
+        &mut self,
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let at = rule.start();
+        let block = rule_block_of(Some(rule.block()), rule.end());
+        let mut prelude = rule.prelude();
+        self.admit_qualified(at, &mut prelude, block)
+            .map_err(|error| grammar_error(at, error))
+    }
+}
+
+impl<'i> RuleListGrammar<'i> for RuleParser<'_> {
+    fn unit(&mut self) -> &mut UnitState {
+        &mut self.unit
+    }
+
+    fn recovery(&self) -> &RecoveryState {
+        &self.recovery
+    }
+
+    fn diagnostics(&mut self) -> &mut Vec<crate::diagnostic::CssRecoveryDiagnostic> {
+        &mut self.diagnostics
+    }
+
+    fn admit_at_rule(
+        &mut self,
+        name: &'i str,
+        start: Site<'i>,
+        rule_end: RuleEnd,
+        end: Site<'i>,
+        prelude: &mut Stream<'i>,
+        block: RuleBlock<'i>,
+    ) -> Result<RuleListItem, NativeError<'i>> {
+        RuleParser::admit_at_rule(self, name, start, rule_end, end, prelude, block)
+    }
+
+    fn admit_qualified(
+        &mut self,
+        start: Site<'i>,
+        prelude: &mut Stream<'i>,
+        block: RuleBlock<'i>,
+    ) -> Result<RuleListItem, NativeError<'i>> {
+        RuleParser::admit_qualified(self, start, prelude, block)
+    }
+
+    fn read_prelude(&mut self, prelude: &mut Stream<'i>) {
+        let _ = self.qualified_prelude(prelude);
+    }
+
+    fn admit_declaration(
+        &mut self,
+        name: &str,
+        text: &DeclarationText,
+    ) -> Result<RuleListItem, NativeError<'i>> {
+        RuleParser::admit_declaration(self, name, text)
+    }
+}
+
+impl<'i> BlockGrammar<'i, Attached<'i>> for RuleParser<'_> {
+    fn declaration(
+        &mut self,
+        declaration: DeclarationUnit<'i>,
+    ) -> Result<Self::Item, GrammarError<'i>> {
+        let at = declaration.start();
+        if !self.style {
+            // A declaration is no rule: the unit is read again as one.
+            return Err(SyntaxError::invalid_qualified_rule_error(at));
+        }
+        self.admit_declaration(declaration.name(), &DeclarationText::of(&declaration))
+            .map_err(|error| grammar_error(at, error))
+    }
+}
+
+/// Collects a statement's at-keyword from its original source; none when the
+/// statement does not start at one.
+pub(super) fn collect_at_keyword(start: Site<'_>) -> Option<crate::component::CssComponentValue> {
+    let node = start.node()?;
+    crate::component::values::parse::promote_nodes(
+        start.document(),
+        &[node],
+        crate::component::CssComponentValueLimits::default(),
     )
-    .expect("parsed statement at-keyword")
+    .ok()
+    .and_then(crate::component::CssComponentValues::into_single)
+}
+
+/// Reports the statement at-rule that the end of its list ended (Syntax 3
+/// §5.5.2: this is a parse error), retained all the same.
+fn retain_statement_eof(
+    source: &str,
+    rule_end: RuleEnd,
+    start: Site<'_>,
+    end: Site<'_>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+) {
+    if !matches!(rule_end, RuleEnd::Eof | RuleEnd::CloseBrace) {
+        return;
+    }
+    let (from, to) = (offset_of(start), offset_of(end));
+    let Some(span) = crate::source::CssSourceSpan::new(
+        crate::source::CssSourcePosition::from_byte_offset_in(source, from),
+        crate::source::CssSourcePosition::from_byte_offset_in(source, to),
+    ) else {
+        return;
+    };
+    if let Some(diagnostic) = crate::diagnostic::CssRecoveryDiagnostic::new(
+        crate::diagnostic::error::unterminated_at_rule(source, to),
+        span,
+        crate::diagnostic::CssRecoveryAction::RetainNonconformingRule,
+    ) {
+        diagnostics.push(diagnostic);
+    }
 }
 
 /// Rules retained by a group body.

@@ -32,9 +32,7 @@ pub(crate) use kind_predicates;
 
 use std::fmt;
 
-use cssparser::{
-    BasicParseError, BasicParseErrorKind, ParseError, ParseErrorKind, Parser, ToCss, Token,
-};
+use cssparser::{BasicParseError, BasicParseErrorKind, ParseError, ParseErrorKind, ToCss, Token};
 
 use crate::declaration::CssCustomPropertyName;
 use crate::property::CssKnownProperty;
@@ -2288,35 +2286,6 @@ pub(crate) fn with_at_rule_prelude_context<'i>(
         ));
     }
     error
-}
-
-pub(crate) fn invalid_at_rule_body<'i, 't>(
-    input: &Parser<'i, 't>,
-    name: &str,
-    production: &'static str,
-    expectation: &'static str,
-) -> ParseError<'i, CssError> {
-    invalid_at_rule_body_at(
-        CssSourcePosition::from_cssparser(input.position(), input.current_source_location()),
-        input.current_source_location(),
-        name,
-        production,
-        expectation,
-    )
-}
-
-pub(crate) fn invalid_at_rule_block<'i, 't>(
-    input: &Parser<'i, 't>,
-    name: &str,
-    production: &'static str,
-    expectation: &'static str,
-) -> ParseError<'i, CssError> {
-    let position =
-        CssSourcePosition::from_cssparser(input.position(), input.current_source_location())
-            .previous_ascii_byte();
-    let mut location = input.current_source_location();
-    location.column = location.column.saturating_sub(1).max(1);
-    invalid_at_rule_body_at(position, location, name, production, expectation)
 }
 
 pub(crate) fn invalid_at_rule_body_at<'i>(

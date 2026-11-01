@@ -1,12 +1,14 @@
-use cssparser::{ParseError, Parser, ParserState};
+use cssparser::{ParseError, Parser};
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
-use super::block_units::{DeclarationUnit, GrammarError, NativeError, grammar_error, location_at};
+use super::block_units::{
+    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, offset_of,
+};
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
     Boundary, DescriptorGrammar, DescriptorRecovery, Value, comma_list, consume_remaining,
     declaration_position, drive_descriptors, expect_exhausted, fail, from_component, native,
-    parse_descriptor_checked, parse_descriptor_text, parse_scope, validate_root,
+    parse_descriptor_checked, parse_descriptor_text, read_scope, validate_root,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -36,12 +38,16 @@ pub(super) static IMPLEMENTED_DESCRIPTORS: &[CssFeatureId] = &[
 ];
 
 pub(super) fn parse_name<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
 ) -> Result<CssColorProfileRuleName, ParseError<'i, CssError>> {
-    recovery.check_specialized_components(source, input, "interop.rule.color-profile")?;
-    parse_scope(input, recovery.source_snapshot(), |input, numeric| {
+    recovery.check_specialized_components_from(
+        source,
+        offset_of(input.site()),
+        "interop.rule.color-profile",
+    )?;
+    read_scope(input, recovery.source_snapshot(), |input, numeric| {
         let location = input.site();
         let ident = input.consume_ident()?;
         expect_exhausted(input)?;
@@ -64,30 +70,27 @@ pub(super) fn parse_name<'i>(
 }
 
 pub(super) fn parse_rule<'i>(
-    source: &'i str,
+    source: &str,
     name: CssColorProfileRuleName,
-    input: &mut Parser<'i, '_>,
-    start: &ParserState,
+    contents: &mut Stream<'i>,
+    position: CssSourcePosition,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssColorProfileRule, ParseError<'i, CssError>> {
-    let descriptors = parse_body(source, input, diagnostics, recovery)?;
-    Ok(CssColorProfileRule::new(name, descriptors).with_position(position(start)))
+) -> CssColorProfileRule {
+    let descriptors = parse_body(source, contents, diagnostics, recovery);
+    CssColorProfileRule::new(name, descriptors).with_position(position)
 }
 
-/// The descriptors of the block the native parser `input` is inside.
+/// The descriptors of the block `contents` holds.
 pub(super) fn parse_body<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<Vec<CssColorProfileDescriptor>, ParseError<'i, CssError>> {
-    let snapshot = recovery.source_snapshot().clone();
-    let (descriptors, mut recovered) = parse_scope(input, &snapshot, |contents, _| {
-        Ok(drive_body(contents, source, &recovery))
-    })?;
+) -> Vec<CssColorProfileDescriptor> {
+    let (descriptors, mut recovered) = drive_body(contents, source, &recovery);
     diagnostics.append(&mut recovered);
-    Ok(descriptors)
+    descriptors
 }
 
 fn drive_body<'i>(
@@ -115,10 +118,6 @@ fn drive_body<'i>(
             at_rule_first: true,
         },
     )
-}
-
-fn position(start: &ParserState) -> CssSourcePosition {
-    CssSourcePosition::from_cssparser(start.position(), start.source_location())
 }
 
 struct BodyParser<'i> {

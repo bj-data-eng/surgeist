@@ -123,34 +123,6 @@ pub(super) fn collect(
     Ok(values)
 }
 
-pub(super) fn collect_one(
-    parser: &mut Parser<'_, '_>,
-    snapshot: &CssSourceSnapshot,
-) -> Result<CssComponentValue, CssComponentValueError> {
-    let limits = CssComponentValueLimits::default();
-    let (items, _) =
-        consume_values(parser, snapshot, limits, 0, &mut 0, true).map_err(|error| {
-            match error.kind {
-                ParseErrorKind::Custom(error) => error,
-                ParseErrorKind::Basic(_) => CssComponentValueError::new(
-                    CssComponentValueErrorKind::InvalidToken,
-                    CssValueOrigin::Parsed(parsed_origin(
-                        snapshot,
-                        &parser.state(),
-                        &parser.state(),
-                    )),
-                ),
-            }
-        })?;
-    let values = CssComponentValues::try_new(items, Default::default())?;
-    values.into_single().ok_or_else(|| {
-        CssComponentValueError::new(
-            CssComponentValueErrorKind::InvalidToken,
-            CssValueOrigin::Parsed(parsed_origin(snapshot, &parser.state(), &parser.state())),
-        )
-    })
-}
-
 // Promote only an admitted, error-free generic candidate. Checked input values
 // are reused directly; no serialization or tokenization is needed to
 // reconstruct these lexical owners.
@@ -1084,25 +1056,6 @@ mod tests {
     use cssparser::ParserInput;
 
     #[test]
-    fn single_operator_capture_rejection_preserves_the_following_native_cursor() {
-        for source in ["~= tail", "|= tail", "^= tail", "$= tail", "*= tail"] {
-            let snapshot = CssSourceSnapshot::new(source);
-            let mut storage = ParserInput::new(source);
-            let mut parser = Parser::new(&mut storage);
-            let error = collect_one(&mut parser, &snapshot).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
-            let CssValueOrigin::Parsed(origin) = error.origin() else {
-                panic!("actual rejected capture origin");
-            };
-            assert!(origin.source().same_snapshot(&snapshot));
-            assert_eq!(origin.span().start().byte_offset().value(), 0);
-            assert_eq!(origin.span().end().byte_offset().value(), 2);
-            assert_eq!(parser.position().byte_index(), 2);
-            assert_eq!(parser.expect_ident().unwrap().as_ref(), "tail");
-        }
-    }
-
-    #[test]
     fn a_fault_before_the_token_that_exhausts_a_limit_is_the_failure_and_one_after_it_is_not() {
         let limits = CssComponentValueLimits::try_new(256, 2, 100).unwrap();
         // The bad string is the first token; the limit runs out at the third.
@@ -1160,25 +1113,6 @@ mod tests {
     }
 
     #[test]
-    fn single_collection_rejects_a_split_capture_without_losing_a_component() {
-        for (source, captured_end) in [("@-\\\n tail", 2), ("1e2-\\\n tail", 4)] {
-            let snapshot = CssSourceSnapshot::new(source);
-            let mut parser_input = ParserInput::new(source);
-            let mut parser = Parser::new(&mut parser_input);
-            let error = collect_one(&mut parser, &snapshot).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
-            let CssValueOrigin::Parsed(origin) = error.origin() else {
-                panic!("captured source origin");
-            };
-            assert_eq!(origin.span().start().byte_offset().value(), 0);
-            assert_eq!(origin.span().end().byte_offset().value(), captured_end);
-            assert_eq!(parser.position().byte_index(), captured_end);
-            assert_eq!(parser.next().unwrap(), &Token::Delim('\\'));
-            assert_eq!(parser.expect_ident().unwrap().as_ref(), "tail");
-        }
-    }
-
-    #[test]
     fn split_capture_admission_is_atomic_and_identifies_the_first_excess_leaf() {
         let source = "@-\\\n";
         let snapshot = CssSourceSnapshot::new(source);
@@ -1233,26 +1167,6 @@ mod tests {
             assert_eq!(origin.span().start().byte_offset().value(), start);
             assert_eq!(origin.span().end().byte_offset().value(), start + 2);
             assert_eq!(parser.position().byte_index(), end);
-        }
-    }
-
-    #[test]
-    fn single_collection_preserves_the_following_token_after_success_or_error() {
-        for (source, end, expected_error) in [
-            ("f([x]) tail", 6, None),
-            (
-                "f([x)]) tail",
-                7,
-                Some(CssComponentValueErrorKind::UnmatchedClosingDelimiter),
-            ),
-        ] {
-            let snapshot = CssSourceSnapshot::new(source);
-            let mut parser_input = ParserInput::new(source);
-            let mut parser = Parser::new(&mut parser_input);
-            let result = collect_one(&mut parser, &snapshot);
-            assert_eq!(result.err().map(|error| error.kind()), expected_error);
-            assert_eq!(parser.position().byte_index(), end);
-            assert_eq!(parser.expect_ident().unwrap().as_ref(), "tail");
         }
     }
 

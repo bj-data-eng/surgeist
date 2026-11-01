@@ -26,7 +26,6 @@ pub(crate) enum BoundedParseContext {
     },
     OneRule,
     Candidate {
-        envelope: super::rule_candidate::RuleEnvelope,
         context: crate::rule::CssRuleAdmissionContext,
     },
     StyleBlock,
@@ -321,8 +320,8 @@ fn parse_bounded_with_captures(
                 fragments::parse_rule_inner(source, recovery),
                 BoundedParseSyntax::OneRule,
             ),
-            BoundedParseContext::Candidate { envelope, context } => bounded_report(
-                super::rule_candidate::admit_inner(source, recovery, &envelope, context),
+            BoundedParseContext::Candidate { context } => bounded_report(
+                super::rule_candidate::admit_inner(source, recovery, context),
                 BoundedParseSyntax::Candidate,
             ),
             BoundedParseContext::StyleBlock => bounded_report(

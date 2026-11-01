@@ -100,10 +100,11 @@ fn prepared(depth: usize, count: usize) -> (usize, usize, usize) {
     )
 }
 
-// Every replay parse reads a view as long as the whole source, so prepared
-// bytes are bounded by one source-length preparation per replay parse; they
-// are not yet linear in the sheet when many deep siblings each start a child
-// replay. This bound keeps a parse from preparing its view more than once.
+// The outer parse and every replay parse read a view as long as the whole
+// source, so prepared bytes are bounded by one source-length preparation per
+// parse started; they are not yet linear in the sheet when many deep siblings
+// each start a child replay. This bound keeps a parse from preparing its view
+// more than once.
 #[test]
 fn deep_child_replays_prepare_at_most_one_source_length_view_each() {
     for depth in [32, 64, 96] {
@@ -113,10 +114,14 @@ fn deep_child_replays_prepare_at_most_one_source_length_view_each() {
                 "depth {depth}, {count} rules: {length} bytes, {parses} parses, {bytes} prepared ({:.2} per byte)",
                 bytes as f64 / length as f64
             );
-            assert!(bytes > 0 && parses > 0, "depth {depth}, {count} rules");
+            // The scenario still replays: every deep rule starts bounded parses.
             assert!(
-                bytes <= parses * length,
-                "depth {depth}, {count} rules: {bytes} prepared bytes for {parses} parses of {length}"
+                parses > count,
+                "depth {depth}, {count} rules: {parses} replay parses"
+            );
+            assert!(
+                bytes <= (parses + 1) * length,
+                "depth {depth}, {count} rules: {bytes} prepared bytes for {parses} replay parses of {length}"
             );
         }
     }

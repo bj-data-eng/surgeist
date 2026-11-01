@@ -36,6 +36,14 @@ pub(super) fn location_at(snapshot: &CssSourceSnapshot, offset: usize) -> Source
     }
 }
 
+/// The line and column cssparser reports for `position`.
+pub(super) fn location_of(position: crate::source::CssSourcePosition) -> SourceLocation {
+    SourceLocation {
+        line: position.line().value(),
+        column: position.column().value() + 1,
+    }
+}
+
 /// The byte offset of a boundary of a document of source text.
 pub(super) fn offset_of(site: Site<'_>) -> usize {
     site.offset()

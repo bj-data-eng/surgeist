@@ -2,9 +2,10 @@
 use super::boolean_condition::{
     BooleanConditionGrammar, ConditionFailure, parse_boolean_condition,
 };
-use super::descriptor_stream::collect_native_scope;
+use super::descriptor_stream::collect_stream_scope;
 use super::query_components::ComponentCursor;
 use super::recovery::RecoveryState;
+use super::syntax_types::Stream;
 use crate::CssParserContext;
 use crate::component::{
     CssBlockKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssValueOrigin,
@@ -17,7 +18,7 @@ use crate::query::{
 };
 use crate::rule::{CssElseRule, CssRule, CssWhenRule};
 use crate::source::CssSourcePosition;
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] = &[
     CssFeatureId::new("ext.rule.when"),
@@ -33,8 +34,8 @@ pub(crate) fn construct_when_condition(
 /// A parsed `@when` or `@else` condition and the offsets of its implicit closures.
 pub(super) type WhenPrelude = (Option<CssCondition<CssWhenLeaf>>, Vec<usize>);
 pub(super) fn parse_prelude<'i>(
-    source: &'i str,
-    input: &mut Parser<'i, '_>,
+    source: &str,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
     name: &str,
     optional: bool,
@@ -44,9 +45,9 @@ pub(super) fn parse_prelude<'i>(
     } else {
         "ext.rule.when"
     };
-    let start = input.position().byte_index();
-    let implicit = recovery.check_specialized_components(source, input, production)?;
-    let values = collect_native_scope(input, recovery.source_snapshot())?
+    let start = super::block_units::offset_of(input.site());
+    let implicit = recovery.check_specialized_components_from(source, start, production)?;
+    let values = collect_stream_scope(input, recovery.source_snapshot())
         .values
         .map_err(|(error, at)| crate::diagnostic::error::invalid_component_value(at, error))?;
     if optional
@@ -67,7 +68,7 @@ pub(super) fn parse_prelude<'i>(
     Ok((Some(parsed), implicit))
 }
 fn prelude_error<'i>(
-    source: &'i str,
+    source: &str,
     name: &str,
     fallback: usize,
     error: CssConditionConstructionError,

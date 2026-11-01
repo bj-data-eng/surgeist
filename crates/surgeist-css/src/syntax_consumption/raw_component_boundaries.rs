@@ -31,7 +31,6 @@ fn end(cursor: &mut SyntaxCursor<'_>) -> SyntaxBoundary {
     let CursorItem::EndOfInput(boundary) = cursor.consume() else {
         panic!("conceptual local EOF")
     };
-    cursor.reconsume_current();
     assert_eq!(cursor.consume(), CursorItem::EndOfInput(boundary.clone()));
     assert_eq!(cursor.consume(), CursorItem::EndOfInput(boundary.clone()));
     boundary
