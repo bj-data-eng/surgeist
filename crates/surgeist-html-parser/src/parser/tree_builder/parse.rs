@@ -811,7 +811,7 @@ pub(crate) fn fragment(
 }
 /// Ends a frozen fragment execution that could not be sealed, as
 /// [`detach_frozen_ordinary`] does for an ordinary one.
-fn detach_frozen_fragment(
+pub(super) fn detach_frozen_fragment(
     owner: FragmentInitialization,
     reason: HtmlParseFailureReason,
     parts: FrozenContextFragmentParts,
@@ -890,6 +890,56 @@ impl InitializationTarget {
 mod tests {
     use super::*;
     use crate::HtmlParseResource;
+
+    /// Frozen parts of a finished ordinary parse and the carrier that owns its
+    /// request, stopped as a refused seal would stop them.
+    fn frozen_ordinary_parts() -> (OrdinaryInitialization, FrozenStandaloneParts) {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        let initial_base = request.initial_policy_base();
+        let mut owner = OrdinaryInitialization::new(request);
+        let OrdinaryAttempt::Ready(mut parts) = ordinary_attempt(&mut owner, None, 0, initial_base)
+        else {
+            panic!("the fixture parses");
+        };
+        parts
+            .control
+            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+        (owner, parts)
+    }
+
+    #[test]
+    fn a_frozen_failure_whose_source_binding_is_gone_is_reported_as_an_ownership_fault() {
+        let (owner, mut parts) = frozen_ordinary_parts();
+        // Cleanup succeeds; only moving the source binding out is refused.
+        parts.control.take_stopped_source_binding().unwrap();
+        let failure = detach_frozen_ordinary(
+            owner,
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            parts,
+        );
+        assert_eq!(
+            failure.cleanup_error(),
+            Some(HtmlParseEngineCondition::Ownership)
+        );
+    }
+
+    #[test]
+    fn a_frozen_failure_whose_cleanup_is_refused_is_reported_as_a_cleanup_fault() {
+        let (owner, mut parts) = frozen_ordinary_parts();
+        parts.control.refuse_next_construction_retire();
+        let failure = detach_frozen_ordinary(
+            owner,
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            parts,
+        );
+        assert_eq!(
+            failure.cleanup_error(),
+            Some(HtmlParseEngineCondition::Cleanup)
+        );
+    }
 
     #[test]
     fn csp_storage_returned_to_a_failure_without_the_ordinary_driver_is_reported() {

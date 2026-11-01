@@ -829,6 +829,7 @@ pub(crate) fn initialized_driver(request: &HtmlFragmentParseRequest) -> ContextF
 
 #[cfg(test)]
 mod tests {
+    use super::ownership::FragmentInitialization;
     use super::*;
     use crate::construction::native_view::NativeKind;
     use crate::*;
@@ -1181,6 +1182,53 @@ mod tests {
         for error in &named {
             assert!(!error.invariant_fault(), "{error:?}");
         }
+    }
+
+    /// Frozen parts of a finished fragment parse and the carrier that owns its
+    /// request, stopped as a refused seal would stop them.
+    fn frozen_fragment_parts() -> (FragmentInitialization, FrozenContextFragmentParts) {
+        let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
+        let mut driver = Some(initialized_driver(&request));
+        complete(driver.as_mut().unwrap());
+        let mut completed = ContextFragmentDriver::take_completed(&mut driver).unwrap();
+        completed.prepare_native_associations().unwrap();
+        let mut parts = completed.freeze_parts().unwrap();
+        drop((driver, completed));
+        parts
+            .control
+            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+        (FragmentInitialization::new(request), parts)
+    }
+
+    #[test]
+    fn a_frozen_fragment_failure_bound_to_another_source_is_an_ownership_fault() {
+        let (owner, mut parts) = frozen_fragment_parts();
+        // Cleanup succeeds; only qualifying the source binding is refused.
+        parts.source.0 = HtmlSource::utf8("other").identity().clone();
+        let failure = super::parse::detach_frozen_fragment(
+            owner,
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            parts,
+        );
+        assert_eq!(
+            failure.cleanup_error(),
+            Some(HtmlParseEngineCondition::Ownership)
+        );
+    }
+
+    #[test]
+    fn a_frozen_fragment_failure_whose_cleanup_is_refused_is_a_cleanup_fault() {
+        let (owner, mut parts) = frozen_fragment_parts();
+        parts.control.refuse_next_construction_retire();
+        let failure = super::parse::detach_frozen_fragment(
+            owner,
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            parts,
+        );
+        assert_eq!(
+            failure.cleanup_error(),
+            Some(HtmlParseEngineCondition::Cleanup)
+        );
     }
 
     #[test]
