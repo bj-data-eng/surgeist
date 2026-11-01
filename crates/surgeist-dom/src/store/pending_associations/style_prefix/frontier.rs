@@ -291,7 +291,7 @@ pub(super) fn scan<'a>(
                 }
             }
             Step::Complete => break,
-            _ => (),
+            Step::Skipped => (),
         }
     }
     if !ordinary || documents == 0 || !reached {

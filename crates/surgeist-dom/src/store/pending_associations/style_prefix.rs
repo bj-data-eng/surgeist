@@ -668,12 +668,7 @@ fn append_group(
             HtmlParseHistoryStep::Progress => (),
             HtmlParseHistoryStep::Complete => return Ok(()),
             HtmlParseHistoryStep::Cancelled => return Err(DomError::Cancelled.into()),
-            HtmlParseHistoryStep::Fault(fault) => {
-                return Err(crate::DomParsedHtmlAssociationAdmissionError::History(
-                    surgeist_html_parser::HtmlParseHistoryError::Unresolved(fault),
-                )
-                .into());
-            }
+            HtmlParseHistoryStep::Fault(fault) => return Err(fault.into()),
         }
     }
 }
@@ -730,7 +725,7 @@ fn select(
             Step::Fault(fault) => {
                 return Err(crate::DomParsedHtmlAssociationAdmissionError::from(fault).into());
             }
-            _ => (),
+            Step::Occurrence(_) | Step::Skipped => (),
         }
     }
     let mut cursor = report.pending_associations();
@@ -878,7 +873,7 @@ fn form_original_policy(
                 return Ok((policy.clone(), usage, layout.disposal().atomic_bytes()));
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }
@@ -946,13 +941,15 @@ fn form_text_nonce(
         match cursor.advance() {
             Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *id => {
-                let inputs = row.style().expect("selected original Style");
+                let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
                 let mut units = Vec::new();
                 for i in 0..inputs.text_len() {
                     meter.step(cancel)?;
                     append_group(
                         report,
-                        inputs.text(i)?.expect("retained text index"),
+                        inputs
+                            .text(i)?
+                            .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?,
                         &mut units,
                         meter,
                         cancel,
@@ -973,7 +970,7 @@ fn form_text_nonce(
                 return Ok((text, nonce));
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }

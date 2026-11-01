@@ -780,9 +780,12 @@ fn collect_rows<'a>(
     let associations = report.associations();
     for index in 0..associations.len() {
         c.step(1)?;
-        let row = associations
-            .row(index)?
-            .expect("qualified association index");
+        // An index below the length that names no row is a report that lacks
+        // what it says it holds.
+        let row = associations.row(index)?.ok_or(match source.arena {
+            Arena::Document(_) => Error::NotCompletedOrdinaryReport,
+            Arena::Fragment(_) => Error::NotCompletedFragmentReport,
+        })?;
         match row.destination() {
             HtmlParseDestination::Node(node)
             | HtmlParseDestination::Field { node, .. }
@@ -1376,7 +1379,9 @@ impl Dom {
                 }
                 HtmlParsePendingAssociationStep::Complete => break,
                 HtmlParsePendingAssociationStep::Fault(fault) => return Err(fault.into()),
-                _ => {}
+                HtmlParsePendingAssociationStep::Document(_)
+                | HtmlParsePendingAssociationStep::Occurrence(_)
+                | HtmlParsePendingAssociationStep::Skipped => {}
             }
         }
         for (row, node) in source.rows.iter().zip(mapped) {

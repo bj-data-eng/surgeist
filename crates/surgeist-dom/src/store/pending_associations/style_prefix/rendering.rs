@@ -248,7 +248,7 @@ fn facts(
                 });
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }
