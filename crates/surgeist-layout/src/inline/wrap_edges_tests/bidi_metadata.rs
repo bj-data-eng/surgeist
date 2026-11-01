@@ -1,6 +1,9 @@
 //! Physical box edges preserve the real supplied atomic content order.
 use super::*;
 
+#[path = "bidi_metadata/closing_cut.rs"]
+mod closing_cut;
+
 pub(super) fn split_box_fixture<S: LayoutScalar>() -> Fixture<S> {
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let mut f = Fixture::new(Direction::Ltr, 100.0);
