@@ -231,6 +231,7 @@ impl VisibleInlineRunTransition {
                 .and_then(|state| state.semantic_run(node, segment))
                 .expect("semantic transition retains its validated actual binding")
         });
+        let publish_native = context.set_layout;
         let mut placement = layout_inline_run_children(
             tree,
             node,
@@ -243,6 +244,15 @@ impl VisibleInlineRunTransition {
             float_exclusions,
             contributions,
         )?;
+
+        if publish_native {
+            tree.publish_native_inline_run(
+                node,
+                self.start..self.end,
+                placement.native_completion.take(),
+                core::mem::take(&mut placement.native_lines),
+            )?;
+        }
 
         if placement.margin == InlineRunMargin::Separates {
             *cursor_block = *cursor_block + adjoining_margin;
@@ -349,6 +359,8 @@ enum InlineRunMargin {
 }
 
 struct InlineRunPlacement<Node, S: LayoutScalar> {
+    native_completion: Option<std::sync::Arc<crate::inline_wrapping::NativeOrderingProjection>>,
+    native_lines: Vec<crate::inline_wrapping::family::NativeLineReceipt<S>>,
     margin: InlineRunMargin,
     box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
     formatted: Option<crate::text_layout::formatted::FormattedFlowItem<Node, S>>,
@@ -1940,6 +1952,8 @@ where
         })
         .fold(owned_float_block_end, |a, b| a.max(b));
     Ok(InlineRunPlacement {
+        native_completion: report.native_completion,
+        native_lines: report.native_lines,
         margin,
         box_frontier,
         formatted: formatted_item,

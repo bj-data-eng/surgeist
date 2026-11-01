@@ -198,7 +198,7 @@ pub struct LayoutFlowInput<'tree, Tree: crate::LayoutTree> {
     pub(crate) root: Tree::Node,
     pub(crate) paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
     pub(crate) invalidated: Vec<Tree::Node>,
-    pub(crate) graph: crate::engine::validation::ValidationGraph<Tree::Node>,
+    pub(crate) graph: std::sync::Arc<crate::engine::validation::ValidationGraph<Tree::Node>>,
     pub(crate) associations: std::sync::Arc<capture::ScopeAssociations<Tree::Node>>,
     pub(crate) wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
     pub(crate) scope_alignments:
@@ -700,6 +700,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 &paragraphs,
             )?
         };
+        let graph = std::sync::Arc::new(graph);
         // Every actual prepared-text node under this root must be covered. A
         // partial inventory cannot silently use the box-only compute entry.
         for &node in &graph.nodes {
@@ -749,16 +750,17 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
             inline_boxes_requested,
             &mut scope_alignments,
         )?;
-        let wrapping = crate::inline_wrapping::WrappingContext::new(
+        let mut wrapping = crate::inline_wrapping::WrappingContext::new(
             tree,
             &graph,
-            &wrapping_input.scopes,
+            &wrapping_input,
             &resolved.wrapping,
-            &wrapping_input.child_order,
-            &wrapping_input.gaps,
             |flow| resolved.associations.has_prepared_execution(flow),
         )
         .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+        wrapping
+            .retain_native_families(std::sync::Arc::clone(&graph))
+            .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
         if !source_validated
             && paragraphs
                 .iter()
@@ -769,7 +771,11 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 crate::WrappingScopeError::SourceProcessingRequired,
             ));
         }
-        influencing.extend(wrapping.dependencies());
+        let dependencies = wrapping.dependencies();
+        influencing.try_reserve(dependencies.len()).map_err(|_| {
+            crate::inline_wrapping::wrapping_error(root, crate::WrappingScopeError::Allocation)
+        })?;
+        influencing.extend_from_slice(dependencies);
         let mut influence_census = scope_alignment::ScopeCensus::default();
         {
             let (rows, mut admission) = scope_alignments.capture_parts();

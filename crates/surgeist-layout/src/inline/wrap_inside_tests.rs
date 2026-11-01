@@ -90,15 +90,16 @@ fn exercise<S: LayoutScalar>(
     let context = WrappingContext::new(
         &tree,
         &graph,
-        &[WrappingScopeInput::NativePair {
-            metric_contribution: None,
-            edges: Default::default(),
-            start: 2,
-            end: 5,
-            wrap_inside: WrapInside::Avoid,
-        }],
-        &[],
-        &[],
+        &crate::WrappingInput {
+            scopes: vec![WrappingScopeInput::NativePair {
+                metric_contribution: None,
+                edges: Default::default(),
+                start: 2,
+                end: 5,
+                wrap_inside: WrapInside::Avoid,
+            }],
+            ..Default::default()
+        },
         &[],
         |_| false,
     )

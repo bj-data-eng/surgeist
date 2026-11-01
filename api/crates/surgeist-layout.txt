@@ -942,12 +942,17 @@ pub surgeist_layout::WrappingScopeError::ConflictingGap
 pub surgeist_layout::WrappingScopeError::ConflictingScope
 pub surgeist_layout::WrappingScopeError::CrossingScopes
 pub surgeist_layout::WrappingScopeError::CyclicGap
+pub surgeist_layout::WrappingScopeError::DifferentBody
+pub surgeist_layout::WrappingScopeError::DifferentFamily
 pub surgeist_layout::WrappingScopeError::DifferentFlow
+pub surgeist_layout::WrappingScopeError::DuplicateFamily
 pub surgeist_layout::WrappingScopeError::DuplicateScope
 pub surgeist_layout::WrappingScopeError::EndpointOrder
 pub surgeist_layout::WrappingScopeError::EndpointRole
 pub surgeist_layout::WrappingScopeError::ForeignCapture
 pub surgeist_layout::WrappingScopeError::GapOutsideSelection
+pub surgeist_layout::WrappingScopeError::IncompatibleContribution
+pub surgeist_layout::WrappingScopeError::IncompleteFamily
 pub surgeist_layout::WrappingScopeError::InconsistentIncidence
 pub surgeist_layout::WrappingScopeError::InvalidBoxMetrics
 pub surgeist_layout::WrappingScopeError::InvalidGapAnchor
@@ -1056,6 +1061,8 @@ pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::cache_store_entries(&se
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::final_entries(&self) -> &[surgeist_layout::LayoutOutputEntryOf<Node, S>]
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::final_inline_fragments(&self) -> &[surgeist_layout::InlineFragmentOutputEntryOf<Node, S>]
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::invalidated_nodes(&self) -> &[Node]
+pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::native_inline_box_families(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_layout::NativeInlineBoxFamily<Node>> + '_ where Node: core::marker::Copy + core::cmp::Eq
+pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::native_inline_box_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_layout::NativeInlineBoxPieceView<'_, Node, S>> + '_ where Node: core::marker::Copy + core::cmp::Eq
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::placed_text(&self) -> &[surgeist_layout::PlacedTextOutput<Node>]
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::unrounded_entries(&self) -> &[surgeist_layout::LayoutOutputEntryOf<Node, S>]
 pub fn surgeist_layout::CompletedLayoutBatchOf<Node, S>::unrounded_inline_fragments(&self) -> &[surgeist_layout::InlineFragmentOutputEntryOf<Node, S>]
@@ -1515,6 +1522,58 @@ pub struct surgeist_layout::NamedGridReport
 impl surgeist_layout::NamedGridReport
 pub fn surgeist_layout::NamedGridReport::errors(&self) -> &[surgeist_layout::NamedGridErrorReport]
 pub fn surgeist_layout::NamedGridReport::is_empty(&self) -> bool
+pub struct surgeist_layout::NativeInlineBoxEdgeView<'a, Node, S: surgeist_layout::LayoutScalar>
+impl<Node: core::marker::Copy + core::cmp::Eq, S: surgeist_layout::LayoutScalar> surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::child_rank(&self) -> usize
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::flow_axes(&self) -> surgeist_layout::FlowAxes
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::flow_interval(&self) -> core::option::Option<(S, S)>
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::is_source_alias(&self) -> bool
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::kind(&self) -> surgeist_layout::InlineBoundaryKind
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::node(&self) -> Node
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::owner(&self) -> surgeist_layout::GeneratedBoxRef<Node>
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::source_alias_position(&self) -> core::option::Option<S>
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::strip_interval(&self) -> core::option::Option<(S, S)>
+impl<Node: core::marker::Copy + core::cmp::Eq + core::fmt::Debug, S: surgeist_layout::LayoutScalar> core::fmt::Debug for surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>
+pub fn surgeist_layout::NativeInlineBoxEdgeView<'_, Node, S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_layout::NativeInlineBoxFamily<Node>
+impl<Node: core::marker::Copy + core::cmp::Eq> surgeist_layout::NativeInlineBoxFamily<Node>
+pub fn surgeist_layout::NativeInlineBoxFamily<Node>::formatter(&self) -> Node
+pub fn surgeist_layout::NativeInlineBoxFamily<Node>::fragments(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_layout::NativeInlineBoxFragment<Node>> + '_
+impl<Node: core::cmp::Eq> core::cmp::Eq for surgeist_layout::NativeInlineBoxFamily<Node>
+impl<Node: core::cmp::PartialEq> core::cmp::PartialEq for surgeist_layout::NativeInlineBoxFamily<Node>
+pub fn surgeist_layout::NativeInlineBoxFamily<Node>::eq(&self, other: &Self) -> bool
+impl<Node: core::fmt::Debug> core::fmt::Debug for surgeist_layout::NativeInlineBoxFamily<Node>
+pub fn surgeist_layout::NativeInlineBoxFamily<Node>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_layout::NativeInlineBoxFamilyInput<Node>
+pub surgeist_layout::NativeInlineBoxFamilyInput::formatter: Node
+pub struct surgeist_layout::NativeInlineBoxFragment<Node>
+impl<Node: core::marker::Copy + core::cmp::Eq> surgeist_layout::NativeInlineBoxFragment<Node>
+pub fn surgeist_layout::NativeInlineBoxFragment<Node>::body_root(&self) -> Self
+pub fn surgeist_layout::NativeInlineBoxFragment<Node>::family(&self) -> &surgeist_layout::NativeInlineBoxFamily<Node>
+pub fn surgeist_layout::NativeInlineBoxFragment<Node>::nearest_common_ancestor(&self, other: &Self) -> core::result::Result<Self, surgeist_layout::WrappingScopeError>
+pub fn surgeist_layout::NativeInlineBoxFragment<Node>::owner(&self) -> surgeist_layout::GeneratedBoxRef<Node>
+pub fn surgeist_layout::NativeInlineBoxFragment<Node>::parent(&self) -> core::option::Option<Self>
+pub struct surgeist_layout::NativeInlineBoxMemberView<'a, Node>
+impl<Node: core::marker::Copy + core::cmp::Eq> surgeist_layout::NativeInlineBoxMemberView<'_, Node>
+pub fn surgeist_layout::NativeInlineBoxMemberView<'_, Node>::child_rank(&self) -> core::option::Option<usize>
+pub fn surgeist_layout::NativeInlineBoxMemberView<'_, Node>::empty_box(&self) -> core::option::Option<surgeist_layout::GeneratedBoxRef<Node>>
+pub fn surgeist_layout::NativeInlineBoxMemberView<'_, Node>::node(&self) -> core::option::Option<Node>
+pub fn surgeist_layout::NativeInlineBoxMemberView<'_, Node>::operand_ordinal(&self) -> core::option::Option<usize>
+impl<Node: core::marker::Copy + core::cmp::Eq + core::fmt::Debug> core::fmt::Debug for surgeist_layout::NativeInlineBoxMemberView<'_, Node>
+pub fn surgeist_layout::NativeInlineBoxMemberView<'_, Node>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_layout::NativeInlineBoxPieceView<'a, Node, S: surgeist_layout::LayoutScalar>
+impl<'a, Node: core::marker::Copy + core::cmp::Eq, S: surgeist_layout::LayoutScalar> surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>
+pub fn surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>::executed_edges(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_layout::NativeInlineBoxEdgeView<'a, Node, S>> + 'a
+pub fn surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>::family(&self) -> &'a surgeist_layout::NativeInlineBoxFamily<Node>
+pub fn surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>::flow_axes(&self) -> surgeist_layout::FlowAxes
+pub fn surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>::fragment(&self) -> surgeist_layout::NativeInlineBoxFragment<Node>
+pub fn surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>::line_index(&self) -> usize
+pub fn surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>::run_source_range(&self) -> core::ops::range::Range<usize>
+pub fn surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>::selected_members(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_layout::NativeInlineBoxMemberView<'a, Node>> + 'a
+pub fn surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>::selected_source_range(&self) -> core::ops::range::Range<usize>
+pub fn surgeist_layout::NativeInlineBoxPieceView<'a, Node, S>::source_aliases(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_layout::NativeInlineBoxEdgeView<'a, Node, S>> + 'a
+impl<Node: core::marker::Copy + core::cmp::Eq + core::fmt::Debug, S: surgeist_layout::LayoutScalar> core::fmt::Debug for surgeist_layout::NativeInlineBoxPieceView<'_, Node, S>
+pub fn surgeist_layout::NativeInlineBoxPieceView<'_, Node, S>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_layout::NodeInputOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::NodeInputOf::align_content: core::option::Option<surgeist_layout::AlignContent>
 pub surgeist_layout::NodeInputOf::align_items: core::option::Option<surgeist_layout::AlignItems>
@@ -1943,6 +2002,7 @@ pub const surgeist_layout::WrapEdges::AUTO: Self
 pub struct surgeist_layout::WrappingInput<Node>
 pub surgeist_layout::WrappingInput::child_order: alloc::vec::Vec<surgeist_layout::InlineChildOrderInput<Node>>
 pub surgeist_layout::WrappingInput::gaps: alloc::vec::Vec<surgeist_layout::InlineGapGroupInput<Node>>
+pub surgeist_layout::WrappingInput::native_inline_boxes: alloc::vec::Vec<surgeist_layout::NativeInlineBoxFamilyInput<Node>>
 pub surgeist_layout::WrappingInput::scopes: alloc::vec::Vec<surgeist_layout::WrappingScopeInput<Node>>
 impl<Node> core::default::Default for surgeist_layout::WrappingInput<Node>
 pub fn surgeist_layout::WrappingInput<Node>::default() -> Self

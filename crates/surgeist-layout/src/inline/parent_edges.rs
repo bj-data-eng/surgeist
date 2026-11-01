@@ -12,6 +12,8 @@ use surgeist_text::SuppliedLine;
 struct Edge {
     unit: usize,
     owner: usize,
+    ancestry: usize,
+    alias: bool,
     left: bool,
     gap: usize,
     rank: usize,
@@ -83,7 +85,11 @@ pub(super) fn canonical_flow<S: LayoutScalar>(
     wrapping: Option<&NumericWrapping>,
 ) -> Result<Option<(S, Arc<OrderReceipt>)>, NumericWrappingError> {
     let line = Line::Candidate { input, retained };
-    if !line.has_box_edges() {
+    if !line.has_box_edges()
+        && !wrapping
+            .and_then(NumericWrapping::ordering)
+            .is_some_and(|c| c.profile.has_family())
+    {
         return Ok(None);
     }
     let wrapping = wrapping.ok_or_else(invalid)?;
@@ -105,14 +111,15 @@ pub(super) fn canonical_flow<S: LayoutScalar>(
             | surgeist_text::SuppliedInlineParticipant::Cell { level }
             | surgeist_text::SuppliedInlineParticipant::Boundary { level } => level,
         };
-        let actual = context
-            .profile
-            .validate_slot(rank, line.boxed(unit), level)?;
+        let actual =
+            context
+                .profile
+                .validate_slot(rank, context.profile.structural(rank), level)?;
         if body.is_some_and(|body| body != actual) {
             return Err(invalid());
         }
         body = Some(actual);
-        if !line.boxed(unit) {
+        if !context.profile.structural(rank) {
             descriptors.push(*descriptor);
             logical.push(unit);
         }
@@ -131,7 +138,7 @@ pub(super) fn canonical_flow<S: LayoutScalar>(
         axes,
         wrapping,
         &selection,
-        body.ok_or_else(invalid)?,
+        body.map_or_else(|| context.profile.selected_body(&selection), Ok)?,
         &payload,
     )?;
     let mut flow = S::ZERO;
@@ -162,7 +169,11 @@ pub(super) fn reorder<S: LayoutScalar>(
     wrapping: Option<&NumericWrapping>,
     order: &mut Vec<usize>,
 ) -> Result<(), NumericWrappingError> {
-    if !Line::Selected(line).has_box_edges() {
+    if !Line::Selected(line).has_box_edges()
+        && !wrapping
+            .and_then(NumericWrapping::ordering)
+            .is_some_and(|c| c.profile.has_family())
+    {
         if line.native_order.is_some() {
             return Err(invalid());
         }
@@ -203,42 +214,63 @@ fn schedule<S: LayoutScalar>(
         let MixedInlineParticipantOf::Boundary(control) = line.participant(unit) else {
             continue;
         };
-        let Some(parent) = control.parent_edge_axes() else {
+        let alias = context.profile.alias(ranks[unit]);
+        let parent = control.parent_edge_axes();
+        if parent.is_none() && !alias {
             continue;
-        };
+        }
         let source = line.source_start().checked_add(unit).ok_or_else(invalid)?;
         let endpoint = match control.kind() {
             crate::InlineBoundaryKind::Start => 0,
             crate::InlineBoundaryKind::End => 1,
         };
-        let owner = wrapping
-            .boxes()
-            .iter()
-            .position(|row| row.endpoints[endpoint] == Some(source))
-            .ok_or_else(invalid)?;
-        let ancestry = wrapping.boxes()[owner].ancestry;
+        let owner = if alias {
+            usize::MAX
+        } else {
+            wrapping
+                .boxes()
+                .iter()
+                .position(|row| row.endpoints[endpoint] == Some(source))
+                .ok_or_else(invalid)?
+        };
+        let ancestry = if alias {
+            context.profile.endpoint(ranks[unit]).ok_or_else(invalid)?.0
+        } else {
+            wrapping.boxes()[owner].ancestry
+        };
         let mut extent = None;
         for (position, &candidate) in payload.iter().enumerate() {
             if context.profile.owns(ancestry, ranks[candidate])? {
                 extent = Some(extent.map_or((position, position), |(first, _)| (first, position)));
             }
         }
-        let start_left = if parent.inline_start() == positive_side {
+        let start_left = if alias || parent.ok_or_else(invalid)?.inline_start() == positive_side {
             true
-        } else if parent.inline_end() == positive_side {
+        } else if parent.ok_or_else(invalid)?.inline_end() == positive_side {
             false
         } else {
             return Err(invalid());
         };
         let left = start_left == (endpoint == 0);
-        let gap = if let Some((first, last)) = extent {
+        let gap = if alias {
+            context
+                .profile
+                .alias_gap(ancestry, endpoint == 0, body, selection, payload)?
+        } else if let Some((first, last)) = extent {
             if left { first } else { last + 1 }
+        } else if let Some((first, last)) = context
+            .profile
+            .empty_extents(ancestry, body, selection, payload)?
+        {
+            if left { first } else { last }
         } else {
             context.profile.gap(ancestry, body, selection, payload)?
         };
         edges.push(Edge {
             unit,
             owner,
+            ancestry,
+            alias,
             left,
             gap,
             rank: unit,
@@ -249,11 +281,17 @@ fn schedule<S: LayoutScalar>(
         if a.gap != b.gap {
             return Ok(false);
         }
-        let aa = wrapping.boxes()[a.owner].ancestry;
-        let bb = wrapping.boxes()[b.owner].ancestry;
+        let aa = a.ancestry;
+        let bb = b.ancestry;
         let related = wrapping.box_ancestor(aa, bb) || wrapping.box_ancestor(bb, aa);
         if related {
-            Ok(if a.left != b.left {
+            Ok(if a.alias && !b.alias {
+                !b.left
+            } else if !a.alias && b.alias {
+                a.left
+            } else if a.alias && b.alias {
+                a.rank < b.rank
+            } else if a.left != b.left {
                 a.left
             } else if a.owner == b.owner {
                 a.rank < b.rank
@@ -339,6 +377,7 @@ pub(super) fn execute<S: LayoutScalar>(
             super::ResolvedInlineSlot {
                 inline_start: if rtl { end } else { incoming },
                 margin_flow: None,
+                executed_flow: None,
             },
             end,
         ));
@@ -406,7 +445,186 @@ pub(super) fn execute<S: LayoutScalar>(
         super::ResolvedInlineSlot {
             inline_start: start,
             margin_flow: Some((incoming, end)),
+            executed_flow: None,
         },
         end,
     ))
+}
+
+/// Source aliases borrow only qualified actual executed Source ports. They are
+/// still zero Contribution operations, never physical BoxEdge strips.
+pub(super) fn resolve_aliases<S: LayoutScalar>(
+    line: &SelectedInlineLineOf<S>,
+    wrapping: Option<&NumericWrapping>,
+    slots: &mut [super::ResolvedInlineSlot<S>],
+) -> Result<(), NumericWrappingError> {
+    let Some(context) = wrapping
+        .and_then(NumericWrapping::ordering)
+        .filter(|p| p.profile.has_family())
+    else {
+        return Ok(());
+    };
+    let after = line
+        .source_start
+        .checked_add(line.units.len())
+        .ok_or_else(invalid)?;
+    let selection = context.selection(line.source_start..after)?;
+    let mut payload = buffer(line.units.len())?;
+    let order = &line.native_order.as_ref().ok_or_else(invalid)?.order;
+    for &unit in order {
+        if !context.profile.structural(selection.ranks[unit]) {
+            payload.push(unit);
+        }
+    }
+    for unit in 0..line.units.len() {
+        let rank = selection.ranks[unit];
+        if !context.profile.alias(rank) {
+            continue;
+        }
+        let (owner, start) = context.profile.endpoint(rank).ok_or_else(invalid)?;
+        let body = context.profile.body(rank)?;
+        let ports = context
+            .profile
+            .alias_ports(owner, start, body, &selection, &payload)?;
+        let mut coordinate = None;
+        for port in ports.into_iter().flatten() {
+            let point = match port {
+                crate::inline_wrapping::ordering::AliasPort::Neighbor { rank, affinity } => {
+                    let target = selection
+                        .ranks
+                        .iter()
+                        .position(|&r| r == rank)
+                        .ok_or_else(invalid)?;
+                    let flow = slots[target].executed_flow.ok_or_else(invalid)?;
+                    if affinity == crate::InlineGapAffinity::Before {
+                        flow.0
+                    } else {
+                        flow.1
+                    }
+                }
+                crate::inline_wrapping::ordering::AliasPort::Body { start } => {
+                    let left = start == context.profile.source_start_left();
+                    let target =
+                        if left { order.first() } else { order.last() }.ok_or_else(invalid)?;
+                    let flow = slots[*target].executed_flow.ok_or_else(invalid)?;
+                    if left { flow.0 } else { flow.1 }
+                }
+            };
+            if coordinate.is_some_and(|old| old != point) {
+                return Err(WrappingScopeError::ConflictingGap.into());
+            }
+            coordinate = Some(point);
+        }
+        // No neighboring operand means an already-authenticated empty gap; its
+        // zero operation's executed position is the actual cut-local witness.
+        let point = coordinate.unwrap_or(slots[unit].inline_start);
+        slots[unit].inline_start = point;
+        slots[unit].executed_flow = Some((point, point));
+    }
+    Ok(())
+}
+
+pub(super) fn accepted<S: LayoutScalar>(
+    line: &SelectedInlineLineOf<S>,
+    wrapping: Option<&NumericWrapping>,
+    slots: &[super::ResolvedInlineSlot<S>],
+    axes: FlowAxes,
+    line_index: usize,
+) -> Result<Option<crate::inline_wrapping::family::NativeLineReceipt<S>>, NumericWrappingError> {
+    use crate::inline_wrapping::family::{NativeExecutedEdge, NativeLineReceipt};
+    let Some(context) = wrapping
+        .and_then(NumericWrapping::ordering)
+        .filter(|p| p.profile.has_family())
+    else {
+        return Ok(None);
+    };
+    let end = line
+        .source_start
+        .checked_add(line.units.len())
+        .ok_or_else(invalid)?;
+    let selection = context.selection(line.source_start..end)?;
+    let mut payload = buffer(line.units.len())?;
+    let order = &line.native_order.as_ref().ok_or_else(invalid)?.order;
+    for &unit in order {
+        if !context.profile.structural(selection.ranks[unit]) {
+            payload.push(unit);
+        }
+    }
+    let body = context.profile.selected_body(&selection)?;
+    let rows = context
+        .profile
+        .selected_family_rows(&selection, &payload, body)?;
+    let mut ranks = buffer(selection.ranks.len())?;
+    ranks.extend_from_slice(selection.ranks);
+    let mut edges = Vec::new();
+    for (unit, &rank) in selection.ranks.iter().enumerate() {
+        let Some((owner, start)) = context.profile.endpoint(rank) else {
+            continue;
+        };
+        let Some(key) = context.profile.family_key(owner) else {
+            continue;
+        };
+        let alias = context.profile.alias(rank);
+        let MixedInlineParticipantOf::Boundary(control) = line.units[unit].participant else {
+            return Err(invalid());
+        };
+        if !alias && control.parent_edge_axes().is_none() {
+            continue;
+        }
+        let recipient = if alias {
+            context.profile.alias_component(owner, start, body)?
+        } else {
+            let side = if start {
+                control
+                    .parent_edge_axes()
+                    .ok_or_else(invalid)?
+                    .inline_start()
+            } else {
+                control.parent_edge_axes().ok_or_else(invalid)?.inline_end()
+            };
+            let left =
+                side == FlowAxes::new(axes.writing_mode(), crate::Direction::Ltr).inline_start();
+            let mut found = None;
+            for &candidate in &payload {
+                if context.profile.owns(owner, selection.ranks[candidate])?
+                    && (left && found.is_none() || !left)
+                {
+                    found = Some(selection.ranks[candidate]);
+                }
+            }
+            if let Some(found) = found {
+                context.profile.component_for(owner, Some(found), body)?
+            } else {
+                context
+                    .profile
+                    .empty_component(owner, body, &selection, &payload, left)?
+            }
+        };
+        let slot = slots[unit];
+        let flow = slot.executed_flow.ok_or_else(invalid)?;
+        let extent = control.edge().border_padding_advance();
+        edges
+            .try_reserve(1)
+            .map_err(|_| NumericWrappingError::Allocation)?;
+        edges.push(NativeExecutedEdge {
+            rank,
+            owner: key,
+            component: recipient,
+            kind: control.kind(),
+            alias,
+            flow,
+            strip: (slot.inline_start, slot.inline_start + extent),
+        });
+    }
+    Ok(Some(NativeLineReceipt {
+        profile: Arc::clone(&context.profile),
+        receipt: Arc::clone(context),
+        source: selection.raw_fences.clone(),
+        body,
+        line: line_index,
+        axes,
+        ranks,
+        rows,
+        edges,
+    }))
 }

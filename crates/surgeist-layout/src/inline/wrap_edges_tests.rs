@@ -1356,3 +1356,6 @@ fn edge_forces_stay_in_their_own_numeric_run_across_a_real_block_separator() {
 mod bidi_metadata;
 mod gap_attachments;
 mod gap_scope_cuts;
+
+#[path = "wrap_edges_tests/native_family_functional.rs"]
+mod native_family_functional;

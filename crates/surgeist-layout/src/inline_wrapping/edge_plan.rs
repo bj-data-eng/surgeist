@@ -24,9 +24,21 @@ pub(crate) struct PropagationParent<Node, Scope> {
 }
 #[derive(Clone, Debug)]
 pub(crate) struct EdgePlan<Node> {
+    pub(crate) proof: Option<Arc<AdmittedGeneratedBoxProof<Node>>>,
     pub(crate) locations: Vec<EdgeLocation<Node>>,
     pub(crate) dependencies: Vec<Node>,
     pub(crate) subtrees: Vec<SubtreeRealization>,
+}
+#[derive(Debug)]
+pub(crate) struct AdmittedGeneratedBoxProof<Node> {
+    pub(super) captured_orders_validated: bool,
+    pub(super) boxes: Vec<BoxFact<Node>>,
+    pub(crate) data: Arc<GeneratedBoxProofData>,
+}
+#[derive(Debug)]
+pub(crate) struct GeneratedBoxProofData {
+    pub(super) orders: Vec<ChildOrderProof>,
+    pub(crate) parents: Vec<Option<usize>>,
 }
 /// This is generated participation proof, independent of strut dimensions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -36,7 +48,7 @@ pub(crate) enum SubtreeRealization {
     Unavailable,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(super) struct BoxFact<Node, Scope = surgeist_text::CapturedScope> {
     pub(super) box_: GeneratedBoxRef<Node, Scope>,
     pub(super) flow: Node,
@@ -45,11 +57,12 @@ pub(super) struct BoxFact<Node, Scope = surgeist_text::CapturedScope> {
     pub(super) unique: bool,
     pub(super) participation: GeneratedBoxParticipation,
 }
+#[derive(Clone, Debug)]
 pub(super) struct ChildOrderProof {
-    parent: usize,
-    children: Vec<(usize, GeneratedBoxParticipation)>,
-    prefix: ChildOrderCompleteness,
-    suffix: ChildOrderCompleteness,
+    pub(super) parent: usize,
+    pub(super) children: Vec<(usize, GeneratedBoxParticipation)>,
+    pub(super) prefix: ChildOrderCompleteness,
+    pub(super) suffix: ChildOrderCompleteness,
 }
 
 pub(super) struct NodeWrapping {
@@ -220,7 +233,7 @@ impl<Node: Copy + Eq> EdgePlan<Node> {
             .zip(counts.iter().map(|&n| n == 1))
             .collect::<Vec<_>>();
         let normalized = normalize_orders(&mut boxes, &aliases, orders, &contexts)?;
-        validate_canonical_orders(&boxes, &normalized, proofs)?;
+        let captured_orders_validated = validate_canonical_orders(&boxes, &normalized, proofs)?;
         let mut realization = RealizationProof::new(tree, &boxes, rows, &normalized, &unmodeled);
         let subtrees = (0..rows.len())
             .map(|index| realization.resolve(index))
@@ -229,10 +242,28 @@ impl<Node: Copy + Eq> EdgePlan<Node> {
             locations,
             dependencies,
         } = propagate(&boxes, &normalized, &unmodeled, &aliases, dependencies)?;
+        let mut parents = Vec::new();
+        parents
+            .try_reserve_exact(boxes.len())
+            .map_err(|_| WrappingScopeError::Allocation)?;
+        parents.resize(boxes.len(), None);
+        for order in &normalized {
+            for &(child, _) in &order.children {
+                parents[child] = Some(order.parent);
+            }
+        }
         Ok(Self {
             locations,
             dependencies,
             subtrees,
+            proof: Some(Arc::new(AdmittedGeneratedBoxProof {
+                captured_orders_validated,
+                boxes,
+                data: Arc::new(GeneratedBoxProofData {
+                    orders: normalized,
+                    parents,
+                }),
+            })),
         })
     }
 }
@@ -477,13 +508,13 @@ fn validate_canonical_orders<Node: Copy + Eq>(
     boxes: &[BoxFact<Node>],
     orders: &[ChildOrderProof],
     proofs: &[WrappingScopeProof<Node>],
-) -> Result<(), WrappingScopeError> {
+) -> Result<bool, WrappingScopeError> {
     use super::canonical_order::CanonicalOrderError;
     let Some(bindings) = proofs.iter().find_map(|proof| match proof {
         WrappingScopeProof::Captured(proof) => proof.order.as_ref(),
         WrappingScopeProof::NativePair { order, .. } => order.as_ref(),
     }) else {
-        return Ok(());
+        return Ok(false);
     };
     let mut paired = Vec::new();
     let mut native = Vec::new();
@@ -559,7 +590,7 @@ fn validate_canonical_orders<Node: Copy + Eq>(
                 CanonicalOrderError::Contradiction => WrappingScopeError::ChildOrder,
             })?;
     }
-    Ok(())
+    Ok(true)
 }
 
 pub(super) fn normalize_orders<Node: Copy + Eq, Scope: Clone + Eq>(

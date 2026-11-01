@@ -1731,6 +1731,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         context.inline_baseline_context,
     );
     let mut report = MixedInlineRunReportOf {
+        native_lines: Vec::new(),
+        native_completion: None,
         baselines: InlineBaselineReportOf::Native(PhysicalBaselineReport {
             context: context.inline_baseline_context,
             first: None,

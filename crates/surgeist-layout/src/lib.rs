@@ -247,6 +247,8 @@ pub use inline_wrapping::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
     InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, InlineDelimiterSide,
     InlineFormatterEdge, InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput,
+    NativeInlineBoxEdgeView, NativeInlineBoxFamily, NativeInlineBoxFamilyInput,
+    NativeInlineBoxFragment, NativeInlineBoxMemberView, NativeInlineBoxPieceView,
     ProcessedWrappingSource, ResolvedWrapEdges, SourceOccurrenceAssociations,
     SourceScopeAssociation, SourceWrappingScopeInput, WrapEdge, WrapEdgeSource,
     WrapEdgeSourceNodeView, WrapEdges, WrapInside, WrappingInput, WrappingScopeError,

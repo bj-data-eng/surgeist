@@ -1441,6 +1441,7 @@ fn fri06_c02_block_text_containing_baselines_align_flex_items_both_scalars() {
             0,
             vec![first.binding(1), second.binding(2)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
                 gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),

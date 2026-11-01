@@ -286,6 +286,7 @@ fn compute_with_style<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

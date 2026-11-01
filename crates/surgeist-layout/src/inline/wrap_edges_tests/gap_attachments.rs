@@ -483,6 +483,7 @@ fn empty_terminal_body<S: LayoutScalar>() -> Fixture<S> {
         );
     }
     f.wrapping = WrappingInput {
+        native_inline_boxes: Vec::new(),
         scopes: vec![WrappingScopeInput::NativePair {
             start: 20,
             end: 21,

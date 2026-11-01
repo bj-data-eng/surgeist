@@ -50,6 +50,7 @@ fn wrapping(fixture: &Fixture, captured_child: bool) -> WrappingInput<u32> {
         }
     });
     WrappingInput {
+        native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
         scopes,
         child_order: Vec::new(),

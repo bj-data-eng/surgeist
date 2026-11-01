@@ -93,6 +93,7 @@ pub(super) fn split_box_fixture<S: LayoutScalar>() -> Fixture<S> {
         );
     }
     f.wrapping = WrappingInput {
+        native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
         scopes: vec![WrappingScopeInput::NativePair {
             start: 20,

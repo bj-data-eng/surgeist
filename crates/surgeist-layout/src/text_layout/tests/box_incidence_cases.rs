@@ -317,6 +317,7 @@ impl Case {
             child_order.push(row(self.inline(1), vec![]));
         }
         WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes,
             child_order,

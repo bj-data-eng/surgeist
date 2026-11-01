@@ -139,6 +139,7 @@ fn assert_nested_container_limits<S: LayoutScalar>() {
         0,
         vec![first.binding(10), second.binding(20)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -157,6 +158,7 @@ fn assert_nested_container_limits<S: LayoutScalar>() {
         0,
         vec![first.binding(10), second.binding(20)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

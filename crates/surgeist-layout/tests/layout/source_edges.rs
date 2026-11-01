@@ -150,6 +150,7 @@ impl<S: layout::LayoutScalar> Host<S> {
             }
         };
         layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: self
                 .declarations

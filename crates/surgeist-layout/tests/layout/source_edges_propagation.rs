@@ -243,6 +243,7 @@ impl<S: l::LayoutScalar> Host<S> {
             ),
         };
         l::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: self
                 .declarations

@@ -133,6 +133,7 @@ fn fixture<S: LayoutScalar>(
         formatting_context: 0,
     };
     let inventory = WrappingInput {
+        native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
         scopes: scopes
             .iter()

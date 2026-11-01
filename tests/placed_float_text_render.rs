@@ -158,6 +158,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
             line_strut: None,
         }],
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

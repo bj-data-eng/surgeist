@@ -116,6 +116,7 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -207,6 +208,7 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
         0,
         vec![first.binding(0), second.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

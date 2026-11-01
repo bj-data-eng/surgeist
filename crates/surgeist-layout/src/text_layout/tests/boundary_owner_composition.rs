@@ -360,6 +360,7 @@ fn compute<S: LayoutScalar>(
         0,
         vec![p.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -715,6 +716,7 @@ fn either_side_anywhere_obeys_actual_common_ancestor_and_rejects_stale_bindings(
                     0,
                     vec![fresh],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
                         gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),

@@ -305,6 +305,7 @@ fn wrapping(reverse: bool, captured: Option<t::CapturedScope>) -> l::WrappingInp
         })
         .collect();
     l::WrappingInput {
+        native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
         scopes: vec![l::WrappingScopeInput::NativePair {
             start: 1,

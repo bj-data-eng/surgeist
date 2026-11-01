@@ -260,6 +260,8 @@ impl<S: LayoutScalar> InlineBaselineReportOf<S> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub native_lines: Vec<crate::inline_wrapping::family::NativeLineReceipt<S>>,
+    pub native_completion: Option<std::sync::Arc<crate::inline_wrapping::NativeOrderingProjection>>,
     pub baselines: InlineBaselineReportOf<S>,
     pub group_lines: Vec<crate::group_alignment::NaturalLine<S>>,
     pub formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
@@ -927,7 +929,11 @@ fn resolve_inline_flow<S: LayoutScalar>(
     axes: FlowAxes,
     wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
 ) -> Result<Option<std::sync::Arc<parent_edges::OrderReceipt>>, NumericWrappingError> {
-    if summary.has_box_edges {
+    if summary.has_box_edges
+        || wrapping
+            .and_then(|w| w.ordering())
+            .is_some_and(|p| p.profile.has_family())
+    {
         let (flow, order) = parent_edges::canonical_flow(
             input,
             summary.discarded_start_end..summary.discarded_end_start,
@@ -1058,6 +1064,29 @@ fn starts_inline_strut_phase<S: LayoutScalar>(line: &SelectedInlineLineOf<S>) ->
     })
 }
 
+// Closing structural metadata stays with the preceding legal opportunity.
+// A Contribution remains a real operand unless this exact admitted family
+// endpoint has been classified as a source alias.
+fn closes_inline_opportunity<S: LayoutScalar>(
+    participant: MixedInlineParticipantOf<S>,
+    source: usize,
+    wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
+) -> bool {
+    let MixedInlineParticipantOf::Boundary(control) = participant else {
+        return false;
+    };
+    control.kind() == InlineBoundaryKind::End
+        && (control.parent_edge_axes().is_some()
+            || wrapping
+                .and_then(|w| w.ordering())
+                .is_some_and(|projection| {
+                    projection
+                        .ranks
+                        .get(source)
+                        .is_some_and(|&rank| projection.profile.alias(rank))
+                }))
+}
+
 fn inline_min_content<S: LayoutScalar>(
     run: ProjectedInlineRun<'_, S>,
     flow_axes: FlowAxes,
@@ -1068,6 +1097,7 @@ fn inline_min_content<S: LayoutScalar>(
     let mut group_descriptor_start = 0;
     let mut maximum = S::ZERO;
     let mut group_start = 0;
+    let mut opportunity = false;
     for (index, participant) in participants.iter().enumerate() {
         if matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_)) {
             maximum = maximum.max(
@@ -1082,16 +1112,22 @@ fn inline_min_content<S: LayoutScalar>(
             );
             group_start = index + 1;
             group_descriptor_start = descriptor;
+            opportunity = false;
             continue;
         }
         descriptor += 1;
-        if !wrapping.is_some_and(|w| w.forced(index + 1))
-            && participant
-                .following_break()
-                .is_none_or(|b| b == InlineBreakOpportunity::Prohibited)
+        let forced = wrapping.is_some_and(|w| w.forced(index + 1))
+            || participant.following_break() == Some(InlineBreakOpportunity::Mandatory);
+        opportunity |= participant.following_break() == Some(InlineBreakOpportunity::Allowed);
+        if !forced
+            && (!opportunity
+                || participants
+                    .get(index + 1)
+                    .is_some_and(|&next| closes_inline_opportunity(next, index + 1, wrapping)))
         {
             continue;
         }
+        opportunity = false;
         let line = measure_inline_line(
             run.line(group_start..index + 1, group_descriptor_start),
             None,
@@ -1944,7 +1980,10 @@ fn select_scope_inline_line<S: LayoutScalar>(
     if !wraps && !completion_qualified {
         return Err(gap_failure.expect("failed attachment retains its cause"));
     }
-    let canonical_completion = completion.summary.has_box_edges;
+    let canonical_completion = completion.summary.has_box_edges
+        || wrapping
+            .and_then(|w| w.ordering())
+            .is_some_and(|p| p.profile.has_family());
     if completion_qualified
         && (!wraps
             || completion_fits
@@ -2052,12 +2091,15 @@ fn select_scope_inline_line<S: LayoutScalar>(
         Ok(())
     };
     let mut accumulator = NumericReceiptAccumulatorOf::new(pending, axes);
+    let mut opportunity = false;
     for end in cursor.source + 1..stop {
         let participant = run.participants[end - 1];
         accumulator.push(participant, axes);
-        if participant.following_break() != Some(InlineBreakOpportunity::Allowed) {
+        opportunity |= participant.following_break() == Some(InlineBreakOpportunity::Allowed);
+        if !opportunity || closes_inline_opportunity(run.participants[end], end, wrapping) {
             continue;
         }
+        opportunity = false;
         let mut candidate = accumulator.receipt(
             SelectedInlineLineEnd::Soft,
             InlineSourceCursor {
@@ -2315,6 +2357,7 @@ fn resolved_float_terminal_block_extent<S: LayoutScalar>(
 struct ResolvedInlineSlot<S: LayoutScalar> {
     inline_start: S,
     margin_flow: Option<(S, S)>,
+    executed_flow: Option<(S, S)>,
 }
 
 struct ResolvedInlineSlots<S: LayoutScalar> {
@@ -2352,7 +2395,8 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     let mut inline_starts = vec![
         ResolvedInlineSlot {
             inline_start: S::ZERO,
-            margin_flow: None
+            margin_flow: None,
+            executed_flow: None
         };
         line.units.len()
     ];
@@ -2369,6 +2413,7 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
         line_inline_start
     };
     for &source_index in &order {
+        let incoming = inline_start;
         let selected = line.units[source_index];
         let selected_inline_extent = if selected.discarded {
             S::ZERO
@@ -2390,7 +2435,14 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
                 inline_start = inline_start + selected_inline_extent;
             }
         }
+        if wrapping
+            .and_then(|w| w.ordering())
+            .is_some_and(|p| p.profile.has_family())
+        {
+            inline_starts[source_index].executed_flow = Some((incoming, inline_start));
+        }
     }
+    parent_edges::resolve_aliases(line, wrapping, &mut inline_starts)?;
     Ok(ResolvedInlineSlots {
         line_inline_start,
         visual_indices,
@@ -3535,7 +3587,8 @@ where
     let mut line_bands = Vec::new();
     let mut lines = Vec::new();
     let mut line_index = 0;
-    for line in selected_lines {
+    let mut native_lines = Vec::new();
+    for (native_line_index, line) in selected_lines.into_iter().enumerate() {
         if NumericLineDisposition::for_line(line.ending, line.has_in_flow_content)
             == NumericLineDisposition::NonFormatted
         {
@@ -3551,6 +3604,18 @@ where
                 surgeist_text::LineAlignmentInsets::ZERO,
                 input.wrapping.as_ref(),
             )?;
+            if let Some(receipt) = parent_edges::accepted(
+                &line,
+                input.wrapping.as_ref(),
+                &inline_starts,
+                input.flow_axes,
+                native_line_index,
+            )? {
+                native_lines
+                    .try_reserve(1)
+                    .map_err(|_| crate::inline_wrapping::NumericWrappingError::Allocation)?;
+                native_lines.push(receipt);
+            }
             for (index, unit) in line.units.into_iter().enumerate() {
                 let MixedInlineParticipantOf::Boundary(control) = unit.participant else {
                     unreachable!("nonformatted numeric participation contains only boundaries");
@@ -3634,6 +3699,18 @@ where
         inline_extent = inline_extent.max(line_inline_start + line.used_inline_extent);
         post_line_clear_intents.push(line.post_line_clear_intent);
         line_bands.push(line.band);
+        if let Some(receipt) = parent_edges::accepted(
+            &line,
+            input.wrapping.as_ref(),
+            &inline_starts,
+            input.flow_axes,
+            native_line_index,
+        )? {
+            native_lines
+                .try_reserve(1)
+                .map_err(|_| crate::inline_wrapping::NumericWrappingError::Allocation)?;
+            native_lines.push(receipt);
+        }
         for (source_index, selected) in line.units.into_iter().enumerate() {
             let inline_start = inline_starts[source_index].inline_start;
             match selected.participant {
@@ -3741,6 +3818,13 @@ where
     }
 
     Ok(MixedInlineRunReportOf {
+        native_lines,
+        native_completion: input
+            .wrapping
+            .as_ref()
+            .and_then(|w| w.ordering())
+            .filter(|p| p.profile.has_family())
+            .cloned(),
         baselines: InlineBaselineReportOf::Numeric(NumericBaselineReportOf {
             context: input.inline_baseline_context,
             first: first_baseline,

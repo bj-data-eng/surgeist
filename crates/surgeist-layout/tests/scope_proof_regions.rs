@@ -559,6 +559,7 @@ fn compute(fixture: &Fixture, with_child: bool) -> layout::CompletedLayoutBatch<
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -579,6 +580,7 @@ fn rejects(
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -762,6 +764,7 @@ fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -1009,6 +1012,7 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
         0,
         fixture.flow.clone(),
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -1024,6 +1028,7 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -1072,6 +1077,7 @@ fn one_empty_paragraph_cannot_certify_a_nonempty_domain_with_its_real_neighbor_o
         0,
         paragraphs,
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
@@ -1205,6 +1211,7 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
         0,
         vec![paragraph],
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
             gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),

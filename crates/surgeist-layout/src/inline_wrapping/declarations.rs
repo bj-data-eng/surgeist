@@ -153,8 +153,14 @@ pub struct InlineGapGroupInput<Node> {
     pub anchor: InlineGapAnchor<Node>,
     pub boxes: Vec<InlineBoxRef<Node>>,
 }
+/// Explicit complete font-free normal-inline family demand for one formatter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeInlineBoxFamilyInput<Node> {
+    pub formatter: Node,
+}
 #[derive(Clone, Debug, PartialEq)]
 pub struct WrappingInput<Node> {
+    pub native_inline_boxes: Vec<NativeInlineBoxFamilyInput<Node>>,
     pub scopes: Vec<super::WrappingScopeInput<Node>>,
     pub child_order: Vec<InlineChildOrderInput<Node>>,
     pub gaps: Vec<InlineGapGroupInput<Node>>,
@@ -162,6 +168,7 @@ pub struct WrappingInput<Node> {
 impl<Node> Default for WrappingInput<Node> {
     fn default() -> Self {
         Self {
+            native_inline_boxes: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
             gaps: Vec::new(),
