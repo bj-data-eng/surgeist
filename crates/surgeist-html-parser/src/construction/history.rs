@@ -467,34 +467,46 @@ impl<'a> HistoryView<'a> {
         }
         Ok(group.index)
     }
+    /// The leaf a group's body names, or the fault if the report cannot
+    /// resolve its backing or its origins.
     fn leaf(
         &self,
         (start, length, value): (usize, usize, LeafValue),
         offset: usize,
-    ) -> HistoryLeaf<'a> {
+    ) -> Result<HistoryLeaf<'a>, read::UnresolvedReference> {
         let units = match value {
             LeafValue::Empty => &[],
             LeafValue::Payload(slot) => {
-                let RetainedPayload::String { value, .. } = &self.storage.payloads.values[slot]
+                let Some(RetainedPayload::String { value, .. }) =
+                    self.storage.payloads.values.get(slot)
                 else {
-                    unreachable!("qualified immutable backing owner")
+                    return Err(unresolved(read::UnresolvedKind::Payload));
                 };
                 value.code_units()
             }
-            LeafValue::Pending => unreachable!("pending leaves cannot freeze history"),
+            // A pending leaf cannot freeze into a history.
+            LeafValue::Pending => return Err(unresolved(read::UnresolvedKind::Payload)),
         };
-        HistoryLeaf {
+        let origins = start
+            .checked_add(length)
+            .and_then(|end| self.data.origins.get(start..end))
+            .ok_or_else(|| unresolved(read::UnresolvedKind::Group))?;
+        Ok(HistoryLeaf {
             units,
-            origins: &self.data.origins[start..start.saturating_add(length)],
+            origins,
             offset,
-        }
+        })
     }
     pub(crate) fn header(
         &self,
         group: HistoryGroup<'_>,
     ) -> Result<HistoryHeader<'a>, HistoryReadError> {
         let index = self.require(group)?;
-        let group = &self.data.groups[index];
+        let group = self
+            .data
+            .groups
+            .get(index)
+            .ok_or_else(|| unresolved_history(read::UnresolvedKind::Group))?;
         let reference = |index| HistoryGroup {
             evidence: self.evidence,
             index,
@@ -504,7 +516,10 @@ impl<'a> HistoryView<'a> {
                 start,
                 length,
                 value,
-            } => HistoryBody::Leaf(self.leaf((start, length, value), 0)),
+            } => HistoryBody::Leaf(
+                self.leaf((start, length, value), 0)
+                    .map_err(HistoryReadError::Unresolved)?,
+            ),
             GroupBody::Alias { original } => HistoryBody::Alias {
                 original: reference(original),
             },
@@ -518,10 +533,16 @@ impl<'a> HistoryView<'a> {
                 offset,
             },
         };
+        let cause = |index: usize| {
+            self.data
+                .causes
+                .get(index)
+                .ok_or_else(|| unresolved_history(read::UnresolvedKind::Cause))
+        };
         Ok(HistoryHeader {
             units: group.units,
-            cause: &self.data.causes[group.cause],
-            retirement: group.retirement.map(|index| &self.data.causes[index]),
+            cause: cause(group.cause)?,
+            retirement: group.retirement.map(cause).transpose()?,
             body,
         })
     }
@@ -541,13 +562,21 @@ impl<'a> HistoryView<'a> {
                 supplied: scratch.len(),
             });
         }
-        scratch[0] = HistoryFrame { index, offset: 0 };
+        // `required` is at least one, so the scratch has a first frame.
+        let Some(first) = scratch.first_mut() else {
+            return Err(HistoryReadError::InsufficientScratch {
+                required,
+                supplied: 0,
+            });
+        };
+        *first = HistoryFrame { index, offset: 0 };
         Ok(HistoryCursor {
             view: self,
             scratch,
             length: 1,
             cancellation,
             cancelled: false,
+            fault: None,
         })
     }
 }
@@ -565,6 +594,13 @@ pub struct HistoryCursor<'a, 's> {
     length: usize,
     cancellation: Option<&'s crate::HtmlParseCancellation>,
     cancelled: bool,
+    fault: Option<read::UnresolvedReference>,
+}
+fn unresolved(kind: read::UnresolvedKind) -> read::UnresolvedReference {
+    read::UnresolvedReference::new(kind)
+}
+fn unresolved_history(kind: read::UnresolvedKind) -> HistoryReadError {
+    HistoryReadError::Unresolved(unresolved(kind))
 }
 pub enum HistoryStep<'a> {
     Progress,
@@ -576,7 +612,15 @@ pub enum HistoryStep<'a> {
     Fault(read::UnresolvedReference),
 }
 impl<'a> HistoryCursor<'a, '_> {
+    /// The fault, latched: a cursor that met one reports it from then on.
+    fn fail(&mut self, kind: read::UnresolvedKind) -> HistoryStep<'a> {
+        let fault = *self.fault.get_or_insert_with(|| unresolved(kind));
+        HistoryStep::Fault(fault)
+    }
     pub fn advance(&mut self) -> HistoryStep<'a> {
+        if let Some(fault) = self.fault {
+            return HistoryStep::Fault(fault);
+        }
         if self.cancelled
             || self
                 .cancellation
@@ -589,16 +633,26 @@ impl<'a> HistoryCursor<'a, '_> {
             return HistoryStep::Complete;
         };
         self.length = top;
-        let frame = self.scratch[top];
-        let group = &self.view.data.groups[frame.index];
+        let Some(frame) = self.scratch.get(top).copied() else {
+            return self.fail(read::UnresolvedKind::Group);
+        };
+        let Some(group) = self.view.data.groups.get(frame.index) else {
+            return self.fail(read::UnresolvedKind::Group);
+        };
         match group.body {
             GroupBody::Leaf {
                 start,
                 length,
                 value,
-            } => HistoryStep::Leaf(self.view.leaf((start, length, value), frame.offset)),
+            } => match self.view.leaf((start, length, value), frame.offset) {
+                Ok(leaf) => HistoryStep::Leaf(leaf),
+                Err(fault) => self.fail(fault.kind()),
+            },
             GroupBody::Alias { original } => {
-                self.scratch[top] = HistoryFrame {
+                let Some(slot) = self.scratch.get_mut(top) else {
+                    return self.fail(read::UnresolvedKind::Group);
+                };
+                *slot = HistoryFrame {
                     index: original,
                     offset: frame.offset,
                 };
@@ -611,15 +665,23 @@ impl<'a> HistoryCursor<'a, '_> {
                 incoming,
                 offset,
             } => {
-                self.scratch[top] = HistoryFrame {
+                // The offset and the left part lie within the group's units.
+                let right = HistoryFrame {
                     index: incoming,
-                    // The offset and the left part lie within the group's units.
                     offset: frame.offset.saturating_add(offset),
                 };
-                self.scratch[top.saturating_add(1)] = HistoryFrame {
+                let left = HistoryFrame {
                     index: original,
                     offset: frame.offset,
                 };
+                // Strict backward headers bound the stack by the scratch the
+                // cursor was given, so a graph that outgrows it is not one.
+                let Some([first, second]) = self.scratch.get_mut(top..=top.saturating_add(1))
+                else {
+                    return self.fail(read::UnresolvedKind::Group);
+                };
+                *first = right;
+                *second = left;
                 self.length = top.saturating_add(2);
                 HistoryStep::Progress
             }
