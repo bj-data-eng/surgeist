@@ -8103,36 +8103,59 @@ impl ParserArenaSession {
         if record.parent().is_some() {
             return Ok(Some(ElementInsertionIgnored::ParentAlreadyPresent));
         }
-        let mut ancestor = Some(target);
-        for _ in 0..storage.construction.storage().len() {
-            let Some(index) = ancestor else { break };
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            if index == element {
+        // An element with no children, no shadow root and, if it owns template
+        // contents, empty and shadowless ones has nothing below it but those
+        // contents. It is then a host-including inclusive ancestor of the
+        // target only as the target itself or as the owner of the target that
+        // is its contents. Every element the parser inserts is such an element.
+        let contents = match record.template_contents_kind() {
+            Some(HtmlTemplateContentsKind::Owned) => record.template_contents(),
+            _ => None,
+        };
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let shallow = record.child_count() == 0
+            && record.shadow_root().is_none()
+            && contents.is_none_or(|contents| {
+                contents.child_count() == 0 && contents.shadow_root().is_none()
+            });
+        if shallow {
+            if target == element || contents.is_some_and(|contents| contents.position() == target) {
                 return Ok(Some(
                     ElementInsertionIgnored::HostIncludingInclusiveAncestor,
                 ));
             }
-            let record = storage
-                .construction
-                .node_at(index)
-                .ok_or(SessionError::ForeignNode)?;
-            ancestor = if let Some(owner) = &record.fragment_owner() {
-                let (HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) =
-                    owner;
-                control.charge(WorkCategory::ProviderCall, 1)?;
-                let owner_position = storage
+        } else {
+            let mut ancestor = Some(target);
+            for _ in 0..storage.construction.storage().len() {
+                let Some(index) = ancestor else { break };
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                if index == element {
+                    return Ok(Some(
+                        ElementInsertionIgnored::HostIncludingInclusiveAncestor,
+                    ));
+                }
+                let record = storage
                     .construction
-                    .storage()
-                    .node_by_result_id(owner)
-                    .map_err(|_| SessionError::ForeignNode)?
-                    .position();
-                Some(owner_position)
-            } else {
-                record.parent().map(|node| node.position())
-            };
-        }
-        if ancestor.is_some() {
-            return Err(SessionError::Cycle);
+                    .node_at(index)
+                    .ok_or(SessionError::ForeignNode)?;
+                ancestor = if let Some(owner) = &record.fragment_owner() {
+                    let (HtmlFragmentOwner::Template(owner) | HtmlFragmentOwner::ShadowHost(owner)) =
+                        owner;
+                    control.charge(WorkCategory::ProviderCall, 1)?;
+                    let owner_position = storage
+                        .construction
+                        .storage()
+                        .node_by_result_id(owner)
+                        .map_err(|_| SessionError::ForeignNode)?
+                        .position();
+                    Some(owner_position)
+                } else {
+                    record.parent().map(|node| node.position())
+                };
+            }
+            if ancestor.is_some() {
+                return Err(SessionError::Cycle);
+            }
         }
         control.charge(WorkCategory::RecordVisit, 1)?;
         if matches!(
@@ -24313,8 +24336,9 @@ mod tests {
             ))
         );
         // Sixteen readiness (two Radio and two Range phase reads) visits + two handles + element kind +
-        // child/contents/template ancestors.
-        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 24);
+        // the shallow-element test, which fails here because the template's
+        // contents hold the child, + child/contents/template ancestors.
+        assert_eq!(c.usage().work(WorkCategory::RecordVisit) - visits, 25);
         assert_eq!(c.usage().work(WorkCategory::ProviderCall) - providers, 1);
         assert_eq!(
             session.element_insertion_ignored(&mut c, &template, &template),
@@ -24349,6 +24373,57 @@ mod tests {
                 .collect::<Vec<_>>(),
             [child.index]
         );
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn element_guard_on_an_element_with_nothing_below_it_finds_only_itself_and_its_contents() {
+        let mut c = control();
+        let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+        let root = session.root(&mut c).unwrap();
+        let template = session.allocate_element(&mut c, html("template")).unwrap();
+        let contents = session
+            .template_contents(&mut c, &template)
+            .unwrap()
+            .unwrap();
+        let div = session.allocate_element(&mut c, html("div")).unwrap();
+        let ancestor = Ok(Some(
+            ElementInsertionIgnored::HostIncludingInclusiveAncestor,
+        ));
+        // The element itself, and a template's own empty contents.
+        assert_eq!(
+            session.element_insertion_ignored(&mut c, &div, &div),
+            ancestor
+        );
+        assert_eq!(
+            session.element_insertion_ignored(&mut c, &template, &template),
+            ancestor
+        );
+        assert_eq!(
+            session.element_insertion_ignored(&mut c, &template, &contents),
+            ancestor
+        );
+        // Nothing else lies below them: neither the root, an unrelated element
+        // nor another element's contents.
+        let other = session.allocate_element(&mut c, html("template")).unwrap();
+        let other_contents = session.template_contents(&mut c, &other).unwrap().unwrap();
+        for (element, target) in [
+            (&div, &root),
+            (&div, &template),
+            (&div, &contents),
+            (&template, &root),
+            (&template, &div),
+            (&template, &other_contents),
+        ] {
+            assert_eq!(
+                session.element_insertion_ignored(&mut c, element, target),
+                Ok(None),
+                "{} below {}",
+                element.index,
+                target.index
+            );
+        }
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
