@@ -1,7 +1,7 @@
 # surgeist-typed-winsafe
 
-This crate depends on WinSafe 0.0.29 on Windows with its `user` and `gdi`
-features. WinSafe has no further Cargo dependencies under this configuration.
+This crate depends on WinSafe 0.0.29 on Windows with its `user` feature and
+the required `kernel` feature. WinSafe has no further Cargo dependencies.
 Downstream feature unification and resolution can change the dependency set.
 
 - Copyright: Rodrigo Cesar de Freitas Dias, 2019–present.
