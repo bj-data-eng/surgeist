@@ -602,3 +602,6 @@ fn mixed_real_computed_empty_cut_uses_its_selected_metric_only_decoration_owner(
         })
     );
 }
+
+#[path = "mixed_selections/indication_fragments.rs"]
+mod indication_fragments;

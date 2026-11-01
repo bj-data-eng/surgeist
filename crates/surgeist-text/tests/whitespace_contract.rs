@@ -351,6 +351,7 @@ fn rendered(bytes: &[u8], value: &str) -> Rendered {
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             incoming: None,

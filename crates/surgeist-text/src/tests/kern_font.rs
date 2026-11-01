@@ -105,6 +105,7 @@ fn finalize(prepared: &PreparedText) -> FinalizedLine {
         .unwrap();
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             boundary_context: vec![],
             incoming: None,

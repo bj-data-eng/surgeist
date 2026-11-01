@@ -274,6 +274,7 @@ fn captured_with_profile(
         .collect();
     Captured {
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes,
@@ -1237,7 +1238,7 @@ fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
                 &end,
                 text::ConditionalPurpose::MinContent,
                 &[],
-                None,
+                surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap();
         assert!(search.begin(&[]).unwrap().opportunities().is_empty());

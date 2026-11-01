@@ -379,6 +379,7 @@ fn finish(
     };
     prepared
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             start,

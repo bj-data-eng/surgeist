@@ -52,6 +52,7 @@ fn line_with_components(p: &text::PreparedText, signed: bool) -> text::Finalized
         })
         .collect();
     let request = text::LineSelectionRequest {
+        inline_boxes: None,
         start: segment.start(),
         end: segment.end(),
         segment,

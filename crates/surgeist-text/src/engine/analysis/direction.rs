@@ -10,9 +10,16 @@ use crate::Result;
 use crate::engine::bidi::EligibleStrong;
 use crate::protocol::paragraph::SemanticAnchorItem;
 
+/// A terminating B ends at its own real owner; only an unclosed final body
+/// includes every remaining nonemitting occurrence in the structural section.
+enum BodyEnd {
+    Terminated(usize),
+    SectionEnd,
+}
+
 struct BodyContext {
     start: usize,
-    end: usize,
+    end: BodyEnd,
     strong: Option<u8>,
     section: usize,
 }
@@ -58,7 +65,7 @@ impl DirectionBody {
                     contexts.try_reserve(1).map_err(|_| capacity())?;
                     contexts.push(BodyContext {
                         start,
-                        end: index + 1,
+                        end: BodyEnd::Terminated(index + 1),
                         strong,
                         section,
                     });
@@ -70,7 +77,7 @@ impl DirectionBody {
             contexts.try_reserve(1).map_err(|_| capacity())?;
             contexts.push(BodyContext {
                 start,
-                end: range.end,
+                end: BodyEnd::SectionEnd,
                 strong,
                 section,
             });
@@ -204,10 +211,9 @@ impl DirectionBody {
             } else {
                 owner_ends[body.start]
             };
-            let end = if body.end == owner_range.end {
-                event_range.end
-            } else {
-                owner_ends[body.end]
+            let end = match body.end {
+                BodyEnd::Terminated(owner) => owner_ends[owner],
+                BodyEnd::SectionEnd => event_range.end,
             };
             if start > end || end > events.len() {
                 return Err(invalid());
@@ -270,6 +276,47 @@ pub(crate) struct DirectionIndex {
     zero_prefix: Vec<usize>,
 }
 impl DirectionIndex {
+    /// Borrow canonical body identity; empty/control-only contexts are real.
+    pub(crate) fn body_indices(&self, section: usize) -> Option<std::ops::Range<usize>> {
+        self.by_section.get(section).cloned()
+    }
+
+    pub(crate) fn body_range(&self, body: usize) -> Option<std::ops::Range<usize>> {
+        self.contexts
+            .get(body)
+            .map(|context| context.start..context.end)
+    }
+
+    /// The same right-affine ownership used by direction queries, with actual
+    /// lookup work admitted by the consuming family operation.
+    pub(crate) fn body_for_range(
+        &self,
+        section: usize,
+        range: std::ops::Range<usize>,
+        budget: Option<&mut crate::processing::contextual::alignment::ScopeAlignmentBudget>,
+    ) -> Result<Option<usize>> {
+        let Some(bounds) = self.sections.get(section) else {
+            return Ok(None);
+        };
+        if range.start > range.end || range.start < bounds.start || range.end > bounds.end {
+            return Ok(None);
+        }
+        let indices = self.by_section[section].clone();
+        let contexts = &self.contexts[indices.clone()];
+        let Some(last) = contexts.len().checked_sub(1) else {
+            return Ok(None);
+        };
+        let local = crate::processing::contextual::alignment::operations::partition_point(
+            contexts,
+            budget,
+            |context| context.end <= range.start,
+        )?
+        .min(last);
+        let context = &contexts[local];
+        Ok((context.start <= range.start && range.end <= context.end)
+            .then_some(indices.start + local))
+    }
+
     /// Source incidence supplements raw cuts only for an enclosed actual
     /// zero-raw cell. It does not turn an empty point into a strong range.
     pub(crate) fn query_source_in(

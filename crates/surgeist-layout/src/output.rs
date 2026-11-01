@@ -1452,14 +1452,21 @@ pub struct PlacedTextOutput<Node> {
     container: Node,
     nodes: Vec<Node>,
     layout: surgeist_text::Layout,
+    inline_boxes: crate::text_layout::AdmittedInlineBoxes,
 }
 
 impl<Node: Copy> PlacedTextOutput<Node> {
-    pub(crate) fn new(container: Node, nodes: Vec<Node>, layout: surgeist_text::Layout) -> Self {
+    pub(crate) fn new(
+        container: Node,
+        nodes: Vec<Node>,
+        layout: surgeist_text::Layout,
+        inline_boxes: crate::text_layout::AdmittedInlineBoxes,
+    ) -> Self {
         Self {
             container,
             nodes,
             layout,
+            inline_boxes,
         }
     }
     #[must_use]
@@ -1474,6 +1481,34 @@ impl<Node: Copy> PlacedTextOutput<Node> {
     #[must_use]
     pub fn layout(&self) -> &surgeist_text::Layout {
         &self.layout
+    }
+
+    /// Complete-body fragment identity attached to this exact placed binding.
+    /// None means not requested; a demanded result can have no placed pieces.
+    #[must_use]
+    pub fn inline_box_fragments(&self) -> Option<PlacedInlineBoxFragments<'_>> {
+        self.inline_boxes
+            .family()
+            .map(|family| PlacedInlineBoxFragments {
+                layout: &self.layout,
+                family,
+            })
+    }
+}
+
+/// Borrowed Text-owned piece readback from one exact Layout binding result.
+#[derive(Clone, Copy)]
+pub struct PlacedInlineBoxFragments<'layout> {
+    layout: &'layout surgeist_text::Layout,
+    family: &'layout surgeist_text::PreparedInlineBoxFamily,
+}
+impl PlacedInlineBoxFragments<'_> {
+    #[must_use]
+    pub fn family(&self) -> &surgeist_text::PreparedInlineBoxFamily {
+        self.family
+    }
+    pub fn pieces(&self) -> impl Iterator<Item = surgeist_text::PlacedInlineBoxPiece<'_>> + '_ {
+        self.layout.inline_box_pieces()
     }
 }
 

@@ -28,6 +28,7 @@ struct Segment {
 pub struct PreparedMeasurementFlow {
     prepared: PreparedText,
     source_segment: PreparedSourceSegment,
+    inline_boxes: Option<PreparedInlineBoxFamily>,
     query_start: usize,
     query_incoming: Option<HyphenationContinuation>,
     target: Arc<PreparedTermination>,
@@ -114,6 +115,9 @@ fn invalid() -> crate::Error {
 }
 
 impl PreparedMeasurementFlow {
+    pub fn inline_box_family(&self) -> Option<&PreparedInlineBoxFamily> {
+        self.inline_boxes.as_ref()
+    }
     pub fn source_segment(&self) -> PreparedSourceSegment {
         self.source_segment.clone()
     }
@@ -161,6 +165,9 @@ impl PreparedMeasurementFlow {
     }
 }
 impl PreparedFlowSegment {
+    pub fn inline_box_family(&self) -> Option<&PreparedInlineBoxFamily> {
+        self.flow.inline_box_family()
+    }
     pub fn source_segment(&self) -> PreparedSourceSegment {
         self.flow.source_segment()
     }
@@ -217,6 +224,9 @@ impl PreparedFlowSegment {
         &'a self,
         emit: &mut dyn FnMut(super::scope_alignment::ScopeProofVisit<'a>) -> Result<()>,
     ) -> Result<()> {
+        if let Some(family) = self.inline_box_family() {
+            emit(super::scope_alignment::ScopeProofVisit::Family(family))?;
+        }
         super::conditional::visit_termination_scope_frames(&self.flow.target, emit)
     }
     pub(crate) fn admit<'a>(
@@ -267,6 +277,7 @@ impl PreparedFlowSegment {
             boundary_context: &request.boundary_context,
             line_strut: request.line_strut,
             line_box_struts: &request.line_box_struts,
+            inline_boxes: self.inline_box_family(),
         };
         selection::admit_range(prepared, input)?;
         Ok(input)
@@ -280,7 +291,11 @@ impl PreparedText {
         query_start: &PreparedBoundary,
         query_incoming: Option<&HyphenationContinuation>,
         target: &PreparedTermination,
+        inline_boxes: Option<&PreparedInlineBoxFamily>,
     ) -> Result<PreparedMeasurementFlow> {
+        if let Some(family) = inline_boxes {
+            family.require_prepared(&self.inner)?;
+        }
         let section = super::segments::admit(self, source_segment)?;
         super::segments::admit_boundaries(
             self,
@@ -379,6 +394,7 @@ impl PreparedText {
                     source_segment,
                     query_start.index,
                     query_incoming,
+                    inline_boxes,
                 ) || !portion.query.phrase_portions().contains(portion)
                 {
                     return Err(invalid());
@@ -454,6 +470,7 @@ impl PreparedText {
         Ok(PreparedMeasurementFlow {
             prepared: self.clone(),
             source_segment: source_segment.clone(),
+            inline_boxes: inline_boxes.cloned(),
             query_start: query_start.index,
             query_incoming: query_incoming.cloned(),
             target: Arc::new(target.clone()),
@@ -658,6 +675,7 @@ mod tests {
                 &start,
                 None,
                 &PreparedTermination::Measurement(portion),
+                None,
             )
             .unwrap()
     }
@@ -796,6 +814,7 @@ mod tests {
         // Public preparation is Native; build its complete authentic request,
         // rather than using the separate raw chooser's request factory.
         let trial = LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: start.clone(),
             end: ceiling.view().boundary(),
@@ -842,7 +861,7 @@ mod tests {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&frame),
+                crate::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         let portions = query.phrase_portions();
@@ -854,6 +873,7 @@ mod tests {
                 &start,
                 None,
                 &target,
+                None,
             )
             .unwrap();
         let again = prepared
@@ -862,6 +882,7 @@ mod tests {
                 &start,
                 None,
                 &target,
+                None,
             )
             .unwrap();
         assert_eq!(recipe, again);
@@ -883,7 +904,8 @@ mod tests {
                     &prepared.source_segments().next().unwrap(),
                     &portions[0].end(),
                     None,
-                    &target
+                    &target,
+                    None,
                 )
                 .is_err()
         );

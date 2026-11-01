@@ -39,6 +39,7 @@ fn completion<S: l::LayoutScalar>() {
             )),
         );
         let outer = l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent.prepared.clone(),
             container: 0,
             nodes: vec![1],

@@ -86,6 +86,7 @@ pub(super) fn paragraph(bytes: Vec<u8>, pieces: &[&str]) -> TextParagraphBinding
         })
         .collect::<Vec<_>>();
     TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         nodes: origins.iter().map(|origin| origin.node).collect(),
         prepared,
         container: 2,

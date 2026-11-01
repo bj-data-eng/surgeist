@@ -13,6 +13,7 @@ fn selected_at_indent(prepared: &PreparedText, indent: f64) -> SelectedLine {
     assert!(segments.next().is_none());
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

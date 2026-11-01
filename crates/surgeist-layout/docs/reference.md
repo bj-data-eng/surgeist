@@ -290,6 +290,34 @@ completes the segments into one placed output while traversing child blocks
 independently. Independent preparations cannot split one uninterrupted native
 run; admission returns `RunMembership` for that unsupported association.
 
+Each binding explicitly chooses `inline_box_fragments` as
+`InlineBoxFragmentationDemand::NotRequested` or `CompleteBodies`. The latter
+requests one Text-owned inline-box family for the complete prepared output,
+using the admitted captured boxes and complete extra native-pair inventory.
+It requires Complete captured topology and actual complete body coverage;
+Text's precise capability errors remain Text errors at `TextCapture`.
+Association-only metadata refuses `InlineBoxFragmentsRequireFlow` in both
+checked constructors. Genuine computed-only semantic flow can carry the same
+explicit demand. The early wrap-edge receipt is still validated before final
+admission in `try_new_with_edges`.
+
+The family is shared through fitting, issued flow/conditional observations,
+retries and whole-output placement. `PlacedTextOutput::inline_box_fragments()`
+returns `None` for NotRequested and a `PlacedInlineBoxFragments` view for a
+demanded result, including a result with no placed pieces. Its `family()`
+retains the exact checked preparation and its `pieces()` borrows Text's actual
+placed pieces; Layout does not project another fragment geometry. This exposes
+fragment identities and existing geometry, not complete decoration painting or
+NCA-controlled formatting. Numeric-only flow makes no equivalent family claim.
+
+NotRequested allocates no family-slot owner and adds no family preflight.
+Requested families share one optional binding-indexed owner; when captured
+Scope limits apply, its actual header/backing and Text's real retained family
+roots participate in admission and exact related-product census. These limits
+already fund the successful preparation; family construction does not introduce
+a separate funding mode. With no applicable ceiling, Native allocations remain
+fallible without acquiring a new global quota.
+
 Layout selects actual issued break opportunities and alternatives, then consumes Text's
 finalized metrics, fragments, control slots, and atomic slots. At a discretionary
 endpoint it tries alternatives in declaration order and uses the first that fits;

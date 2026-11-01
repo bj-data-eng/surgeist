@@ -74,7 +74,7 @@ fn split(p: &PreparedText, at: usize) -> (FinalizedLine, FinalizedLine) {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
@@ -603,7 +603,7 @@ fn expansion_preserves_normal_alphabetic_no_break_and_distinct_conditional_permi
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())

@@ -689,6 +689,7 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
             &tree,
             0,
             vec![TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 2,
                 nodes: vec![3, 4],

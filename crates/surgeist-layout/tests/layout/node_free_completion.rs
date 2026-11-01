@@ -199,6 +199,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
     }
     fn binding(&self) -> l::TextParagraphBinding<u32> {
         l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container: 0,
             nodes: vec![],
@@ -778,6 +779,7 @@ impl<S: l::LayoutScalar> SharedGap<S> {
 
     fn binding(&self, paragraph: usize) -> l::TextParagraphBinding<u32> {
         l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared[paragraph].clone(),
             container: 0,
             nodes: vec![],
@@ -1353,6 +1355,7 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             (0, vec![], vec![])
         };
         l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared[paragraph].clone(),
             container,
             nodes,

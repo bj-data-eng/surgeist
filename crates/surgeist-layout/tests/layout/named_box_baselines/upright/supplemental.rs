@@ -17,6 +17,7 @@ fn attach<S: l::LayoutScalar>(
         l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone())),
     );
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: fixture.prepared.clone(),
         container,
         nodes: vec![text],

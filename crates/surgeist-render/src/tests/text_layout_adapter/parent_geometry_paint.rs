@@ -144,6 +144,7 @@ fn placed_nested(prepared: &text::PreparedText, positive: bool) -> text::Layout 
     assert!(segments.next().is_none());
     let end = segment.end_opportunity();
     let request = text::LineSelectionRequest {
+        inline_boxes: None,
         segment: segment.clone(),
         start: segment.start(),
         end: segment.end(),

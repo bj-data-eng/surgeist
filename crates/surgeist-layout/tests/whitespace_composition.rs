@@ -360,6 +360,7 @@ fn bind(prepared: text::PreparedText, rtl: bool, bytes: Vec<u8>) -> Fixture {
         ));
     }
     let binding = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: (1..inputs.len()).collect(),

@@ -237,6 +237,7 @@ fn fixture() -> (
             let prepared = all[index].clone();
             let origin = prepared.origin_views().next().unwrap().handle();
             layout::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 origins: vec![layout::TextOriginBinding {
                     origin,
                     node: origin_node,
@@ -257,6 +258,7 @@ fn fixture() -> (
         })
         .collect();
     let empty = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: all[1].clone(),
         container: 3,
         nodes: vec![],
@@ -480,6 +482,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
     // Output emptiness does not erase the genuine original occurrence.
     assert_eq!(prepared.origin_views().count(), 1);
     let binding = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![],

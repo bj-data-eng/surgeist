@@ -273,6 +273,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let mut children = vec![vec![]; inputs.len()];
         children[0] = nodes.clone();
         let binding = l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes,

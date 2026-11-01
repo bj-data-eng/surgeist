@@ -104,6 +104,7 @@ fn bind(
         })
         .collect();
     TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes,

@@ -416,7 +416,7 @@ fn conditional_prefix_can_resolve_opposite_to_its_failed_ordinary_frame_and_keep
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&ordinary),
+            crate::ConditionalLineContext::Finalized(&ordinary),
         )
         .unwrap();
     let other = p
@@ -429,7 +429,7 @@ fn conditional_prefix_can_resolve_opposite_to_its_failed_ordinary_frame_and_keep
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&other_frame),
+            crate::ConditionalLineContext::Finalized(&other_frame),
         )
         .unwrap();
     assert_ne!(

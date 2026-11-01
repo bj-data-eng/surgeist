@@ -211,6 +211,7 @@ fn continuation(
                 })
                 .collect();
             TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,
@@ -666,6 +667,7 @@ fn segmented_fixture(
             })
             .collect();
         bindings.push(TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container,
             nodes,

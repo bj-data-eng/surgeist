@@ -140,6 +140,7 @@ pub(crate) struct SelectedShape {
     pub(crate) shaped: layout::data::ShapedData,
     pub(crate) characters: spacing::character::Graph,
     pub(crate) order: Vec<usize>,
+    pub(crate) inline_boxes: Option<crate::protocol::inline_box::fragments::SelectedBoxPieces>,
 }
 
 /// One retained outer placement, kept separate from canonical glyph geometry.

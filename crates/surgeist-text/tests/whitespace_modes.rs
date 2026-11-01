@@ -179,6 +179,7 @@ fn finish(
         .collect();
     prepared
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             boundary_context: Vec::new(),
             start,

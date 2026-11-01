@@ -272,6 +272,7 @@ fn compute_with_style<S: LayoutScalar>(
         );
     }
     let binding = TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared: p.clone(),
         container: 0,
         nodes,
@@ -520,12 +521,15 @@ fn assert_outgoing_counter_once_with_style(
         crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::<f64>::admit::<()>(
             Vec::new(),
             &[],
+            false,
         )
         .unwrap()
         .freeze(),
+        crate::text_layout::fragmentation::InlineBoxFamilies::default(),
     );
     let fitted = fit::fit(
         fit::FitInput {
+            inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style,
             wrapping: None,

@@ -127,6 +127,7 @@ fn whole(p: &PreparedText) -> FinalizedLine {
         })
         .collect();
     p.select(LineSelectionRequest {
+        inline_boxes: None,
         segment: crate::test_wrapping::only_source_segment(p),
         boundary_context: Vec::new(),
         incoming: None,

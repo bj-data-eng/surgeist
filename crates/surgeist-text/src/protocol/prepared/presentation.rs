@@ -32,11 +32,15 @@ pub(crate) enum Attachment {
     },
 }
 impl Attachment {
-    pub(super) fn original_level(
+    /// Consumes this issued attachment's actual occurrence/scalar proof.
+    /// The owner is the canonical emitted bidi row (including a transformed
+    /// control's real semantic atom); the original level keeps its old owner.
+    fn original(
         self,
         analyzed: &AnalyzedData,
         tables: &PreparedTables,
-    ) -> crate::Result<u8> {
+    ) -> crate::Result<(crate::engine::analysis::BidiOwner, u8)> {
+        use crate::engine::analysis::BidiOwner as B;
         let (participant, atom) = match self {
             Self::Before { participant, atom } | Self::After { participant, atom } => {
                 (participant, atom)
@@ -46,16 +50,24 @@ impl Attachment {
             Some(ParticipantData::Text(i))
                 if atom.is_some_and(|a| tables.units[*i].atoms.contains(&a)) =>
             {
-                Ok(analyzed.analysis.levels[atom.expect("authenticated scalar")])
+                let atom = atom.expect("authenticated original scalar");
+                Ok((B::Atom(atom), analyzed.analysis.levels[atom]))
             }
             Some(ParticipantData::Control(i)) if atom.is_none() => {
-                Ok(analyzed.analysis.control_levels[tables.controls[*i].occurrence])
+                let control = &tables.controls[*i];
+                let owner = control
+                    .semantic_atom
+                    .map_or(B::Control(control.occurrence), B::Atom);
+                Ok((owner, analyzed.analysis.control_levels[control.occurrence]))
             }
             Some(ParticipantData::Cell(i))
                 if atom.is_none() && matches!(self, Self::After { .. }) =>
             {
                 let binding = tables.cells[*i].binding;
-                Ok(analyzed.analysis.cell_levels[binding])
+                Ok((
+                    B::CombinedCell(binding),
+                    analyzed.analysis.cell_levels[binding],
+                ))
             }
             Some(ParticipantData::Atomic(i))
                 if atom.is_none()
@@ -64,10 +76,28 @@ impl Attachment {
                         .kind()
                         == crate::InlineBoxKind::InFlow =>
             {
-                Ok(analyzed.analysis.box_levels[tables.atomics[*i].occurrence])
+                let occurrence = tables.atomics[*i].occurrence;
+                Ok((
+                    B::Atomic(occurrence),
+                    analyzed.analysis.box_levels[occurrence],
+                ))
             }
             _ => Err(composition_error()),
         }
+    }
+    pub(super) fn original_level(
+        self,
+        analyzed: &AnalyzedData,
+        tables: &PreparedTables,
+    ) -> crate::Result<u8> {
+        self.original(analyzed, tables).map(|(_, level)| level)
+    }
+    pub(crate) fn original_owner(
+        self,
+        analyzed: &AnalyzedData,
+        tables: &PreparedTables,
+    ) -> crate::Result<crate::engine::analysis::BidiOwner> {
+        self.original(analyzed, tables).map(|(owner, _)| owner)
     }
     fn level(
         self,

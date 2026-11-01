@@ -31,6 +31,7 @@ private implementation organization.
 | Composition | `source`, `compose`, `Composer`, `Mark` | [composer.rs](../src/composer.rs) |
 | Pre-font source processing | `process_source_whitespace`, `process_contextual_source`, `ProcessedSource`, issued `ProcessedParagraph` views and partial plaintext | [processing.rs](../src/processing.rs), [contextual capture](../src/processing/contextual.rs) |
 | Style and fonts | `Style`, `Font`, `Brush`, decorations, flow settings | [style.rs](../src/style.rs) |
+| Prepared whole-body box fragments | `PreparedText::inline_box_family`, `PreparedInlineBoxFamily`, `LineSelectionRequest::inline_boxes`, `InlineBoxFragment`, selected/finalized/placed piece views | [family admission](../src/protocol/inline_box/fragments.rs), [consumed views](../src/protocol/inline_box/fragments/views.rs), [whole-body contract](#prepared-whole-body-box-fragments) |
 | Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoxEdgeComponents`, `InlineBoxSource`, `InlineBoxEdgeContext`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::{flow_interval, strip_interval}` | [protocol types](../src/protocol/mod.rs), [checked box ownership](../src/protocol/inline_box.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
 | Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
@@ -998,6 +999,61 @@ This bounded native operation consumes explicit used facts; it does not provide
 a live Style producer, authored percentage resolution, Layout's vertical adapter
 or complete inline-decoration envelopes/painting. Raw standalone whitespace, six-mode
 processing and the separate #74/Cc/default-ignorable contracts retain their rules.
+
+## Prepared whole-body box fragments
+
+A consumer requests global bidi-fragment provenance by constructing one
+`PreparedInlineBoxFamily` from its actual immutable `PreparedText` and complete
+extra native-box declarations, then retaining it in `LineSelectionRequest::inline_boxes`.
+Captured Inline boxes and undecorated captured ancestors come from that capture;
+extra `InlineBoxSource` declarations name genuine captured native endpoint pairs.
+Exact captured nominations canonicalize to their captured box. Identical repeated
+pairs canonicalize; distinct boxes cannot share one actual Start or End control.
+Distinct controls at the same numerical source cut remain distinct occurrences.
+
+The new constructor independently requires the captured domain's
+`SourceProcessingTopology::Complete` and complete owned structural bodies through
+actual raw/joint member custody. Complete text coverage does not prove complete
+topology. Partial bodies and foreign preparations refuse through
+`ProtocolError::InlineBoxFragmentation`; no failed request downgrades to an absent
+family. The existing endpoint operation with `None` makes no global-fragment claim.
+
+The family reuses completed Source bidi inputs and resolved levels, with the
+existing used-profile projection, full-body L1 and L2 owners. Its explicit Native
+empty-box policy borrows the following nonopaque resolved row's level, with the
+actual paragraph base at full-body end. This includes real empty Inline boxes
+without a positive-size or glyph requirement. Marker-only occurrences are not
+invented boxes. The policy does not substitute finite-line trailing fallback or
+rerun contextual UBA.
+
+Consumed selected and finalized piece views carry stable `InlineBoxFragment`
+identities, actual owner/parent/NCA and actual issued endpoint associations.
+Changing wrapping can change selected pieces and adjacency without merging global
+IDs. Members identify authentic unit/row/cut associations and whole-packet closure;
+they neither assign every ancillary Source alias exclusively nor own all the
+original pieces of a shared TCU/provider packet. Removed/empty/control aliases
+remain in canonical Source execution/readback. Indications use their already
+issued Before/After attachment, not their empty insertion range as provenance.
+Payload is emitted once; zero-effect boundaries preserve eligible shaping.
+
+`ConditionalLineContext::Unframed` retains an explicit optional family;
+`::Finalized` derives it from the actual completed frame. Issued measurement flows
+retain their family while observation requests remain geometry-only. Finalization,
+replay and placed piece readback reuse the admitted projection and actual frame;
+Source levels and Before/After semantics do not change.
+
+Captured feature limits are preparation-led: successful public preparation with
+those limits has retained preparation accounting. The family uses the same owned
+census and exact borrowed related-family products; input Vec backing capacity is
+counted, while its caller/stack header is not. The real family header and native
+overlay, mixed rows, lookup, fragment and selected-piece backings are funded once.
+Without a captured ceiling, construction uses fallible Native storage and does not
+invent a global quota.
+
+This is the [PreparedText-backed contribution to #1646](https://github.com/bj-data-eng/surgeist/issues/1646).
+Numeric/supplied-line global fragments, NCA-controlled justification and complete
+decoration painting remain separate work under #780. These views are not another
+geometry engine or exclusive box-body paint rectangles.
 
 ## Font catalogue publications
 

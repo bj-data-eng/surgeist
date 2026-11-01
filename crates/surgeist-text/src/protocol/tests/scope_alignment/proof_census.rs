@@ -167,7 +167,7 @@ fn search(prepared: &PreparedText, frame: &FinalizedLine) -> PreparedConditional
             ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(frame),
+            crate::ConditionalLineContext::Finalized(frame),
         )
         .unwrap()
 }
@@ -435,7 +435,13 @@ fn actual_phrase_flow_target_owns_its_query_frame_before_native_observation() {
     let query = search(&prepared, &frame);
     let phrase = phrase_request(&prepared, &query);
     let flow = prepared
-        .measurement_flow(&phrase.segment, &phrase.start, None, &phrase.termination)
+        .measurement_flow(
+            &phrase.segment,
+            &phrase.start,
+            None,
+            &phrase.termination,
+            None,
+        )
         .unwrap();
     let segments = flow.segments().collect::<Vec<_>>();
     assert_eq!(segments.len(), 1);

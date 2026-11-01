@@ -534,3 +534,6 @@ mod signed_tab;
 
 #[path = "parent_geometry/signed_physical_fold.rs"]
 mod signed_physical_fold;
+
+#[path = "parent_geometry/native_fragment_family.rs"]
+mod native_fragment_family;

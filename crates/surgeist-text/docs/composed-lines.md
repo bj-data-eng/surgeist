@@ -78,6 +78,18 @@ uses the same selected-line and placement machinery.
    retains its separate character-owned opportunity under its containing style.
    Transparent occurrences add no permission: existing internal cuts borrow the
    same relation, while semantic beginning and end do not acquire soft breaks.
+   For wrap-independent inline-box identity, call
+   `PreparedText::inline_box_family(native_boxes, allowance)` once after preparation.
+   It requires complete captured topology and ownership of the actual body;
+   supply genuine extra NativePair declarations, including undecorated Native ancestors.
+   Captured Inline boxes and ancestry are retained from their existing owner.
+   Share the family through `LineSelectionRequest::inline_boxes: Some(family)`
+   on every selected line; explicit `None` keeps the bounded local operation.
+   Actual selected/finalized/placed pieces expose fragment identity, parents, nearest
+   common ancestors, members and executed edges without reconstructing geometry. A shared packet
+   does not give one box another box's source or exclusive ink. See the
+   [complete-body contract](../../../docs/text-layout-contract.md#complete-body-bidi-fragments)
+   for precise refusals, funding and the separate formatting/painting capabilities.
 3. Supply a `LineSelectionRequest` with issued start/end boundaries, every selected
    mixed participant in order, an actual terminating opportunity, complete context
    and occurrence-qualified atomic/control allocations. In-flow atomics explicitly

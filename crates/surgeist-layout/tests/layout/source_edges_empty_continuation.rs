@@ -220,6 +220,7 @@ fn fixture_empty<S: l::LayoutScalar>()
                 (0, vec![], vec![])
             };
             l::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,

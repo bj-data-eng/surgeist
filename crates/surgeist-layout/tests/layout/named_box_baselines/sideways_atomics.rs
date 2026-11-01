@@ -253,6 +253,7 @@ fn selected(parent: &Captured, kind: t::InlineBoxKind) -> t::FinalizedLine {
         .unwrap()
         .handle();
     p.select(t::LineSelectionRequest {
+        inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start: p.boundary_views().next().unwrap().handle(),
         end: end.view().boundary(),
@@ -389,6 +390,7 @@ fn child_input<S: l::LayoutScalar>(kind: t::InlineBoxKind) -> l::NodeInputOf<S> 
 }
 fn child_binding(child: &Captured, container: u32, text: u32) -> l::TextParagraphBinding<u32> {
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: child.prepared.clone(),
         container,
         nodes: vec![text],
@@ -499,6 +501,7 @@ fn attach<S: l::LayoutScalar>(
     );
     vec![
         l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent.prepared.clone(),
             container,
             nodes: vec![first, atomic, last],

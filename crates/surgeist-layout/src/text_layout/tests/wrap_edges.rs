@@ -194,6 +194,7 @@ impl Fixture {
             .collect();
         Self {
             binding: TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes,
@@ -588,7 +589,7 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                     &end,
                     text::ConditionalPurpose::MinContent,
                     &[],
-                    None,
+                    surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .unwrap();
             assert!(search.begin(&[]).unwrap().opportunities().is_empty());

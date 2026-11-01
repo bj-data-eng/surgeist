@@ -24,6 +24,7 @@ fn standalone(parent: &Captured, kind: Option<t::InlineBoxKind>) -> t::Finalized
     let rtl = p.analyzed_source().direction() == t::Direction::RightToLeft;
     let line = p
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
@@ -97,6 +98,7 @@ fn paragraph_binding<S: l::LayoutScalar>(
         l::LayoutInputOf::inline_text(l::TextParticipation::new(origin.clone())),
     );
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container,
         nodes: vec![text],
@@ -494,6 +496,7 @@ fn completion<S: l::LayoutScalar>() {
                 )),
             );
             let outer = l::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: parent.prepared.clone(),
                 container: 0,
                 nodes: vec![1],
@@ -674,6 +677,7 @@ fn forced_line(
     parent
         .prepared
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: parent.prepared.source_segments().next().unwrap(),
             start,
             end,

@@ -133,6 +133,7 @@ fn compute<S: LayoutScalar>(
             LayoutInputOf::inline_text(TextParticipation::new(origin.clone())),
         );
     let binding = TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: vec![1],

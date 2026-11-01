@@ -171,6 +171,7 @@ fn known_size_baseline<S: LayoutScalar>() {
             _ => unreachable!("fixture declares its actual captured outer box"),
         };
         let binding = TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![],

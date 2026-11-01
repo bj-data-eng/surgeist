@@ -70,6 +70,7 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: prepared.clone(),
             container: 0,
             nodes: vec![1],

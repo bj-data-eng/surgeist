@@ -80,6 +80,7 @@ impl Native {
             })
             .collect();
         TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container,
             nodes,

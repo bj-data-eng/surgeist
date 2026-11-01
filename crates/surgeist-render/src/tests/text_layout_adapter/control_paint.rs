@@ -273,6 +273,7 @@ fn selected_placed(system: &mut text::System, value: &str) -> text::Layout {
         .handle();
     let line = prepared
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             line_box_struts: Vec::new(),
             incoming: None,

@@ -280,6 +280,7 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     }
     let nodes = (1..inputs.len() as u32).collect::<Vec<_>>();
     let binding = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: nodes.clone(),
@@ -572,6 +573,7 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
         .collect::<Vec<_>>();
     let nodes = (1..inputs.len() as u32).collect::<Vec<_>>();
     let binding = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: nodes.clone(),

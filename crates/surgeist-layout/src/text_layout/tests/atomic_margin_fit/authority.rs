@@ -82,6 +82,7 @@ fn request(p: &text::PreparedText, specs: &[Spec], band: f64) -> text::LineSelec
     let actual = p.atomic_views().collect::<Vec<_>>();
     assert_eq!(actual.len(), specs.len());
     text::LineSelectionRequest {
+        inline_boxes: None,
         segment: segment.clone(),
         start: segment.start(),
         end: segment.end(),

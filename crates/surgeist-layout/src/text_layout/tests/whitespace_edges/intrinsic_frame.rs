@@ -46,6 +46,7 @@ fn observed<S: LayoutScalar>(
         super::super::super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 flow.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: super::super::super::run::text_orientation(
                 WritingMode::HorizontalTb,

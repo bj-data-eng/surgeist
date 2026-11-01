@@ -288,18 +288,25 @@ pub(crate) struct ScopeAlignmentSnapshot<S: LayoutScalar> {
 pub(crate) struct ScopeAlignmentAdmission<S: LayoutScalar> {
     rows: Vec<TextScopeAlignmentInputOf<S>>,
     work: AdmissionWork,
+    inline_box_bodies: bool,
 }
 
 impl<S: LayoutScalar> ScopeAlignmentAdmission<S> {
     pub(super) fn capture_parts(
         &mut self,
     ) -> (&[TextScopeAlignmentInputOf<S>], Option<&mut AdmissionWork>) {
-        let active = !self.rows.is_empty();
+        // Demand activates its actual proof copies only after ordinary retained
+        // Prepared input has admitted a ceiling; it never creates funding.
+        let active = !self.rows.is_empty() || (self.inline_box_bodies && self.feature_active());
         (&self.rows, active.then_some(&mut self.work))
     }
 
     pub(super) fn work(&mut self) -> &mut AdmissionWork {
         &mut self.work
+    }
+
+    pub(super) fn feature_active(&self) -> bool {
+        self.work.retained.bytes != 0
     }
 
     pub(crate) fn freeze(self) -> Arc<ScopeAlignmentSnapshot<S>> {
@@ -314,6 +321,7 @@ impl<S: LayoutScalar> ScopeAlignmentSnapshot<S> {
     pub(crate) fn admit<Node>(
         rows: Vec<TextScopeAlignmentInputOf<S>>,
         paragraphs: &[TextParagraphBinding<Node>],
+        inline_box_bodies: bool,
     ) -> surgeist_text::Result<ScopeAlignmentAdmission<S>> {
         let rows = if rows.is_empty() { Vec::new() } else { rows };
         let mut work = AdmissionWork::new(&rows)?;
@@ -411,7 +419,11 @@ impl<S: LayoutScalar> ScopeAlignmentSnapshot<S> {
         // Actual selected handles demand complete rows during allocation.
         // Dormant potential scopes do not force font or allocation demand.
         work.base(retention)?;
-        Ok(ScopeAlignmentAdmission { rows, work })
+        Ok(ScopeAlignmentAdmission {
+            rows,
+            work,
+            inline_box_bodies,
+        })
     }
 
     fn admit_storage<Node>(
@@ -772,6 +784,17 @@ impl AdmissionWork {
         values.extend(source.iter().map(map));
         self.live = self.live.add(census)?;
         Ok((values, census))
+    }
+
+    pub(super) fn retain_header<T>(&mut self) -> surgeist_text::Result<()> {
+        let header = ScopeCensus {
+            records: 0,
+            bytes: size_of::<T>(),
+        };
+        self.check_live(self.live.add(header)?)?;
+        self.live = self.live.add(header)?;
+        self.retained = self.retained.add(header)?;
+        Ok(())
     }
 
     pub(super) fn retain_existing(&mut self, held: ScopeCensus) -> surgeist_text::Result<()> {

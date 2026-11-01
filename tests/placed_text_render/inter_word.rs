@@ -286,6 +286,7 @@ fn capture(
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1],

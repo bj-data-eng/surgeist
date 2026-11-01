@@ -258,6 +258,9 @@ pub fn surgeist_layout::InlineBoundaryEdgeErrorOf<S>::fmt(&self, f: &mut core::f
 pub enum surgeist_layout::InlineBoundaryKind
 pub surgeist_layout::InlineBoundaryKind::End
 pub surgeist_layout::InlineBoundaryKind::Start
+pub enum surgeist_layout::InlineBoxFragmentationDemand
+pub surgeist_layout::InlineBoxFragmentationDemand::CompleteBodies
+pub surgeist_layout::InlineBoxFragmentationDemand::NotRequested
 pub enum surgeist_layout::InlineBoxMetricContribution
 pub surgeist_layout::InlineBoxMetricContribution::NoContribution
 pub surgeist_layout::InlineBoxMetricContribution::Strut(surgeist_text::protocol::LineBoxStrut)
@@ -816,6 +819,7 @@ pub surgeist_layout::TextBindingError::ComputedBoundaryAssociation
 pub surgeist_layout::TextBindingError::ControlCoverage
 pub surgeist_layout::TextBindingError::DuplicateRunNode
 pub surgeist_layout::TextBindingError::EmptyRun
+pub surgeist_layout::TextBindingError::InlineBoxFragmentsRequireFlow
 pub surgeist_layout::TextBindingError::MissingParagraph
 pub surgeist_layout::TextBindingError::OriginCoverage
 pub surgeist_layout::TextBindingError::OverlappingParagraphs
@@ -1616,9 +1620,14 @@ pub fn surgeist_layout::PhysicalScrollRangeOf<S>::clamp(self, offset: surgeist_l
 pub fn surgeist_layout::PhysicalScrollRangeOf<S>::try_new(x_minimum: S, x_maximum: S, y_minimum: S, y_maximum: S) -> core::result::Result<Self, surgeist_layout::ScrollCoordinateErrorOf<S>>
 pub const fn surgeist_layout::PhysicalScrollRangeOf<S>::x(self) -> surgeist_layout::PhysicalScrollAxisRangeOf<S>
 pub const fn surgeist_layout::PhysicalScrollRangeOf<S>::y(self) -> surgeist_layout::PhysicalScrollAxisRangeOf<S>
+pub struct surgeist_layout::PlacedInlineBoxFragments<'layout>
+impl surgeist_layout::PlacedInlineBoxFragments<'_>
+pub fn surgeist_layout::PlacedInlineBoxFragments<'_>::family(&self) -> &surgeist_text::protocol::inline_box::fragments::PreparedInlineBoxFamily
+pub fn surgeist_layout::PlacedInlineBoxFragments<'_>::pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::protocol::inline_box::fragments::views::PlacedInlineBoxPiece<'_>> + '_
 pub struct surgeist_layout::PlacedTextOutput<Node>
 impl<Node: core::marker::Copy> surgeist_layout::PlacedTextOutput<Node>
 pub const fn surgeist_layout::PlacedTextOutput<Node>::container(&self) -> Node
+pub fn surgeist_layout::PlacedTextOutput<Node>::inline_box_fragments(&self) -> core::option::Option<surgeist_layout::PlacedInlineBoxFragments<'_>>
 pub fn surgeist_layout::PlacedTextOutput<Node>::layout(&self) -> &surgeist_text::layout::Layout
 pub fn surgeist_layout::PlacedTextOutput<Node>::nodes(&self) -> &[Node]
 pub struct surgeist_layout::Point<T>
@@ -1823,6 +1832,7 @@ pub struct surgeist_layout::TextParagraphBinding<Node>
 pub surgeist_layout::TextParagraphBinding::atomics: alloc::vec::Vec<surgeist_layout::TextAtomicBinding<Node>>
 pub surgeist_layout::TextParagraphBinding::container: Node
 pub surgeist_layout::TextParagraphBinding::controls: alloc::vec::Vec<surgeist_layout::TextControlBinding<Node>>
+pub surgeist_layout::TextParagraphBinding::inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand
 pub surgeist_layout::TextParagraphBinding::line_strut: core::option::Option<surgeist_text::protocol::LineStrut>
 pub surgeist_layout::TextParagraphBinding::nodes: alloc::vec::Vec<Node>
 pub surgeist_layout::TextParagraphBinding::origins: alloc::vec::Vec<surgeist_layout::TextOriginBinding<Node>>

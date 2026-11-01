@@ -125,6 +125,7 @@ fn finalized(prepared: &PreparedText, segment: &PreparedSourceSegment) -> Finali
     assert_eq!(offer.view().boundary(), end);
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start,
             end,

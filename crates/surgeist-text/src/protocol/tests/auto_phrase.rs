@@ -763,7 +763,7 @@ fn phrase_measurements_are_complete_nonplaceable_and_semantically_repeatable() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&frame),
+            crate::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let again = p
@@ -776,7 +776,7 @@ fn phrase_measurements_are_complete_nonplaceable_and_semantically_repeatable() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&again_frame),
+            crate::ConditionalLineContext::Finalized(&again_frame),
         )
         .unwrap();
     assert_eq!(
@@ -867,7 +867,7 @@ fn phrase_measurements_are_complete_nonplaceable_and_semantically_repeatable() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&frame),
+            crate::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let trial = phrase_trial(&p, &search.phrase_portions()[0], 40.0);
@@ -899,7 +899,7 @@ fn finite_normal_hyphen_and_arbitrary_stages_require_exact_complete_trials() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&frame),
+            crate::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let trial = phrase_trial(&p, &search.phrase_portions()[0], 5.0);
@@ -956,7 +956,7 @@ fn intrinsic_anywhere_has_its_own_authority_and_cannot_unlock_finite_relaxation(
                 &ceiling,
                 ConditionalPurpose::MinContent,
                 &[],
-                None,
+                crate::ConditionalLineContext::Unframed { inline_boxes: None },
             )
             .unwrap();
         assert!(intrinsic.phrase_portions().is_empty());
@@ -980,7 +980,7 @@ fn intrinsic_anywhere_has_its_own_authority_and_cannot_unlock_finite_relaxation(
                     &ceiling,
                     ConditionalPurpose::Overflow,
                     &[],
-                    None
+                    crate::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .is_err()
         );
@@ -1023,7 +1023,7 @@ fn a_restored_cut_reissues_only_the_actual_remaining_phrase_on_the_next_line() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&frame),
+            crate::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let original = search.phrase_portions()[0].clone();
@@ -1052,7 +1052,7 @@ fn a_restored_cut_reissues_only_the_actual_remaining_phrase_on_the_next_line() {
             &remaining_ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&second),
+            crate::ConditionalLineContext::Finalized(&second),
         )
         .unwrap();
     let portions = remaining.phrase_portions();
@@ -1138,7 +1138,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&frame),
+            crate::ConditionalLineContext::Finalized(&frame),
         )
         .unwrap();
     let portion = search.phrase_portions()[0].clone();
@@ -1153,7 +1153,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&trial)
+                crate::ConditionalLineContext::Finalized(&trial),
             )
             .is_err(),
         "a nonplaceable measurement is not an ordinary search frame"
@@ -1178,7 +1178,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&other_frame)
+                crate::ConditionalLineContext::Finalized(&other_frame),
             )
             .is_err()
     );
@@ -1193,7 +1193,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
                 &other_ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&other_frame)
+                crate::ConditionalLineContext::Finalized(&other_frame),
             )
             .is_err()
     );
@@ -1207,7 +1207,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
             &other_ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&other_frame),
+            crate::ConditionalLineContext::Finalized(&other_frame),
         )
         .unwrap();
     assert!(
@@ -1227,7 +1227,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
             &ceiling,
             ConditionalPurpose::Overflow,
             &[],
-            Some(&changed_frame),
+            crate::ConditionalLineContext::Finalized(&changed_frame),
         )
         .unwrap();
     assert_ne!(search, changed_search);
@@ -1281,7 +1281,7 @@ fn phrase_receipts_reject_foreign_start_context_and_measurement_mismatches() {
             &ceiling,
             ConditionalPurpose::MinContent,
             &[],
-            None,
+            crate::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .unwrap();
     assert!(
@@ -1324,7 +1324,7 @@ fn unsupported_phrase_language_restores_only_eligible_actual_hyphen_variants_bef
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&frame),
+                crate::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         assert!(
@@ -1432,7 +1432,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&frame),
+                crate::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         let trial = phrase_trial(&p, &search.phrase_portions()[0], 5.0);
@@ -1520,7 +1520,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&frame),
+                crate::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         assert!(search.phrase_portions().is_empty());
@@ -1565,7 +1565,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                 &residual_ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&second),
+                crate::ConditionalLineContext::Finalized(&second),
             )
             .unwrap();
         assert!(remaining.phrase_portions().is_empty());
@@ -1580,7 +1580,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                     &residual_ceiling,
                     ConditionalPurpose::Overflow,
                     &[],
-                    Some(&second)
+                    crate::ConditionalLineContext::Finalized(&second),
                 )
                 .is_err()
         );
@@ -1697,7 +1697,7 @@ fn supported_phrase_measurement_authenticates_after_and_both_incoming_on_the_res
                 &ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&frame),
+                crate::ConditionalLineContext::Finalized(&frame),
             )
             .unwrap();
         let portions = search.phrase_portions();
@@ -1738,7 +1738,7 @@ fn supported_phrase_measurement_authenticates_after_and_both_incoming_on_the_res
                 &remaining_ceiling,
                 ConditionalPurpose::Overflow,
                 &[],
-                Some(&second),
+                crate::ConditionalLineContext::Finalized(&second),
             )
             .unwrap();
         let portions = remaining.phrase_portions();

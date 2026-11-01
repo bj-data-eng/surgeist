@@ -52,6 +52,7 @@ fn capture(orientation: text::LineOrientation) -> TextParagraphBinding<u32> {
     assert_eq!(prepared.analyzed_source().typography(), typography);
     let origin = prepared.origin_views().next().unwrap().handle();
     TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![1],

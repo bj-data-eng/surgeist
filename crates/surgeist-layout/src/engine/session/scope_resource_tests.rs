@@ -182,6 +182,7 @@ impl Fixture {
             })
             .collect();
         let binding = TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 20, 2, 21],

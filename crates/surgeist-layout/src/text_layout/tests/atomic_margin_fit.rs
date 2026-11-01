@@ -344,6 +344,7 @@ fn direct_native_allocation_keeps_occupied10_when_its_unrelated_flow_is6() {
     let segment = prepared.source_segments().next().unwrap();
     let line = prepared
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
