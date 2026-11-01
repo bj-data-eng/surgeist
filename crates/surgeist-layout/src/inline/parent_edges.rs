@@ -258,11 +258,15 @@ fn schedule<S: LayoutScalar>(
                 .alias_gap(ancestry, endpoint == 0, body, selection, payload)?
         } else if let Some((first, last)) = extent {
             if left { first } else { last + 1 }
-        } else if let Some((first, last)) = context
-            .profile
-            .empty_extents(ancestry, body, selection, payload)?
-        {
-            if left { first } else { last }
+        } else if let Some(edge) = context.profile.physical_empty_edge(
+            ancestry,
+            (ranks[unit], control.kind()),
+            body,
+            selection,
+            payload,
+            left,
+        )? {
+            edge.gap
         } else {
             context.profile.gap(ancestry, body, selection, payload)?
         };
@@ -597,7 +601,16 @@ pub(super) fn accepted<S: LayoutScalar>(
             } else {
                 context
                     .profile
-                    .empty_component(owner, body, &selection, &payload, left)?
+                    .physical_empty_edge(
+                        owner,
+                        (rank, control.kind()),
+                        body,
+                        &selection,
+                        &payload,
+                        left,
+                    )?
+                    .ok_or_else(invalid)?
+                    .component
             }
         };
         let slot = slots[unit];

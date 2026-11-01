@@ -1088,6 +1088,20 @@ impl NativeOrderingData {
             }
         }
     }
+    fn range_ordering_empty(&self, range: &Range<usize>, body: usize) -> bool {
+        let actual = &self.bodies[body];
+        let first = (range.start + 1).max(actual.range.start);
+        let after = (range.end - 1).min(actual.range.end);
+        if first >= after {
+            return true;
+        }
+        let next = if matches!(self.slots[first].role, Role::Operand(_) | Role::Prepared) {
+            Some(first)
+        } else {
+            self.slots[first].next
+        };
+        next.is_none_or(|rank| after <= rank)
+    }
     pub(crate) fn gap(
         &self,
         owner: usize,
@@ -1103,20 +1117,8 @@ impl NativeOrderingData {
             return self.project_anchor(group.anchor, body, selection, payload);
         }
         let range = self.box_row(owner)?.range.clone();
-        let actual = &self.bodies[body];
-        // Actual owned content outside this candidate cannot be donated to an
-        // endpoint-only piece on another selected cut.
-        let first = (range.start + 1).max(actual.range.start);
-        let after = (range.end - 1).min(actual.range.end);
-        if first < after {
-            let next = if matches!(self.slots[first].role, Role::Operand(_) | Role::Prepared) {
-                Some(first)
-            } else {
-                self.slots[first].next
-            };
-            if next.is_some_and(|rank| rank < after) {
-                return Err(WrappingScopeError::GapOutsideSelection);
-            }
+        if !self.range_ordering_empty(&range, body) {
+            return Err(WrappingScopeError::GapOutsideSelection);
         }
         self.project_anchor(self.derive_gap(range, body)?, body, selection, payload)
     }
@@ -1131,6 +1133,11 @@ pub(crate) enum AliasPort {
     Body {
         start: bool,
     },
+}
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct NativeEmptyEdge {
+    pub(crate) gap: usize,
+    pub(crate) component: usize,
 }
 #[derive(Debug, PartialEq)]
 pub(crate) struct FamilyEmpty {
@@ -1753,75 +1760,110 @@ impl NativeOrderingData {
         }
         Ok(result)
     }
-    pub(crate) fn empty_extents(
+    pub(crate) fn physical_empty_edge(
         &self,
         owner: usize,
-        body: usize,
-        selection: &NativeOrderingSelection<'_>,
-        payload: &[usize],
-    ) -> Result<Option<(usize, usize)>> {
-        if self.family.is_none() {
-            return Ok(None);
-        }
-        let mut result = None;
-        let owned = self.empty_rows_for(owner, body)?;
-        let demanded = !owned.is_empty();
-        for empty in owned {
-            if let Some(gap) = self.selected_empty_gap(empty, selection, payload)? {
-                result = Some(result.map_or((gap, gap), |(a, b): (usize, usize)| {
-                    (a.min(gap), b.max(gap))
-                }));
-            }
-        }
-        if demanded && result.is_none() {
-            return Err(WrappingScopeError::GapOutsideSelection);
-        }
-        Ok(result)
-    }
-    pub(crate) fn empty_component(
-        &self,
-        owner: usize,
+        endpoint: (usize, crate::InlineBoundaryKind),
         body: usize,
         selection: &NativeOrderingSelection<'_>,
         payload: &[usize],
         left: bool,
-    ) -> Result<usize> {
-        let family = self
-            .family
-            .as_ref()
+    ) -> Result<Option<NativeEmptyEdge>> {
+        let Some(family) = &self.family else {
+            return Ok(None);
+        };
+        let (rank, kind) = endpoint;
+        if !selection.ranks.contains(&rank) {
+            return Err(WrappingScopeError::GapOutsideSelection);
+        }
+        if self.endpoint(rank) != Some((owner, kind == crate::InlineBoundaryKind::Start))
+            || self.body(rank)? != body
+            || self.slots[rank].role != Role::Structural
+        {
+            return Err(WrappingScopeError::PlanMismatch);
+        }
+        let key = family
+            .scope_keys
+            .get(owner)
+            .copied()
+            .flatten()
             .ok_or(WrappingScopeError::IncompleteFamily)?;
-        let key = family.scope_keys[owner].ok_or(WrappingScopeError::IncompleteFamily)?;
-        let mut chosen = None;
-        for empty in self.empty_rows_for(owner, body)? {
-            if self
-                .selected_empty_gap(empty, selection, payload)?
-                .is_none()
-            {
-                continue;
+        let owned = self.empty_rows_for(owner, body)?;
+        let prefer = |current: Option<NativeEmptyEdge>,
+                      candidate: NativeEmptyEdge|
+         -> Result<NativeEmptyEdge> {
+            let Some(current) = current else {
+                return Ok(candidate);
+            };
+            if current.gap != candidate.gap {
+                let nearer = if left {
+                    candidate.gap < current.gap
+                } else {
+                    current.gap < candidate.gap
+                };
+                return Ok(if nearer { candidate } else { current });
             }
-            for c in family.components.row_components(empty.row) {
-                let component = family
+            let a = family
+                .components
+                .component(current.component)
+                .ok_or(WrappingScopeError::InconsistentIncidence)?
+                .visual_range();
+            let b = family
+                .components
+                .component(candidate.component)
+                .ok_or(WrappingScopeError::InconsistentIncidence)?
+                .visual_range();
+            let (a, b) = if left {
+                (a.start, b.start)
+            } else {
+                (a.end, b.end)
+            };
+            if a == b && current.component != candidate.component {
+                return Err(WrappingScopeError::ConflictingGap);
+            }
+            let nearer = if left { b < a } else { a < b };
+            Ok(if nearer { candidate } else { current })
+        };
+        let mut chosen = None;
+        // A selected empty descendant remains actual selected-part authority.
+        for empty in &owned {
+            let Some(gap) = self.selected_empty_gap(empty, selection, payload)? else {
+                continue;
+            };
+            for component in family.components.row_components(empty.row) {
+                let actual = family
                     .components
-                    .component(c)
+                    .component(component)
                     .ok_or(WrappingScopeError::InconsistentIncidence)?;
-                if component.owner() == key
-                    && chosen.is_none_or(|old| {
-                        let prior = family
-                            .components
-                            .component(old)
-                            .expect("retained component");
-                        if left {
-                            component.visual_range().start < prior.visual_range().start
-                        } else {
-                            component.visual_range().end > prior.visual_range().end
-                        }
-                    })
-                {
-                    chosen = Some(c);
+                if actual.owner() == key && actual.body() == body {
+                    chosen = Some(prefer(chosen, NativeEmptyEdge { gap, component })?);
                 }
             }
         }
-        chosen.ok_or(WrappingScopeError::GapOutsideSelection)
+        if chosen.is_some() {
+            return Ok(chosen);
+        }
+        // With no selected part, only this owner's genuinely ordering-empty
+        // body and its OWN original anchor can authorize an endpoint-only edge.
+        // No descendant row or coordinate becomes selected by this association.
+        if !self.range_ordering_empty(&self.box_row(owner)?.range, body) {
+            return Err(WrappingScopeError::GapOutsideSelection);
+        }
+        let gap = self.gap(owner, body, selection, payload)?;
+        for empty in owned {
+            for component in family.components.row_components(empty.row) {
+                let actual = family
+                    .components
+                    .component(component)
+                    .ok_or(WrappingScopeError::InconsistentIncidence)?;
+                if actual.owner() == key && actual.body() == body {
+                    chosen = Some(prefer(chosen, NativeEmptyEdge { gap, component })?);
+                }
+            }
+        }
+        chosen
+            .map(Some)
+            .ok_or(WrappingScopeError::GapOutsideSelection)
     }
     fn logical_empty(
         &self,
