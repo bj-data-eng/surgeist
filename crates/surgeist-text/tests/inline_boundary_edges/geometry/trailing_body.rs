@@ -252,3 +252,6 @@ mod direction;
 
 #[path = "trailing_body/native_contribution.rs"]
 mod native_contribution;
+
+#[path = "trailing_body/native_optional.rs"]
+mod native_optional;
