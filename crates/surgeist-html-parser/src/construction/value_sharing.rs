@@ -2067,7 +2067,6 @@ mod tests {
         drop(
             arena
                 .share_values(&mut baseline, ValueSharingMode::Combined)
-                .ok()
                 .expect("an uncut sharing succeeds"),
         );
         let cost = credits(&baseline) - before;
