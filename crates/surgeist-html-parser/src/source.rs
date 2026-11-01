@@ -193,11 +193,24 @@ impl HtmlSource {
         if range.source != self.identity {
             return Err(HtmlSourceRangeError::ForeignSource);
         }
+        // The range's fields are private and every constructor validates them
+        // against its own source, but the offsets are checked again here so
+        // that no slice can panic.
+        let checked = self.range(range.start, range.end)?;
+        let out_of_bounds = HtmlSourceRangeError::OutOfBounds {
+            end: checked.end,
+            length: self.len(),
+        };
         match &self.text {
-            SourceText::Utf8(text) => Ok(DocumentString::from(&text[range.start..range.end])),
-            SourceText::Utf16(text) => Ok(DocumentString::from_utf16(
-                &text.code_units()[range.start..range.end],
-            )),
+            SourceText::Utf8(text) => text
+                .get(checked.start..checked.end)
+                .map(DocumentString::from)
+                .ok_or(out_of_bounds),
+            SourceText::Utf16(text) => text
+                .code_units()
+                .get(checked.start..checked.end)
+                .map(DocumentString::from_utf16)
+                .ok_or(out_of_bounds),
         }
     }
 
