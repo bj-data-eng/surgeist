@@ -1009,7 +1009,7 @@ impl SessionStorage {
             .is_some_and(|uri| uri.to_utf8().as_deref() == Ok("http://www.w3.org/1999/xhtml"))
             && element.name().local_name().to_utf8().as_deref() == Ok(local)
     }
-    fn uncharged_attribute(&self, node: usize, local: &str) -> bool {
+    pub(super) fn uncharged_attribute(&self, node: usize, local: &str) -> bool {
         let Some(HtmlNodeKind::Element(element)) =
             self.construction.node_at(node).map(|record| record.kind())
         else {

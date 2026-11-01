@@ -899,6 +899,73 @@ fn row_list(row: &RetainedPayload) -> Option<KindList> {
     }
 }
 
+#[cfg(test)]
+impl SessionStorage {
+    /// Uncharged, from the registry rather than the joins: whether a Base or form
+    /// association row's node lies in the subtree at `root`, or the subtree holds
+    /// an id while some listed control has a form attribute.
+    fn uncharged_form_subtree_is_local(&self, root: usize) -> bool {
+        let inside = |mut node: usize| loop {
+            if node == root {
+                return true;
+            }
+            match self
+                .construction
+                .node_at(node)
+                .and_then(|record| record.parent())
+            {
+                Some(parent) => node = parent.position(),
+                None => return false,
+            }
+        };
+        let mut listed_explicit = false;
+        for row in &self.payloads.values {
+            match row {
+                RetainedPayload::Base {
+                    node: Some(node), ..
+                } if inside(*node) => return true,
+                RetainedPayload::FormAssociation {
+                    node: Some(node),
+                    state,
+                } => {
+                    if inside(*node) {
+                        return true;
+                    }
+                    listed_explicit |=
+                        state.kind.listed() && self.uncharged_attribute(*node, "form");
+                }
+                _ => {}
+            }
+        }
+        if !listed_explicit {
+            return false;
+        }
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            let record = self.construction.node_at(node).expect("a retained node");
+            if let HtmlNodeKind::Element(element) = record.kind()
+                && element
+                    .attributes()
+                    .as_slice()
+                    .iter()
+                    .find(|attribute| {
+                        attribute.name().namespace().uri().is_none()
+                            && attribute.name().local_name().to_utf8().as_deref() == Ok("id")
+                    })
+                    .is_some_and(|id| !id.value().is_empty())
+            {
+                return true;
+            }
+            stack.extend(
+                (0..record.child_count())
+                    .rev()
+                    .filter_map(|position| record.child_at(position).map(|child| child.position())),
+            );
+        }
+        false
+    }
+}
+
 impl PayloadStorage {
     /// The first registry row of `join` bound to `node`: one join cell, however
     /// many other rows the registry retains. The caller checks the row it gets.
@@ -4568,25 +4635,6 @@ impl SessionStorage {
         Err(SessionError::Cycle)
     }
 
-    fn ordinary_descendant(
-        &self,
-        control: &mut ParseControl,
-        mut node: usize,
-        root: usize,
-    ) -> Result<bool, SessionError> {
-        for _ in 0..self.construction.storage().len() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            if node == root {
-                return Ok(true);
-            }
-            match self.ordinary_parent(control, node, None)? {
-                Some(parent) => node = parent,
-                None => return Ok(false),
-            }
-        }
-        Err(SessionError::Cycle)
-    }
-
     fn html_local(
         &self,
         control: &mut ParseControl,
@@ -4672,50 +4720,13 @@ impl SessionStorage {
             false
         };
         let mut local = adoption;
-        let mut listed_explicit = false;
-        // Only a Base or form association row can make the subtree local, and
-        // either one makes it so; the visit order has no other effect.
-        for &slot in self.payloads.kind_list(KindList::Base) {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            if let Some(RetainedPayload::Base {
-                node: Some(node), ..
-            }) = self.payloads.values.get(slot)
-                && self.ordinary_descendant(control, *node, root)?
-            {
-                local = true;
-                break;
-            }
-        }
-        if !local {
-            for &slot in self.payloads.kind_list(KindList::FormAssociation) {
-                control.charge(WorkCategory::RecordVisit, 1)?;
-                if let Some(RetainedPayload::FormAssociation {
-                    node: Some(node),
-                    state,
-                }) = self.payloads.values.get(slot)
-                {
-                    control.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
-                    if self.ordinary_descendant(control, *node, root)? {
-                        local = true;
-                        break;
-                    }
-                    if state.kind.listed() && self.form_attribute(control, *node, "form")?.is_some()
-                    {
-                        listed_explicit = true;
-                    }
-                }
-            }
-        }
-        if !local && listed_explicit {
-            let mut next = Some(root);
-            while let Some(node) = next {
-                if self.has_id(control, node)? {
-                    local = true;
-                    break;
-                }
-                next = self.next_effect_node(control, root, node)?;
-            }
-        }
+        // The subtree is local when it holds a Base or form association row's
+        // node, or an id while some listed control has a form attribute (an id
+        // can then resolve that attribute). One walk of the subtree finds the
+        // rows through their joins and whether it holds an id, so only a
+        // subtree with an id scans the registry's form associations.
+        let mut joined = false;
+        let mut identified = false;
         let mut next = Some(root);
         while let Some(node) = next {
             for name in [
@@ -4745,8 +4756,35 @@ impl SessionStorage {
                 self.svg_state_at(control, node)?;
                 local = true;
             }
+            for join in [Join::Base, Join::FormAssociation] {
+                joined |= self.payloads.joined(control, node, join)?.is_some();
+            }
+            identified |= self.has_id(control, node)?;
             next = self.next_effect_node(control, root, node)?;
         }
+        let mut listed_explicit = false;
+        if !joined && identified {
+            for &slot in self.payloads.kind_list(KindList::FormAssociation) {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                if let Some(RetainedPayload::FormAssociation {
+                    node: Some(node),
+                    state,
+                }) = self.payloads.values.get(slot)
+                    && state.kind.listed()
+                    && self.form_attribute(control, *node, "form")?.is_some()
+                {
+                    listed_explicit = true;
+                    break;
+                }
+            }
+        }
+        #[cfg(test)]
+        assert_eq!(
+            joined || listed_explicit,
+            self.uncharged_form_subtree_is_local(root),
+            "form locality of the subtree at {root}"
+        );
+        local |= joined || listed_explicit;
         if !local && !children_changed {
             return Ok(None);
         }
