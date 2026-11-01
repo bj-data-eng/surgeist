@@ -335,8 +335,8 @@ fn a_reverse_query_reaching_an_unresolvable_row_faults_and_stays_faulted() {
 // ---- the cause and what it links ----
 
 /// The cause of the first sourced row, corrupted by `edit`, and the row.
-fn corrupted_cause<'a>(
-    report: &'a mut crate::HtmlParseReport,
+fn corrupted_cause(
+    report: &mut crate::HtmlParseReport,
     edit: impl FnOnce(&mut provenance::ConstructionCause),
 ) -> usize {
     let index = first_sourced_row(report);
@@ -890,7 +890,7 @@ fn a_row_that_is_not_a_registry_binding_is_absent_not_a_fault() {
 #[test]
 fn a_diagnostic_naming_a_missing_location_is_reported() {
     let mut report = parse("<p>");
-    assert!(report.diagnostics().len() > 0);
+    assert!(!report.diagnostics().is_empty());
     assert!(
         history(&mut report)
             .evidence_mut()

@@ -846,6 +846,10 @@ pub struct MetadataCursor<'a> {
     next: usize,
     fault: Option<read::UnresolvedReference>,
 }
+#[expect(
+    clippy::large_enum_variant,
+    reason = "The record holds what it resolved, and is lent by value so the read path allocates nothing; boxing it would add an allocation where no controller exists to charge it"
+)]
 pub enum MetadataStep<'a> {
     Record(MetadataRef<'a>),
     /// A slot that holds no metadata record.
@@ -1046,6 +1050,10 @@ impl<'a> Resolver<'a> {
 }
 /// What a record's references resolved to, by the kind of row it was issued for.
 #[derive(Clone, Copy)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Only a Document row holds its Meta history; the record is lent by value so the read path allocates nothing, and boxing it would add an allocation where no controller exists to charge it"
+)]
 enum Refs<'a> {
     None,
     Raw(&'a DocumentString),

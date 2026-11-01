@@ -1248,6 +1248,10 @@ pub struct Cursor<'a> {
     next: usize,
     fault: Option<Fault>,
 }
+#[expect(
+    clippy::large_enum_variant,
+    reason = "The occurrence holds what it resolved, and is lent by value so the read path allocates nothing; boxing it would add an allocation where no controller exists to charge it"
+)]
 pub enum Step<'a> {
     Document(DocumentView<'a>),
     Occurrence(OccurrenceView<'a>),
