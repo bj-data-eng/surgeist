@@ -928,20 +928,19 @@ fn finding_a_listed_template_charges_each_probe_of_the_search() {
     // div sits on top at 17. The search probes the middle of the range still
     // open, `low + (high - low) / 2` over the listing positions, and stops at
     // the first probe that finds the entry; each probe is one state step.
-    // Replacing or removing a listed entry searches the list twice: once to
-    // learn that the entry is listed and once to unlist it.
+    // Replacing or removing a listed entry searches the list once, to learn
+    // that the entry is listed and where, and unlists it at that position.
     //
     // 1. Replace the template at stack index 9 (position 8 of 16): the first
-    //    probe is position 8, which holds 9, so each search takes 1 probe: 2.
+    //    probe is position 8, which holds 9, so the search takes 1 probe: 1.
     //    Unlisting leaves 15 listings: 1-8 and 10-16.
     // 2. Remove the template at index 8 (position 7 of 15): the first probe is
-    //    position 7, which holds 8, so each search takes 1 probe: 2. The
+    //    position 7, which holds 8, so the search takes 1 probe: 1. The
     //    entries above move down, leaving 14 listings: 1-7 and 9-15.
     // 3. Replace the div, now at index 16, which is not listed. The range
     //    0..14 probes position 7 (holds 9, less than 16), then 8..14 probes
     //    position 11 (holds 13), then 12..14 probes position 13 (holds 15),
-    //    and 14..14 is empty: 3 probes and not found. Only one search is made,
-    //    as nothing is unlisted: 3.
+    //    and 14..14 is empty: 3 probes and not found. Nothing is unlisted: 3.
     let source = HtmlSource::utf8(format!("<html>{}<div><div><div>", "<template>".repeat(16)));
     let mut c = control(100);
     c.admit_source(&source).unwrap();
@@ -958,7 +957,7 @@ fn finding_a_listed_template_charges_each_probe_of_the_search() {
     let first = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = steps(&c);
     kernel.replace_stack(9, &first, &mut c, None).unwrap();
-    assert_eq!(steps(&c) - before, 2);
+    assert_eq!(steps(&c) - before, 1);
     assert_eq!(
         kernel.template_indices(),
         (1..=8).chain(10..=16).collect::<Vec<_>>()
@@ -967,7 +966,7 @@ fn finding_a_listed_template_charges_each_probe_of_the_search() {
     let eighth = kernel.at(8, &mut c).unwrap();
     let before = steps(&c);
     kernel.remove_stack_identity(&eighth, &mut c, None).unwrap();
-    assert_eq!(steps(&c) - before, 2);
+    assert_eq!(steps(&c) - before, 1);
     assert_eq!(
         kernel.template_indices(),
         (1..=7).chain(9..=15).collect::<Vec<_>>()
