@@ -1117,19 +1117,25 @@ impl SessionStorage {
             let (values, allocation) = control.new_vector()?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
-            if let Err(error) = self.prepare_payload_slot(control) {
-                release_vector(control, values, allocation)?;
-                return Err(error);
-            }
-            let container = self.payloads.values.len();
-            self.payloads.values.push(RetainedPayload::Attributes(Some(
-                AttributeStorage::Building {
-                    values,
-                    allocation,
-                    original_len,
-                    reversed_pairs: 0,
-                },
-            )));
+            let admission = match self.prepare_payload_slot(control) {
+                Ok(admission) => admission,
+                Err(error) => {
+                    release_vector(control, values, allocation)?;
+                    return Err(error);
+                }
+            };
+            let container = self
+                .payloads
+                .push_row(
+                    admission,
+                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                        values,
+                        allocation,
+                        original_len,
+                        reversed_pairs: 0,
+                    })),
+                )
+                .map_err(|_| latch_registry_row(control))?;
             while let Some(attribute) = attributes.try_pop(control)? {
                 let adjusted = self.foreign_attribute(control, attribute.name, foreign);
                 let (qualified, local_ticket, namespace_ticket, prefix_ticket) = match adjusted {

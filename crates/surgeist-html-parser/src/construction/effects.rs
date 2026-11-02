@@ -688,14 +688,17 @@ impl SessionStorage {
         kind: WorkListKind,
     ) -> Result<usize, SessionError> {
         let list = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        if let Err(error) = self.prepare_payload_slot_owned(c) {
-            list.release(c)?;
-            return Err(error);
-        }
-        let slot = self.payloads.values.len();
-        self.payloads
-            .values
-            .push(RetainedPayload::WorkList(Some(list)));
+        let prepared = match self.prepare_payload_slot_owned(c) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                list.release(c)?;
+                return Err(error);
+            }
+        };
+        let slot = self
+            .payloads
+            .push_row(prepared, RetainedPayload::WorkList(Some(list)))
+            .map_err(|_| latch_registry_row(c))?;
         let detached = match kind {
             WorkListKind::Options { detached } => detached,
             _ => None,
@@ -786,14 +789,17 @@ impl SessionStorage {
         roots: usize,
     ) -> Result<usize, SessionError> {
         let list = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        if let Err(error) = self.prepare_payload_slot_owned(c) {
-            list.release(c)?;
-            return Err(error);
-        }
-        let slot = self.payloads.values.len();
-        self.payloads
-            .values
-            .push(RetainedPayload::WorkList(Some(list)));
+        let prepared = match self.prepare_payload_slot_owned(c) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                list.release(c)?;
+                return Err(error);
+            }
+        };
+        let slot = self
+            .payloads
+            .push_row(prepared, RetainedPayload::WorkList(Some(list)))
+            .map_err(|_| latch_registry_row(c))?;
         c.charge(WorkCategory::RecordWrite, 1)?;
         let mut cursor = 0;
         while let Some(root) = self.work_list_node(c, roots, cursor)? {

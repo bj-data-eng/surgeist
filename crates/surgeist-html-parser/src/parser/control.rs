@@ -307,6 +307,72 @@ pub(crate) struct ParseControl {
     /// a cursor out of step with its value would.
     #[cfg(test)]
     space_token_overshoot: usize,
+    /// Set when the stop requested by [`stop_after_prepared_slot`] is due: the
+    /// next checkpoint cancels the parse.
+    #[cfg(test)]
+    stop_armed: bool,
+}
+
+/// Which prepared payload slot a test stops the parse after, and how many the
+/// parse has prepared so far. Held per thread, which is where a parse runs.
+#[cfg(test)]
+#[derive(Clone, Copy)]
+struct PreparedSlotStop {
+    after: Option<usize>,
+    prepared: usize,
+}
+#[cfg(test)]
+thread_local! {
+    static PREPARED_SLOT_STOP: std::cell::Cell<PreparedSlotStop> =
+        const { std::cell::Cell::new(PreparedSlotStop { after: None, prepared: 0 }) };
+}
+// Where each payload slot the parse prepared was asked for, in order.
+#[cfg(test)]
+thread_local! {
+    static PREPARED_SLOT_SITES: std::cell::RefCell<Vec<&'static std::panic::Location<'static>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+/// Makes the parse that runs next on this thread stop, as a cancellation, at the
+/// first checkpoint after it prepares its `index`th payload slot (counting
+/// from zero), and restarts the count [`prepared_slots`] reports. `None` stops
+/// nothing.
+#[cfg(test)]
+pub(crate) fn stop_after_prepared_slot(index: Option<usize>) {
+    PREPARED_SLOT_STOP.set(PreparedSlotStop {
+        after: index,
+        prepared: 0,
+    });
+    PREPARED_SLOT_SITES.with_borrow_mut(Vec::clear);
+}
+/// The source location that asked for each payload slot the parse run since
+/// [`stop_after_prepared_slot`] prepared, in order.
+#[cfg(test)]
+pub(crate) fn prepared_slot_sites() -> Vec<&'static std::panic::Location<'static>> {
+    PREPARED_SLOT_SITES.with_borrow(Clone::clone)
+}
+/// How many payload slots the parse run since [`stop_after_prepared_slot`]
+/// prepared.
+#[cfg(test)]
+pub(crate) fn prepared_slots() -> usize {
+    PREPARED_SLOT_STOP.get().prepared
+}
+/// Clears the stop [`stop_after_prepared_slot`] set when it is dropped, so a
+/// test that panics before it does can leave nothing armed for the next test
+/// that runs on its thread.
+#[cfg(test)]
+pub(crate) struct PreparedSlotStopScope;
+#[cfg(test)]
+impl PreparedSlotStopScope {
+    pub(crate) fn begin() -> Self {
+        stop_after_prepared_slot(None);
+        Self
+    }
+}
+#[cfg(test)]
+impl Drop for PreparedSlotStopScope {
+    fn drop(&mut self) {
+        stop_after_prepared_slot(None);
+    }
 }
 
 /// A cleanup walk that keeps going after a refusal, so tests can make one of
@@ -390,7 +456,19 @@ impl ParseControl {
             registry_walk_overshoot: 0,
             #[cfg(test)]
             space_token_overshoot: 0,
+            #[cfg(test)]
+            stop_armed: false,
         }
+    }
+    /// Counts one prepared payload slot, records where it was asked for, and arms
+    /// the stop a test asked for.
+    #[cfg(test)]
+    pub(crate) fn note_prepared_slot(&mut self, site: &'static std::panic::Location<'static>) {
+        PREPARED_SLOT_SITES.with_borrow_mut(|sites| sites.push(site));
+        let mut hook = PREPARED_SLOT_STOP.get();
+        self.stop_armed |= hook.after == Some(hook.prepared);
+        hook.prepared = hook.prepared.saturating_add(1);
+        PREPARED_SLOT_STOP.set(hook);
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
         &self.usage
@@ -532,6 +610,10 @@ impl ParseControl {
             self.owned_spans.registry_credits_since_poll = 0;
         }
         if self.cancellation.is_cancelled() {
+            return self.fail(ParseStop::Cancelled);
+        }
+        #[cfg(test)]
+        if std::mem::take(&mut self.stop_armed) {
             return self.fail(ParseStop::Cancelled);
         }
         Ok(())

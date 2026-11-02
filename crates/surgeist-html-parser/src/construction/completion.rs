@@ -133,18 +133,21 @@ impl ParserArenaSession {
                 return Err(SessionError::CompletionMetadataUnavailable);
             }
         }
-        storage.prepare_payload_slot_owned(c)?;
+        let prepared = storage.prepare_payload_slot_owned(c)?;
         storage
             .payloads
-            .values
-            .push(RetainedPayload::StandaloneDocumentCompletion {
-                node: 0,
-                state: StandaloneDocumentState {
-                    readiness: ConstructionReadiness::Complete,
-                    ready_for_post_load_tasks: false,
-                    completion: ConstructionCompletion::Parsing,
+            .push_row(
+                prepared,
+                RetainedPayload::StandaloneDocumentCompletion {
+                    node: 0,
+                    state: StandaloneDocumentState {
+                        readiness: ConstructionReadiness::Complete,
+                        ready_for_post_load_tasks: false,
+                        completion: ConstructionCompletion::Parsing,
+                    },
                 },
-            });
+            )
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
     pub(crate) fn standalone_document_state(

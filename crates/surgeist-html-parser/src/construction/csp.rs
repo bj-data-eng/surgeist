@@ -268,17 +268,17 @@ impl SessionStorage {
                     association.policy().revision(),
                 ));
             }
-            this.prepare_payload_slot_owned(c)?;
-            if let Err(error) = native_storage(c, &mut state.account, size_of::<Policy>()) {
-                this.unprepare_payload_slot(c)?;
-                return Err(error);
-            }
-            let index = this.payloads.values.len();
-            this.payloads
-                .values
-                .push(RetainedPayload::CspPolicy(Box::new(Policy {
-                    value: Some(association),
-                })));
+            let prepared = this.prepare_payload_slot_owned(c)?;
+            native_storage(c, &mut state.account, size_of::<Policy>())?;
+            let index = this
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::CspPolicy(Box::new(Policy {
+                        value: Some(association),
+                    })),
+                )
+                .map_err(|_| latch_registry_row(c))?;
             let doc = this.document_slot(c, document)?;
             payload_write::<Option<usize>>(
                 c,
@@ -380,25 +380,25 @@ impl ParserArenaSession {
         if s.csp_slot().is_some() {
             return Err(SessionError::WrongToken);
         }
-        s.prepare_payload_slot_owned(c)?;
+        let prepared = s.prepare_payload_slot_owned(c)?;
         let mut account = Account::default();
-        if let Err(error) = payload_write::<Option<usize>>(c, 1)
-            .and_then(|()| native_storage(c, &mut account, size_of::<State>()))
-        {
-            s.unprepare_payload_slot(c)?;
-            return Err(error);
-        }
-        s.csp_slot = Some(s.payloads.values.len());
-        s.payloads
-            .values
-            .push(RetainedPayload::CspState(Some(Box::new(State {
-                owner: None,
-                account,
-                pending: None,
-                initial_base,
-                initial: None,
-                owner_usage: Storage::ZERO,
-            }))));
+        payload_write::<Option<usize>>(c, 1)?;
+        native_storage(c, &mut account, size_of::<State>())?;
+        let state_slot = s
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::CspState(Some(Box::new(State {
+                    owner: None,
+                    account,
+                    pending: None,
+                    initial_base,
+                    initial: None,
+                    owner_usage: Storage::ZERO,
+                }))),
+            )
+            .map_err(|_| latch_registry_row(c))?;
+        s.csp_slot = Some(state_slot);
         s.with_csp(c, |_, c, state| {
             let owner = HtmlCspOwner::new_with(&mut |a| state.account.admit(c, a))
                 .map_err(|e| protocol(c, e))?;
@@ -484,13 +484,16 @@ impl SessionStorage {
                     Outcome::Terminal => return Err(SessionError::CspService),
                 };
                 // All receivers and payload backing precede the policy fence.
-                s.prepare_payload_slot_owned(c)?;
+                let admission = s.prepare_payload_slot_owned(c)?;
                 native_storage(c, &mut state.account, size_of::<Policy>())?;
-                let next_slot = s.payloads.values.len();
-                s.payloads
-                    .values
-                    .push(RetainedPayload::CspPolicy(Box::new(Policy { value: None })));
-                s.prepare_payload_slot_owned(c)?;
+                let next_slot = s
+                    .payloads
+                    .push_row(
+                        admission,
+                        RetainedPayload::CspPolicy(Box::new(Policy { value: None })),
+                    )
+                    .map_err(|_| latch_registry_row(c))?;
+                let admission = s.prepare_payload_slot_owned(c)?;
                 native_storage(c, &mut state.account, size_of::<Transition>())?;
                 let transition_cause = pending
                     .cause
@@ -502,15 +505,18 @@ impl SessionStorage {
                             .copy_cause_ref(c, cause)
                     })
                     .transpose()?;
-                let transition_slot = s.payloads.values.len();
-                s.payloads
-                    .values
-                    .push(RetainedPayload::CspTransition(Box::new(Transition {
-                        value: None,
-                        _cause: transition_cause,
-                        _document: pending.document,
-                        _subject: pending.subject,
-                    })));
+                let transition_slot = s
+                    .payloads
+                    .push_row(
+                        admission,
+                        RetainedPayload::CspTransition(Box::new(Transition {
+                            value: None,
+                            _cause: transition_cause,
+                            _document: pending.document,
+                            _subject: pending.subject,
+                        })),
+                    )
+                    .map_err(|_| latch_registry_row(c))?;
                 let doc = s.document_slot(c, pending.document)?;
                 payload_write::<Option<usize>>(c, 1)?;
                 let publication = state
@@ -557,21 +563,23 @@ mod tests {
         let request = request("<body><div id=a>");
         let (mut c, mut session, _proof, _nodes) = graph(&request);
         let storage = session.active_mut().unwrap();
-        storage.prepare_payload_slot_owned(&mut c).unwrap();
+        let prepared = storage.prepare_payload_slot_owned(&mut c).unwrap();
         let mut account = Account::default();
         native_storage(&mut c, &mut account, size_of::<State>()).unwrap();
-        let slot = storage.payloads.values.len();
-        storage
+        let slot = storage
             .payloads
-            .values
-            .push(RetainedPayload::CspState(Some(Box::new(State {
-                owner: None,
-                account,
-                pending: None,
-                initial_base: false,
-                initial: None,
-                owner_usage: Storage::ZERO,
-            }))));
+            .push_row(
+                prepared,
+                RetainedPayload::CspState(Some(Box::new(State {
+                    owner: None,
+                    account,
+                    pending: None,
+                    initial_base: false,
+                    initial: None,
+                    owner_usage: Storage::ZERO,
+                }))),
+            )
+            .unwrap();
         storage.csp_slot = Some(slot);
         let result = storage.with_csp(&mut c, |this, _, _| {
             this.payloads.values[slot] =

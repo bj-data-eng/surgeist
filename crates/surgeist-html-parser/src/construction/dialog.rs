@@ -62,16 +62,19 @@ impl SessionStorage {
         let raw = literal_string(c, fresh.return_value().as_bytes())?;
         let (value, raw) = self.register_string_owned(c, raw, None)?;
         drop(value);
-        self.prepare_payload_slot_owned(c)?;
+        let prepared = self.prepare_payload_slot_owned(c)?;
         payload_write::<DialogMetadata>(c, 1)?;
         self.payloads
-            .push_row(RetainedPayload::Dialog {
-                node,
-                state: DialogMetadata {
-                    value: raw,
-                    first: None,
+            .push_row(
+                prepared,
+                RetainedPayload::Dialog {
+                    node,
+                    state: DialogMetadata {
+                        value: raw,
+                        first: None,
+                    },
                 },
-            })
+            )
             .map_err(|_| latch_registry_row(c))?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = self

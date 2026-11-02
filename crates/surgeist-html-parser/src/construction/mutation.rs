@@ -251,20 +251,26 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let [name_slot, value_slot] = fields;
         let (values, allocation) = c.new_vector()?;
-        if let Err(error) = self.prepare_payload_slot(c) {
-            release_vector(c, values, allocation)?;
-            drop(incoming);
-            return Err(error);
-        }
-        let stage = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::Attributes(Some(
-            AttributeStorage::Building {
-                values,
-                allocation,
-                original_len: 1,
-                reversed_pairs: 0,
-            },
-        )));
+        let admission = match self.prepare_payload_slot(c) {
+            Ok(admission) => admission,
+            Err(error) => {
+                release_vector(c, values, allocation)?;
+                drop(incoming);
+                return Err(error);
+            }
+        };
+        let stage = self
+            .payloads
+            .push_row(
+                admission,
+                RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                    values,
+                    allocation,
+                    original_len: 1,
+                    reversed_pairs: 0,
+                })),
+            )
+            .map_err(|_| latch_registry_row(c))?;
         let prepared = (|| {
             let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                 values,

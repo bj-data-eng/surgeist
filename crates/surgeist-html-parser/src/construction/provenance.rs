@@ -3124,11 +3124,14 @@ impl SessionStorage {
             let cause = evidence.cause_ref(cause, c)?;
             // Native binding is a fixed write in the later allocation commit.
             payload_write::<Option<usize>>(c, 1)?;
-            self.prepare_payload_slot_owned(c)?;
-            let slot = self.payloads.values.len();
-            self.payloads
-                .values
-                .push(RetainedPayload::ConstructionCause { node: None, cause });
+            let prepared = self.prepare_payload_slot_owned(c)?;
+            let slot = self
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::ConstructionCause { node: None, cause },
+                )
+                .map_err(|_| latch_registry_row(c))?;
             *entry = Some(slot);
         }
         Ok(slots)

@@ -408,9 +408,12 @@ impl SessionStorage {
                             offset,
                             total,
                         )?;
-                        self.prepare_payload_slot_owned(control)?;
-                        merged_slot = Some(self.payloads.values.len());
-                        self.payloads.values.push(RetainedPayload::Retired);
+                        let prepared = self.prepare_payload_slot_owned(control)?;
+                        merged_slot = Some(
+                            self.payloads
+                                .push_row(prepared, RetainedPayload::Retired)
+                                .map_err(|_| latch_registry_row(control))?,
+                        );
                         let Some(view) = action.storage_view() else {
                             return Err(latch_registry_row(control));
                         };
