@@ -305,6 +305,7 @@ pub(crate) struct FitInput<'a> {
     pub formatted: &'a FormattedTailSnapshot,
     pub line_box_context: crate::line_box::LineBoxContext,
     pub prepared: &'a PreparedText,
+    pub inline_boxes: Option<&'a surgeist_text::PreparedInlineBoxFamily>,
     pub segment: surgeist_text::PreparedSourceSegment,
     pub scope_alignments: &'a dyn super::scope_alignment::ScopeAlignmentFacts,
     pub available: Available,
@@ -1924,7 +1925,7 @@ where
             &recipe.ceiling,
             target.purpose(),
             &skipped,
-            Some(&ordinary.finalized),
+            surgeist_text::ConditionalLineContext::Finalized(&ordinary.finalized),
         )?;
         let staged_query = EndpointContext {
             conditional: true,
@@ -2236,6 +2237,7 @@ fn selection_request(
         .cloned()
         .collect();
     Ok(LineSelectionRequest {
+        inline_boxes: input.inline_boxes.cloned(),
         segment: input.segment.clone(),
         start: start.clone(),
         end: endpoint.boundary,
@@ -2733,7 +2735,12 @@ where
                             &ceiling,
                             purpose,
                             &skipped_ordinary,
-                            frame.as_ref(),
+                            frame.as_ref().map_or(
+                                surgeist_text::ConditionalLineContext::Unframed {
+                                    inline_boxes: input.inline_boxes,
+                                },
+                                surgeist_text::ConditionalLineContext::Finalized,
+                            ),
                         )?;
                         let query = EndpointContext {
                             accepted_prefix: result,
@@ -3235,9 +3242,14 @@ mod tests {
 
     fn no_scope_resources() -> super::super::scope_alignment::ScopeAlignmentResources<f64> {
         super::super::scope_alignment::ScopeAlignmentResources::new(
-            super::super::scope_alignment::ScopeAlignmentSnapshot::admit::<()>(Vec::new(), &[])
-                .unwrap()
-                .freeze(),
+            super::super::scope_alignment::ScopeAlignmentSnapshot::admit::<()>(
+                Vec::new(),
+                &[],
+                false,
+            )
+            .unwrap()
+            .freeze(),
+            crate::text_layout::fragmentation::InlineBoxFamilies::default(),
         )
     }
 

@@ -290,6 +290,7 @@ fn assert_composition(kind: text::InlineBoxKind) {
         0,
         vec![
             layout::TextParagraphBinding {
+                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: parent.clone(),
                 container: 0,
                 nodes: vec![1, 2, 3],
@@ -307,6 +308,7 @@ fn assert_composition(kind: text::InlineBoxKind) {
                 line_strut: None,
             },
             layout::TextParagraphBinding {
+                inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared: child.clone(),
                 container: ATOMIC_NODE,
                 nodes: vec![4],

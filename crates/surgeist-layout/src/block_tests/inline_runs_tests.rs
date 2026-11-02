@@ -228,6 +228,8 @@ fn prepared_fixed_metric_text_retains_actual_font_baseline_both_scalars() {
             0,
             vec![text.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -559,6 +561,8 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
             0,
             vec![binding],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

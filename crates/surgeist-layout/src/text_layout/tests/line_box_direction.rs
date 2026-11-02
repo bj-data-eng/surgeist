@@ -139,6 +139,8 @@ fn compute<S: LayoutScalar>(
         0,
         vec![p.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -354,6 +356,8 @@ fn chronology<S: LayoutScalar>() {
             0,
             vec![first.binding(0), child.binding(2), last.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -481,6 +485,8 @@ fn intrinsic<S: LayoutScalar>(
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -500,6 +506,7 @@ fn intrinsic<S: LayoutScalar>(
         super::super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 flow.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: super::super::run::text_orientation(
                 WritingMode::HorizontalTb,
@@ -755,6 +762,8 @@ fn numeric_overflow_cases<S: LayoutScalar>(
                 0,
                 vec![p.binding(0)],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },

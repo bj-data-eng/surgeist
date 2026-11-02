@@ -149,6 +149,8 @@ fn assert_native_invalidation_source_order<S: LayoutScalar>() {
         70,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -195,6 +197,8 @@ fn assert_terminal_phantom_completion_scroll<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -297,6 +301,8 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         0,
         vec![binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -342,6 +348,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         super::run::Context {
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 capture.scope_alignments.clone(),
+                crate::text_layout::fragmentation::InlineBoxFamilies::default(),
             ),
             orientation: super::run::text_orientation(WritingMode::HorizontalTb, &binding.prepared)
                 .unwrap_or_else(|_| panic!("horizontal fixture must resolve its Text orientation")),
@@ -542,6 +549,8 @@ fn assert_fractional_float_clearance<S: LayoutScalar>(explicit_clear: bool) {
             0,
             vec![binding],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -627,6 +636,8 @@ fn assert_no_clear_preserves_fractional_line_position<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -723,6 +734,8 @@ fn assert_actual_no_clear_round_trip<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -799,6 +812,8 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -908,6 +923,8 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1039,6 +1056,8 @@ fn assert_optional_control<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1097,6 +1116,8 @@ fn assert_directional_controls<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1180,6 +1201,8 @@ fn assert_discretionary_alternatives<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1273,6 +1296,8 @@ fn assert_atomic_alignment<S: LayoutScalar>() {
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -1345,6 +1370,8 @@ fn assert_rtl_asymmetric_insets<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1435,6 +1462,8 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1542,6 +1571,8 @@ fn assert_reused_preparation_runs<S: LayoutScalar>() {
         0,
         vec![first, second],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1630,6 +1661,8 @@ fn assert_genuine_out_of_flow<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1718,6 +1751,8 @@ fn distinct_out_of_flow_occurrences_cannot_claim_one_absolute_node() {
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new()
             },
@@ -1732,6 +1767,8 @@ fn distinct_out_of_flow_occurrences_cannot_claim_one_absolute_node() {
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1783,6 +1820,8 @@ fn assert_conflicting_atomic_authority<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1841,6 +1880,8 @@ fn semantic_control_requires_exact_preparation_and_structural_role() {
         0,
         vec![binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1860,6 +1901,8 @@ fn semantic_control_requires_exact_preparation_and_structural_role() {
         0,
         vec![binding],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1894,6 +1937,8 @@ fn assert_terminal_break<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -1981,6 +2026,8 @@ fn assert_fractional_line_allocation_scroll<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -2158,6 +2205,8 @@ fn assert_logical_allocation_float_sliver<S: LayoutScalar>() {
         0,
         vec![paragraph.binding(0)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

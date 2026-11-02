@@ -134,9 +134,18 @@ impl<S: LayoutScalar> Fixture<S> {
     }
     fn numeric(&self) -> MixedInlineRunInputOf<S> {
         let flow = self.flow();
+        let raw: Vec<_> = crate::Traverse::children(&self.tree, 0).collect();
         let projection = flow
             .wrapping
-            .numeric_projection(&flow.graph, 0, &self.nodes)
+            .numeric_projection(
+                &flow.graph,
+                0,
+                crate::inline_wrapping::NativeRunSource {
+                    nodes: &raw,
+                    start: 0,
+                },
+                &self.nodes,
+            )
             .unwrap();
         MixedInlineRunInputOf {
             inline_baseline_context: crate::InlineBaselineContext::Physical,
@@ -1215,7 +1224,17 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     .output();
                 let projection = flow
                     .wrapping
-                    .numeric_projection(&flow.graph, 0, &[node])
+                    .numeric_projection(
+                        &flow.graph,
+                        0,
+                        crate::inline_wrapping::NativeRunSource {
+                            nodes: &[node],
+                            start: crate::Traverse::children(&tree, 0)
+                                .position(|actual| actual == node)
+                                .unwrap(),
+                        },
+                        &[node],
+                    )
                     .unwrap();
                 let report = layout_mixed_inline_run_with_formatted_observation(
                     MixedInlineRunInputOf {
@@ -1332,3 +1351,11 @@ fn edge_forces_stay_in_their_own_numeric_run_across_a_real_block_separator() {
     separated_numeric_runs::<f32>();
     separated_numeric_runs::<f64>();
 }
+
+#[path = "wrap_edges_tests/bidi_metadata.rs"]
+mod bidi_metadata;
+mod gap_attachments;
+mod gap_scope_cuts;
+
+#[path = "wrap_edges_tests/native_family_functional.rs"]
+mod native_family_functional;

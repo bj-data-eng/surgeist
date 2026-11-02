@@ -83,6 +83,13 @@ finalization produce immutable line-local output. `Layout::from_finalized_lines`
 validates one explicitly anchored line set without wrapping again. See the
 [composed protocol guide](docs/composed-lines.md).
 
+For complete captured bodies, `PreparedText::inline_box_family` retains box
+fragment identity and ancestry independently of wrapping. Opted-in requests
+share that family through selected, finalized and placed piece readback; shared
+glyph packets keep their original source ownership and execute once. See the
+[complete-body fragment contract](../../docs/text-layout-contract.md#complete-body-bidi-fragments)
+for admission, Native declarations and the remaining formatting/painting scope.
+
 Automatic hyphenation has bounded en-US support through the pinned
 [resource and exceptions](docs/hyphenation-resources.md). Prepared word and cut
 views retain actual source custody; selected indication text remains presentation

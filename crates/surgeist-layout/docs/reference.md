@@ -290,6 +290,46 @@ completes the segments into one placed output while traversing child blocks
 independently. Independent preparations cannot split one uninterrupted native
 run; admission returns `RunMembership` for that unsupported association.
 
+Each binding explicitly chooses `inline_box_fragments` as
+`InlineBoxFragmentationDemand::NotRequested` or `CompleteBodies`. The latter
+requests one Text-owned inline-box family for the complete prepared output,
+using the admitted captured boxes and complete extra native-pair inventory.
+It requires Complete captured topology and actual complete body coverage;
+Text's precise capability errors remain Text errors at `TextCapture`.
+Association-only metadata refuses `InlineBoxFragmentsRequireFlow` in both
+checked constructors. Genuine computed-only semantic flow can carry the same
+explicit demand. The early wrap-edge receipt is still validated before final
+admission in `try_new_with_edges`.
+
+The family is shared through fitting, issued flow/conditional observations,
+retries and whole-output placement. `PlacedTextOutput::inline_box_fragments()`
+returns `None` for NotRequested and a `PlacedInlineBoxFragments` view for a
+demanded result, including a result with no placed pieces. Its `family()`
+retains the exact checked preparation and its `pieces()` borrows Text's actual
+placed pieces; Layout does not project another fragment geometry. This exposes
+fragment identities and existing geometry, not complete decoration painting or
+NCA-controlled formatting.
+
+NotRequested allocates no family-slot owner and adds no family preflight.
+Requested families share one optional binding-indexed owner; when captured
+Scope limits apply, its actual header/backing and Text's real retained family
+roots participate in admission and exact related-product census. These limits
+already fund the successful preparation; family construction does not introduce
+a separate funding mode. With no applicable ceiling, Native allocations remain
+fallible without acquiring a new global quota.
+
+Numeric formatters request a Layout-owned family through
+`WrappingInput::native_inline_boxes`. Both checked constructors authenticate its
+complete generated-child proof and actual native ordering roles.
+`CompletedLayoutBatch::native_inline_box_families()` retains formatter-wide box,
+body, fragment and ancestry identities across wrapping;
+`native_inline_box_pieces()` exposes actual selected membership and executed edge
+associations. A demanded empty result retains its family with no pieces;
+unrequested formatters have no family. These numeric observations preserve native
+custody without issuing Text's `InlineFragmentOutput`, decoration envelopes,
+paint rectangles or NCA-controlled formatting. Actual scheduled Prepared Text
+execution refuses native-family demand and uses the Prepared capability above.
+
 Layout selects actual issued break opportunities and alternatives, then consumes Text's
 finalized metrics, fragments, control slots, and atomic slots. At a discretionary
 endpoint it tries alternatives in declaration order and uses the first that fits;
@@ -457,13 +497,25 @@ containing Block formatter and retain `InlineFlowMismatch` validation;
 its parent's endpoint formatter fields establish the parent's own used axes.
 
 Layout authenticates the actual captured scope/native pair and parent relation,
-then lowers checked Text contexts or uses the genuine numeric family. Selected
-BoxEdges surround their actual indivisible packet or authentic empty gap on the
+then lowers checked Text contexts or uses the genuine numeric occurrence proof.
+Selected BoxEdges surround their actual indivisible packet or authentic empty gap on the
 assigned sides. Flattened native containment, equal source cuts and bidi parity
 do not establish this ownership. Original levels and non-edge payload order stay
 unchanged; context-only controls add no flow. A failed BoxEdge request refuses
 without becoming a Contribution. Captured Contribution controls remain genuine
 Contribution operations, including zero.
+
+The numeric formatter excludes actual BoxEdge operations from content L2 before
+ordering and retains their physical allocation. Ordinary Contributions remain
+supplied operands, including zero. A demanded and proven normal family can
+classify its genuine zero-component undecorated endpoints as transparent logical
+aliases while retaining their Contribution operation and supplied metrics.
+`WrappingInput::gaps` carries resolved
+neighbor/formatter/delimiter/empty-parent attachments when actual facts cannot
+determine an ordering-empty box's gap uniquely. Attachments must remain valid for
+the actual selected cut; a body-valid neighbor on another line supplies no gap.
+See the [numeric ordering contract](../../../docs/text-layout-contract.md#numeric-physical-edge-ordering)
+for anchor sides, physical tie order and precise refusals.
 
 The strip footprint stays nonnegative even when margin makes flow negative or
 zero. On a formatted line, its zero-block-extent node sits at the actual control

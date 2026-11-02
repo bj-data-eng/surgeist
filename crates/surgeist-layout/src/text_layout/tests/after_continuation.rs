@@ -123,6 +123,8 @@ fn intrinsic<S: LayoutScalar>(p: &PreparedParagraph, available: AvailableOf<S>, 
         2,
         vec![p.binding(2)],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

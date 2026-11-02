@@ -963,6 +963,12 @@ pub(crate) enum PlanInput<'a> {
     },
 }
 impl<'a> PlanInput<'a> {
+    pub(crate) fn inline_box_family(self) -> Option<&'a crate::PreparedInlineBoxFamily> {
+        match self {
+            Self::Selection(request) => request.inline_boxes.as_ref(),
+            Self::Flow { segment, .. } => segment.inline_box_family(),
+        }
+    }
     fn visit(
         self,
         emit: &mut dyn FnMut(crate::protocol::scope_alignment::ScopeProofVisit<'a>) -> Result<()>,
@@ -1026,6 +1032,7 @@ pub(crate) fn selection_plan(
     input.visit(&mut |event| {
         match event {
             crate::protocol::scope_alignment::ScopeProofVisit::Work(count) => budget.work(count)?,
+            crate::protocol::scope_alignment::ScopeProofVisit::Family(_) => budget.work(1)?,
             crate::protocol::scope_alignment::ScopeProofVisit::Frame(frame) => {
                 insert_proof_frame(&mut proof_frames, frame, &mut budget)?;
                 for ancestor in &frame.inner.selected.scopes.proof_frames {

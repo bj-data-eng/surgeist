@@ -1,5 +1,11 @@
 //! Checked source ownership for explicitly requested physical inline edges.
 mod components;
+pub(crate) mod fragments;
+pub(crate) mod incidence;
+pub use fragments::{
+    FinalizedInlineBoxPiece, InlineBoxFragment, InlineBoxFragmentationError, InlineBoxPieceMember,
+    PlacedInlineBoxPiece, PreparedInlineBoxFamily, SelectedInlineBoxPiece,
+};
 pub(crate) mod execution;
 use super::{LineEdgeSide, PreparedText, ProtocolError, protocol_error};
 use crate::engine::scope_alignment::accounting::{self as account, Ledger};

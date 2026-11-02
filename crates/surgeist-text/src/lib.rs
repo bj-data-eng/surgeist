@@ -19,6 +19,7 @@ mod font;
 mod geometry;
 mod hyphenation;
 mod id;
+mod inline_box_components;
 mod layout;
 mod options;
 mod phrase;
@@ -69,6 +70,10 @@ pub use font::{
 };
 pub use geometry::{GlyphBasis, GlyphFrame, Point, Rect, Size};
 pub use id::Id;
+pub use inline_box_components::{
+    InlineBoxComponentParticipation, SuppliedInlineBoxComponent, SuppliedInlineBoxComponentRow,
+    SuppliedInlineBoxComponents, SuppliedInlineBoxComponentsInput,
+};
 pub use layout::{
     Affinity, BaselineShiftFact, Cluster, Cursor, CursorGeometry, DecorationKind, DecorationRun,
     Glyph, Hit, InlineBoxMetricFact, InlineMetricFacts, Layout, Line, LineMetricFact, Metrics,
@@ -110,36 +115,38 @@ pub use protocol::readback::{
 pub use protocol::{
     AtomicAllocation, AtomicBoxAllocation, AtomicFitAllocation, AtomicFlowAllocation,
     AtomicLineAllocation, AtomicPlacement, AtomicSlotFeedback, CapturedScopeIncidence,
-    ConditionalDisposition, ConditionalPurpose, ConditionalStage, ControlAllocation, ControlStrut,
-    CssMarginBoxFit, FinalizedFragment, FinalizedLine, FlowObservation, FlowObservationRequest,
-    FlowSegmentRole, FormattedLineContext, FormattedLineUsage, HyphenationContinuation,
-    HyphenationCounts, HyphenationProvenance, HyphenationResource, HyphenationSourcePieceView,
-    InlineBoundaryAllocation, InlineBoundaryContextAllocation, InlineBoxEdgeComponents,
-    InlineBoxEdgeContext, InlineBoxEdgeError, InlineBoxSource, InlineMeasure, LineAlignmentInsets,
-    LineAllocations, LineAnchor, LineBoxAlignment, LineBoxDirection, LineBoxStrut, LineContext,
-    LineDirectionFacts, LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView,
-    LineEnd, LineFeedback, LineMeasurements, LineOrientation, LinePlacement, LineSelectionRequest,
-    LineStart, LineStrut, MarginEdgeFit, MarginEdgeFitAuthority, NonFormattedLine,
-    NonFormattedLinePlacement, ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge,
-    PhaseTwoContext, PhraseOverflowDecision, PlacementCoverage, PlacementEntry, PlacementRequest,
-    PreparationOptions, PreparedAlternative, PreparedAlternativeAvailability, PreparedAtomic,
-    PreparedBoundary, PreparedBoundaryIncidence, PreparedBreakKind, PreparedCell,
+    ConditionalDisposition, ConditionalLineContext, ConditionalPurpose, ConditionalStage,
+    ControlAllocation, ControlStrut, CssMarginBoxFit, FinalizedFragment, FinalizedInlineBoxPiece,
+    FinalizedLine, FlowObservation, FlowObservationRequest, FlowSegmentRole, FormattedLineContext,
+    FormattedLineUsage, HyphenationContinuation, HyphenationCounts, HyphenationProvenance,
+    HyphenationResource, HyphenationSourcePieceView, InlineBoundaryAllocation,
+    InlineBoundaryContextAllocation, InlineBoxEdgeComponents, InlineBoxEdgeContext,
+    InlineBoxEdgeError, InlineBoxFragment, InlineBoxFragmentationError, InlineBoxPieceMember,
+    InlineBoxSource, InlineMeasure, LineAlignmentInsets, LineAllocations, LineAnchor,
+    LineBoxAlignment, LineBoxDirection, LineBoxStrut, LineContext, LineDirectionFacts,
+    LineEdgeDisposition, LineEdgeOwner, LineEdgeSide, LineEdgeUnitView, LineEnd, LineFeedback,
+    LineMeasurements, LineOrientation, LinePlacement, LineSelectionRequest, LineStart, LineStrut,
+    MarginEdgeFit, MarginEdgeFitAuthority, NonFormattedLine, NonFormattedLinePlacement,
+    ParagraphBaseDirection, ParagraphInput, ParagraphTerminalEdge, PhaseTwoContext,
+    PhraseOverflowDecision, PlacedInlineBoxPiece, PlacementCoverage, PlacementEntry,
+    PlacementRequest, PreparationOptions, PreparedAlternative, PreparedAlternativeAvailability,
+    PreparedAtomic, PreparedBoundary, PreparedBoundaryIncidence, PreparedBreakKind, PreparedCell,
     PreparedComputedLineBoundary, PreparedConditionalBatch, PreparedConditionalOpportunity,
     PreparedConditionalSearch, PreparedControl, PreparedFlowSegment, PreparedHyphenationCut,
-    PreparedHyphenationCutView, PreparedMeasurementFlow, PreparedOpportunity, PreparedOrigin,
-    PreparedParticipant, PreparedPhrase, PreparedPhrasePiece, PreparedPhrasePieceOwner,
-    PreparedPhrasePortion, PreparedPhraseProvenance, PreparedScope, PreparedScopeMetrics,
-    PreparedSourceSegment, PreparedTermination, PreparedText, PreparedUnit,
+    PreparedHyphenationCutView, PreparedInlineBoxFamily, PreparedMeasurementFlow,
+    PreparedOpportunity, PreparedOrigin, PreparedParticipant, PreparedPhrase, PreparedPhrasePiece,
+    PreparedPhrasePieceOwner, PreparedPhrasePortion, PreparedPhraseProvenance, PreparedScope,
+    PreparedScopeMetrics, PreparedSourceSegment, PreparedTermination, PreparedText, PreparedUnit,
     PreparedVirtualSeparator, PreparedWord, PreparedWordPortion, PreparedWordView,
     PresentationRange, ProtocolContextField, ProtocolError, ProtocolHandleKind,
     ScopeAlignmentAllowance, ScopeAlignmentCensus, ScopeAlignmentCensusInput,
     ScopeAlignmentProduct, ScopeAlignmentProducts, ScopeAlignmentRetention,
     ScopeAlignmentWeakProduct, ScopeAllocation, ScopeAllocations, ScopeFrameAllocation,
-    ScopeMetricContribution, SelectedLine, SelectedScope, SpacingAllocation, SpacingAllocations,
-    SpacingBoundaryGeometry, SpacingDeferredCause, SpacingPolicy, SpacingSlot,
-    SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotGeometry, SpacingSlotOwner,
-    SpacingSlotPiece, SpacingSlotTarget, SpacingStretchability, SpacingUnit, TabContext,
-    WrappingScopeQueryError, scope_alignment_census,
+    ScopeMetricContribution, SelectedInlineBoxPiece, SelectedLine, SelectedScope,
+    SpacingAllocation, SpacingAllocations, SpacingBoundaryGeometry, SpacingDeferredCause,
+    SpacingPolicy, SpacingSlot, SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotGeometry,
+    SpacingSlotOwner, SpacingSlotPiece, SpacingSlotTarget, SpacingStretchability, SpacingUnit,
+    TabContext, WrappingScopeQueryError, scope_alignment_census,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{

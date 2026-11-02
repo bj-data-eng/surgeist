@@ -145,6 +145,7 @@ fn complete_line(prepared: &PreparedText) -> FinalizedLine {
     assert!(segments.next().is_none());
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

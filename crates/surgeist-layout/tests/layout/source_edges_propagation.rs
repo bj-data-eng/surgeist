@@ -219,6 +219,7 @@ impl<S: l::LayoutScalar> Host<S> {
             })
             .collect();
         l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: p.clone(),
             container: 0,
             nodes: self.children[0].clone(),
@@ -242,6 +243,8 @@ impl<S: l::LayoutScalar> Host<S> {
             ),
         };
         l::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: self
                 .declarations
                 .iter()

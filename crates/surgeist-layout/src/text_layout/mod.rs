@@ -5,6 +5,7 @@ pub(crate) mod capture;
 pub(crate) mod edge_components;
 pub(crate) mod fit;
 pub(crate) mod formatted;
+mod fragmentation;
 mod roles;
 pub(crate) mod run;
 pub(crate) mod scope_alignment;
@@ -92,11 +93,41 @@ pub struct TextScopeBinding<Node> {
     pub association: TextScopeAssociation<Node>,
 }
 
+/// Whether this actual PreparedText binding requests complete-body inline-box
+/// fragment identity. Numeric flow and unrelated bindings make no such claim.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InlineBoxFragmentationDemand {
+    NotRequested,
+    CompleteBodies,
+}
+
+/// The retained checked proof, distinct from the caller's requested capability.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum AdmittedInlineBoxes {
+    NotRequested,
+    CompleteBodies(surgeist_text::PreparedInlineBoxFamily),
+}
+impl AdmittedInlineBoxes {
+    pub(crate) fn demand(&self) -> InlineBoxFragmentationDemand {
+        match self {
+            Self::NotRequested => InlineBoxFragmentationDemand::NotRequested,
+            Self::CompleteBodies(_) => InlineBoxFragmentationDemand::CompleteBodies,
+        }
+    }
+    pub(crate) fn family(&self) -> Option<&surgeist_text::PreparedInlineBoxFamily> {
+        match self {
+            Self::NotRequested => None,
+            Self::CompleteBodies(family) => Some(family),
+        }
+    }
+}
+
 /// Supplied association facts, checked together against the immutable tree by
 /// `LayoutFlowInput::try_new` before any layout computation can consume them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextParagraphBinding<Node> {
     pub prepared: PreparedText,
+    pub inline_box_fragments: InlineBoxFragmentationDemand,
     pub container: Node,
     /// Complete native participating-node inventory in actual container order.
     /// A structural child block may separate its admitted native run windows;
@@ -120,6 +151,7 @@ pub(crate) struct AdmittedRun<'input, Node> {
     pub(crate) inventory: std::ops::Range<usize>,
     pub(crate) native: std::ops::Range<usize>,
     pub(crate) segment: surgeist_text::PreparedSourceSegment,
+    pub(crate) inline_boxes: AdmittedInlineBoxes,
 }
 
 impl<Node> AdmittedRun<'_, Node> {
@@ -152,6 +184,7 @@ pub enum TextBindingError {
     TabReferenceDirection,
     TerminalBlockEdge,
     ComputedBoundaryAssociation,
+    InlineBoxFragmentsRequireFlow,
 }
 
 /// Complete, checked inline flow over one borrowed tree.
@@ -165,7 +198,7 @@ pub struct LayoutFlowInput<'tree, Tree: crate::LayoutTree> {
     pub(crate) root: Tree::Node,
     pub(crate) paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
     pub(crate) invalidated: Vec<Tree::Node>,
-    pub(crate) graph: crate::engine::validation::ValidationGraph<Tree::Node>,
+    pub(crate) graph: std::sync::Arc<crate::engine::validation::ValidationGraph<Tree::Node>>,
     pub(crate) associations: std::sync::Arc<capture::ScopeAssociations<Tree::Node>>,
     pub(crate) wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
     pub(crate) scope_alignments:
@@ -249,11 +282,17 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         source_graph: Option<crate::engine::validation::ValidationGraph<Tree::Node>>,
     ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
         let mut influencing = Vec::new();
+        let mut inline_boxes_requested = false;
         let mut occupied = Vec::new();
         for paragraph in &paragraphs {
             let error = |reason| binding_error(paragraph.container, reason);
             let class = capture::classify(paragraph).map_err(error)?;
+            inline_boxes_requested |=
+                paragraph.inline_box_fragments == InlineBoxFragmentationDemand::CompleteBodies;
             if class == capture::ParagraphClass::AssociationOnly {
+                if paragraph.inline_box_fragments == InlineBoxFragmentationDemand::CompleteBodies {
+                    return Err(error(TextBindingError::InlineBoxFragmentsRequireFlow));
+                }
                 if tree.layout_input(paragraph.container).as_box().is_none() {
                     return Err(error(TextBindingError::ScopeAssociation));
                 }
@@ -661,6 +700,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 &paragraphs,
             )?
         };
+        let graph = std::sync::Arc::new(graph);
         // Every actual prepared-text node under this root must be covered. A
         // partial inventory cannot silently use the box-only compute entry.
         for &node in &graph.nodes {
@@ -689,33 +729,38 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 seen_scopes.insert(scope.clone()).then(|| scope.clone())
             })
             .collect();
-        let mut scope_alignments =
-            scope_alignment::ScopeAlignmentSnapshot::admit(scope_alignments, &paragraphs).map_err(
-                |error| {
-                    crate::LayoutErrorOf::new(
-                        crate::LayoutErrorSiteOf::Node(root),
-                        crate::LayoutOperation::TextCapture,
-                        crate::LayoutErrorKindOf::Text(error),
-                    )
-                },
-            )?;
-        let resolved = capture::resolve(
+        let mut scope_alignments = scope_alignment::ScopeAlignmentSnapshot::admit(
+            scope_alignments,
+            &paragraphs,
+            inline_boxes_requested,
+        )
+        .map_err(|error| {
+            crate::LayoutErrorOf::new(
+                crate::LayoutErrorSiteOf::Node(root),
+                crate::LayoutOperation::TextCapture,
+                crate::LayoutErrorKindOf::Text(error),
+            )
+        })?;
+        let mut resolved = capture::resolve(
             tree,
             &graph,
             &paragraphs,
-            &wrapping_input.scopes,
+            &wrapping_input,
             &inventory_scopes,
-            !wrapping_input.child_order.is_empty(),
+            inline_boxes_requested,
             &mut scope_alignments,
         )?;
-        let wrapping = crate::inline_wrapping::WrappingContext::new(
+        let mut wrapping = crate::inline_wrapping::WrappingContext::new(
             tree,
             &graph,
-            &wrapping_input.scopes,
+            &wrapping_input,
             &resolved.wrapping,
-            &wrapping_input.child_order,
+            |flow| resolved.associations.has_prepared_execution(flow),
         )
         .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+        wrapping
+            .retain_native_families(std::sync::Arc::clone(&graph))
+            .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
         if !source_validated
             && paragraphs
                 .iter()
@@ -726,7 +771,11 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
                 crate::WrappingScopeError::SourceProcessingRequired,
             ));
         }
-        influencing.extend(wrapping.dependencies());
+        let dependencies = wrapping.dependencies();
+        influencing.try_reserve(dependencies.len()).map_err(|_| {
+            crate::inline_wrapping::wrapping_error(root, crate::WrappingScopeError::Allocation)
+        })?;
+        influencing.extend_from_slice(dependencies);
         let mut influence_census = scope_alignment::ScopeCensus::default();
         {
             let (rows, mut admission) = scope_alignments.capture_parts();
@@ -752,7 +801,30 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         let invalidated = graph.invalidation(&influencing)?;
         drop(influencing);
         scope_alignments.work().release(influence_census);
+        let family_slots = if inline_boxes_requested {
+            Some(fragmentation::reserve_slots::<Tree>(
+                root,
+                &paragraphs,
+                &mut scope_alignments,
+            )?)
+        } else {
+            None
+        };
         let scope_alignments = scope_alignments.freeze();
+        if let Some(slots) = family_slots {
+            let resources = scope_alignment::ScopeAlignmentResources::new(
+                scope_alignments.clone(),
+                Default::default(),
+            );
+            let families = fragmentation::prepare_families::<Tree>(
+                &paragraphs,
+                &resolved.wrapping,
+                &wrapping_input.child_order,
+                &resources,
+                slots,
+            )?;
+            resolved.associations.set_inline_box_families(families);
+        }
         let associations = std::sync::Arc::new(resolved.associations);
         Ok(Self {
             tree,

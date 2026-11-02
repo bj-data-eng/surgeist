@@ -144,6 +144,7 @@ impl Paragraph {
             text::Range::new(0, self.original.text().len())
         );
         TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container: 0,
             nodes: vec![1],

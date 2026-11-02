@@ -353,6 +353,7 @@ impl Fixture {
             .collect();
         Self {
             binding: TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes,
@@ -465,6 +466,8 @@ impl Fixture {
             0,
             vec![self.binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

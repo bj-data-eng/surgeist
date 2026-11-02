@@ -132,7 +132,14 @@ fn conditional(
     p.source_segments()
         .next()
         .unwrap()
-        .conditional_search(&start, None, &first_after(p, &start), purpose, &[], None)
+        .conditional_search(
+            &start,
+            None,
+            &first_after(p, &start),
+            purpose,
+            &[],
+            surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
+        )
         .and_then(|search| search.begin(&[]))
         .map(|batch| batch.opportunities().to_vec())
         .unwrap()
@@ -192,6 +199,7 @@ fn finish(
         })
         .collect();
     p.select(t::LineSelectionRequest {
+        inline_boxes: None,
         segment: p.source_segments().next().unwrap(),
         start,
         end,
@@ -430,7 +438,7 @@ fn intrinsic_conditional_pieces_measure_one_cell_while_maximum_keeps_four() {
                         &ceiling,
                         t::ConditionalPurpose::MinContent,
                         &[],
-                        None,
+                        surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
                     )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
@@ -511,7 +519,14 @@ fn complete_phantom_disposition_authenticates_a_later_conditional_interval() {
                 p.source_segments()
                     .next()
                     .unwrap()
-                    .conditional_search(&start, None, &ceiling, purpose, &[], None)
+                    .conditional_search(
+                        &start,
+                        None,
+                        &ceiling,
+                        purpose,
+                        &[],
+                        surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
+                    )
                     .and_then(|search| search.begin(&[]))
                     .map(|batch| batch.opportunities().to_vec())
                     .is_err(),
@@ -536,7 +551,7 @@ fn complete_phantom_disposition_authenticates_a_later_conditional_interval() {
                     &ceiling,
                     purpose,
                     &[t::ConditionalDisposition::Phantom(phantom)],
-                    None,
+                    surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
                 )
                 .and_then(|search| search.begin(&[]))
                 .map(|batch| batch.opportunities().to_vec())

@@ -184,6 +184,7 @@ impl EmptyBox {
             .collect();
         Self {
             binding: TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes: vec![1, 2],
@@ -236,6 +237,8 @@ impl EmptyBox {
             0,
             vec![self.binding.clone()],
             WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: vec![WrappingScopeInput::Captured {
                     scope: self.scope.clone(),
                     wrap_inside: WrapInside::Auto,

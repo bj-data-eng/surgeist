@@ -90,19 +90,30 @@ fn exercise<S: LayoutScalar>(
     let context = WrappingContext::new(
         &tree,
         &graph,
-        &[WrappingScopeInput::NativePair {
-            metric_contribution: None,
-            edges: Default::default(),
-            start: 2,
-            end: 5,
-            wrap_inside: WrapInside::Avoid,
-        }],
+        &crate::WrappingInput {
+            scopes: vec![WrappingScopeInput::NativePair {
+                metric_contribution: None,
+                edges: Default::default(),
+                start: 2,
+                end: 5,
+                wrap_inside: WrapInside::Avoid,
+            }],
+            ..Default::default()
+        },
         &[],
-        &[],
+        |_| false,
     )
     .unwrap();
     let projection = context
-        .numeric_projection(&graph, 100, &[1, 2, 3, 4, 5])
+        .numeric_projection(
+            &graph,
+            100,
+            crate::inline_wrapping::NativeRunSource {
+                nodes: &[1, 2, 3, 4, 5],
+                start: 0,
+            },
+            &[1, 2, 3, 4, 5],
+        )
         .unwrap();
     let atomic = |source_index, following| MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {

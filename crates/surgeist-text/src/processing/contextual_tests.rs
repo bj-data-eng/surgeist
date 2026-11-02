@@ -331,6 +331,7 @@ fn line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,
@@ -1203,6 +1204,7 @@ fn contextual_source_defined_replacement_remains_presentation_only() {
     let termination = alternative.view().opportunity().unwrap();
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: crate::test_wrapping::only_source_segment(&prepared),
             boundary_context: Vec::new(),
             incoming: None,
@@ -1655,6 +1657,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
     let count = boundary.view().participant_offset();
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: crate::test_wrapping::only_source_segment(&prepared),
             boundary_context: Vec::new(),
             incoming: None,
@@ -2053,6 +2056,7 @@ fn right_line(prepared: &PreparedText) -> FinalizedLine {
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: crate::test_wrapping::only_source_segment(prepared),
             boundary_context: Vec::new(),
             incoming: None,

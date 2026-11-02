@@ -220,6 +220,7 @@ fn fixture_empty<S: l::LayoutScalar>()
                 (0, vec![], vec![])
             };
             l::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,
@@ -248,6 +249,8 @@ fn fixture_empty<S: l::LayoutScalar>()
 
 fn captured_wrapping(scope: t::CapturedScope) -> l::WrappingInput<u32> {
     l::WrappingInput {
+        native_inline_boxes: Vec::new(),
+        gaps: Vec::new(),
         scopes: vec![l::WrappingScopeInput::Captured {
             scope: scope.clone(),
             wrap_inside: l::WrapInside::Auto,

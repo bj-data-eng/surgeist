@@ -40,6 +40,7 @@ fn select(prepared: &PreparedText) -> SelectedLine {
     let rtl = prepared.analyzed_source().direction() == Direction::RightToLeft;
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

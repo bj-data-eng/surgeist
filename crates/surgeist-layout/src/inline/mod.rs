@@ -260,6 +260,8 @@ impl<S: LayoutScalar> InlineBaselineReportOf<S> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub native_lines: Vec<crate::inline_wrapping::family::NativeLineReceipt<S>>,
+    pub native_completion: Option<std::sync::Arc<crate::inline_wrapping::NativeOrderingProjection>>,
     pub baselines: InlineBaselineReportOf<S>,
     pub group_lines: Vec<crate::group_alignment::NaturalLine<S>>,
     pub formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
@@ -399,6 +401,7 @@ struct SelectedInlineLineOf<S: LayoutScalar> {
     band: LogicalLineBandOf<S>,
     numeric_error: Option<crate::group_alignment::NumericError>,
     has_displacement: bool,
+    native_order: Option<std::sync::Arc<parent_edges::OrderReceipt>>,
 }
 
 #[derive(Clone, Copy)]
@@ -925,17 +928,23 @@ fn resolve_inline_flow<S: LayoutScalar>(
     summary: &mut InlineLineSummaryOf<S>,
     axes: FlowAxes,
     wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
-) -> Result<(), NumericWrappingError> {
-    if summary.has_box_edges {
-        summary.used_inline_extent = parent_edges::canonical_flow(
+) -> Result<Option<std::sync::Arc<parent_edges::OrderReceipt>>, NumericWrappingError> {
+    if summary.has_box_edges
+        || wrapping
+            .and_then(|w| w.ordering())
+            .is_some_and(|p| p.profile.has_family())
+    {
+        let (flow, order) = parent_edges::canonical_flow(
             input,
             summary.discarded_start_end..summary.discarded_end_start,
             axes,
             wrapping,
         )?
         .ok_or(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence)?;
+        summary.used_inline_extent = flow;
+        return Ok(Some(order));
     }
-    Ok(())
+    Ok(None)
 }
 
 fn measure_inline_line<S: LayoutScalar>(
@@ -946,7 +955,7 @@ fn measure_inline_line<S: LayoutScalar>(
     wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
 ) -> Result<InlineLineSummaryOf<S>, NumericWrappingError> {
     let mut summary = summarize_inline_line(input, line_break, strut, axes);
-    resolve_inline_flow(input, &mut summary, axes, wrapping)?;
+    let _ = resolve_inline_flow(input, &mut summary, axes, wrapping)?;
     Ok(summary)
 }
 
@@ -995,6 +1004,7 @@ fn selected_from_summary<S: LayoutScalar>(
         scope_band: None,
         numeric_error: summary.numeric_error,
         has_displacement: summary.has_displacement,
+        native_order: None,
         band: LogicalLineBandOf {
             inline_start: S::ZERO,
             inline_end: S::ZERO,
@@ -1054,6 +1064,29 @@ fn starts_inline_strut_phase<S: LayoutScalar>(line: &SelectedInlineLineOf<S>) ->
     })
 }
 
+// Closing structural metadata stays with the preceding legal opportunity.
+// A Contribution remains a real operand unless this exact admitted family
+// endpoint has been classified as a source alias.
+fn closes_inline_opportunity<S: LayoutScalar>(
+    participant: MixedInlineParticipantOf<S>,
+    source: usize,
+    wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
+) -> bool {
+    let MixedInlineParticipantOf::Boundary(control) = participant else {
+        return false;
+    };
+    control.kind() == InlineBoundaryKind::End
+        && (control.parent_edge_axes().is_some()
+            || wrapping
+                .and_then(|w| w.ordering())
+                .is_some_and(|projection| {
+                    projection
+                        .ranks
+                        .get(source)
+                        .is_some_and(|&rank| projection.profile.alias(rank))
+                }))
+}
+
 fn inline_min_content<S: LayoutScalar>(
     run: ProjectedInlineRun<'_, S>,
     flow_axes: FlowAxes,
@@ -1064,6 +1097,7 @@ fn inline_min_content<S: LayoutScalar>(
     let mut group_descriptor_start = 0;
     let mut maximum = S::ZERO;
     let mut group_start = 0;
+    let mut opportunity = false;
     for (index, participant) in participants.iter().enumerate() {
         if matches!(participant, MixedInlineParticipantOf::ForcedLineBreak(_)) {
             maximum = maximum.max(
@@ -1078,16 +1112,22 @@ fn inline_min_content<S: LayoutScalar>(
             );
             group_start = index + 1;
             group_descriptor_start = descriptor;
+            opportunity = false;
             continue;
         }
         descriptor += 1;
-        if !wrapping.is_some_and(|w| w.forced(index + 1))
-            && participant
-                .following_break()
-                .is_none_or(|b| b == InlineBreakOpportunity::Prohibited)
+        let forced = wrapping.is_some_and(|w| w.forced(index + 1))
+            || participant.following_break() == Some(InlineBreakOpportunity::Mandatory);
+        opportunity |= participant.following_break() == Some(InlineBreakOpportunity::Allowed);
+        if !forced
+            && (!opportunity
+                || participants
+                    .get(index + 1)
+                    .is_some_and(|&next| closes_inline_opportunity(next, index + 1, wrapping)))
         {
             continue;
         }
+        opportunity = false;
         let line = measure_inline_line(
             run.line(group_start..index + 1, group_descriptor_start),
             None,
@@ -1320,7 +1360,7 @@ fn select_next_inline_line<S: LayoutScalar>(
     })
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct NumericCandidateReceiptOf<S: LayoutScalar> {
     end: SelectedInlineLineEnd,
     next_cursor: InlineSourceCursor,
@@ -1334,6 +1374,7 @@ struct NumericCandidateReceiptOf<S: LayoutScalar> {
     band: Option<LogicalLineBandQueryResultOf<S>>,
     capacity: Option<S>,
     displaced_fallback: Option<InlineMetricContributionOf<S>>,
+    native_order: Option<std::sync::Arc<parent_edges::OrderReceipt>>,
 }
 /// Logical metric/strut prefix over actual numeric participants. Ordinary flow
 /// retains the existing source fold. Actual BoxEdge membership requires the
@@ -1453,6 +1494,7 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
             band: None,
             capacity: None,
             displaced_fallback: None,
+            native_order: None,
         }
     }
 }
@@ -1750,7 +1792,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
     } = query;
     let mut fits = |receipt: &mut NumericCandidateReceiptOf<S>| {
         let end = receipt.next_cursor.source - usize::from(receipt.summary.line_break.is_some());
-        resolve_inline_flow(
+        receipt.native_order = resolve_inline_flow(
             run.line(cursor.source..end, cursor.descriptor),
             &mut receipt.summary,
             axes,
@@ -1823,6 +1865,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
             receipt.summary,
         );
         candidate.line.scope_band = receipt.band;
+        candidate.line.native_order = receipt.native_order;
         return Ok(InlineSelectionStep::Selected(Some(candidate)));
     }
     let edge_stop = wrapping.and_then(|wrapping| {
@@ -1912,6 +1955,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
             receipt.summary,
         );
         line.scope_band = receipt.band;
+        line.native_order = receipt.native_order;
         SelectedInlineLineCandidateOf {
             end: receipt.end,
             line,
@@ -1919,17 +1963,39 @@ fn select_scope_inline_line<S: LayoutScalar>(
             pending_strut: receipt.pending_strut,
         }
     };
-    let completion_fits = fits(&mut completion)?;
-    let canonical_completion = completion.summary.has_box_edges;
-    if !wraps
-        || completion_fits
-            && (goal.is_none()
-                || NumericLineDisposition::for_line(
-                    completion.end.line_end(),
-                    completion.summary.has_in_flow_content,
-                ) == NumericLineDisposition::NonFormatted)
+    let mut gap_failure = None;
+    let completion_fits = match fits(&mut completion) {
+        Ok(fits) => fits,
+        Err(
+            error @ NumericWrappingError::Scope(
+                crate::inline_wrapping::WrappingScopeError::GapOutsideSelection,
+            ),
+        ) => {
+            gap_failure = Some(error);
+            false
+        }
+        Err(error) => return Err(error),
+    };
+    let completion_qualified = gap_failure.is_none();
+    if !wraps && !completion_qualified {
+        return Err(gap_failure.expect("failed attachment retains its cause"));
+    }
+    let canonical_completion = completion.summary.has_box_edges
+        || wrapping
+            .and_then(|w| w.ordering())
+            .is_some_and(|p| p.profile.has_family());
+    if completion_qualified
+        && (!wraps
+            || completion_fits
+                && (goal.is_none()
+                    || NumericLineDisposition::for_line(
+                        completion.end.line_end(),
+                        completion.summary.has_in_flow_content,
+                    ) == NumericLineDisposition::NonFormatted))
     {
-        return Ok(InlineSelectionStep::Selected(Some(build(completion))));
+        return Ok(InlineSelectionStep::Selected(Some(build(
+            completion.clone(),
+        ))));
     }
     let descriptor_stop = cursor.descriptor + stop - cursor.source;
     let bounded = ProjectedInlineRun {
@@ -1959,7 +2025,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
             }
             candidate
         })
-        .or_else(|| Some(build(completion)))
+        .or_else(|| Some(build(completion.clone())))
     };
     let fallback = if !wrapping.is_some_and(|wrapping| wrapping.has_metrics()) {
         fallback
@@ -2025,12 +2091,15 @@ fn select_scope_inline_line<S: LayoutScalar>(
         Ok(())
     };
     let mut accumulator = NumericReceiptAccumulatorOf::new(pending, axes);
+    let mut opportunity = false;
     for end in cursor.source + 1..stop {
         let participant = run.participants[end - 1];
         accumulator.push(participant, axes);
-        if participant.following_break() != Some(InlineBreakOpportunity::Allowed) {
+        opportunity |= participant.following_break() == Some(InlineBreakOpportunity::Allowed);
+        if !opportunity || closes_inline_opportunity(run.participants[end], end, wrapping) {
             continue;
         }
+        opportunity = false;
         let mut candidate = accumulator.receipt(
             SelectedInlineLineEnd::Soft,
             InlineSourceCursor {
@@ -2055,9 +2124,20 @@ fn select_scope_inline_line<S: LayoutScalar>(
                 end,
             )?;
         }
-        let candidate_fits = fits(&mut candidate)?;
+        let candidate_fits = match fits(&mut candidate) {
+            Ok(fits) => fits,
+            Err(
+                error @ NumericWrappingError::Scope(
+                    crate::inline_wrapping::WrappingScopeError::GapOutsideSelection,
+                ),
+            ) => {
+                gap_failure = Some(error);
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         if canonical_completion && canonical_fallback.is_none() {
-            canonical_fallback = Some(candidate);
+            canonical_fallback = Some(candidate.clone());
         }
         if !candidate_fits {
             continue;
@@ -2065,7 +2145,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
         consider(candidate)?;
     }
     if completion_fits {
-        consider(completion)?;
+        consider(completion.clone())?;
     }
     let preferred = frontier
         .and_then(|frontier| {
@@ -2076,13 +2156,19 @@ fn select_scope_inline_line<S: LayoutScalar>(
             }
         })
         .or(first);
-    Ok(InlineSelectionStep::Selected(
-        preferred
-            .map(|preferred| build(preferred.into_receipt()))
-            .or_else(|| canonical_fallback.map(build))
-            .or_else(|| canonical_completion.then(|| build(completion)))
-            .or(fallback),
-    ))
+    let selected = preferred
+        .map(|preferred| build(preferred.into_receipt()))
+        .or_else(|| canonical_fallback.map(build))
+        .or_else(|| {
+            (canonical_completion && completion_qualified).then(|| build(completion.clone()))
+        })
+        .or(fallback);
+    if selected.is_none()
+        && let Some(error) = gap_failure
+    {
+        return Err(error);
+    }
+    Ok(InlineSelectionStep::Selected(selected))
 }
 
 fn prepare_selected_receiver<S: LayoutScalar>(
@@ -2271,6 +2357,7 @@ fn resolved_float_terminal_block_extent<S: LayoutScalar>(
 struct ResolvedInlineSlot<S: LayoutScalar> {
     inline_start: S,
     margin_flow: Option<(S, S)>,
+    executed_flow: Option<(S, S)>,
 }
 
 struct ResolvedInlineSlots<S: LayoutScalar> {
@@ -2291,15 +2378,25 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
     let line_inline_start =
         selected_line_inline_start(line, flow_axes, text_align, direction, insets)?;
     let mut order = vec![0; line.units.len()];
-    SuppliedLine::new(supplied)
-        .reorder_into(&mut order)
-        .expect("selected descriptor range has exactly one slot per selected unit");
-    parent_edges::reorder(line, flow_axes, wrapping, &mut order)?;
+    if line.native_order.is_some() {
+        parent_edges::reorder(line, wrapping, &mut order)?;
+    } else {
+        if line.units.iter().any(|unit| {
+            matches!(unit.participant,
+            MixedInlineParticipantOf::Boundary(control) if control.parent_edge_axes().is_some())
+        }) {
+            return Err(crate::inline_wrapping::WrappingScopeError::UnsupportedIncidence.into());
+        }
+        SuppliedLine::new(supplied)
+            .reorder_into(&mut order)
+            .expect("selected descriptor range has exactly one slot per selected unit");
+    }
     let mut visual_indices = vec![0; line.units.len()];
     let mut inline_starts = vec![
         ResolvedInlineSlot {
             inline_start: S::ZERO,
-            margin_flow: None
+            margin_flow: None,
+            executed_flow: None
         };
         line.units.len()
     ];
@@ -2316,6 +2413,7 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
         line_inline_start
     };
     for &source_index in &order {
+        let incoming = inline_start;
         let selected = line.units[source_index];
         let selected_inline_extent = if selected.discarded {
             S::ZERO
@@ -2337,7 +2435,14 @@ fn resolved_inline_unit_slots<S: LayoutScalar>(
                 inline_start = inline_start + selected_inline_extent;
             }
         }
+        if wrapping
+            .and_then(|w| w.ordering())
+            .is_some_and(|p| p.profile.has_family())
+        {
+            inline_starts[source_index].executed_flow = Some((incoming, inline_start));
+        }
     }
+    parent_edges::resolve_aliases(line, wrapping, &mut inline_starts)?;
     Ok(ResolvedInlineSlots {
         line_inline_start,
         visual_indices,
@@ -3482,7 +3587,8 @@ where
     let mut line_bands = Vec::new();
     let mut lines = Vec::new();
     let mut line_index = 0;
-    for line in selected_lines {
+    let mut native_lines = Vec::new();
+    for (native_line_index, line) in selected_lines.into_iter().enumerate() {
         if NumericLineDisposition::for_line(line.ending, line.has_in_flow_content)
             == NumericLineDisposition::NonFormatted
         {
@@ -3498,6 +3604,18 @@ where
                 surgeist_text::LineAlignmentInsets::ZERO,
                 input.wrapping.as_ref(),
             )?;
+            if let Some(receipt) = parent_edges::accepted(
+                &line,
+                input.wrapping.as_ref(),
+                &inline_starts,
+                input.flow_axes,
+                native_line_index,
+            )? {
+                native_lines
+                    .try_reserve(1)
+                    .map_err(|_| crate::inline_wrapping::NumericWrappingError::Allocation)?;
+                native_lines.push(receipt);
+            }
             for (index, unit) in line.units.into_iter().enumerate() {
                 let MixedInlineParticipantOf::Boundary(control) = unit.participant else {
                     unreachable!("nonformatted numeric participation contains only boundaries");
@@ -3581,6 +3699,18 @@ where
         inline_extent = inline_extent.max(line_inline_start + line.used_inline_extent);
         post_line_clear_intents.push(line.post_line_clear_intent);
         line_bands.push(line.band);
+        if let Some(receipt) = parent_edges::accepted(
+            &line,
+            input.wrapping.as_ref(),
+            &inline_starts,
+            input.flow_axes,
+            native_line_index,
+        )? {
+            native_lines
+                .try_reserve(1)
+                .map_err(|_| crate::inline_wrapping::NumericWrappingError::Allocation)?;
+            native_lines.push(receipt);
+        }
         for (source_index, selected) in line.units.into_iter().enumerate() {
             let inline_start = inline_starts[source_index].inline_start;
             match selected.participant {
@@ -3688,6 +3818,13 @@ where
     }
 
     Ok(MixedInlineRunReportOf {
+        native_lines,
+        native_completion: input
+            .wrapping
+            .as_ref()
+            .and_then(|w| w.ordering())
+            .filter(|p| p.profile.has_family())
+            .cloned(),
         baselines: InlineBaselineReportOf::Numeric(NumericBaselineReportOf {
             context: input.inline_baseline_context,
             first: first_baseline,

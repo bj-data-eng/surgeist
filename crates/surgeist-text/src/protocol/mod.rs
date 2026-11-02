@@ -12,7 +12,9 @@ use selection::SelectedData;
 
 pub(crate) mod inline_box;
 pub use inline_box::{
-    InlineBoxEdgeComponents, InlineBoxEdgeContext, InlineBoxEdgeError, InlineBoxSource,
+    FinalizedInlineBoxPiece, InlineBoxEdgeComponents, InlineBoxEdgeContext, InlineBoxEdgeError,
+    InlineBoxFragment, InlineBoxFragmentationError, InlineBoxPieceMember, InlineBoxSource,
+    PlacedInlineBoxPiece, PreparedInlineBoxFamily, SelectedInlineBoxPiece,
 };
 mod atomic_fit;
 pub use atomic_fit::{AtomicFitAllocation, CssMarginBoxFit};
@@ -66,8 +68,9 @@ pub use continuation::HyphenationContinuation;
 pub use segments::PreparedSourceSegment;
 
 pub use conditional::{
-    ConditionalDisposition, ConditionalPurpose, ConditionalStage, PhraseOverflowDecision,
-    PreparedConditionalBatch, PreparedConditionalOpportunity, PreparedConditionalSearch,
+    ConditionalDisposition, ConditionalLineContext, ConditionalPurpose, ConditionalStage,
+    PhraseOverflowDecision, PreparedConditionalBatch, PreparedConditionalOpportunity,
+    PreparedConditionalSearch,
 };
 pub use hyphenation::{
     HyphenationCounts, HyphenationProvenance, HyphenationResource, HyphenationSourcePieceView,
@@ -634,6 +637,9 @@ pub struct LineSelectionRequest {
     pub atomics: Vec<AtomicAllocation>,
     pub controls: Vec<ControlAllocation>,
     pub boundary_context: Vec<InlineBoundaryContextAllocation>,
+    /// Complete-body family authority for actual native inline fragment pieces.
+    /// None requests only the existing local endpoint operation.
+    pub inline_boxes: Option<PreparedInlineBoxFamily>,
     pub line_strut: Option<LineStrut>,
     /// Actual additional box contributions; empty means none are allocated.
     pub line_box_struts: Vec<LineBoxStrut>,
@@ -1033,6 +1039,7 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    InlineBoxFragmentation(InlineBoxFragmentationError),
     InlineBoxEdge(InlineBoxEdgeError),
     InvalidSourceSegment {
         segment: usize,

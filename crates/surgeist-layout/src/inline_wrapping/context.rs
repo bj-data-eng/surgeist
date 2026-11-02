@@ -110,7 +110,7 @@ pub(crate) struct ScopeRow<Node> {
     pub(crate) policy: WrapInside,
     pub(crate) edges: WrapEdges,
     pub(crate) metric_contribution: Option<InlineBoxMetricContribution>,
-    parent_edge_axes: Option<crate::FlowAxes>,
+    pub(super) parent_edge_axes: Option<crate::FlowAxes>,
     geometry_only: bool,
     source: Option<SourceExtent>,
 }
@@ -127,6 +127,8 @@ pub(crate) struct WrappingContext<Node> {
     ancestry: Arc<Ancestry>,
     has_avoid: bool,
     pub(crate) edge_plan: super::edge_plan::EdgePlan<Node>,
+    ordering: Vec<super::ordering::NativeOrderingProfile<Node>>,
+    pub(crate) families: Vec<super::family::NativeInlineBoxFamily<Node>>,
 }
 impl<Node> PartialEq for WrappingContext<Node> {
     fn eq(&self, other: &Self) -> bool {
@@ -138,9 +140,12 @@ impl<Node> Default for WrappingContext<Node> {
     fn default() -> Self {
         Self {
             rows: Vec::new(),
+            ordering: Vec::new(),
+            families: Vec::new(),
             ancestry: Arc::default(),
             has_avoid: false,
             edge_plan: super::edge_plan::EdgePlan {
+                proof: None,
                 locations: Vec::new(),
                 dependencies: Vec::new(),
                 subtrees: Vec::new(),
@@ -308,18 +313,24 @@ pub(super) fn native_span_with<Node: Copy + Eq>(
 fn ordered_ranks<Node: Copy + Eq>(
     graph: &ValidationGraph<Node>,
     owner: usize,
+    domain: std::ops::Range<usize>,
     nodes: &[Node],
 ) -> Result<Vec<usize>, WrappingScopeError> {
     let children = &graph.children[owner];
-    let mut cursor = 0;
+    let search = children
+        .get(domain.clone())
+        .ok_or(WrappingScopeError::InconsistentIncidence)?;
+    let mut cursor = domain.start;
     let mut ranks = Vec::with_capacity(nodes.len());
     for &node in nodes {
-        let Some(offset) = children[cursor..]
+        let Some(offset) = children[cursor..domain.end]
             .iter()
             .position(|&i| graph.nodes[i] == node)
         else {
-            return Err(if children.iter().any(|&i| graph.nodes[i] == node) {
+            return Err(if search.iter().any(|&i| graph.nodes[i] == node) {
                 WrappingScopeError::EndpointOrder
+            } else if children.iter().any(|&i| graph.nodes[i] == node) {
+                WrappingScopeError::InconsistentIncidence
             } else {
                 WrappingScopeError::DifferentFlow
             });
@@ -334,14 +345,23 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
     pub(crate) fn new<Tree: LayoutTree<Node = Node>>(
         tree: &Tree,
         graph: &ValidationGraph<Node>,
-        inputs: &[WrappingScopeInput<Node>],
+        input: &super::WrappingInput<Node>,
         proofs: &[WrappingScopeProof<Node>],
-        child_order: &[InlineChildOrderInput<Node>],
+        prepared_execution: impl Fn(Node) -> bool,
     ) -> Result<Self, WrappingScopeError> {
+        let super::WrappingInput {
+            scopes: inputs,
+            child_order,
+            gaps,
+            native_inline_boxes: demands,
+            ..
+        } = input;
         let box_edges = graph.nodes.iter().any(|node| matches!(tree.layout_input(*node), crate::LayoutInputViewOf::InlineBoundary(input) if input.parent_edge_axes().is_some()));
         if !box_edges
             && inputs.is_empty()
             && child_order.is_empty()
+            && gaps.is_empty()
+            && demands.is_empty()
             && graph
                 .nodes
                 .iter()
@@ -664,7 +684,8 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             }
         }
         let has_avoid = rows.iter().any(|row| row.policy == WrapInside::Avoid);
-        let edge_plan = if child_order.is_empty()
+        let mut edge_plan = if demands.is_empty()
+            && child_order.is_empty()
             && rows.iter().all(|r| r.edges.is_auto())
             && graph
                 .nodes
@@ -672,6 +693,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 .all(|&n| tree.node_input(n).wrap_edges.is_auto())
         {
             super::edge_plan::EdgePlan {
+                proof: None,
                 locations: Vec::new(),
                 dependencies: Vec::new(),
                 subtrees: Vec::new(),
@@ -679,12 +701,82 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         } else {
             super::edge_plan::EdgePlan::new(tree, graph, &rows, child_order, proofs)?
         };
+        let ordering = if box_edges || !gaps.is_empty() || !demands.is_empty() {
+            super::ordering::prepare(
+                tree,
+                graph,
+                &rows,
+                gaps,
+                demands,
+                edge_plan.proof.as_ref(),
+                &prepared_execution,
+            )?
+        } else {
+            Vec::new()
+        };
+        // Retain the complete Native dependency set once in its existing owner.
+        // Both invalidation consumers borrow it without another dependency list.
+        for profile in &ordering {
+            if profile.data.has_family() && !edge_plan.dependencies.contains(&profile.flow) {
+                edge_plan
+                    .dependencies
+                    .try_reserve(1)
+                    .map_err(|_| WrappingScopeError::Allocation)?;
+                edge_plan.dependencies.push(profile.flow);
+            }
+        }
+        for row in rows.iter().filter(|row| {
+            row.policy == WrapInside::Avoid
+                || !row.edges.is_auto()
+                || row.metric_contribution.is_some()
+                || row.parent_edge_axes.is_some()
+        }) {
+            for n in [Some(row.flow), row.pair.map(|p| p.0), row.pair.map(|p| p.1)]
+                .into_iter()
+                .flatten()
+            {
+                if !edge_plan.dependencies.contains(&n) {
+                    edge_plan
+                        .dependencies
+                        .try_reserve(1)
+                        .map_err(|_| WrappingScopeError::Allocation)?;
+                    edge_plan.dependencies.push(n);
+                }
+            }
+        }
         Ok(Self {
+            families: Vec::new(),
+            ordering,
             rows,
             ancestry: Arc::new(Ancestry { intervals }),
             has_avoid,
             edge_plan,
         })
+    }
+    pub(crate) fn retain_native_families(
+        &mut self,
+        graph: Arc<ValidationGraph<Node>>,
+    ) -> Result<(), WrappingScopeError> {
+        for profile in &self.ordering {
+            if profile.data.has_family() {
+                self.families
+                    .try_reserve(1)
+                    .map_err(|_| WrappingScopeError::Allocation)?;
+                self.families
+                    .push(super::family::NativeInlineBoxFamily::new(
+                        profile.flow,
+                        Arc::clone(&graph),
+                        Arc::clone(
+                            self.edge_plan
+                                .proof
+                                .as_ref()
+                                .ok_or(WrappingScopeError::IncompleteFamily)?,
+                        ),
+                        Arc::clone(&profile.data),
+                    ));
+            }
+        }
+        Ok(())
     }
     /// Borrow actual admitted source extents. Geometry-only references do not
     /// acquire wrapping preferences, metric witnesses or completion authority.
@@ -758,7 +850,9 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
     }
 
     pub(crate) fn has_effects(&self) -> bool {
-        self.has_avoid
+        !self.families.is_empty()
+            || self.ordering.iter().any(|p| p.data.has_family())
+            || self.has_avoid
             || !self.edge_plan.dependencies.is_empty()
             || self
                 .rows
@@ -848,12 +942,14 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
         &self,
         graph: &ValidationGraph<Node>,
         flow: Node,
+        source: super::NativeRunSource<'_, Node>,
         nodes: &[Node],
     ) -> Result<NumericWrapping, WrappingScopeError> {
         let owner = graph
             .index(flow)
             .ok_or(WrappingScopeError::NodeNotReachable)?;
-        let ranks = ordered_ranks(graph, owner, nodes)?;
+        let raw_range = source.validate(graph, owner)?;
+        let ranks = ordered_ranks(graph, owner, raw_range.clone(), nodes)?;
         let requested: Vec<_> = self
             .rows
             .iter()
@@ -1012,7 +1108,23 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 ancestry,
             });
         }
+        let ordering = self
+            .ordering
+            .iter()
+            .find(|profile| profile.flow == flow)
+            .map(|profile| {
+                if source.nodes.is_empty() {
+                    return Err(WrappingScopeError::UnsupportedIncidence);
+                }
+                Ok(Arc::new(super::ordering::NativeOrderingProjection {
+                    profile: Arc::clone(&profile.data),
+                    ranks,
+                    raw_range,
+                }))
+            })
+            .transpose()?;
         Ok(NumericWrapping {
+            ordering,
             boxes,
             metrics,
             forced,
@@ -1036,7 +1148,7 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
                 .position(|&i| graph.nodes[i] == node)
                 .ok_or(WrappingScopeError::DifferentFlow)
         };
-        let ranks = ordered_ranks(graph, owner, nodes)?;
+        let ranks = ordered_ranks(graph, owner, 0..graph.children[owner].len(), nodes)?;
         if ranks.is_empty() {
             return Err(WrappingScopeError::EndpointOrder);
         }
@@ -1057,24 +1169,8 @@ impl<Node: Copy + Eq> WrappingContext<Node> {
             end: project(pair.1)?,
         })
     }
-    pub(crate) fn dependencies(&self) -> Vec<Node> {
-        let mut result = self.edge_plan.dependencies.clone();
-        for row in self.rows.iter().filter(|row| {
-            row.policy == WrapInside::Avoid
-                || !row.edges.is_auto()
-                || row.metric_contribution.is_some()
-                || row.parent_edge_axes.is_some()
-        }) {
-            for n in [Some(row.flow), row.pair.map(|p| p.0), row.pair.map(|p| p.1)]
-                .into_iter()
-                .flatten()
-            {
-                if !result.contains(&n) {
-                    result.push(n);
-                }
-            }
-        }
-        result
+    pub(crate) fn dependencies(&self) -> &[Node] {
+        &self.edge_plan.dependencies
     }
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -1098,6 +1194,7 @@ pub(crate) struct NumericWrapping {
     forced: Vec<bool>,
     metrics: Vec<NumericBoxMetrics>,
     boxes: Vec<NumericBoxEdges>,
+    ordering: Option<Arc<super::ordering::NativeOrderingProjection>>,
 }
 impl PartialEq for NumericWrapping {
     fn eq(&self, other: &Self) -> bool {
@@ -1106,9 +1203,13 @@ impl PartialEq for NumericWrapping {
             && self.forced == other.forced
             && self.metrics == other.metrics
             && self.boxes == other.boxes
+            && self.ordering == other.ordering
     }
 }
 impl NumericWrapping {
+    pub(crate) fn ordering(&self) -> Option<&Arc<super::ordering::NativeOrderingProjection>> {
+        self.ordering.as_ref()
+    }
     pub(crate) fn boxes(&self) -> &[NumericBoxEdges] {
         &self.boxes
     }

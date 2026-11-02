@@ -159,6 +159,7 @@ fn qualify(native: &Native, expected: (f64, f64, f64)) {
         .collect();
     let line = prepared
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: prepared.source_segments().next().unwrap(),
             start: prepared.boundary_views().next().unwrap().handle(),
             end: boundary,
@@ -247,6 +248,7 @@ fn attach<S: l::LayoutScalar>(
         });
     }
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: native.prepared.clone(),
         container: 0,
         nodes,

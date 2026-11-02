@@ -145,7 +145,7 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool, nested: bool) {
             &ordinary,
             text::ConditionalPurpose::MinContent,
             &[],
-            None,
+            surgeist_text::ConditionalLineContext::Unframed { inline_boxes: None },
         )
         .unwrap();
     assert!(search.phrase_portions().is_empty());
@@ -533,6 +533,8 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
                     0,
                     vec![p.clone()],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -600,6 +602,8 @@ fn physical_nested_pairs_keep_the_mark_attached_and_count_each_edge_once() {
                 0,
                 vec![p.clone()],
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },
@@ -703,6 +707,8 @@ fn cached_packets<S: LayoutScalar>(
         0,
         vec![p.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

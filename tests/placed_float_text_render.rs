@@ -141,6 +141,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
         &tree,
         0,
         vec![layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 3, 2],
@@ -157,6 +158,8 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
             line_strut: None,
         }],
         surgeist_layout::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

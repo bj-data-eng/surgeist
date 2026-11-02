@@ -7,6 +7,9 @@
 use super::*;
 use crate::protocol::InlineBoxSource;
 
+#[path = "parent_geometry_resources/work_admission.rs"]
+mod work_admission;
+
 struct Funded {
     capture: Arc<ProcessedSource>,
     system: System,

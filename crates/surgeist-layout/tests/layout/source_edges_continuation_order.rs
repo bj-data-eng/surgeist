@@ -266,6 +266,7 @@ fn fixture<S: l::LayoutScalar>() -> (
                 })
                 .collect();
             l::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container,
                 nodes,
@@ -304,6 +305,8 @@ fn wrapping(reverse: bool, captured: Option<t::CapturedScope>) -> l::WrappingInp
         })
         .collect();
     l::WrappingInput {
+        native_inline_boxes: Vec::new(),
+        gaps: Vec::new(),
         scopes: vec![l::WrappingScopeInput::NativePair {
             start: 1,
             end: 5,

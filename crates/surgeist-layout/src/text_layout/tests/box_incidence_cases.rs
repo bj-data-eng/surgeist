@@ -240,6 +240,7 @@ impl Case {
         };
         Self {
             binding: TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes,
@@ -316,6 +317,8 @@ impl Case {
             child_order.push(row(self.inline(1), vec![]));
         }
         WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes,
             child_order,
         }
@@ -1284,6 +1287,7 @@ fn pinned_after_s(direction: Direction) -> Case {
         .collect();
     Case {
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 2],
@@ -1778,6 +1782,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
         .collect();
     Case {
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 2],
@@ -2200,6 +2205,7 @@ fn exterior_case(direction: Direction, trailing: bool) -> Case {
         .collect();
     Case {
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes: vec![1, 2],

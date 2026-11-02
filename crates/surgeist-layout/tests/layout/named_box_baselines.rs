@@ -1205,6 +1205,7 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
         1
     );
     let binding = l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: vec![1],
@@ -2355,6 +2356,7 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
     // The real transparent floating box belongs in the captured native window,
     // not in Text's atomic/origin tables. Its own actual child stays native.
     l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes: vec![1, 2, 3],

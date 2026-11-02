@@ -104,6 +104,7 @@ fn bind(
         })
         .collect();
     TextParagraphBinding {
+        inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
         prepared,
         container: 0,
         nodes,
@@ -246,6 +247,8 @@ fn many_disjoint_owners_keep_their_own_geometry_without_requiring_empty_gaps() {
         0,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },
@@ -418,6 +421,8 @@ fn local_emitter_does_not_require_unique_paths_for_dormant_same_domain_text() {
         0,
         bindings,
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
         },

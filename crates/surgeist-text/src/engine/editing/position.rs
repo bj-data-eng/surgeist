@@ -1433,6 +1433,7 @@ mod tests {
         let end = termination.view().boundary();
         let line = prepared
             .select(LineSelectionRequest {
+                inline_boxes: None,
                 segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
@@ -2022,6 +2023,7 @@ mod tests {
             let to = end.view().participant_offset();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    inline_boxes: None,
                     segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,
@@ -2281,6 +2283,7 @@ mod tests {
             .collect();
         let selected = prepared
             .select(LineSelectionRequest {
+                inline_boxes: None,
                 segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
@@ -2531,6 +2534,7 @@ mod tests {
             .handle();
         let selected = prepared
             .select(LineSelectionRequest {
+                inline_boxes: None,
                 segment: crate::test_wrapping::only_source_segment(&prepared),
                 boundary_context: Vec::new(),
                 incoming: None,
@@ -2920,6 +2924,7 @@ mod tests {
                 .collect();
             let selected = prepared
                 .select(LineSelectionRequest {
+                    inline_boxes: None,
                     segment: crate::test_wrapping::only_source_segment(&prepared),
                     boundary_context: Vec::new(),
                     incoming: None,

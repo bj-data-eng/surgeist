@@ -244,6 +244,7 @@ fn request(prepared: &PreparedText) -> LineSelectionRequest {
     let segment = segments.next().unwrap();
     assert!(segments.next().is_none());
     LineSelectionRequest {
+        inline_boxes: None,
         segment: segment.clone(),
         start: segment.start(),
         end: segment.end(),

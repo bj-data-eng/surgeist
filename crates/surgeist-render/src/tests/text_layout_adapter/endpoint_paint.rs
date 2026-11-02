@@ -195,6 +195,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
         })
         .collect();
     let mut request = text::LineSelectionRequest {
+        inline_boxes: None,
         segment: prepared.source_segments().next().unwrap(),
         line_box_struts: Vec::new(),
         start: prepared.boundary_views().next().unwrap().handle(),

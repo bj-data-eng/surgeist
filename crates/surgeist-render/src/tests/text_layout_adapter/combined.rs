@@ -367,6 +367,7 @@ fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
     assert!(segments.next().is_none());
     let selected = prepared
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
@@ -533,6 +534,7 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
     assert!(segments.next().is_none());
     let selected = prepared
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),
@@ -743,6 +745,7 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
     assert!(segments.next().is_none());
     let selected = prepared
         .select(text::LineSelectionRequest {
+            inline_boxes: None,
             segment: segment.clone(),
             start: segment.start(),
             end: segment.end(),

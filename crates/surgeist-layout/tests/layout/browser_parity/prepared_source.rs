@@ -517,6 +517,7 @@ impl Capture {
             ));
         }
         Ok(layout::TextParagraphBinding {
+            inline_box_fragments: layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: self.prepared.clone(),
             container,
             nodes: children.to_vec(),
@@ -679,6 +680,8 @@ mod tests {
                 0,
                 tree.paragraphs.clone(),
                 layout::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: Vec::new(),
                     child_order: Vec::new(),
                 },

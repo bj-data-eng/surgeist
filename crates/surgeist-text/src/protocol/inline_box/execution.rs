@@ -1,13 +1,14 @@
 //! One side-aware permutation of actual selected, indivisible payload packets.
+use super::incidence::visit_unit_events;
 use super::*;
 use crate::engine::layout::data::{ShapedData, ShapedItem};
-use crate::protocol::prepared::{PresentationUnitKind as K, SelectedRelationEvent};
+use crate::protocol::prepared::PresentationUnitKind as K;
 use crate::protocol::selection::SelectedData;
-use crate::transform::relation::{ComponentOwner, RelationEvent};
 
 pub(crate) struct ExecutionPlan {
     pub(crate) order: Vec<usize>,
     pub(crate) boxed_units: Vec<bool>,
+    pub(crate) projection: Option<Vec<Option<(usize, usize)>>>,
 }
 struct Node<'a> {
     source: &'a InlineBoxSource,
@@ -22,24 +23,6 @@ enum Gap {
     Absent,
     At(usize),
     Ambiguous,
-}
-#[derive(Clone, Copy)]
-enum SourceIncidence {
-    Event(usize),
-    Cut(usize),
-}
-impl SourceIncidence {
-    fn position(self) -> usize {
-        match self {
-            Self::Event(at) | Self::Cut(at) => at,
-        }
-    }
-    fn before_end(self, end: usize) -> bool {
-        match self {
-            Self::Event(at) => at < end,
-            Self::Cut(at) => at <= end,
-        }
-    }
 }
 #[derive(Clone, Copy)]
 struct Edge {
@@ -94,7 +77,9 @@ pub(crate) fn build(
     canonical: &[usize],
     ledger: &mut Ledger,
 ) -> Result<Option<ExecutionPlan>> {
-    if contexts(&selected.request.controls, &[]).next().is_none() {
+    if selected.request.inline_boxes.is_none()
+        && contexts(&selected.request.controls, &[]).next().is_none()
+    {
         return Ok(None);
     }
     account::work(ledger, selected.request.controls.len())?;
@@ -277,43 +262,93 @@ pub(crate) fn build(
         let row = &mut unit_bounds[item_units[item]];
         *row = Some(row.map_or((first, after), |(a, b)| (a.min(first), b.max(after))));
     }
-    for (unit, bounds) in unit_bounds.iter().enumerate() {
-        account::work(ledger, 1)?;
-        let Some((first, after)) = *bounds else {
-            continue;
-        };
-        visit_unit_events(
-            &selected.prepared,
-            presentation,
-            unit,
-            ledger,
-            |incidence, ledger| {
-                let event = incidence.position();
-                let mut low = 0;
-                let mut high = nodes.len();
-                while low < high {
+    if let Some(projected) = &selected.basis.inline_boxes {
+        let family = selected
+            .request
+            .inline_boxes
+            .as_ref()
+            .expect("actual projected family");
+        for piece in &projected.pieces {
+            let source = family
+                .inner
+                .source(family.inner.fragments[piece.fragment].owner);
+            for node in &mut nodes {
+                account::work(ledger, 1)?;
+                if node.source != &source {
+                    continue;
+                }
+                for member in &projected.members[piece.members.clone()] {
                     account::work(ledger, 1)?;
-                    let middle = low + (high - low) / 2;
-                    if nodes[middle].start < event {
-                        low = middle + 1;
-                    } else {
-                        high = middle;
+                    if let Some((first, after)) = unit_bounds[member.unit] {
+                        node.members = Some(
+                            node.members
+                                .map_or((first, after), |(a, b)| (a.min(first), b.max(after))),
+                        );
                     }
                 }
-                let mut node = low.checked_sub(1);
-                while let Some(index) = node {
+            }
+        }
+        for alias in &projected.aliases {
+            let Some((first, after)) = unit_bounds[alias.unit] else {
+                continue;
+            };
+            let mut at = Some(alias.owner);
+            while let Some(owner) = at {
+                account::work(ledger, 1)?;
+                let source = family.inner.source(owner);
+                for node in &mut nodes {
                     account::work(ledger, 1)?;
-                    if incidence.before_end(nodes[index].end) {
-                        let row = &mut nodes[index].members;
-                        *row =
-                            Some(row.map_or((first, after), |(a, b)| (a.min(first), b.max(after))));
+                    if node.source == &source {
+                        node.members = Some(
+                            node.members
+                                .map_or((first, after), |(a, b)| (a.min(first), b.max(after))),
+                        );
                     }
-                    node = nodes[index].parent;
                 }
-                Ok(())
-            },
-        )?;
+                at = family.inner.parent(owner, ledger)?;
+            }
+        }
+    } else {
+        for (unit, bounds) in unit_bounds.iter().enumerate() {
+            account::work(ledger, 1)?;
+            let Some((first, after)) = *bounds else {
+                continue;
+            };
+            visit_unit_events(
+                &selected.prepared,
+                presentation,
+                unit,
+                ledger,
+                |incidence, ledger| {
+                    let event = incidence.position();
+                    let mut low = 0;
+                    let mut high = nodes.len();
+                    while low < high {
+                        account::work(ledger, 1)?;
+                        let middle = low + (high - low) / 2;
+                        if nodes[middle].start < event {
+                            low = middle + 1;
+                        } else {
+                            high = middle;
+                        }
+                    }
+                    let mut node = low.checked_sub(1);
+                    while let Some(index) = node {
+                        account::work(ledger, 1)?;
+                        if incidence.before_end(nodes[index].end) {
+                            let row = &mut nodes[index].members;
+                            *row = Some(
+                                row.map_or((first, after), |(a, b)| (a.min(first), b.max(after))),
+                            );
+                        }
+                        node = nodes[index].parent;
+                    }
+                    Ok(())
+                },
+            )?;
+        }
     }
+
     for edge in &mut edges {
         account::work(ledger, 1)?;
         edge.gap = if let Some((first, after)) = nodes[edge.node].members {
@@ -423,154 +458,16 @@ pub(crate) fn build(
     account::drop_vec(ledger, packets)?;
     account::drop_vec(ledger, item_units)?;
     account::drop_vec(ledger, payload)?;
-    account::drop_vec(ledger, unit_bounds)?;
+    let projection = if selected.request.inline_boxes.is_some() {
+        Some(unit_bounds)
+    } else {
+        account::drop_vec(ledger, unit_bounds)?;
+        None
+    };
     account::drop_vec(ledger, emitted)?;
-    Ok(Some(ExecutionPlan { order, boxed_units }))
-}
-
-fn visit_unit_events(
-    prepared: &crate::engine::PreparedData,
-    presentation: &crate::protocol::prepared::SelectedPresentation,
-    unit: usize,
-    ledger: &mut Ledger,
-    mut emit: impl FnMut(SourceIncidence, &mut Ledger) -> Result<()>,
-) -> Result<()> {
-    let analyzed = &prepared.analyzed;
-    let paragraph = &analyzed.paragraph;
-    let topology = paragraph
-        .scope_topology
-        .as_ref()
-        .ok_or_else(|| invalid(InlineBoxEdgeError::MissingCapture))?;
-    let transform = &analyzed.transform;
-    // Components are source-owned; no glyph hull or presentation interval grants
-    // ownership. Generated operations retain their actual original site.
-    for relation in &presentation.selected_relation.events
-        [presentation.selected_relation.unit_events[unit].clone()]
-    {
-        account::work(ledger, 1)?;
-        let SelectedRelationEvent::Base { event } = *relation else {
-            continue;
-        };
-        let event = &transform.events[event];
-        match *event {
-            RelationEvent::Text { atom } => {
-                let component = transform.component_for_atom(atom);
-                match component.owner {
-                    ComponentOwner::Original(row) => {
-                        visit_original_row(prepared, row, ledger, &mut emit)?
-                    }
-                    ComponentOwner::Wbr(control) => emit(
-                        SourceIncidence::Event(topology.control_orders[control]),
-                        ledger,
-                    )?,
-                    ComponentOwner::Virtual(index) => emit(
-                        SourceIncidence::Cut(transform.virtuals[index].capture_cut),
-                        ledger,
-                    )?,
-                }
-            }
-            RelationEvent::Removal { row, .. } => {
-                visit_original_row(prepared, row, ledger, &mut emit)?
-            }
-            RelationEvent::GeneratedSuppression { component, .. } => {
-                match transform.components[component].owner {
-                    ComponentOwner::Original(row) => {
-                        visit_original_row(prepared, row, ledger, &mut emit)?
-                    }
-                    ComponentOwner::Wbr(control) => emit(
-                        SourceIncidence::Event(topology.control_orders[control]),
-                        ledger,
-                    )?,
-                    ComponentOwner::Virtual(index) => emit(
-                        SourceIncidence::Cut(transform.virtuals[index].capture_cut),
-                        ledger,
-                    )?,
-                }
-            }
-            RelationEvent::PhaseIDeleted { source, .. } => {
-                paragraph.visit_origin_indices(source, |visit| {
-                    match visit {
-                        crate::protocol::paragraph::OriginVisit::Inspect => {
-                            account::work(ledger, 1)?
-                        }
-                        crate::protocol::paragraph::OriginVisit::Intersection {
-                            origin, ..
-                        } => emit(
-                            SourceIncidence::Event(
-                                paragraph.captured_origin_event(origin).ok_or_else(|| {
-                                    invalid(InlineBoxEdgeError::UnrepresentedIncidence)
-                                })?,
-                            ),
-                            ledger,
-                        )?,
-                    }
-                    Ok(())
-                })?
-            }
-            RelationEvent::Anchor { order } => {
-                use crate::protocol::paragraph::SemanticAnchorItem as A;
-                match paragraph.anchor_order[order].item {
-                    A::Control(control) => emit(
-                        SourceIncidence::Event(topology.control_orders[control]),
-                        ledger,
-                    )?,
-                    A::Atomic(atomic) => emit(
-                        SourceIncidence::Event(topology.capture.atomic_orders[atomic]),
-                        ledger,
-                    )?,
-                    A::EmptyOrigin(origin) => emit(
-                        SourceIncidence::Event(
-                            paragraph.captured_origin_event(origin).ok_or_else(|| {
-                                invalid(InlineBoxEdgeError::UnrepresentedIncidence)
-                            })?,
-                        ),
-                        ledger,
-                    )?,
-                    A::ComputedLineBoundary(boundary) => {
-                        for &cause in &paragraph.computed_boundaries[boundary].causes {
-                            account::work(ledger, 1)?;
-                            emit(
-                                SourceIncidence::Cut(topology.capture.computed[cause].capture_cut),
-                                ledger,
-                            )?;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if let K::Replacement { alternative, .. } = presentation.units[unit].kind {
-        use crate::protocol::prepared::AlternativeDefinition as D;
-        let event = match prepared.tables.alternatives[alternative].definition {
-            D::Source { origin, .. } | D::Automatic { origin, .. } => {
-                paragraph.captured_origin_event(origin)
-            }
-            D::Control { control, .. } => Some(topology.control_orders[control]),
-        }
-        .ok_or_else(|| invalid(InlineBoxEdgeError::UnrepresentedIncidence))?;
-        emit(SourceIncidence::Event(event), ledger)?;
-    }
-    Ok(())
-}
-
-fn visit_original_row(
-    prepared: &crate::engine::PreparedData,
-    row: usize,
-    ledger: &mut Ledger,
-    emit: &mut impl FnMut(SourceIncidence, &mut Ledger) -> Result<()>,
-) -> Result<()> {
-    let transform = &prepared.analyzed.transform;
-    for piece in &transform.pieces[transform.rows[row].pieces.clone()] {
-        account::work(ledger, 1)?;
-        emit(
-            SourceIncidence::Event(
-                piece
-                    .origin
-                    .captured_event()
-                    .ok_or_else(|| invalid(InlineBoxEdgeError::UnrepresentedIncidence))?,
-            ),
-            ledger,
-        )?;
-    }
-    Ok(())
+    Ok(Some(ExecutionPlan {
+        order,
+        boxed_units,
+        projection,
+    }))
 }

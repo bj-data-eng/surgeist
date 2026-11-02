@@ -433,6 +433,7 @@ impl Case {
             crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
         let prepared = prepare(&analyzed, scale);
         let binding = TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             origins: prepared
                 .origin_views()
                 .zip(&runs)
@@ -505,6 +506,7 @@ impl Case {
             let prepared = prepare(&child, 1.0);
             let origin = prepared.origin_views().next().unwrap().handle();
             Some(TextParagraphBinding {
+                inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
                 origins: vec![TextOriginBinding { origin, node: 91 }],
                 prepared,
                 container: 90,
@@ -1409,6 +1411,8 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
                 });
             }
             WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes,
                 child_order: vec![],
             }

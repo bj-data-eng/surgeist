@@ -54,6 +54,7 @@ fn selected_end(
         .collect();
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
                 assert_eq!(
@@ -468,6 +469,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
     };
     let selected = prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
                 assert_eq!(

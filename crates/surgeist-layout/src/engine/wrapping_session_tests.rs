@@ -111,6 +111,8 @@ fn native_avoid_results_do_not_enter_geometry_only_host_caches() {
                 0,
                 Vec::new(),
                 crate::WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
                     scopes: scopes(policy),
                     child_order: Vec::new(),
                 },
@@ -161,6 +163,8 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
             0,
             Vec::new(),
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: scopes(WrapInside::Avoid),
                 child_order: Vec::new(),
             },
@@ -172,6 +176,8 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
             0,
             Vec::new(),
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: scopes(WrapInside::Auto),
                 child_order: Vec::new(),
             },

@@ -110,16 +110,68 @@ pub struct InlineChildOrderInput<Node, Scope = CapturedScope> {
     pub suffix: ChildOrderCompleteness,
     pub formatting_context: Node,
 }
+/// Physical side of a resolved ordering occurrence, from line-left to line-right.
+/// This is independent of source delimiter sides and the formatter direction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InlineGapAffinity {
+    Before,
+    After,
+}
+/// Actual source boundary of a formatter and its adjoining body.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InlineFormatterEdge {
+    Start,
+    End,
+}
+/// Source body immediately before or after a genuine visible delimiter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InlineDelimiterSide {
+    Before,
+    After,
+}
+/// Authentic attachment for ordering-empty structural inline operations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InlineGapAnchor<Node> {
+    Neighbor {
+        node: Node,
+        affinity: InlineGapAffinity,
+    },
+    Formatter {
+        node: Node,
+        edge: InlineFormatterEdge,
+    },
+    Delimiter {
+        node: Node,
+        side: InlineDelimiterSide,
+    },
+    EmptyParent(GeneratedBoxRef<Node>),
+}
+/// Real boxes at one resolved gap, in explicit physical order when unrelated.
+/// Admitted ancestry continues to govern nested opening/closing interleaving.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InlineGapGroupInput<Node> {
+    pub anchor: InlineGapAnchor<Node>,
+    pub boxes: Vec<InlineBoxRef<Node>>,
+}
+/// Explicit complete font-free normal-inline family demand for one formatter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NativeInlineBoxFamilyInput<Node> {
+    pub formatter: Node,
+}
 #[derive(Clone, Debug, PartialEq)]
 pub struct WrappingInput<Node> {
+    pub native_inline_boxes: Vec<NativeInlineBoxFamilyInput<Node>>,
     pub scopes: Vec<super::WrappingScopeInput<Node>>,
     pub child_order: Vec<InlineChildOrderInput<Node>>,
+    pub gaps: Vec<InlineGapGroupInput<Node>>,
 }
 impl<Node> Default for WrappingInput<Node> {
     fn default() -> Self {
         Self {
+            native_inline_boxes: Vec::new(),
             scopes: Vec::new(),
             child_order: Vec::new(),
+            gaps: Vec::new(),
         }
     }
 }

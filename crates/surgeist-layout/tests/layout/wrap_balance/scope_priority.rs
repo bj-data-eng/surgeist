@@ -81,6 +81,8 @@ fn compute<S: l::LayoutScalar>(
         0,
         Vec::new(),
         l::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![l::WrappingScopeInput::NativePair {
                 start: 1,
                 end: 4,

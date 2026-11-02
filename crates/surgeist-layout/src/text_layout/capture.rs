@@ -83,6 +83,7 @@ pub(crate) fn classify<Node>(paragraph: &TextParagraphBinding<Node>) -> Result<P
 pub(crate) struct ScopeAssociations<Node> {
     inline: Vec<InlineScope<Node>>,
     paragraphs: Vec<ParagraphResolution<Node>>,
+    inline_boxes: super::fragmentation::InlineBoxFamilies,
     domains: Vec<Domain<Node>>,
     regions: Vec<CapturedScope>,
     structural: Vec<CapturedScope>,
@@ -212,6 +213,7 @@ impl<Node> Default for ScopeAssociations<Node> {
         Self {
             inline: Vec::new(),
             paragraphs: Vec::new(),
+            inline_boxes: super::fragmentation::InlineBoxFamilies::default(),
             domains: Vec::new(),
             regions: Vec::new(),
             structural: Vec::new(),
@@ -251,6 +253,37 @@ fn occurrence_member(
         .then_some(member)
 }
 
+impl<Node> ScopeAssociations<Node> {
+    pub(crate) fn inline_boxes(&self, binding: usize) -> super::AdmittedInlineBoxes {
+        self.inline_boxes.state(binding)
+    }
+
+    pub(crate) fn inline_box_families(&self) -> &super::fragmentation::InlineBoxFamilies {
+        &self.inline_boxes
+    }
+
+    pub(crate) fn set_inline_box_families(
+        &mut self,
+        families: super::fragmentation::InlineBoxFamilies,
+    ) {
+        self.inline_boxes = families;
+    }
+
+    pub(crate) fn same_inline_box_families(&self, other: &Self) -> bool {
+        self.inline_boxes.same_owner(&other.inline_boxes)
+    }
+
+    pub(crate) fn admit_inline_box_comparison<S: crate::LayoutScalar>(
+        &self,
+        other: &Self,
+        limits: surgeist_text::ScopeAlignmentLimits,
+        resources: &super::scope_alignment::ScopeAlignmentResources<S>,
+    ) -> surgeist_text::Result<()> {
+        self.inline_boxes
+            .admit_comparison(&other.inline_boxes, limits, resources)
+    }
+}
+
 impl<Node: Copy + Eq> ScopeAssociations<Node> {
     /// Exact canonical descriptor bound for a fallible caller to admit before
     /// the pure association search. No second lookup index is retained.
@@ -285,6 +318,14 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
         &self.runs
     }
 
+    /// Actual admitted Text execution, including scheduled empty source windows.
+    /// Paragraph classification alone does not establish this reachability.
+    pub(crate) fn has_prepared_execution(&self, flow: Node) -> bool {
+        self.runs
+            .iter()
+            .any(|row| self.paragraphs[row.paragraph].container == flow)
+    }
+
     /// Borrow one canonical admitted row with its original immutable binding
     /// inventory. LayoutFlowInput establishes this coupling before publication;
     /// the computation and its forks keep borrowing that same input family.
@@ -300,7 +341,8 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
         let binding = &paragraphs[row.paragraph];
         assert!(
             binding.prepared == self.paragraphs[row.paragraph].prepared
-                && binding.container == self.paragraphs[row.paragraph].container,
+                && binding.container == self.paragraphs[row.paragraph].container
+                && binding.inline_box_fragments == self.inline_boxes.state(row.paragraph).demand(),
             "the native run uses its original binding family"
         );
         super::AdmittedRun {
@@ -309,6 +351,7 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
             inventory: row.nodes.clone(),
             native: row.children.clone(),
             segment: row.segment.clone(),
+            inline_boxes: self.inline_boxes.state(row.paragraph),
         }
     }
 
@@ -517,6 +560,8 @@ struct Proof<'a, Tree: crate::LayoutTree> {
     known: Vec<CapturedScope>,
     wrapping: Vec<CapturedScope>,
     native: Vec<NativeRegion<Tree::Node>>,
+    // Constructor demand only; actual Source/native body proof still follows.
+    inline_box_bodies: bool,
     computed: Vec<(usize, surgeist_text::PreparedComputedLineBoundary)>,
     activation: Option<&'a mut super::scope_alignment::AdmissionWork>,
     activation_storage: ActivationStorage,
@@ -574,9 +619,9 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
     tree: &Tree,
     graph: &ValidationGraph<Tree::Node>,
     paragraphs: &[TextParagraphBinding<Tree::Node>],
-    wrapping_scopes: &[WrappingScopeInput<Tree::Node>],
+    wrapping_input: &crate::WrappingInput<Tree::Node>,
     inventory_scopes: &[CapturedScope],
-    canonical_orders: bool,
+    inline_box_bodies: bool,
     alignment: &mut super::scope_alignment::ScopeAlignmentAdmission<Tree::Scalar>,
 ) -> ResultOf<Tree, CaptureResolution<Tree::Node>> {
     if paragraphs.is_empty() {
@@ -585,6 +630,8 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
             wrapping: Vec::new(),
         });
     }
+    let wrapping_scopes = &wrapping_input.scopes;
+    let canonical_orders = !wrapping_input.child_order.is_empty();
     let (alignment_inputs, activation) = alignment.capture_parts();
     let (enter, exit) = graph_order(graph);
     let mut proof = Proof {
@@ -614,6 +661,7 @@ pub(super) fn resolve<Tree: crate::LayoutTree>(
         known: Vec::new(),
         wrapping: Vec::new(),
         native: Vec::new(),
+        inline_box_bodies,
         computed: Vec::new(),
         activation: None,
         activation_storage: ActivationStorage::default(),
@@ -1378,7 +1426,31 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                             WrappingScopeError::CaptureAssociation,
                         ));
                     }
-                    let active = match input {
+                    // A real native parent may surround an owned complete body
+                    // while its endpoint raw owners belong to other bindings.
+                    // Demand follows the actual checked flow/domain, not only
+                    // the endpoint binding indices or selected allocations.
+                    let mut demanded = false;
+                    if self.inline_box_bodies {
+                        for paragraph in self.paragraphs {
+                            if let Some(work) = self.activation.as_deref_mut() {
+                                work.visits(1)
+                                    .map_err(|error| activation_error::<Tree>(flow, error))?;
+                            }
+                            if paragraph.inline_box_fragments
+                                == super::InlineBoxFragmentationDemand::CompleteBodies
+                                && paragraph.container == flow
+                                && paragraph
+                                    .prepared
+                                    .captured_owner()
+                                    .is_some_and(|owner| owner.domain() == domain)
+                            {
+                                demanded = true;
+                                break;
+                            }
+                        }
+                    }
+                    let active = (demanded || match input {
                         WrappingScopeInput::NativePair {
                             wrap_inside,
                             edges,
@@ -1391,7 +1463,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                                 || edges.has_effect(crate::inline_wrapping::WrappingMode::Inline)
                         }
                         _ => false,
-                    } && !matching;
+                    }) && !matching;
                     if let Some(prior) = self
                         .native
                         .iter_mut()

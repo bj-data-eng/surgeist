@@ -125,6 +125,7 @@ fn measurement_observation_retains_and_validates_real_aligned_box_allocations() 
             &request(&p).start,
             None,
             &PreparedTermination::Measurement(portion),
+            None,
         )
         .unwrap();
     let segment = flow

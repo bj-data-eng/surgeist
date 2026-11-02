@@ -1452,14 +1452,21 @@ pub struct PlacedTextOutput<Node> {
     container: Node,
     nodes: Vec<Node>,
     layout: surgeist_text::Layout,
+    inline_boxes: crate::text_layout::AdmittedInlineBoxes,
 }
 
 impl<Node: Copy> PlacedTextOutput<Node> {
-    pub(crate) fn new(container: Node, nodes: Vec<Node>, layout: surgeist_text::Layout) -> Self {
+    pub(crate) fn new(
+        container: Node,
+        nodes: Vec<Node>,
+        layout: surgeist_text::Layout,
+        inline_boxes: crate::text_layout::AdmittedInlineBoxes,
+    ) -> Self {
         Self {
             container,
             nodes,
             layout,
+            inline_boxes,
         }
     }
     #[must_use]
@@ -1474,6 +1481,34 @@ impl<Node: Copy> PlacedTextOutput<Node> {
     #[must_use]
     pub fn layout(&self) -> &surgeist_text::Layout {
         &self.layout
+    }
+
+    /// Complete-body fragment identity attached to this exact placed binding.
+    /// None means not requested; a demanded result can have no placed pieces.
+    #[must_use]
+    pub fn inline_box_fragments(&self) -> Option<PlacedInlineBoxFragments<'_>> {
+        self.inline_boxes
+            .family()
+            .map(|family| PlacedInlineBoxFragments {
+                layout: &self.layout,
+                family,
+            })
+    }
+}
+
+/// Borrowed Text-owned piece readback from one exact Layout binding result.
+#[derive(Clone, Copy)]
+pub struct PlacedInlineBoxFragments<'layout> {
+    layout: &'layout surgeist_text::Layout,
+    family: &'layout surgeist_text::PreparedInlineBoxFamily,
+}
+impl PlacedInlineBoxFragments<'_> {
+    #[must_use]
+    pub fn family(&self) -> &surgeist_text::PreparedInlineBoxFamily {
+        self.family
+    }
+    pub fn pieces(&self) -> impl Iterator<Item = surgeist_text::PlacedInlineBoxPiece<'_>> + '_ {
+        self.layout.inline_box_pieces()
     }
 }
 
@@ -1574,6 +1609,16 @@ where
     }
 }
 
+#[derive(Clone)]
+struct NativeFamilyContext<Node>(std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>);
+impl<Node> core::fmt::Debug for NativeFamilyContext<Node> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("NativeFamilyContext")
+            .field("families", &self.0.families.len())
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
     unrounded_entries: Vec<LayoutOutputEntryOf<Node, S>>,
@@ -1584,6 +1629,9 @@ pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
     cache_clear_entries: Vec<LayoutCacheClearEntry<Node>>,
     invalidated_nodes: Vec<Node>,
     placed_text: Vec<PlacedTextOutput<Node>>,
+    native_families: Option<NativeFamilyContext<Node>>,
+    native_runs: Vec<crate::inline_wrapping::family::NativePublication<S>>,
+    native_completions: Vec<crate::inline_wrapping::family::NativeFormatterCompletion<S>>,
 }
 
 pub type CompletedLayoutBatch<Node> = CompletedLayoutBatchOf<Node, DefaultScalar>;
@@ -1610,12 +1658,63 @@ where
             cache_clear_entries,
             invalidated_nodes,
             placed_text: Vec::new(),
+            native_families: None,
+            native_runs: Vec::new(),
+            native_completions: Vec::new(),
         }
     }
 
     pub(crate) fn with_placed_text(mut self, placed_text: Vec<PlacedTextOutput<Node>>) -> Self {
         self.placed_text = placed_text;
         self
+    }
+
+    pub(crate) fn with_native_inline_boxes(
+        mut self,
+        context: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
+        runs: Vec<crate::inline_wrapping::family::NativePublication<S>>,
+        completions: Vec<crate::inline_wrapping::family::NativeFormatterCompletion<S>>,
+    ) -> Self {
+        self.native_families = context
+            .filter(|context| !context.families.is_empty())
+            .map(NativeFamilyContext);
+        self.native_runs = runs;
+        self.native_completions = completions;
+        self
+    }
+
+    /// Families with an actual successful formatter execution, including genuine
+    /// empty completion with no pieces. Order is completion order, not source or
+    /// painting order. Mere admission does not certify formatter execution.
+    pub fn native_inline_box_families(
+        &self,
+    ) -> impl Iterator<Item = crate::NativeInlineBoxFamily<Node>> + '_
+    where
+        Node: Copy + Eq,
+    {
+        self.native_completions.iter().map(|completion| {
+            self.native_families
+                .as_ref()
+                .expect("observed native formatter retains its context")
+                .0
+                .families[completion.family]
+                .clone()
+        })
+    }
+
+    /// Borrowed native pieces from actual accepted execution, without inventing
+    /// Text fragments or physical rectangles from native scalar observations.
+    pub fn native_inline_box_pieces(
+        &self,
+    ) -> impl Iterator<Item = crate::NativeInlineBoxPieceView<'_, Node, S>> + '_
+    where
+        Node: Copy + Eq,
+    {
+        let families = self
+            .native_families
+            .as_ref()
+            .map_or(&[][..], |owner| owner.0.families.as_slice());
+        crate::inline_wrapping::family::pieces(families, &self.native_runs)
     }
 
     /// Actual Text layouts retained in the same atomic node/cache batch.

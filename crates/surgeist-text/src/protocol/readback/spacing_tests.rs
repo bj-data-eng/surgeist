@@ -125,6 +125,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
     };
     prepared
         .select(LineSelectionRequest {
+            inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
                 assert_eq!(

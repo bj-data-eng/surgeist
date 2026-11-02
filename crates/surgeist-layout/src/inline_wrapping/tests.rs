@@ -1,5 +1,81 @@
 use super::*;
 
+#[test]
+fn raw_numeric_run_admits_its_actual_repeated_acyclic_occurrence() {
+    use crate::test_support::layout_tree::PublicLayoutTreeOf;
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .children(0, [1, 2, 1])
+        .style(
+            0,
+            crate::NodeInputOf {
+                display: crate::Display::Block,
+                ..Default::default()
+            },
+        )
+        .style(
+            1,
+            crate::NodeInputOf {
+                display: crate::Display::InlineBlock,
+                atomic_inline_participation: Some(crate::AtomicInlineParticipation::new(
+                    surgeist_text::BidiLevel::try_new(0).unwrap(),
+                    crate::InlineBreakOpportunity::Prohibited,
+                )),
+                ..Default::default()
+            },
+        )
+        .style(
+            2,
+            crate::NodeInputOf {
+                display: crate::Display::Block,
+                float: crate::Float::Left,
+                ..Default::default()
+            },
+        );
+    let (graph, _) =
+        crate::engine::validation::validate_layout_request_with_text_graph(&tree, 0, &[], &[])
+            .unwrap();
+    let context =
+        WrappingContext::new(&tree, &graph, &crate::WrappingInput::default(), &[], |_| {
+            false
+        })
+        .unwrap();
+    // The actual post-float run is the second occurrence of1. An earlier
+    // occurrence outside this checked raw slice supplies no substitute rank.
+    context
+        .numeric_projection(
+            &graph,
+            0,
+            NativeRunSource {
+                nodes: &[1],
+                start: 2,
+            },
+            &[1],
+        )
+        .expect(
+            "a valid emitted subsequence must be resolved inside its authenticated raw occurrence",
+        );
+    for (nodes, expected) in [
+        (&[1, 1][..], WrappingScopeError::EndpointOrder),
+        (&[2][..], WrappingScopeError::InconsistentIncidence),
+        (&[99][..], WrappingScopeError::DifferentFlow),
+    ] {
+        let error = context
+            .numeric_projection(
+                &graph,
+                0,
+                NativeRunSource {
+                    nodes: &[1],
+                    start: 2,
+                },
+                nodes,
+            )
+            .expect_err(
+                "consumed, outside-window and foreign members retain their separate causes",
+            );
+        assert_eq!(error, expected);
+    }
+}
+
 fn class(ancestry: &Arc<Ancestry>, scope: Option<usize>) -> AvoidClass {
     AvoidClass {
         ancestry: Arc::clone(ancestry),
@@ -94,21 +170,73 @@ fn native_scope_proof_checks_real_roles_order_and_non_crossing_pairs() {
         end,
         wrap_inside: WrapInside::Avoid,
     };
-    assert!(WrappingContext::new(&tree, &graph, &[pair(1, 4), pair(2, 3)], &[], &[]).is_ok());
+    assert!(
+        WrappingContext::new(
+            &tree,
+            &graph,
+            &crate::WrappingInput {
+                scopes: vec![pair(1, 4), pair(2, 3)],
+                ..Default::default()
+            },
+            &[],
+            |_| false
+        )
+        .is_ok()
+    );
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(1, 3), pair(2, 4)], &[], &[]).unwrap_err(),
+        WrappingContext::new(
+            &tree,
+            &graph,
+            &crate::WrappingInput {
+                scopes: vec![pair(1, 3), pair(2, 4)],
+                ..Default::default()
+            },
+            &[],
+            |_| false
+        )
+        .unwrap_err(),
         WrappingScopeError::CrossingScopes
     );
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(3, 4)], &[], &[]).unwrap_err(),
+        WrappingContext::new(
+            &tree,
+            &graph,
+            &crate::WrappingInput {
+                scopes: vec![pair(3, 4)],
+                ..Default::default()
+            },
+            &[],
+            |_| false
+        )
+        .unwrap_err(),
         WrappingScopeError::EndpointRole
     );
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(2, 3), pair(2, 3)], &[], &[]).unwrap_err(),
+        WrappingContext::new(
+            &tree,
+            &graph,
+            &crate::WrappingInput {
+                scopes: vec![pair(2, 3), pair(2, 3)],
+                ..Default::default()
+            },
+            &[],
+            |_| false
+        )
+        .unwrap_err(),
         WrappingScopeError::DuplicateScope
     );
     assert_eq!(
-        WrappingContext::new(&tree, &graph, &[pair(1, 9)], &[], &[]).unwrap_err(),
+        WrappingContext::new(
+            &tree,
+            &graph,
+            &crate::WrappingInput {
+                scopes: vec![pair(1, 9)],
+                ..Default::default()
+            },
+            &[],
+            |_| false
+        )
+        .unwrap_err(),
         WrappingScopeError::NodeNotReachable
     );
 }

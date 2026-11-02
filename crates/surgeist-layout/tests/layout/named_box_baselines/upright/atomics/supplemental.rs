@@ -51,6 +51,7 @@ fn attach<S: l::LayoutScalar>(
         t::Id::from_u64(u64::from(atomic_node))
     );
     let mut bindings = vec![l::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: parent.prepared.clone(),
         container,
         nodes,

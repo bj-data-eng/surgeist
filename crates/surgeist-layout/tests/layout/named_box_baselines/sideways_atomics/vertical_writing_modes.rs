@@ -16,6 +16,7 @@ fn qualify(parent: &Captured) {
         .handle();
     let line = p
         .select(t::LineSelectionRequest {
+            inline_boxes: None,
             segment: p.source_segments().next().unwrap(),
             start: p.boundary_views().next().unwrap().handle(),
             end: end.view().boundary(),
@@ -138,6 +139,7 @@ fn vertical_paragraph<S: l::LayoutScalar>() {
             1
         );
         let binding = l::TextParagraphBinding {
+            inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
             prepared: parent.prepared.clone(),
             container: 0,
             nodes: vec![1],

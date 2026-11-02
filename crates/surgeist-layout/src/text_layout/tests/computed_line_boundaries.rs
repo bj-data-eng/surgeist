@@ -297,6 +297,14 @@ fn prepare(input: text::ContextualSourceInput) -> Fixture {
         .map(|origin| origin.source.clone())
         .collect();
     let processed = Arc::new(text::process_contextual_source(input).unwrap());
+    prepare_captured(processed, nodes, originals)
+}
+
+fn prepare_captured(
+    processed: Arc<text::ProcessedSource>,
+    nodes: Vec<u32>,
+    originals: Vec<Source>,
+) -> Fixture {
     let analyzed = text::AnalyzedSource::from_processed_paragraph(
         processed.paragraphs().next().unwrap(),
         text::AnalysisTypography::HorizontalComposition,
@@ -339,6 +347,7 @@ fn prepare(input: text::ContextualSourceInput) -> Fixture {
         processed,
         originals,
         binding: TextParagraphBinding {
+            inline_box_fragments: crate::InlineBoxFragmentationDemand::NotRequested,
             prepared,
             container: 0,
             nodes,
@@ -425,6 +434,8 @@ fn compute<S: LayoutScalar>(
         0,
         vec![fixture.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -971,6 +982,157 @@ fn computed_only_paragraph_retains_real_endpoints_in_nonformatted_completion() {
     anchored_empty::<f64>();
 }
 
+// A real Prepared-backed run need not have InlineText/TextControl native slots.
+// Its genuine empty Source still has captured endpoints and a computed force.
+fn control_only_prepared_flow_rejects_native_gap_group<S: LayoutScalar>() {
+    let f = prepare(empty_input(true, text::ParagraphStrut::DefaultFont));
+    assert!(f.binding.origins.is_empty());
+    assert!(f.binding.atomics.is_empty());
+    assert_eq!(f.binding.nodes, [200, 201]);
+    assert_eq!(f.binding.prepared.unit_views().count(), 0);
+    assert_eq!(f.binding.prepared.control_views().count(), 2);
+    assert_eq!(computed_group(&f, 1).view().source_position().get(), 0);
+    let scope = f.processed.captured_scope(1).unwrap();
+    assert_eq!(scope.role(), text::ScopeRole::Inline);
+    assert_eq!(
+        scope.entry_control(),
+        f.binding.controls[0].occurrence.captured_control()
+    );
+    assert_eq!(
+        scope.exit_control(),
+        f.binding.controls[1].occurrence.captured_control()
+    );
+    let mut tree = tree::<S>(&f, false);
+    let parent = crate::LayoutTree::node_input(&tree, 0);
+    let axes = crate::FlowAxes::new(parent.writing_mode, parent.direction);
+    assert_eq!(
+        axes,
+        crate::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr)
+    );
+    for node in [200, 201] {
+        let original = match crate::LayoutTree::layout_input(&tree, node) {
+            LayoutInputViewOf::InlineBoundary(input) => input,
+            _ => panic!("the maintained fixture owns exactly these two native endpoints"),
+        };
+        assert_eq!(original.edge(), InlineBoundaryEdgeOf::ZERO);
+        assert_eq!(
+            (original.writing_mode(), original.direction()),
+            (WritingMode::HorizontalTb, Direction::Ltr)
+        );
+        // Only the actual operation changes. Components, metrics, formatter
+        // fields and vertical alignment retain the maintained native values.
+        let input = InlineBoundaryInputOf::box_edge(
+            original.kind(),
+            original.metrics(),
+            original.edge(),
+            axes,
+        )
+        .with_writing_mode(original.writing_mode())
+        .with_direction(original.direction())
+        .with_vertical_align(original.vertical_align());
+        assert_eq!(input.parent_edge_axes(), Some(axes));
+        tree.insert_input(node, LayoutInputOf::inline_boundary(input));
+    }
+    let wrapping = crate::WrappingInput {
+        native_inline_boxes: Vec::new(),
+        scopes: vec![crate::WrappingScopeInput::Captured {
+            scope: scope.clone(),
+            wrap_inside: crate::WrapInside::Auto,
+            edges: crate::WrapEdges::AUTO,
+            metric_contribution: None,
+        }],
+        child_order: Vec::new(),
+        gaps: Vec::new(),
+    };
+    let flow = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![f.binding.clone()],
+        wrapping.clone(),
+        Vec::new(),
+    )
+    .expect("the genuine control-only Prepared flow needs no native gap request");
+    let prior = compute_layout_with_flow(
+        &flow,
+        0,
+        request_at(AvailableOf::definite(S::from_f64(40.0))),
+    )
+    .unwrap();
+    let [placed] = prior.placed_text() else {
+        panic!("one authentic Prepared output")
+    };
+    assert_eq!(placed.nodes(), &[200, 201]);
+    assert!(placed.layout().source().text().is_empty());
+    assert!(
+        placed
+            .layout()
+            .glyph_runs()
+            .iter()
+            .all(|run| run.glyphs().is_empty() && run.advance() == 0.0)
+    );
+    assert_eq!(placed.layout().lines().len(), 1);
+    let completions = placed.layout().nonformatted_lines().collect::<Vec<_>>();
+    assert_eq!(completions.len(), 1);
+    let completion = completions[0].line.finalized_line();
+    assert_eq!(completion.prepared_text(), f.binding.prepared);
+    assert!(!completion.has_in_flow_content());
+    assert_eq!(
+        (
+            completion.feedback().baseline,
+            completion.feedback().line_height
+        ),
+        (8.0, 10.0)
+    );
+    assert_eq!(
+        completion
+            .selected_line()
+            .request()
+            .controls
+            .iter()
+            .map(|row| row.occurrence.clone())
+            .collect::<Vec<_>>(),
+        f.binding
+            .controls
+            .iter()
+            .map(|row| row.occurrence.clone())
+            .collect::<Vec<_>>()
+    );
+
+    let mut requested = wrapping;
+    requested.gaps.push(crate::InlineGapGroupInput {
+        anchor: crate::InlineGapAnchor::Formatter {
+            node: 0,
+            edge: crate::InlineFormatterEdge::Start,
+        },
+        boxes: vec![crate::InlineBoxRef::Scope(scope)],
+    });
+    let Err(error) =
+        LayoutFlowInput::try_new(&tree, 0, vec![f.binding.clone()], requested, Vec::new())
+    else {
+        panic!("a native gap request must not be admitted for actual Prepared execution")
+    };
+    assert!(
+        matches!(
+            error.kind(),
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::WrappingScope(
+                crate::WrappingScopeError::UnsupportedIncidence
+            ))
+        ),
+        "{error:?}"
+    );
+    assert_eq!(completion.prepared_text(), f.binding.prepared);
+}
+
+#[test]
+fn native_gap_group_on_control_only_prepared_flow_refuses_f32() {
+    control_only_prepared_flow_rejects_native_gap_group::<f32>();
+}
+
+#[test]
+fn native_gap_group_on_control_only_prepared_flow_refuses_f64() {
+    control_only_prepared_flow_rejects_native_gap_group::<f64>();
+}
+
 #[test]
 fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
     let f = prepare(empty_input(false, text::ParagraphStrut::DefaultFont));
@@ -985,6 +1147,8 @@ fn node_free_computed_paragraph_admits_its_real_capture_without_child_nodes() {
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1027,6 +1191,8 @@ fn missing_metrics<S: LayoutScalar>() {
         0,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1065,6 +1231,8 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![foreign],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1089,6 +1257,8 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![next.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1111,6 +1281,8 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![absent],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1133,6 +1305,8 @@ fn foreign_preparation_and_absent_original_target_bindings_refuse_precisely() {
         0,
         vec![absent],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1175,6 +1349,8 @@ fn after_float<S: LayoutScalar>() {
         0,
         vec![neutral.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1227,6 +1403,8 @@ fn after_float<S: LayoutScalar>() {
             0,
             vec![f.binding.clone()],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: vec![],
                 child_order: Vec::new(),
             },
@@ -1445,6 +1623,8 @@ fn cached_compute<S: LayoutScalar>(
         1000,
         vec![f.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1497,6 +1677,8 @@ fn unproved_float<S: LayoutScalar>() {
         0,
         vec![neutral.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1541,6 +1723,8 @@ fn unproved_float<S: LayoutScalar>() {
         0,
         vec![requested.binding.clone()],
         crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
             scopes: vec![],
             child_order: Vec::new(),
         },
@@ -1572,3 +1756,12 @@ fn unrepresented_float_at_semantic_only_scope_after_requires_real_side_incidence
     unproved_float::<f32>();
     unproved_float::<f64>();
 }
+
+#[path = "computed_line_boundaries/inline_box_fragments.rs"]
+mod inline_box_fragments;
+
+#[path = "computed_line_boundaries/native_family_admission.rs"]
+mod native_family_admission;
+
+#[path = "computed_line_boundaries/native_family_node_free.rs"]
+mod native_family_node_free;

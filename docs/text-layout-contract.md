@@ -742,6 +742,166 @@ Zero BoxEdge still needs this context; zero Contribution needs no invented paren
 Capture does not promote a Contribution, and failed BoxEdge admission never
 downgrades it to Contribution.
 
+#### Numeric physical edge ordering
+
+Layout's font-free numeric formatter projects actual BoxEdge operations outside
+content L2. Their source occurrences, components, owner and parent-directed
+physical sides remain available to fitting and placement. Text's generic
+`SuppliedLine` orders every supplied slot; Layout supplies actual operands to it,
+then schedules the physical operations around the reordered content. Ordinary
+Contributions remain operands, including zero or unpaired occurrences. A wrapping
+NativePair declaration alone grants no transparent ordering role.
+
+A permitted soft cut includes consecutive closing structural End operations
+before measuring the candidate, so their actual advance and metrics belong to
+the selected content. Advance both raw source and descriptor cursors through
+those operations. Opening operations, forced stops and fitting-run fences keep
+their existing boundaries; an ordinary Contribution End remains an operand.
+
+`WrappingInput::native_inline_boxes` requests complete normal inline-box families
+for named native formatters. Each request needs the actual generated-child proof
+for the formatter root and every nested normal box, including undecorated Auto
+pairs. Complete flags alone do not establish that closure. The retained generated
+proof and whole-formatter occurrence snapshot have different roles: visible
+delimiters, ordinary Contributions and excluded metadata are occurrences, not
+invented generated child boxes. Actual Prepared execution refuses this native
+demand even when no gap groups are supplied.
+
+A source-validated canonical empty inline scope can retain its captured identity
+without a native extent. Its complete occurrence and child proof, actual native
+roles and authenticated body attachment establish empty incidence; physical
+phantom realization does not. If there are no raw slots, one body and one actual
+frontier, equivalent Start/End witnesses can derive the attachment. One
+operand-empty body with excluded metadata does not establish raw-frontier
+uniqueness. Retain global identity without inventing a selected line or piece.
+
+For otherwise admissible declarations, an absent required formatter-root or
+nested child-order record refuses `MissingChildOrder`. A present proof with an
+`Unknown` side, or a root closure omitting an actual generated child, refuses
+`IncompleteFamily`. Independently malformed ordering retains `ChildOrder`;
+distinct NativePairs with crossing or shared-endpoint intervals retain
+`CrossingScopes`. These checks never turn an incomplete request into an
+unrequested family.
+
+Text owns the shared component and fragment-parent derivation. Prepared retains
+its captured incidence, full-body L1/L2 and packet authority; the supplied adapter
+consumes resolved native ordering and genuine empty-box incidence without claiming
+Source authority. A body has its own root. Intervening participating content can
+split a normal box; metadata and differing levels alone do not. The resulting
+global fragment identities survive fitting-run cuts and soft wrapping, including
+when previously separated fragments become adjacent on a selected line.
+
+Only exact, proven zero Contribution endpoints in a demanded normal family become
+ordering-transparent. They retain their Contribution operation and metrics as
+logical-source aliases, without parent-directed BoxEdge authority. Place each
+alias using its genuine logical frontier's resolved direction and executed
+selected port. An equivalent adjacent witness must certify the same gap and be
+valid on that selected cut; empty aliases need genuine empty-gap authority.
+Otherwise refuse `GapOutsideSelection`. Nonzero Contributions cannot acquire this
+role. In the six-atomic `000111` case with zero endpoints around members 2/3,
+member positions are `0,10,20,50,40,30`: the logical Start/End aliases are `20/50`,
+while the parent-LTR physical box end is `60`.
+
+`WrappingInput::gaps` supplies resolved attachments for ordering-empty boxes.
+This capability requires a font-free numeric formatter. Actual Prepared-backed
+participation in the target formatter refuses `UnsupportedIncidence`; the Text
+adapter does not silently ignore a requested native gap group.
+Determine that execution authority from the actual admitted source-segment runs,
+including control-only and empty semantic or joint-flow segments. Native slot
+kinds alone do not establish a numeric formatter. Opaque descendant formatters
+retain their own execution authority.
+Each `InlineGapGroupInput` names an anchor and the explicit physical order of
+unrelated boxes at that gap; nested boxes retain their admitted ancestry.
+Each real box/body has one attachment group. Overlapping group declarations
+refuse `ConflictingGap`; they do not define a partial-order merging capability.
+`InlineGapAnchor::Neighbor` uses a genuine ordering occurrence and physical
+`InlineGapAffinity::Before` or `After`. `Formatter` uses the actual source Start
+or End and its adjoining body. `Delimiter` uses the source side of a genuine
+visible break or in-flow block interruption. These source sides are separate
+from physical affinity. Formatter edges include operand-empty bodies.
+`EmptyParent` names an actual ordering-empty parent; positive border/padding or
+metrics do not create an ordering operand or determine a gap.
+
+Retain the formatter-wide role, body and gap facts before partitioning fitting
+runs. Derive an attachment only when those facts determine a unique gap;
+otherwise require a resolved attachment. `MissingGap` reports its absence when
+source-adjacent operands bound different physical gaps. `AmbiguousGap` reports
+multiple eligible empty-parent bodies or unresolved physical ties between
+unrelated boxes. An absent referenced node retains `NodeNotReachable`; a known
+node with an incompatible role or context yields `InvalidGapAnchor`.
+When two authentic adjacent or body-edge witnesses prove the same derived gap,
+retain both. Projection checks each against the actual selected cut and uses a
+valid witness, cross-checking both when present. An explicit caller anchor keeps
+its exact stated authority.
+Reject conflicting or cyclic authority. A body-valid
+attachment must also belong to the actual selected cut: never clamp its rank or
+move the operation across a line. Only `GapOutsideSelection` permits continuing
+the finite candidate search; other failures retain their original meaning.
+Retain the actual raw source-run boundaries through filtering. Its first and
+last emitted participants cannot certify source edges beyond a real float or
+other excluded source entry outside that run.
+Candidate fitting and selected physical execution consume the same successful
+ordering receipt. Complete-body fragment readback described below belongs to
+the PreparedText family capability.
+
+#### Complete-body bidi fragments
+
+`PreparedText::inline_box_family` issues a capability for one authentic
+preparation's complete structural bodies. Admission requires both explicit
+`SourceProcessingTopology::Complete` and ownership of every relevant raw member
+through the actual preparation or joint flow. Full raw coverage alone cannot
+establish box topology. Captured Inline scopes contribute their real ancestry;
+additional native pairs require genuine endpoint declarations. Unknown topology,
+incomplete bodies, foreign families and inconsistent edge contexts return their
+specific errors without changing prior results. Ordinary operations with
+`LineSelectionRequest::inline_boxes: None` make no global-fragment claim.
+
+The [pinned Writing Modes fragmentation rule](../references/css-writing-modes-4--CR-css-writing-modes-4-20190730--30a59de49343.md)
+determines fragments from intervening content in the hypothetical unwrapped body.
+Finite wrapping cannot merge their identities, and level changes alone cannot
+split a box. Parent links and nearest-common-ancestor queries describe fragment
+ancestry. Text reuses completed bidi analysis and full-body L1/L2; it does not
+repeat contextual analysis or shaping. A genuine empty Inline remains a box
+without an ink, advance or decoration threshold. For this PreparedText family,
+empty native-pair ordering uses its actual opening gap, borrowing the following
+nonopaque resolved level or the body's paragraph level before L2. That is an
+explicit captured-family policy informed by
+[pinned Blink's opaque-row ordering](https://github.com/chromium/chromium/blob/79051446b0be39cd65045025894b32da4d49a804/third_party/blink/renderer/core/layout/inline/logical_line_builder.cc#L655),
+not a claim that Blink retains this global family. A finite-line fallback cannot
+change the family's unwrapped classification.
+
+Selected pieces reference these stable fragments and actual source/unit
+memberships. Removed or zero-output Source aliases retain their canonical
+occurrences independently; absent a real row/cut witness, lexical enclosure does
+not assign them exclusively to one fragment. A provider packet can support
+several pieces without lending one box another box's source ownership or
+duplicating glyphs. The same projection
+feeds parent-directed edge execution and selected, finalized and placed
+readback; a piece supplies no independently reconstructed paint rectangle.
+
+Layout's `TextParagraphBinding::inline_box_fragments` explicitly chooses
+`NotRequested` or `CompleteBodies`. Both checked constructors admit the latter
+only for genuine Flow or SemanticFlow bindings and reject AssociationOnly with
+`InlineBoxFragmentsRequireFlow`. The checked binding retains one family through
+measurement, conditional search, replay, finalization and placement.
+`PlacedTextOutput::inline_box_fragments()` exposes that exact association;
+`None` means unrequested, while a demanded empty result can have zero pieces.
+Render consumes the same placed Text layout.
+
+Family storage and projected incidences participate in the existing resource
+census, including shared ancestors and actual retained allocation owners.
+Captured limits fund both preparation and family through the existing preparation
+budget; current public constructors do not issue a funded family over an
+unfunded preparation. Without captured limits, the Native family uses fallible
+allocation and makes no feature-retention claim. Borrowed input vectors contribute
+actual backing capacity and initialized rows, excluding caller stack headers.
+The owned family header includes its embedded vector headers once. Derive native
+lookup and parent incidence at admission, borrowing captured ancestry instead of
+rescanning the entire native vector per endpoint. Rejected budgets preserve prior
+publications. Numeric-only global fragmentation,
+NCA-dependent text-justification inputs and decoration painting remain separate
+capabilities under [the complete fragmentation scope](https://github.com/bj-data-eng/surgeist/issues/780).
+
 #### Selected and context-only admission
 
 Every selected InlineBoundaryStart/End has a `ControlAllocation` with

@@ -280,6 +280,7 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     }
     let nodes = (1..inputs.len() as u32).collect::<Vec<_>>();
     let binding = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: nodes.clone(),
@@ -299,6 +300,8 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     };
     let inline = layout::GeneratedBoxRef::Inline(layout::InlineBoxRef::Scope(scope));
     let wrapping = layout::WrappingInput {
+        native_inline_boxes: Vec::new(),
+        gaps: Vec::new(),
         scopes: vec![layout::WrappingScopeInput::Captured {
             scope: processed.captured_scope(1).unwrap(),
             wrap_inside: layout::WrapInside::Auto,
@@ -572,6 +575,7 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
         .collect::<Vec<_>>();
     let nodes = (1..inputs.len() as u32).collect::<Vec<_>>();
     let binding = layout::TextParagraphBinding {
+        inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
         prepared: prepared.clone(),
         container: 0,
         nodes: nodes.clone(),
@@ -594,6 +598,8 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
         formatting_context: 0,
     };
     let wrapping = layout::WrappingInput {
+        native_inline_boxes: Vec::new(),
+        gaps: Vec::new(),
         scopes: vec![layout::WrappingScopeInput::Captured {
             scope,
             wrap_inside: layout::WrapInside::Auto,

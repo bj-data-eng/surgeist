@@ -58,6 +58,9 @@ where
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>>,
     flow_graph: Option<&'a crate::engine::validation::ValidationGraph<Tree::Node>>,
     wrapping_uncached: Vec<Tree::Node>,
+    native_inline_runs: Vec<crate::inline_wrapping::family::NativePublication<Tree::Scalar>>,
+    native_inline_completions:
+        Vec<crate::inline_wrapping::family::NativeFormatterCompletion<Tree::Scalar>>,
     groups: Option<crate::group_alignment::State<Tree::Node, Tree::Scalar>>,
     text: Option<crate::text_layout::state::TextComputation<'a, Tree::Node, Tree::Scalar>>,
     unrounded_entries: Vec<LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
@@ -90,6 +93,8 @@ pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
     associations: Option<std::sync::Arc<crate::text_layout::capture::ScopeAssociations<Node>>>,
     entries: Vec<LayoutOutputEntryOf<Node, S>>,
     fragments: Vec<StagedInlineFragmentGroup<Node, S>>,
+    native_inline_runs: Vec<crate::inline_wrapping::family::NativePublication<S>>,
+    native_inline_completions: Vec<crate::inline_wrapping::family::NativeFormatterCompletion<S>>,
     stores: Vec<LayoutCacheStoreEntryOf<Node, S>>,
     clears: Vec<LayoutCacheClearEntry<Node>>,
     pending: Vec<crate::text_layout::state::PendingParagraph<Node>>,
@@ -169,6 +174,8 @@ where
             wrapping: None,
             flow_graph: None,
             wrapping_uncached: Vec::new(),
+            native_inline_runs: Vec::new(),
+            native_inline_completions: Vec::new(),
             groups: None,
             text: None,
             unrounded_entries: Vec::new(),
@@ -198,7 +205,7 @@ where
             // Host geometry has no slot for this immutable selection basis.
             // Keep influencing results out of that cache, including ancestors
             // that could otherwise conceal an old selected sequence.
-            self.uncache_flow_dependencies(graph, wrapping.dependencies().into_iter());
+            self.uncache_flow_dependencies(graph, wrapping.dependencies().iter().copied());
         }
     }
 
@@ -257,6 +264,7 @@ where
                 capture.associations.clone(),
                 crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                     capture.scope_alignments.clone(),
+                    capture.associations.inline_box_families().clone(),
                 ),
             );
             text.graph = Some(&capture.graph);
@@ -430,6 +438,8 @@ where
             text.atomic_origins.clear();
             text.absolute_baselines.clear();
         }
+        self.native_inline_runs.clear();
+        self.native_inline_completions.clear();
         self.block_floats.reset();
         self.unrounded_entries.clear();
         self.final_entries.clear();
@@ -505,6 +515,11 @@ where
             self.cache_clear_entries,
             self.invalidated_nodes,
         )
+        .with_native_inline_boxes(
+            self.wrapping,
+            self.native_inline_runs,
+            self.native_inline_completions,
+        )
     }
 
     pub(super) fn complete_for_root(
@@ -536,6 +551,46 @@ where
         self.unrounded_entries = ordered_unrounded;
         self.final_entries = ordered_final;
         self.complete()
+    }
+
+    fn retain_native_completion(
+        &mut self,
+        node: Tree::Node,
+        completion: crate::inline_wrapping::family::NativeFormatterCompletion<Tree::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        if let Some(old) = self
+            .native_inline_completions
+            .iter_mut()
+            .find(|old| old.family == completion.family)
+        {
+            *old = completion;
+        } else {
+            self.native_inline_completions.try_reserve(1).map_err(|_| {
+                crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
+            })?;
+            self.native_inline_completions.push(completion);
+        }
+        Ok(())
+    }
+
+    fn replace_native_run(
+        &mut self,
+        node: Tree::Node,
+        run: crate::inline_wrapping::family::NativePublication<Tree::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        if let Some(index) = self
+            .native_inline_runs
+            .iter()
+            .position(|old| old.family == run.family && old.source == run.source)
+        {
+            self.native_inline_runs[index] = run;
+        } else {
+            self.native_inline_runs.try_reserve(1).map_err(|_| {
+                crate::inline_wrapping::wrapping_error(node, crate::WrappingScopeError::Allocation)
+            })?;
+            self.native_inline_runs.push(run);
+        }
+        Ok(())
     }
 
     fn staged_source_index(&self, node: Tree::Node) -> crate::SourceIndex {
@@ -591,6 +646,20 @@ where
         input: ComputeInputOf<Tree::Scalar>,
     ) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
     {
+        if input.run_mode().is_perform_layout()
+            && let Some(index) = self.wrapping.as_ref().and_then(|context| {
+                context
+                    .families
+                    .iter()
+                    .position(|family| family.formatter() == node)
+            })
+        {
+            // Recompute this formatter's accepted runs rather than appending an
+            // earlier scrollbar/size trial. Intrinsic probes do not clear them.
+            self.native_inline_runs.retain(|run| run.family != index);
+            self.native_inline_completions
+                .retain(|completion| completion.family != index);
+        }
         let style = self.tree.node_input(node);
         if self.tree.has_leaf_measurement(node) {
             let result = crate::measurement::compute_tree_leaf(self.tree, node, input, style);
@@ -609,7 +678,7 @@ where
             return result;
         }
 
-        match style.display.inner_display() {
+        let output = match style.display.inner_display() {
             crate::Display::Block => crate::block::compute_block(self, node, input),
             crate::Display::Flex => crate::flex::compute_flex(self, node, input),
             crate::Display::Grid | crate::Display::GridLanes => {
@@ -627,7 +696,25 @@ where
             | crate::Display::InlineGridLanes => {
                 unreachable!("inner_display removes inline display variants")
             }
+        }?;
+        if input.run_mode().is_perform_layout()
+            && let Some(family) = self.wrapping.as_ref().and_then(|context| {
+                context
+                    .families
+                    .iter()
+                    .position(|family| family.formatter() == node)
+            })
+        {
+            self.retain_native_completion(
+                node,
+                crate::inline_wrapping::family::NativeFormatterCompletion {
+                    family,
+                    input,
+                    output,
+                },
+            )?;
         }
+        Ok(output)
     }
 }
 
@@ -715,6 +802,72 @@ where
         }
         self.unrounded_entries
             .push(LayoutOutputEntryOf::new(node, layout));
+    }
+
+    fn publish_native_inline_run(
+        &mut self,
+        node: Self::Node,
+        source: std::ops::Range<usize>,
+        completion: Option<std::sync::Arc<crate::inline_wrapping::NativeOrderingProjection>>,
+        lines: Vec<crate::inline_wrapping::family::NativeLineReceipt<Self::Scalar>>,
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, Tree::MeasureError> {
+        let family = self.wrapping.as_ref().and_then(|context| {
+            context
+                .families
+                .iter()
+                .position(|family| family.formatter() == node)
+        });
+        let Some(family_index) = family else {
+            if lines.is_empty() && completion.is_none() {
+                return Ok(());
+            }
+            return Err(crate::inline_wrapping::wrapping_error(
+                node,
+                crate::WrappingScopeError::InconsistentIncidence,
+            ));
+        };
+        let completion = completion.ok_or_else(|| {
+            crate::inline_wrapping::wrapping_error(
+                node,
+                crate::WrappingScopeError::InconsistentIncidence,
+            )
+        })?;
+        let actual_source = completion
+            .selection(0..completion.ranks.len())
+            .map_err(|error| crate::inline_wrapping::wrapping_error(node, error))?
+            .raw_fences;
+        let family = &self
+            .wrapping
+            .as_ref()
+            .expect("actual requested family context")
+            .families[family_index];
+        if actual_source != source || !std::sync::Arc::ptr_eq(family.profile(), &completion.profile)
+        {
+            return Err(crate::inline_wrapping::wrapping_error(
+                node,
+                crate::WrappingScopeError::InconsistentIncidence,
+            ));
+        }
+        if lines.iter().any(|line| {
+            !std::sync::Arc::ptr_eq(&completion, &line.receipt)
+                || !std::sync::Arc::ptr_eq(family.profile(), &line.profile)
+                || line.source.start < source.start
+                || line.source.end > source.end
+                || line.source.start > line.source.end
+        }) {
+            return Err(crate::inline_wrapping::wrapping_error(
+                node,
+                crate::WrappingScopeError::InconsistentIncidence,
+            ));
+        }
+        let run = crate::inline_wrapping::family::NativePublication::new(
+            family_index,
+            source,
+            completion,
+            lines,
+        )
+        .map_err(|error| crate::inline_wrapping::wrapping_error(node, error))?;
+        self.replace_native_run(node, run)
     }
 
     fn set_unrounded_inline_fragment_state(
@@ -972,6 +1125,8 @@ where
             associations,
             entries: probe.unrounded_entries,
             fragments: probe.unrounded_inline_fragment_groups,
+            native_inline_runs: probe.native_inline_runs,
+            native_inline_completions: probe.native_inline_completions,
             stores: probe.cache_store_entries,
             clears: probe.cache_clear_entries,
             pending,
@@ -1036,6 +1191,35 @@ where
         }
         for group in &packet.fragments {
             self.set_unrounded_inline_fragment_state(group.node, group.fragments.clone());
+        }
+        for completion in &packet.native_inline_completions {
+            let formatter = self
+                .wrapping
+                .as_ref()
+                .and_then(|context| context.families.get(completion.family))
+                .ok_or_else(|| {
+                    crate::inline_wrapping::wrapping_error(
+                        packet.node,
+                        crate::WrappingScopeError::InconsistentIncidence,
+                    )
+                })?;
+            if !completion.input.run_mode().is_perform_layout()
+                || (formatter.formatter() == packet.node && completion.output != packet.output)
+            {
+                return Err(crate::inline_wrapping::wrapping_error(
+                    packet.node,
+                    crate::WrappingScopeError::InconsistentIncidence,
+                ));
+            }
+            self.native_inline_runs
+                .retain(|run| run.family != completion.family);
+            self.retain_native_completion(packet.node, *completion)?;
+        }
+        for run in &packet.native_inline_runs {
+            let accepted = run
+                .try_clone()
+                .map_err(|error| crate::inline_wrapping::wrapping_error(packet.node, error))?;
+            self.replace_native_run(packet.node, accepted)?;
         }
         for entry in &packet.stores {
             self.cache_store(entry.node(), entry.input(), entry.context(), entry.output());
@@ -1559,6 +1743,8 @@ mod tests {
             0,
             vec![paragraph.binding(0)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },
@@ -1880,6 +2066,8 @@ mod grid_overflow_observation_tests {
                     2,
                     vec![tree.text.binding(3)],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -1913,6 +2101,8 @@ mod grid_overflow_observation_tests {
                     2,
                     vec![tree.text.binding(3)],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -1977,6 +2167,8 @@ mod grid_overflow_observation_tests {
                     2,
                     vec![tree.text.binding(3)],
                     crate::WrappingInput {
+                        native_inline_boxes: Vec::new(),
+                        gaps: Vec::new(),
                         scopes: Vec::new(),
                         child_order: Vec::new(),
                     },
@@ -2087,6 +2279,8 @@ mod grid_overflow_observation_tests {
             0,
             vec![text.binding(1)],
             crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
                 scopes: Vec::new(),
                 child_order: Vec::new(),
             },

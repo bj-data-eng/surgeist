@@ -281,6 +281,7 @@ fn finish(
         })
         .collect();
     let mut request = t::LineSelectionRequest {
+        inline_boxes: None,
         segment: prepared.source_segments().next().unwrap(),
         start,
         end: boundary,

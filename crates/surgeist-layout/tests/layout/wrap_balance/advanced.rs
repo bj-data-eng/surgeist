@@ -367,6 +367,7 @@ impl<S: l::LayoutScalar> Advanced<S> {
             capture,
             prepared: prepared.clone(),
             binding: l::TextParagraphBinding {
+                inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
                 prepared,
                 container: 0,
                 nodes,

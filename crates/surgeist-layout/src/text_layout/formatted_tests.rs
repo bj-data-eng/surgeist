@@ -237,9 +237,11 @@ fn no_demand_keeps_summary_collection_and_cache_requirements_absent() {
             crate::text_layout::scope_alignment::ScopeAlignmentSnapshot::admit(
                 Vec::new(),
                 &paragraphs,
+                false,
             )
             .unwrap()
             .freeze(),
+            crate::text_layout::fragmentation::InlineBoxFamilies::default(),
         ),
     );
     let snapshot = computation.formatted_snapshot(

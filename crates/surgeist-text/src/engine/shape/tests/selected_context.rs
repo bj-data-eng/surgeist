@@ -97,6 +97,7 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
         })
         .collect();
     let request = LineSelectionRequest {
+        inline_boxes: None,
         segment: crate::test_wrapping::only_source_segment(&prepared),
         boundary_context: Vec::new(),
         incoming: None,

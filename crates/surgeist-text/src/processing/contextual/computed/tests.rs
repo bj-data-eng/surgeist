@@ -286,6 +286,7 @@ fn real_native_finalization_consumes_computed_forces_without_host_control_or_fra
             }
             let selected = prepared
                 .select(LineSelectionRequest {
+                    inline_boxes: None,
                     segment: crate::test_wrapping::only_source_segment(&prepared),
                     start,
                     end: end.clone(),
