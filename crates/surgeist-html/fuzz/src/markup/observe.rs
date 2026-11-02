@@ -106,6 +106,7 @@ pub(crate) fn evaluate_parse(target: &MarkupTarget, case: &Case) -> Result<CaseO
         text: &text,
         original: &original,
         limits: &limits,
+        caps: case.caps,
         requested,
         capture: capture.as_ref(),
         shadow_allowed: case.shadow_permitted(),
@@ -182,6 +183,11 @@ pub(crate) fn evaluate_parse(target: &MarkupTarget, case: &Case) -> Result<CaseO
         Err(f) => {
             let expect = if case.cancelled {
                 Expect::PreCancelled
+            } else if matches!(case.body, Body::Exact(_)) {
+                // A balanced recipe is expected to parse; only a stop at the
+                // configured cap (or allocation or representation) is a
+                // product outcome, and unsupported states are failures.
+                Expect::Balanced
             } else {
                 Expect::General
             };

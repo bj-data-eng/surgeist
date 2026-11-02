@@ -608,12 +608,37 @@ fn literal_evidence(
     true
 }
 
+/// `HtmlParseResource` in the order of the nineteen configured caps.
+const RESOURCE_ORDER: [HtmlParseResource; 19] = [
+    HtmlParseResource::SourceUnits,
+    HtmlParseResource::BufferedUtf16Units,
+    HtmlParseResource::TokenAttributes,
+    HtmlParseResource::AuxiliaryEntries,
+    HtmlParseResource::ManagedNodes,
+    HtmlParseResource::ManagedEdges,
+    HtmlParseResource::ManagedAttributes,
+    HtmlParseResource::ManagedUtf16Units,
+    HtmlParseResource::SourceMapEntries,
+    HtmlParseResource::SourceMapPayloadUnits,
+    HtmlParseResource::Diagnostics,
+    HtmlParseResource::DiagnosticPayloadUnits,
+    HtmlParseResource::ContextEffects,
+    HtmlParseResource::OpenElements,
+    HtmlParseResource::TreeDepth,
+    HtmlParseResource::ManagedCapacityBytes,
+    HtmlParseResource::PeakTransientBytes,
+    HtmlParseResource::AtomicLayoutBytes,
+    HtmlParseResource::WorkCredits,
+];
+
 /// The request-side facts a parse result must preserve.
 pub(crate) struct Spec<'a> {
     pub(crate) fragment: bool,
     pub(crate) text: &'a UnicodeSource,
     pub(crate) original: &'a HtmlSource,
     pub(crate) limits: &'a HtmlParseLimits,
+    /// The configured caps in `HtmlParseResource` order.
+    pub(crate) caps: [u64; 19],
     pub(crate) requested: HtmlParserScriptingMode,
     pub(crate) capture: Option<&'a surgeist_html_semantics::HtmlCaptureId>,
     /// Declarative shadow permission selected for the fragment request.
@@ -634,6 +659,11 @@ pub(crate) enum Expect {
     /// Resource, allocation and representation stops are product outcomes;
     /// known unsupported states are unsupported, anything else is a failure.
     General,
+    /// An independent oracle expects a tree. Only an allocation or
+    /// representation refusal, or a limit stop that reports the configured cap
+    /// and an attempted total above it, is a product outcome; an unsupported
+    /// state or any other stop is a failure.
+    Balanced,
     PreCancelled,
     SourceDenied,
     WorkDenied,
@@ -810,6 +840,32 @@ pub(crate) fn verify_failure(
             })
         ),
         Expect::Never => false,
+        Expect::Balanced => match reason {
+            HtmlParseFailureReason::Stop(
+                HtmlParseStop::RepresentationExhausted { .. }
+                | HtmlParseStop::AllocationFailed { .. },
+            ) => true,
+            HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded {
+                resource,
+                limit,
+                current,
+                requested_delta,
+            }) => {
+                let configured = RESOURCE_ORDER
+                    .iter()
+                    .position(|r| *r == resource)
+                    .and_then(|i| spec.caps.get(i));
+                if configured != Some(&limit) || current.saturating_add(requested_delta) <= limit {
+                    return props.failure(
+                        3,
+                        "stop-limit-mismatch",
+                        format!("{reason:?} against configured caps {:?}", spec.caps),
+                    );
+                }
+                true
+            }
+            _ => false,
+        },
         Expect::General => matches!(
             reason,
             HtmlParseFailureReason::Stop(
@@ -903,6 +959,7 @@ pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<Cas
         text: &case.source,
         original: &original,
         limits: &limits,
+        caps: case.caps,
         requested,
         capture: capture.as_ref(),
         shadow_allowed: false,
@@ -951,3 +1008,6 @@ pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<Cas
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
