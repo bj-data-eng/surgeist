@@ -1084,14 +1084,9 @@ where
             ),
         )?;
         let output_size = sizing_flow_axes.logical_size(output.size);
-        let output_content_size = sizing_flow_axes.logical_size(output.content_size);
         if spans_percent_column {
-            let contribution = axis_content_contribution(
-                column_offsets[area.column],
-                output_size.inline,
-                output_content_size.inline,
-                grid_axis_used_overflow(&child_style, sizing_flow_axes, GridAxisKind::Column),
-            );
+            let contribution =
+                axis_border_contribution(column_offsets[area.column], output_size.inline);
             content_size.inline = content_size.inline.max(contribution);
             if accumulate_standalone_percent_columns
                 && area.column_end == area.column + 1
@@ -1101,12 +1096,7 @@ where
             }
         }
         if spans_percent_row {
-            let contribution = axis_content_contribution(
-                row_offsets[area.row],
-                output_size.block,
-                output_content_size.block,
-                grid_axis_used_overflow(&child_style, sizing_flow_axes, GridAxisKind::Row),
-            );
+            let contribution = axis_border_contribution(row_offsets[area.row], output_size.block);
             content_size.block = content_size.block.max(contribution);
             if accumulate_standalone_percent_rows
                 && area.row_end == area.row + 1
@@ -1146,21 +1136,11 @@ fn inherits_opposite_subgrid_axis<Node, S: LayoutScalar>(
     }
 }
 
-fn axis_content_contribution<S: LayoutScalar>(
-    location: S,
-    size: S,
-    content_size: S,
-    overflow: UsedOverflowAxis,
-) -> S {
-    let contribution_size = if overflow.value() == Overflow::Visible {
-        size.max(content_size)
-    } else {
-        size
-    };
-    if contribution_size <= S::ZERO {
+fn axis_border_contribution<S: LayoutScalar>(location: S, size: S) -> S {
+    if size <= S::ZERO {
         return S::ZERO;
     }
-    let max = (location + contribution_size).max(S::ZERO);
+    let max = (location + size).max(S::ZERO);
     let min = location.min(S::ZERO);
     max - min
 }
