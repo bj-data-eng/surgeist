@@ -3359,6 +3359,78 @@ mod tests {
     }
 
     #[test]
+    fn week_year_53_before_1900_follows_the_pinned_proleptic_gregorian_clause() {
+        // HTML Standard "Weeks" (references/html-language-foundations--877d6146487f--b55e73c31978.md
+        // line 3229): 53 weeks iff January 1st is a Thursday, or a Wednesday in
+        // a year divisible by 400 or by 4 but not by 100. Oracle: ISO weeks of
+        // 28 December per Python's datetime.date.isocalendar(), 1701..=1899.
+        const FIFTY_THREE: [u64; 35] = [
+            1705, 1711, 1716, 1722, 1728, 1733, 1739, 1744, 1750, 1756, 1761, 1767, 1772, 1778,
+            1784, 1789, 1795, 1801, 1807, 1812, 1818, 1824, 1829, 1835, 1840, 1846, 1852, 1857,
+            1863, 1868, 1874, 1880, 1885, 1891, 1896,
+        ];
+        for value in 1701..=1899 {
+            let expected = if FIFTY_THREE.contains(&value) {
+                Ok(53)
+            } else {
+                Err(HtmlTemporalError::WeekOutOfRange)
+            };
+            assert_eq!(
+                HtmlWeek::new(year(value), 53).map(|week| week.week()),
+                expected,
+                "year {value}"
+            );
+        }
+        // 1800 starts on a Wednesday but is a common century year; 1896 starts
+        // on a Wednesday and is divisible by 4 but not by 100.
+        assert_eq!(
+            HtmlWeek::new(year(1800), 53),
+            Err(HtmlTemporalError::WeekOutOfRange)
+        );
+        assert_eq!(HtmlWeek::new(year(1896), 53).unwrap().week(), 53);
+        assert_eq!(
+            validate_week(&text("1800-W53")),
+            Err(HtmlTemporalError::WeekOutOfRange)
+        );
+        assert_eq!(
+            spelling(
+                validate_week(&text("1896-W53"))
+                    .unwrap()
+                    .to_document_string()
+            ),
+            "1896-W53"
+        );
+    }
+
+    #[test]
+    fn week_year_53_never_applies_to_years_divisible_by_400() {
+        // Every year divisible by 400 is a leap year that begins on a Saturday
+        // (146097 days per 400 years is a whole number of weeks), so none can
+        // satisfy the clause's Wednesday branch (same pinned clause as above).
+        // Oracle: Python's isocalendar() for 400, 1600, 2000, 2400 mapped by the
+        // 400-year cycle; 52 weeks each.
+        for value in [400, 800, 1200, 1600, 2000, 2400, 9600] {
+            assert_eq!(
+                HtmlWeek::new(year(value), 53),
+                Err(HtmlTemporalError::WeekOutOfRange),
+                "year {value}"
+            );
+            assert!(HtmlWeek::new(year(value), 52).is_ok(), "year {value}");
+        }
+        // 10^32 + 1896 shares the calendar of 1896 (10^32 is divisible by 400).
+        assert_eq!(
+            validate_week(&text("100000000000000000000000000001896-W53"))
+                .unwrap()
+                .week(),
+            53
+        );
+        assert_eq!(
+            validate_week(&text("100000000000000000000000000002000-W53")),
+            Err(HtmlTemporalError::WeekOutOfRange)
+        );
+    }
+
+    #[test]
     fn duration_grammars_sum_exact_seconds_and_reject_invalid_components() {
         // One day + two hours + three minutes + 4.05 seconds = 93784.05.
         for input in [
