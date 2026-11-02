@@ -248,6 +248,8 @@ struct FirstStop {
 }
 
 /// Exclusively mutable owner. Only the cancellation handle can be cloned.
+/// How many parents' sibling hints a controller keeps.
+const SIBLING_HINTS: usize = 16;
 pub(crate) struct ParseControl {
     limits: ResourceTable<u64>,
     usage: ParseUsage,
@@ -257,6 +259,9 @@ pub(crate) struct ParseControl {
     stopped: Option<FirstStop>,
     source: Option<(HtmlSourceId, HtmlSourceCoordinates)>,
     identity: Arc<()>,
+    /// Where recent searches for a node among its siblings found it; see
+    /// [`Self::sibling_hint`].
+    sibling_hints: [Option<(usize, usize)>; SIBLING_HINTS],
     #[cfg(test)]
     owned_spans: OwnedSpanObservation,
     #[cfg(test)]
@@ -354,6 +359,7 @@ impl ParseControl {
             stopped: None,
             source: None,
             identity: Arc::new(()),
+            sibling_hints: [None; SIBLING_HINTS],
             #[cfg(test)]
             owned_spans: OwnedSpanObservation::default(),
             #[cfg(test)]
@@ -748,6 +754,22 @@ impl ParseControl {
             }
             Some(_) => self.fail(ParseStop::InternalInvariant(Invariant::ForeignSource)),
             None => self.fail(ParseStop::InternalInvariant(Invariant::MissingSource)),
+        }
+    }
+    /// The ordinal at which a walk last reached a child of `parent`, if the
+    /// table still holds it. A hint only says where to look first: the caller
+    /// checks that the child it wants is there, so a stale hint costs a search
+    /// and cannot change an answer.
+    pub(crate) fn sibling_hint(&self, parent: usize) -> Option<usize> {
+        match self.sibling_hints.get(parent % SIBLING_HINTS) {
+            Some(Some((hinted, ordinal))) if *hinted == parent => Some(*ordinal),
+            _ => None,
+        }
+    }
+    /// Remembers that a walk reached the child of `parent` at `ordinal`.
+    pub(crate) fn note_sibling(&mut self, parent: usize, ordinal: usize) {
+        if let Some(slot) = self.sibling_hints.get_mut(parent % SIBLING_HINTS) {
+            *slot = Some((parent, ordinal));
         }
     }
     pub(crate) fn charge(&mut self, category: WorkCategory, units: u64) -> Result<(), ParseStop> {

@@ -10624,6 +10624,7 @@ fn next_ordinary_view_node(
             .ok_or_else(|| latch_registry_row(control))?
             .position();
         if detached != Some(child) || root == child {
+            control.note_sibling(node, position);
             return Ok(Some(child));
         }
     }
@@ -10644,20 +10645,43 @@ fn next_ordinary_view_after_subtree(
             .ok_or(SessionError::WrongSibling)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
         let children = records.node_at(parent).ok_or(SessionError::ForeignNode)?;
-        let mut found = false;
-        for position in 0..children.child_count() {
+        let count = children.child_count();
+        // The walk that reached `node` usually left its ordinal behind, so the
+        // search for it starts there and costs the siblings after it, not the
+        // ones before.
+        let mut ordinal = None;
+        if let Some(hinted) = control.sibling_hint(parent)
+            && hinted < count
+        {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if children.child_at(hinted).map(|child| child.position()) == Some(node) {
+                ordinal = Some(hinted);
+            }
+        }
+        if ordinal.is_none() {
+            for position in 0..count {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                let child = children
+                    .child_at(position)
+                    .ok_or_else(|| latch_registry_row(control))?
+                    .position();
+                if child == node {
+                    ordinal = Some(position);
+                    break;
+                }
+            }
+        }
+        let ordinal = ordinal.ok_or(SessionError::WrongSibling)?;
+        for position in ordinal.saturating_add(1)..count {
             control.charge(WorkCategory::RecordVisit, 1)?;
             let child = children
                 .child_at(position)
                 .ok_or_else(|| latch_registry_row(control))?
                 .position();
-            if found && (detached != Some(child) || root == child) {
+            if detached != Some(child) || root == child {
+                control.note_sibling(parent, position);
                 return Ok(Some(child));
             }
-            found |= child == node;
-        }
-        if !found {
-            return Err(SessionError::WrongSibling);
         }
         node = parent;
     }
