@@ -146,7 +146,26 @@ fn captured_percent_matches_constant<S: LayoutScalar>(left: bool) {
 }
 
 fn captured_percent_changed_basis_preserves_publication<S: LayoutScalar>(left: bool) {
-    let p = custody_paragraph(left);
+    let p = if left {
+        custody_paragraph(true)
+    } else {
+        // This same real preparation is reused before and after appending
+        // normal block content. Ordinary X needs no terminal block-edge fact;
+        // a fixed BlockEnd claim would contradict the later actual tree.
+        let style = ahem_style(10.0, 10.0);
+        PreparedParagraph::at_boundary(
+            vec![
+                ParagraphPart::text(1, Source::new("X"), style.clone()),
+                ParagraphPart::Atomic {
+                    node: 2,
+                    size: text::Size::new(10.0, 10.4),
+                },
+            ],
+            style,
+            text::ParagraphBaseDirection::LeftToRight,
+            text::ParagraphTerminalEdge::Unknown,
+        )
+    };
     let mut host = CustodyHost::<S>::new(captured_percent_fixture(&p, left));
     let cold = custody_compute(&host, vec![p.binding(0)], &[]);
     captured_percent_source(&cold, &p, left, 50.0, 12.0);
@@ -299,3 +318,6 @@ fn captured_percent_changed_width_warm_publication_f32() {
 fn captured_percent_changed_width_warm_publication_f64() {
     captured_percent_changed_basis_preserves_publication::<f64>(true);
 }
+
+#[path = "captured_percentage_failure.rs"]
+mod captured_percentage_failure;
