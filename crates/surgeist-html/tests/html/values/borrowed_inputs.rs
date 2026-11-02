@@ -142,11 +142,11 @@ fn borrowed_vocabulary_preserves_exact_components_without_prefix_observation() {
 fn raw_limit_refusal_precedes_name_applicability_or_report_capture() {
     let element = Name::new(Some("foreign"), None, "foreign");
     let raw = Attr::new("not-id", "ab");
-    assert!(
-        HtmlValueInterpreter::new(1)
-            .id_attribute(&element, Some(&raw))
-            .is_err()
-    );
+    let refusal = HtmlValueInterpreter::new(1)
+        .id_attribute(&element, Some(&raw))
+        .err()
+        .unwrap();
+    assert_eq!((refusal.capacity(), refusal.required()), (1, 2));
     assert!(element.reads.borrow().is_empty());
     assert!(raw.name.reads.borrow().is_empty());
     assert_eq!(*raw.value_reads.borrow(), 1);
@@ -226,7 +226,10 @@ fn script_type_admits_original_language_even_when_type_would_override_it() {
     ];
     let refused =
         HtmlValueInterpreter::new(7).script_type_with_attributes(&element, rows.as_slice());
-    assert!(refused.is_err());
+    // The ignored `type` value (6 units) fits; the 8-unit language value is the
+    // first one over the 7-unit capacity, though `type` would override it.
+    let refusal = refused.err().unwrap();
+    assert_eq!((refusal.capacity(), refusal.required()), (7, 8));
     assert!(element.reads.borrow().is_empty());
     let admitted = HtmlValueInterpreter::new(8)
         .script_type_with_attributes(&element, rows.as_slice())
@@ -393,11 +396,11 @@ fn meter_admits_all_six_original_borrowed_slots_before_element_applicability() {
         high: None,
         optimum: Some(&raw),
     };
-    assert!(
-        HtmlValueInterpreter::new(3)
-            .meter_attributes(&element, input)
-            .is_err()
-    );
+    let refusal = HtmlValueInterpreter::new(3)
+        .meter_attributes(&element, input)
+        .err()
+        .unwrap();
+    assert_eq!((refusal.capacity(), refusal.required()), (3, 4));
     assert!(element.reads.borrow().is_empty());
     assert!(raw.name.reads.borrow().is_empty());
     assert_eq!(*raw.value_reads.borrow(), 1);

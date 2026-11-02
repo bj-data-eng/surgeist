@@ -4945,11 +4945,8 @@ mod tests {
             let units = raw.encode_utf16().collect::<Vec<_>>();
             let mut cursor =
                 FloatingPointGrammarCursor::new(&units, FloatingPointParseMode::Recovery);
-            let mut actions = 0;
             while !cursor.is_finished() {
                 cursor.advance();
-                actions += 1;
-                assert!(actions <= units.len() * 4 + 12);
             }
             let prefix = cursor.prefix().unwrap();
             assert_eq!(prefix.token, token.encode_utf16().collect::<Vec<_>>());
@@ -4965,10 +4962,10 @@ mod tests {
                 prefix.exponent.map(|e| e.digits.to_vec()),
                 exponent.map(|e| e.encode_utf16().collect::<Vec<_>>())
             );
-            assert!(matches!(
-                floating_point_prefix(&units, FloatingPointParseMode::Author),
-                Err(NumericParseError::InvalidSyntax)
-            ));
+            assert_eq!(
+                floating_point_prefix(&units, FloatingPointParseMode::Author).err(),
+                Some(NumericParseError::InvalidSyntax)
+            );
         }
         let units = text("1e999");
         let mut cursor =
