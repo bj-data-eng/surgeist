@@ -681,6 +681,14 @@ impl HtmlValueInterpreter {
     /// descendants or that a value represents human-readable contents. The
     /// whole raw UTF-16 value is admitted before parsing; native processing uses
     /// ordinary allocation without a work, cancellation or physical-memory cap.
+    ///
+    /// The first matching alternative wins. When none matches, both the author
+    /// and the recovery state carry the error of the last alternative tried
+    /// (duration), not that of a first rejecting step: HTML §4.5.14 (elements
+    /// capture lines 6613 and 6855-6877) defines the first success or "no
+    /// machine-readable equivalent" and no failure order across alternatives.
+    /// The single-grammar operations, such as [`Self::time`] and [`Self::week`],
+    /// report their pinned step order.
     pub fn time_element_value(
         &self,
         raw: Option<&DocumentString>,

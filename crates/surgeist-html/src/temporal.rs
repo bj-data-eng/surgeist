@@ -6,8 +6,12 @@
 //! substituting permissive parsing for author conformance. No host clock or time
 //! zone is consulted.
 //!
-//! A rejected string reports the failure of the first pinned parsing step that
-//! rejects it. Within a time component that order is the hour digits, the hour
+//! A single-grammar entry point (one month, date, yearless date, time, local
+//! date-time, offset, global date-time, week or duration string) reports the
+//! failure of the first pinned parsing step that rejects the string. The
+//! ten-alternative time-element entry points are not single grammars: they
+//! return the first matching alternative, else the last alternative's error.
+//! Within a time component that order is the hour digits, the hour
 //! range (step 2), the colon, the minute digits, the minute range (step 5), then
 //! the seconds grammar (step 7.3) before the seconds range (step 7.4), so
 //! `24:00:00..1` reports an hour range error rather than the later fraction
@@ -2407,6 +2411,15 @@ impl BorrowedTemporalPlan<'_> {
 }
 /// The ten author alternatives share allocation-free recognition with the
 /// controlled consumer; native materialization here uses ordinary allocation.
+///
+/// The first alternative that matches wins. When none matches, the error is
+/// that of the last alternative tried (duration), not the failure of a
+/// "first rejecting step": the datetime value "must match one of the following
+/// syntaxes" (elements capture line 6613) and the machine-readable-equivalent
+/// algorithm (§4.5.14, elements capture lines 6855-6877) returns the first
+/// success or, at step 11, "no machine-readable equivalent". Neither defines an
+/// order of failures across alternatives, so no alternative's error is
+/// privileged; each alternative's own error still follows its pinned steps.
 pub(crate) fn validate_time_element_value(
     input: &DocumentString,
 ) -> Result<HtmlTimeElementValue, HtmlTemporalError> {
@@ -2419,9 +2432,15 @@ pub(crate) fn validate_time_element_value(
     }
     Err(final_error)
 }
-/// Literal ordered machine-readable-equivalent algorithm in HTML §4.5.14.
-/// Recognition never allocates native digits for failed alternatives. Successful
-/// native materialization remains ordinary allocation, not session accounting.
+/// Literal ordered machine-readable-equivalent algorithm in HTML §4.5.14
+/// (elements capture lines 6855-6877). Recognition never allocates native
+/// digits for failed alternatives. Successful native materialization remains
+/// ordinary allocation, not session accounting.
+///
+/// As for [`validate_time_element_value`], a rejected string reports the last
+/// alternative's (duration's) error, because step 11 yields only "no
+/// machine-readable equivalent". The date-or-time algorithm (§2.3.5.10,
+/// foundations capture lines 3471-3495) is a separate single entry point.
 pub(crate) fn parse_time_element_value(
     input: &DocumentString,
 ) -> Result<HtmlMachineReadableTime, HtmlTemporalError> {

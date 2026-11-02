@@ -155,6 +155,11 @@ type Report = HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>;
 
 /// One exact borrowed operand and its unpublished recognition/materialization.
 /// Construction admits only the raw length; no grammar or allocation runs.
+///
+/// When no alternative matches, each phase retains the error of the last
+/// alternative tried (duration), exactly as
+/// [`HtmlValueInterpreter::time_element_value`] reports: §4.5.14 (elements
+/// capture lines 6855-6877) defines no failure order across alternatives.
 pub struct HtmlTimeElementInterpretation<'raw> {
     raw: &'raw DocumentString,
     interpreter: HtmlValueInterpreter,
