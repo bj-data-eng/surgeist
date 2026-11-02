@@ -169,13 +169,9 @@ pub struct HtmlCspRejected<T, E> {
     pub error: HtmlCspError<E>,
 }
 
-impl<T, E: fmt::Display> fmt::Display for HtmlCspRejected<T, E> {
+impl<T, E> fmt::Display for HtmlCspRejected<T, E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "CSP request rejected and its input retained: {}",
-            self.error
-        )
+        f.write_str("CSP request rejected and its input retained")
     }
 }
 impl<T: fmt::Debug, E: Error + 'static> Error for HtmlCspRejected<T, E> {

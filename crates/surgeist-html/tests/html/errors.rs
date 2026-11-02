@@ -1116,6 +1116,14 @@ fn csp_protocol_errors_state_the_misused_input() {
             Ok::<(), Infallible>(())
         })
         .expect_err("association belongs to another owner");
+    assert_eq!(
+        message(&refused),
+        "CSP request rejected and its input retained"
+    );
+    assert_eq!(
+        cause(&refused).as_deref(),
+        Some("CSP protocol was violated")
+    );
     assert!(matches!(refused.error, HtmlCspError::Protocol(ref error)
         if error.is_foreign_owner()
             && message(error) == "policy state belongs to a different CSP owner"));

@@ -438,10 +438,16 @@ impl fmt::Display for HtmlConstructionError {
                 resource,
                 limit,
                 attempted,
-            } => write!(
-                f,
-                "{resource} limit of {limit} cannot admit a total of {attempted}"
-            ),
+            } => match resource {
+                HtmlConstructionResource::Depth => write!(
+                    f,
+                    "depth limit of {limit} cannot admit a depth of {attempted}"
+                ),
+                _ => write!(
+                    f,
+                    "{resource} limit of {limit} cannot admit a total of {attempted}"
+                ),
+            },
         }
     }
 }
@@ -1742,6 +1748,21 @@ mod tests {
 #[cfg(test)]
 mod cause_tests {
     use super::*;
+
+    /// A depth is not a total: its limit refuses a depth, not a count.
+    #[test]
+    fn a_depth_limit_cannot_admit_a_depth() {
+        let error = HtmlConstructionErrorKind::LimitExceeded {
+            resource: HtmlConstructionResource::Depth,
+            limit: 3,
+            attempted: 4,
+        }
+        .error();
+        assert_eq!(
+            error.to_string(),
+            "depth limit of 3 cannot admit a depth of 4"
+        );
+    }
 
     /// Every cause states its documented meaning, and exactly one of the
     /// cause predicates, its own, recognizes it.
