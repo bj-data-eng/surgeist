@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+mod charges;
 mod depth;
 mod orders;
 use crate::{Attribute, bounded::HtmlValidatedAttributes, values::HTML_NAMESPACE_URI};
