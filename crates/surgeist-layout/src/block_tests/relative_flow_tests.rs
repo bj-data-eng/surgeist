@@ -120,7 +120,7 @@ fn assert_unshifted_trio<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>
     }
 }
 
-fn auto_inline_size<S: LayoutScalar>() {
+fn inline_size_and_visual_overflow<S: LayoutScalar>(fixed_width: bool) {
     for display in [Display::Block, Display::Flex, Display::Grid] {
         for direction in [Direction::Ltr, Direction::Rtl] {
             for offset in [4.0, -4.0] {
@@ -131,6 +131,14 @@ fn auto_inline_size<S: LayoutScalar>() {
                         NodeInputOf {
                             display: Display::Block,
                             direction,
+                            size: Size::new(
+                                if fixed_width {
+                                    PreferredSizeOf::px(px::<S>(10.0))
+                                } else {
+                                    PreferredSizeOf::AUTO
+                                },
+                                PreferredSizeOf::AUTO,
+                            ),
                             ..NodeInputOf::default()
                         },
                     )
@@ -180,20 +188,33 @@ fn auto_inline_size<S: LayoutScalar>() {
                     .scrollable_overflow();
                 assert_eq!(
                     overflow.origin(),
-                    Point::new(px::<S>(offset.min(0.0)), S::ZERO)
+                    Point::new(px::<S>(offset.min(0.0)), S::ZERO),
+                    "{display:?}/{direction:?}/offset={offset}/fixed={fixed_width}",
                 );
-                assert_eq!(overflow.size(), Size::new(px::<S>(14.0), px::<S>(10.0)));
+                assert_eq!(
+                    overflow.size(),
+                    Size::new(px::<S>(14.0), px::<S>(10.0)),
+                    "{display:?}/{direction:?}/offset={offset}/fixed={fixed_width}"
+                );
             }
         }
     }
 }
 #[test]
 fn relative_flow_auto_inline_size_f32() {
-    auto_inline_size::<f32>();
+    inline_size_and_visual_overflow::<f32>(false);
 }
 #[test]
 fn relative_flow_auto_inline_size_f64() {
-    auto_inline_size::<f64>();
+    inline_size_and_visual_overflow::<f64>(false);
+}
+#[test]
+fn relative_flow_fixed_inline_size_overflow_f32() {
+    inline_size_and_visual_overflow::<f32>(true);
+}
+#[test]
+fn relative_flow_fixed_inline_size_overflow_f64() {
+    inline_size_and_visual_overflow::<f64>(true);
 }
 
 fn named_offsets<S: LayoutScalar>(display: Display, direction: Direction, box_sizing: BoxSizing) {
