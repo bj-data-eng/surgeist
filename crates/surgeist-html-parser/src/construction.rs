@@ -24407,12 +24407,16 @@ mod tests {
     }
     /// Runs a copy of a stopped range-ingress cursor to completion over the
     /// given source units and retained coefficient cells, servicing each
-    /// request as the cursor's public protocol defines it.
+    /// request as the cursor's public protocol defines it. Returns the final
+    /// result and the number of replies the cursor needed.
     pub(super) fn resume_range_ingress(
         mut cursor: surgeist_html::bounded::FiniteDecimalIngressCursor,
         source: &[u16],
         coefficient: &[u8],
-    ) -> Option<Result<u64, surgeist_html::bounded::RangeNumericError>> {
+    ) -> (
+        Option<Result<u64, surgeist_html::bounded::RangeNumericError>>,
+        usize,
+    ) {
         use surgeist_html::bounded::{RangeNumericReply, RangeNumericRequest, RangeScratchRole};
         let headers = cursor.headers();
         let mut buffers: [Vec<u8>; 8] = std::array::from_fn(|_| Vec::new());
@@ -24421,7 +24425,7 @@ mod tests {
         coefficient_buffer.extend_from_slice(coefficient);
         for step in 0..1_000_000 {
             let Some(request) = cursor.request() else {
-                return cursor.result();
+                return (cursor.result(), step);
             };
             let reply = match request {
                 RangeNumericRequest::SourceUnit { index } => RangeNumericReply::Unit(source[index]),
@@ -31163,12 +31167,17 @@ mod tests {
     fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() {
         use range::{RangeIngressCancellation, RangeIngressCancellationPoint};
         use surgeist_html::bounded::RangeScratchRole;
-        for (point, label) in [
+        for (point, label, remaining_replies) in [
             (
                 RangeIngressCancellationPoint::CoefficientFold,
                 "coefficient fold",
+                8,
             ),
-            (RangeIngressCancellationPoint::DecimalPower, "decimal power"),
+            (
+                RangeIngressCancellationPoint::DecimalPower,
+                "decimal power",
+                6,
+            ),
         ] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<html><head></head><input type=range step=any value=.1>"),
@@ -31224,21 +31233,30 @@ mod tests {
                 headers.buffer(RangeScratchRole::Coefficient).len(),
                 coefficient.len()
             );
+            // The cancellation hook runs after the cursor committed the reply it
+            // was servicing, so the pending request is the one queued next. The
+            // small-ratio protocol queues ScalarStep after every committed
+            // reply except the coefficient read (Read -> Next -> Power ...).
+            assert_eq!(
+                cursor.request(),
+                Some(surgeist_html::bounded::RangeNumericRequest::ScalarStep),
+                "{label}: the next pending request"
+            );
             // The committed numeric state is observed through the cursor's own
             // protocol: resuming a copy of the cancelled cursor with a faithful
             // servicer over the retained source and coefficient cell must finish
             // with the value of the literal .1. The oracle is Rust's own
             // binary64 nearest-value conversion of that literal, so a wrong
             // committed numerator, denominator or power would change the result.
-            assert!(
-                cursor.request().is_some(),
-                "the cancelled ingress is unfinished"
-            );
-            assert_eq!(
-                resume_range_ingress(*cursor, &[46, 49], coefficient),
-                Some(Ok(0.1_f64.to_bits())),
-                "{label}"
-            );
+            // The reply count tells the two stops apart, since both resume to
+            // the same value. After the fold (A = 1) the small ratio takes one
+            // reply each for Next, Power (commits B = 10), Power (the power
+            // count reaches zero), Exponent, Scale, Quotient, Round and Finish:
+            // eight from the fold point. The power stop follows the second of
+            // those replies (the one committing B = 10), leaving six.
+            let (resumed, replies) = resume_range_ingress(*cursor, &[46, 49], coefficient);
+            assert_eq!(resumed, Some(Ok(0.1_f64.to_bits())), "{label}");
+            assert_eq!(replies, remaining_replies, "{label}: replies left");
             let raw = storage
                 .payloads
                 .values
