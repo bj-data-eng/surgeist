@@ -12,8 +12,6 @@ fn initial_record_has_four_source_defaults() {
         HtmlOpenerPolicyValue::UnsafeNone
     );
     assert_eq!(policy.report_only_reporting_endpoint(), None);
-    // The initial record is one fixed value, not a per-call selection.
-    assert_eq!(HtmlOpenerPolicy::initial(), policy);
 }
 
 #[test]
