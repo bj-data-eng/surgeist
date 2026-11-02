@@ -485,12 +485,18 @@ fn work_added_by_each_doubling_of_candidate_metas_in_a_nested_moved_subtree_is_n
 
 #[test]
 fn work_added_by_each_doubling_of_one_selects_selected_options_is_near_four_times() {
-    // Each selected option updates the select's selectedcontent, which reads
-    // the select's descendants and its list of options: work proportional to
-    // the select's size, so n selected options cost quadratically. Reading the
+    // Each selected option updates the select's selectedcontent. The pinned
+    // algorithm "update a select's descendant selectedcontent elements" lists
+    // the select's descendants in tree order and, for each selectedcontent,
+    // takes "the first option in select's list of options whose selectedness
+    // is true", a walk of the select's descendants (lines 10645-10660 of
+    // `references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md`).
+    // It is run by the steps that settle a select (lines 7838, 7930, 7970,
+    // 7988, 8258 and 8282 of the same file), so n selected options cost work
+    // proportional to the select's size each: quadratically in all. Reading the
     // children of one parent must itself be linear in them, so the quadratic
-    // total is the whole growth: a ratio of four per doubling, never more.
-    const BOUND: u64 = 5;
+    // total is the whole growth: a ratio of at most four per doubling.
+    const BOUND: u64 = 4;
     let sizes = [50usize, 100, 200, 400];
     let measured: Vec<u64> = sizes
         .iter()
@@ -505,7 +511,7 @@ fn work_added_by_each_doubling_of_one_selects_selected_options_is_near_four_time
     for (pair, window) in sizes.windows(3).zip(measured.windows(3)) {
         let (first, second) = (window[1] - window[0], window[2] - window[1]);
         assert!(
-            second < BOUND * first,
+            second <= BOUND * first,
             "record visits grew faster than quadratically: doubling {} -> {} options added \
              {first}, doubling {} -> {} added {second}",
             pair[0],
