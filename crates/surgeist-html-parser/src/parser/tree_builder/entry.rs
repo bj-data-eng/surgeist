@@ -130,13 +130,9 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                 // prefix; a lost owner is an invariant, not an unsupported
                 // document.
                 if driver.control.stop().is_none() {
-                    if error.invariant_fault() {
-                        StandaloneError::latch_invariant(&mut driver.control);
-                    } else {
-                        driver
-                            .control
-                            .stop_unsupported_standalone(StandaloneUnsupported::InvalidNesting);
-                    }
+                    error
+                        .stop_cause()
+                        .latch(&mut driver.control, StandaloneUnsupported::InvalidNesting);
                 }
                 Phase::Failed
             }

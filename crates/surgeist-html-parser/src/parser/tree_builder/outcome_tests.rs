@@ -235,3 +235,93 @@ fn a_parser_fault_in_any_ordinary_stage_error_latches_its_invariant() {
         }
     }
 }
+
+/// Every session error. The match below names every variant, so adding one
+/// stops compiling until it is listed here, and the classification test then
+/// holds it to the same rules.
+pub(super) fn every_session_error() -> Vec<SessionError> {
+    let protocol = surgeist_html::HtmlCspProtocolError::WrongProcessor;
+    let all = vec![
+        SessionError::NonceMetadataUnavailable,
+        SessionError::CspService,
+        SessionError::CspProtocol(protocol),
+        SessionError::Stop(ParseStop::Cancelled),
+        SessionError::ForeignNode,
+        SessionError::RootMove,
+        SessionError::AssociationMove,
+        SessionError::NotContainer,
+        SessionError::TemplateContentsRequired,
+        SessionError::WrongSibling,
+        SessionError::Cycle,
+        SessionError::Consumed,
+        SessionError::WrongToken,
+        SessionError::DuplicateAttribute,
+        SessionError::AliasedPayload,
+        SessionError::TemplateInsertionStateUnavailable,
+        SessionError::NotDocument,
+        SessionError::OriginSplitUnavailable,
+        SessionError::AttributeStorageUnavailable,
+        SessionError::ScriptMetadataUnavailable,
+        SessionError::SvgScriptMetadataUnavailable,
+        SessionError::ImageFormMetadataUnavailable,
+        SessionError::AssociatedFacts,
+        SessionError::FormAssociationMetadataUnavailable,
+        SessionError::TextareaMetadataUnavailable,
+        SessionError::OutputMetadataUnavailable,
+        SessionError::InputMetadataUnavailable,
+        SessionError::SelectMetadataUnavailable,
+        SessionError::NodeDocumentUnavailable,
+        SessionError::TemplateMetadataUnavailable,
+        SessionError::ProcessingInstructionMapUnavailable,
+        SessionError::PendingIntrinsicWork,
+        SessionError::CompletionMetadataUnavailable,
+        SessionError::CompletionIncomplete,
+        SessionError::ContextUnavailable,
+        SessionError::ContextReactionUnavailable,
+        SessionError::ContextFactUnavailable(HtmlCaptureFact::ImageSupport),
+        SessionError::CapturedDocument,
+    ];
+    for error in &all {
+        match error {
+            SessionError::NonceMetadataUnavailable
+            | SessionError::CspService
+            | SessionError::CspProtocol(_)
+            | SessionError::Stop(_)
+            | SessionError::ForeignNode
+            | SessionError::RootMove
+            | SessionError::AssociationMove
+            | SessionError::NotContainer
+            | SessionError::TemplateContentsRequired
+            | SessionError::WrongSibling
+            | SessionError::Cycle
+            | SessionError::Consumed
+            | SessionError::WrongToken
+            | SessionError::DuplicateAttribute
+            | SessionError::AliasedPayload
+            | SessionError::TemplateInsertionStateUnavailable
+            | SessionError::NotDocument
+            | SessionError::OriginSplitUnavailable
+            | SessionError::AttributeStorageUnavailable
+            | SessionError::ScriptMetadataUnavailable
+            | SessionError::SvgScriptMetadataUnavailable
+            | SessionError::ImageFormMetadataUnavailable
+            | SessionError::AssociatedFacts
+            | SessionError::FormAssociationMetadataUnavailable
+            | SessionError::TextareaMetadataUnavailable
+            | SessionError::OutputMetadataUnavailable
+            | SessionError::InputMetadataUnavailable
+            | SessionError::SelectMetadataUnavailable
+            | SessionError::NodeDocumentUnavailable
+            | SessionError::TemplateMetadataUnavailable
+            | SessionError::ProcessingInstructionMapUnavailable
+            | SessionError::PendingIntrinsicWork
+            | SessionError::CompletionMetadataUnavailable
+            | SessionError::CompletionIncomplete
+            | SessionError::ContextUnavailable
+            | SessionError::ContextReactionUnavailable
+            | SessionError::ContextFactUnavailable(_)
+            | SessionError::CapturedDocument => {}
+        }
+    }
+    all
+}

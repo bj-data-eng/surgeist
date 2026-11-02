@@ -157,6 +157,9 @@ impl HeadError {
     /// from input and stay as they are: a tokenizer handoff that is refused
     /// (queued events behind the first token are not excluded), the stack and
     /// node errors of the kernel, and the session errors, which many sites share.
+    /// A session error is classified by `session_class` when the driver latches
+    /// the stop for it (`StopCause`), not here: an outcome ends the parse as its
+    /// own stop and a fault as the invariant of its kind.
     pub(super) fn invariant_fault(&self) -> bool {
         match self {
             Self::Consumed
@@ -178,6 +181,33 @@ impl HeadError {
             | Self::IncompleteCompletion => false,
             #[cfg(test)]
             Self::NotAtBoundary => false,
+        }
+    }
+}
+impl HeadError {
+    /// The session outcome or fault this error stands for, if it does. A
+    /// completion that is not reached is the same state as the session error
+    /// that reports incomplete completion metadata.
+    pub(super) fn session(&self) -> Option<SessionError> {
+        match self {
+            Self::Kernel(error) => error.session(),
+            Self::Prologue(error) => error.session(),
+            Self::IncompleteCompletion => Some(SessionError::CompletionIncomplete),
+            Self::Handoff(_)
+            | Self::MissingInput
+            | Self::MissingTokenizer
+            | Self::Consumed
+            | Self::AlreadyAtBoundary
+            | Self::TokenizerExhausted
+            | Self::InvalidTextToken
+            | Self::MissingReturnMode
+            | Self::ConstructionCapabilityUnavailable
+            | Self::UnsupportedScriptPause
+            | Self::UnsupportedPendingScript
+            | Self::InvalidScriptNesting
+            | Self::InvalidFormattingState => None,
+            #[cfg(test)]
+            Self::NotAtBoundary => None,
         }
     }
 }

@@ -100,6 +100,53 @@ impl From<SessionError> for KernelError {
         Self::Session(value)
     }
 }
+impl KernelError {
+    /// The session outcome or fault this error carries, if it carries one.
+    /// A stop is already latched and has nothing left to classify.
+    pub(super) fn session(&self) -> Option<SessionError> {
+        match self {
+            Self::Session(error) => Some(*error),
+            Self::Stop(_)
+            | Self::EmptyStack
+            | Self::NotElement
+            | Self::FirstOpenElementNotHtml
+            | Self::DuplicateOpenElement
+            | Self::Consumed => None,
+        }
+    }
+}
+
+/// What ended an execution, as far as the first stop it reports is concerned.
+/// Every driver and stage derives the stop from the cause through
+/// [`Self::latch`], so one cause is one stop whichever of them raised it, and
+/// a failure's reason is derived from the same session error.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum StopCause {
+    /// An owner the driver's own sequencing keeps is gone: the first stop is
+    /// the invariant, or stays the stop that was already first.
+    LostOwner,
+    /// A session outcome or fault, which ends the parse as its class says
+    /// (`SessionClass`).
+    Session(SessionError),
+    /// Anything else a document or a limit can lead to, which ends the parse
+    /// as the unsupported state the driver names for it.
+    Other,
+}
+impl StopCause {
+    pub(super) fn latch(self, control: &mut ParseControl, other: StandaloneUnsupported) {
+        match self {
+            Self::LostOwner => {
+                control.fail_invariant(Invariant::TreeBuilderState);
+            }
+            Self::Session(error) => {
+                crate::construction::session_class(&error).latch(control);
+            }
+            Self::Other => {
+                control.stop_unsupported_standalone(other);
+            }
+        }
+    }
+}
 
 /// Identities remain qualified to the one session. A reference child is an
 /// ordinary child of the selected parent, never a template association.
@@ -1107,6 +1154,24 @@ impl StandaloneError {
         }
     }
 }
+impl StandaloneError {
+    /// What ended the execution, for the first stop it reports.
+    pub(super) fn stop_cause(&self) -> StopCause {
+        if self.invariant_fault() {
+            return StopCause::LostOwner;
+        }
+        let session = match self {
+            Self::Head(error) => error.session(),
+            Self::Prologue(error) => error.session(),
+            Self::Stop(_)
+            | Self::UnsupportedDocumentInitialization
+            | Self::UnsupportedExecutionProfile
+            | Self::Consumed
+            | Self::TokenizerExhausted => None,
+        };
+        session.map_or(StopCause::Other, StopCause::Session)
+    }
+}
 impl From<ParseStop> for StandaloneError {
     fn from(error: ParseStop) -> Self {
         Self::Stop(error)
@@ -1180,13 +1245,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         if let Err(error) = &result {
             // One controller owns terminality. Retained owners support cleanup,
             // never resumption or successful partial continuation publication.
-            if error.invariant_fault() {
-                // Nothing the document contains made this unsupported; a driver
-                // lost an owner its own sequencing keeps.
-                self.control.fail_invariant(Invariant::TreeBuilderState);
-                return;
-            }
-            let reason = match error {
+            let other = match error {
                 StandaloneError::Head(head::HeadError::UnsupportedScriptPause) => {
                     StandaloneUnsupported::ScriptPause
                 }
@@ -1196,19 +1255,11 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 StandaloneError::Head(head::HeadError::ConstructionCapabilityUnavailable) => {
                     StandaloneUnsupported::Provenance
                 }
-                StandaloneError::Head(head::HeadError::Kernel(KernelError::Session(
-                    SessionError::ScriptMetadataUnavailable
-                    | SessionError::SvgScriptMetadataUnavailable,
-                ))) => StandaloneUnsupported::ScriptDocument,
-                StandaloneError::Head(head::HeadError::IncompleteCompletion)
-                | StandaloneError::Head(head::HeadError::Kernel(KernelError::Session(
-                    SessionError::CompletionMetadataUnavailable
-                    | SessionError::CompletionIncomplete,
-                ))) => StandaloneUnsupported::Completion,
                 // Every other error a document or a limit can lead to. A stop
                 // is already the controller's first, so naming it changes
-                // nothing. A fault of the parser's own sequencing returned
-                // above.
+                // nothing. A fault of the parser's own sequencing is a lost
+                // owner, and a session error ends the parse as its class says,
+                // in whichever stage it was met; neither reaches this state.
                 StandaloneError::Stop(_)
                 | StandaloneError::Prologue(_)
                 | StandaloneError::Head(_)
@@ -1217,7 +1268,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 | StandaloneError::Consumed
                 | StandaloneError::TokenizerExhausted => StandaloneUnsupported::InvalidNesting,
             };
-            self.control.stop_unsupported_standalone(reason);
+            error.stop_cause().latch(&mut self.control, other);
         }
     }
     #[cfg(test)]

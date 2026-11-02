@@ -73,6 +73,19 @@ impl PrologueError {
         }
     }
 }
+impl PrologueError {
+    /// The session outcome or fault this error carries, if it carries one.
+    pub(super) fn session(&self) -> Option<SessionError> {
+        match self {
+            Self::Kernel(error) => error.session(),
+            Self::AlreadyAtBeforeHead
+            | Self::NotAtBeforeHead
+            | Self::PendingInput
+            | Self::MissingInput
+            | Self::Consumed => None,
+        }
+    }
+}
 impl From<KernelError> for PrologueError {
     fn from(error: KernelError) -> Self {
         Self::Kernel(error)

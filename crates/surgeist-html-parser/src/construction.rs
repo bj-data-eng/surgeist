@@ -205,41 +205,92 @@ fn plan_below_charge(control: &mut ParseControl) -> SessionError {
 fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))
 }
-/// The invariant that a non-stop error names when it is met where it cannot be
-/// a document outcome, classified by the kind of fault it reports. Every
+/// How a parse ends on a session error that no earlier stop has settled.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionClass {
+    /// The error is an outcome of the document, of the facts the caller
+    /// supplied or of a service. The parse ends as this stop, whichever driver
+    /// and stage met the error, and the failure's reason names the same state.
+    Outcome(ParseStop),
+    /// The error names a fault of the parser's own, met where it cannot be a
+    /// document outcome. The parse ends as the invariant of its kind.
+    Fault(crate::parser::control::Invariant),
+}
+impl SessionClass {
+    /// Latches the stop for this class on `control`, unless an earlier stop is
+    /// already the first. Returns the first stop either way.
+    pub(crate) fn latch(self, control: &mut ParseControl) -> ParseStop {
+        match self {
+            Self::Outcome(stop) => control.stop_outcome(stop),
+            Self::Fault(invariant) => control.fail_invariant(invariant),
+        }
+    }
+}
+/// The class of a session error, by the kind of state it reports. Every
 /// variant is listed, so a new one must be classified deliberately.
 ///
-/// - Outcomes of the document or a service that the driver classifies itself
-///   have no invariant: the caller passes them through unchanged.
+/// Outcomes, with the stop each ends a parse as:
+/// - A stop is already latched by whoever raised it, and is its own.
+/// - The Meta CSP service and protocol outcomes are the stops their processing
+///   latches when it raises them.
+/// - Invalid associated facts are the associated-facts stop, as the creation
+///   and Meta CSP producers latch it.
+/// - Script and SVG script metadata that effect work cannot find is the
+///   unsupported script document; completion metadata that is absent or
+///   incomplete is the unsupported completion. The standalone environment does
+///   not run scripts or document completion.
+/// - A fact or reaction the caller's capture lacks is the provenance boundary:
+///   the capture is the only source of the fact, so the parse cannot continue
+///   from provenance it was not given.
+///
+/// Faults, with the invariant of their kind:
 /// - An intrinsic operation that is still owed is the pending-effects stop.
 /// - A uniqueness check that failed is the aliased-allocation stop.
 /// - A placement the tree refuses, or a duplicated attribute, is the
 ///   construction owner declining a request the parser's sequencing
 ///   guarantees valid.
 /// - A retained row that is missing, of another kind, unjoined or out of
-///   place is a registry row.
-fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::control::Invariant> {
+///   place is a registry row. Every remaining variant reports such a row: a
+///   metadata slot, node document, origin range, template or
+///   processing-instruction row, captured-document reference or fragment
+///   context node that the step raising it registered or validated earlier.
+///   Its content is not read from the document or from the facts the caller
+///   supplied, which are outcomes above, so these are engine conditions.
+pub(crate) fn session_class(error: &SessionError) -> SessionClass {
     use crate::parser::control::Invariant;
     match error {
-        SessionError::Stop(_)
-        | SessionError::CspService
-        | SessionError::CspProtocol(_)
-        | SessionError::AssociatedFacts
-        | SessionError::ScriptMetadataUnavailable
-        | SessionError::SvgScriptMetadataUnavailable
-        | SessionError::CompletionMetadataUnavailable
-        | SessionError::CompletionIncomplete
-        | SessionError::ContextFactUnavailable(_)
-        | SessionError::ContextReactionUnavailable => None,
-        SessionError::PendingIntrinsicWork => Some(Invariant::PendingFormEffects),
-        SessionError::AliasedPayload => Some(Invariant::SharedAllocationAliased),
+        SessionError::Stop(stop) => SessionClass::Outcome(*stop),
+        SessionError::CspService => SessionClass::Outcome(ParseStop::CspProcessing),
+        SessionError::CspProtocol(protocol) => {
+            SessionClass::Outcome(ParseStop::CspProtocol(*protocol))
+        }
+        SessionError::AssociatedFacts => SessionClass::Outcome(ParseStop::InvalidAssociatedFacts),
+        SessionError::ScriptMetadataUnavailable | SessionError::SvgScriptMetadataUnavailable => {
+            SessionClass::Outcome(ParseStop::UnsupportedStandaloneState(
+                StandaloneUnsupported::ScriptDocument,
+            ))
+        }
+        SessionError::CompletionMetadataUnavailable | SessionError::CompletionIncomplete => {
+            SessionClass::Outcome(ParseStop::UnsupportedStandaloneState(
+                StandaloneUnsupported::Completion,
+            ))
+        }
+        SessionError::ContextFactUnavailable(_) | SessionError::ContextReactionUnavailable => {
+            SessionClass::Outcome(ParseStop::UnsupportedStandaloneState(
+                StandaloneUnsupported::Provenance,
+            ))
+        }
+        SessionError::PendingIntrinsicWork => SessionClass::Fault(Invariant::PendingFormEffects),
+        SessionError::AliasedPayload => SessionClass::Fault(Invariant::SharedAllocationAliased),
         SessionError::RootMove
         | SessionError::AssociationMove
         | SessionError::NotContainer
         | SessionError::TemplateContentsRequired
         | SessionError::WrongSibling
         | SessionError::Cycle
-        | SessionError::DuplicateAttribute => Some(Invariant::ConstructionOwnerRefusal),
+        | SessionError::DuplicateAttribute => {
+            SessionClass::Fault(Invariant::ConstructionOwnerRefusal)
+        }
         SessionError::NonceMetadataUnavailable
         | SessionError::ForeignNode
         | SessionError::Consumed
@@ -258,7 +309,16 @@ fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::contro
         | SessionError::TemplateMetadataUnavailable
         | SessionError::ProcessingInstructionMapUnavailable
         | SessionError::ContextUnavailable
-        | SessionError::CapturedDocument => Some(Invariant::RegistryRow),
+        | SessionError::CapturedDocument => SessionClass::Fault(Invariant::RegistryRow),
+    }
+}
+/// The invariant that a non-stop error names when it is met where it cannot be
+/// a document outcome; an outcome has none, and the caller passes it through
+/// unchanged.
+fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::control::Invariant> {
+    match session_class(error) {
+        SessionClass::Fault(invariant) => Some(invariant),
+        SessionClass::Outcome(_) => None,
     }
 }
 /// The result of a non-stop error that effect work met, classified by
