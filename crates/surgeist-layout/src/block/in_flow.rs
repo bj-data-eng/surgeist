@@ -866,16 +866,12 @@ where
             cursor_block,
         );
         let containing_size = constants.containing_size(logical_node_inner_size);
-        let logical_fallback_location = constants.flow_axes.physical_point(
+        let fallback_location = constants.flow_axes.physical_point(
             logical_location,
             logical_child_size,
             containing_size,
         );
-        let fallback_location = Point::new(
-            logical_fallback_location.x + inset_offset.x,
-            logical_fallback_location.y + inset_offset.y,
-        );
-        let location = if avoids_float_exclusions {
+        let flow_location = if avoids_float_exclusions {
             let placement = float_exclusions.place_bfc_block(
                 ProviderBandContext {
                     tree,
@@ -887,37 +883,31 @@ where
                     size: output.size,
                     margin: child_margin,
                     clear: child_style.clear,
-                    fallback: Point::new(
-                        fallback_location.x - inset_offset.x,
-                        fallback_location.y - inset_offset.y,
-                    ),
+                    fallback: fallback_location,
                     // This is the actual computed child, not a width proposal.
                     // A narrower band would require another child computation;
                     // retain its used width and advance to a fitting transition.
                     inline_size_can_shrink: false,
                 },
             )?;
-            Point::new(
-                placement.location.x + inset_offset.x,
-                placement.location.y + inset_offset.y,
-            )
+            placement.location
         } else if child_style.clear != Clear::None {
             let cleared_logical_location = LogicalPointOf::new(
                 logical_location.inline,
                 float_exclusions.clearance_block(cursor_block, child_style.clear),
             );
-            let cleared_location = constants.flow_axes.physical_point(
+            constants.flow_axes.physical_point(
                 cleared_logical_location,
                 logical_child_size,
                 containing_size,
-            );
-            Point::new(
-                cleared_location.x + inset_offset.x,
-                cleared_location.y + inset_offset.y,
             )
         } else {
             fallback_location
         };
+        let location = Point::new(
+            flow_location.x + inset_offset.x,
+            flow_location.y + inset_offset.y,
+        );
         if let Some(shared) = shared_child {
             let flow_origin = LogicalPointOf::new(
                 logical_location.inline,
@@ -972,7 +962,7 @@ where
         let child_block_end = if avoids_float_exclusions || child_style.clear != Clear::None {
             constants
                 .flow_axes
-                .logical_point(location, output.size, containing_size)
+                .logical_point(flow_location, output.size, containing_size)
                 .block
                 + logical_child_size.block
         } else {
