@@ -115,10 +115,19 @@ pub enum HtmlConstructionResource {
     Depth,
 }
 
-/// A rejected append; existing nodes and admitted usage remain unchanged.
+/// A rejected append or construction step; existing nodes and admitted usage
+/// remain unchanged.
+///
+/// The cause is private so that new refusal causes can be added without
+/// breaking callers. Query it through the `is_*` predicates and the payload
+/// accessors; every message states the cause in prose.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlConstructionError {
+pub struct HtmlConstructionError {
+    kind: HtmlConstructionErrorKind,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlConstructionErrorKind {
     /// The supplied handle belongs to another builder.
     ForeignBuilder,
     /// A text, comment, PI, or doctype cannot receive children.
@@ -164,12 +173,291 @@ pub enum HtmlConstructionError {
     /// Reserving arena or edge storage failed.
     AllocationFailed,
 }
+impl HtmlConstructionErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlConstructionError {
+        HtmlConstructionError { kind: self }
+    }
+}
+
+impl From<HtmlConstructionErrorKind> for HtmlConstructionError {
+    fn from(kind: HtmlConstructionErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlConstructionError {
+    /// Whether the cause is: node handle belongs to a different builder.
+    pub fn is_foreign_builder(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::ForeignBuilder)
+    }
+    /// Whether the cause is: text, comment, processing-instruction and doctype nodes cannot have children.
+    pub fn is_parent_cannot_have_children(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::ParentCannotHaveChildren
+        )
+    }
+    /// Whether the cause is: template children must be appended to its separate contents.
+    pub fn is_template_contents_required(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::TemplateContentsRequired
+        )
+    }
+    /// Whether the cause is: a shadow root requires an element host.
+    pub fn is_shadow_host_must_be_element(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::ShadowHostMustBeElement
+        )
+    }
+    /// Whether the cause is: element already has a shadow root.
+    pub fn is_shadow_already_attached(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::ShadowAlreadyAttached)
+    }
+    /// Whether the cause is: node does not exist in this builder.
+    pub fn is_unknown_node(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::UnknownNode)
+    }
+    /// Whether the cause is: node kind cannot take part in this command.
+    pub fn is_wrong_node_kind(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::WrongNodeKind)
+    }
+    /// Whether the cause is: documents and fragments cannot be moved or detached.
+    pub fn is_root_move(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::RootMove)
+    }
+    /// Whether the cause is: template contents and shadow fragments cannot be moved as ordinary children.
+    pub fn is_association_move(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::AssociationMove)
+    }
+    /// Whether the cause is: reference node is not a child of the target parent.
+    pub fn is_wrong_sibling(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::WrongSibling)
+    }
+    /// Whether the cause is: move would make a node its own ancestor.
+    pub fn is_cycle(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::Cycle)
+    }
+    /// Whether the cause is: fragment is already associated with another owner.
+    pub fn is_association_already_owned(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::AssociationAlreadyOwned
+        )
+    }
+    /// Whether the cause is: template contents association does not satisfy the template rules.
+    pub fn is_invalid_template_association(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::InvalidTemplateAssociation
+        )
+    }
+    /// Whether the cause is: attribute candidate name does not match the planned name.
+    pub fn is_attribute_name_mismatch(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::AttributeNameMismatch)
+    }
+    /// Whether the cause is: attribute candidates were not presented in order.
+    pub fn is_attribute_order_mismatch(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::AttributeOrderMismatch)
+    }
+    /// Whether the cause is: shadow association does not satisfy the shadow host rules.
+    pub fn is_invalid_shadow_association(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::InvalidShadowAssociation
+        )
+    }
+    /// Whether the cause is: replacement template contents are the existing contents.
+    pub fn is_invalid_contents_reference(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::InvalidContentsReference
+        )
+    }
+    /// Whether the cause is: parent and child records disagree about their relationship.
+    pub fn is_parent_child_conflict(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::ParentChildConflict)
+    }
+    /// Whether the cause is: published output root is not a detached document or fragment.
+    pub fn is_invalid_output_root(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::InvalidOutputRoot)
+    }
+    /// Whether the cause is: construction operation has already been consumed.
+    pub fn is_operation_consumed(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::OperationConsumed)
+    }
+    /// Whether the cause is: construction operation still has pending actions.
+    pub fn is_operation_not_ready(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::OperationNotReady)
+    }
+    /// Whether the cause is: retired storage does not belong to this result.
+    pub fn is_foreign_allocation(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::ForeignAllocation)
+    }
+    /// Whether the cause is: observed capacity does not match the pending reservation.
+    pub fn is_capacity_mismatch(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::CapacityMismatch)
+    }
+    /// Whether the cause is: result storage is shared and cannot be recovered.
+    pub fn is_shared_allocation_aliased(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::SharedAllocationAliased
+        )
+    }
+    /// Whether the cause is: released usage exceeds the admitted usage.
+    pub fn is_release_underflow(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::ReleaseUnderflow)
+    }
+    /// Whether the cause is: storage count cannot be represented on this platform.
+    pub fn is_representation_exhausted(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::RepresentationExhausted
+        )
+    }
+    /// Whether the cause is: reserving arena or edge storage failed.
+    pub fn is_allocation_failed(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::AllocationFailed)
+    }
+    /// Whether two attributes share a namespace and local name.
+    pub fn is_duplicate_attribute(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlConstructionErrorKind::DuplicateAttribute { .. }
+        )
+    }
+    /// The indices of the first and the duplicate attribute, when the cause is a duplicate.
+    pub fn duplicate_attribute_indices(&self) -> Option<(usize, usize)> {
+        match self.kind {
+            HtmlConstructionErrorKind::DuplicateAttribute { first, duplicate } => {
+                Some((first, duplicate))
+            }
+            _ => None,
+        }
+    }
+    /// Whether a finite resource limit would be exceeded.
+    pub fn is_limit_exceeded(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::LimitExceeded { .. })
+    }
+    /// The resource that would exceed its limit, when the cause is a limit.
+    pub fn exceeded_resource(&self) -> Option<HtmlConstructionResource> {
+        match self.kind {
+            HtmlConstructionErrorKind::LimitExceeded { resource, .. } => Some(resource),
+            _ => None,
+        }
+    }
+    /// The configured limit, when the cause is a limit.
+    pub fn limit(&self) -> Option<usize> {
+        match self.kind {
+            HtmlConstructionErrorKind::LimitExceeded { limit, .. } => Some(limit),
+            _ => None,
+        }
+    }
+    /// The attempted total, when the cause is a limit.
+    pub fn attempted(&self) -> Option<usize> {
+        match self.kind {
+            HtmlConstructionErrorKind::LimitExceeded { attempted, .. } => Some(attempted),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for HtmlConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HTML construction rejected: {self:?}")
+        use HtmlConstructionErrorKind as Kind;
+        match &self.kind {
+            Kind::ForeignBuilder => f.write_str("node handle belongs to a different builder"),
+            Kind::ParentCannotHaveChildren => f.write_str(
+                "text, comment, processing-instruction and doctype nodes cannot have children",
+            ),
+            Kind::TemplateContentsRequired => {
+                f.write_str("template children must be appended to its separate contents")
+            }
+            Kind::ShadowHostMustBeElement => f.write_str("a shadow root requires an element host"),
+            Kind::ShadowAlreadyAttached => f.write_str("element already has a shadow root"),
+            Kind::UnknownNode => f.write_str("node does not exist in this builder"),
+            Kind::WrongNodeKind => f.write_str("node kind cannot take part in this command"),
+            Kind::RootMove => f.write_str("documents and fragments cannot be moved or detached"),
+            Kind::AssociationMove => f.write_str(
+                "template contents and shadow fragments cannot be moved as ordinary children",
+            ),
+            Kind::WrongSibling => f.write_str("reference node is not a child of the target parent"),
+            Kind::Cycle => f.write_str("move would make a node its own ancestor"),
+            Kind::AssociationAlreadyOwned => {
+                f.write_str("fragment is already associated with another owner")
+            }
+            Kind::InvalidTemplateAssociation => {
+                f.write_str("template contents association does not satisfy the template rules")
+            }
+            Kind::AttributeNameMismatch => {
+                f.write_str("attribute candidate name does not match the planned name")
+            }
+            Kind::AttributeOrderMismatch => {
+                f.write_str("attribute candidates were not presented in order")
+            }
+            Kind::InvalidShadowAssociation => {
+                f.write_str("shadow association does not satisfy the shadow host rules")
+            }
+            Kind::InvalidContentsReference => {
+                f.write_str("replacement template contents are the existing contents")
+            }
+            Kind::ParentChildConflict => {
+                f.write_str("parent and child records disagree about their relationship")
+            }
+            Kind::InvalidOutputRoot => {
+                f.write_str("published output root is not a detached document or fragment")
+            }
+            Kind::OperationConsumed => {
+                f.write_str("construction operation has already been consumed")
+            }
+            Kind::OperationNotReady => {
+                f.write_str("construction operation still has pending actions")
+            }
+            Kind::ForeignAllocation => {
+                f.write_str("retired storage does not belong to this result")
+            }
+            Kind::CapacityMismatch => {
+                f.write_str("observed capacity does not match the pending reservation")
+            }
+            Kind::SharedAllocationAliased => {
+                f.write_str("result storage is shared and cannot be recovered")
+            }
+            Kind::ReleaseUnderflow => f.write_str("released usage exceeds the admitted usage"),
+            Kind::RepresentationExhausted => {
+                f.write_str("storage count cannot be represented on this platform")
+            }
+            Kind::AllocationFailed => f.write_str("reserving arena or edge storage failed"),
+            Kind::DuplicateAttribute { first, duplicate } => write!(
+                f,
+                "attribute at index {duplicate} duplicates the namespace and local name of the attribute at index {first}"
+            ),
+            Kind::LimitExceeded {
+                resource,
+                limit,
+                attempted,
+            } => write!(
+                f,
+                "{resource} limit of {limit} would be exceeded by {attempted}"
+            ),
+        }
     }
 }
 impl Error for HtmlConstructionError {}
+
+impl fmt::Display for HtmlConstructionResource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Nodes => "node",
+            Self::Edges => "edge",
+            Self::Attributes => "attribute",
+            Self::Utf16Units => "UTF-16 unit",
+            Self::Depth => "depth",
+        })
+    }
+}
 
 #[derive(Debug)]
 struct Identity;
@@ -891,7 +1179,7 @@ impl Builder {
     ) -> Result<HtmlConstructionUsage, HtmlConstructionError> {
         let add = |left: usize, right| {
             left.checked_add(right)
-                .ok_or(HtmlConstructionError::RepresentationExhausted)
+                .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)
         };
         let next = HtmlConstructionUsage {
             nodes: add(self.storage().usage().nodes, nodes)?,
@@ -928,11 +1216,12 @@ impl Builder {
             ),
         ] {
             if attempted > limit {
-                return Err(HtmlConstructionError::LimitExceeded {
+                return Err(HtmlConstructionErrorKind::LimitExceeded {
                     resource,
                     limit,
                     attempted,
-                });
+                }
+                .into());
             }
         }
         Ok(next)
@@ -946,7 +1235,7 @@ impl Builder {
         let mut operation = storage
             .prepare(command)
             .unwrap_or_else(|_| unreachable!("preparation retains all operands"));
-        let result = (|| {
+        let result = (|| -> Result<_, HtmlConstructionError> {
             while let Some(action) = operation.next_action()? {
                 action
                     .perform()
@@ -987,16 +1276,16 @@ impl Builder {
             parent_view.kind(),
             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
         ) {
-            return Err(HtmlConstructionError::ParentCannotHaveChildren);
+            return Err(HtmlConstructionErrorKind::ParentCannotHaveChildren.into());
         }
         if parent_view.template_contents().is_some() {
-            return Err(HtmlConstructionError::TemplateContentsRequired);
+            return Err(HtmlConstructionErrorKind::TemplateContentsRequired.into());
         }
         let template = matches!(&kind, HtmlNodeKind::Element(element) if crate::KnownHtmlElement::from_name(element.name()) == Some(crate::KnownHtmlElement::Template));
         let depth = self
             .depth(parent_position)?
             .checked_add(1 + usize::from(template))
-            .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
         let (attributes, units) = bounded::created_usage(&kind)?;
         self.admit(
             1 + usize::from(template),
@@ -1041,15 +1330,15 @@ impl Builder {
         let host_position = self.index(host)?;
         let view = self.storage().node_at(host_position).expect("checked host");
         if !matches!(view.kind(), HtmlNodeKind::Element(_)) {
-            return Err(HtmlConstructionError::ShadowHostMustBeElement);
+            return Err(HtmlConstructionErrorKind::ShadowHostMustBeElement.into());
         }
         if view.shadow_root().is_some() {
-            return Err(HtmlConstructionError::ShadowAlreadyAttached);
+            return Err(HtmlConstructionErrorKind::ShadowAlreadyAttached.into());
         }
         let depth = self
             .depth(host_position)?
             .checked_add(1)
-            .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
         self.admit(1, 1, 0, 0, depth)?;
         let previous_usage = self.storage().usage();
         let previous_len = self.storage().len();
@@ -1370,11 +1659,12 @@ mod tests {
             let (result, unchanged) = append(tight_units);
             assert_eq!(
                 result,
-                Err(HtmlConstructionError::LimitExceeded {
+                Err(HtmlConstructionErrorKind::LimitExceeded {
                     resource: HtmlConstructionResource::Utf16Units,
                     limit: units - 1,
                     attempted: units,
-                }),
+                }
+                .error()),
                 "{label}: units checked"
             );
             assert_eq!(
@@ -1387,11 +1677,12 @@ mod tests {
                 let (result, unchanged) = append(tight);
                 assert_eq!(
                     result,
-                    Err(HtmlConstructionError::LimitExceeded {
+                    Err(HtmlConstructionErrorKind::LimitExceeded {
                         resource: HtmlConstructionResource::Attributes,
                         limit: attributes - 1,
                         attempted: attributes,
-                    }),
+                    }
+                    .error()),
                     "{label}: attributes checked"
                 );
                 assert_eq!(

@@ -911,6 +911,9 @@ impl surgeist_html::bounded::HtmlConstructionActionFailure
 pub fn surgeist_html::bounded::HtmlConstructionActionFailure::allocation(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionAllocationSnapshot>
 pub fn surgeist_html::bounded::HtmlConstructionActionFailure::into_parts(self) -> (surgeist_html::HtmlConstructionError, core::option::Option<surgeist_html::bounded::HtmlConstructionAllocationSnapshot>)
 pub fn surgeist_html::bounded::HtmlConstructionActionFailure::reason(&self) -> &surgeist_html::HtmlConstructionError
+impl core::error::Error for surgeist_html::bounded::HtmlConstructionActionFailure
+impl core::fmt::Display for surgeist_html::bounded::HtmlConstructionActionFailure
+pub fn surgeist_html::bounded::HtmlConstructionActionFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlConstructionAllocationId
 impl surgeist_html::bounded::HtmlConstructionAllocationId
 pub fn surgeist_html::bounded::HtmlConstructionAllocationId::same_owner_role(&self, other: &Self) -> bool
@@ -983,6 +986,11 @@ pub fn surgeist_html::bounded::HtmlConstructionAttributePlanRetirement::next_act
 pub struct surgeist_html::bounded::HtmlConstructionAttributeRejection
 impl surgeist_html::bounded::HtmlConstructionAttributeRejection
 pub fn surgeist_html::bounded::HtmlConstructionAttributeRejection::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::HtmlBuilderNode, surgeist_html::bounded::HtmlConstructionAttributeEditMode, surgeist_html::HtmlConstructionError)
+impl surgeist_html::bounded::HtmlConstructionAttributeRejection
+pub fn surgeist_html::bounded::HtmlConstructionAttributeRejection::reason(&self) -> &surgeist_html::HtmlConstructionError
+impl core::error::Error for surgeist_html::bounded::HtmlConstructionAttributeRejection
+impl core::fmt::Display for surgeist_html::bounded::HtmlConstructionAttributeRejection
+pub fn surgeist_html::bounded::HtmlConstructionAttributeRejection::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'a>
 impl surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>
 pub fn surgeist_html::bounded::HtmlConstructionAttributeRetirementAction<'_>::allocation(&self) -> core::option::Option<&surgeist_html::bounded::HtmlConstructionAllocationSnapshot>
@@ -1076,6 +1084,11 @@ pub fn surgeist_html::bounded::HtmlConstructionRecovery::into_parts(self) -> (su
 pub struct surgeist_html::bounded::HtmlConstructionRejection
 impl surgeist_html::bounded::HtmlConstructionRejection
 pub fn surgeist_html::bounded::HtmlConstructionRejection::into_parts(self) -> (surgeist_html::bounded::HtmlConstructionStorage, surgeist_html::bounded::HtmlConstructionCommand, surgeist_html::HtmlConstructionError)
+impl surgeist_html::bounded::HtmlConstructionRejection
+pub fn surgeist_html::bounded::HtmlConstructionRejection::reason(&self) -> &surgeist_html::HtmlConstructionError
+impl core::error::Error for surgeist_html::bounded::HtmlConstructionRejection
+impl core::fmt::Display for surgeist_html::bounded::HtmlConstructionRejection
+pub fn surgeist_html::bounded::HtmlConstructionRejection::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlConstructionRetired
 impl surgeist_html::bounded::HtmlConstructionRetired
 pub fn surgeist_html::bounded::HtmlConstructionRetired::allocation(&self) -> &surgeist_html::bounded::HtmlConstructionAllocationSnapshot
@@ -2144,50 +2157,14 @@ pub surgeist_html::HtmlCommandState::Unknown
 pub enum surgeist_html::HtmlCommonScope
 pub surgeist_html::HtmlCommonScope::Element
 pub surgeist_html::HtmlCommonScope::Html
-#[non_exhaustive] pub enum surgeist_html::HtmlConstructionError
-pub surgeist_html::HtmlConstructionError::AllocationFailed
-pub surgeist_html::HtmlConstructionError::AssociationAlreadyOwned
-pub surgeist_html::HtmlConstructionError::AssociationMove
-pub surgeist_html::HtmlConstructionError::AttributeNameMismatch
-pub surgeist_html::HtmlConstructionError::AttributeOrderMismatch
-pub surgeist_html::HtmlConstructionError::CapacityMismatch
-pub surgeist_html::HtmlConstructionError::Cycle
-pub surgeist_html::HtmlConstructionError::DuplicateAttribute
-pub surgeist_html::HtmlConstructionError::DuplicateAttribute::duplicate: usize
-pub surgeist_html::HtmlConstructionError::DuplicateAttribute::first: usize
-pub surgeist_html::HtmlConstructionError::ForeignAllocation
-pub surgeist_html::HtmlConstructionError::ForeignBuilder
-pub surgeist_html::HtmlConstructionError::InvalidContentsReference
-pub surgeist_html::HtmlConstructionError::InvalidOutputRoot
-pub surgeist_html::HtmlConstructionError::InvalidShadowAssociation
-pub surgeist_html::HtmlConstructionError::InvalidTemplateAssociation
-pub surgeist_html::HtmlConstructionError::LimitExceeded
-pub surgeist_html::HtmlConstructionError::LimitExceeded::attempted: usize
-pub surgeist_html::HtmlConstructionError::LimitExceeded::limit: usize
-pub surgeist_html::HtmlConstructionError::LimitExceeded::resource: surgeist_html::HtmlConstructionResource
-pub surgeist_html::HtmlConstructionError::OperationConsumed
-pub surgeist_html::HtmlConstructionError::OperationNotReady
-pub surgeist_html::HtmlConstructionError::ParentCannotHaveChildren
-pub surgeist_html::HtmlConstructionError::ParentChildConflict
-pub surgeist_html::HtmlConstructionError::ReleaseUnderflow
-pub surgeist_html::HtmlConstructionError::RepresentationExhausted
-pub surgeist_html::HtmlConstructionError::RootMove
-pub surgeist_html::HtmlConstructionError::ShadowAlreadyAttached
-pub surgeist_html::HtmlConstructionError::ShadowHostMustBeElement
-pub surgeist_html::HtmlConstructionError::SharedAllocationAliased
-pub surgeist_html::HtmlConstructionError::TemplateContentsRequired
-pub surgeist_html::HtmlConstructionError::UnknownNode
-pub surgeist_html::HtmlConstructionError::WrongNodeKind
-pub surgeist_html::HtmlConstructionError::WrongSibling
-impl core::error::Error for surgeist_html::HtmlConstructionError
-impl core::fmt::Display for surgeist_html::HtmlConstructionError
-pub fn surgeist_html::HtmlConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlConstructionResource
 pub surgeist_html::HtmlConstructionResource::Attributes
 pub surgeist_html::HtmlConstructionResource::Depth
 pub surgeist_html::HtmlConstructionResource::Edges
 pub surgeist_html::HtmlConstructionResource::Nodes
 pub surgeist_html::HtmlConstructionResource::Utf16Units
+impl core::fmt::Display for surgeist_html::HtmlConstructionResource
+pub fn surgeist_html::HtmlConstructionResource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlContentEditable
 pub surgeist_html::HtmlContentEditable::False
 pub surgeist_html::HtmlContentEditable::PlaintextOnly
@@ -4930,6 +4907,44 @@ pub fn surgeist_html::HtmlCommonState<R>::html_mut(&mut self) -> core::option::O
 pub fn surgeist_html::HtmlCommonState<R>::map<T>(self, map: impl core::ops::function::FnOnce(R) -> T) -> surgeist_html::HtmlCommonState<T>
 pub const fn surgeist_html::HtmlCommonState<R>::new(scope: surgeist_html::HtmlCommonScope) -> Self
 pub const fn surgeist_html::HtmlCommonState<R>::scope(&self) -> surgeist_html::HtmlCommonScope
+pub struct surgeist_html::HtmlConstructionError
+impl surgeist_html::HtmlConstructionError
+pub fn surgeist_html::HtmlConstructionError::attempted(&self) -> core::option::Option<usize>
+pub fn surgeist_html::HtmlConstructionError::duplicate_attribute_indices(&self) -> core::option::Option<(usize, usize)>
+pub fn surgeist_html::HtmlConstructionError::exceeded_resource(&self) -> core::option::Option<surgeist_html::HtmlConstructionResource>
+pub fn surgeist_html::HtmlConstructionError::is_allocation_failed(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_association_already_owned(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_association_move(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_attribute_name_mismatch(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_attribute_order_mismatch(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_capacity_mismatch(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_cycle(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_duplicate_attribute(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_foreign_allocation(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_foreign_builder(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_invalid_contents_reference(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_invalid_output_root(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_invalid_shadow_association(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_invalid_template_association(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_limit_exceeded(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_operation_consumed(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_operation_not_ready(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_parent_cannot_have_children(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_parent_child_conflict(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_release_underflow(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_representation_exhausted(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_root_move(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_shadow_already_attached(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_shadow_host_must_be_element(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_shared_allocation_aliased(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_template_contents_required(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_unknown_node(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_wrong_node_kind(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::is_wrong_sibling(&self) -> bool
+pub fn surgeist_html::HtmlConstructionError::limit(&self) -> core::option::Option<usize>
+impl core::error::Error for surgeist_html::HtmlConstructionError
+impl core::fmt::Display for surgeist_html::HtmlConstructionError
+pub fn surgeist_html::HtmlConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlConstructionLimits
 impl surgeist_html::HtmlConstructionLimits
 pub fn surgeist_html::HtmlConstructionLimits::attributes(self) -> usize

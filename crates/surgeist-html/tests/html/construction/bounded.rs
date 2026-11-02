@@ -2,12 +2,12 @@ mod depth;
 mod focus;
 mod order;
 mod replace;
+use crate::html::support::{Cause, cause, has_cause};
 use std::sync::Arc;
 use surgeist_html::{
-    DocumentString, HtmlBuilderNode, HtmlConstructionError, HtmlDocumentMode, HtmlElement,
-    HtmlFragmentOwner, HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties,
-    HtmlSlotAssignment, HtmlTemplateContentsKind, Namespace, OrderedAttributes, QualifiedName,
-    bounded::*,
+    DocumentString, HtmlBuilderNode, HtmlDocumentMode, HtmlElement, HtmlFragmentOwner,
+    HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    HtmlTemplateContentsKind, Namespace, OrderedAttributes, QualifiedName, bounded::*,
 };
 
 fn storage() -> HtmlConstructionStorage {
@@ -89,7 +89,7 @@ fn publish(
 fn refuse(
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
-    expected: HtmlConstructionError,
+    expected: Cause,
 ) -> HtmlConstructionStorage {
     let mut owner = Some(
         storage
@@ -112,10 +112,10 @@ fn refuse(
             }
         }
     }
-    assert_eq!(
-        owner.as_mut().unwrap().next_action().err(),
-        Some(expected.clone())
-    );
+    assert!(has_cause(
+        owner.as_mut().unwrap().next_action().err().as_ref(),
+        expected
+    ));
     assert!(
         matches!(HtmlConstructionOperation::try_ready(&mut owner), Err(error) if error == expected)
     );
@@ -465,12 +465,12 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
         };
         // Below the described minimum is refused before any provider call.
         let refused = action.perform_with_capacity(1).err().unwrap();
-        assert_eq!(refused.reason(), &HtmlConstructionError::CapacityMismatch);
+        assert_eq!(refused.reason(), &cause::CAPACITY_MISMATCH);
         assert!(refused.allocation().is_none());
-        assert_eq!(
-            operation.as_mut().unwrap().next_action().err(),
-            Some(HtmlConstructionError::CapacityMismatch)
-        );
+        assert!(has_cause(
+            operation.as_mut().unwrap().next_action().err().as_ref(),
+            cause::CAPACITY_MISMATCH
+        ));
         break before;
     };
     assert_eq!(failure.capacity(), 1);
@@ -499,16 +499,16 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
             .perform_with_capacity(isize::MAX as usize / size_of::<usize>())
             .err()
             .unwrap();
-        assert_eq!(failed.reason(), &HtmlConstructionError::AllocationFailed);
+        assert_eq!(failed.reason(), &cause::ALLOCATION_FAILED);
         let report = failed.allocation().unwrap();
         assert_eq!(report.id(), failure.id());
         assert_eq!((report.capacity(), report.initialized_len()), (1, 1));
         break;
     }
-    assert_eq!(
-        operation.as_mut().unwrap().next_action().err(),
-        Some(HtmlConstructionError::AllocationFailed)
-    );
+    assert!(has_cause(
+        operation.as_mut().unwrap().next_action().err().as_ref(),
+        cause::ALLOCATION_FAILED
+    ));
     let owner = operation.unwrap().abort().into_parts().0;
     assert_eq!(owner.usage(), usage);
     assert_eq!(owner.node(&root).unwrap().child_count(), 1);
@@ -530,11 +530,13 @@ fn capacity_is_only_accepted_by_a_described_geometric_reserve() {
     );
     let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
     let refused = action.perform_with_capacity(64).err().unwrap();
-    assert_eq!(refused.reason(), &HtmlConstructionError::CapacityMismatch);
+    assert_eq!(refused.reason(), &cause::CAPACITY_MISMATCH);
     assert!(refused.allocation().is_none());
-    assert!(matches!(
-        HtmlConstructionOperation::try_ready(&mut operation),
-        Err(HtmlConstructionError::CapacityMismatch)
+    assert!(has_cause(
+        HtmlConstructionOperation::try_ready(&mut operation)
+            .err()
+            .as_ref(),
+        cause::CAPACITY_MISMATCH
     ));
     let owner = operation.unwrap().abort().into_parts().0;
     assert_eq!(owner.len(), 2);
@@ -577,7 +579,7 @@ fn append_cycle_refuses_before_any_child_order_growth() {
             Err(failure) => break failure.into_parts().0,
         }
     };
-    assert_eq!(error, HtmlConstructionError::Cycle);
+    assert_eq!(error, cause::CYCLE);
     let owner = operation.unwrap().abort().into_parts().0;
     assert!(owner.node(&outer).unwrap().parent().is_none());
 }
@@ -585,9 +587,11 @@ fn append_cycle_refuses_before_any_child_order_growth() {
 #[test]
 fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal() {
     let mut initialization = Some(HtmlConstructionStorage::begin());
-    assert!(matches!(
-        HtmlConstructionInitialization::try_ready(&mut initialization),
-        Err(HtmlConstructionError::OperationNotReady)
+    assert!(has_cause(
+        HtmlConstructionInitialization::try_ready(&mut initialization)
+            .err()
+            .as_ref(),
+        cause::OPERATION_NOT_READY
     ));
     let observation = initialization
         .as_mut()
@@ -598,9 +602,11 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
         .perform();
     let ticket = observation.allocation().clone();
     drop(observation);
-    assert!(matches!(
-        HtmlConstructionInitialization::try_ready(&mut initialization),
-        Err(HtmlConstructionError::OperationNotReady)
+    assert!(has_cause(
+        HtmlConstructionInitialization::try_ready(&mut initialization)
+            .err()
+            .as_ref(),
+        cause::OPERATION_NOT_READY
     ));
     let receipt = initialization.unwrap().abort().unwrap();
     assert_eq!(receipt.allocation(), &ticket);
@@ -610,9 +616,11 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
             .prepare(HtmlConstructionCommand::CreateFragment)
             .unwrap_or_else(|_| panic!()),
     );
-    assert!(matches!(
-        HtmlConstructionOperation::try_ready(&mut operation),
-        Err(HtmlConstructionError::OperationNotReady)
+    assert!(has_cause(
+        HtmlConstructionOperation::try_ready(&mut operation)
+            .err()
+            .as_ref(),
+        cause::OPERATION_NOT_READY
     ));
     {
         let _action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
@@ -626,13 +634,15 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
         .perform()
         .unwrap();
     drop(observation);
-    assert_eq!(
-        operation.as_mut().unwrap().next_action().err(),
-        Some(HtmlConstructionError::OperationNotReady)
-    );
-    assert!(matches!(
-        HtmlConstructionOperation::try_ready(&mut operation),
-        Err(HtmlConstructionError::OperationNotReady)
+    assert!(has_cause(
+        operation.as_mut().unwrap().next_action().err().as_ref(),
+        cause::OPERATION_NOT_READY
+    ));
+    assert!(has_cause(
+        HtmlConstructionOperation::try_ready(&mut operation)
+            .err()
+            .as_ref(),
+        cause::OPERATION_NOT_READY
     ));
     let (retained, command, retired) = operation.unwrap().abort().into_parts();
     assert!(retained.is_empty());
@@ -737,10 +747,10 @@ fn checked_handles_and_ordinals_preserve_identity_across_nonzero_document_public
     assert!(owner.node_at(usize::MAX).is_none());
     assert_eq!(owner.node_by_result_id(&id).unwrap().handle(), document);
     let (foreign, foreign_handle) = fragment(storage());
-    assert_eq!(
-        owner.position(&foreign_handle),
-        Err(HtmlConstructionError::ForeignBuilder)
-    );
+    assert!(has_cause(
+        owner.position(&foreign_handle).err().as_ref(),
+        cause::FOREIGN_BUILDER
+    ));
     assert!(
         owner
             .node_by_result_id(&foreign.result_id(&foreign_handle).unwrap())
@@ -753,7 +763,7 @@ fn checked_handles_and_ordinals_preserve_identity_across_nonzero_document_public
             parent: inert,
             before: None,
         },
-        HtmlConstructionError::ForeignBuilder,
+        cause::FOREIGN_BUILDER,
     );
     let (result, _) = publish(owner, document);
     let document = result.document().unwrap();
@@ -833,7 +843,7 @@ fn template_shadow_reference_is_not_an_owning_depth_or_edge_and_reassignment_pre
             host: host.clone(),
             contents: shadow.clone(),
         },
-        HtmlConstructionError::InvalidTemplateAssociation,
+        cause::INVALID_TEMPLATE_ASSOCIATION,
     );
     let owner = refuse(
         owner,
@@ -841,7 +851,7 @@ fn template_shadow_reference_is_not_an_owning_depth_or_edge_and_reassignment_pre
             template: template.clone(),
             contents: shadow.clone(),
         },
-        HtmlConstructionError::InvalidTemplateAssociation,
+        cause::INVALID_TEMPLATE_ASSOCIATION,
     );
     let (owner, _) = change(
         owner,
@@ -913,7 +923,7 @@ fn captured_shadow_role_retains_properties_without_a_local_owner() {
             template: template.clone(),
             contents: shadow.clone(),
         },
-        HtmlConstructionError::InvalidTemplateAssociation,
+        cause::INVALID_TEMPLATE_ASSOCIATION,
     );
     let template_id = owner.result_id(&template).unwrap();
     let shadow_id = owner.result_id(&shadow).unwrap();
@@ -938,14 +948,18 @@ fn publication_lease_rejects_foreign_or_aliased_results_without_taking_slots() {
     let (other, other_lease) = publish(other, other_root);
     let mut result = Some(result);
     let mut lease = Some(lease);
-    assert_eq!(
-        HtmlConstructionLease::try_recover(&mut result, &mut Some(other_lease)).err(),
-        Some(HtmlConstructionError::ForeignAllocation)
-    );
-    assert_eq!(
-        HtmlConstructionLease::try_recover(&mut result, &mut lease).err(),
-        Some(HtmlConstructionError::SharedAllocationAliased)
-    );
+    assert!(has_cause(
+        HtmlConstructionLease::try_recover(&mut result, &mut Some(other_lease))
+            .err()
+            .as_ref(),
+        cause::FOREIGN_ALLOCATION
+    ));
+    assert!(has_cause(
+        HtmlConstructionLease::try_recover(&mut result, &mut lease)
+            .err()
+            .as_ref(),
+        cause::SHARED_ALLOCATION_ALIASED
+    ));
     assert!(result.is_some() && lease.is_some());
     assert_eq!(alias.node(&root_id).unwrap().id(), root_id);
     drop(alias);
@@ -1097,7 +1111,7 @@ fn record_layout_exhaustion_refuses_before_provider_growth_and_preserves_existin
     let owner = refuse(
         owner,
         HtmlConstructionCommand::ReserveRecords { additional },
-        HtmlConstructionError::RepresentationExhausted,
+        cause::REPRESENTATION_EXHAUSTED,
     );
     assert_eq!(owner.usage(), before);
     assert_eq!(owner.position(&root), Ok(0));
@@ -1385,7 +1399,7 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_allocation(
             parent: other.clone(),
             before: Some(a.clone()),
         },
-        HtmlConstructionError::WrongSibling,
+        cause::WRONG_SIBLING,
     );
     assert_eq!(owner.node(&a).unwrap().parent().unwrap().handle(), root);
     assert_eq!(owner.node(&other).unwrap().child_count(), 0);
@@ -1504,14 +1518,16 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
             match action.perform() {
                 Ok(observation) => observation.accept(),
                 Err(error) => {
-                    assert_eq!(error.reason(), &HtmlConstructionError::WrongNodeKind);
+                    assert_eq!(error.reason(), &cause::WRONG_NODE_KIND);
                     break;
                 }
             }
         }
-        assert!(matches!(
-            HtmlConstructionOperation::try_ready(&mut operation),
-            Err(HtmlConstructionError::WrongNodeKind)
+        assert!(has_cause(
+            HtmlConstructionOperation::try_ready(&mut operation)
+                .err()
+                .as_ref(),
+            cause::WRONG_NODE_KIND
         ));
         let (owner, command, _) = operation.unwrap().abort().into_parts();
         assert_eq!(owner.len(), 0);
@@ -1562,9 +1578,11 @@ fn interrupted_element_creation_returns_original_command_without_publishing_a_no
         }
         action.perform().unwrap().accept();
     }
-    assert!(matches!(
-        HtmlConstructionOperation::try_ready(&mut operation),
-        Err(HtmlConstructionError::OperationNotReady)
+    assert!(has_cause(
+        HtmlConstructionOperation::try_ready(&mut operation)
+            .err()
+            .as_ref(),
+        cause::OPERATION_NOT_READY
     ));
     let (owner, command, _) = operation.unwrap().abort().into_parts();
     assert_eq!(owner.len(), 1);

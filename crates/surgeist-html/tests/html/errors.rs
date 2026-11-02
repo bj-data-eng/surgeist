@@ -29,6 +29,10 @@ use surgeist_html::{
     HtmlValueInterpreter, HtmlValueRepresentationError, HtmlValueSyntaxError,
     input_filename_setter,
 };
+use surgeist_html::{
+    HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument, HtmlDocumentMode, HtmlFragment,
+    Namespace, OrderedAttributes, QualifiedName,
+};
 
 /// The admission error of a three-unit value against a two-unit capacity.
 fn refused_admission() -> HtmlValueAdmissionError {
@@ -981,4 +985,74 @@ fn input_refusals_state_what_was_refused() {
         message(&filename),
         "a file input's value can only be set to the empty string"
     );
+}
+
+fn builder_limits() -> HtmlConstructionLimits {
+    HtmlConstructionLimits::new(100, 100, 100, 100_000, 100)
+}
+
+#[test]
+fn construction_refusals_state_their_cause_and_answer_the_matching_predicate() {
+    let mut builder = HtmlDocument::builder(builder_limits(), HtmlDocumentMode::NoQuirks)
+        .expect("limits admit the document");
+    let root = builder.root();
+    let template = builder
+        .append_element(
+            &root,
+            QualifiedName::new(Namespace::html(), None, "template"),
+            OrderedAttributes::default(),
+        )
+        .expect("template element");
+    let contents_required = builder
+        .append_text(&template, "wrong parent")
+        .expect_err("template children belong to its contents");
+    assert_eq!(
+        message(&contents_required),
+        "template children must be appended to its separate contents"
+    );
+    assert!(contents_required.is_template_contents_required());
+    assert!(!contents_required.is_foreign_builder());
+    assert!(!contents_required.is_limit_exceeded());
+    assert_eq!(contents_required.exceeded_resource(), None);
+    assert_eq!(contents_required.duplicate_attribute_indices(), None);
+
+    let other = HtmlFragment::builder(builder_limits()).expect("fragment builder");
+    let foreign_root = other.root();
+    let foreign = builder
+        .append_text(&foreign_root, "foreign")
+        .expect_err("handle belongs to another builder");
+    assert_eq!(
+        message(&foreign),
+        "node handle belongs to a different builder"
+    );
+    assert!(foreign.is_foreign_builder());
+}
+
+#[test]
+fn construction_limit_refusals_report_the_resource_limit_and_attempted_total() {
+    let mut builder = HtmlFragment::builder(HtmlConstructionLimits::new(3, 2, 0, 2, 2))
+        .expect("limits admit the root");
+    let root = builder.root();
+    let refused = builder
+        .append_text(&root, "too long")
+        .expect_err("eight UTF-16 units exceed the limit of two");
+    assert!(refused.is_limit_exceeded());
+    assert_eq!(
+        refused.exceeded_resource(),
+        Some(HtmlConstructionResource::Utf16Units)
+    );
+    assert_eq!(refused.limit(), Some(2));
+    assert_eq!(refused.attempted(), Some(8));
+    assert_eq!(
+        message(&refused),
+        "UTF-16 unit limit of 2 would be exceeded by 8"
+    );
+    for (resource, text) in [
+        (HtmlConstructionResource::Nodes, "node"),
+        (HtmlConstructionResource::Edges, "edge"),
+        (HtmlConstructionResource::Attributes, "attribute"),
+        (HtmlConstructionResource::Depth, "depth"),
+    ] {
+        assert_eq!(resource.to_string(), text);
+    }
 }

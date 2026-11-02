@@ -613,16 +613,22 @@ native authoring still requires its existing separately checked
 `HtmlAuthoredProcessingInstruction`. Those are different phase contracts, not
 permission for native syntax checks to reject recovered parser data.
 
-Add these typed `HtmlConstructionError` variants to the existing non-exhaustive
-error enum: `UnknownNode`, `WrongNodeKind`, `RootMove`, `AssociationMove`,
-`WrongSibling`, `Cycle`, `AssociationAlreadyOwned`, `InvalidTemplateAssociation`,
-`InvalidShadowAssociation`, `InvalidContentsReference`, `ParentChildConflict`, `InvalidOutputRoot`,
-`OperationConsumed`, `OperationNotReady`, `ForeignAllocation`, `CapacityMismatch`,
-`DuplicateAttribute { first: usize, duplicate: usize }`, `AttributeNameMismatch`,
-`AttributeOrderMismatch`,
-`SharedAllocationAliased`, and `ReleaseUnderflow`. Existing
-`ForeignBuilder`, native-parent/association errors, `LimitExceeded`,
-`RepresentationExhausted` and `AllocationFailed` remain distinct. Parser maps
+`HtmlConstructionError` is a struct whose cause is private, so new refusal
+causes never break a caller. A caller asks `is_foreign_builder`,
+`is_unknown_node`, `is_wrong_node_kind`, `is_root_move`, `is_association_move`,
+`is_wrong_sibling`, `is_cycle`, `is_association_already_owned`,
+`is_invalid_template_association`, `is_invalid_shadow_association`,
+`is_invalid_contents_reference`, `is_parent_child_conflict`,
+`is_invalid_output_root`, `is_operation_consumed`, `is_operation_not_ready`,
+`is_foreign_allocation`, `is_capacity_mismatch`, `is_attribute_name_mismatch`,
+`is_attribute_order_mismatch`, `is_shared_allocation_aliased`,
+`is_release_underflow`, `is_parent_cannot_have_children`,
+`is_template_contents_required`, `is_shadow_host_must_be_element`,
+`is_shadow_already_attached`, `is_representation_exhausted`,
+`is_allocation_failed`, `is_duplicate_attribute` and `is_limit_exceeded`.
+`duplicate_attribute_indices` returns the first and the duplicate position, and
+`exceeded_resource`, `limit` and `attempted` describe a limit refusal. Parser
+maps
 structural refusal to its corresponding `SessionError`; admission/cancellation
 continues to originate in `ParseControl` and is never disguised as a structural
 error. `ReplaceContent` cannot silently change a parent-capable node into a leaf.

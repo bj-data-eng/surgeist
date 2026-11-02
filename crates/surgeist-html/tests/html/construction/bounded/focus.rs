@@ -1,5 +1,6 @@
 //! Constructor facts survive the actual original controlled owner and recovery.
 use super::*;
+use crate::html::support::{cause, has_cause};
 use surgeist_html::{
     HtmlConstructionLimits, HtmlDocument, HtmlFocusedAreaDesignation, HtmlFragment,
 };
@@ -45,7 +46,7 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
         HtmlConstructionCommand::Create {
             kind: HtmlNodeKind::Document(HtmlDocumentMode::Quirks),
         },
-        HtmlConstructionError::WrongNodeKind,
+        cause::WRONG_NODE_KIND,
     );
     let (owner, document) = create(
         owner,
@@ -75,10 +76,12 @@ fn controlled_constructor_fact_survives_alias_refusal_mode_edit_and_original_res
     let alias = value.clone();
     let mut value = Some(value);
     let mut lease = Some(lease);
-    assert_eq!(
-        HtmlConstructionLease::try_recover(&mut value, &mut lease).err(),
-        Some(HtmlConstructionError::SharedAllocationAliased)
-    );
+    assert!(has_cause(
+        HtmlConstructionLease::try_recover(&mut value, &mut lease)
+            .err()
+            .as_ref(),
+        cause::SHARED_ALLOCATION_ALIASED
+    ));
     assert_eq!(
         alias.node(&id).unwrap().document_focused_area_designation(),
         Some(HtmlFocusedAreaDesignation::KnownNull)

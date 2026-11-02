@@ -37,27 +37,30 @@ pub(super) fn construction_error(
     control: &mut ParseControl,
     error: HtmlConstructionError,
 ) -> SessionError {
-    match error {
-        HtmlConstructionError::ForeignBuilder | HtmlConstructionError::UnknownNode => {
-            SessionError::ForeignNode
-        }
-        HtmlConstructionError::RootMove => SessionError::RootMove,
-        HtmlConstructionError::AssociationMove => SessionError::AssociationMove,
-        HtmlConstructionError::ParentCannotHaveChildren => SessionError::NotContainer,
-        HtmlConstructionError::TemplateContentsRequired => SessionError::TemplateContentsRequired,
-        HtmlConstructionError::WrongSibling | HtmlConstructionError::ParentChildConflict => {
-            SessionError::WrongSibling
-        }
-        HtmlConstructionError::Cycle => SessionError::Cycle,
-        HtmlConstructionError::SharedAllocationAliased => SessionError::Stop(
+    if error.is_foreign_builder() || error.is_unknown_node() {
+        SessionError::ForeignNode
+    } else if error.is_root_move() {
+        SessionError::RootMove
+    } else if error.is_association_move() {
+        SessionError::AssociationMove
+    } else if error.is_parent_cannot_have_children() {
+        SessionError::NotContainer
+    } else if error.is_template_contents_required() {
+        SessionError::TemplateContentsRequired
+    } else if error.is_wrong_sibling() || error.is_parent_child_conflict() {
+        SessionError::WrongSibling
+    } else if error.is_cycle() {
+        SessionError::Cycle
+    } else if error.is_shared_allocation_aliased() {
+        SessionError::Stop(
             control.fail_invariant(crate::parser::control::Invariant::SharedAllocationAliased),
-        ),
-        HtmlConstructionError::RepresentationExhausted => {
-            SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
-        }
-        _ => SessionError::Stop(
+        )
+    } else if error.is_representation_exhausted() {
+        SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
+    } else {
+        SessionError::Stop(
             control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch),
-        ),
+        )
     }
 }
 pub(super) struct PendingConstruction {
@@ -521,7 +524,7 @@ impl ConstructionOwner {
                     control.record_construction_allocation(snapshot, slot, expected)?;
                 }
                 let error = failure.into_parts().0;
-                Err(if error == HtmlConstructionError::AllocationFailed {
+                Err(if error.is_allocation_failed() {
                     SessionError::Stop(control.construction_allocation_failed(expected))
                 } else {
                     construction_error(control, error)

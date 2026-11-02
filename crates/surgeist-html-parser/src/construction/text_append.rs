@@ -435,9 +435,9 @@ impl SessionStorage {
                     Description::InitializeBacking(_)
                         if control.take_text_append_backing_fault() =>
                     {
-                        Err(HtmlConstructionError::AllocationFailed)
+                        Err(None)
                     }
-                    _ => action.perform(minimum),
+                    _ => action.perform(minimum).map_err(Some),
                 };
                 match performed {
                     Ok(observation) => {
@@ -493,15 +493,19 @@ impl SessionStorage {
                             };
                             control.record_text_append_capacity(allocation, capacity, expected)?;
                         }
+                        // `None` is the test-injected backing fault, which reports the
+                        // same refusal as a real failed reservation.
                         return Err(match error {
-                            HtmlConstructionError::AllocationFailed => control
+                            Some(error) if !error.is_allocation_failed() => {
+                                construction_error(control, error)
+                            }
+                            _ => control
                                 .construction_allocation_failed(
                                     expected_capacity
                                         .unwrap_or(0)
                                         .saturating_mul(mem::size_of::<u16>()),
                                 )
                                 .into(),
-                            error => construction_error(control, error),
                         });
                     }
                 }
