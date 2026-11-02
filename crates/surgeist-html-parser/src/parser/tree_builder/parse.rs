@@ -1327,4 +1327,18 @@ mod tests {
             );
         }
     }
+
+    /// A document initialization or execution profile the standalone
+    /// environment was given no proof of keeps its own reason in both stages.
+    #[test]
+    fn an_unsupported_request_shape_keeps_its_own_reason() {
+        assert_eq!(
+            ordinary_reason(&StandaloneError::UnsupportedDocumentInitialization),
+            HtmlParseFailureReason::UnsupportedDocumentInitialization
+        );
+        assert_eq!(
+            ordinary_reason(&StandaloneError::UnsupportedExecutionProfile),
+            HtmlParseFailureReason::UnsupportedExecutionProfile
+        );
+    }
 }

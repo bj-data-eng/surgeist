@@ -2877,6 +2877,77 @@ mod tests {
         crate::parser::tree_builder::tests::assert_released(&c);
     }
 
+    /// An effect a stop left unbound refuses the session as that stop, the
+    /// first one, and not as a second error that the failure's reason would
+    /// then disagree with.
+    #[test]
+    fn an_unbound_effect_refuses_the_session_as_the_first_stop() {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        let capture = builder.finish().unwrap();
+        let target = capture
+            .document_id(&capture.subject_id(&document).unwrap())
+            .unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        let request = HtmlFragmentParseRequest::new(
+            HtmlSource::utf8("<p>"),
+            context,
+            crate::parser::tree_builder::tests::limits(100),
+        )
+        .unwrap();
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        session.initialize_standalone_document(&mut c).unwrap();
+        session.initialize_fragment(&mut c, &request).unwrap();
+        {
+            let fragment = session.active_mut().unwrap().fragment.as_mut().unwrap();
+            fragment
+                .effects
+                .try_push(
+                    &mut c,
+                    ContextEffect::TemplateCache {
+                        document: target,
+                        inert: None,
+                    },
+                )
+                .unwrap();
+            fragment.unbound_effects += 1;
+        }
+        let first = c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+        assert_eq!(
+            session
+                .active()
+                .unwrap()
+                .require_context_ready(&mut c)
+                .err(),
+            Some(SessionError::Stop(first))
+        );
+        session.release(&mut c).unwrap();
+    }
+
     #[test]
     fn template_adoption_uses_conditional_captured_class_and_reuses_actual_inert_owner() {
         for class in [

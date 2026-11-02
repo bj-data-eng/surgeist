@@ -408,3 +408,30 @@ fn a_structure_error_latches_the_unsupported_nesting_stop_in_the_ordinary_driver
         driver.release().unwrap();
     }
 }
+
+/// A document initialization or execution profile the standalone environment
+/// was given no proof of is refused at the provenance boundary, at the stage
+/// and at the seal alike. The reason is checked beside the reason mappings.
+#[test]
+fn an_unsupported_request_shape_latches_the_provenance_stop() {
+    for (name, error) in [
+        (
+            "UnsupportedDocumentInitialization",
+            (|| StandaloneError::UnsupportedDocumentInitialization) as fn() -> StandaloneError,
+        ),
+        ("UnsupportedExecutionProfile", || {
+            StandaloneError::UnsupportedExecutionProfile
+        }),
+    ] {
+        let request =
+            HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), super::tests::limits(100));
+        let mut driver = super::entry::initialized_driver(&request);
+        driver.retain_terminal_failure(&Err::<(), _>(error()));
+        assert_eq!(
+            driver.control.stop(),
+            Some(unsupported(StandaloneUnsupported::Provenance)),
+            "{name}"
+        );
+        driver.release().unwrap();
+    }
+}
