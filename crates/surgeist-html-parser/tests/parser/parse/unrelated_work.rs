@@ -313,3 +313,35 @@ fn an_html_element_adds_no_more_visits_than_a_foreign_one_whatever_is_open_aroun
     // whether the form pointer applies; a foreign element's does not.
     assert_creation_excess_independent_of_depth("<span>", "<span>", "<svg>");
 }
+
+/// Requires `element` to add the same record visits after 50, 200 and 800 open
+/// copies of `open`. The pinned algorithms ask nothing of the ancestors beyond
+/// the element's parent for the elements and nodes this is used with (a start
+/// tag with no scope check, text, a comment), so a flat measure means creating
+/// and inserting the node never climbs the ancestors toward the root.
+fn assert_visits_independent_of_depth(open: &str, element: &str) {
+    let measures = SIZES
+        .map(|depth| work_added_at_depth(HtmlParseWorkCategory::RecordVisit, open, depth, element));
+    assert_flat_of("record visits", element, open, measures, 0);
+}
+
+#[test]
+fn an_html_element_adds_the_same_visits_whatever_elements_are_open_around_it() {
+    assert_visits_independent_of_depth("<span>", "<span>");
+}
+
+#[test]
+fn a_foreign_element_adds_the_same_visits_whatever_elements_are_open_around_it() {
+    assert_visits_independent_of_depth("<svg>", "<g>");
+    assert_visits_independent_of_depth("<math>", "<mi>");
+}
+
+#[test]
+fn text_adds_the_same_visits_whatever_elements_are_open_around_it() {
+    assert_visits_independent_of_depth("<span>", "x");
+}
+
+#[test]
+fn a_comment_adds_the_same_visits_whatever_elements_are_open_around_it() {
+    assert_visits_independent_of_depth("<span>", "<!--c-->");
+}
