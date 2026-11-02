@@ -4170,6 +4170,42 @@ fn fri08_c08_t05_impossible_state_remaining_errors_failure_atomicity_and_cache_a
     assert_fri08_c04_overflow_atomic_failures::<f64>();
 }
 
+// The same opaque child reports a queried border20x30 and independent overflow
+//80x90. Intrinsic sizing consumes the former; used-axis propagation consumes
+// the latter. Clipping traps propagation, without deleting the child's own box.
+fn assert_fri05_c05_grid_border_and_overflow(
+    tree: &OracleTree,
+    output: &ComputeOutput,
+    measured_node: u32,
+    expected_overflow: Size,
+) {
+    let border_size = Size::new(20.0, 30.0);
+    let own_overflow = Size::new(80.0, 90.0);
+    assert_eq!(output.size, border_size);
+    assert_eq!(output.content_size, expected_overflow);
+    let geometry = output
+        .scroll_geometry
+        .expect("performed Grid retains its scroll geometry");
+    assert_eq!(geometry.border_box().size(), border_size);
+    assert_eq!(
+        geometry.scrollable_overflow(),
+        ScrollRect::try_new(Point::ZERO, expected_overflow).unwrap()
+    );
+    let child = tree
+        .layout(measured_node)
+        .expect("actual measured child is published");
+    assert_eq!(child.size, border_size);
+    assert_eq!(child.content_size, own_overflow);
+    let child_geometry = child
+        .scroll_geometry
+        .expect("measured child retains its own overflow");
+    assert_eq!(child_geometry.border_box().size(), border_size);
+    assert_eq!(
+        child_geometry.scrollable_overflow(),
+        ScrollRect::try_new(Point::ZERO, own_overflow).unwrap()
+    );
+}
+
 #[test]
 fn fri05_c05_grid_auto_minimum_computed_scrollability_reaches_grid_and_lanes_front_doors() {
     for display in [Display::Grid, Display::GridLanes] {
@@ -4216,13 +4252,14 @@ fn fri05_c05_grid_auto_minimum_computed_scrollability_reaches_grid_and_lanes_fro
                             .iter()
                             .find(|input| input.run_mode() == RunMode::PerformLayout)
                             .expect("grid item receives final layout input");
+                        // The provider certifies queried border20x30, not
+                        // intrinsic80x90 authority from its overflow packet.
+                        // Clip remains non-scrollable, just like Visible.
                         let item_size = Size::new(Some(20.0), Some(30.0));
-                        let content_size = Size::new(Some(80.0), Some(90.0));
                         let zero = Size::new(Some(0.0), Some(0.0));
                         let expected_known = if display == Display::Grid {
                             match overflow {
-                                Overflow::Visible => content_size,
-                                Overflow::Clip => item_size,
+                                Overflow::Visible | Overflow::Clip => item_size,
                                 Overflow::Hidden | Overflow::Scroll | Overflow::Auto => zero,
                             }
                         } else {
@@ -4233,10 +4270,12 @@ fn fri05_c05_grid_auto_minimum_computed_scrollability_reaches_grid_and_lanes_fro
                                 LogicalAxis::Block => flow_axes.block_axis(),
                             };
                             let selected = match (physical_axis, overflow) {
-                                (PhysicalAxis::Horizontal, Overflow::Visible) => content_size.width,
-                                (PhysicalAxis::Vertical, Overflow::Visible) => content_size.height,
-                                (PhysicalAxis::Horizontal, Overflow::Clip) => item_size.width,
-                                (PhysicalAxis::Vertical, Overflow::Clip) => item_size.height,
+                                (PhysicalAxis::Horizontal, Overflow::Visible | Overflow::Clip) => {
+                                    item_size.width
+                                }
+                                (PhysicalAxis::Vertical, Overflow::Visible | Overflow::Clip) => {
+                                    item_size.height
+                                }
                                 (_, Overflow::Hidden | Overflow::Scroll | Overflow::Auto) => {
                                     Some(0.0)
                                 }
@@ -4270,7 +4309,7 @@ fn fri05_c05_grid_intrinsic_overflow_projects_used_axes_and_traps_descendants() 
     for display in [Display::Grid, Display::GridLanes] {
         for writing_mode in writing_modes {
             for direction in [Direction::Ltr, Direction::Rtl] {
-                for (overflow, replaced, expected) in [
+                for (overflow, replaced, expected_overflow) in [
                     (
                         computed_overflow(Overflow::Visible, Overflow::Visible),
                         false,
@@ -4329,10 +4368,14 @@ fn fri05_c05_grid_intrinsic_overflow_projects_used_axes_and_traps_descendants() 
                     )
                     .expect("grid intrinsic overflow case computes");
 
+                    // Definite preferred border20x30 contributes20x30 even
+                    // when its independently reported overflow is larger.
                     assert_eq!(
-                        output.size, expected,
+                        output.size,
+                        Size::new(20.0, 30.0),
                         "{display:?} {writing_mode:?} {direction:?} {overflow:?} replaced={replaced}"
                     );
+                    assert_fri05_c05_grid_border_and_overflow(&tree, &output, 1, expected_overflow);
                 }
             }
         }
@@ -4349,7 +4392,7 @@ fn fri05_c05_grid_intrinsic_overflow_subgrid_uses_the_parent_flow_projection() {
         WritingMode::SidewaysLr,
     ] {
         for direction in [Direction::Ltr, Direction::Rtl] {
-            for (overflow, replaced, expected) in [
+            for (overflow, replaced, expected_overflow) in [
                 (
                     computed_overflow(Overflow::Visible, Overflow::Visible),
                     false,
@@ -4443,9 +4486,11 @@ fn fri05_c05_grid_intrinsic_overflow_subgrid_uses_the_parent_flow_projection() {
                 .expect("intrinsic subgrid overflow case computes");
 
                 assert_eq!(
-                    output.size, expected,
+                    output.size,
+                    Size::new(20.0, 30.0),
                     "{writing_mode:?} {direction:?} {overflow:?} replaced={replaced}"
                 );
+                assert_fri05_c05_grid_border_and_overflow(&tree, &output, 2, expected_overflow);
             }
         }
     }
