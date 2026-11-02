@@ -649,6 +649,19 @@ heading-offset traversal separately crosses a shadow root to its captured host.
 This source selection implements no editing command, selection mutation,
 spelling service or JavaScript runtime.
 
+### Bounded HTML text-assistance defaults
+
+For [#1339](https://github.com/bj-data-eng/surgeist/issues/1339), the
+[complete writing-suggestions, autocapitalization and autocorrection sections](html-text-assistance--877d6146487f.md)
+(§§6.8.6–6.8.8) retain the existing HTML revision. They state the missing, empty
+and invalid value defaults that the text-assistance readback tests assert:
+`writingsuggestions` defaults to Default when missing and True when empty or
+invalid; `autocapitalize` defaults to Default when missing and Sentences when
+invalid, with an empty content attribute falling through to the form owner and
+then Default; `autocorrect` defaults to On when missing, empty or invalid. The
+capture implements no input method, autocorrection engine or suggestion
+interface.
+
 For [#1124](https://github.com/bj-data-eng/surgeist/issues/1124), the
 [nullable active-range reference](designmode-active-range--877d6146487f.md)
 retains the delegated nullable definition and DOM boundary-point/live-range

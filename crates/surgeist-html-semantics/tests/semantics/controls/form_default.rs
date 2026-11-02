@@ -1,14 +1,18 @@
-use crate::semantics::support::small_builder_without_registries as builder;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, result_record_bytes,
+    small_builder_without_registries as builder,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlDefaultButton, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlFormOwnerOrigin, HtmlImplicitSubmissionBlockingFields, HtmlImplicitSubmissionCondition,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlDefaultButton, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlImplicitSubmissionBlockingFields,
+    HtmlImplicitSubmissionCondition, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
+    HtmlSemanticValue,
 };
 
 fn attributes(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -538,65 +542,27 @@ fn exact_work_output_scratch_bytes_and_raw_limits_are_atomic_and_sticky() {
     let f = flat(&[("button", &[("type", "submit")])]);
     let c = owned(&f, &[1]);
     let req = HtmlSemanticRequest::new(f.ids[0].clone(), HtmlSemanticQuery::FormDefaultButton);
-    let baseline = report(&f, &c, HtmlSemanticQuery::FormDefaultButton).usage();
-    assert_eq!(baseline.nested_output_records(), 0);
-    assert!(baseline.peak_scratch_records() > 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, baseline.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            baseline.output_records(),
-        ),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            baseline.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            baseline.allocated_bytes(),
-        ),
-    ] {
-        for cap in [exact, exact - 1] {
-            let l = HtmlSemanticLimits::new(
-                if resource == HtmlSemanticResource::Work {
-                    cap
-                } else {
-                    10000000
-                },
-                if resource == HtmlSemanticResource::OutputRecords {
-                    cap
-                } else {
-                    100
-                },
-                if resource == HtmlSemanticResource::ScratchRecords {
-                    cap
-                } else {
-                    1000
-                },
-                0,
-                if resource == HtmlSemanticResource::AllocatedBytes {
-                    cap
-                } else {
-                    1000000
-                },
-                0,
-            );
-            let mut s = session(&f, &c, l, 6, HtmlSemanticCancellation::new());
-            let result = s.query(std::slice::from_ref(&req));
-            if cap == exact {
-                assert!(result.is_ok(), "{resource:?}: {result:?}");
-            } else {
-                let e = result.unwrap_err();
-                assert!(
-                    matches!(e.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{e:?}"
-                );
-                assert_eq!(e.qualification().unwrap().limits(), l);
-                assert_eq!(s.query(&[]).unwrap_err(), e);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
+    // The traversal climbs to the document, enters its child list (one
+    // iterator record) and finds the owned submit button first; the default
+    // button record is cloned, so no nested payload exists. The payload and
+    // step layout of the submitter classification are private, so work is
+    // required to be charged but not pinned.
+    assert_exact_and_one_short_caps(
+        "default button",
+        &f.capture,
+        &c,
+        6,
+        limits(),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
     let mut s = session(&f, &c, limits(), 5, HtmlSemanticCancellation::new());
     let err = s
         .query(&[
@@ -771,6 +737,29 @@ fn fallback_scan_has_exact_budget_and_duplicate_batch_order() {
     let req = HtmlSemanticRequest::new(
         f.ids[0].clone(),
         HtmlSemanticQuery::FormImplicitSubmissionCondition,
+    );
+    // Two input blockers and no submit button: the default-button search and
+    // then the blocker count each climb to the document and descend through its
+    // child list and one blocker's own (empty) list, so each walk's stack holds
+    // two iterator records and the two stacks are separate allocations (four
+    // records of growth in all). No nested storage exists. The scans' visit
+    // layout is private, so work is required to be charged without being
+    // pinned.
+    assert_exact_and_one_short_caps(
+        "implicit submission fallback scan",
+        &f.capture,
+        &c,
+        0,
+        limits(),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes() + 4 * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
     );
     let baseline = report(&f, &c, HtmlSemanticQuery::FormImplicitSubmissionCondition).usage();
     for cap in [baseline.work(), baseline.work() - 1] {

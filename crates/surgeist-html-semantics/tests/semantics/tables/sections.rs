@@ -1,6 +1,6 @@
 use crate::semantics::support::{
-    builder, context, scalar_limits as capped, semantic_limits_with_integer_digits as limits,
-    session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context,
+    scalar_limits as capped, semantic_limits_with_integer_digits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -125,10 +125,14 @@ fn interleaved_multiple_sections_select_first_identity_in_ordinary_order() {
         value(&r, 1),
         &HtmlSemanticValue::Known(Some(c.subject_id(&foot).unwrap()))
     );
-    assert!(matches!(
+    // The rows collection lists thead rows first, so the first thead in source
+    // order is the first section whose unestablished children are needed.
+    assert_eq!(
         query(&c, &id, HtmlSemanticQuery::TableRows, 0).results()[0].fact(),
-        HtmlSemanticFact::TableRows(HtmlSemanticValue::Missing(_))
-    ));
+        &HtmlSemanticFact::TableRows(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::OrderedChildren(c.subject_id(&head).unwrap())
+        ))
+    );
 }
 
 #[test]
@@ -377,70 +381,43 @@ fn wrong_table_role_non_element_and_foreign_namespace_preserve_applicability() {
     }
 }
 
+/// Work of one thead/tfoot getter request, excluding the batch's shared result
+/// reservation, when `skipped` earlier sibling elements of five-unit names are
+/// scanned before the match: the request lookup (1) and the dispatcher's HTML
+/// namespace test (29); the table lookup (1), namespace test (29) and "table"
+/// recognition; the child scan's lookup and entry (2); a loop charge (1),
+/// lookup (1) and recognition for each scanned child, the match included; and
+/// the result write (1).
+fn section_request_work(skipped: usize) -> usize {
+    let n = KnownHtmlElement::ALL.len();
+    let ns = "http://www.w3.org/1999/xhtml".len();
+    let scanned = |count: usize| count * (1 + 1 + ("thead".len() + 1) * n + ns);
+    (1 + 1 + ns) + (1 + 1 + ns + (("table".len() + 1) * n + ns)) + 2 + scanned(skipped + 1) + 1
+}
+
 #[test]
 fn exact_and_one_short_work_output_bytes_stop_qualified_without_nested_allocations() {
     for (q, local) in GETTERS {
         let (c, id, expected) = simple(local);
         let cx = context(&c);
-        let r = session(
+        let r = assert_exact_and_one_short_caps(
+            local,
             &c,
             &cx,
-            capped(HtmlSemanticResource::Work, 20000000),
             0,
-            HtmlSemanticCancellation::new(),
-        )
-        .query(&[request(&id, q)])
-        .unwrap();
-        let u = r.usage();
-        assert_eq!(u.output_records(), 1);
-        assert_eq!(
-            u.allocated_bytes(),
-            std::mem::size_of::<HtmlSemanticResult>()
+            limits(),
+            &[request(&id, q)],
+            ExpectedUsage {
+                work: Charge::Exactly(1 + section_request_work(0)),
+                output_records: Charge::Exactly(1),
+                allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+                ..ExpectedUsage::none()
+            },
         );
-        assert_eq!(u.peak_scratch_records(), 0);
-        assert_eq!(u.nested_output_records(), 0);
-        for (resource, exact) in [
-            (HtmlSemanticResource::Work, u.work()),
-            (HtmlSemanticResource::OutputRecords, 1),
-            (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-        ] {
-            let req = request(&id, q);
-            let r = session(
-                &c,
-                &cx,
-                capped(resource, exact),
-                0,
-                HtmlSemanticCancellation::new(),
-            )
-            .query(std::slice::from_ref(&req))
-            .unwrap();
-            assert_eq!(
-                value(&r, 0),
-                &HtmlSemanticValue::Known(Some(expected.clone()))
-            );
-            let mut s = session(
-                &c,
-                &cx,
-                capped(resource, exact - 1),
-                0,
-                HtmlSemanticCancellation::new(),
-            );
-            let f = s.query(std::slice::from_ref(&req)).unwrap_err();
-            assert!(
-                matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if *actual == resource)
-            );
-            assert_eq!(s.query(&[]).unwrap_err(), f);
-            let qual = f.qualification().unwrap();
-            assert_eq!(qual.capture(), c.identity());
-            assert_eq!(qual.context(), cx.identity());
-            assert_eq!(qual.host_revision(), c.host_facts_revision());
-            assert_eq!(qual.limits(), capped(resource, exact - 1));
-            assert_eq!(s.usage().scratch_records(), 0);
-            assert_eq!(
-                value(&r, 0),
-                &HtmlSemanticValue::Known(Some(expected.clone()))
-            );
-        }
+        assert_eq!(
+            value(&r, 0),
+            &HtmlSemanticValue::Known(Some(expected.clone()))
+        );
     }
 }
 
@@ -474,46 +451,28 @@ fn duplicate_mixed_batch_and_repeated_queries_charge_again_and_late_failure_is_a
         2 * old.usage().allocated_bytes()
     );
     assert_eq!(old.results(), again.results());
-    assert_eq!(
-        old.usage().allocated_bytes(),
-        3 * std::mem::size_of::<HtmlSemanticResult>()
+    // Head, foot and head again: the shared reservation (1), two head requests
+    // matching the first child and a foot request that scans the head before
+    // the foot.
+    let n = KnownHtmlElement::ALL.len();
+    let work = 1
+        + 3 * section_request_work(0)
+        + (1 + 1 + ("thead".len() + 1) * n + "http://www.w3.org/1999/xhtml".len());
+    let checked = assert_exact_and_one_short_caps(
+        "mixed section batch",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &reqs,
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(3),
+            allocated_bytes: Charge::Exactly(3 * std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
     );
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, old.usage().work()),
-        (HtmlSemanticResource::OutputRecords, 3),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            old.usage().allocated_bytes(),
-        ),
-    ] {
-        assert_eq!(
-            session(
-                &c,
-                &cx,
-                capped(resource, exact),
-                0,
-                HtmlSemanticCancellation::new()
-            )
-            .query(&reqs)
-            .unwrap()
-            .results(),
-            old.results()
-        );
-        let mut bounded = session(
-            &c,
-            &cx,
-            capped(resource, exact - 1),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = bounded.query(&reqs).unwrap_err();
-        assert!(
-            matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if *actual == resource)
-        );
-        assert_eq!(bounded.query(&[]).unwrap_err(), f);
-        assert_eq!(bounded.usage().scratch_records(), 0);
-        assert_eq!(old.results(), again.results());
-    }
+    assert_eq!(checked.results(), old.results());
 }
 
 #[test]

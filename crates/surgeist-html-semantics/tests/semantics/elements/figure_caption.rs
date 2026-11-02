@@ -1,6 +1,7 @@
 use crate::semantics::support::{
-    builder, context, scalar_limits as resource_limits,
-    semantic_limits_with_integer_digits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context,
+    scalar_limits as resource_limits, semantic_limits_with_integer_digits as limits, session,
+    validated_work,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -425,42 +426,23 @@ fn huge_title_and_text_are_unconsulted_with_zero_raw_scratch_and_nested_caps() {
 fn exact_and_one_short_work_output_and_actual_bytes_retain_the_first_stop() {
     let (c, id, expected) = simple();
     let cx = context(&c);
-    let u = report(&c, &id).usage();
-    assert_eq!(u.output_records(), 1);
-    assert_eq!(u.nested_output_records(), 0);
-    assert_eq!(u.peak_scratch_records(), 0);
-    assert!(u.allocated_bytes() >= std::mem::size_of::<HtmlSemanticResult>());
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        let req = request(&id, HtmlSemanticQuery::FigureCaption);
-        let r = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact),
-            0,
-            HtmlSemanticCancellation::new(),
-        )
-        .query(std::slice::from_ref(&req))
-        .unwrap();
-        assert_eq!(value(&r), &HtmlSemanticValue::Known(Some(expected.clone())));
-        let mut s = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact - 1),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        let failure = s.query(std::slice::from_ref(&req)).unwrap_err();
-        assert!(
-            matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if *actual == resource)
-        );
-        assert_eq!(s.query(&[]).unwrap_err(), failure);
-        assert_eq!(s.usage().scratch_records(), 0);
-        assert_eq!(failure.qualification().unwrap().capture(), c.identity());
-    }
+    // The answer is a cloned identity: one result record and no nested or
+    // scratch storage. The figure-caption scan's visit layout is private, so
+    // work is required to be charged without being pinned.
+    let r = assert_exact_and_one_short_caps(
+        "figure caption",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id, HtmlSemanticQuery::FigureCaption)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(value(&r), &HtmlSemanticValue::Known(Some(expected)));
 }
 
 #[test]
@@ -477,10 +459,20 @@ fn repeated_queries_charge_again_and_late_work_failure_returns_no_batch_prefix()
         2 * old.usage().allocated_bytes()
     );
     assert_eq!(value(&old), &HtmlSemanticValue::Known(Some(expected)));
+    // One request's work, proved least-admitting, admits the first request of a
+    // two-request batch (its reservation is shared) and stops inside the second.
+    let one = validated_work(
+        "figure caption",
+        &c,
+        &cx,
+        0,
+        limits(),
+        std::slice::from_ref(&req),
+    );
     let mut bounded = session(
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, old.usage().work()),
+        resource_limits(HtmlSemanticResource::Work, one),
         0,
         HtmlSemanticCancellation::new(),
     );

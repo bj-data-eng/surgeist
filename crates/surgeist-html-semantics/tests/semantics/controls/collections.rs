@@ -1,12 +1,13 @@
 use crate::semantics::support::{
-    COLLECTION_RESOURCES, cap_resources, compact_builder_without_registries as builder,
-    moderate_semantic_limits_with_scratch as limits,
+    COLLECTION_RESOURCES, Charge, ExpectedUsage, assert_exact_and_one_short_caps, cap_resources,
+    compact_builder_without_registries as builder, moderate_semantic_limits_with_scratch as limits,
+    result_record_bytes,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedNodeKind,
-    HtmlCapturedShadowProperties, HtmlControlFacts, HtmlControlFactsLimits,
+    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
+    HtmlCapturedNodeKind, HtmlCapturedShadowProperties, HtmlControlFacts, HtmlControlFactsLimits,
     HtmlCustomControlClassification, HtmlFormAssociation, HtmlFormAssociationState,
     HtmlListedControlCollection, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
@@ -987,67 +988,43 @@ fn exact_and_one_short_work_output_scratch_nested_and_byte_caps_are_real() {
         .unwrap();
     let f = finish(b, &[form, fieldset, input, button]);
     let c = owned(&f, 0, &[1, 2, 3]);
-    for (target, q, count) in [
-        (0, HtmlSemanticQuery::FormControls, 3),
-        (0, HtmlSemanticQuery::FormLength, 3),
-        (1, HtmlSemanticQuery::FieldsetControls, 2),
+    // Form controls are found by a walk from the capture root whose stack holds
+    // the document, form, fieldset and one control's (empty) child list at its
+    // deepest, four records; the fieldset walk starts at the fieldset and holds
+    // its own and one control's list, two. The count query retains no ids,
+    // while the collections retain one id per listed control, one at a time.
+    // The walks' visit layouts are private, so work is required to be charged
+    // without being pinned, and the bytes must cover the result record, the
+    // retained ids and the deepest stack.
+    for (target, q, count, retained, depth) in [
+        (0, HtmlSemanticQuery::FormControls, 3, 3, 4),
+        (0, HtmlSemanticQuery::FormLength, 3, 0, 4),
+        (1, HtmlSemanticQuery::FieldsetControls, 2, 2, 2),
     ] {
         let req = HtmlSemanticRequest::new(f.ids[target].clone(), q);
-        let baseline = report(&f, &c, target, q).usage();
-        assert_eq!(baseline.scratch_records(), 0);
-        assert!(baseline.peak_scratch_records() > 0);
-        assert!(baseline.allocated_bytes() > 0);
-        if q != HtmlSemanticQuery::FormLength {
-            assert!(baseline.nested_output_records() >= count);
-        }
-        for (resource, exact) in [
-            (HtmlSemanticResource::Work, baseline.work()),
-            (
-                HtmlSemanticResource::OutputRecords,
-                baseline.output_records(),
-            ),
-            (
-                HtmlSemanticResource::ScratchRecords,
-                baseline.peak_scratch_records(),
-            ),
-            (
-                HtmlSemanticResource::NestedOutputRecords,
-                baseline.nested_output_records(),
-            ),
-            (
-                HtmlSemanticResource::AllocatedBytes,
-                baseline.allocated_bytes(),
-            ),
-        ] {
-            if exact == 0 {
-                continue;
-            }
-            for cap in [exact, exact - 1] {
-                let l = capped(resource, cap);
-                let mut s = session(&f, &c, l, 0, HtmlSemanticCancellation::new());
-                let result = s.query(std::slice::from_ref(&req));
-                if cap == exact {
-                    let r = result.unwrap();
-                    if q == HtmlSemanticQuery::FormLength {
-                        assert_eq!(length(&r), &HtmlSemanticValue::Known(count));
-                    } else {
-                        assert_eq!(controls(&r).len(), count);
-                    }
-                } else {
-                    let failure = result.unwrap_err();
-                    assert!(
-                        matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: r, .. } if *r == resource),
-                        "{failure:?}"
-                    );
-                    let key = failure.qualification().unwrap();
-                    assert_eq!(key.capture(), f.capture.identity());
-                    assert_eq!(key.context(), c.identity());
-                    assert_eq!(key.host_revision(), f.capture.host_facts_revision());
-                    assert_eq!(key.limits(), l);
-                    assert_eq!(s.query(&[]).unwrap_err(), failure);
-                }
-                assert_eq!(s.usage().scratch_records(), 0);
-            }
+        let r = assert_exact_and_one_short_caps(
+            &format!("{q:?}"),
+            &f.capture,
+            &c,
+            0,
+            limits(),
+            std::slice::from_ref(&req),
+            ExpectedUsage {
+                output_records: Charge::Exactly(1),
+                peak_scratch_records: Charge::Exactly(depth),
+                nested_output_records: Charge::Exactly(retained),
+                allocated_bytes: Charge::AtLeast(
+                    result_record_bytes()
+                        + retained * std::mem::size_of::<HtmlCaptureSubjectId>()
+                        + depth * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+                ),
+                ..ExpectedUsage::none()
+            },
+        );
+        if q == HtmlSemanticQuery::FormLength {
+            assert_eq!(length(&r), &HtmlSemanticValue::Known(count));
+        } else {
+            assert_eq!(controls(&r).len(), count);
         }
     }
 }

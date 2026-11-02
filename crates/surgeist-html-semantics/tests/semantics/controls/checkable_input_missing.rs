@@ -1,16 +1,16 @@
 use crate::semantics::support::{
-    SCALAR_AND_SCRATCH_RESOURCES, builder, cap_resources,
-    semantic_limits_with_integer_digits as limits, session,
+    Charge, ExpectedUsage, SCALAR_AND_SCRATCH_RESOURCES, assert_exact_and_one_short_caps, builder,
+    cap_resources, result_record_bytes, semantic_limits_with_integer_digits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlControlFlag, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlInputControlState, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlInputControlState, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -539,43 +539,27 @@ fn exact_and_one_short_work_output_scratch_bytes_are_terminal_and_cleanup() {
         &[(a.clone(), Some(false)), (z.clone(), Some(false))],
         vec![],
     );
-    let usage = report(&c, &cx, &a, 5).usage();
-    assert_eq!(usage.nested_output_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, usage.work()),
-        (HtmlSemanticResource::OutputRecords, usage.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            usage.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            usage.allocated_bytes(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                5,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = ss.query(&[request(&a)]);
-            if cap == exact {
-                assert_eq!(fact(&result.unwrap()), &HtmlSemanticValue::Known(true));
-            } else {
-                let f = result.unwrap_err();
-                assert!(
-                    matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if r==&resource)
-                );
-                assert_eq!(f.qualification().unwrap().context(), cx.identity());
-                assert_eq!(ss.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    // The radio-group scan holds the document's child list while it examines
+    // members; the answer is a Boolean, so there is no nested storage. The
+    // scan's depth and visit layout are private, so scratch and work are
+    // required to be charged without being pinned.
+    let r = assert_exact_and_one_short_caps(
+        "radio group missing",
+        &c,
+        &cx,
+        5,
+        HtmlSemanticLimits::new(20000000, 100, 1000, 1000000, 1000000, 0),
+        &[request(&a)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(fact(&r), &HtmlSemanticValue::Known(true));
 }
 #[test]
 fn consulted_whole_type_and_name_caps_preserve_original_failure() {
@@ -627,7 +611,10 @@ fn duplicate_queries_recompute_and_cumulate_cost_without_retaining_group_vectors
     let mut ss = session(&c, &cx, limits(), 5, HtmlSemanticCancellation::new());
     let two = ss.query(&[request(&a), request(&a)]).unwrap();
     assert_eq!(two.results().len(), 2);
-    assert!(two.usage().work() > one.usage().work());
+    // Derived from the shared tariff: the batch's one result reservation (1) is
+    // charged once, so two identical requests cost twice one request's work less
+    // that shared unit.
+    assert_eq!(two.usage().work(), 2 * one.usage().work() - 1);
     assert!(two.usage().allocated_bytes() > one.usage().allocated_bytes());
     assert_eq!(two.usage().nested_output_records(), 0);
     assert_eq!(two.usage().scratch_records(), 0);
@@ -968,7 +955,27 @@ fn late_confirmed_checked_proof_is_still_subject_to_real_work_and_scratch_limits
         &[(a.clone(), None), (z.clone(), Some(true))],
         vec![association(&a, None), association(&z, None)],
     );
-    let baseline = report(&c, &cx, &a, 5);
+    // The proof needs the later radio's confirmed state, so it scans the group;
+    // the scan's depth and visit layout are private, so work and scratch are
+    // required to be charged without being pinned. The helper proves the
+    // reported work and peak scratch are the least admitting caps before the
+    // loop below reuses them to stop the late proof.
+    let baseline = assert_exact_and_one_short_caps(
+        "late confirmed checked proof",
+        &c,
+        &cx,
+        5,
+        HtmlSemanticLimits::new(20000000, 100, 1000, 1000000, 1000000, 0),
+        &[request(&a)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
     for (resource, cap) in [
         (HtmlSemanticResource::Work, baseline.usage().work() - 1),
         (

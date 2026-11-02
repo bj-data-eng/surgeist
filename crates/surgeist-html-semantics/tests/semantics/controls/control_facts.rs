@@ -1,12 +1,13 @@
 use crate::semantics::support::{
-    compact_builder_without_registries as builder,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
+    compact_builder_without_registries as builder, result_record_bytes,
     small_semantic_limits_with_integer_digits as limits,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
+    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
     HtmlCapturedShadowProperties, HtmlControlFacts, HtmlControlFactsError, HtmlControlFactsLimits,
     HtmlControlFlag, HtmlCustomControlClassification, HtmlFormAssociation,
     HtmlFormAssociationState, HtmlFormOwner, HtmlFormOwnerOrigin, HtmlInputControlState,
@@ -728,15 +729,20 @@ fn individual_unavailable_slot_does_not_erase_other_known_slots() {
         )),
         &HtmlSemanticValue::Known(false)
     );
-    assert!(matches!(
+    // Without any control facts the input's current checkedness is unobserved
+    // state of exactly that input.
+    assert_eq!(
         flag(&query(
             &c,
             &context(&c, None, vec![]),
             &input,
             HtmlSemanticQuery::CurrentCheckedness
         )),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::ControlState {
+            subject: c.subject_id(&input).unwrap(),
+            flag: HtmlControlFlag::Checkedness,
+        })
+    );
 }
 
 #[test]
@@ -924,9 +930,28 @@ fn work_scratch_bytes_cancel_and_foreign_requests_preserve_qualification_and_ato
     let make = |l, cancel| {
         HtmlSemanticSession::new(&c, &cx, HtmlValueInterpreter::new(100), l, cancel).unwrap()
     };
-    let preserved = make(limits(), HtmlSemanticCancellation::new())
-        .query(std::slice::from_ref(&request))
-        .unwrap();
+    // The labeled-control search holds the label's, wrapper's and input's child
+    // lists as it descends and answers with a cloned identity: one result record
+    // and no nested storage. Its depth bookkeeping and visit layout are private,
+    // so scratch and work are required to be charged without being pinned. The
+    // helper proves the reported work is the least admitting cap before the stop
+    // below reuses it.
+    let preserved = assert_exact_and_one_short_caps(
+        "labeled control",
+        &c,
+        &cx,
+        100,
+        limits(),
+        std::slice::from_ref(&request),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
     let work = preserved.usage().work();
     assert_eq!(preserved.usage().scratch_records(), 0);
     let mut short = make(
@@ -1135,15 +1160,19 @@ fn inapplicable_native_and_foreign_subjects_are_distinct_from_missing_current_st
         flag(&query(&c, &cx, &option, HtmlSemanticQuery::DirtyValueFlag)),
         &HtmlSemanticValue::Inapplicable
     );
-    assert!(matches!(
+    // The option is applicable but no selectedness fact was supplied for it.
+    assert_eq!(
         flag(&query(
             &c,
             &cx,
             &option,
             HtmlSemanticQuery::CurrentSelectedness
         )),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::ControlState {
+            subject: c.subject_id(&option).unwrap(),
+            flag: HtmlControlFlag::Selectedness,
+        })
+    );
 }
 
 #[test]

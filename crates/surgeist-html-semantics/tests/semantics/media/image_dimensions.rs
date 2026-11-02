@@ -222,6 +222,17 @@ fn assert_axis(
     assert_eq!(v.css_pixels().denominator().decimal_digits(), d);
     assert_eq!(v.origin(), origin);
 }
+fn assert_missing(
+    axis: &HtmlImageDimensionAxisResult,
+    subject: &HtmlCaptureSubjectId,
+    reason: HtmlImageDimensionMissingReason,
+) {
+    let HtmlImageDimensionAxisResult::Missing(missing) = axis else {
+        panic!("{axis:?}")
+    };
+    assert_eq!(missing.subject(), subject);
+    assert_eq!(missing.reason(), reason);
+}
 fn resource(
     c: &HtmlCapture,
     id: &HtmlCaptureSubjectId,
@@ -613,10 +624,14 @@ fn common_prefix_sign_zero_and_exact_huge_integer_overrides_are_preserved() {
                 HtmlImageDimensionOrigin::ContentAttribute,
             );
         } else {
-            assert!(matches!(
+            // HTML "determine the dimensions" steps 3-4: an attribute that
+            // fails to parse leaves the natural dimensions, which are only
+            // known from an observed resource; none was supplied.
+            assert_missing(
                 v.width(),
-                HtmlImageDimensionAxisResult::Missing(_)
-            ));
+                &id,
+                HtmlImageDimensionMissingReason::ResourceObservation,
+            );
         }
         assert!(
             matches!(v.width_attribute(),HtmlImageDimensionAttributeObservation::Present { attribute,recovery:r } if attribute.value().code_units()==raw.encode_utf16().collect::<Vec<_>>() && *r==recovery)
@@ -657,10 +672,13 @@ fn exact_utf16_and_expanded_attribute_selection_use_original_slots() {
                 HtmlImageDimensionOrigin::ContentAttribute,
             );
         } else {
-            assert!(matches!(
+            // The unparsable width needs the natural dimensions, which no
+            // observed resource supplies here.
+            assert_missing(
                 v.width(),
-                HtmlImageDimensionAxisResult::Missing(_)
-            ));
+                &id,
+                HtmlImageDimensionMissingReason::ResourceObservation,
+            );
         }
     }
     let (c, id) = fixture(
@@ -1073,10 +1091,13 @@ fn known_no_selected_resource_needs_observed_unavailability_and_is_not_a_default
         100,
     )
     .unwrap();
-    assert!(matches!(
+    // A known absence of a selected resource does not by itself establish that
+    // the image is unavailable, so the natural dimensions stay unobserved.
+    assert_missing(
         result(&run(&c, &cx, &id)).width(),
-        HtmlImageDimensionAxisResult::Missing(_)
-    ));
+        &id,
+        HtmlImageDimensionMissingReason::ResourceObservation,
+    );
     let obs = HtmlImageDimensionResourceObservation::img(
         r.clone(),
         e.clone(),

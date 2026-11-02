@@ -1,12 +1,16 @@
-use crate::semantics::support::{builder, context, moderate_semantic_limits as limits};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context,
+    moderate_semantic_limits as limits,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
-    HtmlTemplateForNameRelation, HtmlTemplateForReport, HtmlTemplateForSelection,
+    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported,
+    HtmlSemanticValue, HtmlTemplateForNameRelation, HtmlTemplateForReport,
+    HtmlTemplateForSelection,
 };
 
 fn attr(value: impl Into<DocumentString>) -> Attribute {
@@ -333,10 +337,14 @@ fn empty_for_has_missing_author_coverage_without_losing_ineligibility() {
     let t = element(&mut b, &d, "template", vec![attr("")]);
     let c = b.finish().unwrap();
     let r = run(&c, &c.subject_id(&t).unwrap());
-    assert!(matches!(
+    // Author coverage needs the template's tree, and its own parent was never
+    // established, so that parent is the missing evidence.
+    assert_eq!(
         known(&r).name_relation(),
-        HtmlTemplateForNameRelation::Missing(_)
-    ));
+        &HtmlTemplateForNameRelation::Missing(HtmlSemanticMissing::Parent(
+            c.subject_id(&t).unwrap()
+        ))
+    );
     assert_eq!(known(&r).selection(), &HtmlTemplateForSelection::EmptyName);
 }
 #[test]
@@ -383,10 +391,15 @@ fn unestablished_connection_does_not_turn_capture_membership_into_same_tree() {
     children(&mut b, &t, &[]);
     let c = b.finish().unwrap();
     let r = run(&c, &c.subject_id(&t).unwrap());
-    assert!(matches!(
+    // Both nodes belong to the capture, but the template's parent was never
+    // established, so whether the marker shares its tree is unknown: that parent
+    // is the missing evidence, not a same-tree match.
+    assert_eq!(
         known(&r).name_relation(),
-        HtmlTemplateForNameRelation::Missing(_)
-    ));
+        &HtmlTemplateForNameRelation::Missing(HtmlSemanticMissing::Parent(
+            c.subject_id(&t).unwrap()
+        ))
+    );
 }
 #[test]
 fn separate_fragment_marker_does_not_match_document_template() {
@@ -485,6 +498,25 @@ fn exact_actual_scratch_output_and_work_limits_keep_first_stop_and_release() {
     let (c, t, _) = one("X", "marker", "name='X' x='Y'");
     let r = run(&c, &t);
     let u = r.usage();
+    // The independent expectation for the usage the loops below cap: one
+    // result record, a processing-instruction pseudo-attribute scan whose
+    // private layout makes work and scratch required-to-be-charged rather than
+    // pinned, and no nested storage; the exact cap on every resource must
+    // reproduce the report and one short must fail with exactly that resource.
+    assert_exact_and_one_short_caps(
+        "template for",
+        &c,
+        &context(&c),
+        100,
+        limits(),
+        &[request(&t)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let exact = HtmlSemanticLimits::new(
         u.work(),
         u.output_records(),

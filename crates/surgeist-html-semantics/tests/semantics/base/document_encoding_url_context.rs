@@ -1,4 +1,7 @@
 #![forbid(unsafe_code)]
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, result_record_bytes,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::*;
 
@@ -286,58 +289,33 @@ fn selected_query_work_and_scratch_are_finite_and_first_cancellation_is_sticky()
 #[test]
 fn result_and_traversal_capacities_have_exact_and_one_short_boundaries() {
     let (capture, document, context, _) = fixture(true, true, Some(HtmlBaseEncoding::fresh()));
-    let report = query(
+    // Independent domains: one returned result and the first-Base search's
+    // iterator stack. The search enters the document's child list and finds the
+    // first base there, so exactly one frame is live; the result is a cloned
+    // selection, so no nested storage exists. URL-bank formation and
+    // selected-value retained bytes belong to other accounts. The search's
+    // visit layout is private, so work is required to be charged without being
+    // pinned.
+    let report = assert_exact_and_one_short_caps(
+        "document encoding url context",
         &capture,
         &context,
-        &document,
+        10000,
         limits(),
-        HtmlSemanticCancellation::new(),
-    )
-    .unwrap();
-    let usage = report.usage();
-    // Independent domains: one returned result and the actual first-Base DFS
-    // scratch/allocator capacities measured by the owning session (not URL-bank
-    // formation or selected-value retained bytes).
-    for resource in [
-        HtmlSemanticResource::OutputRecords,
-        HtmlSemanticResource::ScratchRecords,
-        HtmlSemanticResource::AllocatedBytes,
-    ] {
-        let (outputs, scratch, bytes) = (
-            usage.output_records(),
-            usage.peak_scratch_records(),
-            usage.allocated_bytes(),
-        );
-        let exact = HtmlSemanticLimits::new(100000, outputs, scratch, 0, bytes, 0);
-        query(
-            &capture,
-            &context,
-            &document,
-            exact,
-            HtmlSemanticCancellation::new(),
-        )
-        .unwrap();
-        let one_short = match resource {
-            HtmlSemanticResource::OutputRecords => {
-                HtmlSemanticLimits::new(100000, outputs - 1, scratch, 0, bytes, 0)
-            }
-            HtmlSemanticResource::ScratchRecords => {
-                HtmlSemanticLimits::new(100000, outputs, scratch - 1, 0, bytes, 0)
-            }
-            _ => HtmlSemanticLimits::new(100000, outputs, scratch, 0, bytes - 1, 0),
-        };
-        let failure = query(
-            &capture,
-            &context,
-            &document,
-            one_short,
-            HtmlSemanticCancellation::new(),
-        )
-        .unwrap_err();
-        assert!(
-            matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if *actual == resource)
-        );
-    }
+        &[HtmlSemanticRequest::new(
+            document.subject().clone(),
+            HtmlSemanticQuery::DocumentEncodingUrlContext,
+        )],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(report.results().len(), 1);
 }
 
 #[test]

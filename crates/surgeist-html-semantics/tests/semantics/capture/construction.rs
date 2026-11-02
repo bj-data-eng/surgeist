@@ -523,6 +523,27 @@ fn early_fact_refusals_and_each_admission_limit_return_original_builder_and_sour
     )
     .unwrap();
     let usage = full.usage();
+    // The fragment root and its one appended element are the two mapped nodes,
+    // each needs at least one traversal step and the worklist holds at least
+    // one entry. The adapter's remaining step layout is private, so each
+    // reported amount is checked to be the least admitting limit: it succeeds
+    // exactly and, in the loop below, one less is refused.
+    assert!(usage.mapping_entries() >= 2);
+    assert!(usage.scratch_entries() >= 1);
+    assert!(usage.work() >= usage.mapping_entries());
+    let (builder, _, observations) = make();
+    import(
+        builder,
+        source.clone(),
+        observations,
+        HtmlConstructionCaptureLimits::new(
+            usage.mapping_entries(),
+            usage.scratch_entries(),
+            usage.work(),
+        ),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
     for limits in [
         HtmlConstructionCaptureLimits::new(usage.mapping_entries() - 1, 20_000, 1_000_000),
         HtmlConstructionCaptureLimits::new(200, usage.scratch_entries() - 1, 1_000_000),
