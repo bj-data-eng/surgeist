@@ -713,13 +713,8 @@ where
         else {
             continue;
         };
-        let contribution = grid_axis_intrinsic_contribution_size(
-            &child_style,
-            input.constants.flow_axes,
-            output.size,
-            output.content_size,
-            input.axis,
-        ) + axis_margin_sum(margin, input.axis)
+        let contribution = grid_axis_size(input.constants.flow_axes, output.size, input.axis)
+            + axis_margin_sum(margin, input.axis)
             + scalar_adjustment;
         let contribution_kind = IntrinsicSpanContribution::for_axis(
             axis_available(input.available, input.axis),

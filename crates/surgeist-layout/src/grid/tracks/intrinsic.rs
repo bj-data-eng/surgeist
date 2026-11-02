@@ -944,20 +944,10 @@ where
         )
         .map_err(|status| crate::error::value_resolution_error(child, status))?;
         let logical_margin = grid.sizing_flow_axes.logical_edges(margin);
-        let column_contribution_size = grid_axis_intrinsic_contribution_size(
-            child_style,
-            grid.sizing_flow_axes,
-            output.size,
-            output.content_size,
-            GridAxisKind::Column,
-        );
-        let row_contribution_size = grid_axis_intrinsic_contribution_size(
-            child_style,
-            grid.sizing_flow_axes,
-            output.size,
-            output.content_size,
-            GridAxisKind::Row,
-        );
+        let column_contribution_size =
+            grid_axis_size(grid.sizing_flow_axes, output.size, GridAxisKind::Column);
+        let row_contribution_size =
+            grid_axis_size(grid.sizing_flow_axes, output.size, GridAxisKind::Row);
 
         if contributes_column {
             let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
@@ -1732,21 +1722,6 @@ pub(super) fn block_auto_margins_for_intrinsic_contribution<'input, S: LayoutSca
     );
     Ok(child_flow_axes.line_over_edge(margin)?.is_none()
         || child_flow_axes.line_under_edge(margin)?.is_none())
-}
-
-pub(super) fn grid_axis_intrinsic_contribution_size<'input, S: LayoutScalar>(
-    style: &GridItemProjection<'input, S>,
-    flow_axes: FlowAxes,
-    size: Size<S>,
-    content_size: Size<S>,
-    axis: GridAxisKind,
-) -> S {
-    let item_size = grid_axis_size(flow_axes, size, axis);
-    if grid_axis_used_overflow(style, flow_axes, axis).value() == Overflow::Visible {
-        item_size.max(grid_axis_size(flow_axes, content_size, axis))
-    } else {
-        item_size
-    }
 }
 
 pub(super) fn scroll_container_auto_minimum_zero_for_grid_axis<'input, S: LayoutScalar>(
