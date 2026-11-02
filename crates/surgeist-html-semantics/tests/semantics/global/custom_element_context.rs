@@ -1,4 +1,6 @@
-use crate::semantics::support::{builder_with, context};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_with, context,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -922,46 +924,25 @@ fn finite_work_one_short_is_sticky_qualified_and_discards_the_entire_batch() {
     let c = b.finish().unwrap();
     let cx = context(&c);
     let requests = [request(&c, &d), request(&c, &e)];
-    let good = session(
+    // A document is inapplicable and a defined custom element resolves to an
+    // owned classification value, so the batch retains only its two result
+    // records and no nested or scratch storage. The registry lookup's visit
+    // layout is private, so work is required to be charged without being
+    // pinned. The exact work cap must reproduce the whole batch and one short
+    // must discard it, with the first stop sticky and qualified.
+    let exact = assert_exact_and_one_short_caps(
+        "is attribute author context batch",
         &c,
         &cx,
-        100000,
-        100000,
         100,
-        HtmlSemanticCancellation::new(),
-    )
-    .query(&requests)
-    .unwrap();
-    let mut limited = session(
-        &c,
-        &cx,
-        good.usage().work() - 1,
-        100000,
-        100,
-        HtmlSemanticCancellation::new(),
+        limits(100000, 100000),
+        &requests,
+        ExpectedUsage {
+            output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(2 * std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
     );
-    let first = limited.query(&requests).unwrap_err();
-    assert!(matches!(
-        first.kind(),
-        HtmlSemanticFailureKind::LimitExceeded {
-            resource: HtmlSemanticResource::Work,
-            ..
-        }
-    ));
-    assert_eq!(first.qualification().unwrap().capture(), c.identity());
-    assert_eq!(first.qualification().unwrap().context(), cx.identity());
-    assert_eq!(first.usage().scratch_records(), 0);
-    assert_eq!(limited.query(&[]).unwrap_err(), first);
-    let exact = session(
-        &c,
-        &cx,
-        good.usage().work(),
-        100000,
-        100,
-        HtmlSemanticCancellation::new(),
-    )
-    .query(&requests)
-    .unwrap();
     assert_eq!(exact.results().len(), 2);
 }
 

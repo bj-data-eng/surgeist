@@ -1,4 +1,7 @@
-use crate::semantics::support::{context, small_builder_with_short_text as builder};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, context,
+    small_builder_with_short_text as builder,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -15,8 +18,8 @@ use surgeist_html_semantics::{
     HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
     HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailure,
     HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue, HtmlTranslationMode,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession,
+    HtmlSemanticUnsupported, HtmlSemanticValue, HtmlTranslationMode,
 };
 
 fn name(ns: Namespace, local: &str) -> QualifiedName {
@@ -396,10 +399,35 @@ fn complete_batch_limits_and_first_terminal_failure_are_sticky() {
     let c = b.finish().unwrap();
     let cx = context(&c);
     let request = request(&c, &e, HtmlSemanticQuery::Disabledness);
-    let measured = session(&c, &cx)
-        .query(std::slice::from_ref(&request))
-        .unwrap();
-    let exact = measured.usage().work();
+    // Derived from the documented tariffs: reservation (1), request lookup (1),
+    // dispatcher namespace test (29), "input" recognition, the subject lookup
+    // (1), the disabled attribute's intrinsic envelope (three vocabulary
+    // searches over the 5-unit name, one attribute-vocabulary search over an
+    // absent name and three namespace passes), the ancestor step (1) that
+    // reaches the root, and the result write (1).
+    let n = KnownHtmlElement::ALL.len();
+    let exact = 1
+        + 1
+        + (1 + 28)
+        + (("input".len() + 1) * n + 28)
+        + 1
+        + (("input".len() + 1) * n * 3 + KnownHtmlAttribute::ALL.len() + (28 + 1) * 3)
+        + 1
+        + 1;
+    assert_exact_and_one_short_caps(
+        "disabledness of a root input",
+        &c,
+        &cx,
+        10000,
+        HtmlSemanticLimits::new(1000000, 1, 10000, 10000, 1000000, 100000),
+        std::slice::from_ref(&request),
+        ExpectedUsage {
+            work: Charge::Exactly(exact),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let cancel = HtmlSemanticCancellation::new();
     let mut short = HtmlSemanticSession::new(
         &c,
