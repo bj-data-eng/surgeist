@@ -1,9 +1,8 @@
-use super::scroll::retained_child_scroll_geometry;
+use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
 use super::{Constants, with_block_scroll_projections};
 use crate::error::layout_child_geometry_error;
 use crate::geometry::{LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
 use crate::inline::PostLineClearIntent;
-use crate::scroll::ScrollContributionAccumulatorOf;
 use crate::{
     AvailableOf, Clear, Compute, Edges, Float, FloatExclusion, FloatExclusionIntervalErrorOf,
     FloatExclusionIntervalOf, FloatExclusionQueryOf, LayoutErrorKindOf, LayoutErrorOf,
@@ -1095,7 +1094,7 @@ pub(super) fn layout_floats<'input, Tree, S, M>(
     floats: &[PendingFloat<<Tree as Traverse>::Node, S>],
     container_size: Size<S>,
     constants: &Constants<S>,
-    contributions: &mut ScrollContributionAccumulatorOf<S>,
+    contributions: &mut BlockScrollContributions<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,

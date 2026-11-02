@@ -9,10 +9,6 @@ use crate::{
     PreferredSizeOf, Size, SizingAlgorithm,
 };
 
-pub(super) fn max_content_size<S: LayoutScalar>(a: Size<S>, b: Size<S>) -> Size<S> {
-    Size::new(a.width.max(b.width), a.height.max(b.height))
-}
-
 pub(super) fn preferred_size<S: LayoutScalar>(
     size: &Size<PreferredSizeOf<S>>,
     basis: Size<Option<S>>,

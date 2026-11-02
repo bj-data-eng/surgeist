@@ -1,7 +1,9 @@
 use super::absolute::absolute_static_position;
-use super::in_flow::{content_size_contribution, relative_inset_offset};
-use super::scroll::{child_scrollbar_size, retained_child_scroll_geometry};
-use super::sizing::{max_content_size, resolve_auto_optional, resolve_length_or_zero};
+use super::in_flow::relative_inset_offset;
+use super::scroll::{
+    BlockScrollContributions, child_scrollbar_size, retained_child_scroll_geometry,
+};
+use super::sizing::{resolve_auto_optional, resolve_length_or_zero};
 use super::*;
 use crate::FlowAxes;
 use crate::inline::InlineSourcePositionOf;
@@ -208,8 +210,7 @@ impl VisibleInlineRunTransition {
             hyphenation_state,
             tail_ledger,
             cursor_block,
-            content_size,
-            scroll_content_size,
+            intrinsic_inline_demand,
             baselines,
             static_positions,
             resolved_terminal_float_block_end,
@@ -272,7 +273,6 @@ impl VisibleInlineRunTransition {
             *indent_state = Some(committed);
         }
         let placement_size = constants.flow_axes.logical_size(placement.size);
-        let placement_content_size = constants.flow_axes.logical_size(placement.content_size);
         // An individual float still contributes its actual margin width.
         // Captured Max cohorts use actual Text-line and float-query receipts;
         // the ordinary global sum would combine expired rows.
@@ -289,20 +289,9 @@ impl VisibleInlineRunTransition {
         // Intrinsic inline demand follows the accepted flow/fit report. Actual
         // atomic borders and visible overflow remain in the independent content
         // and scroll geometry; a negative margin does not shrink those boxes.
-        content_size.inline = content_size
-            .inline
+        *intrinsic_inline_demand = (*intrinsic_inline_demand)
             .max(placement_size.inline)
             .max(float_intrinsics.result());
-        content_size.block = content_size.block.max(placement_content_size.block);
-        let placement_scroll_content_size = constants
-            .flow_axes
-            .logical_size(placement.scroll_content_size);
-        scroll_content_size.inline = scroll_content_size
-            .inline
-            .max(placement_scroll_content_size.inline);
-        scroll_content_size.block = scroll_content_size
-            .block
-            .max(placement_scroll_content_size.block);
         *owned_float_block_end = (*owned_float_block_end).max(placement.owned_float_block_end);
         let contribution = &placement.baselines;
         baselines
@@ -336,8 +325,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) hyphenation_state: &'a mut crate::hyphenation::LineHyphenationState,
     pub(super) tail_ledger: &'a mut crate::hyphenation::BlockTailLedger,
     pub(super) cursor_block: &'a mut S,
-    pub(super) content_size: &'a mut LogicalSizeOf<S>,
-    pub(super) scroll_content_size: &'a mut LogicalSizeOf<S>,
+    pub(super) intrinsic_inline_demand: &'a mut S,
     pub(super) baselines: &'a mut super::baseline_frame::PendingBaselines,
     pub(super) static_positions: &'a mut Vec<(Node, Point<S>)>,
     pub(super) resolved_terminal_float_block_end: &'a mut Option<S>,
@@ -349,7 +337,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) float_intrinsics: &'a mut super::floats::FloatIntrinsics<S>,
     pub(super) pending_floats: &'a mut Vec<PendingFloat<Node, S>>,
     pub(super) owned_float_block_end: &'a mut S,
-    pub(super) contributions: &'a mut ScrollContributionAccumulatorOf<S>,
+    pub(super) contributions: &'a mut BlockScrollContributions<S>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -371,8 +359,6 @@ struct InlineRunPlacement<Node, S: LayoutScalar> {
     indent_state: Option<crate::text_indent::IndentLineState>,
     hyphenation_state: crate::hyphenation::LineHyphenationState,
     size: Size<S>,
-    content_size: Size<S>,
-    scroll_content_size: Size<S>,
     static_positions: Vec<(Node, Point<S>)>,
     baselines: crate::inline::PhysicalBaselineReport,
     resolved_float_terminal_block_end: Option<S>,
@@ -464,7 +450,7 @@ fn layout_inline_run_children<'input, Tree, S, M>(
     run: &[<Tree as Traverse>::Node],
     request: InlineRunRequest<'_, 'input, <Tree as Traverse>::Node, S>,
     float_exclusions: &mut FloatExclusions<S, <Tree as Traverse>::Node>,
-    contributions: &mut ScrollContributionAccumulatorOf<S>,
+    contributions: &mut BlockScrollContributions<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, InlineRunPlacement<<Tree as Traverse>::Node, S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
@@ -1521,7 +1507,22 @@ where
         }
     }
 
-    let mut text_content_size = Size::ZERO;
+    if set_layout && text_output.is_none() {
+        for band in &report.line_bands {
+            let size = LogicalSizeOf::new(
+                band.inline_end - band.inline_start,
+                band.block_end - band.block_start,
+            );
+            let rect = crate::ScrollRectOf::try_new(
+                project_point(band.inline_start, band.block_start, size),
+                constants.flow_axes.physical_size(size),
+            )
+            .map_err(|error| layout_own_geometry_error(container, input.run_mode(), error))?;
+            contributions
+                .include_line(rect)
+                .map_err(|error| layout_own_geometry_error(container, input.run_mode(), error))?;
+        }
+    }
     if let Some(output) = text_output {
         if let Some(state) = tree.text_computation() {
             state.record_boxes(crate::text_layout::boxes::BoxRunUse {
@@ -1542,36 +1543,23 @@ where
         if let Some(Some(assignment)) = output.paragraph.boxes.last() {
             box_frontier = Some(assignment.outgoing.clone());
         }
-        // Every normal-flow line allocation and actual placed metric bound
-        // contributes independently, including atomic-only and terminal empty
-        // lines, beside genuine source-fragment and child-box contributions.
-        for rect in output
-            .line_bounds
-            .iter()
-            .flat_map(|bounds| [bounds.allocation, bounds.metrics])
-            .chain(
-                output
-                    .fragments
-                    .iter()
-                    .filter_map(|(_, fragment)| fragment.rect()),
-            )
-        {
-            let location = rect.origin();
-            text_content_size = max_content_size(
-                text_content_size,
-                content_size_contribution(
-                    Point::new(
-                        location.x - constants.content_box_inset.left,
-                        location.y - constants.content_box_inset.top,
-                    ),
-                    rect.size(),
-                    rect.size(),
-                    ComputedOverflow::VISIBLE,
-                    false,
-                ),
-            );
-            if set_layout {
-                contributions.include_direct_line(rect);
+        if set_layout {
+            // Only the actual line allocation supplies terminal padding edges.
+            // Placed metrics and source fragments remain independent overflow.
+            for bounds in &output.line_bounds {
+                contributions
+                    .include_line(bounds.allocation)
+                    .map_err(|error| {
+                        layout_own_geometry_error(container, input.run_mode(), error)
+                    })?;
+                contributions.geometry.include_direct_line(bounds.metrics);
+            }
+            for rect in output
+                .fragments
+                .iter()
+                .filter_map(|(_, fragment)| fragment.rect())
+            {
+                contributions.geometry.include_direct_line(rect);
             }
         }
         let mut groups: Vec<TextFragmentGroup<Tree::Node, S>> = Vec::new();
@@ -1688,8 +1676,6 @@ where
         }
     }
 
-    let mut content_size = report_size;
-    let mut scroll_content_size = text_content_size;
     for RetainedAtomicChild {
         node: child,
         source_index,
@@ -1717,19 +1703,6 @@ where
             )?;
             Point::new(point.x + inset.x, point.y + inset.y)
         };
-        let contribution = content_size_contribution(
-            Point::new(
-                location.x - constants.content_box_inset.left,
-                location.y - constants.content_box_inset.top,
-            ),
-            source.item.size,
-            output.content_size,
-            child_projection.common.overflow,
-            child_projection.common.item_is_replaced,
-        );
-        content_size = max_content_size(content_size, contribution);
-        scroll_content_size = max_content_size(scroll_content_size, contribution);
-
         if set_layout {
             let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
                 tree,
@@ -1775,13 +1748,14 @@ where
             .map(|source| (source.control.source_index(), source))
             .collect::<BTreeMap<_, _>>();
         for (child, source_index, _) in control_children {
-            let (position, inline_extent, endpoint, margin_flow) =
+            let (position, inline_extent, endpoint, margin_flow, formatted) =
                 if let Some(source) = control_sources.get(&source_index) {
                     (
                         source.position,
                         source.inline_extent,
                         source.endpoint,
                         source.margin_flow,
+                        true,
                     )
                 } else if let Some(source) = nonformatted_controls.get(&source_index) {
                     (
@@ -1794,6 +1768,7 @@ where
                             source.control,
                         )),
                         None,
+                        false,
                     )
                 } else {
                     continue;
@@ -1862,6 +1837,18 @@ where
                         },
                     ));
                 }
+            }
+            if formatted {
+                contributions
+                    .include_inline_strip(
+                        location,
+                        size,
+                        endpoint.map_or(
+                            Edges::ZERO,
+                            crate::inline::InlineEndpointOf::physical_margin,
+                        ),
+                    )
+                    .map_err(|error| layout_child_geometry_error(container, child, error))?;
             }
             tree.set_unrounded(
                 child,
@@ -1964,8 +1951,6 @@ where
         indent_state: (!report.line_bands.is_empty()).then_some(report.indent_state),
         hyphenation_state: report.hyphenation_state,
         size: report_size,
-        content_size,
-        scroll_content_size,
         static_positions,
         baselines,
         resolved_float_terminal_block_end,

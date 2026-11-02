@@ -298,11 +298,9 @@ fn floated_endpoints<S: LayoutScalar>() {
                 },
             };
             let child = NodeInputOf {
-                float: if direction == Direction::Ltr {
-                    Float::Left
-                } else {
-                    Float::Right
-                },
+                // Native Float::Left requests normalized line-start in both
+                // directions: physical left for LTR, physical right for RTL.
+                float: Float::Left,
                 margin: margins,
                 ..sized(WritingMode::HorizontalTb, direction, 14.0, 14.0)
             };
@@ -536,3 +534,129 @@ scalar_cases!(
     numeric_atomic_line_uses_actual_terminal_border_f64,
     atomic_line_endpoint
 );
+
+fn text_allocation_and_metric_padding<S: LayoutScalar>() {
+    // The maintained fixture registers real Ahem. At10px it has ascent8,
+    // descent2 and advance10. CSS line-height11.5 supplies .75 half-leading:
+    // normal allocation [0,11.5], native reference8.75, under2.75.
+    let paragraph = crate::test_support::text::PreparedParagraph::plain(
+        1,
+        surgeist_text::Source::new("X"),
+        crate::test_support::text::ahem_style(10.0, 11.5),
+    );
+    let padding = Edges {
+        bottom: LengthOf::px(scalar::<S>(3.0)),
+        ..Edges::all(LengthOf::ZERO)
+    };
+    let mut root_input = container(WritingMode::HorizontalTb, Direction::Ltr, padding);
+    // CONTENT10×1 plus bottom padding3: physical border/padding box10×4.
+    // The overflowing line retains its actual11.5 normal allocation.
+    root_input.size.height = PreferredSizeOf::px(scalar::<S>(1.0));
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(0, [1])
+        .children(1, [])
+        .style(0, root_input)
+        .input(1, paragraph.text_input(1));
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        0,
+        vec![paragraph.binding(0)],
+        crate::WrappingInput {
+            native_inline_boxes: Vec::new(),
+            gaps: Vec::new(),
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+        Vec::new(),
+    )
+    .unwrap();
+    let actual = compute_layout_with_flow(
+        &capture,
+        0,
+        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+    )
+    .unwrap();
+    assert_box(&actual, 0, (0.0, 0.0), (10.0, 4.0));
+    let root = output(&actual, 0);
+    let geometry = root.scroll_geometry.unwrap();
+    assert_eq!(geometry.border_box().origin(), Point::ZERO);
+    assert_eq!(
+        geometry.border_box().size(),
+        Size::new(scalar::<S>(10.0), scalar::<S>(4.0))
+    );
+    assert_eq!(geometry.content_box().origin(), Point::ZERO);
+    assert_eq!(
+        geometry.content_box().size(),
+        Size::new(scalar::<S>(10.0), scalar::<S>(1.0))
+    );
+    assert_eq!(root.padding.bottom, scalar::<S>(3.0));
+
+    let placed = actual.placed_text();
+    assert_eq!(placed.len(), 1);
+    assert_eq!(placed[0].container(), 0);
+    assert_eq!(placed[0].nodes(), &[1]);
+    let layout = placed[0].layout();
+    assert_eq!(layout.source().text().code_units(), &[0x58]);
+    let lines = layout.lines();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].range(), surgeist_text::Range::new(0, 1));
+    // Existing native policy snaps the common8.75 anchor to9, retaining
+    // fractional Text geometry. This moves the metric band by+.25 only;
+    // it cannot move the independent normal allocation endpoint11.5.
+    assert_eq!(lines[0].baseline(), 9.0);
+    assert_eq!(
+        lines[0].bounds(),
+        surgeist_text::Rect::new(0.0, 0.25, 10.0, 11.5)
+    );
+    assert_eq!(
+        layout
+            .glyph_runs()
+            .iter()
+            .map(|run| run.advance())
+            .collect::<Vec<_>>(),
+        vec![10.0]
+    );
+    let fragment = actual
+        .unrounded_inline_fragments()
+        .iter()
+        .find(|entry| *entry.owner() == crate::InlineFragmentOwner::Node(1))
+        .unwrap()
+        .fragment();
+    let rect = fragment.rect().unwrap();
+    assert_eq!(rect.origin(), Point::new(S::ZERO, scalar::<S>(0.25)));
+    assert_eq!(rect.size(), Size::new(scalar::<S>(10.0), scalar::<S>(11.5)));
+
+    // Overflow3 §3.3: allocation end11.5 owns padding3; rigid metric/source
+    // overflow ends11.75 independently. Union max(4,14.5,11.75)=14.5,
+    // not metric-end11.75+padding3=14.75.
+    let unrounded = root.scroll_geometry.unwrap().scrollable_overflow();
+    assert_eq!(unrounded.origin(), Point::ZERO);
+    assert_eq!(
+        unrounded.size(),
+        Size::new(scalar::<S>(10.0), scalar::<S>(14.5))
+    );
+    // Canonical final geometry rounds actual endpoints:14.5 rounds to15.
+    // It is not another fractional Text placement and is checked separately.
+    let final_root = actual
+        .final_entries()
+        .iter()
+        .find(|entry| entry.node() == 0)
+        .unwrap()
+        .output();
+    let rounded = final_root.scroll_geometry.unwrap().scrollable_overflow();
+    assert_eq!(rounded.origin(), Point::ZERO);
+    assert_eq!(
+        rounded.size(),
+        Size::new(scalar::<S>(10.0), scalar::<S>(15.0))
+    );
+}
+
+#[test]
+fn real_text_allocation_owns_terminal_padding_f32() {
+    text_allocation_and_metric_padding::<f32>();
+}
+
+#[test]
+fn real_text_allocation_owns_terminal_padding_f64() {
+    text_allocation_and_metric_padding::<f64>();
+}

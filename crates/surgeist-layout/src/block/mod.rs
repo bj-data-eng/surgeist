@@ -9,12 +9,12 @@ use super::inline::{
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
 use super::{
     AvailableOf, BoxSizing, Clear, CollapsibleMarginOf, Compute, ComputeInputOf, ComputeOutputOf,
-    ComputedOverflow, ContainingLayoutContext, Direction, Edges, InlineBoundaryInputOf,
-    InlineFragmentOutputOf, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf,
-    LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar, LengthAutoOf,
-    LineBreakInputOf, NodeOutputOf, Overflow, ParentFormattingContext,
-    PhysicalBlockMarginCollapseOf, Point, Position, RequestedAxis, RunMode, Size, SizingAlgorithm,
-    SizingMode, TextAlign, TextAlignLast, TextJustification, Traverse, VerticalAlignOf,
+    ContainingLayoutContext, Direction, Edges, InlineBoundaryInputOf, InlineFragmentOutputOf,
+    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation,
+    LayoutResultOf, LayoutScalar, LengthAutoOf, LineBreakInputOf, NodeOutputOf, Overflow,
+    ParentFormattingContext, PhysicalBlockMarginCollapseOf, Point, Position, RequestedAxis,
+    RunMode, Size, SizingAlgorithm, SizingMode, TextAlign, TextAlignLast, TextJustification,
+    Traverse, VerticalAlignOf,
 };
 use crate::error::{
     AtomicInlineParticipationRoleError, layout_child_geometry_error, layout_own_geometry_error,
@@ -24,10 +24,7 @@ use crate::layout_math::{
     MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinScalarClampExt, OptionalSizeExt,
     OptionalSizeMaxExt, resolve_containing_padding_border,
 };
-use crate::scroll::{
-    CanonicalScrollBoxSourceOf, ScrollContributionAccumulatorOf, UsedOverflow,
-    canonical_scroll_box_from_source,
-};
+use crate::scroll::{CanonicalScrollBoxSourceOf, UsedOverflow, canonical_scroll_box_from_source};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 
 #[cfg(test)]
@@ -272,7 +269,7 @@ where
         },
     )?;
     let logical_intrinsic_outer_size = LogicalSizeOf::new(
-        intrinsic_pass.content_size.inline + constants.logical_content_box_inset().inline_sum(),
+        intrinsic_pass.intrinsic_inline_demand + constants.logical_content_box_inset().inline_sum(),
         intrinsic_pass.auto_block(&constants, float_role),
     );
     let logical_intrinsic_outer_size = LogicalSizeOf::new(
@@ -399,7 +396,6 @@ where
                     scroll_box_projection,
                     &final_constants,
                     output_size,
-                    final_pass.scroll_content_size,
                     final_pass.contributions,
                 )
             })?;
@@ -418,7 +414,7 @@ where
             &final_pass.static_positions,
             output_size,
             &final_constants,
-            &mut contributions,
+            &mut contributions.geometry,
         )?;
         let published_scroll = with_block_scroll_projections::<Tree, M, _>(
             tree,

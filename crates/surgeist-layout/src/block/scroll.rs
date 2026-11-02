@@ -1,17 +1,132 @@
-use super::in_flow::block_final_in_flow_end;
 use super::{BlockChildProjection, Constants};
 use crate::error::layout_own_geometry_error;
-use crate::geometry::LogicalSizeOf;
+use crate::geometry::PhysicalSide;
 use crate::scroll::{
     CanonicalRetainedScrollSourceOf, CanonicalScrollBoxSourceOf, CanonicalScrollGeometryErrorOf,
     CanonicalScrollRangeSeedPolicy, CanonicalScrollSourceBuilderOf, ScrollBoxProjection,
-    ScrollContributionAccumulatorOf, ScrollOriginAxes, ScrollOriginProgression,
-    ScrollTargetProjection, canonical_scroll_box_from_source, scrollbar_size_from_overflow,
+    ScrollContributionAccumulatorOf, ScrollContributionErrorOf, ScrollOriginAxes,
+    ScrollOriginProgression, ScrollTargetProjection, canonical_scroll_box_from_source,
+    scrollbar_size_from_overflow,
 };
 use crate::{
-    Compute, Edges, LayoutResultOf, LayoutScalar, LogicalAxis, Point, RunMode, ScrollGeometryOf,
-    ScrollRectOf, Size, Traverse,
+    Compute, Edges, FlowAxes, LayoutResultOf, LayoutScalar, LogicalAxis, Point, RunMode,
+    ScrollGeometryOf, ScrollRectOf, Size, Traverse,
 };
+
+/// Accepted Block contributions and their directed terminal content edges.
+/// Descendant/absolute overflow belongs only to geometry, never to these ends.
+pub(super) struct BlockScrollContributions<S: LayoutScalar> {
+    pub(super) geometry: ScrollContributionAccumulatorOf<S>,
+    axes: FlowAxes,
+    inline_end: Option<S>,
+    block_end: Option<S>,
+}
+
+impl<S: LayoutScalar> BlockScrollContributions<S> {
+    pub(super) fn new(axes: FlowAxes, seed: ScrollRectOf<S>) -> Self {
+        Self {
+            geometry: ScrollContributionAccumulatorOf::new(seed),
+            axes,
+            inline_end: None,
+            block_end: None,
+        }
+    }
+
+    pub(super) fn include_in_flow_geometry(
+        &mut self,
+        location: Point<S>,
+        margin: Edges<S>,
+        geometry: ScrollGeometryOf<S>,
+    ) -> Result<(), ScrollContributionErrorOf<S>> {
+        self.geometry
+            .include_in_flow_geometry(location, margin, geometry)?;
+        let border = geometry.border_box();
+        if border.size().width > S::ZERO && border.size().height > S::ZERO {
+            let rect = ScrollRectOf::try_new(
+                Point::new(
+                    location.x + border.origin().x,
+                    location.y + border.origin().y,
+                ),
+                border.size(),
+            )?;
+            self.include_rect_end(LogicalAxis::Inline, rect, margin)?;
+            self.include_rect_end(LogicalAxis::Block, rect, margin)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn include_line(
+        &mut self,
+        rect: ScrollRectOf<S>,
+    ) -> Result<(), ScrollContributionErrorOf<S>> {
+        // A genuine line allocation remains a line even with a zero dimension.
+        self.geometry.include_direct_line(rect);
+        self.include_rect_end(LogicalAxis::Inline, rect, Edges::ZERO)?;
+        self.include_rect_end(LogicalAxis::Block, rect, Edges::ZERO)
+    }
+
+    pub(super) fn include_inline_strip(
+        &mut self,
+        location: Point<S>,
+        size: Size<S>,
+        margin: Edges<S>,
+    ) -> Result<(), ScrollContributionErrorOf<S>> {
+        self.include_rect_end(
+            LogicalAxis::Inline,
+            ScrollRectOf::try_new(location, size)?,
+            margin,
+        )
+    }
+
+    fn include_rect_end(
+        &mut self,
+        axis: LogicalAxis,
+        rect: ScrollRectOf<S>,
+        margin: Edges<S>,
+    ) -> Result<(), ScrollContributionErrorOf<S>> {
+        let side = match axis {
+            LogicalAxis::Inline => self.axes.inline_end(),
+            LogicalAxis::Block => self.axes.block_end(),
+        };
+        // Optional margin outsets cannot retract the actual border endpoint.
+        let candidate = match side {
+            PhysicalSide::Top => rect.origin().y - margin.top.max(S::ZERO),
+            PhysicalSide::Right => rect.origin().x + rect.size().width + margin.right.max(S::ZERO),
+            PhysicalSide::Bottom => {
+                rect.origin().y + rect.size().height + margin.bottom.max(S::ZERO)
+            }
+            PhysicalSide::Left => rect.origin().x - margin.left.max(S::ZERO),
+        };
+        if !candidate.is_finite() {
+            return Err(ScrollContributionErrorOf::NonFiniteFinalInFlowEnd {
+                axis,
+                value: candidate,
+            });
+        }
+        let end = match axis {
+            LogicalAxis::Inline => &mut self.inline_end,
+            LogicalAxis::Block => &mut self.block_end,
+        };
+        *end = Some(end.map_or(candidate, |current| match side {
+            PhysicalSide::Top | PhysicalSide::Left => current.min(candidate),
+            PhysicalSide::Right | PhysicalSide::Bottom => current.max(candidate),
+        }));
+        Ok(())
+    }
+
+    fn publish_ends(&mut self) -> Result<(), ScrollContributionErrorOf<S>> {
+        for (axis, coordinate) in [
+            (LogicalAxis::Inline, self.inline_end),
+            (LogicalAxis::Block, self.block_end),
+        ] {
+            if let Some(coordinate) = coordinate {
+                self.geometry
+                    .record_final_in_flow_end(self.axes, axis, coordinate)?;
+            }
+        }
+        Ok(())
+    }
+}
 
 pub(super) fn prepare_scroll_contributions<Node, S, M>(
     node: Node,
@@ -19,9 +134,8 @@ pub(super) fn prepare_scroll_contributions<Node, S, M>(
     projection: ScrollBoxProjection<'_, S>,
     constants: &Constants<S>,
     output_size: Size<S>,
-    scroll_content_size: LogicalSizeOf<S>,
-    mut contributions: ScrollContributionAccumulatorOf<S>,
-) -> LayoutResultOf<Node, ScrollContributionAccumulatorOf<S>, S, M>
+    mut contributions: BlockScrollContributions<S>,
+) -> LayoutResultOf<Node, BlockScrollContributions<S>, S, M>
 where
     Node: Copy,
     S: LayoutScalar,
@@ -35,25 +149,10 @@ where
             constants.settled_auto_scrollbars,
         ))
         .map_err(|error| layout_own_geometry_error(node, run_mode, error))?;
-    contributions.replace_container_seed(final_scroll_box.padding_box());
-    contributions.exclude_reserved_gutter_from_range();
-    for (axis, extent) in [
-        (LogicalAxis::Inline, scroll_content_size.inline),
-        (LogicalAxis::Block, scroll_content_size.block),
-    ] {
-        contributions
-            .record_final_in_flow_end(
-                constants.flow_axes,
-                axis,
-                block_final_in_flow_end(
-                    final_scroll_box.content_box(),
-                    constants.flow_axes,
-                    axis,
-                    extent,
-                ),
-            )
-            .map_err(|error| layout_own_geometry_error(node, run_mode, error))?;
-    }
+    contributions
+        .geometry
+        .replace_container_seed(final_scroll_box.padding_box());
+    contributions.geometry.exclude_reserved_gutter_from_range();
     Ok(contributions)
 }
 
@@ -69,13 +168,17 @@ pub(super) fn finish_scroll_geometry<'input, Tree, S, M>(
     target_projection: ScrollTargetProjection<'_, S>,
     constants: &Constants<S>,
     output_size: Size<S>,
-    mut contributions: ScrollContributionAccumulatorOf<S>,
+    mut contributions: BlockScrollContributions<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, PublishedScrollOf<S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
     contributions
+        .publish_ends()
+        .map_err(|error| layout_own_geometry_error(node, run_mode, error))?;
+    contributions
+        .geometry
         .include_terminal_padding(constants.padding)
         .map_err(|error| layout_own_geometry_error(node, run_mode, error))?;
     let scroll_geometry = block_scroll_geometry::<Tree, S, M>(
@@ -85,9 +188,10 @@ where
         target_projection,
         constants,
         output_size,
-        contributions,
+        contributions.geometry,
     )?;
     let content_size = contributions
+        .geometry
         .content_size_from_anchor(scroll_geometry.content_box().origin())
         .map_err(|error| layout_own_geometry_error(node, run_mode, error))?;
     Ok(PublishedScrollOf {
