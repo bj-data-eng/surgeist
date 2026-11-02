@@ -385,6 +385,162 @@ fn work_added_by_each_doubling_of_meta_elements_is_near_double() {
     );
 }
 
+#[test]
+fn work_added_by_each_doubling_of_unselectable_theme_color_metas_is_near_double() {
+    // Each of these is a candidate for the theme color: the exact name and a
+    // content attribute. None selects anything, since `bogus` is no color, so
+    // the selection is "none" after every one. Placing a candidate must cost
+    // what it takes to read that candidate, whatever candidates precede it.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><head>{}",
+                "<meta name=theme-color content=bogus>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_unselectable_color_scheme_metas_is_near_double() {
+    // `1` is no color-scheme value, so every candidate is read and none selected.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><head>{}",
+                "<meta name=color-scheme content=1>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_metas_behind_a_selected_theme_color_is_near_double() {
+    // The first candidate selects red. Every later one follows it in tree
+    // order, so it cannot change the selection and needs no reading.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><head><meta name=theme-color content=red>{}",
+                "<meta name=theme-color content=blue>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_candidate_metas_in_a_moved_subtree_is_near_double() {
+    // `</b>` finds the formatting element `b` with the furthest block `p`, and
+    // the adoption agency algorithm moves `p` with every meta it holds. Each
+    // meta is a candidate for the theme color that selects nothing, and the
+    // one move decides the selection once, not once for each candidate.
+    assert_doublings_add_near_double(
+        [10, 20, 40, 80],
+        |repeats| {
+            format!(
+                "<!doctype html><b><p>{}</b>",
+                "<meta name=theme-color content=bogus>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_candidate_metas_in_a_nested_moved_subtree_is_near_double() {
+    // The same move after a second formatting element and a block, so that the
+    // subtree moved is not the first child of its new parent.
+    assert_doublings_add_near_double(
+        [10, 20, 40, 80],
+        |repeats| {
+            format!(
+                "<!doctype html><a><b><div>{}</a>",
+                "<meta name=theme-color content=bogus>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_one_selects_selected_options_is_near_four_times() {
+    // Each selected option updates the select's selectedcontent. The pinned
+    // algorithm "update a select's descendant selectedcontent elements" lists
+    // the select's descendants in tree order and, for each selectedcontent,
+    // takes "the first option in select's list of options whose selectedness
+    // is true", a walk of the select's descendants (lines 10645-10660 of
+    // `references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md`).
+    // It is run by the steps that settle a select (lines 7838, 7930, 7970,
+    // 7988, 8258 and 8282 of the same file), so n selected options cost work
+    // proportional to the select's size each: quadratically in all. Reading the
+    // children of one parent must itself be linear in them, so the quadratic
+    // total is the whole growth: a ratio of at most four per doubling.
+    const BOUND: u64 = 4;
+    let sizes = [50usize, 100, 200, 400];
+    let measured: Vec<u64> = sizes
+        .iter()
+        .map(|&n| {
+            parse_work(format!(
+                "<!doctype html><select><selectedcontent></selectedcontent>{}",
+                "<option selected>x</option>".repeat(n)
+            ))
+            .visited
+        })
+        .collect();
+    for (pair, window) in sizes.windows(3).zip(measured.windows(3)) {
+        let (first, second) = (window[1] - window[0], window[2] - window[1]);
+        assert!(
+            second <= BOUND * first,
+            "record visits grew faster than quadratically: doubling {} -> {} options added \
+             {first}, doubling {} -> {} added {second}",
+            pair[0],
+            pair[1],
+            pair[1],
+            pair[2],
+        );
+    }
+}
+
+#[test]
+fn work_added_by_each_doubling_of_styles_fostered_before_their_table_is_near_double() {
+    // Each style sits in an element fostered before the table, so none of them
+    // is the last node of the tree, but each follows the styles before it.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><body><table>{}",
+                "<b><style>a{}</style></b>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
 /// One layer of nested declarative shadow roots: a host whose template becomes
 /// its shadow root, and the template and host still open.
 const SHADOW_LAYER: &str = "<div><template shadowrootmode=open><p>x</p>";
