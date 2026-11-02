@@ -214,6 +214,9 @@ impl TargetRegistry {
                 {
                     return Err(error("descriptor omits a binary's required feature"));
                 }
+                for reference in descriptor.source_references() {
+                    check_source_reference(&root, reference)?;
+                }
                 let id = descriptor.id().clone();
                 let target = RegisteredTarget {
                     descriptor,
@@ -238,6 +241,30 @@ impl TargetRegistry {
             .get(id)
             .ok_or_else(|| error(format!("target {id} is not registered")))
     }
+}
+/// A source reference is either an absolute URL, which this offline discovery
+/// does not fetch, or a workspace-relative file path with an optional
+/// `#fragment`; a path must name an existing regular file inside `root`.
+fn check_source_reference(root: &Path, reference: &str) -> Result<()> {
+    if reference.contains("://") {
+        return Ok(());
+    }
+    let path = reference
+        .split_once('#')
+        .map_or(reference, |(path, _)| path);
+    let resolved = RelativePath::new(path)
+        .and_then(|path| path.resolve_existing(root))
+        .map_err(|_| {
+            error(format!(
+                "source reference {reference:?} is neither a URL nor an existing workspace file"
+            ))
+        })?;
+    if !resolved.is_file() {
+        return Err(error(format!(
+            "source reference {reference:?} does not name a file"
+        )));
+    }
+    Ok(())
 }
 fn canonical(path: &Path) -> Result<PathBuf> {
     path.canonicalize()
