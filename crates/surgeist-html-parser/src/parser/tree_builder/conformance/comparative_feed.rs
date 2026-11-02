@@ -67,6 +67,11 @@ struct Literal {
     /// HTML tree builder implies (no token) and reconstruction copies add
     /// nothing to this count.
     min_sourced_rows: usize,
+    /// Source tokens that occur exactly once in `input` and must each be the
+    /// exact source range of some association row. The range is the token's
+    /// byte span in the (UTF-8) input, found by searching the input text, not
+    /// read from any parse output.
+    anchors: &'static [&'static str],
 }
 fn literals() -> Vec<Literal> {
     let mut result = Vec::new();
@@ -90,6 +95,7 @@ fn literals() -> Vec<Literal> {
             expected: p,
             // doctype, html, head, body, p and the one text token.
             min_sourced_rows: 6,
+            anchors: &["<!doctype html>", "<html>", "<head>", "<body>", "<p>"],
         });
     }
     // HTML877d adoption/reconstruction: two distinct i records, not one moved
@@ -110,6 +116,7 @@ fn literals() -> Vec<Literal> {
         expected: p,
         // doctype, html, head, body, p, b, i and the text tokens A, B, C, D.
         min_sourced_rows: 11,
+        anchors: &["<!doctype html>", "<html>", "<p>", "<b>", "<i>"],
     });
     let mut p = document();
     // The independent literal places PI before html. Shift the scaffold's
@@ -146,6 +153,7 @@ fn literals() -> Vec<Literal> {
         // doctype, processing instruction, p and its text; html, head and body
         // are implied.
         min_sourced_rows: 4,
+        anchors: &["<!doctype html>", "<?pi x?>", "<p>"],
     });
     result
 }
@@ -219,15 +227,31 @@ fn ordinary_scalar_feeds_keep_independent_native_literals_and_sourced_associatio
     for l in literals() {
         for width in [1, 7] {
             let (_, report, _) = scalar_feed(&l, width, &mut Silent);
-            let usage = report.usage().clone();
             let rows = report.associations();
             let mut sourced = 0;
+            let mut ranges = Vec::new();
             for i in 0..rows.len() {
                 if let Some(s) = rows.row(i).unwrap().unwrap().source() {
                     assert_eq!(s.source(), report.source().identity());
                     assert!(s.end() <= report.source().len());
+                    ranges.push((s.start(), s.end()));
                     sourced += 1;
                 }
+            }
+            for token in l.anchors {
+                assert_eq!(
+                    l.input.matches(token).count(),
+                    1,
+                    "{} scalar{width}: {token:?} is unique in the input",
+                    l.name
+                );
+                let start = l.input.find(token).unwrap();
+                assert!(
+                    ranges.contains(&(start, start + token.len())),
+                    "{} scalar{width}: no association row has exactly the source range {start}..{} of {token:?}",
+                    l.name,
+                    start + token.len()
+                );
             }
             assert!(
                 sourced >= l.min_sourced_rows,
@@ -235,7 +259,6 @@ fn ordinary_scalar_feeds_keep_independent_native_literals_and_sourced_associatio
                 l.name,
                 l.min_sourced_rows
             );
-            assert_eq!(report.usage(), &usage);
         }
     }
 }
