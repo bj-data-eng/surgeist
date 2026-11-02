@@ -238,7 +238,24 @@ pub enum NaturalArithmeticError {
 }
 impl fmt::Display for NaturalArithmeticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::NonCanonical => {
+                f.write_str("natural number digits are empty or have a leading zero")
+            }
+            Self::InvalidDigit { index, value } => {
+                write!(f, "natural number digit {value} at index {index} exceeds 9")
+            }
+            Self::ScratchNotEmpty => f.write_str("arithmetic scratch storage is not empty"),
+            Self::ScratchCapacity { required, capacity } => write!(
+                f,
+                "arithmetic scratch storage holds {capacity} digits but {required} are required"
+            ),
+            Self::RepresentationExhausted => {
+                f.write_str("arithmetic size cannot be represented on this platform")
+            }
+            Self::NotReady => f.write_str("arithmetic operation has an unfinished step"),
+            Self::EmptySlot => f.write_str("arithmetic operation was already consumed"),
+        }
     }
 }
 impl Error for NaturalArithmeticError {}

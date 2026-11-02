@@ -116,7 +116,14 @@ pub enum HtmlValuePoolError {
 }
 impl fmt::Display for HtmlValuePoolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HTML value pool protocol: {self:?}")
+        f.write_str(match self {
+            Self::ForeignOwner => "value pool action belongs to a different pool owner",
+            Self::WrongAction => "action does not match the pending value pool operation",
+            Self::NotReady => "value pool operation has an unfinished step",
+            Self::RepresentationExhausted => {
+                "value pool accounting size cannot be represented on this platform"
+            }
+        })
     }
 }
 impl Error for HtmlValuePoolError {}

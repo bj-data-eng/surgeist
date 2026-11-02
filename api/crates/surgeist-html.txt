@@ -3903,6 +3903,8 @@ pub enum surgeist_html::HtmlSandboxRedundancy
 pub surgeist_html::HtmlSandboxRedundancy::CustomProtocolsAndPopups
 pub surgeist_html::HtmlSandboxRedundancy::CustomProtocolsAndTopNavigation
 pub surgeist_html::HtmlSandboxRedundancy::TopNavigationAndByUserActivation
+impl core::fmt::Display for surgeist_html::HtmlSandboxRedundancy
+pub fn surgeist_html::HtmlSandboxRedundancy::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlSandboxValueError
 pub surgeist_html::HtmlSandboxValueError::Duplicate(surgeist_html::HtmlDuplicateTokenError)
 pub surgeist_html::HtmlSandboxValueError::Redundant(surgeist_html::HtmlSandboxRedundancy)
