@@ -1376,13 +1376,45 @@ impl PayloadStorage {
     /// of a listed control with a `form` attribute enters the explicit-form
     /// list, whose entries were admitted with the row. A row of another kind
     /// than the one admitted, or a list slot that was not admitted, refuses the
-    /// row before anything is appended.
+    /// row before anything is appended; the refused row stays in the registry
+    /// for its release (see [`Self::retain_refused`]).
     fn push_row(
         &mut self,
         prepared: PreparedSlot,
         row: RetainedPayload,
     ) -> Result<usize, SessionError> {
+        let (prepared_entries, selectedcontent_rows) = match self.admit_row(&prepared, &row) {
+            Ok(admitted) => admitted,
+            Err(error) => {
+                self.retain_refused(row);
+                return Err(error);
+            }
+        };
         let list = row_list(&row);
+        let slot = self.values.len();
+        self.prepared_entries = prepared_entries;
+        self.selectedcontent_rows = selectedcontent_rows;
+        self.values.push(row);
+        if let Some(kind) = list.and_then(|list| self.kind_slots.get_mut(list as usize)) {
+            kind.slots.push(slot);
+        }
+        if prepared.explicit_form
+            && let Some(kind) = self.explicit_forms.as_mut()
+        {
+            kind.slots.push(slot);
+        }
+        self.join_row(slot)?;
+        Ok(slot)
+    }
+    /// Checks that `row` is the kind of row `prepared` admitted and that
+    /// everything the append writes was admitted with it, and returns the
+    /// counts the append leaves. Writes nothing.
+    fn admit_row(
+        &self,
+        prepared: &PreparedSlot,
+        row: &RetainedPayload,
+    ) -> Result<(u64, usize), SessionError> {
+        let list = row_list(row);
         if list != prepared.list
             || prepared.explicit_form && list != Some(KindList::FormAssociation)
         {
@@ -1408,31 +1440,33 @@ impl PayloadStorage {
             .prepared_entries
             .checked_sub(prepared.entries)
             .ok_or_else(SessionError::registry_row)?;
-        let slot = self.values.len();
-        if matches!(
+        let selectedcontent_rows = if matches!(
             row,
             RetainedPayload::SelectFamily {
                 state: SelectMetadata::Selectedcontent(_),
                 ..
             }
         ) {
-            self.selectedcontent_rows = self
-                .selectedcontent_rows
+            self.selectedcontent_rows
                 .checked_add(1)
-                .ok_or_else(SessionError::registry_row)?;
+                .ok_or_else(SessionError::registry_row)?
+        } else {
+            self.selectedcontent_rows
+        };
+        Ok((prepared_entries, selectedcontent_rows))
+    }
+    /// Keeps a refused row in the registry, unlisted and unjoined, so that the
+    /// release of the registry returns whatever tickets the row owns: only that
+    /// release knows how to return each kind of row. The slot the prepare
+    /// reserved holds the row, and the row takes over the entry of its slot.
+    /// The entries admitted for its lists stay outstanding in
+    /// `prepared_entries`. A refusal is an inconsistency of the registry, which
+    /// the caller reports as the registry row.
+    fn retain_refused(&mut self, row: RetainedPayload) {
+        if self.values.len() < self.values.capacity() {
+            self.prepared_entries = self.prepared_entries.saturating_sub(1);
+            self.values.push(row);
         }
-        self.prepared_entries = prepared_entries;
-        self.values.push(row);
-        if let Some(kind) = list.and_then(|list| self.kind_slots.get_mut(list as usize)) {
-            kind.slots.push(slot);
-        }
-        if prepared.explicit_form
-            && let Some(kind) = self.explicit_forms.as_mut()
-        {
-            kind.slots.push(slot);
-        }
-        self.join_row(slot)?;
-        Ok(slot)
     }
     /// Records where creation registered the record's attribute strings: the
     /// name of its last attribute, followed by that attribute's value, then the

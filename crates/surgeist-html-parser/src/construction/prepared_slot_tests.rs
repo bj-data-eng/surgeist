@@ -9,7 +9,6 @@
 //! that slot is prepared, which is the first refusal of any step between the
 //! slot's admission and its row. Every such stop must leave every retained
 //! resource at zero after cleanup.
-use super::base::{BaseValue, ResponseDomain};
 use super::tests::storage_zero;
 use super::{KindList, RetainedPayload, StringLocation, literal_string};
 use crate::construction::effects::tests::{graph, request};
@@ -470,14 +469,19 @@ fn a_row_of_another_kind_than_its_slot_admitted_is_refused_and_still_released() 
     let (mut c, mut session, _proof, _nodes) = graph(&request);
     let storage = session.active_mut().unwrap();
     let rows = storage.payloads.values.len();
-    let prepared = storage.prepare_payload_slot_owned(&mut c).unwrap();
-    let base = RetainedPayload::Base {
-        node: None,
-        domain: ResponseDomain::Unavailable,
-        frozen: BaseValue::Unfrozen,
-    };
-    assert!(storage.payloads.push_row(prepared, base).is_err());
-    assert_eq!(storage.payloads.values.len(), rows, "nothing was appended");
+    // A slot admitted for a listed row refuses a row of no list.
+    let prepared = storage
+        .prepare_payload_slot_for(&mut c, Some(KindList::Base))
+        .unwrap();
+    assert!(
+        storage
+            .payloads
+            .push_row(prepared, RetainedPayload::Retired)
+            .is_err()
+    );
+    // The refused row is kept for the release, but is not listed.
+    assert_eq!(storage.payloads.values.len(), rows + 1);
+    assert!(storage.payloads.kind_list(KindList::Base).is_empty());
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
