@@ -339,3 +339,201 @@ contribution_case!(
     Overflow::Clip,
     80.0
 );
+
+// Fit-content has three distinct inputs: automatic minimum0/40, min-content40,
+// and max-content80. The finite30 cap must not replace the automatic minimum.
+#[derive(Clone, Copy, Debug)]
+enum FitRequest {
+    MinContent,
+    MaxContent,
+    Definite(f64),
+}
+
+fn fit_case<S: LayoutScalar>(request: FitRequest, overflow: Overflow, expected_track: f64) {
+    // Reuse the exact same real native host and its40/80 leaf qualification.
+    let mut tree = source::<S>(20.0, GrowthCap::MaxContent, overflow);
+    let mut root_style = tree.node_input(0).clone();
+    root_style.grid_template_columns =
+        vec![TrackComponentOf::fit_content(SizingCalculationOf::value(
+            LengthPercentageOf::from_coefficients(S::from_f64(30.0), S::ZERO)
+                .expect("finite30 fit-content limit"),
+        ))];
+    let (root_width, available) = match request {
+        FitRequest::MinContent => {
+            root_style.size.width = PreferredSizeOf::AUTO;
+            (expected_track, AvailableOf::MIN_CONTENT)
+        }
+        FitRequest::MaxContent => {
+            root_style.size.width = PreferredSizeOf::AUTO;
+            (expected_track, AvailableOf::MAX_CONTENT)
+        }
+        FitRequest::Definite(width) => {
+            root_style.size.width = PreferredSizeOf::px(S::from_f64(width));
+            (width, AvailableOf::definite(S::from_f64(width)))
+        }
+    };
+    tree.source
+        .insert_input(0, LayoutInputOf::box_input(root_style));
+    qualify_actual_native_queries(&tree);
+    let batch = compute_layout(
+        &tree,
+        0,
+        LayoutRootRequestOf::viewport(Size::new(
+            available,
+            AvailableOf::definite(S::from_f64(10.0)),
+        ))
+        .unwrap(),
+    )
+    .expect("actual Grid fit-content with responsive native content completes");
+    let root = fri08_c01_placement_output(&batch, 0);
+    let child = fri08_c01_placement_output(&batch, 1);
+    assert_eq!(root.location, Point::ZERO);
+    assert_eq!(
+        root.size,
+        Size::new(S::from_f64(root_width), S::from_f64(10.0)),
+        "{overflow:?} {request:?}: AUTO intrinsic root consumes actual fit-content track"
+    );
+    assert_eq!(
+        (root.border, root.padding, root.margin),
+        (Edges::ZERO, Edges::ZERO, Edges::ZERO)
+    );
+    assert_eq!(child.location, Point::ZERO);
+    assert_eq!(
+        (child.border, child.padding, child.margin),
+        (Edges::ZERO, Edges::ZERO, Edges::ZERO)
+    );
+    // Parent20 can consume20 only with genuine minimum0. Clip's content minimum40
+    // survives the30 cap. Parent60 stops at30/40; intrinsicMIN/MAX use the same
+    // minimum floor and capped contribution without inventing a definite root.
+    assert_eq!(
+        child.size,
+        Size::new(S::from_f64(expected_track), S::from_f64(10.0)),
+        "{overflow:?} {request:?}: fit-content30 keeps independent minimum and content authority"
+    );
+    let own = child
+        .scroll_geometry
+        .expect("native measured child keeps own geometry");
+    assert_eq!(own.border_box().size(), child.size);
+}
+
+macro_rules! fit_contribution_case {
+    ($name:ident, $scalar:ty, $request:expr, $overflow:expr, $expected:expr) => {
+        #[test]
+        fn $name() {
+            fit_case::<$scalar>($request, $overflow, $expected);
+        }
+    };
+}
+
+fit_contribution_case!(
+    fit_content_hidden_intrinsic_min_f32,
+    f32,
+    FitRequest::MinContent,
+    Overflow::Hidden,
+    30.0
+);
+fit_contribution_case!(
+    fit_content_hidden_intrinsic_min_f64,
+    f64,
+    FitRequest::MinContent,
+    Overflow::Hidden,
+    30.0
+);
+fit_contribution_case!(
+    fit_content_clip_intrinsic_min_f32,
+    f32,
+    FitRequest::MinContent,
+    Overflow::Clip,
+    40.0
+);
+fit_contribution_case!(
+    fit_content_clip_intrinsic_min_f64,
+    f64,
+    FitRequest::MinContent,
+    Overflow::Clip,
+    40.0
+);
+fit_contribution_case!(
+    fit_content_hidden_intrinsic_max_f32,
+    f32,
+    FitRequest::MaxContent,
+    Overflow::Hidden,
+    30.0
+);
+fit_contribution_case!(
+    fit_content_hidden_intrinsic_max_f64,
+    f64,
+    FitRequest::MaxContent,
+    Overflow::Hidden,
+    30.0
+);
+fit_contribution_case!(
+    fit_content_clip_intrinsic_max_f32,
+    f32,
+    FitRequest::MaxContent,
+    Overflow::Clip,
+    40.0
+);
+fit_contribution_case!(
+    fit_content_clip_intrinsic_max_f64,
+    f64,
+    FitRequest::MaxContent,
+    Overflow::Clip,
+    40.0
+);
+fit_contribution_case!(
+    fit_content_hidden_definite_shortage_f32,
+    f32,
+    FitRequest::Definite(20.0),
+    Overflow::Hidden,
+    20.0
+);
+fit_contribution_case!(
+    fit_content_hidden_definite_shortage_f64,
+    f64,
+    FitRequest::Definite(20.0),
+    Overflow::Hidden,
+    20.0
+);
+fit_contribution_case!(
+    fit_content_clip_definite_shortage_f32,
+    f32,
+    FitRequest::Definite(20.0),
+    Overflow::Clip,
+    40.0
+);
+fit_contribution_case!(
+    fit_content_clip_definite_shortage_f64,
+    f64,
+    FitRequest::Definite(20.0),
+    Overflow::Clip,
+    40.0
+);
+fit_contribution_case!(
+    fit_content_hidden_definite_growth_cap_f32,
+    f32,
+    FitRequest::Definite(60.0),
+    Overflow::Hidden,
+    30.0
+);
+fit_contribution_case!(
+    fit_content_hidden_definite_growth_cap_f64,
+    f64,
+    FitRequest::Definite(60.0),
+    Overflow::Hidden,
+    30.0
+);
+fit_contribution_case!(
+    fit_content_clip_definite_growth_cap_f32,
+    f32,
+    FitRequest::Definite(60.0),
+    Overflow::Clip,
+    40.0
+);
+fit_contribution_case!(
+    fit_content_clip_definite_growth_cap_f64,
+    f64,
+    FitRequest::Definite(60.0),
+    Overflow::Clip,
+    40.0
+);
