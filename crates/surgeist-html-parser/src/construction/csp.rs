@@ -1,6 +1,6 @@
 //! Ordinary-driver-owned Meta CSP service obligations and retained policy values.
 use super::*;
-use crate::meta_csp::{Account, Outcome, Service, Storage};
+use crate::meta_csp::{Account, Caller, Outcome, Service, Storage};
 use surgeist_html::{
     HtmlCspAssociation, HtmlCspOwner, HtmlCspPolicyId, HtmlCspPolicyRevision, HtmlMetaCspPrepared,
     HtmlMetaCspReceipt, HtmlMetaCspRequest,
@@ -90,8 +90,16 @@ impl SessionStorage {
         };
         // Native temporaries have now actually dropped. Reconcile the receipt
         // to the complete graph still retained by original payloads.
+        // A row the closure replaced is a fault of the parser's own, found
+        // below, and is not an account to reconcile.
+        let row_kept = matches!(
+            self.payloads.values.get(slot),
+            Some(RetainedPayload::CspState(_))
+        );
         let result = result.and_then(|out| {
-            self.reconcile_csp(c, &mut value)?;
+            if row_kept {
+                self.reconcile_csp(c, &mut value)?;
+            }
             Ok(out)
         });
         match self.payloads.values.get_mut(slot) {
@@ -194,13 +202,15 @@ impl SessionStorage {
                 })
                 .ok_or(SessionError::WrongToken)?;
         }
+        // The account holds less than the graph the policies retain only if
+        // the processor released storage it never held.
         let retired = state
             .account
             .live
             .sub(live)
-            .ok_or(SessionError::WrongToken)?;
+            .ok_or_else(|| crate::meta_csp::accounting_violation(c))?;
         retired.release(c)?;
-        state.account.live = live;
+        state.account.rebaseline(live);
         Ok(())
     }
     pub(super) fn csp_policy(
@@ -257,7 +267,7 @@ impl SessionStorage {
                 .owner
                 .as_mut()
                 .ok_or(SessionError::WrongToken)?
-                .initial_document_with(&mut |a| state.account.admit(c, a))
+                .initial_document_with(&mut |a| state.account.admit(c, a, Caller::Parser))
                 .map_err(|e| protocol(c, e))?;
             state.account.settle(c)?;
             if document == 0 {
@@ -400,7 +410,7 @@ impl ParserArenaSession {
             .map_err(|_| latch_registry_row(c))?;
         s.csp_slot = Some(state_slot);
         s.with_csp(c, |_, c, state| {
-            let owner = HtmlCspOwner::new_with(&mut |a| state.account.admit(c, a))
+            let owner = HtmlCspOwner::new_with(&mut |a| state.account.admit(c, a, Caller::Parser))
                 .map_err(|e| protocol(c, e))?;
             state.owner_usage = state.account.last;
             state.owner = Some(owner);
@@ -467,7 +477,7 @@ impl SessionStorage {
                         &current,
                         profile,
                         pending.content.clone(),
-                        &mut |a| state.account.admit(c, a),
+                        &mut |a| state.account.admit(c, a, Caller::Parser),
                     )
                     .map_err(|e| protocol(c, e.error))?;
                 let prepared = match service.call(c, &mut state.account, &request)? {
@@ -524,7 +534,7 @@ impl SessionStorage {
                     .as_mut()
                     .ok_or(SessionError::WrongToken)?
                     .prepare_publication_with(&mut current, request, prepared, &mut |a| {
-                        state.account.admit(c, a)
+                        state.account.admit(c, a, Caller::Parser)
                     })
                     .map_err(|e| protocol(c, e.error))?;
                 let completion = publication.publish();
@@ -610,5 +620,114 @@ mod tests {
         storage.csp_slot = None;
         session.release(&mut c).unwrap();
         storage_zero(&c);
+    }
+
+    /// The stop for an owner call that the account cannot cover, with the
+    /// account an association was admitted to replaced by an empty one.
+    fn uncovered_owner_call() -> Option<ParseStop> {
+        let request = request("<body><div id=a>");
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut allow = |_: surgeist_html::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority = surgeist_html::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(17, &mut allow).unwrap();
+        let mut covered = Account::default();
+        let mut owner =
+            HtmlCspOwner::new_with(&mut |a| covered.admit(&mut c, a, Caller::Parser)).unwrap();
+        let association = owner
+            .initial_document_with(&mut |a| covered.admit(&mut c, a, Caller::Parser))
+            .unwrap();
+        // An account that never held the association cannot be asked to
+        // transfer its storage into the request.
+        let mut short = Account::default();
+        let refused = owner.request_meta_insertion_with(
+            &association,
+            &profile,
+            "img-src 'none'".into(),
+            &mut |a| short.admit(&mut c, a, Caller::Parser),
+        );
+        assert!(refused.is_err());
+        c.stop()
+    }
+
+    /// An owner call the parser itself makes, that its own account cannot
+    /// cover, disagrees with what the parser charged. The processor is not
+    /// involved, so it is not a failed processing.
+    #[test]
+    fn an_owner_call_the_parser_account_cannot_cover_is_a_capacity_mismatch() {
+        assert_eq!(
+            uncovered_owner_call(),
+            Some(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::CapacityMismatch
+            ))
+        );
+    }
+
+    /// The same call made through the processor's admission callback is the
+    /// processor's accounting failing.
+    #[test]
+    fn a_processor_call_the_account_cannot_cover_is_a_failed_processing() {
+        let request = request("<body><div id=a>");
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut allow = |_: surgeist_html::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority = surgeist_html::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(17, &mut allow).unwrap();
+        let mut covered = Account::default();
+        let mut owner =
+            HtmlCspOwner::new_with(&mut |a| covered.admit(&mut c, a, Caller::Parser)).unwrap();
+        let association = owner
+            .initial_document_with(&mut |a| covered.admit(&mut c, a, Caller::Parser))
+            .unwrap();
+        let mut short = Account::default();
+        let refused = owner.request_meta_insertion_with(
+            &association,
+            &profile,
+            "img-src 'none'".into(),
+            &mut |a| short.admit(&mut c, a, Caller::Processor),
+        );
+        assert!(refused.is_err());
+        assert_eq!(c.stop(), Some(ParseStop::CspProcessing));
+    }
+
+    /// Once the processor has admitted or released through the account, a gap
+    /// that the parser's next owner call finds is the processor's: the account
+    /// differs from the graph only by what the processor did.
+    #[test]
+    fn a_parser_call_after_the_processor_touched_the_account_fails_the_processing() {
+        let request = request("<body><div id=a>");
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut allow = |_: surgeist_html::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority = surgeist_html::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(17, &mut allow).unwrap();
+        let mut covered = Account::default();
+        let mut owner =
+            HtmlCspOwner::new_with(&mut |a| covered.admit(&mut c, a, Caller::Parser)).unwrap();
+        let association = owner
+            .initial_document_with(&mut |a| covered.admit(&mut c, a, Caller::Parser))
+            .unwrap();
+        let mut short = Account::default();
+        short
+            .admit(
+                &mut c,
+                surgeist_html::HtmlCspLayout::processing(
+                    0,
+                    surgeist_html::HtmlCspStorage::default(),
+                    surgeist_html::HtmlCspDisposalWork::default(),
+                    0,
+                )
+                .unwrap(),
+                Caller::Processor,
+            )
+            .unwrap();
+        let refused = owner.request_meta_insertion_with(
+            &association,
+            &profile,
+            "img-src 'none'".into(),
+            &mut |a| short.admit(&mut c, a, Caller::Parser),
+        );
+        assert!(refused.is_err());
+        assert_eq!(c.stop(), Some(ParseStop::CspProcessing));
     }
 }

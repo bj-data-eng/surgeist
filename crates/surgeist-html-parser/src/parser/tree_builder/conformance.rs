@@ -2297,18 +2297,22 @@ mod tests {
 
     #[test]
     fn all_complete_retained_files_decode_with_stable_ordinals_and_raw_sections() {
-        let mut total = 0;
-        for (path, raw) in DATA {
+        // Each file's case count is pinned beside its digest in
+        // `fixture_integrity`, counted from the `#data` markers on disk rather
+        // than from this decoder, so a dropped or merged case fails by name.
+        assert_eq!(DATA.len(), fixture_integrity::TREE_CONSTRUCTION.len());
+        for ((path, raw), (pinned, pinned_cases, _)) in
+            DATA.iter().zip(fixture_integrity::TREE_CONSTRUCTION)
+        {
+            assert_eq!(*path, pinned);
             let cases = decode(raw).unwrap_or_else(|e| panic!("{path}: {e:?}"));
-            assert!(!cases.is_empty());
+            assert_eq!(cases.len(), pinned_cases, "{path}: decoded case count");
             for (i, f) in cases.iter().enumerate() {
                 assert_eq!(f.ordinal, i + 1);
                 expected(f, HtmlDocumentMode::NoQuirks)
                     .unwrap_or_else(|e| panic!("{path}/{}: {e:?}", f.ordinal));
             }
-            total += cases.len();
         }
-        assert_eq!(total, 1775);
     }
 
     #[test]
@@ -5631,6 +5635,51 @@ mod comment_diagnostic_corpus {
     pub(super) fn completed(request: &HtmlDocumentParseRequest) -> CompletedStandaloneDocument<'_> {
         StandaloneDocumentDriver::take_completed(&mut Some(completed_driver(request))).unwrap()
     }
+    // The immutable f994590f format says new-errors adds rows. Its concrete
+    // legacy labels overlap: malformed --!>, duplicate EOF-in-comment and
+    // renamed abrupt-closing branches. The xml cases use old pre-PI rules.
+    // The upstream rows are retained, not claimed as HTML877d diagnostic
+    // conformance; each case pins its own row counts and the number of
+    // diagnostics pinned HTML877d selects for it. Upstream counts are read
+    // off the `#errors` and `#new-errors` sections of comments01.dat; the
+    // selected counts are the entries of `SELECTED` for the same ordinal.
+    // (ordinal, legacy `#errors` rows, `#new-errors` rows, selected)
+    const CASES: [(usize, usize, usize, usize); 16] = [
+        (1, 1, 0, 1),
+        (2, 2, 1, 2),
+        (3, 2, 1, 2),
+        (4, 2, 1, 2),
+        (5, 2, 1, 2),
+        (6, 1, 0, 1),
+        (7, 2, 1, 2),
+        (8, 2, 1, 2),
+        (9, 1, 0, 1),
+        (10, 2, 1, 2),
+        (11, 2, 1, 2),
+        (12, 2, 1, 2),
+        (13, 2, 1, 2),
+        (14, 2, 1, 2),
+        (15, 1, 0, 1),
+        (16, 1, 0, 1),
+    ];
+    /// Checks the decoded comments01 cases against `CASES`, one row each.
+    fn assert_comments01_case_rows(fixtures: &[Fixture<'_>]) {
+        assert_eq!(fixtures.len(), CASES.len());
+        for (fixture, (ordinal, legacy, new, selected_len)) in fixtures.iter().zip(CASES) {
+            assert_eq!(fixture.ordinal, ordinal);
+            assert_eq!(fixture.errors.len(), legacy, "comments01/{ordinal} #errors");
+            assert_eq!(
+                fixture.new_errors.as_ref().map_or(0, Vec::len),
+                new,
+                "comments01/{ordinal} #new-errors"
+            );
+            assert_eq!(
+                selected(ordinal).len(),
+                selected_len,
+                "comments01/{ordinal} selected diagnostics"
+            );
+        }
+    }
     #[test]
     fn all_comments01_disabled_cases_match_selected_typed_diagnostics_and_native_trees() {
         let (_, raw) = DATA
@@ -5638,27 +5687,7 @@ mod comment_diagnostic_corpus {
             .find(|(name, _)| *name == "comments01.dat")
             .unwrap();
         let fixtures = decode(raw).unwrap();
-        assert_eq!(fixtures.len(), 16);
-        // The immutable f994590f format says new-errors adds rows. Its concrete
-        // legacy labels overlap: malformed --!>, duplicate EOF-in-comment and
-        // renamed abrupt-closing branches. The xml cases use old pre-PI rules.
-        // Preserve all27 old +11 new rows without claiming38 invocations or
-        // upstream error-count conformance. Pinned HTML877d selects27 here.
-        assert_eq!(fixtures.iter().map(|f| f.errors.len()).sum::<usize>(), 27);
-        assert_eq!(
-            fixtures
-                .iter()
-                .filter_map(|f| f.new_errors.as_ref())
-                .map(Vec::len)
-                .sum::<usize>(),
-            11
-        );
-        assert_eq!(
-            (1..=16)
-                .map(|ordinal| selected(ordinal).len())
-                .sum::<usize>(),
-            27
-        );
+        assert_comments01_case_rows(&fixtures);
         for fixture in fixtures {
             assert!(fixture.fragment.is_none());
             assert_eq!(fixture.scripting, FixtureScripting::Both);
@@ -5964,16 +5993,7 @@ mod comment_diagnostic_corpus {
             .find(|(name, _)| *name == "comments01.dat")
             .unwrap();
         let fixtures = decode(raw).unwrap();
-        assert_eq!(fixtures.len(), 16);
-        assert_eq!(fixtures.iter().map(|f| f.errors.len()).sum::<usize>(), 27);
-        assert_eq!(
-            fixtures
-                .iter()
-                .filter_map(|f| f.new_errors.as_ref())
-                .map(Vec::len)
-                .sum::<usize>(),
-            11,
-        );
+        assert_comments01_case_rows(&fixtures);
         for fixture in fixtures {
             assert!(fixture.fragment.is_none());
             assert_eq!(fixture.scripting, FixtureScripting::Both);
@@ -7099,3 +7119,6 @@ mod comparative_feed;
 
 #[cfg(test)]
 mod corpus_replay;
+
+#[cfg(test)]
+mod fixture_integrity;

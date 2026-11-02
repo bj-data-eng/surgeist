@@ -500,3 +500,234 @@ fn preexecution_zero_work_keeps_original_source_without_entering_the_processor()
     assert_eq!(count(&seen.scratch), 0);
     assert_eq!(count(&seen.errors), 0);
 }
+
+/// A processor that returns without a result while it still holds storage it
+/// admitted breaks the accounting contract of the service it was given. Its
+/// parse ends as a failed Meta CSP processing, not as a fault of the parser.
+struct Leaking {
+    profile: HtmlCspProcessorProfile,
+}
+impl HtmlMetaCspProcessor for Leaking {
+    type Error = BackendError;
+    fn profile(&self) -> &HtmlCspProcessorProfile {
+        &self.profile
+    }
+    fn prepare<E>(
+        &mut self,
+        request: &HtmlMetaCspRequest,
+        admit: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
+        _release: &mut impl FnMut(HtmlCspStorage),
+    ) -> Result<HtmlMetaCspOutcome<Self::Error>, HtmlCspError<E>> {
+        request
+            .qualification()
+            .processor()
+            .validate_selected_with(&self.profile, admit)?;
+        admit(HtmlCspLayout::processing(
+            8,
+            Scratch::storage(),
+            HtmlCspDisposalWork::try_new(7, size_of::<Scratch>())?,
+            size_of::<Scratch>(),
+        )?)
+        .map_err(HtmlCspError::Interrupted)?;
+        Ok(HtmlMetaCspOutcome::Unavailable(HtmlCspUnavailable::Profile))
+    }
+}
+
+#[test]
+fn a_processor_that_keeps_admitted_storage_without_a_result_fails_the_processing() {
+    let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+    let profile = authority.profile_with(17, &mut allow).unwrap();
+    let request = HtmlDocumentParseRequest::offline(source(), limits());
+    let failure = request
+        .parse_with_meta_csp(&mut Leaking { profile })
+        .unwrap_err();
+    assert_eq!(
+        failure.parse_failure().reason(),
+        HtmlParseFailureReason::CspProcessing
+    );
+    assert_eq!(
+        failure.parse_failure().first_stop(),
+        Some(HtmlParseStop::CspProcessing)
+    );
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Misuse {
+    /// Holds admitted storage, then reports cancellation.
+    LeakThenCancelled,
+    /// Holds admitted storage, then reports a protocol error.
+    LeakThenProtocol,
+    /// Releases storage it never held.
+    OverRelease,
+    /// Releases the storage of the policy a former call retained, then asks
+    /// for a result that transfers it.
+    ReleaseThenAttest(usize),
+}
+struct Misbehaving {
+    profile: HtmlCspProcessorProfile,
+    authority: HtmlCspProcessorAuthority,
+    misuse: Misuse,
+    seen: Arc<Seen>,
+}
+impl Misbehaving {
+    fn new(misuse: Misuse) -> Self {
+        let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(17, &mut allow).unwrap();
+        Self {
+            profile,
+            authority,
+            misuse,
+            seen: Arc::new(Seen::default()),
+        }
+    }
+}
+impl HtmlMetaCspProcessor for Misbehaving {
+    type Error = BackendError;
+    fn profile(&self) -> &HtmlCspProcessorProfile {
+        &self.profile
+    }
+    fn prepare<E>(
+        &mut self,
+        request: &HtmlMetaCspRequest,
+        admit: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
+        release: &mut impl FnMut(HtmlCspStorage),
+    ) -> Result<HtmlMetaCspOutcome<Self::Error>, HtmlCspError<E>> {
+        request
+            .qualification()
+            .processor()
+            .validate_selected_with(&self.profile, admit)?;
+        let first = request
+            .qualification()
+            .content()
+            .code_units()
+            .iter()
+            .copied()
+            .eq(FIRST.encode_utf16());
+        let policy = || {
+            Arc::new(Policy {
+                default_self: true,
+                seen: self.seen.clone(),
+            })
+        };
+        match self.misuse {
+            Misuse::LeakThenCancelled | Misuse::LeakThenProtocol => {
+                admit(HtmlCspLayout::processing(
+                    8,
+                    Scratch::storage(),
+                    HtmlCspDisposalWork::try_new(7, size_of::<Scratch>())?,
+                    size_of::<Scratch>(),
+                )?)
+                .map_err(HtmlCspError::Interrupted)?;
+                if matches!(self.misuse, Misuse::LeakThenCancelled) {
+                    Ok(HtmlMetaCspOutcome::Cancelled)
+                } else {
+                    Err(HtmlCspError::Protocol(HtmlCspProtocolError::WrongProcessor))
+                }
+            }
+            Misuse::OverRelease => {
+                release(HtmlCspStorage::try_new(1 << 40, 1 << 20, 1 << 10).unwrap());
+                Ok(HtmlMetaCspOutcome::Unavailable(HtmlCspUnavailable::Profile))
+            }
+            Misuse::ReleaseThenAttest(_) if first => {
+                let layout = Policy::layout();
+                admit(HtmlCspLayout::processing(
+                    4,
+                    layout.storage(),
+                    layout.disposal(),
+                    size_of::<Policy>(),
+                )?)
+                .map_err(HtmlCspError::Interrupted)?;
+                match self.authority.attest_changed_with(request, policy(), admit) {
+                    Ok(prepared) => Ok(HtmlMetaCspOutcome::Completed(prepared)),
+                    Err(rejected) => Err(rejected.error),
+                }
+            }
+            Misuse::ReleaseThenAttest(times) => {
+                for _ in 0..times {
+                    release(Policy::layout().storage());
+                }
+                match self.authority.attest_changed_with(request, policy(), admit) {
+                    Ok(prepared) => Ok(HtmlMetaCspOutcome::Completed(prepared)),
+                    Err(rejected) => Err(rejected.error),
+                }
+            }
+        }
+    }
+}
+
+fn parse_misusing(misuse: Misuse) -> HtmlParseCspFailure<BackendError> {
+    let request = HtmlDocumentParseRequest::offline(source(), limits());
+    request
+        .parse_with_meta_csp(&mut Misbehaving::new(misuse))
+        .unwrap_err()
+}
+fn assert_torn_down(failure: &HtmlParseCspFailure<BackendError>) {
+    assert_eq!(failure.parse_failure().cleanup_error(), None);
+    let usage = failure.parse_failure().after_cleanup().unwrap();
+    for resource in [
+        HtmlParseResource::ManagedUtf16Units,
+        HtmlParseResource::ManagedCapacityBytes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::ManagedEdges,
+        HtmlParseResource::OpenElements,
+    ] {
+        assert_eq!(usage.resource(resource).current(), 0, "{resource:?}");
+    }
+}
+
+/// A processor that reports cancellation while it still holds admitted storage
+/// ends the parse as cancelled, and the storage it kept is torn down.
+#[test]
+fn a_processor_that_reports_cancellation_while_holding_storage_is_cancelled_and_torn_down() {
+    let failure = parse_misusing(Misuse::LeakThenCancelled);
+    assert_eq!(failure.kind(), HtmlParseCspFailureKind::Cancelled);
+    let parse = failure.parse_failure();
+    assert_eq!(
+        parse.reason(),
+        HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled)
+    );
+    assert_eq!(parse.first_stop(), Some(HtmlParseStop::Cancelled));
+    assert_torn_down(&failure);
+}
+
+/// A protocol error from a processor that still holds admitted storage is the
+/// protocol failure it reports, and the storage it kept is torn down.
+#[test]
+fn a_processor_that_reports_a_protocol_error_while_holding_storage_fails_with_it_and_is_torn_down()
+{
+    let failure = parse_misusing(Misuse::LeakThenProtocol);
+    let protocol = HtmlCspProtocolError::WrongProcessor;
+    assert_eq!(failure.kind(), HtmlParseCspFailureKind::Protocol(protocol));
+    let parse = failure.parse_failure();
+    assert_eq!(
+        parse.reason(),
+        HtmlParseFailureReason::CspProtocol(protocol)
+    );
+    assert_eq!(
+        parse.first_stop(),
+        Some(HtmlParseStop::CspProtocol(protocol))
+    );
+    assert_torn_down(&failure);
+}
+
+/// Releasing storage the processor never held breaks the accounting of the
+/// service. That is a failed processing, whichever call finds it, and not a
+/// fault of the request's associated facts.
+#[test]
+fn a_processor_that_releases_storage_it_never_held_fails_the_processing() {
+    for misuse in [Misuse::OverRelease, Misuse::ReleaseThenAttest(2)] {
+        let failure = parse_misusing(misuse);
+        let parse = failure.parse_failure();
+        assert_eq!(
+            parse.reason(),
+            HtmlParseFailureReason::CspProcessing,
+            "{misuse:?}"
+        );
+        assert_eq!(
+            parse.first_stop(),
+            Some(HtmlParseStop::CspProcessing),
+            "{misuse:?}"
+        );
+        assert_torn_down(&failure);
+    }
+}

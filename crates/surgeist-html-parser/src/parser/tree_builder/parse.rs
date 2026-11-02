@@ -1,6 +1,6 @@
 //! Consuming public operations over the real request, execution and report owners.
 use super::{
-    StandaloneDocumentDriver, StandaloneError,
+    StandaloneDocumentDriver, StandaloneError, StopCause,
     context::{
         ContextFragmentDriver, FailedContextFragment, FragmentExecutionError,
         FrozenContextFragmentParts,
@@ -14,7 +14,9 @@ use super::{
     seal::{OrdinaryInitialization, OwnedOrdinaryFailure, SealedOrdinaryConstruction},
     terminal::{DetachedStandaloneFailure, FailedStandaloneDocument, FrozenStandaloneParts},
 };
-use crate::construction::{SessionError, evidence::DiagnosticEvidenceView};
+use crate::construction::{
+    SessionClass, SessionError, evidence::DiagnosticEvidenceView, session_class,
+};
 use crate::parser::control::{ParseStop, ParseUsage, StandaloneUnsupported};
 use crate::{HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlSource};
 
@@ -368,64 +370,93 @@ impl std::fmt::Display for HtmlParseFailure {
 }
 impl std::error::Error for HtmlParseFailure {}
 
+/// The reason a session error ends a parse with. It is derived from the same
+/// class as the stop (`session_class`), so the two cannot disagree: an outcome
+/// that has a reason variant of its own keeps it, any other outcome is the
+/// stop it ends the parse as, and a fault of the parser's own is an engine
+/// condition.
 fn session_reason(e: SessionError) -> HtmlParseFailureReason {
-    match e {
-        SessionError::CspService => HtmlParseFailureReason::CspProcessing,
-        SessionError::CspProtocol(p) => HtmlParseFailureReason::CspProtocol(p),
-        SessionError::Stop(s) => HtmlParseFailureReason::Stop(s),
-        SessionError::AssociatedFacts => {
-            HtmlParseFailureReason::Stop(ParseStop::InvalidAssociatedFacts)
+    match session_class(&e) {
+        SessionClass::Fault(_) => HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tree),
+        SessionClass::Outcome(stop) => match e {
+            SessionError::CspService => HtmlParseFailureReason::CspProcessing,
+            SessionError::CspProtocol(p) => HtmlParseFailureReason::CspProtocol(p),
+            SessionError::ContextFactUnavailable(f) => {
+                HtmlParseFailureReason::MissingContextFact(f)
+            }
+            SessionError::ContextReactionUnavailable => {
+                HtmlParseFailureReason::UnsupportedContextReactions
+            }
+            _ => stop_reason(stop),
+        },
+    }
+}
+/// The reason for a stop: the two Meta CSP stops have reasons of their own, so
+/// one stop is one reason whether the service raised it or the controller
+/// latched it.
+fn stop_reason(stop: ParseStop) -> HtmlParseFailureReason {
+    match stop {
+        ParseStop::CspProcessing => HtmlParseFailureReason::CspProcessing,
+        ParseStop::CspProtocol(p) => HtmlParseFailureReason::CspProtocol(p),
+        other => HtmlParseFailureReason::Stop(other),
+    }
+}
+/// The reason for a cause: derived from the same `stop_cause` that the stop is
+/// latched from, so the two cannot disagree. A lost owner is the engine
+/// condition `lost` that the error's level reports for it; a session error is
+/// its own reason; a state the environment does not continue from is the
+/// unsupported state the stop names.
+fn cause_reason(cause: StopCause, lost: HtmlParseEngineCondition) -> HtmlParseFailureReason {
+    match cause {
+        StopCause::LostOwner => HtmlParseFailureReason::Engine(lost),
+        StopCause::Session(error) => session_reason(error),
+        StopCause::Unsupported(state) => {
+            HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(state))
         }
-        SessionError::ContextFactUnavailable(f) => HtmlParseFailureReason::MissingContextFact(f),
-        SessionError::ContextReactionUnavailable => {
-            HtmlParseFailureReason::UnsupportedContextReactions
-        }
-        _ => HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tree),
     }
 }
 fn kernel_reason(e: &super::KernelError) -> HtmlParseFailureReason {
-    match e {
-        super::KernelError::Stop(s) => HtmlParseFailureReason::Stop(*s),
-        super::KernelError::Session(s) => session_reason(*s),
-        _ => HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tree),
-    }
+    cause_reason(e.stop_cause(), HtmlParseEngineCondition::Tree)
 }
 fn head_reason(e: &super::head::HeadError) -> HtmlParseFailureReason {
     match e {
         super::head::HeadError::Kernel(k) => kernel_reason(k),
         super::head::HeadError::Prologue(p) => prologue_reason(p),
-        super::head::HeadError::Handoff(crate::parser::tokenizer::TokenizerHandoffError::Stop(
-            stop,
-        )) => HtmlParseFailureReason::Stop(*stop),
-        _ => HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tree),
+        _ => cause_reason(e.stop_cause(), HtmlParseEngineCondition::Tree),
     }
 }
 fn prologue_reason(e: &super::prologue::PrologueError) -> HtmlParseFailureReason {
     match e {
         super::prologue::PrologueError::Kernel(k) => kernel_reason(k),
-        _ => HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tokenizer),
+        _ => cause_reason(e.stop_cause(), HtmlParseEngineCondition::Tokenizer),
     }
 }
 fn ordinary_reason(e: &StandaloneError) -> HtmlParseFailureReason {
     match e {
-        StandaloneError::Stop(s) => HtmlParseFailureReason::Stop(*s),
         StandaloneError::Head(h) => head_reason(h),
         StandaloneError::Prologue(p) => prologue_reason(p),
+        // These two name the unsupported state in a reason of their own; the
+        // stop is the provenance boundary of the same cause.
         StandaloneError::UnsupportedDocumentInitialization => {
             HtmlParseFailureReason::UnsupportedDocumentInitialization
         }
         StandaloneError::UnsupportedExecutionProfile => {
             HtmlParseFailureReason::UnsupportedExecutionProfile
         }
-        _ => HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership),
+        StandaloneError::Stop(_)
+        | StandaloneError::Consumed
+        | StandaloneError::TokenizerExhausted => {
+            cause_reason(e.stop_cause(), HtmlParseEngineCondition::Ownership)
+        }
     }
 }
 fn fragment_reason(e: &FragmentExecutionError) -> HtmlParseFailureReason {
     match e {
-        FragmentExecutionError::Stop(s) => HtmlParseFailureReason::Stop(*s),
         FragmentExecutionError::Kernel(k) => kernel_reason(k),
         FragmentExecutionError::Head(h) => head_reason(h),
-        _ => HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership),
+        FragmentExecutionError::Stop(_) | FragmentExecutionError::Consumed => {
+            cause_reason(e.stop_cause(), HtmlParseEngineCondition::Ownership)
+        }
     }
 }
 #[expect(
@@ -444,14 +475,10 @@ enum OrdinaryAttempt {
 fn abandon_ordinary(
     mut driver: StandaloneDocumentDriver<'_>,
     reason: HtmlParseFailureReason,
-    invariant_fault: bool,
+    cause: Option<StopCause>,
 ) -> OrdinaryAttempt {
-    if invariant_fault {
-        StandaloneError::latch_invariant(&mut driver.control);
-    } else {
-        driver
-            .control
-            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+    if let Some(cause) = cause {
+        cause.latch(&mut driver.control);
     }
     let Ok(failed) = driver.into_failed() else {
         return OrdinaryAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Cleanup));
@@ -491,6 +518,9 @@ fn ordinary_attempt(
             return OrdinaryAttempt::Initialization(reason, refused);
         }
     };
+    // What ends the execution, for the stop it reports if nothing latched one
+    // first; a failure that latched its own stop leaves none to name.
+    let mut cause = None;
     // Actual output receivers are admitted on this public-only path before
     // its first token pull; no heap indirection is introduced.
     let mut reason = super::write(
@@ -508,11 +538,11 @@ fn ordinary_attempt(
             && let Err(e) = driver.enable_meta_csp(initial_base)
         {
             reason = Some(ordinary_reason(&e));
+            cause = Some(e.stop_cause());
         }
     }
     // The parse functions give the tokenizer the complete source, which never
     // starves it, so a request for more input is a fault of the parser.
-    let mut starved = false;
     while reason.is_none() {
         match driver.step_with_meta_csp(&mut service) {
             Ok(HeadStep::Consumed) => {}
@@ -520,28 +550,30 @@ fn ordinary_attempt(
                 reason = Some(HtmlParseFailureReason::Engine(
                     HtmlParseEngineCondition::Tokenizer,
                 ));
-                starved = true;
+                cause = Some(StopCause::LostOwner);
                 break;
             }
             Ok(HeadStep::Complete) => break,
             Ok(HeadStep::Boundary(b)) => {
                 reason = Some(HtmlParseFailureReason::UnsupportedConstruction(b));
+                cause = Some(StopCause::Unsupported(StandaloneUnsupported::Provenance));
                 break;
             }
             Err(e) => {
                 reason = Some(ordinary_reason(&e));
+                cause = Some(e.stop_cause());
                 break;
             }
         }
     }
     if let Some(reason) = reason {
-        return abandon_ordinary(driver, reason, starved);
+        return abandon_ordinary(driver, reason, cause);
     }
     // A refused completion has already latched a lost owner as an invariant.
     let mut completed = match driver.into_completed() {
         Ok(completed) => completed,
         Err((error, driver)) => {
-            return abandon_ordinary(driver, ordinary_reason(&error), error.invariant_fault());
+            return abandon_ordinary(driver, ordinary_reason(&error), Some(error.stop_cause()));
         }
     };
     let completion = completed
@@ -551,7 +583,7 @@ fn ordinary_attempt(
         Ok(parts) => OrdinaryAttempt::Ready(parts),
         Err(e) => {
             let reason = ordinary_reason(&e);
-            completed.stop_for_public_failure(e.invariant_fault());
+            completed.stop_for_public_failure(e.stop_cause());
             match completed.take_public_failure() {
                 Ok(failed) => detach_ordinary(failed, reason),
                 Err(_) => {
@@ -589,13 +621,7 @@ pub(crate) fn document(
         Ok(sealed) => sealed,
         Err((error, owner, mut parts)) => {
             let reason = ordinary_reason(&error);
-            if error.invariant_fault() {
-                StandaloneError::latch_invariant(&mut parts.control);
-            } else {
-                parts
-                    .control
-                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            }
+            error.stop_cause().latch(&mut parts.control);
             return Err(detach_frozen_ordinary(owner, reason, parts));
         }
     };
@@ -603,10 +629,7 @@ pub(crate) fn document(
         Ok(report) => Ok(report),
         Err((e, mut sealed)) => {
             let reason = session_reason(e);
-            sealed
-                .parts
-                .control
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+            StopCause::Session(e).latch(&mut sealed.parts.control);
             let refused = sealed.parts.cleanup_failure().is_err();
             Err(HtmlParseFailure {
                 reason,
@@ -717,32 +740,38 @@ fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
         };
     // A fragment source is complete, which never starves the tokenizer, so a
     // request for more input is a fault of the parser.
-    let mut starved = false;
+    let mut cause = None;
     let why = loop {
         match driver.step() {
             Ok(HeadStep::Consumed) => {}
             Ok(HeadStep::NeedInput) => {
-                starved = true;
+                cause = Some(StopCause::LostOwner);
                 break Some(HtmlParseFailureReason::Engine(
                     HtmlParseEngineCondition::Tokenizer,
                 ));
             }
             Ok(HeadStep::Complete) => break None,
             Ok(HeadStep::Boundary(b)) => {
+                cause = Some(StopCause::Unsupported(StandaloneUnsupported::Provenance));
                 break Some(HtmlParseFailureReason::UnsupportedConstruction(b));
             }
-            Err(e) => break Some(fragment_reason(&e)),
+            Err(e) => {
+                cause = Some(e.stop_cause());
+                break Some(fragment_reason(&e));
+            }
         }
     };
     if let Some(why) = why {
-        driver.stop_for_public_failure(starved);
+        if let Some(cause) = cause {
+            driver.stop_for_public_failure(cause);
+        }
         return abandon_fragment(driver, why);
     }
     // A refused completion has already latched a lost owner as an invariant.
     let mut completed = match driver.into_completed() {
         Ok(completed) => completed,
         Err((error, mut driver)) => {
-            driver.stop_for_public_failure(error.invariant_fault());
+            driver.stop_for_public_failure(error.stop_cause());
             return abandon_fragment(driver, fragment_reason(&error));
         }
     };
@@ -753,7 +782,7 @@ fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
         Ok(parts) => FragmentAttempt::Ready(parts),
         Err(e) => {
             let why = fragment_reason(&e);
-            completed.stop_for_public_failure(e.invariant_fault());
+            completed.stop_for_public_failure(e.stop_cause());
             match completed.take_failed() {
                 Ok(failed) => stop_fragment(failed, why),
                 Err(_) => {
@@ -788,13 +817,7 @@ pub(crate) fn fragment(
         Ok(sealed) => sealed,
         Err((error, owner, mut parts)) => {
             let reason = fragment_reason(&error);
-            if error.invariant_fault() {
-                FragmentExecutionError::latch_invariant(&mut parts.control);
-            } else {
-                parts
-                    .control
-                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            }
+            error.stop_cause().latch(&mut parts.control);
             return Err(detach_frozen_fragment(owner, reason, parts));
         }
     };
@@ -802,10 +825,7 @@ pub(crate) fn fragment(
         Ok(report) => Ok(report),
         Err((e, mut sealed)) => {
             let reason = session_reason(e);
-            sealed
-                .parts
-                .control
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+            StopCause::Session(e).latch(&mut sealed.parts.control);
             let refused = sealed.parts.cleanup_failure().is_err();
             Err(HtmlParseFailure {
                 reason,
@@ -1191,5 +1211,159 @@ mod tests {
             0
         );
         assert_eq!(exact.cleanup_error(), None);
+    }
+
+    /// The reason a stage error reports for an outcome is the one the first
+    /// stop agrees with: the outcome's own, or a stop that names it.
+    #[test]
+    fn a_stage_error_holding_an_outcome_reports_the_outcome_reason() {
+        use super::super::{KernelError, head::HeadError, prologue::PrologueError};
+        for (error, reason, _) in super::super::outcome_tests::outcomes() {
+            assert_eq!(session_reason(error), reason, "{error:?}");
+            let session = || KernelError::Session(error);
+            let ordinary = [
+                StandaloneError::Head(HeadError::Kernel(session())),
+                StandaloneError::Prologue(PrologueError::Kernel(session())),
+                StandaloneError::Head(HeadError::Prologue(PrologueError::Kernel(session()))),
+            ];
+            for stage in &ordinary {
+                assert_eq!(ordinary_reason(stage), reason, "{error:?}");
+            }
+            let fragment = [
+                FragmentExecutionError::Kernel(session()),
+                FragmentExecutionError::Head(HeadError::Kernel(session())),
+                FragmentExecutionError::Head(HeadError::Prologue(PrologueError::Kernel(session()))),
+            ];
+            for stage in &fragment {
+                assert_eq!(fragment_reason(stage), reason, "{error:?}");
+            }
+        }
+        // The completion stage's own error is the same completion state.
+        let completion = HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(
+            StandaloneUnsupported::Completion,
+        ));
+        assert_eq!(
+            ordinary_reason(&StandaloneError::Head(HeadError::IncompleteCompletion)),
+            completion
+        );
+        assert_eq!(
+            fragment_reason(&FragmentExecutionError::Head(
+                HeadError::IncompleteCompletion
+            )),
+            completion
+        );
+    }
+
+    /// A parser fault that reaches a stage is an engine condition.
+    #[test]
+    fn a_stage_error_holding_a_parser_fault_reports_an_engine_condition() {
+        use super::super::{KernelError, head::HeadError};
+        for (error, _) in super::super::outcome_tests::faults() {
+            let engine = HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tree);
+            assert_eq!(session_reason(error), engine, "{error:?}");
+            let stage = StandaloneError::Head(HeadError::Kernel(KernelError::Session(error)));
+            assert_eq!(ordinary_reason(&stage), engine, "{error:?}");
+        }
+    }
+
+    /// Every session error is either an outcome, whose reason is not an engine
+    /// condition and which the table of outcomes covers, or a fault of the
+    /// parser's own, whose reason is an engine condition. A stop already
+    /// latched is its own reason.
+    #[test]
+    fn every_session_error_is_an_outcome_with_its_reason_or_an_engine_condition() {
+        use crate::construction::{SessionClass, session_class};
+        let engine = HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tree);
+        let table = super::super::outcome_tests::outcomes();
+        for error in super::super::outcome_tests::every_session_error() {
+            match session_class(&error) {
+                SessionClass::Fault(_) => assert_eq!(session_reason(error), engine, "{error:?}"),
+                SessionClass::Outcome(stop) => {
+                    assert_ne!(session_reason(error), engine, "{error:?}");
+                    if let SessionError::Stop(_) = error {
+                        assert_eq!(session_reason(error), HtmlParseFailureReason::Stop(stop));
+                    } else {
+                        assert!(
+                            table.iter().any(|(listed, reason, listed_stop)| {
+                                std::mem::discriminant(listed) == std::mem::discriminant(&error)
+                                    && *reason == session_reason(error)
+                                    && *listed_stop == stop
+                            }),
+                            "{error:?} has no entry in the table of outcomes"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// A stage error that stands for a state the closed environment does not
+    /// support reports that state as its reason, in both drivers, which is the
+    /// state the first stop names.
+    #[test]
+    fn a_stage_state_the_environment_does_not_support_reports_it_as_its_reason() {
+        for (error, state) in super::super::outcome_tests::stage_states() {
+            let reason = HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(state));
+            assert_eq!(
+                ordinary_reason(&StandaloneError::Head(error())),
+                reason,
+                "{state:?}"
+            );
+            assert_eq!(
+                fragment_reason(&FragmentExecutionError::Head(error())),
+                reason,
+                "{state:?}"
+            );
+        }
+    }
+
+    /// The reason for an error of the tree builder's own structures that input
+    /// may reach is the unsupported state its stop names, in both drivers.
+    #[test]
+    fn a_structure_error_reports_the_unsupported_nesting_state_as_its_reason() {
+        let reason = HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(
+            StandaloneUnsupported::InvalidNesting,
+        ));
+        for (name, error) in super::super::outcome_tests::structure_errors() {
+            assert_eq!(
+                ordinary_reason(&StandaloneError::Head(error())),
+                reason,
+                "{name}"
+            );
+            assert_eq!(
+                fragment_reason(&FragmentExecutionError::Head(error())),
+                reason,
+                "{name}"
+            );
+        }
+    }
+
+    /// A document initialization or execution profile the standalone
+    /// environment was given no proof of keeps its own reason in both stages.
+    #[test]
+    fn an_unsupported_request_shape_keeps_its_own_reason() {
+        assert_eq!(
+            ordinary_reason(&StandaloneError::UnsupportedDocumentInitialization),
+            HtmlParseFailureReason::UnsupportedDocumentInitialization
+        );
+        assert_eq!(
+            ordinary_reason(&StandaloneError::UnsupportedExecutionProfile),
+            HtmlParseFailureReason::UnsupportedExecutionProfile
+        );
+    }
+
+    /// One Meta CSP stop is one reason, whether the service raised it as a
+    /// session error or the controller latched it as a stop.
+    #[test]
+    fn a_meta_csp_stop_has_the_same_reason_as_the_error_that_names_it() {
+        let protocol = surgeist_html::HtmlCspProtocolError::WrongProcessor;
+        assert_eq!(
+            session_reason(SessionError::Stop(ParseStop::CspProcessing)),
+            session_reason(SessionError::CspService)
+        );
+        assert_eq!(
+            session_reason(SessionError::Stop(ParseStop::CspProtocol(protocol))),
+            session_reason(SessionError::CspProtocol(protocol))
+        );
     }
 }

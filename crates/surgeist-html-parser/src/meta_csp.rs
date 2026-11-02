@@ -166,14 +166,39 @@ pub(crate) struct Account {
     pub live: Storage,
     overlap: Storage,
     pub last: Storage,
+    /// Whether the processor admitted or released through this account since
+    /// the retained graph last set `live`. Until then the account differs from
+    /// the graph only by the parser's own accounted calls.
+    processor_touched: bool,
+}
+/// Who asks the account to admit storage. The account is shared by the
+/// processor, through its admission callback, and by the parser's own calls to
+/// the policy owner, and an account that cannot cover a call is a different
+/// failure for each: the processor broke the accounting contract of the service
+/// it was given, or the parser's own accounting disagrees with what it charged.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Caller {
+    Parser,
+    Processor,
 }
 impl Account {
+    /// Sets `live` to the storage the retained graph actually holds.
+    pub fn rebaseline(&mut self, live: Storage) {
+        self.live = live;
+        self.processor_touched = false;
+    }
     pub fn settle(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
         self.overlap.release(c)?;
         self.overlap = Storage::ZERO;
         Ok(())
     }
-    pub fn admit(&mut self, c: &mut ParseControl, a: HtmlCspLayout) -> Result<(), ParseStop> {
+    pub fn admit(
+        &mut self,
+        c: &mut ParseControl,
+        a: HtmlCspLayout,
+        caller: Caller,
+    ) -> Result<(), ParseStop> {
+        self.processor_touched |= caller == Caller::Processor;
         self.settle(c)?;
         let work = a
             .work_credits()
@@ -184,7 +209,12 @@ impl Account {
         let base = self
             .live
             .sub(Storage::from(a.transferred().storage()))
-            .ok_or_else(|| c.stop_invalid_associated_facts())?;
+            .ok_or_else(|| match (caller, self.processor_touched) {
+                // The account differs from the graph only by what the
+                // processor did, once it has acted, whoever finds the gap.
+                (Caller::Parser, false) => c.fail_invariant(Invariant::CapacityMismatch),
+                (Caller::Parser, true) | (Caller::Processor, _) => c.csp_processing_stop(),
+            })?;
         let peak = base
             .add(Storage::from(a.peak()))
             .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::ManagedCapacityBytes))?;
@@ -199,13 +229,13 @@ impl Account {
         self.last = Storage::from(a.retained().storage());
         Ok(())
     }
+    /// Only the processor's release callback releases through the account, so
+    /// storage it never held is the processor's accounting failing.
     pub fn release(&mut self, c: &mut ParseControl, v: HtmlCspStorage) -> Result<(), ParseStop> {
+        self.processor_touched = true;
         self.settle(c)?;
         let n = Storage::from(v);
-        self.live = self
-            .live
-            .sub(n)
-            .ok_or_else(|| c.stop_invalid_associated_facts())?;
+        self.live = self.live.sub(n).ok_or_else(|| c.csp_processing_stop())?;
         n.release(c)?;
         Ok(())
     }
@@ -252,7 +282,7 @@ impl<'c, 'a> Shared<'c, 'a> {
             return Err(self.refuse_reentry());
         };
         let (c, account) = &mut *state;
-        account.admit(c, layout)
+        account.admit(c, layout, Caller::Processor)
     }
     fn release(&self, storage: HtmlCspStorage) {
         let Ok(mut state) = self.state.try_borrow_mut() else {
@@ -279,6 +309,17 @@ impl<'c, 'a> Shared<'c, 'a> {
             None => Ok((c, account)),
         }
     }
+}
+/// A processor that returned without a usable result while the account holds
+/// storage it admitted, or that released more than it held, broke the
+/// accounting contract of the service it was given: its processing failed.
+/// Every such violation ends the parse as a failed processing, wherever it is
+/// found: when the processor releases (`Account::release`), when it asks for a
+/// transfer its account cannot cover (`Account::admit`), when it returns, and
+/// when the retained graph is reconciled against its account afterwards.
+pub(crate) fn accounting_violation(c: &mut ParseControl) -> SessionError {
+    c.csp_processing_stop();
+    SessionError::CspService
 }
 struct Adapter<'a, P: HtmlMetaCspProcessor> {
     processor: &'a mut P,
@@ -310,7 +351,10 @@ impl<P: HtmlMetaCspProcessor> Service for Adapter<'_, P> {
             Ok(HtmlMetaCspOutcome::Completed(p)) => Ok(Outcome::Completed(p)),
             Ok(HtmlMetaCspOutcome::Refused(e)) | Ok(HtmlMetaCspOutcome::Failed(e)) => {
                 // The provider's remaining aggregate travels with the real E.
-                self.storage = account.live.sub(before).ok_or(SessionError::WrongToken)?;
+                self.storage = account
+                    .live
+                    .sub(before)
+                    .ok_or_else(|| accounting_violation(c))?;
                 account.live = before;
                 self.error = Some(e);
                 self.kind = if refused {
@@ -324,30 +368,23 @@ impl<P: HtmlMetaCspProcessor> Service for Adapter<'_, P> {
             }
             Ok(HtmlMetaCspOutcome::Unavailable(u)) => {
                 if account.live != before {
-                    return Err(SessionError::WrongToken);
+                    return Err(accounting_violation(c));
                 }
                 Ok(Outcome::Unavailable(u))
             }
             Ok(HtmlMetaCspOutcome::Cancelled) => {
+                // Cancellation is what ended the processing, whatever storage
+                // the processor still holds.
                 self.kind = HtmlParseCspFailureKind::Cancelled;
-                if account.live != before {
-                    return Err(SessionError::WrongToken);
-                }
                 Err(c.cancelled_stop().into())
             }
             Err(HtmlCspError::Protocol(p)) => {
                 self.kind = HtmlParseCspFailureKind::Protocol(p);
-                if account.live != before {
-                    return Err(SessionError::WrongToken);
-                }
                 c.csp_protocol_stop(p);
                 Err(SessionError::CspProtocol(p))
             }
             Err(HtmlCspError::Interrupted(e)) => {
                 self.kind = HtmlParseCspFailureKind::Interrupted(e);
-                if account.live != before {
-                    return Err(SessionError::WrongToken);
-                }
                 Err(e.into())
             }
         }

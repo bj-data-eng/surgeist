@@ -66,6 +66,8 @@ mod completion;
 pub(crate) mod context;
 mod details;
 mod effects;
+#[cfg(test)]
+pub(crate) use effects::{fault_effect_drain, take_effect_fault};
 pub(crate) mod fragment_document;
 #[cfg(test)]
 mod link_history;
@@ -203,41 +205,98 @@ fn plan_below_charge(control: &mut ParseControl) -> SessionError {
 fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))
 }
-/// The invariant that a non-stop error names when it is met where it cannot be
-/// a document outcome, classified by the kind of fault it reports. Every
+/// How a parse ends on a session error that no earlier stop has settled.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionClass {
+    /// The error is an outcome of the document, of the facts the caller
+    /// supplied or of a service. The parse ends as this stop, whichever driver
+    /// and stage met the error, and the failure's reason names the same state.
+    Outcome(ParseStop),
+    /// The error names a fault of the parser's own, met where it cannot be a
+    /// document outcome. The parse ends as the invariant of its kind.
+    Fault(crate::parser::control::Invariant),
+}
+impl SessionClass {
+    /// An outcome that ends the parse as an unsupported state of the closed
+    /// standalone environment.
+    pub(crate) const fn unsupported(state: StandaloneUnsupported) -> Self {
+        Self::Outcome(ParseStop::UnsupportedStandaloneState(state))
+    }
+    /// Latches the stop for this class on `control`, unless an earlier stop is
+    /// already the first. Returns the first stop either way.
+    pub(crate) fn latch(self, control: &mut ParseControl) -> ParseStop {
+        match self {
+            Self::Outcome(stop) => control.stop_outcome(stop),
+            Self::Fault(invariant) => control.fail_invariant(invariant),
+        }
+    }
+}
+/// The class of a session error, by the kind of state it reports. Every
 /// variant is listed, so a new one must be classified deliberately.
 ///
-/// - Outcomes of the document or a service that the driver classifies itself
-///   have no invariant: the caller passes them through unchanged.
+/// Outcomes, with the stop each ends a parse as:
+/// - A stop is already latched by whoever raised it, and is its own.
+/// - The Meta CSP service and protocol outcomes are the stops their processing
+///   latches when it raises them. A processor that breaks the accounting of the
+///   service it was given is a failed processing.
+/// - Invalid associated facts are the associated-facts stop, as the creation
+///   and Meta CSP producers latch it.
+/// - Script and SVG script metadata that effect work cannot find is the
+///   unsupported script document; completion metadata that is absent or
+///   incomplete is the unsupported completion. The standalone environment does
+///   not run scripts or document completion.
+/// - A fact or reaction the caller's capture lacks is the provenance boundary:
+///   the capture is the only source of the fact, so the parse cannot continue
+///   from provenance it was not given.
+///
+/// Faults, with the invariant of their kind:
 /// - An intrinsic operation that is still owed is the pending-effects stop.
 /// - A uniqueness check that failed is the aliased-allocation stop.
 /// - A placement the tree refuses, or a duplicated attribute, is the
 ///   construction owner declining a request the parser's sequencing
 ///   guarantees valid.
 /// - A retained row that is missing, of another kind, unjoined or out of
-///   place is a registry row.
-fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::control::Invariant> {
+///   place is a registry row. This is the whole of the rest of this side: every
+///   remaining variant reports a lookup or a bookkeeping check that fails on a
+///   handle, index or count the parser created itself (an arena node, a
+///   payload row of the wrong kind, storage already taken, a reference count
+///   other than one, a parent walk past its bound, a placement or association
+///   the construction owner refuses to a request the parser's sequencing
+///   guarantees valid). None of them reads what the caller supplied. Whatever
+///   the caller's capture does not establish is
+///   `ContextFactUnavailable(fact)`, a processor that breaks the accounting of
+///   the service it was given is `CspService`, and the facts a request
+///   supplies are `AssociatedFacts`. A raise site that would read caller
+///   input must not return a fault variant.
+pub(crate) fn session_class(error: &SessionError) -> SessionClass {
     use crate::parser::control::Invariant;
     match error {
-        SessionError::Stop(_)
-        | SessionError::CspService
-        | SessionError::CspProtocol(_)
-        | SessionError::AssociatedFacts
-        | SessionError::ScriptMetadataUnavailable
-        | SessionError::SvgScriptMetadataUnavailable
-        | SessionError::CompletionMetadataUnavailable
-        | SessionError::CompletionIncomplete
-        | SessionError::ContextFactUnavailable(_)
-        | SessionError::ContextReactionUnavailable => None,
-        SessionError::PendingIntrinsicWork => Some(Invariant::PendingFormEffects),
-        SessionError::AliasedPayload => Some(Invariant::SharedAllocationAliased),
+        SessionError::Stop(stop) => SessionClass::Outcome(*stop),
+        SessionError::CspService => SessionClass::Outcome(ParseStop::CspProcessing),
+        SessionError::CspProtocol(protocol) => {
+            SessionClass::Outcome(ParseStop::CspProtocol(*protocol))
+        }
+        SessionError::AssociatedFacts => SessionClass::Outcome(ParseStop::InvalidAssociatedFacts),
+        SessionError::ScriptMetadataUnavailable | SessionError::SvgScriptMetadataUnavailable => {
+            SessionClass::unsupported(StandaloneUnsupported::ScriptDocument)
+        }
+        SessionError::CompletionMetadataUnavailable | SessionError::CompletionIncomplete => {
+            SessionClass::unsupported(StandaloneUnsupported::Completion)
+        }
+        SessionError::ContextFactUnavailable(_) | SessionError::ContextReactionUnavailable => {
+            SessionClass::unsupported(StandaloneUnsupported::Provenance)
+        }
+        SessionError::PendingIntrinsicWork => SessionClass::Fault(Invariant::PendingFormEffects),
+        SessionError::AliasedPayload => SessionClass::Fault(Invariant::SharedAllocationAliased),
         SessionError::RootMove
         | SessionError::AssociationMove
         | SessionError::NotContainer
         | SessionError::TemplateContentsRequired
         | SessionError::WrongSibling
         | SessionError::Cycle
-        | SessionError::DuplicateAttribute => Some(Invariant::ConstructionOwnerRefusal),
+        | SessionError::DuplicateAttribute => {
+            SessionClass::Fault(Invariant::ConstructionOwnerRefusal)
+        }
         SessionError::NonceMetadataUnavailable
         | SessionError::ForeignNode
         | SessionError::Consumed
@@ -256,7 +315,29 @@ fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::contro
         | SessionError::TemplateMetadataUnavailable
         | SessionError::ProcessingInstructionMapUnavailable
         | SessionError::ContextUnavailable
-        | SessionError::CapturedDocument => Some(Invariant::RegistryRow),
+        | SessionError::CapturedDocument => SessionClass::Fault(Invariant::RegistryRow),
+    }
+}
+/// The invariant that a non-stop error names when it is met where it cannot be
+/// a document outcome; an outcome has none, and the caller passes it through
+/// unchanged.
+fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::control::Invariant> {
+    match session_class(error) {
+        SessionClass::Fault(invariant) => Some(invariant),
+        SessionClass::Outcome(_) => None,
+    }
+}
+/// Ends the session on `error` where it is met: latches the stop its class
+/// names now. If that stop is the first one, an outcome is returned as itself,
+/// which keeps its own reason, and a fault as the invariant it latched. If
+/// another stop was already first, the first stop is returned for either, so
+/// the error's reason and the failure's first stop cannot disagree.
+fn end_session_on(control: &mut ParseControl, error: SessionError) -> SessionError {
+    let class = session_class(&error);
+    let first = class.latch(control);
+    match class {
+        SessionClass::Outcome(own) if own == first => error,
+        SessionClass::Outcome(_) | SessionClass::Fault(_) => SessionError::Stop(first),
     }
 }
 /// The result of a non-stop error that effect work met, classified by
@@ -5644,12 +5725,7 @@ impl SessionStorage {
                                 return match self.captured_shadow_including_document(control, host)
                                 {
                                     Ok(document) => Ok(document.is_some()),
-                                    Err(error) => {
-                                        control.stop_unsupported_standalone(
-                                            StandaloneUnsupported::Provenance,
-                                        );
-                                        Err(error)
-                                    }
+                                    Err(error) => Err(end_session_on(control, error)),
                                 };
                             }
                         }
@@ -13096,16 +13172,15 @@ mod tests {
                 .unwrap();
             let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
             if cap == 3 {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::TokenAttributes,
-                        limit: 3,
-                        current: 3,
-                        requested_delta: 1
-                    }))
-                ));
-                assert!(session.freeze(&mut c).is_err());
+                // One attribute beyond the exact cap of three is the first stop.
+                let first = ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::TokenAttributes,
+                    limit: 3,
+                    current: 3,
+                    requested_delta: 1,
+                };
+                assert_eq!(result.err(), Some(SessionError::Stop(first)));
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::BufferedUtf16Units)
@@ -13172,7 +13247,7 @@ mod tests {
         drop(alias);
         creation.release(&mut c).unwrap();
         creation.release(&mut c).unwrap();
-        assert!(session.freeze(&mut c).is_err());
+        assert_freeze_reports_first_stop(&mut session, &mut c, ParseStop::Cancelled);
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.stop(), Some(ParseStop::Cancelled));
@@ -13329,15 +13404,14 @@ mod tests {
                 .unwrap();
             let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
             if cap == 28 {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::BufferedUtf16Units,
-                        limit: 28,
-                        current: 28,
-                        requested_delta: 1
-                    }))
-                ));
+                // Peak 1 + 28 against the cap of 28: one unit is refused.
+                let first = ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::BufferedUtf16Units,
+                    limit: 28,
+                    current: 28,
+                    requested_delta: 1,
+                };
+                assert_eq!(result.err(), Some(SessionError::Stop(first)));
                 assert_eq!(
                     c.usage().resource(HtmlParseResource::ManagedNodes).current,
                     1
@@ -13348,7 +13422,7 @@ mod tests {
                         .current,
                     1
                 );
-                assert!(session.freeze(&mut c).is_err());
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             } else {
                 assert!(result.is_ok());
                 assert_eq!(
@@ -13463,15 +13537,14 @@ mod tests {
             );
             let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
             if cap == 1564 {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::SourceMapEntries,
-                        limit: 1564,
-                        current: 1564,
-                        requested_delta: 1
-                    }))
-                ));
+                // 1041 retained entries plus the copy leave one short of 1565.
+                let first = ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::SourceMapEntries,
+                    limit: 1564,
+                    current: 1564,
+                    requested_delta: 1,
+                };
+                assert_eq!(result.err(), Some(SessionError::Stop(first)));
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
@@ -13488,7 +13561,7 @@ mod tests {
                     c.usage().resource(HtmlParseResource::ManagedNodes).current,
                     1
                 );
-                assert!(session.freeze(&mut c).is_err());
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             } else {
                 assert!(result.is_ok());
                 assert_eq!(
@@ -13645,7 +13718,14 @@ mod tests {
                     + storage.payloads.values.len() as u64
             );
             if result.is_err() {
-                assert!(session.freeze(&mut c).is_err());
+                // The sweep leaves `remaining` work credits, so the first stop
+                // is the exhausted work-credit limit of the configured limits.
+                let first = limit_stop_of(
+                    &result,
+                    HtmlParseResource::WorkCredits,
+                    limits().work_credits(),
+                );
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             }
             let stop = c.stop();
             if session.release(&mut c).is_err() {
@@ -15568,12 +15648,12 @@ mod tests {
                 .unwrap();
             let result = session.set_input_checked(&mut c, &a, true);
             if name == "g" {
-                assert_eq!(result, Err(SessionError::InputMetadataUnavailable));
                 let stop = c.stop().unwrap();
                 assert_eq!(
                     stop,
                     ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
                 );
+                assert_eq!(result, Err(SessionError::Stop(stop)));
                 assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
                 assert!(session.active().unwrap().effects.radio.is_some());
             } else {
@@ -17844,14 +17924,8 @@ mod tests {
                     101
                 );
             } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::ManagedUtf16Units,
-                        ..
-                    }))
-                ));
-                assert!(session.freeze(&mut c).is_err());
+                let first = limit_stop_of(&result, HtmlParseResource::ManagedUtf16Units, cap);
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             }
             let first = c.stop();
             release_formatting_tag(&mut input, &mut c).unwrap();
@@ -17909,14 +17983,9 @@ mod tests {
                     return;
                 }
                 if short {
-                    assert!(matches!(
-                        result,
-                        Err(SessionError::Stop(ParseStop::LimitExceeded {
-                            resource: HtmlParseResource::ManagedUtf16Units,
-                            ..
-                        }))
-                    ));
-                    assert!(session.freeze(&mut c).is_err());
+                    let first =
+                        limit_stop_of(&result, HtmlParseResource::ManagedUtf16Units, units - 1);
+                    assert_freeze_reports_first_stop(&mut session, &mut c, first);
                 } else {
                     let node = result.unwrap();
                     assert_eq!(
@@ -18349,14 +18418,8 @@ mod tests {
                     2
                 );
             } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::ManagedUtf16Units,
-                        ..
-                    }))
-                ));
-                assert!(session.freeze(&mut c).is_err());
+                let first = limit_stop_of(&result, HtmlParseResource::ManagedUtf16Units, cap);
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             }
             let stop = c.stop();
             release_formatting_tag(&mut input, &mut c).unwrap();
@@ -24296,6 +24359,109 @@ mod tests {
             assert_eq!(c.usage().resource(resource).current, 0, "{resource:?}");
         }
     }
+    /// The stop a result reports when it ends in `LimitExceeded` for the
+    /// scenario's own resource and limit. The caller derives both from the
+    /// configured limits, not from the observed stop; the arithmetic check is
+    /// that the refused charge really crosses that limit.
+    pub(super) fn limit_stop_of<T>(
+        result: &Result<T, SessionError>,
+        resource: HtmlParseResource,
+        limit: u64,
+    ) -> ParseStop {
+        let Err(SessionError::Stop(stop)) = result else {
+            panic!(
+                "expected a {resource:?} limit stop, got {:?}",
+                result.as_ref().err()
+            );
+        };
+        let ParseStop::LimitExceeded {
+            resource: stopped,
+            limit: stopped_limit,
+            current,
+            requested_delta,
+        } = *stop
+        else {
+            panic!("expected a {resource:?} limit stop, got {stop:?}");
+        };
+        assert_eq!((stopped, stopped_limit), (resource, limit));
+        assert!(
+            current <= limit && current + requested_delta > limit,
+            "{stop:?} must refuse a charge that crosses {limit}"
+        );
+        *stop
+    }
+    /// Freezing a session whose control has stopped reports exactly the sticky
+    /// first stop and leaves it unchanged.
+    pub(super) fn assert_freeze_reports_first_stop(
+        session: &mut ParserArenaSession,
+        c: &mut ParseControl,
+        first: ParseStop,
+    ) {
+        assert_eq!(c.stop(), Some(first), "the control latched the first stop");
+        assert_eq!(
+            session.freeze(c).err(),
+            Some(SessionError::Stop(first)),
+            "freeze reports the sticky first stop"
+        );
+        assert_eq!(c.stop(), Some(first), "freeze keeps the first stop");
+    }
+    /// Runs a copy of a stopped range-ingress cursor to completion over the
+    /// given source units and retained coefficient cells, servicing each
+    /// request as the cursor's public protocol defines it. Returns the final
+    /// result and the number of replies the cursor needed.
+    pub(super) fn resume_range_ingress(
+        mut cursor: surgeist_html::bounded::FiniteDecimalIngressCursor,
+        source: &[u16],
+        coefficient: &[u8],
+    ) -> (
+        Option<Result<u64, surgeist_html::bounded::RangeNumericError>>,
+        usize,
+    ) {
+        use surgeist_html::bounded::{RangeNumericReply, RangeNumericRequest, RangeScratchRole};
+        let headers = cursor.headers();
+        let mut buffers: [Vec<u8>; 8] = std::array::from_fn(|_| Vec::new());
+        let coefficient_buffer = &mut buffers[RangeScratchRole::Coefficient.index()];
+        coefficient_buffer.reserve_exact(headers.buffer(RangeScratchRole::Coefficient).capacity());
+        coefficient_buffer.extend_from_slice(coefficient);
+        for step in 0..1_000_000 {
+            let Some(request) = cursor.request() else {
+                return (cursor.result(), step);
+            };
+            let reply = match request {
+                RangeNumericRequest::SourceUnit { index } => RangeNumericReply::Unit(source[index]),
+                RangeNumericRequest::ReadCells { cells } => RangeNumericReply::Cells(
+                    cells.map(|cell| cell.map(|c| buffers[c.role().index()][c.index()])),
+                ),
+                RangeNumericRequest::Reserve { role, required_len } => {
+                    let buffer = &mut buffers[role.index()];
+                    buffer.reserve_exact(required_len - buffer.len());
+                    RangeNumericReply::Reserved {
+                        actual_capacity: buffer.capacity(),
+                        actual_len: buffer.len(),
+                    }
+                }
+                RangeNumericRequest::AppendCell { role, value } => {
+                    buffers[role.index()].push(value);
+                    RangeNumericReply::Ack
+                }
+                RangeNumericRequest::WriteCell { cell, value } => {
+                    buffers[cell.role().index()][cell.index()] = value;
+                    RangeNumericReply::Ack
+                }
+                RangeNumericRequest::PopCell { role } => {
+                    buffers[role.index()].pop().expect("a cell to pop");
+                    RangeNumericReply::Ack
+                }
+                RangeNumericRequest::ScalarStep => RangeNumericReply::Ack,
+                RangeNumericRequest::ReserveOutput { .. }
+                | RangeNumericRequest::EmitUnit { .. } => {
+                    panic!("ingress never writes output: {request:?} at step {step}")
+                }
+            };
+            cursor.reply(reply).expect("a faithful reply is accepted");
+        }
+        panic!("range ingress did not finish");
+    }
     pub(super) fn lexical_kind(
         tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
@@ -30113,14 +30279,8 @@ mod tests {
                     102
                 );
             } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::ManagedUtf16Units,
-                        ..
-                    }))
-                ));
-                assert!(session.freeze(&mut c).is_err());
+                let first = limit_stop_of(&result, HtmlParseResource::ManagedUtf16Units, cap);
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             }
             let first = c.stop();
             let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -31006,16 +31166,17 @@ mod tests {
     #[test]
     fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() {
         use range::{RangeIngressCancellation, RangeIngressCancellationPoint};
-        for (point, denominator, phase) in [
+        use surgeist_html::bounded::RangeScratchRole;
+        for (point, label, remaining_replies) in [
             (
                 RangeIngressCancellationPoint::CoefficientFold,
-                1,
-                "phase: Next",
+                "coefficient fold",
+                8,
             ),
             (
                 RangeIngressCancellationPoint::DecimalPower,
-                10,
-                "phase: Power",
+                "decimal power",
+                6,
             ),
         ] {
             let request = crate::HtmlDocumentParseRequest::offline(
@@ -31067,12 +31228,35 @@ mod tests {
             assert_eq!(value.code_units(), [46, 49]);
             let cursor = cursor.unwrap();
             assert!(cursor.result().is_none());
-            // The fixed literal .1 proves the selected small route. Its actual
-            // fold is A=1; its actual second scalar commits B=10 (one power).
-            let state = format!("{cursor:?}");
-            assert!(state.contains("active: Small(") && state.contains(phase));
-            assert!(state.contains("numerator: 1,"));
-            assert!(state.contains(&format!("denominator: {denominator},")));
+            let headers = cursor.headers();
+            assert_eq!(
+                headers.buffer(RangeScratchRole::Coefficient).len(),
+                coefficient.len()
+            );
+            // The cancellation hook runs after the cursor committed the reply it
+            // was servicing, so the pending request is the one queued next. The
+            // small-ratio protocol queues ScalarStep after every committed
+            // reply except the coefficient read (Read -> Next -> Power ...).
+            assert_eq!(
+                cursor.request(),
+                Some(surgeist_html::bounded::RangeNumericRequest::ScalarStep),
+                "{label}: the next pending request"
+            );
+            // The committed numeric state is observed through the cursor's own
+            // protocol: resuming a copy of the cancelled cursor with a faithful
+            // servicer over the retained source and coefficient cell must finish
+            // with the value of the literal .1. The oracle is Rust's own
+            // binary64 nearest-value conversion of that literal, so a wrong
+            // committed numerator, denominator or power would change the result.
+            // The reply count tells the two stops apart, since both resume to
+            // the same value. After the fold (A = 1) the small ratio takes one
+            // reply each for Next, Power (commits B = 10), Power (the power
+            // count reaches zero), Exponent, Scale, Quotient, Round and Finish:
+            // eight from the fold point. The power stop follows the second of
+            // those replies (the one committing B = 10), leaving six.
+            let (resumed, replies) = resume_range_ingress(*cursor, &[46, 49], coefficient);
+            assert_eq!(resumed, Some(Ok(0.1_f64.to_bits())), "{label}");
+            assert_eq!(replies, remaining_replies, "{label}: replies left");
             let raw = storage
                 .payloads
                 .values

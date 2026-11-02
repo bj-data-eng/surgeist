@@ -48,7 +48,10 @@ binary, properties and requirement sources, codec and generator identities,
 encoding, input bounds, build features/capabilities, minimum evaluated count
 and generation-rejection allowance. See the executable fixture's
 [descriptor](tests/fixtures/subject/fuzz/fuzz.toml) for the complete schema.
-Discovery validates package ownership, binary/feature names and fixture paths.
+Each requirement source is a URL or a path to an existing file relative to the
+Cargo workspace root, optionally followed by `#fragment`; discovery rejects a
+missing, non-file or escaping path. It also validates package ownership,
+binary/feature names and fixture paths.
 It uses Cargo metadata and the declared file, with no central target list.
 
 An owner binary normally calls `worker::serve(&target)`. The framed protocol

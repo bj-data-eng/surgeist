@@ -29,11 +29,15 @@ impl FragmentExecutionError {
     /// The error names a state the driver's own sequencing cannot produce,
     /// rather than a document or a limit.
     pub(super) fn invariant_fault(&self) -> bool {
+        self.stop_cause().is_lost_owner()
+    }
+    /// What ended the execution, for the first stop and the reason it reports.
+    pub(super) fn stop_cause(&self) -> StopCause {
         match self {
-            Self::Consumed => true,
-            Self::Head(error) => error.invariant_fault(),
-            Self::Kernel(KernelError::Consumed) => true,
-            _ => false,
+            Self::Stop(stop) => StopCause::Session(SessionError::Stop(*stop)),
+            Self::Kernel(error) => error.stop_cause(),
+            Self::Head(error) => error.stop_cause(),
+            Self::Consumed => StopCause::LostOwner,
         }
     }
 }
@@ -141,16 +145,10 @@ pub(super) fn parser_insertion_mode(mode: crate::HtmlFragmentInsertionMode) -> I
 }
 
 impl<'source> ContextFragmentDriver<'source> {
-    /// Latches the stop a public failure reports: a lost owner is an invariant
-    /// and anything else is the provenance boundary. A stop already latched
-    /// stays the first one.
-    pub(super) fn stop_for_public_failure(&mut self, invariant_fault: bool) {
-        if invariant_fault {
-            FragmentExecutionError::latch_invariant(&mut self.control);
-        } else {
-            self.control
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-        }
+    /// Latches the stop a public failure reports for its cause. A stop already
+    /// latched stays the first one.
+    pub(super) fn stop_for_public_failure(&mut self, cause: StopCause) {
+        cause.latch(&mut self.control);
     }
     #[cfg(test)]
     pub(crate) fn take_completed(
@@ -227,13 +225,9 @@ impl<'source> ContextFragmentDriver<'source> {
         if let Err(error) = &result {
             // One controller owns terminality; a stop the step already latched
             // stays the first one. A lost owner is an invariant, not an
-            // unsupported construct.
-            if error.invariant_fault() {
-                FragmentExecutionError::latch_invariant(&mut self.control);
-            } else {
-                self.control
-                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            }
+            // unsupported construct, and a session error ends the parse as its
+            // class says, as it does for the ordinary driver.
+            error.stop_cause().latch(&mut self.control);
         }
         result
     }
@@ -592,9 +586,9 @@ impl FrozenContextFragmentParts {
 }
 
 impl<'source> CompletedContextFragment<'source> {
-    pub(super) fn stop_for_public_failure(&mut self, invariant_fault: bool) {
+    pub(super) fn stop_for_public_failure(&mut self, cause: StopCause) {
         if let Some(d) = &mut self.driver {
-            d.stop_for_public_failure(invariant_fault);
+            d.stop_for_public_failure(cause);
         }
     }
     pub(crate) fn take_failed(
@@ -829,13 +823,13 @@ pub(crate) fn initialized_driver(request: &HtmlFragmentParseRequest) -> ContextF
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::ownership::FragmentInitialization;
     use super::*;
     use crate::construction::native_view::NativeKind;
     use crate::*;
 
-    pub(super) fn request(
+    pub(in crate::parser::tree_builder) fn request(
         source: &str,
         context_name: &str,
         scripting: HtmlScriptingStatus,
@@ -1186,6 +1180,75 @@ mod tests {
         }
     }
 
+    /// The fragment driver ends on a stage state the environment does not
+    /// support as the state it names, as the ordinary driver does: an SVG
+    /// script whose end the parser has not finished (a script pause), and a
+    /// head owner without the construction capability.
+    #[test]
+    fn a_fragment_stage_state_the_environment_does_not_support_latches_its_stop() {
+        for (capability, state) in [
+            (false, StandaloneUnsupported::ScriptPause),
+            (true, StandaloneUnsupported::Provenance),
+        ] {
+            let request = request("<script>x</script>", "div", HtmlScriptingStatus::Disabled);
+            let mut driver = initialized_driver(&request);
+            let stage = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+            if capability {
+                stage.script = None;
+            } else {
+                let root = stage
+                    .before
+                    .kernel
+                    .session
+                    .root(&mut driver.control)
+                    .unwrap();
+                stage.svg_pending = Some(root);
+            }
+            let mut ended = false;
+            for _ in 0..100 {
+                if driver.step().is_err() {
+                    ended = true;
+                    break;
+                }
+            }
+            assert!(ended, "{state:?}");
+            assert_eq!(
+                driver.control.stop(),
+                Some(ParseStop::UnsupportedStandaloneState(state))
+            );
+            driver
+                .head
+                .as_mut()
+                .unwrap()
+                .state
+                .as_mut()
+                .unwrap()
+                .svg_pending = None;
+            driver.release().unwrap();
+        }
+    }
+
+    /// An error of the tree builder's own structures that input may reach ends
+    /// a fragment parse as the unsupported nesting state, as it does an
+    /// ordinary one.
+    #[test]
+    fn a_structure_error_latches_the_unsupported_nesting_stop_in_the_fragment_driver() {
+        for (name, error) in super::super::outcome_tests::structure_errors() {
+            let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
+            let mut driver = initialized_driver(&request);
+            let error = FragmentExecutionError::Head(error());
+            driver.stop_for_public_failure(error.stop_cause());
+            assert_eq!(
+                driver.control.stop(),
+                Some(ParseStop::UnsupportedStandaloneState(
+                    StandaloneUnsupported::InvalidNesting
+                )),
+                "{name}"
+            );
+            driver.release().unwrap();
+        }
+    }
+
     /// Frozen parts of a finished fragment parse and the carrier that owns its
     /// request, stopped as a refused seal would stop them.
     fn frozen_fragment_parts() -> (FragmentInitialization, FrozenContextFragmentParts) {
@@ -1297,7 +1360,11 @@ mod tests {
             let mut driver = Some(initialized_driver(&request));
             complete(driver.as_mut().unwrap());
             let mut completed = ContextFragmentDriver::take_completed(&mut driver).unwrap();
-            completed.stop_for_public_failure(lost);
+            completed.stop_for_public_failure(if lost {
+                StopCause::LostOwner
+            } else {
+                StopCause::Unsupported(StandaloneUnsupported::Provenance)
+            });
             let expected = if lost {
                 ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState)
             } else {
@@ -4416,10 +4483,8 @@ mod tests {
                         matches!(
                             error,
                             FragmentExecutionError::Head(head::HeadError::Kernel(
-                                KernelError::Session(SessionError::Stop(
-                                    ParseStop::UnsupportedStandaloneState(
-                                        crate::parser::control::StandaloneUnsupported::Provenance
-                                    )
+                                KernelError::Session(SessionError::ContextFactUnavailable(
+                                    HtmlCaptureFact::FragmentHost
                                 ))
                             ))
                         ),
@@ -4880,6 +4945,33 @@ mod tests {
                     ))
                 );
             }
+        }
+    }
+
+    /// A captured shadow host whose own host or parent the capture never
+    /// established leaves the parse without a fact it needs. The failure names
+    /// the missing fact, as it does for every other fact the capture lacks,
+    /// and the parse ends at the provenance boundary.
+    #[test]
+    fn a_captured_host_with_unavailable_ancestry_names_the_missing_fact() {
+        for kind in ["checkbox", "radio"] {
+            let source =
+                format!("<template shadowrootmode=open><input type={kind} form=f></template>");
+            let failure = shadow_request_with_ancestry(&source, true, true, true)
+                .parse()
+                .unwrap_err();
+            assert_eq!(
+                failure.reason(),
+                HtmlParseFailureReason::MissingContextFact(HtmlCaptureFact::FragmentHost),
+                "{kind}"
+            );
+            assert_eq!(
+                failure.first_stop(),
+                Some(ParseStop::UnsupportedStandaloneState(
+                    StandaloneUnsupported::Provenance
+                )),
+                "{kind}"
+            );
         }
     }
 

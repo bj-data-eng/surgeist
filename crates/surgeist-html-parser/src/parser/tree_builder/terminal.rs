@@ -90,17 +90,11 @@ impl<'source> StandaloneDocumentDriver<'source> {
     }
 }
 impl<'source> CompletedStandaloneDocument<'source> {
-    /// Latches the stop a public failure reports: a lost owner is an invariant
-    /// and anything else is the provenance boundary. A stop already latched
-    /// stays the first one.
-    pub(super) fn stop_for_public_failure(&mut self, invariant_fault: bool) {
+    /// Latches the stop a public failure reports for its cause. A stop already
+    /// latched stays the first one.
+    pub(super) fn stop_for_public_failure(&mut self, cause: super::StopCause) {
         if let Some(d) = &mut self.driver {
-            if invariant_fault {
-                StandaloneError::latch_invariant(&mut d.control);
-            } else {
-                d.control
-                    .stop_unsupported_standalone(super::StandaloneUnsupported::Provenance);
-            }
+            cause.latch(&mut d.control);
         }
     }
     pub(super) fn take_public_failure(
