@@ -1179,28 +1179,50 @@ impl HtmlConstructionOperation {
                             .ok_or(HtmlConstructionError::RepresentationExhausted)?,
                     )?;
                 }
-                Command::AttachShadow { .. } | Command::AttachTemplateShadow { .. } => {
+                // Each arm below charges the fields its commit arm assigns, and
+                // no others; the usage write is already in the base.
+                Command::AttachShadow { .. } => {
+                    // The contents' owner and the host's shadow association.
                     plan.references = 3;
-                    plan.record_writes = add(plan.record_writes, 5)?;
+                    plan.record_writes = add(plan.record_writes, 2)?;
                     plan.copied_bytes = add(
                         plan.copied_bytes,
-                        size_of::<ShadowAssociation>()
-                            + 2 * size_of::<Option<HtmlFragmentOwner>>()
-                            + size_of::<Option<TemplateContents>>(),
+                        size_of::<Option<HtmlFragmentOwner>>()
+                            + size_of::<Option<ShadowAssociation>>(),
                     )?;
                 }
-                Command::SetTemplateShadowContents { .. }
-                | Command::ReassignTemplateContents { .. } => {
-                    plan.references = usize::from(matches!(
-                        self.command(),
-                        Command::ReassignTemplateContents { .. }
-                    ));
-                    plan.record_writes = add(plan.record_writes, 3)?;
+                Command::AttachTemplateShadow { .. } => {
+                    // The old contents' owner, the template's contents, the new
+                    // contents' owner and the host's shadow association.
+                    plan.references = 3;
+                    plan.record_writes = add(plan.record_writes, 4)?;
                     plan.copied_bytes = add(
                         plan.copied_bytes,
                         2 * size_of::<Option<HtmlFragmentOwner>>()
                             + size_of::<Option<TemplateContents>>()
                             + size_of::<Option<ShadowAssociation>>(),
+                    )?;
+                }
+                Command::SetTemplateShadowContents { .. } => {
+                    // The old contents' owner and the template's contents.
+                    plan.record_writes = add(plan.record_writes, 2)?;
+                    plan.copied_bytes = add(
+                        plan.copied_bytes,
+                        size_of::<Option<HtmlFragmentOwner>>()
+                            + size_of::<Option<TemplateContents>>(),
+                    )?;
+                }
+                Command::ReassignTemplateContents { .. } => {
+                    // The template's contents and the new contents' owner, and
+                    // the old contents' owner when the template owned them: a
+                    // shadow reference owns nothing to release.
+                    let releases = usize::from(plan.old_contents.is_some());
+                    plan.references = 1;
+                    plan.record_writes = add(plan.record_writes, 2 + releases)?;
+                    plan.copied_bytes = add(
+                        plan.copied_bytes,
+                        (1 + releases) * size_of::<Option<HtmlFragmentOwner>>()
+                            + size_of::<Option<TemplateContents>>(),
                     )?;
                 }
                 Command::SetDocumentMode { .. } => {
