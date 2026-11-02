@@ -15,6 +15,7 @@ fn rows(report: &HtmlParseReport) -> Vec<HtmlParseDocumentMeta<'_>> {
             }
             HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     result
@@ -253,6 +254,7 @@ fn base_after_unavailable_csp_is_explicitly_unavailable_and_earlier_frozen_value
                 }
                 HtmlParseMetadataStep::Skipped => (),
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(count, 1);
@@ -450,6 +452,7 @@ fn real_selectedcontent_clone_processes_meta_again_against_current_document_base
             }
             HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(subjects.len(), 2);

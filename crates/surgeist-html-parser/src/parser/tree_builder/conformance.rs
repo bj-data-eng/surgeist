@@ -65,7 +65,7 @@ mod pi_recovery {
         let diagnostics = report.diagnostics();
         assert_eq!(diagnostics.len(), 2);
         for (index, start) in [24, 29].into_iter().enumerate() {
-            let (record, location) = diagnostics.retained_record(index).unwrap();
+            let (record, location) = diagnostics.retained_record(index).unwrap().unwrap();
             assert_eq!(
                 record.kind(),
                 HtmlParseDiagnosticKind::Tokenizer(HtmlTokenizerDiagnostic::SurrogateInInputStream)
@@ -105,7 +105,7 @@ mod pi_recovery {
         let mut lexical = Vec::new();
         let mut delimiter = false;
         for index in 0..rows.len() {
-            let row = rows.row(index).unwrap();
+            let row = rows.row(index).unwrap().unwrap();
             if row.relation() == HtmlParseAssociationRelation::Output
                 && let HtmlParseDestination::Field {
                     node,
@@ -155,6 +155,7 @@ mod pi_recovery {
         let mut reverse = Vec::new();
         loop {
             match cursor.advance() {
+                HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
                 HtmlParseReverseStep::Match(row) => {
                     if row.relation() == HtmlParseAssociationRelation::Output
                         && let HtmlParseDestination::Field {
@@ -475,7 +476,7 @@ mod pi_recovery {
         let diagnostics = report.diagnostics();
         assert_eq!(diagnostics.len(), case.errors.len(), "{}", case.raw);
         for (index, &(code, state, start, end)) in case.errors.iter().enumerate() {
-            let (record, location) = diagnostics.retained_record(index).unwrap();
+            let (record, location) = diagnostics.retained_record(index).unwrap().unwrap();
             let (anchor, branch) = labels(code);
             assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
             assert_eq!(
@@ -511,7 +512,7 @@ mod pi_recovery {
         let mut abandoned = false;
         let mut end_anchor = false;
         for index in 0..rows.len() {
-            let row = rows.row(index).unwrap();
+            let row = rows.row(index).unwrap().unwrap();
             if let HtmlParseDestination::Field { node, field } = row.destination()
                 && Some(node.id()) == native
                 && row.relation() == HtmlParseAssociationRelation::Output
@@ -729,6 +730,7 @@ mod pi_recovery {
         let mut reversed = Vec::new();
         loop {
             match reverse.advance() {
+                HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
                 HtmlParseReverseStep::Match(row)
                     if row.relation() == HtmlParseAssociationRelation::Output =>
                 {
@@ -3025,7 +3027,7 @@ mod reference_recovery {
             reference.raw
         );
         for (index, &(code, start, end)) in reference.errors.iter().enumerate() {
-            let (record, location) = diagnostics.retained_record(index).unwrap();
+            let (record, location) = diagnostics.retained_record(index).unwrap().unwrap();
             let (anchor, branch) = labels(code);
             assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
             assert_eq!(
@@ -3073,7 +3075,7 @@ mod reference_recovery {
         let associations = report.associations();
         let mut actual = Vec::new();
         for i in 0..associations.len() {
-            let row = associations.row(i).unwrap();
+            let row = associations.row(i).unwrap().unwrap();
             if row.relation() != HtmlParseAssociationRelation::Output {
                 continue;
             }
@@ -3110,6 +3112,7 @@ mod reference_recovery {
         let mut reversed = Vec::new();
         loop {
             match reverse.advance() {
+                HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
                 HtmlParseReverseStep::Match(row) => {
                     if row.relation() == HtmlParseAssociationRelation::Output
                         && let HtmlParseDestination::Field {
@@ -3235,7 +3238,7 @@ mod reference_recovery {
                 .into_iter()
                 .enumerate()
                 {
-                    let (record, location) = diagnostics.retained_record(i).unwrap();
+                    let (record, location) = diagnostics.retained_record(i).unwrap().unwrap();
                     let (anchor, branch) = labels(code);
                     assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
                     assert_eq!(
@@ -3266,7 +3269,7 @@ mod reference_recovery {
                 let mut quotes = Vec::new();
                 let mut lexical_attrs = Vec::new();
                 for i in 0..associations.len() {
-                    let row = associations.row(i).unwrap();
+                    let row = associations.row(i).unwrap().unwrap();
                     match row.destination() {
                         HtmlParseDestination::Field {
                             node,
@@ -3444,7 +3447,7 @@ mod reference_recovery {
                     assert_eq!(failed.source().identity(), &identity);
                     let diagnostics = failed.diagnostics().unwrap();
                     assert_eq!(diagnostics.len(), 1);
-                    let (record, location) = diagnostics.retained_record(0).unwrap();
+                    let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
                     let code = if cancel_prefix {
                         HtmlTokenizerDiagnostic::NullCharacterReference
                     } else {
@@ -4114,7 +4117,7 @@ mod whole_source_comparisons {
         let diagnostics = report.diagnostics();
         assert_eq!(diagnostics.len(), l.errors.len());
         for (i, expected) in l.errors.iter().enumerate() {
-            let (record, location) = diagnostics.retained_record(i).unwrap();
+            let (record, location) = diagnostics.retained_record(i).unwrap().unwrap();
             assert_eq!(record.kind, expected.kind);
             assert_eq!(record.context, expected.context);
             assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
@@ -4131,7 +4134,7 @@ mod whole_source_comparisons {
                 ),
             );
         }
-        let associations = report.history().associations().unwrap();
+        let associations = report.history().associations();
         let position = |attribute, owner| {
             positions
                 .iter()
@@ -4346,6 +4349,7 @@ mod whole_source_comparisons {
         let mut created = Vec::new();
         loop {
             match metadata.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Complete => break,
                 MetadataStep::Skipped => {}
                 MetadataStep::Record(record) => {
@@ -4574,7 +4578,7 @@ mod whole_source_comparisons {
         );
         assert!(report.fragment().is_none());
         assert!(report.context().is_none());
-        assert!(report.effects().is_none());
+        assert!(report.effects().unwrap().is_none());
         assert_eq!(
             report.requested_scripting_mode(),
             crate::HtmlParserScriptingMode::Disabled
@@ -5030,7 +5034,7 @@ mod whole_source_comparisons {
             assert_eq!(failed.stop(), ParseStop::Cancelled);
             let diagnostics = failed.diagnostics().unwrap();
             assert_eq!(diagnostics.len(), 1);
-            let (record, location) = diagnostics.retained_record(0).unwrap();
+            let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
             assert_eq!(record.kind, l.errors[0].kind);
             assert_eq!(record.context, l.errors[0].context);
             assert_eq!(location.role, l.errors[0].role);
@@ -6178,7 +6182,7 @@ mod comment_diagnostic_corpus {
         assert!(driver.is_none());
         let diagnostics = failed.diagnostics().unwrap();
         assert_eq!(diagnostics.len(), 1);
-        let (record, location) = diagnostics.retained_record(0).unwrap();
+        let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
         assert_eq!(record.kind, FOO.kind);
         assert_eq!(record.context, FOO.context);
         assert_eq!(record.rule, FOO.rule);
@@ -6513,7 +6517,7 @@ mod comment_diagnostic_corpus {
                     let diagnostics = report.diagnostics();
                     let mut counts = (0, 0);
                     for index in 0..diagnostics.len() {
-                        let (record, _) = diagnostics.retained_record(index).unwrap();
+                        let (record, _) = diagnostics.retained_record(index).unwrap().unwrap();
                         let branch = record.rule().branch();
                         if branch.ends_with("/select-fragment-context") {
                             assert_eq!(
@@ -6626,7 +6630,7 @@ mod comment_diagnostic_corpus {
                     let diagnostics = report.diagnostics();
                     let mut count = 0;
                     for index in 0..diagnostics.len() {
-                        let (record, _) = diagnostics.retained_record(index).unwrap();
+                        let (record, _) = diagnostics.retained_record(index).unwrap().unwrap();
                         if record.rule().branch() == "after-body/html-end/fragment-case" {
                             assert_eq!(
                                 record.kind(),

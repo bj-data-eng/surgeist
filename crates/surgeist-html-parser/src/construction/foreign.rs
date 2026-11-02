@@ -51,7 +51,7 @@ fn adjusted_text(
             c.charge(WorkCategory::RecordVisit, 1)?;
             c.charge(
                 WorkCategory::InspectByte,
-                (2 * mem::size_of::<usize>()) as u64,
+                const { (2 * mem::size_of::<usize>()) as u64 },
             )?;
             if origin.end <= skip {
                 continue;
@@ -62,7 +62,7 @@ fn adjusted_text(
                 c,
                 TextOrigin {
                     start: origin.start.saturating_sub(skip),
-                    end: origin.end - skip,
+                    end: origin.end.saturating_sub(skip),
                     source: origin.source.clone(),
                     kind: crate::parser::tokenizer::token::OriginKind::RecoverySyntax,
                 },
@@ -221,10 +221,9 @@ impl ParserArenaSession {
                 return Err(stop.into());
             }
         };
-        let original = input
-            .replace(Text { value, origins })
-            .expect("qualified original");
-        original.release(c)?;
+        let adjusted = Text { value, origins };
+        // The original is replaced in place through the borrow that read it.
+        mem::replace(original, adjusted).release(c)?;
         Ok(())
     }
 }
@@ -249,11 +248,11 @@ impl SessionStorage {
         let original = match self.register_text(c, original) {
             Ok((value, slot)) => {
                 drop(value);
-                match &self.payloads.values[slot] {
-                    RetainedPayload::String {
+                match self.payloads.values.get(slot) {
+                    Some(RetainedPayload::String {
                         origins: Some(group),
                         ..
-                    } => match self
+                    }) => match self
                         .evidence
                         .as_ref()
                         .ok_or(SessionError::WrongToken)
@@ -265,7 +264,14 @@ impl SessionStorage {
                             return Err(error);
                         }
                     },
-                    _ => None,
+                    Some(RetainedPayload::String { origins: None, .. }) => None,
+                    _ => {
+                        // The invariant is the first stop; a release refusal
+                        // is secondary and latched by its owner.
+                        let invariant = latch_registry_row(c);
+                        let _ = adjusted.release(c);
+                        return Err(invariant);
+                    }
                 }
             }
             Err(error) => {
@@ -317,7 +323,7 @@ impl SessionStorage {
                 if exact_ascii(c, Some(original.value.text()), input)? {
                     return Ok((
                         if prefix.is_some() {
-                            Some((local, input.len() - local.len()))
+                            Some((local, input.len().saturating_sub(local.len())))
                         } else {
                             None
                         },
@@ -474,7 +480,10 @@ mod tests {
                     assert!(
                         matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
                     );
-                    assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+                    assert_eq!(
+                        session.active().unwrap().construction.test_storage().len(),
+                        2
+                    );
                 }
                 let mut pending = input.map(TokenKind::Tag);
                 if pending.is_some() {
@@ -530,7 +539,10 @@ mod tests {
                 _ => assert!(matches!(result, Err(SessionError::Stop(_)))),
             }
             assert!(input.is_some());
-            assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                2
+            );
             drop(alias);
             let mut pending = input.map(TokenKind::Tag);
             release_token_kind(&mut pending, &mut c).unwrap();
@@ -701,7 +713,9 @@ mod tests {
                     .unwrap()
                     .payloads
                     .check_aliases(
-                        ConstructionView::Active(session.active().unwrap().construction.storage()),
+                        ConstructionView::Active(
+                            session.active().unwrap().construction.test_storage(),
+                        ),
                         &mut c,
                     )
                     .unwrap();
@@ -831,7 +845,7 @@ mod tests {
                         }
                     ));
                     stopped_after_element |=
-                        session.active().unwrap().construction.storage().len() > 3;
+                        session.active().unwrap().construction.test_storage().len() > 3;
                     assert!(
                         matches!(session.freeze(&mut c), Err(SessionError::Stop(stop)) if stop == first)
                     );
@@ -839,7 +853,7 @@ mod tests {
                 Err(error) => panic!("qualified clone failure: {error:?}"),
             }
             match session.active().unwrap().payloads.check_aliases(
-                ConstructionView::Active(session.active().unwrap().construction.storage()),
+                ConstructionView::Active(session.active().unwrap().construction.test_storage()),
                 &mut c,
             ) {
                 Ok(()) => {}
@@ -854,7 +868,7 @@ mod tests {
                         .payloads
                         .check_aliases(
                             ConstructionView::Active(
-                                session.active().unwrap().construction.storage(),
+                                session.active().unwrap().construction.test_storage(),
                             ),
                             &mut c,
                         )
@@ -870,6 +884,73 @@ mod tests {
         }
         assert!(stopped_after_element);
         assert!(completed);
+    }
+
+    /// One foreign allocation with `credits` of work, its next unsharing
+    /// refused. Returns the work spent after setup and after the allocation,
+    /// and whether the refusal reached the unvalidated attributes, which then
+    /// must stay in the registry for the owner's release to drain.
+    fn allocate_with_refused_unsharing(credits: Option<u64>) -> (u64, u64, bool) {
+        let work = |c: &ParseControl| c.usage().resource(HtmlParseResource::WorkCredits).current;
+        let mut limits = super::super::tests::limits().into_builder();
+        if let Some(credits) = credits {
+            limits = limits.work_credits(credits);
+        }
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<svg a=1 b=2>"),
+            limits.finish().unwrap(),
+        );
+        let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let (lexer, mut input, range) = lexical(request.source(), &mut c);
+        let setup = work(&c);
+        c.refuse_next_shared_release();
+        let _ = session.allocate_foreign_tag_for_creation(
+            &mut c,
+            &mut input,
+            &root,
+            ForeignNamespace::Svg,
+            &range,
+            &capability,
+        );
+        let spent = work(&c);
+        // Only the refused unsharing leaves the staged row emptied (a leak) or
+        // holding the refused Arc and ticket.
+        let reached = session.active().unwrap().payloads.values.iter().any(|row| {
+            matches!(
+                row,
+                RetainedPayload::Attributes(None | Some(AttributeStorage::Unvalidated { .. }))
+            )
+        });
+        let released = lexer.release(&mut c);
+        let mut cleanup = session.release(&mut c);
+        if matches!(cleanup, Err(SessionError::Stop(_))) {
+            cleanup = session.release(&mut c);
+        }
+        // A refusal that no unsharing consumed stays armed and would refuse
+        // the release of an unrelated element's attributes.
+        if reached {
+            released.unwrap();
+            cleanup.unwrap();
+            zero(&c);
+        }
+        (setup, spent, reached)
+    }
+
+    #[test]
+    fn a_stopped_foreign_attribute_validation_with_a_refused_release_keeps_the_shared_attributes() {
+        let (setup, spent, reached) = allocate_with_refused_unsharing(None);
+        assert!(
+            !reached && spent > setup,
+            "an unrestricted allocation validates"
+        );
+        // A work limit between setup and completion stops at some step of the
+        // allocation; one of them stops its validation, whose unsharing the
+        // refusal then rejects. Scan back from the end of the allocation.
+        let reached = (setup..spent)
+            .rev()
+            .any(|credits| allocate_with_refused_unsharing(Some(credits)).2);
+        assert!(reached, "no work limit stopped the validation");
     }
 }
 
@@ -1031,11 +1112,7 @@ impl SessionStorage {
             let mut units = name
                 .len()
                 .checked_add(namespace.uri().map_or(0, DocumentString::len))
-                .ok_or_else(|| {
-                    control
-                        .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
+                .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             let (values, allocation) = control.new_vector()?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
@@ -1073,17 +1150,15 @@ impl SessionStorage {
                     })
                     .and_then(|sum| sum.checked_add(value.len()))
                     .ok_or_else(|| {
-                        control
-                            .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                            .unwrap_err()
+                        control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
-                let RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                     values,
                     allocation,
                     ..
-                })) = &mut self.payloads.values[container]
+                }))) = self.payloads.values.get_mut(container)
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(control));
                 };
                 control.reserve_vector_geometric_toward(values, allocation, 1, original_len)?;
                 payload_write::<Attribute>(control, 1)?;
@@ -1117,17 +1192,21 @@ impl SessionStorage {
             }
             self.reverse_attributes(control, container)?;
             payload_write::<Option<AttributeStorage>>(control, 2)?;
-            let RetainedPayload::Attributes(storage) = &mut self.payloads.values[container] else {
-                unreachable!()
+            let Some(RetainedPayload::Attributes(storage)) =
+                self.payloads.values.get_mut(container)
+            else {
+                return Err(latch_registry_row(control));
             };
-            let AttributeStorage::Building {
+            let taken = storage.take();
+            let Some(AttributeStorage::Building {
                 values,
                 allocation,
                 original_len,
                 reversed_pairs,
-            } = storage.take().expect("attribute builder phase")
+            }) = taken
             else {
-                unreachable!()
+                *storage = taken;
+                return Err(latch_registry_row(control));
             };
             let (backing, shared) = match control.share_owned(values) {
                 Ok(value) => value,
@@ -1146,11 +1225,22 @@ impl SessionStorage {
                 Err((error, backing)) => {
                     // Preserve the admitted shared wrapper in the owning phase
                     // even when intrinsic duplicate checking or work stops.
-                    let Ok(values) = control.release_shared(backing, shared) else {
-                        // Unpublished backing is uniquely owned; a refusal is an
-                        // invariant stop, and the container row stays empty for
-                        // cleanup to report.
-                        return Err(latch_registry_row(control));
+                    let values = match control.release_shared(backing, shared) {
+                        Ok(values) => values,
+                        Err(refused) => {
+                            // Unpublished backing is uniquely owned, so a
+                            // refusal is an invariant stop. The refused Arc and
+                            // ticket stay in the row for cleanup to retry.
+                            let (_, backing, shared) = refused.into_parts();
+                            *storage = Some(AttributeStorage::Unvalidated {
+                                backing,
+                                allocation,
+                                shared,
+                                original_len,
+                                reversed_pairs,
+                            });
+                            return Err(latch_registry_row(control));
+                        }
                     };
                     *storage = Some(AttributeStorage::Building {
                         values,
@@ -1172,16 +1262,20 @@ impl SessionStorage {
                 WorkCategory::CopyByte,
                 mem::size_of::<OrderedAttributes>() as u64,
             )?;
-            let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { values, .. })) =
-                &self.payloads.values[container]
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+                values, ..
+            }))) = self.payloads.values.get(container)
             else {
-                unreachable!()
+                return Err(latch_registry_row(control));
             };
             let attributes = values.clone();
             let template = false;
             // Preadmit the actual native-alias bindings and both usage writes.
             // Successful allocation and binding have no fallible alias gap.
-            payload_write::<StringLocation>(control, 1 + u64::from(namespace_ticket.is_some()))?;
+            payload_write::<StringLocation>(
+                control,
+                u64::from(namespace_ticket.is_some()).saturating_add(1),
+            )?;
             payload_write::<Option<usize>>(control, 1)?;
             payload_write::<[usize; 2]>(control, 2)?;
             if svg.is_some() {
@@ -1199,16 +1293,17 @@ impl SessionStorage {
                 prepared,
             )?;
             if let Some(slot) = svg {
-                self.bind_svg_slot(slot, node.index);
+                self.bind_svg_slot(control, slot, node.index)?;
             }
             self.bind_string(name_ticket, StringLocation::ElementName(node.index))?;
             if let Some(ticket) = namespace_ticket {
                 self.bind_string(ticket, StringLocation::Namespace(node.index))?;
             }
-            let RetainedPayload::Attributes(Some(AttributeStorage::Frozen { element, .. })) =
-                &mut self.payloads.values[container]
+            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
+                element, ..
+            }))) = self.payloads.values.get_mut(container)
             else {
-                unreachable!()
+                return Err(latch_registry_row(control));
             };
             *element = Some(node.index);
             self.payloads.join_row(container)?;

@@ -555,12 +555,12 @@ fn select_stopped_clone_prefixes_retain_all_scratch_and_nested_payload_owners_fo
                 Some(SessionError::Stop(first))
             );
             let storage = session.active().unwrap();
-            for parent in 0..storage.construction.storage().len() {
+            for parent in 0..storage.construction.test_storage().len() {
                 for child in storage.construction.node_at(parent).unwrap().children() {
                     assert_eq!(child.parent().map(|node| node.position()), Some(parent));
                 }
             }
-            progressed |= storage.construction.storage().len() > nodes.len() + 3;
+            progressed |= storage.construction.test_storage().len() > nodes.len() + 3;
             assert!(children(&session, &target).len() <= 1);
         }
         session.release(&mut c).unwrap();
@@ -1169,7 +1169,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
         .chain(std::iter::once((complete, true)))
     {
         let (mut c, mut session, source, cancellation) = non_element_clone_fixture(kind);
-        let nodes = session.active().unwrap().construction.storage().len();
+        let nodes = session.active().unwrap().construction.test_storage().len();
         let slots = session.active().unwrap().payloads.values.len();
         let remaining =
             limits().work_credits() - c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -1180,7 +1180,7 @@ fn non_element_clone_binding_boundary(kind: usize) {
                 .active_mut()
                 .unwrap()
                 .clone_node(&mut c, source, DocumentRef::Owned(0));
-        let installed = session.active().unwrap().construction.storage().len() - nodes;
+        let installed = session.active().unwrap().construction.test_storage().len() - nodes;
         if result.is_ok() {
             assert_eq!(extra, complete);
             assert_eq!(installed, 1);
@@ -2159,7 +2159,7 @@ fn a_join_naming_no_row_fails_typed_instead_of_panicking() {
     let storage = session.active_mut().unwrap();
     let good = storage.payloads.node_joins[img];
     // A join past the registry names no row: the lookup reports a typed error.
-    storage.payloads.node_joins[img].rows[Join::Image as usize] =
+    *storage.payloads.node_joins[img].rows.get_mut(Join::Image) =
         Some(joined_cell(u32::MAX as usize - 1).unwrap());
     assert_eq!(
         storage.start_img_update(

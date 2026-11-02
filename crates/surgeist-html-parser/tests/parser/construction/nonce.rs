@@ -29,6 +29,7 @@ fn slots(report: &HtmlParseReport) -> Vec<(String, DocumentString)> {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     values
@@ -71,7 +72,7 @@ fn standalone_nonce_slots_preserve_content_reference_and_absence_in_both_encodin
         let associations = report.associations();
         let mut found = false;
         for index in 0..associations.len() {
-            if matches!(associations.row(index).unwrap().destination(), HtmlParseDestination::Raw { node, kind: HtmlParseRawField::Nonce } if node.id() == p.id())
+            if matches!(associations.row(index).unwrap().unwrap().destination(), HtmlParseDestination::Raw { node, kind: HtmlParseRawField::Nonce } if node.id() == p.id())
             {
                 found = true;
             }
@@ -186,6 +187,7 @@ fn captured_connected_shadow_header_policy_hides_content_preserving_real_slot() 
                     break;
                 }
                 HtmlParseMetadataStep::Complete => panic!("p nonce record"),
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
                 _ => {}
             }
         }
@@ -226,6 +228,7 @@ fn connected_script_hiding_runs_with_actual_pending_connection_effects() {
                 found = true;
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => {}
         }
     }
@@ -358,6 +361,7 @@ fn captured_template_contents_host_does_not_connect_nonce_to_browsing_context() 
                 break;
             }
             HtmlParseMetadataStep::Complete => panic!("p nonce record"),
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => {}
         }
     }

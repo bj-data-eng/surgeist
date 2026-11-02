@@ -89,6 +89,7 @@ fn next_occurrence(
     let mut after = false;
     loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.id() == *original => after = true,
             Step::Occurrence(row) if after && row.requires_processing() => {
                 assert!(matches!(

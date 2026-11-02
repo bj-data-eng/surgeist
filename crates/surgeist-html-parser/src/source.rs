@@ -69,13 +69,13 @@ pub(crate) struct ConsumedBoundaryAdvance {
 
 impl ConsumedBoundaryAdvance {
     pub(crate) fn source_reads(&self) -> usize {
-        self.end - self.start.offset
+        self.end.saturating_sub(self.start.offset)
     }
 
     pub(crate) fn comparison_bytes(&self) -> usize {
         match self.units {
             DecodedSourceUnits::Utf8 { length, .. } => length,
-            DecodedSourceUnits::Utf16 { length, .. } => length * 2,
+            DecodedSourceUnits::Utf16 { length, .. } => length.saturating_mul(2),
         }
     }
 }
@@ -193,11 +193,24 @@ impl HtmlSource {
         if range.source != self.identity {
             return Err(HtmlSourceRangeError::ForeignSource);
         }
+        // The range's fields are private and every constructor validates them
+        // against its own source, but the offsets are checked again here so
+        // that no slice can panic.
+        let checked = self.range(range.start, range.end)?;
+        let out_of_bounds = HtmlSourceRangeError::OutOfBounds {
+            end: checked.end,
+            length: self.len(),
+        };
         match &self.text {
-            SourceText::Utf8(text) => Ok(DocumentString::from(&text[range.start..range.end])),
-            SourceText::Utf16(text) => Ok(DocumentString::from_utf16(
-                &text.code_units()[range.start..range.end],
-            )),
+            SourceText::Utf8(text) => text
+                .get(checked.start..checked.end)
+                .map(DocumentString::from)
+                .ok_or(out_of_bounds),
+            SourceText::Utf16(text) => text
+                .code_units()
+                .get(checked.start..checked.end)
+                .map(DocumentString::from_utf16)
+                .ok_or(out_of_bounds),
         }
     }
 
@@ -273,20 +286,29 @@ impl HtmlSource {
         if advance.end > self.len() {
             return Err(ConsumedBoundaryError::InvalidBoundary);
         }
+        let range = advance.start.offset..advance.end;
         let mut equal = true;
         match (&self.text, advance.units) {
             (SourceText::Utf8(text), DecodedSourceUnits::Utf8 { units, length }) => {
-                let supplied = &text.as_bytes()[advance.start.offset..advance.end];
-                for index in 0..length {
+                let supplied = text
+                    .as_bytes()
+                    .get(range)
+                    .ok_or(ConsumedBoundaryError::InvalidBoundary)?;
+                equal &= supplied.len() == length;
+                for (supplied, expected) in supplied.iter().zip(units.iter().take(length)) {
                     // Do not short-circuit: every precharged source read and
                     // comparison is performed, including a mismatch.
-                    equal &= supplied[index] == units[index];
+                    equal &= supplied == expected;
                 }
             }
             (SourceText::Utf16(text), DecodedSourceUnits::Utf16 { units, length }) => {
-                let supplied = &text.code_units()[advance.start.offset..advance.end];
-                for index in 0..length {
-                    equal &= supplied[index] == units[index];
+                let supplied = text
+                    .code_units()
+                    .get(range)
+                    .ok_or(ConsumedBoundaryError::InvalidBoundary)?;
+                equal &= supplied.len() == length;
+                for (supplied, expected) in supplied.iter().zip(units.iter().take(length)) {
+                    equal &= supplied == expected;
                 }
             }
             _ => return Err(ConsumedBoundaryError::ForeignCoordinates),
@@ -440,6 +462,100 @@ mod consumed_boundary_tests {
         );
     }
 
+    // The two tests below forge the prepared advance, which `prepare` never
+    // produces, to characterize how completion treats an inconsistent one.
+    fn forged(
+        source: &HtmlSource,
+        start: usize,
+        end: usize,
+        units: DecodedSourceUnits,
+    ) -> ConsumedBoundaryAdvance {
+        let mut boundary = source.initial_consumed_boundary();
+        boundary.offset = start;
+        ConsumedBoundaryAdvance {
+            start: boundary,
+            end,
+            units,
+        }
+    }
+
+    #[test]
+    fn completion_rejects_an_advance_whose_range_ends_before_it_starts() {
+        let utf8 = HtmlSource::utf8("abc");
+        let backwards = forged(
+            &utf8,
+            2,
+            1,
+            DecodedSourceUnits::Utf8 {
+                units: [0x62, 0, 0, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(
+            utf8.complete_consumed_boundary(backwards),
+            Err(ConsumedBoundaryError::InvalidBoundary)
+        );
+        let utf16 = HtmlSource::utf16(DocumentString::from("abc"));
+        let backwards = forged(
+            &utf16,
+            2,
+            1,
+            DecodedSourceUnits::Utf16 {
+                units: [0x62, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(
+            utf16.complete_consumed_boundary(backwards),
+            Err(ConsumedBoundaryError::InvalidBoundary)
+        );
+    }
+
+    #[test]
+    fn completion_rejects_an_advance_whose_range_is_not_as_long_as_its_units() {
+        // The first supplied unit equals the first prepared unit, so only the
+        // length disagreement can report the mismatch.
+        let utf8 = HtmlSource::utf8("ab");
+        let longer = forged(
+            &utf8,
+            0,
+            2,
+            DecodedSourceUnits::Utf8 {
+                units: [0x61, 0, 0, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(
+            utf8.complete_consumed_boundary(longer),
+            Err(ConsumedBoundaryError::ContentMismatch)
+        );
+        let utf16 = HtmlSource::utf16(DocumentString::from("ab"));
+        let longer = forged(
+            &utf16,
+            0,
+            2,
+            DecodedSourceUnits::Utf16 {
+                units: [0x61, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(
+            utf16.complete_consumed_boundary(longer),
+            Err(ConsumedBoundaryError::ContentMismatch)
+        );
+        // Control: a range matching its units completes.
+        let exact = forged(
+            &utf8,
+            0,
+            1,
+            DecodedSourceUnits::Utf8 {
+                units: [0x61, 0, 0, 0],
+                length: 1,
+            },
+        );
+        assert_eq!(utf8.complete_consumed_boundary(exact).unwrap().offset(), 1);
+    }
+
     #[test]
     fn utf16_literal_surrogate_proofs_do_not_claim_scalar_validity() {
         let source = HtmlSource::utf16(DocumentString::from_utf16(vec![0xD800, 0x61]));
@@ -488,7 +604,7 @@ impl HtmlSourceRange {
     }
     /// Returns the number of input units in this range.
     pub fn len(&self) -> usize {
-        self.end - self.start
+        self.end.saturating_sub(self.start)
     }
     /// Reports whether this is an empty range or end anchor.
     pub fn is_empty(&self) -> bool {
@@ -526,3 +642,66 @@ impl fmt::Display for HtmlSourceRangeError {
     }
 }
 impl Error for HtmlSourceRangeError {}
+
+#[cfg(test)]
+mod text_tests {
+    use super::*;
+
+    /// A range that only this module can build: it names the source's own
+    /// identity but was never validated against its text.
+    fn forged(source: &HtmlSource, start: usize, end: usize) -> HtmlSourceRange {
+        HtmlSourceRange {
+            source: source.identity().clone(),
+            coordinates: source.coordinates(),
+            start,
+            end,
+        }
+    }
+
+    #[test]
+    fn text_of_a_range_beyond_the_source_reports_out_of_bounds() {
+        let utf8 = HtmlSource::utf8("ab");
+        assert_eq!(
+            utf8.text(&forged(&utf8, 0, 5)),
+            Err(HtmlSourceRangeError::OutOfBounds { end: 5, length: 2 })
+        );
+        let utf16 = HtmlSource::utf16(DocumentString::from("ab"));
+        assert_eq!(
+            utf16.text(&forged(&utf16, 1, 3)),
+            Err(HtmlSourceRangeError::OutOfBounds { end: 3, length: 2 })
+        );
+    }
+
+    #[test]
+    fn text_of_a_range_splitting_a_utf8_scalar_reports_the_boundary() {
+        let source = HtmlSource::utf8("é");
+        assert_eq!(
+            source.text(&forged(&source, 1, 2)),
+            Err(HtmlSourceRangeError::Utf8Boundary { offset: 1 })
+        );
+    }
+
+    #[test]
+    fn text_of_a_reversed_range_reports_it() {
+        let source = HtmlSource::utf8("abc");
+        assert_eq!(
+            source.text(&forged(&source, 2, 1)),
+            Err(HtmlSourceRangeError::Reversed { start: 2, end: 1 })
+        );
+    }
+
+    #[test]
+    fn text_of_a_validated_range_is_the_exact_slice_in_both_coordinates() {
+        let utf8 = HtmlSource::utf8("a🙂b");
+        assert_eq!(
+            utf8.text(&utf8.range(1, 5).unwrap()).unwrap(),
+            DocumentString::from("🙂")
+        );
+        let units = DocumentString::from_utf16(vec![0x61, 0xD800, 0x62]);
+        let utf16 = HtmlSource::utf16(units);
+        assert_eq!(
+            utf16.text(&utf16.range(1, 3).unwrap()).unwrap(),
+            DocumentString::from_utf16(vec![0xD800, 0x62])
+        );
+    }
+}

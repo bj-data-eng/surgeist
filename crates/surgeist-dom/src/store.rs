@@ -188,6 +188,9 @@ pub enum DomResource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DomError {
+    /// A completed parse report holds a reference to a record its own tables
+    /// cannot resolve, so the operation that read it is refused.
+    ParsedReportUnresolved(surgeist_html_parser::HtmlParseUnresolvedReference),
     /// Original parsed association history must be admitted before a native
     /// association-changing operation may cross this exact Document.
     ParsedAssociationPending {

@@ -7,7 +7,7 @@
 use super::css_color::Banks;
 use super::css_color::{action_layout, frame, numerical_layout};
 use super::*;
-use provenance::{ColorComputation, ColorValueSource, InputValueComputation};
+use provenance::{ColorComputation, ColorOperandTable, ColorValueSource, InputValueComputation};
 use surgeist_css::color::controlled::{
     CssColorOperationOwner, CssColorParseOutcome, CssColorTransform, CssUsedColorCheckpoint,
 };
@@ -32,7 +32,7 @@ fn css_error(c: &mut ParseControl, error: CssColorError) -> SessionError {
     c.stop_color_processing(error).into()
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
-    c.fail_invariant(crate::parser::control::Invariant::InputCursorState)
+    c.fail_invariant(crate::parser::control::Invariant::ColorConversionState)
         .into()
 }
 /// One total transformation; a refused admission drops it, which declines it.
@@ -120,8 +120,10 @@ fn execute(
         frame(
             c,
             Serialization::register_bytes(),
-            mem::size_of::<Option<Utf16Buffer>>()
-                + mem::size_of::<Option<OwnedVec<DigitSlot<'_>>>>(),
+            const {
+                mem::size_of::<Option<Utf16Buffer>>()
+                    + mem::size_of::<Option<OwnedVec<DigitSlot<'_>>>>()
+            },
         )?;
         let request = if sequence.html_compatible() {
             SerializationRequest::HtmlCompatible
@@ -332,7 +334,7 @@ impl SessionStorage {
         let computation = InputValueComputation::Color(ColorComputation {
             source,
             original,
-            operands: [alpha_edge, space_edge],
+            operands: ColorOperandTable::new([alpha_edge, space_edge]),
             space,
             standard_failure: failure,
             environment: environment_identity(),
@@ -365,6 +367,16 @@ impl SessionStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_colour_digit_fault_is_a_color_conversion_invariant() {
+        let mut c = ParseControl::new(color_limits(), crate::HtmlParseCancellation::new());
+        let error = integrity(&mut c);
+        let stop =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::ColorConversionState);
+        assert_eq!(error, SessionError::Stop(stop));
+        assert_eq!(c.stop(), Some(stop));
+    }
 
     // A thread-local observer of actual completed adapter actions. It changes
     // only the real request's cancellation flag. No production field, fee,
@@ -788,15 +800,15 @@ mod tests {
                         .unwrap();
                     assert!(
                         matches!(&eof, crate::parser::tokenizer::token::Event::Token(token)
-                        if matches!(&token.token().kind, TokenKind::Eof))
+                        if matches!(&token.token_for_tests().kind, TokenKind::Eof))
                     );
                     eof.release(&mut c).unwrap();
                     lexer.release(&mut c).unwrap();
                     session
                         .prepare_native_associations(&mut c, request.source())
                         .unwrap();
-                    let mut history = session.freeze_history(&mut c).unwrap();
-                    let view = history.view().unwrap();
+                    let history = session.freeze_history(&mut c).unwrap();
+                    let view = history.view();
                     let mut generated_name = false;
                     for index in 0..view.len() {
                         let header = view.header(view.group(index).unwrap()).unwrap();
@@ -818,6 +830,7 @@ mod tests {
                             let mut units = Vec::new();
                             loop {
                                 match cursor.advance() {
+                                    history::HistoryStep::Fault(fault) => panic!("{fault}"),
                                     history::HistoryStep::Leaf(leaf) => {
                                         assert!(leaf.origins().is_empty());
                                         units.extend_from_slice(leaf.units());

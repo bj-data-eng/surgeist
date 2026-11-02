@@ -19,6 +19,11 @@ pub enum DomParsedHtmlMetaOccurrenceError {
     OwnerPoisoned { root: NodeId },
     Cssom(surgeist_cssom::CssomError),
 }
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference> for DomParsedHtmlMetaOccurrenceError {
+    fn from(e: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::Style(e.into())
+    }
+}
 impl From<DomError> for DomParsedHtmlMetaOccurrenceError {
     fn from(e: DomError) -> Self {
         Self::Style(e.into())
@@ -77,6 +82,7 @@ fn select<'a>(
         loop {
             meter.step(cancel)?;
             match rows.advance() {
+                Step::Fault(fault) => return Err(fault.into()),
                 Step::Occurrence(row) if row.id() == *expected => {
                     return Err(if row.kind() == Kind::ChangePreferred {
                         Error::AlreadyConsumed
@@ -85,7 +91,7 @@ fn select<'a>(
                     });
                 }
                 Step::Complete => return Err(Error::WrongOccurrence),
-                _ => (),
+                Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
             }
         }
     }

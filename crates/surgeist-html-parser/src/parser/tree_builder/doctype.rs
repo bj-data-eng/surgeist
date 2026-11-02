@@ -116,14 +116,14 @@ fn matches(
     if units.len() < literal.len() || (!prefix && units.len() != literal.len()) {
         return Ok(false);
     }
-    let mut index = 0;
-    while index < literal.len() {
+    // The text is at least as long as the literal, so the pairs are exactly the
+    // literal's indices.
+    for (&unit, byte) in units.iter().zip(literal.bytes()) {
         c.charge(WorkCategory::StateStep, 1)?;
         c.charge(WorkCategory::InspectByte, 3)?;
-        let mut unit = units[index];
-        let byte = literal.as_bytes()[index];
+        let mut unit = unit;
         if insensitive && (65..=90).contains(&unit) {
-            unit += 32;
+            unit |= 0x20;
         }
         let byte = if insensitive {
             byte.to_ascii_lowercase()
@@ -133,7 +133,6 @@ fn matches(
         if unit != u16::from(byte) {
             return Ok(false);
         }
-        index += 1;
     }
     Ok(true)
 }
@@ -158,15 +157,12 @@ fn any(
     prefix: bool,
     c: &mut ParseControl,
 ) -> Result<bool, ParseStop> {
-    let mut index = 0;
-    while index < candidates.len() {
+    for candidate in candidates {
         c.charge(WorkCategory::StateStep, 1)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let candidate = candidates[index];
         if optional_matches(text, candidate, prefix, true, c)? {
             return Ok(true);
         }
-        index += 1;
     }
     Ok(false)
 }

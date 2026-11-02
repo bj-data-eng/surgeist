@@ -1,7 +1,8 @@
 //! Private accounting owner for parsing. Counts describe admitted physical work
 //! and owned storage, not CPU instructions, elapsed time, allocator metadata or RSS.
 
-use crate::settings::{RESOURCE_COUNT, RESOURCES};
+use crate::keyed::{Table, slots};
+use crate::settings::{RESOURCES, ResourceTable};
 use crate::{
     HtmlParseCancellation, HtmlParseLimits, HtmlParseResource, HtmlSource, HtmlSourceCoordinates,
     HtmlSourceId,
@@ -17,6 +18,7 @@ mod construction;
 mod css_value;
 mod finalization;
 pub(crate) use css_value::CssSchemeValue;
+pub(crate) use finalization::FinalReleaseError;
 #[cfg(test)]
 pub(crate) use finalization::{
     FinalizationCut, FinalizationObservation, FinalizationTransferObservation,
@@ -26,6 +28,8 @@ mod text_append;
 pub(crate) use construction::ConstructionAllocation;
 
 const WORK_COUNT: usize = 8;
+/// One value per [`WorkCategory`]; a lookup cannot be out of range.
+type WorkTable<T> = Table<WorkCategory, T, WORK_COUNT>;
 pub(crate) const WORK_QUANTUM: usize = 256;
 
 /// Each category has weight one; units are physical bytes or individual events.
@@ -41,26 +45,93 @@ pub enum WorkCategory {
     ReserveByte,
     ProviderCall,
 }
+slots!(WorkCategory, WORK_COUNT, {
+    InputUnitRead => 0,
+    InspectByte => 1,
+    CopyByte => 2,
+    StateStep => 3,
+    RecordVisit => 4,
+    RecordWrite => 5,
+    ReserveByte => 6,
+    ProviderCall => 7,
+});
 
+/// A state the parser's own sequencing rules out, reported instead of a panic.
+///
+/// No valid use produces one: each variant names the part of the parser whose
+/// contract was found broken, so a report can say which part to read. The parser
+/// latches the stop first, hands back every owner it holds and releases all
+/// charged usage. The enum grows as more states are classified.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum Invariant {
+    /// A source other than the one bound to the parse was presented.
     ForeignSource,
+    /// A storage accounting operation named a resource it does not apply to:
+    /// one that is not storage, or not the one the operation accounts.
     NonStorageResource,
+    /// A release returned more units than the parse currently holds.
     ReleaseUnderflow,
+    /// A node release was requested for nodes, which are never reclaimed one by
+    /// one.
     NonReclaimableNodes,
+    /// A buffer, ticket or allocation differs from what was charged for it: its
+    /// capacity, layout, ownership or finalization state, or a byte extent that
+    /// no charged allocation could have.
     CapacityMismatch,
+    /// Storage was requested for a zero-sized element type.
     ZeroSizedStorage,
+    /// A stopped parse has no source binding where one was admitted.
     MissingSource,
+    /// The input cursor (decoded input, position, checkpoint, pending-input
+    /// poll or consumed boundary) is in a state its own contract excludes.
     InputCursorState,
+    /// A value, ticket or capacity owned under one parse controller was
+    /// presented to another.
     ForeignControl,
+    /// A record identifier or evidence handle from one evidence owner was
+    /// presented to another.
     ForeignEvidence,
+    /// A cleanup-only operation ran while the parse had not stopped.
     CleanupWhileRunning,
+    /// A shared allocation that must be uniquely held was aliased.
     SharedAllocationAliased,
+    /// A construction session was used, or a frozen base was validated, while
+    /// an operation it owes was still pending: a form, radio, range, transfer,
+    /// SVG-wrapper or task effect, an open checkpoint, an intrinsic operation
+    /// not yet performed, or a base response not yet returned.
     PendingFormEffects,
+    /// A creation that holds a form, link, select or details association
+    /// failed with an error other than a stop.
     IncompleteFormAssociationCreation,
-    /// A retained record, child or payload row that internal state names is
-    /// missing, out of range or of another kind.
+    /// A construction registry row, record, child or payload that internal
+    /// state names is missing, out of range or of another kind, a construction
+    /// owner that the registry keeps in a slot is not there, or construction
+    /// bookkeeping that its algorithms keep consistent (staged buffers, range
+    /// machine state, counts) contradicts its own sequencing.
     RegistryRow,
+    /// The tree-builder drivers or algorithm are in a state their sequencing
+    /// excludes: a driver, stage or prologue owner that the sequencing keeps in
+    /// a slot is gone, the formatting list is invalid, script nesting or the
+    /// return mode is wrong, the boundary or before-head sequence is broken,
+    /// the tokenizer is exhausted early, or a token slot holds another kind of
+    /// event.
+    TreeBuilderState,
+    /// The tokenizer is in a state its transitions exclude: a draft tag,
+    /// attribute, comment, doctype or processing-instruction part that must
+    /// exist is missing, its event queue is full, a source-boundary proof is
+    /// absent, a character-reference table lookup is out of range, or the
+    /// lexical evidence it records is not in the state its sequencing requires.
+    TokenizerState,
+    /// CSS colour processing is in a state its own sequencing excludes: a
+    /// digit or conversion bank is missing or out of range, a read ran past
+    /// its input, or the colour adapter reported malformed input that the
+    /// parser builds well formed.
+    ColorConversionState,
+    /// A Meta CSP processor, or the CSS color-scheme parser, called an
+    /// admission or release callback while another callback of the same call
+    /// was still running.
+    ReentrantProviderCallback,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -152,8 +223,8 @@ pub struct ResourceUsage {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseUsage {
-    resources: [ResourceUsage; RESOURCE_COUNT],
-    work: [u64; WORK_COUNT],
+    resources: ResourceTable<ResourceUsage>,
+    work: WorkTable<u64>,
     /// Actual capacities can exceed requested layouts. This is observed after
     /// allocation; no promise is made about preventing allocator overshoot.
     pub(crate) actual_capacity_bytes: u64,
@@ -163,21 +234,27 @@ pub struct ParseUsage {
 }
 impl ParseUsage {
     pub fn resource(&self, resource: HtmlParseResource) -> ResourceUsage {
-        self.resources[resource as usize]
+        self.resources.copy(resource)
     }
     pub fn work(&self, category: WorkCategory) -> u64 {
-        self.work[category as usize]
+        self.work.copy(category)
     }
+}
+
+/// The first latched stop and the usage observed at that moment.
+struct FirstStop {
+    reason: ParseStop,
+    usage: ParseUsage,
 }
 
 /// Exclusively mutable owner. Only the cancellation handle can be cloned.
 pub(crate) struct ParseControl {
-    limits: [u64; RESOURCE_COUNT],
+    limits: ResourceTable<u64>,
     usage: ParseUsage,
     cancellation: HtmlParseCancellation,
-    terminal: Option<ParseStop>,
-    // Fixed first-stop observation, captured before any producer cleanup.
-    first_stop_usage: Option<ParseUsage>,
+    // The first stop and its fixed usage observation, captured together before
+    // any producer cleanup, so neither can exist without the other.
+    stopped: Option<FirstStop>,
     source: Option<(HtmlSourceId, HtmlSourceCoordinates)>,
     identity: Arc<()>,
     #[cfg(test)]
@@ -190,6 +267,54 @@ pub(crate) struct ParseControl {
     finalization_transfer_cut: Option<finalization::TransferCut>,
     #[cfg(test)]
     finalization_transfer_observation: Option<FinalizationTransferObservation>,
+    #[cfg(test)]
+    css_scheme_fault: Option<css_value::SchemeFault>,
+    /// Refuses the next `release_shared` as if its payload were aliased.
+    #[cfg(test)]
+    shared_release_fault: bool,
+    /// Makes the next construction-owner retirement report a refusal after it
+    /// has retired everything the owner holds.
+    #[cfg(test)]
+    construction_retire_fault: bool,
+    /// Makes the next construction-owner recovery report a refusal after it
+    /// has taken the storage back and retired the publication wrapper.
+    #[cfg(test)]
+    construction_recovery_fault: bool,
+    /// Refuses the next text-append ticket restoration before it changes
+    /// anything, as an impossible precondition would.
+    #[cfg(test)]
+    text_append_restore_fault: bool,
+    /// Fails the next text-append backing initialization after its pending
+    /// ticket is prepared, as an allocation refusal would.
+    #[cfg(test)]
+    text_append_backing_fault: bool,
+    /// Remaining forced refusals per cleanup-walk site, and how many have
+    /// been issued so far.
+    #[cfg(test)]
+    walk_refusals: [usize; 3],
+    #[cfg(test)]
+    walk_refusals_issued: usize,
+    /// Extra steps the next registry walk takes past the registry's end, as a
+    /// registry that shrank during the walk would.
+    #[cfg(test)]
+    registry_walk_overshoot: usize,
+    /// Extra units the next space-separated token reaches past its value, as
+    /// a cursor out of step with its value would.
+    #[cfg(test)]
+    space_token_overshoot: usize,
+}
+
+/// A cleanup walk that keeps going after a refusal, so tests can make one of
+/// its steps refuse.
+#[cfg(test)]
+#[derive(Clone, Copy)]
+pub(crate) enum WalkSite {
+    /// The credit of each bank the construction owner retires.
+    ConstructionBank,
+    /// The retirement of each name witness of an attribute edit.
+    AttributeWitness,
+    /// Each owner a frozen arena releases.
+    FrozenOwner,
 }
 
 /// Fixed-size diagnostic metadata for actual execution between real polls.
@@ -219,15 +344,14 @@ impl ParseControl {
         Self {
             limits,
             usage: ParseUsage {
-                resources: [ResourceUsage::default(); RESOURCE_COUNT],
-                work: [0; WORK_COUNT],
+                resources: ResourceTable::filled(ResourceUsage::default()),
+                work: WorkTable::filled(0),
                 actual_capacity_bytes: 0,
                 actual_capacity_high_water: 0,
                 largest_atomic_layout: 0,
             },
             cancellation,
-            terminal: None,
-            first_stop_usage: None,
+            stopped: None,
             source: None,
             identity: Arc::new(()),
             #[cfg(test)]
@@ -240,6 +364,26 @@ impl ParseControl {
             finalization_transfer_cut: None,
             #[cfg(test)]
             finalization_transfer_observation: None,
+            #[cfg(test)]
+            css_scheme_fault: None,
+            #[cfg(test)]
+            shared_release_fault: false,
+            #[cfg(test)]
+            construction_retire_fault: false,
+            #[cfg(test)]
+            construction_recovery_fault: false,
+            #[cfg(test)]
+            text_append_restore_fault: false,
+            #[cfg(test)]
+            text_append_backing_fault: false,
+            #[cfg(test)]
+            walk_refusals: [0; 3],
+            #[cfg(test)]
+            walk_refusals_issued: 0,
+            #[cfg(test)]
+            registry_walk_overshoot: 0,
+            #[cfg(test)]
+            space_token_overshoot: 0,
         }
     }
     pub(crate) fn usage(&self) -> &ParseUsage {
@@ -257,10 +401,17 @@ impl ParseControl {
         }
     }
     pub(crate) fn stop(&self) -> Option<ParseStop> {
-        self.terminal
+        self.stopped.as_ref().map(|first| first.reason)
     }
     pub(crate) fn first_stop_usage(&self) -> Option<&ParseUsage> {
-        self.first_stop_usage.as_ref()
+        self.stopped.as_ref().map(|first| &first.usage)
+    }
+    /// The first stop with the usage observed when it was latched; one test
+    /// answers both, since they exist together or not at all.
+    pub(crate) fn stopped(&self) -> Option<(ParseStop, &ParseUsage)> {
+        self.stopped
+            .as_ref()
+            .map(|first| (first.reason, &first.usage))
     }
     /// Fixed identity readback, including after stop. The actual entry copies
     /// the fresh immutable request's capability into this sole controller.
@@ -272,7 +423,7 @@ impl ParseControl {
     pub(crate) fn stopped_source_binding(
         &self,
     ) -> Result<Option<&(HtmlSourceId, HtmlSourceCoordinates)>, ParseStop> {
-        if self.terminal.is_none() {
+        if self.stopped.is_none() {
             return Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning));
         }
         Ok(self.source.as_ref())
@@ -291,7 +442,7 @@ impl ParseControl {
     pub(crate) fn take_stopped_source_binding(
         &mut self,
     ) -> Result<(HtmlSourceId, HtmlSourceCoordinates), ParseStop> {
-        if self.terminal.is_none() {
+        if self.stopped.is_none() {
             return Err(ParseStop::InternalInvariant(Invariant::CleanupWhileRunning));
         }
         self.source
@@ -311,13 +462,15 @@ impl ParseControl {
         self.latch_stop(ParseStop::Cancelled)
     }
     fn latch_stop(&mut self, reason: ParseStop) -> ParseStop {
-        if let Some(first) = self.terminal {
-            return first;
+        if let Some(first) = &self.stopped {
+            return first.reason;
         }
         // No allocation or useful progression: the fixed control layout owns
         // this observation. Denied requests remain in the stop, not in usage.
-        self.first_stop_usage = Some(self.usage.clone());
-        self.terminal = Some(reason);
+        self.stopped = Some(FirstStop {
+            reason,
+            usage: self.usage.clone(),
+        });
         reason
     }
     pub(crate) fn fail_invariant(&mut self, invariant: Invariant) -> ParseStop {
@@ -340,16 +493,18 @@ impl ParseControl {
         reason: surgeist_css::color::CssColorError,
     ) -> ParseStop {
         let Some(error) = HtmlColorProcessingError::from_source(reason) else {
-            return self.fail_invariant(Invariant::InputCursorState);
+            return self.fail_invariant(Invariant::ColorConversionState);
         };
         if let Err(first) = self.checkpoint() {
             return first;
         }
         self.latch_stop(ParseStop::ColorProcessing(error))
     }
-    pub(crate) fn invalid_associated_facts<T>(&mut self) -> Result<T, ParseStop> {
-        self.checkpoint()?;
-        self.fail(ParseStop::InvalidAssociatedFacts)
+    pub(crate) fn stop_invalid_associated_facts(&mut self) -> ParseStop {
+        if let Err(first) = self.checkpoint() {
+            return first;
+        }
+        self.latch_stop(ParseStop::InvalidAssociatedFacts)
     }
     pub(crate) fn stop_base_facts(&mut self, reason: crate::HtmlBaseMissing) -> ParseStop {
         if let Err(first) = self.checkpoint() {
@@ -358,12 +513,11 @@ impl ParseControl {
         self.latch_stop(ParseStop::BaseFacts(reason))
     }
     fn fail<T>(&mut self, reason: ParseStop) -> Result<T, ParseStop> {
-        let first = self.latch_stop(reason);
-        Err(first)
+        Err(self.latch_stop(reason))
     }
     pub(crate) fn checkpoint(&mut self) -> Result<(), ParseStop> {
-        if let Some(reason) = self.terminal {
-            return Err(reason);
+        if let Some(first) = &self.stopped {
+            return Err(first.reason);
         }
         #[cfg(test)]
         {
@@ -375,6 +529,84 @@ impl ParseControl {
             return self.fail(ParseStop::Cancelled);
         }
         Ok(())
+    }
+    /// Forces the next `release_shared` to refuse, returning the payload and
+    /// its ticket unchanged, as an aliased payload would.
+    #[cfg(test)]
+    pub(crate) fn refuse_next_shared_release(&mut self) {
+        self.shared_release_fault = true;
+    }
+    /// Forces the next construction-owner retirement to report a refusal once
+    /// its releases are done.
+    #[cfg(test)]
+    pub(crate) fn refuse_next_construction_retire(&mut self) {
+        self.construction_retire_fault = true;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_construction_retire_fault(&mut self) -> bool {
+        std::mem::take(&mut self.construction_retire_fault)
+    }
+    /// Forces the next construction-owner recovery to report a refusal once
+    /// the storage is back and the wrapper is retired.
+    #[cfg(test)]
+    pub(crate) fn refuse_next_construction_recovery(&mut self) {
+        self.construction_recovery_fault = true;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_construction_recovery_fault(&mut self) -> bool {
+        std::mem::take(&mut self.construction_recovery_fault)
+    }
+    /// Forces the next text-append ticket restoration to refuse.
+    #[cfg(test)]
+    pub(crate) fn refuse_next_text_append_restore(&mut self) {
+        self.text_append_restore_fault = true;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_text_append_restore_fault(&mut self) -> bool {
+        std::mem::take(&mut self.text_append_restore_fault)
+    }
+    /// Forces the next text-append backing initialization to fail once its
+    /// pending ticket has been prepared.
+    #[cfg(test)]
+    pub(crate) fn fail_next_text_append_backing(&mut self) {
+        self.text_append_backing_fault = true;
+    }
+    /// Makes the next `count` steps of a cleanup walk refuse once their work
+    /// is done. The first refusal issued is reported as a wrong token, the
+    /// later ones as the registry row, so the order of reporting is visible.
+    #[cfg(test)]
+    pub(crate) fn refuse_walk_steps(&mut self, site: WalkSite, count: usize) {
+        self.walk_refusals[site as usize] = count;
+        self.walk_refusals_issued = 0;
+    }
+    /// The position of the refusal to issue at this step, when one is due.
+    #[cfg(test)]
+    pub(crate) fn take_walk_refusal(&mut self, site: WalkSite) -> Option<usize> {
+        let remaining = &mut self.walk_refusals[site as usize];
+        *remaining = remaining.checked_sub(1)?;
+        let issued = self.walk_refusals_issued;
+        self.walk_refusals_issued = issued.saturating_add(1);
+        Some(issued)
+    }
+    #[cfg(test)]
+    pub(crate) fn overshoot_next_registry_walk(&mut self, steps: usize) {
+        self.registry_walk_overshoot = steps;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_registry_walk_overshoot(&mut self) -> usize {
+        std::mem::take(&mut self.registry_walk_overshoot)
+    }
+    #[cfg(test)]
+    pub(crate) fn overshoot_next_space_token(&mut self, units: usize) {
+        self.space_token_overshoot = units;
+    }
+    #[cfg(test)]
+    pub(crate) fn take_space_token_overshoot(&mut self) -> usize {
+        std::mem::take(&mut self.space_token_overshoot)
+    }
+    #[cfg(test)]
+    pub(crate) fn take_text_append_backing_fault(&mut self) -> bool {
+        std::mem::take(&mut self.text_append_backing_fault)
     }
     #[cfg(test)]
     pub(crate) fn clear_owned_span_observation(&mut self) {
@@ -421,11 +653,16 @@ impl ParseControl {
     }
     /// Latches a checked-arithmetic failure observed after the caller's initial
     /// checkpoint. No extra poll can replace that already observed first stop.
+    pub(crate) fn stop_representation(&mut self, resource: HtmlParseResource) -> ParseStop {
+        self.latch_stop(ParseStop::RepresentationExhausted { resource })
+    }
+    /// The same latched stop as [`Self::stop_representation`], for a caller
+    /// whose own result type is `Result`.
     pub(crate) fn representation<T>(
         &mut self,
         resource: HtmlParseResource,
     ) -> Result<T, ParseStop> {
-        self.fail(ParseStop::RepresentationExhausted { resource })
+        Err(self.stop_representation(resource))
     }
     /// Admits one known indivisible owned-record layout before its move/copy.
     /// The caller separately precharges actual bytes and record writes. This
@@ -449,7 +686,7 @@ impl ParseControl {
         value: u64,
         delta: u64,
     ) -> Result<(), ParseStop> {
-        let limit = self.limits[resource as usize];
+        let limit = self.limits.copy(resource);
         if value > limit {
             return self.fail(ParseStop::LimitExceeded {
                 resource,
@@ -461,7 +698,7 @@ impl ParseControl {
         Ok(())
     }
     fn set(&mut self, resource: HtmlParseResource, value: u64) {
-        let usage = &mut self.usage.resources[resource as usize];
+        let usage = self.usage.resources.get_mut(resource);
         usage.current = value;
         usage.high_water = usage.high_water.max(value);
     }
@@ -522,12 +759,12 @@ impl ParseControl {
         let mut increment = 0_u64;
         for &(category, units) in charges {
             let (Some(next), Some(total)) = (
-                work[category as usize].checked_add(units),
+                work.copy(category).checked_add(units),
                 increment.checked_add(units),
             ) else {
                 return self.representation(HtmlParseResource::WorkCredits);
             };
-            work[category as usize] = next;
+            *work.get_mut(category) = next;
             increment = total;
         }
         let Some(total) = self
@@ -558,30 +795,26 @@ impl ParseControl {
     fn plan_storage(
         &mut self,
         requests: &[(HtmlParseResource, u64)],
-    ) -> Result<[u64; RESOURCE_COUNT], ParseStop> {
+    ) -> Result<ResourceTable<u64>, ParseStop> {
         self.checkpoint()?;
         let mut values = self.usage.resources.map(|usage| usage.current);
-        let mut deltas = [0_u64; RESOURCE_COUNT];
+        let mut deltas = ResourceTable::filled(0_u64);
         for &(resource, delta) in requests {
             if !resource.storage() {
                 return self.fail(ParseStop::InternalInvariant(Invariant::NonStorageResource));
             }
             let (Some(value), Some(sum)) = (
-                values[resource as usize].checked_add(delta),
-                deltas[resource as usize].checked_add(delta),
+                values.copy(resource).checked_add(delta),
+                deltas.copy(resource).checked_add(delta),
             ) else {
                 return self.representation(resource);
             };
-            values[resource as usize] = value;
-            deltas[resource as usize] = sum;
+            *values.get_mut(resource) = value;
+            *deltas.get_mut(resource) = sum;
         }
         for resource in RESOURCES {
             if resource.storage() {
-                self.check_value(
-                    resource,
-                    values[resource as usize],
-                    deltas[resource as usize],
-                )?;
+                self.check_value(resource, values.copy(resource), deltas.copy(resource))?;
             }
         }
         Ok(values)
@@ -601,7 +834,7 @@ impl ParseControl {
         let values = self.plan_storage(requests)?;
         for resource in RESOURCES {
             if resource.storage() {
-                self.set(resource, values[resource as usize]);
+                self.set(resource, values.copy(resource));
             }
         }
         Ok(())
@@ -631,7 +864,7 @@ impl ParseControl {
         self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
         for resource in RESOURCES {
             if resource.storage() {
-                self.set(resource, values[resource as usize]);
+                self.set(resource, values.copy(resource));
             }
         }
         self.set(HtmlParseResource::ManagedCapacityBytes, total);
@@ -648,17 +881,30 @@ impl ParseControl {
         bytes: u64,
         units: u64,
         entries: u64,
-    ) {
-        assert!(
-            Arc::ptr_eq(&owner.0, &self.identity),
-            "original provider owner"
-        );
-        self.commit_prepared_release(&[
+    ) -> Result<(), ParseStop> {
+        if !Arc::ptr_eq(&owner.0, &self.identity) {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        self.commit_prepared_release(&Self::provider_release(bytes, units, entries))
+    }
+    /// Whether [`Self::release_retained_provider`] of this storage by this
+    /// controller's own identity would be accepted. Nothing changes.
+    pub(crate) fn can_release_retained_provider(
+        &self,
+        bytes: u64,
+        units: u64,
+        entries: u64,
+    ) -> bool {
+        self.after_release(&Self::provider_release(bytes, units, entries))
+            .is_some()
+    }
+    fn provider_release(bytes: u64, units: u64, entries: u64) -> [(HtmlParseResource, u64); 4] {
+        [
             (HtmlParseResource::ManagedCapacityBytes, bytes),
             (HtmlParseResource::PeakTransientBytes, bytes),
             (HtmlParseResource::ManagedUtf16Units, units),
             (HtmlParseResource::AuxiliaryEntries, entries),
-        ]);
+        ]
     }
     /// Nonmutating logical preflight before actual storage reservations. The
     /// session rechecks with `acquire_many` immediately before graph mutation;
@@ -849,6 +1095,21 @@ impl ParseControl {
         additional: usize,
         final_len: usize,
     ) -> Result<Option<ReservationPlan>, ParseStop> {
+        Ok(self
+            .geometric_pair(element_size, len, capacity, additional, final_len)?
+            .map(|(_, geometric)| geometric))
+    }
+    /// The exact plan for `additional` slots and the geometric plan that
+    /// contains it, or `None` when the capacity already suffices. The two are
+    /// the same plan when the exact layout cannot fit the limits.
+    fn geometric_pair(
+        &self,
+        element_size: usize,
+        len: usize,
+        capacity: usize,
+        additional: usize,
+        final_len: usize,
+    ) -> Result<Option<(ReservationPlan, ReservationPlan)>, ParseStop> {
         let Some(exact) = ReservationPlan::for_sized(element_size, len, capacity, additional)?
         else {
             return Ok(None);
@@ -862,34 +1123,44 @@ impl ParseControl {
             .ok_or(ParseStop::InternalInvariant(Invariant::CapacityMismatch))?;
         let ceiling = (isize::MAX as u64)
             .min(
-                self.limits[HtmlParseResource::ManagedCapacityBytes as usize]
+                self.limits
+                    .copy(HtmlParseResource::ManagedCapacityBytes)
                     .saturating_sub(without_old),
             )
             .min(
-                self.limits[HtmlParseResource::PeakTransientBytes as usize].saturating_sub(current),
+                self.limits
+                    .copy(HtmlParseResource::PeakTransientBytes)
+                    .saturating_sub(current),
             )
-            .min(self.limits[HtmlParseResource::AtomicLayoutBytes as usize]);
+            .min(self.limits.copy(HtmlParseResource::AtomicLayoutBytes));
         // A required layout that cannot fit is submitted to the existing
         // reserve gate, preserving its concrete limit precedence and stop.
         if exact.new_bytes > ceiling {
-            return Ok(Some(exact));
+            return Ok(Some((exact, exact)));
         }
-        let slots = (ceiling / element_size as u64) as usize;
         let representation = || ParseStop::RepresentationExhausted {
             resource: HtmlParseResource::ManagedCapacityBytes,
         };
+        // `for_sized` refused a zero element size, so the division is total.
+        let slots = ceiling
+            .checked_div(element_size as u64)
+            .and_then(|slots| usize::try_from(slots).ok())
+            .ok_or_else(representation)?;
         let required = len.checked_add(additional).ok_or_else(representation)?;
         let target = required
             .max(capacity.saturating_mul(2).min(final_len))
             .min(slots);
-        Ok(Some(ReservationPlan {
-            additional: target.checked_sub(len).ok_or_else(representation)?,
-            old_bytes: exact.old_bytes,
-            new_bytes: target
-                .checked_mul(element_size)
-                .and_then(|bytes| u64::try_from(bytes).ok())
-                .ok_or_else(representation)?,
-        }))
+        Ok(Some((
+            exact,
+            ReservationPlan {
+                additional: target.checked_sub(len).ok_or_else(representation)?,
+                old_bytes: exact.old_bytes,
+                new_bytes: target
+                    .checked_mul(element_size)
+                    .and_then(|bytes| u64::try_from(bytes).ok())
+                    .ok_or_else(representation)?,
+            },
+        )))
     }
     fn record_vector_capacity<T>(
         vector: &Vec<T>,
@@ -913,7 +1184,7 @@ impl ParseControl {
             (WorkCategory::ProviderCall, 9),
             (
                 WorkCategory::CopyByte,
-                (2 * size_of::<Weak<Vec<crate::Attribute>>>()) as u64,
+                const { (2 * size_of::<Weak<Vec<crate::Attribute>>>()) as u64 },
             ),
             (WorkCategory::RecordWrite, 2),
         ])?;
@@ -974,62 +1245,45 @@ impl ParseControl {
         }
     }
     fn cleanup_capacity(&mut self, bytes: u64) -> Result<(), ParseStop> {
-        let Some(capacity) = self
+        let capacity = self.capacity_after_release(bytes)?;
+        self.commit_capacity(capacity);
+        Ok(())
+    }
+    /// The retained capacity left once `bytes` are credited; nothing changes.
+    fn capacity_after_release(&mut self, bytes: u64) -> Result<u64, ParseStop> {
+        match self
             .usage
             .resource(HtmlParseResource::ManagedCapacityBytes)
             .current
             .checked_sub(bytes)
-        else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
-        };
+        {
+            Some(capacity) => Ok(capacity),
+            None => self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow)),
+        }
+    }
+    /// Records a capacity that [`Self::capacity_after_release`] has qualified.
+    fn commit_capacity(&mut self, capacity: u64) {
         self.set(HtmlParseResource::ManagedCapacityBytes, capacity);
         self.set(HtmlParseResource::PeakTransientBytes, capacity);
         self.usage.actual_capacity_bytes = capacity;
-        Ok(())
     }
-    /// Builds an actual fixed shared payload, then polls before returning it.
+    /// Builds an actual fixed shared payload after admission and a final poll.
     /// Nested vectors keep their own tickets. Arc headers/allocator metadata and
     /// infallible Arc setup are opaque provider limits; zero-sized identity is
-    /// valid and still charges the provider call. Failure returns owned payload.
+    /// valid and still charges the provider call. The last poll precedes the
+    /// only `Arc`, so every failure returns the owned payload and no `Arc`
+    /// exists to be aliased.
     pub(crate) fn share_owned<T>(
         &mut self,
         payload: T,
     ) -> Result<(Arc<T>, SharedAllocation<T>), (ParseStop, T)> {
-        let admission = (|| {
-            self.checkpoint()?;
-            let Ok(bytes) = u64::try_from(size_of::<T>()) else {
-                return self.representation(HtmlParseResource::AtomicLayoutBytes);
-            };
-            self.charge_many(&[
-                (WorkCategory::ReserveByte, bytes),
-                (WorkCategory::ProviderCall, 1),
-                (WorkCategory::CopyByte, bytes),
-                (WorkCategory::RecordWrite, 1),
-            ])?;
-            let Some(total) = self
-                .usage
-                .resource(HtmlParseResource::ManagedCapacityBytes)
-                .current
-                .checked_add(bytes)
-            else {
-                return self.representation(HtmlParseResource::ManagedCapacityBytes);
-            };
-            self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
-            self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
-            self.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-            self.set(HtmlParseResource::ManagedCapacityBytes, total);
-            self.set(HtmlParseResource::PeakTransientBytes, total);
-            self.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-            self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(bytes);
-            self.usage.actual_capacity_bytes = total;
-            self.usage.actual_capacity_high_water =
-                self.usage.actual_capacity_high_water.max(total);
-            Ok(bytes)
-        })();
-        let bytes = match admission {
+        let bytes = match self.admit_shared_layout::<T>() {
             Ok(bytes) => bytes,
             Err(stop) => return Err((stop, payload)),
         };
+        if let Err(stop) = self.confirm_shared_admission(bytes) {
+            return Err((stop, payload));
+        }
         let shared = Arc::new(payload);
         let allocation = SharedAllocation {
             owner: self.identity.clone(),
@@ -1038,25 +1292,49 @@ impl ParseControl {
             element: PhantomData,
             finalized: false,
         };
-        self.finish_shared(shared, allocation)
+        Ok((shared, allocation))
     }
-    fn finish_shared<T>(
-        &mut self,
-        shared: Arc<T>,
-        allocation: SharedAllocation<T>,
-    ) -> Result<(Arc<T>, SharedAllocation<T>), (ParseStop, T)> {
+    /// Charges and records the layout of one shared `T`; returns its bytes.
+    fn admit_shared_layout<T>(&mut self) -> Result<u64, ParseStop> {
+        self.checkpoint()?;
+        let Ok(bytes) = u64::try_from(size_of::<T>()) else {
+            return self.representation(HtmlParseResource::AtomicLayoutBytes);
+        };
+        self.charge_many(&[
+            (WorkCategory::ReserveByte, bytes),
+            (WorkCategory::ProviderCall, 1),
+            (WorkCategory::CopyByte, bytes),
+            (WorkCategory::RecordWrite, 1),
+        ])?;
+        let Some(total) = self
+            .usage
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current
+            .checked_add(bytes)
+        else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
+        self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
+        self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
+        self.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
+        self.set(HtmlParseResource::ManagedCapacityBytes, total);
+        self.set(HtmlParseResource::PeakTransientBytes, total);
+        self.set(HtmlParseResource::AtomicLayoutBytes, bytes);
+        self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(bytes);
+        self.usage.actual_capacity_bytes = total;
+        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
+        Ok(bytes)
+    }
+    /// Polls once more after [`Self::admit_shared_layout`]; a stop refunds the
+    /// capacity just charged. Admission proved that capacity and no other
+    /// storage mutation precedes this refund. Were it refused anyway, the first
+    /// stop is already latched, so the skipped credit is what that stop reports.
+    fn confirm_shared_admission(&mut self, bytes: u64) -> Result<(), ParseStop> {
         match self.checkpoint() {
-            Ok(()) => Ok((shared, allocation)),
+            Ok(()) => Ok(()),
             Err(stop) => {
-                // This private transition receives the sole newly created Arc;
-                // it has not escaped and no callback can have cloned it.
-                let payload = Arc::into_inner(shared)
-                    .expect("new shared payload has exactly one strong owner");
-                // Admission above proved ownership and available capacity. No
-                // other storage mutation occurs before this cleanup transition.
-                self.cleanup_capacity(allocation.bytes)
-                    .expect("new shared payload remains admitted");
-                Err((stop, payload))
+                let _ = self.cleanup_capacity(bytes);
+                Err(stop)
             }
         }
     }
@@ -1068,10 +1346,19 @@ impl ParseControl {
         shared: Arc<T>,
         allocation: SharedAllocation<T>,
     ) -> Result<T, SharedReleaseError<T>> {
+        #[cfg(test)]
+        if std::mem::take(&mut self.shared_release_fault) {
+            let stop = self.latch_stop(ParseStop::InternalInvariant(
+                Invariant::SharedAllocationAliased,
+            ));
+            return Err(SharedReleaseError {
+                stop,
+                shared,
+                allocation,
+            });
+        }
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
-            let stop = self
-                .fail::<()>(ParseStop::InternalInvariant(Invariant::ForeignControl))
-                .unwrap_err();
+            let stop = self.latch_stop(ParseStop::InternalInvariant(Invariant::ForeignControl));
             return Err(SharedReleaseError {
                 stop,
                 shared,
@@ -1079,42 +1366,32 @@ impl ParseControl {
             });
         }
         if !std::ptr::eq(Arc::as_ptr(&shared), allocation.shared.as_ptr()) {
-            let stop = self
-                .fail::<()>(ParseStop::InternalInvariant(Invariant::CapacityMismatch))
-                .unwrap_err();
+            let stop = self.latch_stop(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
             return Err(SharedReleaseError {
                 stop,
                 shared,
                 allocation,
             });
         }
-        if self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current
-            < allocation.bytes
-        {
-            let stop = self
-                .fail::<()>(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow))
-                .unwrap_err();
-            return Err(SharedReleaseError {
-                stop,
-                shared,
-                allocation,
-            });
-        }
+        let remaining = match self.capacity_after_release(allocation.bytes) {
+            Ok(remaining) => remaining,
+            Err(stop) => {
+                return Err(SharedReleaseError {
+                    stop,
+                    shared,
+                    allocation,
+                });
+            }
+        };
         match Arc::try_unwrap(shared) {
             Ok(payload) => {
-                self.cleanup_capacity(allocation.bytes)
-                    .expect("shared payload capacity checked before recovery");
+                self.commit_capacity(remaining);
                 Ok(payload)
             }
             Err(shared) => {
-                let stop = self
-                    .fail::<()>(ParseStop::InternalInvariant(
-                        Invariant::SharedAllocationAliased,
-                    ))
-                    .unwrap_err();
+                let stop = self.latch_stop(ParseStop::InternalInvariant(
+                    Invariant::SharedAllocationAliased,
+                ));
                 Err(SharedReleaseError {
                     stop,
                     shared,
@@ -1143,9 +1420,7 @@ impl ParseControl {
             None
         };
         if let Some(invariant) = invariant {
-            let stop = self
-                .fail::<()>(ParseStop::InternalInvariant(invariant))
-                .unwrap_err();
+            let stop = self.latch_stop(ParseStop::InternalInvariant(invariant));
             return Err(SharedReleaseError {
                 stop,
                 shared,
@@ -1177,21 +1452,33 @@ impl ParseControl {
     /// Fixed original-owner disposal of exactly admitted resources. Selected
     /// replacement and cleanup retain the private ownership receipt; final
     /// report publication additionally preflights release before its last poll.
-    /// This cannot execute source work or observe a later cancellation.
-    pub(crate) fn commit_prepared_release(&mut self, requests: &[(HtmlParseResource, u64)]) {
-        for &(resource, units) in requests {
-            let current = self.usage.resource(resource).current;
-            self.set(
-                resource,
-                current
-                    .checked_sub(units)
-                    .expect("preflighted final report release"),
-            );
+    /// This cannot execute source work or observe a later cancellation. A
+    /// request beyond what is admitted latches `ReleaseUnderflow` and credits
+    /// nothing, not even the requests that precede it.
+    pub(crate) fn commit_prepared_release(
+        &mut self,
+        requests: &[(HtmlParseResource, u64)],
+    ) -> Result<(), ParseStop> {
+        let Some(values) = self.after_release(requests) else {
+            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+        };
+        for &(resource, _) in requests {
+            self.set(resource, values.copy(resource));
         }
         self.usage.actual_capacity_bytes = self
             .usage
             .resource(HtmlParseResource::ManagedCapacityBytes)
             .current;
+        Ok(())
+    }
+    /// Every resource's current value once `requests` are credited, or `None`
+    /// when one asks for more than is admitted.
+    fn after_release(&self, requests: &[(HtmlParseResource, u64)]) -> Option<ResourceTable<u64>> {
+        let mut values = self.usage.resources.map(|usage| usage.current);
+        for &(resource, units) in requests {
+            *values.get_mut(resource) = values.copy(resource).checked_sub(units)?;
+        }
+        Some(values)
     }
     /// Releases actually deallocated non-node logical slots after first-stop.
     /// No successful engine transition may use this cleanup-only path.
@@ -1244,11 +1531,11 @@ impl ParseControl {
         ) else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        self.check_value(
-            HtmlParseResource::ManagedCapacityBytes,
-            new_total,
-            plan.new_bytes - plan.old_bytes,
-        )?;
+        // A reservation never shrinks the allocation it replaces.
+        let Some(growth) = plan.new_bytes.checked_sub(plan.old_bytes) else {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+        };
+        self.check_value(HtmlParseResource::ManagedCapacityBytes, new_total, growth)?;
         self.check_value(
             HtmlParseResource::PeakTransientBytes,
             overlap,
@@ -1289,11 +1576,13 @@ impl ParseControl {
         self.set(HtmlParseResource::PeakTransientBytes, actual_overlap);
         self.set(HtmlParseResource::PeakTransientBytes, actual_total);
         if actual > plan.new_bytes {
+            // `actual` exceeds `new_bytes`, which is at least `old_bytes`.
+            let requested_delta = actual.saturating_sub(plan.old_bytes);
             return self.fail(ParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 limit: plan.new_bytes,
                 current: plan.old_bytes,
-                requested_delta: actual - plan.old_bytes,
+                requested_delta,
             });
         }
         self.checkpoint()
@@ -1556,8 +1845,15 @@ impl ParseControl {
             }
         }
         let (text, allocation) = self.freeze_document_string(buffer)?;
-        let bytes =
-            allocation.vector_capacity * size_of::<u16>() + allocation.wrapper_bytes as usize;
+        let Some(bytes) = allocation
+            .vector_capacity
+            .checked_mul(size_of::<u16>())
+            .and_then(|bytes| bytes.checked_add(allocation.wrapper_bytes as usize))
+        else {
+            drop(text);
+            self.release_document_string(allocation)?;
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
         let units = text.shared_code_units().capacity();
         let admitted = self
             .charge(WorkCategory::ProviderCall, 2)
@@ -1574,7 +1870,7 @@ impl ParseControl {
             (HtmlParseResource::ManagedCapacityBytes, bytes as u64),
             (HtmlParseResource::PeakTransientBytes, bytes as u64),
             (allocation.resource, allocation.units),
-        ]);
+        ])?;
         drop(allocation);
         Ok((text, bytes, units))
     }
@@ -1780,6 +2076,11 @@ impl<T> OwnedVec<T> {
     pub(crate) fn as_slice(&self) -> &[T] {
         &self.vector
     }
+    /// The entries for editing, for tests that corrupt what a report holds.
+    #[cfg(test)]
+    pub(crate) fn as_mut_slice_for_test(&mut self) -> &mut [T] {
+        &mut self.vector
+    }
     pub(crate) fn len(&self) -> usize {
         self.vector.len()
     }
@@ -1970,30 +2271,42 @@ impl<T> OwnedVec<T> {
     ) -> Result<(), ParseStop> {
         self.require_owner(control)?;
         control.charge(WorkCategory::RecordVisit, 2)?;
-        let plan = match control.geometric_plan(&self.vector, 1) {
-            Ok(plan) => plan,
+        let pair = match control.geometric_pair(
+            size_of::<T>(),
+            self.vector.len(),
+            self.vector.capacity(),
+            1,
+            usize::MAX,
+        ) {
+            Ok(pair) => pair,
             Err(stop) => return control.fail(stop),
         };
-        let plan = if let Some(mut plan) = plan {
-            let exact = ReservationPlan::for_vec(&self.vector, 1)
-                .expect("the geometric plan proved this required layout")
-                .expect("the geometric plan requires a reservation");
+        let plan = if let Some((exact, mut plan)) = pair {
             control.charge(WorkCategory::RecordVisit, 2)?;
             match ReservationPlan::for_vec(&other.vector, 1) {
                 Ok(Some(required)) => {
                     // After this reserve, the other required reserve must fit
                     // both retained capacity and old/new transient overlap.
-                    let without_old = control
-                        .usage
-                        .resource(HtmlParseResource::ManagedCapacityBytes)
-                        .current
-                        .checked_sub(plan.old_bytes)
-                        .expect("the geometric plan proved the existing allocation");
-                    let ceiling = control.limits[HtmlParseResource::ManagedCapacityBytes as usize]
+                    let (Some(without_old), Some(required_growth)) = (
+                        control
+                            .usage
+                            .resource(HtmlParseResource::ManagedCapacityBytes)
+                            .current
+                            .checked_sub(plan.old_bytes),
+                        required.new_bytes.checked_sub(required.old_bytes),
+                    ) else {
+                        return control
+                            .fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+                    };
+                    let ceiling = control
+                        .limits
+                        .copy(HtmlParseResource::ManagedCapacityBytes)
                         .saturating_sub(without_old)
-                        .saturating_sub(required.new_bytes - required.old_bytes)
+                        .saturating_sub(required_growth)
                         .min(
-                            control.limits[HtmlParseResource::PeakTransientBytes as usize]
+                            control
+                                .limits
+                                .copy(HtmlParseResource::PeakTransientBytes)
                                 .saturating_sub(without_old)
                                 .saturating_sub(required.new_bytes),
                         );
@@ -2003,9 +2316,27 @@ impl<T> OwnedVec<T> {
                         // required operation report its original concrete refusal.
                         plan = exact;
                     } else {
-                        let slots = (clipped / size_of::<T>() as u64) as usize;
-                        plan.additional = slots - self.vector.len();
-                        plan.new_bytes = slots as u64 * size_of::<T>() as u64;
+                        let element = size_of::<T>() as u64;
+                        let Some(slots) = clipped
+                            .checked_div(element)
+                            .and_then(|slots| usize::try_from(slots).ok())
+                        else {
+                            return control
+                                .fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+                        };
+                        // `clipped` covers the exact layout, so the slots
+                        // exceed the length and their bytes fit `clipped`.
+                        let (Some(additional), Some(new_bytes)) = (
+                            slots.checked_sub(self.vector.len()),
+                            u64::try_from(slots)
+                                .ok()
+                                .and_then(|slots| slots.checked_mul(element)),
+                        ) else {
+                            return control
+                                .fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+                        };
+                        plan.additional = additional;
+                        plan.new_bytes = new_bytes;
                     }
                 }
                 Ok(None) => {}
@@ -2126,7 +2457,7 @@ impl<T> OwnedVec<T> {
                 (WorkCategory::RecordWrite, 1),
                 (WorkCategory::CopyByte, bytes),
             ])?;
-            if size_of::<T>() + 2 > WORK_QUANTUM {
+            if const { size_of::<T>() + 2 > WORK_QUANTUM } {
                 control.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
                 control.set(HtmlParseResource::AtomicLayoutBytes, bytes);
                 control.usage.largest_atomic_layout =
@@ -2216,7 +2547,12 @@ impl<T: Copy> OwnedVec<T> {
     ) -> Result<(), ParseStop> {
         control.checkpoint()?;
         self.prepare(control, values.len(), 0, 0, Growth::Exact)?;
-        let stride = (WORK_QUANTUM / size_of::<T>()).max(1);
+        // A zero-sized element has no byte stride; refuse it when this is compiled.
+        let stride = const {
+            assert!(size_of::<T>() != 0);
+            WORK_QUANTUM / size_of::<T>()
+        }
+        .max(1);
         for chunk in values.chunks(stride) {
             let bytes = std::mem::size_of_val(chunk) as u64;
             control.charge(WorkCategory::CopyByte, bytes)?;
@@ -2255,6 +2591,8 @@ impl ParseUsage {
 
 #[cfg(test)]
 mod html_value_tests;
+#[cfg(test)]
+mod release_tests;
 
 #[cfg(test)]
 mod tests {
@@ -2995,7 +3333,7 @@ mod tests {
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current;
             if let Some(additional) = additional {
-                c.limits[HtmlParseResource::AuxiliaryEntries as usize] = slots + additional;
+                *c.limits.get_mut(HtmlParseResource::AuxiliaryEntries) = slots + additional;
             }
             let result = session.allocate_input_for_creation(
                 &mut c,
@@ -3273,7 +3611,7 @@ mod tests {
             .finish()
             .unwrap();
         assert_eq!(
-            limits.values(),
+            limits.values().into_array(),
             [
                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
             ]
@@ -3375,6 +3713,88 @@ mod tests {
             Err(ParseStop::Cancelled)
         );
         assert_eq!(control.stop(), Some(ParseStop::Cancelled));
+    }
+    #[test]
+    fn stop_constructors_return_the_stop_the_result_form_carries_and_latch_it() {
+        let expected = ParseStop::RepresentationExhausted {
+            resource: HtmlParseResource::ManagedEdges,
+        };
+        let mut direct = control();
+        assert_eq!(
+            direct.stop_representation(HtmlParseResource::ManagedEdges),
+            expected
+        );
+        assert_eq!(direct.stop(), Some(expected));
+        let mut through_result = control();
+        assert_eq!(
+            through_result.representation::<()>(HtmlParseResource::ManagedEdges),
+            Err(expected)
+        );
+        assert_eq!(through_result.stop(), Some(expected));
+
+        let mut facts = control();
+        assert_eq!(
+            facts.stop_invalid_associated_facts(),
+            ParseStop::InvalidAssociatedFacts
+        );
+        assert_eq!(facts.stop(), Some(ParseStop::InvalidAssociatedFacts));
+    }
+    #[test]
+    fn stop_constructors_keep_the_first_stop() {
+        let mut control = control();
+        let first = control.stop_representation(HtmlParseResource::ManagedEdges);
+        assert_eq!(
+            control.stop_representation(HtmlParseResource::AuxiliaryEntries),
+            first
+        );
+        assert_eq!(control.stop_invalid_associated_facts(), first);
+        assert_eq!(
+            control.latch_stop(ParseStop::InternalInvariant(Invariant::ForeignControl)),
+            first
+        );
+        assert_eq!(control.stop(), Some(first));
+
+        let cancellation = HtmlParseCancellation::new();
+        let mut cancelled = ParseControl::new(limits(), cancellation.clone());
+        cancellation.cancel();
+        assert_eq!(
+            cancelled.stop_invalid_associated_facts(),
+            ParseStop::Cancelled
+        );
+        assert_eq!(
+            cancelled.stop_representation(HtmlParseResource::ManagedEdges),
+            ParseStop::Cancelled
+        );
+        assert_eq!(cancelled.stop(), Some(ParseStop::Cancelled));
+    }
+    #[test]
+    fn resource_and_work_tables_hold_each_key_at_its_discriminant() {
+        let mut resources = ResourceTable::filled(u64::MAX);
+        for resource in RESOURCES {
+            *resources.get_mut(resource) = resource as u64;
+        }
+        assert_eq!(
+            resources.into_array(),
+            std::array::from_fn::<u64, { crate::settings::RESOURCE_COUNT }, _>(|index| index as u64)
+        );
+        let categories = [
+            WorkCategory::InputUnitRead,
+            WorkCategory::InspectByte,
+            WorkCategory::CopyByte,
+            WorkCategory::StateStep,
+            WorkCategory::RecordVisit,
+            WorkCategory::RecordWrite,
+            WorkCategory::ReserveByte,
+            WorkCategory::ProviderCall,
+        ];
+        let mut work = WorkTable::filled(u64::MAX);
+        for category in categories {
+            *work.get_mut(category) = category as u64;
+        }
+        assert_eq!(
+            work.into_array(),
+            std::array::from_fn::<u64, WORK_COUNT, _>(|index| index as u64)
+        );
     }
     #[test]
     fn cap_failure_precedes_later_cancel() {
@@ -3894,7 +4314,7 @@ mod tests {
     fn every_storage_cap_rejects_its_own_growth() {
         for resource in RESOURCES.into_iter().filter(|resource| resource.storage()) {
             let mut control = control();
-            control.limits[resource as usize] = 0;
+            *control.limits.get_mut(resource) = 0;
             assert_eq!(
                 control.acquire(resource, 1),
                 Err(ParseStop::LimitExceeded {
@@ -4002,7 +4422,7 @@ mod tests {
             .usage()
             .resource(HtmlParseResource::WorkCredits)
             .current;
-        control.limits[HtmlParseResource::WorkCredits as usize] = previous + 4;
+        *control.limits.get_mut(HtmlParseResource::WorkCredits) = previous + 4;
         let stop = buffer.clear(&mut control).unwrap_err();
         assert_eq!(buffer.as_slice(), &[1, 2]);
         assert_eq!(
@@ -4854,15 +5274,17 @@ mod tests {
         );
     }
     #[test]
-    fn shared_post_construction_checkpoint_recovers_actual_owned_payload() {
+    fn a_stop_after_shared_admission_refunds_the_charge_before_any_arc_exists() {
         let mut control = control();
-        let (shared, ticket) = control.share_owned(77_u32).unwrap();
+        let bytes = control.admit_shared_layout::<u32>().unwrap();
         let work = control.usage().resource(HtmlParseResource::WorkCredits);
+        assert_eq!(control.usage().actual_capacity_bytes, bytes);
         control.cancellation.cancel();
         assert_eq!(
-            control.finish_shared(shared, ticket).unwrap_err(),
-            (ParseStop::Cancelled, 77)
+            control.confirm_shared_admission(bytes),
+            Err(ParseStop::Cancelled)
         );
+        assert_eq!(control.stop(), Some(ParseStop::Cancelled));
         assert_eq!(control.usage().actual_capacity_bytes, 0);
         assert_eq!(control.usage().actual_capacity_high_water, 4);
         assert_eq!(
@@ -5345,13 +5767,13 @@ mod tests {
         assert!(owner.stopped_source_binding().unwrap().is_none());
     }
     #[test]
-    fn malformed_input_from_the_utf16_adapter_is_an_input_cursor_invariant() {
+    fn malformed_input_from_the_utf16_adapter_is_a_color_conversion_invariant() {
         // CSS Syntax preprocessing decodes every UTF-16 unit, a lone surrogate
         // as U+FFFD, so the adapter's input is never malformed for its encoding.
         let mut owner = control();
         assert_eq!(
             owner.stop_color_processing(css_color_error(b"r\xffd")),
-            ParseStop::InternalInvariant(Invariant::InputCursorState)
+            ParseStop::InternalInvariant(Invariant::ColorConversionState)
         );
     }
 }

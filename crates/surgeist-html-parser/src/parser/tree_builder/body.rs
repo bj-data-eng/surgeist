@@ -173,7 +173,7 @@ impl HeadState<'_> {
         let tag = input.as_ref().ok_or(HeadError::MissingInput)?;
         c.charge(
             WorkCategory::InspectByte,
-            (size_of::<TagKind>() + size_of::<bool>()) as u64,
+            const { size_of::<TagKind>() + size_of::<bool>() } as u64,
         )?;
         Ok(Some((tag.kind, tag.self_closing)))
     }
@@ -188,13 +188,9 @@ impl HeadState<'_> {
         c: &mut ParseControl,
     ) -> Result<(), HeadError> {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if self.whitespace_pending.is_none() {
+        let Some(text) = self.whitespace_pending.as_ref() else {
             return Ok(());
-        }
-        let text = self
-            .whitespace_pending
-            .as_ref()
-            .expect("retained omitted input");
+        };
         self.before.kernel.session.evidence(c)?.retain_omission(
             c,
             text.origins.as_slice(),
@@ -205,7 +201,7 @@ impl HeadState<'_> {
         let text = self
             .whitespace_pending
             .take()
-            .expect("retained omitted input");
+            .ok_or(HeadError::MissingInput)?;
         if let Err((stop, text)) = self.before.whitespace.try_push_recover(c, text) {
             self.whitespace_pending = Some(text);
             return Err(stop.into());
@@ -308,7 +304,7 @@ impl HeadState<'_> {
                     )?;
                 }
                 write(
-                    size_of::<Option<TextRun>>() + size_of::<Option<Text>>(),
+                    const { size_of::<Option<TextRun>>() + size_of::<Option<Text>>() },
                     2,
                     c,
                 )?;
@@ -317,7 +313,7 @@ impl HeadState<'_> {
             } else {
                 let other = kind == BodyTextKind::Other;
                 write(
-                    size_of::<Option<TextRun>>() + size_of::<Option<Text>>(),
+                    const { size_of::<Option<TextRun>>() + size_of::<Option<Text>>() },
                     2,
                     c,
                 )?;
@@ -327,7 +323,7 @@ impl HeadState<'_> {
         }
         self.body_runs
             .as_mut()
-            .expect("retained partition")
+            .ok_or(HeadError::MissingInput)?
             .release(c)?;
         write(size_of::<Option<BodyTextRuns>>(), 1, c)?;
         self.body_runs = None;
@@ -462,10 +458,8 @@ impl HeadState<'_> {
             let head = self.head.as_ref().ok_or(HeadError::MissingInput)?;
             let node = copy_node(head, c)?;
             write(size_of::<Option<ParserNode>>(), 1, c)?;
-            self.temporary_head = Some(node);
-            self.before
-                .kernel
-                .push(self.temporary_head.as_ref().expect("stored head"), c)?;
+            let stored = self.temporary_head.insert(node);
+            self.before.kernel.push(stored, c)?;
         }
         let step = if template {
             self.template_start(c)?
@@ -615,10 +609,10 @@ impl HeadState<'_> {
             )?;
             return Ok(Some(self.discard(c)?));
         }
-        if kind.is_some_and(|(kind, _)| kind == TagKind::Start)
+        if let Some((TagKind::Start, close)) = kind
             && self.token_in(&["html"], c)?.is_some()
         {
-            return Ok(Some(self.html(kind.expect("tag").1, c)?));
+            return Ok(Some(self.html(close, c)?));
         }
         if mode == InsertionMode::AfterHead {
             if self.whitespace(c)? {
@@ -1279,7 +1273,7 @@ impl HeadState<'_> {
                         .ok_or(HeadError::MissingInput)?
                         .payload
                     else {
-                        unreachable!()
+                        return Err(HeadError::MissingInput);
                     };
                     self.before
                         .kernel
@@ -1308,11 +1302,10 @@ impl HeadState<'_> {
             c.charge(WorkCategory::RecordVisit, 2)?;
             let mut details = block.len() == b"details".len();
             if details {
-                let mut index = 0;
-                while index < 7 {
+                // Both sides are seven bytes, so the pairs are the seven indices.
+                for (actual, expected) in block.bytes().zip(b"details".iter().copied()) {
                     c.charge(WorkCategory::InspectByte, 2)?;
-                    details &= block.as_bytes()[index] == b"details"[index];
-                    index += 1;
+                    details &= actual == expected;
                 }
             }
             if details {
@@ -1455,7 +1448,7 @@ impl HeadState<'_> {
                 .ok_or(HeadError::MissingInput)?
                 .payload
             else {
-                unreachable!()
+                return Err(HeadError::MissingInput);
             };
             self.before
                 .kernel
@@ -1643,7 +1636,7 @@ impl HeadState<'_> {
                 .ok_or(HeadError::MissingInput)?
                 .payload
             else {
-                unreachable!()
+                return Err(HeadError::MissingInput);
             };
             self.before.kernel.session.recover_br_end_tag(c, input)?;
             return Ok(None);
@@ -1838,7 +1831,7 @@ impl HeadState<'_> {
     pub(super) fn release_body(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         if c.stop().is_none() {
             write(
-                size_of::<Option<TextRun>>() + size_of::<Option<ParserNode>>(),
+                const { size_of::<Option<TextRun>>() + size_of::<Option<ParserNode>>() },
                 2,
                 c,
             )?;

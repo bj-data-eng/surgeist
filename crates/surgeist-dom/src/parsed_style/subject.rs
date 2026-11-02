@@ -12,6 +12,11 @@ impl From<DomParsedHtmlStyleError> for DomParsedHtmlStyleSubjectError {
         Self::Style(e)
     }
 }
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference> for DomParsedHtmlStyleSubjectError {
+    fn from(e: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::Style(e.into())
+    }
+}
 impl From<DomError> for DomParsedHtmlStyleSubjectError {
     fn from(e: DomError) -> Self {
         Self::Style(e.into())

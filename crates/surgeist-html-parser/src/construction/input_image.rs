@@ -107,13 +107,16 @@ impl SessionStorage {
         match guard {
             Guard::NoSource | Guard::EmptySource => return Ok(()),
             Guard::NeedsImageEnvironment => {}
-            Guard::ImagesDisabled => unreachable!("source-only guard"),
+            // `for_source` never answers the environment-discharged state.
+            Guard::ImagesDisabled => return Err(latch_registry_row(c)),
         }
         match self.input_images_supported(c, node)? {
             crate::HtmlImageSupport::Disabled => {
-                let stopped =
-                    guard.with_disabled_images(HtmlInputImagesDisabled::ExplicitlyDisabled);
-                debug_assert_eq!(stopped, Guard::ImagesDisabled);
+                if guard.with_disabled_images(HtmlInputImagesDisabled::ExplicitlyDisabled)
+                    != Guard::ImagesDisabled
+                {
+                    return Err(latch_registry_row(c));
+                }
                 Ok(())
             }
             crate::HtmlImageSupport::Unavailable => Err(SessionError::ContextFactUnavailable(

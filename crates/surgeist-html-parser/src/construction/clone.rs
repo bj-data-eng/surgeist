@@ -54,7 +54,7 @@ impl SessionStorage {
                     c.charge(WorkCategory::ProviderCall, 1)?;
                     let shadow_contents = self
                         .construction
-                        .storage()
+                        .storage(c)?
                         .node_by_result_id(shadow.contents())
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
@@ -71,7 +71,7 @@ impl SessionStorage {
                         .node_at(shadow_contents)
                         .ok_or_else(|| latch_registry_row(c))?
                         .shadow_properties()
-                        .expect("actual shadow role")
+                        .ok_or_else(|| latch_registry_row(c))?
                         .clonable()
                     {
                         self.node_document_ref(c, shadow_contents)?;
@@ -112,9 +112,8 @@ impl SessionStorage {
                             control_field_owner(&self.payloads, c, namespace)?;
                         }
                         let container = self.element_attribute_container(c, node)?;
-                        for position in 0..element.attributes().len() {
+                        for (position, attr) in element.attributes().as_slice().iter().enumerate() {
                             c.charge(WorkCategory::RecordVisit, 1)?;
-                            let attr = &element.attributes().as_slice()[position];
                             c.charge(WorkCategory::RecordVisit, 2)?;
                             for location in [
                                 attr.name().namespace().uri().map(|_| {
@@ -365,7 +364,7 @@ impl SessionStorage {
                 .map_err(|_| latch_registry_row(c))?;
                 payload_write::<usize>(c, 1)?;
 
-                self.bind_pi_map(map, node.index);
+                self.bind_pi_map(c, map, node.index)?;
                 self.parse_pi_map(c, node.index, map)?;
                 Ok(node.index)
             }
@@ -388,15 +387,11 @@ impl SessionStorage {
         let slot = self.field_slot(c, StringLocation::ElementName(source))?;
         let (name, name_slot) = self.copy_registered_field(c, slot)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(original) = &self
-            .construction
-            .node_at(source)
-            .ok_or_else(|| latch_registry_row(c))?
-            .kind()
-        else {
-            unreachable!()
-        };
-        let namespace_present = original.name().namespace().uri().is_some();
+        let namespace_present = element_record(&self.construction, c, source)?
+            .name()
+            .namespace()
+            .uri()
+            .is_some();
         let (namespace, namespace_slot) = if namespace_present {
             let slot = self.field_slot(c, StringLocation::Namespace(source))?;
             let (namespace, slot) = self.copy_registered_field(c, slot)?;
@@ -446,8 +441,26 @@ impl SessionStorage {
         let ordered = match validate_parser_attributes(backing, c) {
             Ok(value) => value,
             Err((error, backing)) => {
-                let Ok(values) = c.release_shared(backing, shared) else {
-                    return Err(latch_registry_row(c));
+                let values = match c.release_shared(backing, shared) {
+                    Ok(values) => values,
+                    Err(refused) => {
+                        // Unpublished backing is uniquely owned, so a refusal
+                        // is an invariant stop. The refused Arc and ticket stay
+                        // in the row for cleanup to retry. The backing here is
+                        // the empty vector just created, and validating fewer
+                        // than two attributes has no comparison to charge or
+                        // refuse, so no limit or cancellation reaches this arm
+                        // and no test can force it with a work cut.
+                        let (_, backing, shared) = refused.into_parts();
+                        *storage = Some(AttributeStorage::Unvalidated {
+                            backing,
+                            allocation,
+                            shared,
+                            original_len: 0,
+                            reversed_pairs: 0,
+                        });
+                        return Err(latch_registry_row(c));
+                    }
                 };
                 *storage = Some(AttributeStorage::Building {
                     values,
@@ -475,7 +488,7 @@ impl SessionStorage {
         // Native installation and all payload alias locations are one fixed
         // commit. A terminal stop may precede allocation, never strand an
         // installed native backing with a detached/unbound registry location.
-        payload_write::<StringLocation>(c, 1 + u64::from(namespace_slot.is_some()))?;
+        payload_write::<StringLocation>(c, u64::from(namespace_slot.is_some()).saturating_add(1))?;
         payload_write::<Option<usize>>(c, 1)?;
         let link_flags = self
             .html_local(c, source, "link")?
@@ -528,15 +541,9 @@ impl SessionStorage {
         payload_write::<usize>(c, 1)?;
 
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(original) = &self
-            .construction
-            .node_at(source)
-            .ok_or_else(|| latch_registry_row(c))?
-            .kind()
-        else {
-            unreachable!()
-        };
-        let count = original.attributes().len();
+        let count = element_record(&self.construction, c, source)?
+            .attributes()
+            .len();
         let original_container = self.element_attribute_container(c, source)?;
         for position in 0..count {
             let name_slot = self.field_slot(
@@ -550,15 +557,7 @@ impl SessionStorage {
             )?;
             let (value, value_slot) = self.copy_registered_field(c, value_slot)?;
             c.charge(WorkCategory::RecordVisit, 2)?;
-            let HtmlNodeKind::Element(original) = &self
-                .construction
-                .node_at(source)
-                .ok_or_else(|| latch_registry_row(c))?
-                .kind()
-            else {
-                unreachable!()
-            };
-            let attribute = &original.attributes().as_slice()[position];
+            let attribute = element_attribute(&self.construction, c, source, position)?;
             let has_namespace = attribute.name().namespace().uri().is_some();
             let has_prefix = attribute.name().prefix().is_some();
             let (namespace, namespace_slot) = if has_namespace {
@@ -994,23 +993,8 @@ impl SessionStorage {
         }
         if let Some(slot) = bindings.script {
             c.charge(WorkCategory::RecordVisit, 2)?;
-            let HtmlNodeKind::Element(element) = &self
-                .construction
-                .node_at(node)
-                .ok_or_else(|| latch_registry_row(c))?
-                .kind()
-            else {
-                unreachable!()
-            };
-            if exact_ascii(
-                c,
-                Some(
-                    element.attributes().as_slice()[position]
-                        .name()
-                        .local_name(),
-                ),
-                "async",
-            )? {
+            let attribute = element_attribute(&self.construction, c, node, position)?;
+            if exact_ascii(c, Some(attribute.name().local_name()), "async")? {
                 let (_, mut metadata) = script_metadata(&self.payloads, c, node)?;
                 metadata.flags.async_attribute_added();
                 set_script_metadata(self, c, slot, &metadata)?;
@@ -1108,7 +1092,7 @@ impl SessionStorage {
             {
                 c.charge(
                     WorkCategory::CopyByte,
-                    (mem::size_of::<usize>() + mem::size_of::<InputState>()) as u64,
+                    const { (mem::size_of::<usize>() + mem::size_of::<InputState>()) as u64 },
                 )?;
                 return Ok((slot, *raw, *state));
             }

@@ -1,6 +1,7 @@
 //! Native field facts owned by the source evidence issuer, not another tree.
 
 use super::*;
+use crate::keyed::{Table, slots};
 #[path = "lexical.rs"]
 mod lexical;
 #[path = "reverse.rs"]
@@ -20,6 +21,13 @@ pub(crate) struct ConstructionCauseRef {
     index: usize,
     issuer: Weak<evidence::EvidenceIdentity>,
     control: ControlIdentity,
+}
+#[cfg(test)]
+impl ConstructionCauseRef {
+    /// Names a cause the evidence does not hold.
+    pub(super) fn corrupt_for_test(&mut self) {
+        self.index = usize::MAX;
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -64,14 +72,18 @@ pub enum RangeOperandRole {
     Step,
     ValueContent,
 }
+slots!(RangeOperandRole, RANGE_OPERAND_COUNT, {
+    Minimum => 0,
+    Maximum => 1,
+    Step => 2,
+    ValueContent => 3,
+});
+const RANGE_OPERAND_COUNT: usize = 4;
+/// One value per [`RangeOperandRole`]; a lookup cannot be out of range.
+pub(crate) type RangeOperandTable<T> = Table<RangeOperandRole, T, RANGE_OPERAND_COUNT>;
 impl RangeOperandRole {
     pub(crate) fn index(self) -> usize {
-        match self {
-            Self::Minimum => 0,
-            Self::Maximum => 1,
-            Self::Step => 2,
-            Self::ValueContent => 3,
-        }
+        self as usize
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -123,7 +135,7 @@ impl RangeOperand {
 pub(crate) struct RangeComputation {
     pub(crate) branch: RangeBranch,
     pub(crate) original: RangeOriginal,
-    pub(crate) operands: [RangeOperand; 4],
+    pub(crate) operands: RangeOperandTable<RangeOperand>,
     pub(crate) minimum: Option<crate::HtmlInputNumericBoundOrigin>,
     pub(crate) maximum: Option<crate::HtmlInputNumericBoundOrigin>,
     pub(crate) step: Option<crate::HtmlInputNumericStepOrigin>,
@@ -136,10 +148,10 @@ impl RangeComputation {
                 RangeOriginal::FreshEmpty => None,
                 RangeOriginal::Group(edge) => Some(edge),
             },
-            self.operands[0].edge(),
-            self.operands[1].edge(),
-            self.operands[2].edge(),
-            self.operands[3].edge(),
+            self.operands.get(RangeOperandRole::Minimum).edge(),
+            self.operands.get(RangeOperandRole::Maximum).edge(),
+            self.operands.get(RangeOperandRole::Step).edge(),
+            self.operands.get(RangeOperandRole::ValueContent).edge(),
         ]
     }
 }
@@ -157,19 +169,23 @@ pub enum ColorOperandRole {
     Alpha,
     Colorspace,
 }
+slots!(ColorOperandRole, COLOR_OPERAND_COUNT, {
+    Alpha => 0,
+    Colorspace => 1,
+});
+const COLOR_OPERAND_COUNT: usize = 2;
+/// One value per [`ColorOperandRole`]; a lookup cannot be out of range.
+pub(crate) type ColorOperandTable<T> = Table<ColorOperandRole, T, COLOR_OPERAND_COUNT>;
 impl ColorOperandRole {
     pub(crate) fn index(self) -> usize {
-        match self {
-            Self::Alpha => 0,
-            Self::Colorspace => 1,
-        }
+        self as usize
     }
 }
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ColorComputation {
     pub(crate) source: ColorValueSource,
     pub(crate) original: Option<RangeEdge>,
-    pub(crate) operands: [Option<RangeEdge>; 2],
+    pub(crate) operands: ColorOperandTable<Option<RangeEdge>>,
     pub(crate) space: crate::HtmlInputColorSpace,
     pub(crate) standard_failure: Option<surgeist_css::color::CssColorStandardFailure>,
     pub(crate) environment: surgeist_css::color::CssColorFactIdentity,
@@ -196,8 +212,8 @@ impl InputValueComputation {
             Self::Range(value) => value.edges(),
             Self::Color(value) => [
                 value.original,
-                value.operands[0],
-                value.operands[1],
+                value.operands.copy(ColorOperandRole::Alpha),
+                value.operands.copy(ColorOperandRole::Colorspace),
                 None,
                 None,
             ],
@@ -368,7 +384,12 @@ impl GroupLeafCursor {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     c.charge(WorkCategory::InspectByte, mem::size_of::<usize>() as u64)?;
                     if original >= frame.index
-                        || evidence.native.groups.as_slice()[original].units != group.units
+                        || evidence
+                            .native
+                            .groups
+                            .as_slice()
+                            .get(original)
+                            .is_none_or(|original| original.units != group.units)
                     {
                         return Err(SessionError::WrongToken);
                     }
@@ -391,20 +412,22 @@ impl GroupLeafCursor {
                     c.charge(WorkCategory::RecordVisit, 2)?;
                     c.charge(
                         WorkCategory::InspectByte,
-                        (2 * mem::size_of::<usize>()) as u64,
+                        const { (2 * mem::size_of::<usize>()) as u64 },
                     )?;
                     if original >= frame.index || incoming >= frame.index {
                         return Err(SessionError::WrongToken);
                     }
-                    let left = &evidence.native.groups.as_slice()[original];
-                    let right = &evidence.native.groups.as_slice()[incoming];
+                    let groups = evidence.native.groups.as_slice();
+                    let (Some(left), Some(right)) = (groups.get(original), groups.get(incoming))
+                    else {
+                        return Err(SessionError::WrongToken);
+                    };
                     if left.units != offset || offset.checked_add(right.units) != Some(group.units)
                     {
                         return Err(SessionError::WrongToken);
                     }
                     let right_offset = frame.offset.checked_add(offset).ok_or_else(|| {
-                        c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                            .unwrap_err()
+                        c.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
                     self.frames
                         .as_mut()
@@ -479,7 +502,7 @@ impl GroupOriginCursor {
             c.charge(WorkCategory::RecordVisit, 1)?;
             c.charge(
                 WorkCategory::InspectByte,
-                (mem::size_of::<Option<LeafChunk>>() + mem::size_of::<usize>()) as u64,
+                const { (mem::size_of::<Option<LeafChunk>>() + mem::size_of::<usize>()) as u64 },
             )?;
             if let Some(leaf) = self.current
                 && self.position < leaf.length
@@ -489,22 +512,28 @@ impl GroupOriginCursor {
                     WorkCategory::InspectByte,
                     mem::size_of::<TextOrigin>() as u64,
                 )?;
-                let origin = &evidence.native.origins.as_slice()[leaf.start + self.position];
+                // Leaf chunks are issued only for ranges inside the origins.
+                let origin = leaf
+                    .start
+                    .checked_add(self.position)
+                    .and_then(|position| evidence.native.origins.as_slice().get(position))
+                    .ok_or_else(|| latch_registry_row(c))?;
                 if origin.start >= origin.end || origin.end > leaf.units {
                     return Err(SessionError::WrongToken);
                 }
-                let start = leaf.offset.checked_add(origin.start).ok_or_else(|| {
-                    c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
-                let end = leaf.offset.checked_add(origin.end).ok_or_else(|| {
-                    c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
+                let start = leaf
+                    .offset
+                    .checked_add(origin.start)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
+                let end = leaf
+                    .offset
+                    .checked_add(origin.end)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
                 payload_write::<TextOrigin>(c, 1)?;
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 payload_write::<usize>(c, 1)?;
-                self.position += 1;
+                // `position < leaf.length` held on entry to this branch.
+                self.position = self.position.saturating_add(1);
                 return Ok(Some(TextOrigin {
                     start,
                     end,
@@ -604,10 +633,10 @@ impl NativeProvenance {
                 .checked_mul(mem::size_of::<T>())
                 .and_then(|bytes| u64::try_from(bytes).ok())
             else {
-                return Err(c.fail_invariant(Invariant::ReleaseUnderflow));
+                return Err(c.fail_invariant(Invariant::CapacityMismatch));
             };
             let Ok(units) = u64::try_from(values.len()) else {
-                return Err(c.fail_invariant(Invariant::ReleaseUnderflow));
+                return Err(c.fail_invariant(Invariant::CapacityMismatch));
             };
             Ok((units, bytes))
         }
@@ -628,7 +657,7 @@ impl NativeProvenance {
             let (Some(units), Some(bytes)) =
                 (total.0.checked_add(units), total.1.checked_add(bytes))
             else {
-                return Err(c.fail_invariant(Invariant::ReleaseUnderflow));
+                return Err(c.fail_invariant(Invariant::CapacityMismatch));
             };
             total = (units, bytes);
         }
@@ -692,8 +721,7 @@ impl ParseEvidence {
                         for index in 0..leaf.units {
                             c.charge(WorkCategory::InspectByte, 4)?;
                             let position = leaf.offset.checked_add(index).ok_or_else(|| {
-                                c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                                    .unwrap_err()
+                                c.stop_representation(HtmlParseResource::ManagedUtf16Units)
                             })?;
                             if value.get(position) != text.code_units().get(index) {
                                 equal = false;
@@ -701,10 +729,9 @@ impl ParseEvidence {
                         }
                     }
                 }
-                covered = covered.checked_add(leaf.units).ok_or_else(|| {
-                    c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
+                covered = covered
+                    .checked_add(leaf.units)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             }
             Ok(equal && covered == value.len())
         })();
@@ -796,10 +823,9 @@ impl ParseEvidence {
                         output.extend_units(value.code_units(), c)?;
                     }
                 }
-                covered = covered.checked_add(leaf.units).ok_or_else(|| {
-                    c.representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
-                })?;
+                covered = covered
+                    .checked_add(leaf.units)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             }
             if covered != self.require_group(group)?.units {
                 return Err(SessionError::WrongToken);
@@ -855,7 +881,8 @@ impl ParseEvidence {
                     OriginKind::Literal | OriginKind::AsciiLowercase => {
                         c.charge(
                             WorkCategory::InspectByte,
-                            (end - begin) as u64 * if source.as_utf8().is_some() { 1 } else { 2 },
+                            (origin.source.len() as u64)
+                                .saturating_mul(if source.as_utf8().is_some() { 1 } else { 2 }),
                         )?;
                         let mut offset = 0;
                         let mut compare = |unit: u16| -> Result<(), SessionError> {
@@ -863,14 +890,16 @@ impl ParseEvidence {
                             let expected = if origin.kind == OriginKind::AsciiLowercase
                                 && (65..=90).contains(&unit)
                             {
-                                unit + 32
+                                unit | 0x20
                             } else {
                                 unit
                             };
                             if output.get(offset) != Some(&expected) {
                                 return Err(SessionError::WrongToken);
                             }
-                            offset += 1;
+                            // `output.get(offset)` just matched, so `offset` is
+                            // below the output length.
+                            offset = offset.saturating_add(1);
                             Ok(())
                         };
                         if let Some(text) = source.as_utf8() {
@@ -934,7 +963,10 @@ impl ParseEvidence {
                     OriginKind::CharacterReference
                     | OriginKind::RecoverySyntax
                     | OriginKind::InputValueNormalization => {
-                        c.charge(WorkCategory::InspectByte, output.len() as u64 * 2)?;
+                        c.charge(
+                            WorkCategory::InspectByte,
+                            (output.len() as u64).saturating_mul(2),
+                        )?;
                         if output.is_empty() || begin == end {
                             return Err(SessionError::WrongToken);
                         }
@@ -1006,6 +1038,29 @@ impl ParseEvidence {
             .get(group.index)
             .ok_or(SessionError::WrongToken)
     }
+    /// Releases the complete projection, as the loss of it would leave the
+    /// evidence of a published report.
+    #[cfg(test)]
+    pub(super) fn drop_projection_for_test(&mut self, c: &mut ParseControl) {
+        if let Some(rows) = self.native.projection.take() {
+            rows.release(c).unwrap();
+        }
+    }
+    /// Takes the source out, as a fault in a published report would.
+    #[cfg(test)]
+    pub(super) fn take_source_for_test(&mut self) -> Option<crate::HtmlSource> {
+        self.native.source.take()
+    }
+    /// Puts back a source taken by [`Self::take_source_for_test`].
+    #[cfg(test)]
+    pub(super) fn restore_source_for_test(&mut self, source: crate::HtmlSource) {
+        self.native.source = Some(source);
+    }
+    /// Whether the complete projection is still held.
+    #[cfg(test)]
+    pub(super) fn holds_projection_for_test(&self) -> bool {
+        self.native.projection.is_some()
+    }
     pub(super) fn history_data(&self) -> Result<HistoryData<'_>, SessionError> {
         // Do not mint an immutable history lender from a native-only projection
         // or an unfinished lexical prefix.
@@ -1020,6 +1075,26 @@ impl ParseEvidence {
             groups: self.native.groups.as_slice(),
             causes: self.native.causes.as_slice(),
         })
+    }
+    /// The published construction causes, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn causes_for_test(&mut self) -> &mut [ConstructionCause] {
+        self.native.causes.as_mut_slice_for_test()
+    }
+    /// The published origin groups, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn groups_for_test(&mut self) -> &mut [OriginGroup] {
+        self.native.groups.as_mut_slice_for_test()
+    }
+    /// The published lexical occurrences, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn lexical_occurrences_for_test(&mut self) -> &mut [LexicalOccurrence] {
+        self.native.lexical.occurrences.as_mut_slice_for_test()
+    }
+    /// The published lexical parts, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn lexical_parts_for_test(&mut self) -> &mut [LexicalPart] {
+        self.native.lexical.parts.as_mut_slice_for_test()
     }
     #[cfg(test)]
     pub(super) fn history_counts(&self) -> (usize, usize, usize) {
@@ -1274,10 +1349,10 @@ impl ParseEvidence {
             self.native.origins.reserve_geometric(c, 1)?;
             self.native.origins.try_push(c, origin)?;
         }
-        for position in 0..length / 2 {
-            self.native
-                .origins
-                .swap_slots(start + position, start + length - position - 1, c)?;
+        // The loop above appended exactly `length` entries after `start`.
+        let end = self.native.origins.len();
+        for (left, right) in (start..end).zip((start..end).rev()).take(length / 2) {
+            self.native.origins.swap_slots(left, right, c)?;
         }
         let index = self.native.groups.len();
         let reference = self.group_ref(index, c)?;
@@ -1436,7 +1511,7 @@ impl SessionStorage {
         let RetainedPayload::String {
             origins: Some(original),
             ..
-        } = &self.payloads.values[slot]
+        } = self.payloads.row(c, slot)?
         else {
             return Ok(());
         };
@@ -1460,11 +1535,24 @@ impl SessionStorage {
                 if !transformed {
                     payload_write::<TextOrigin>(c, 1)?;
                     c.charge(WorkCategory::ProviderCall, 1)?;
+                    // `origin.start == covered >= begin`, and `origin.end > origin.start`.
+                    let (Some(from_start), Some(from_end)) = (
+                        origin.start.checked_sub(begin),
+                        origin.end.checked_sub(begin),
+                    ) else {
+                        return Err(SessionError::OriginSplitUnavailable);
+                    };
+                    let start = output_start.checked_add(from_start).ok_or_else(|| {
+                        c.stop_representation(HtmlParseResource::ManagedUtf16Units)
+                    })?;
+                    let end = output_start.checked_add(from_end).ok_or_else(|| {
+                        c.stop_representation(HtmlParseResource::ManagedUtf16Units)
+                    })?;
                     maps.try_push(
                         c,
                         TextOrigin {
-                            start: output_start + origin.start - begin,
-                            end: output_start + origin.end - begin,
+                            start,
+                            end,
                             source: origin.source.clone(),
                             kind: origin.kind,
                         },
@@ -1495,8 +1583,10 @@ impl SessionStorage {
             if source.as_utf8().is_some() {
                 c.charge(
                     WorkCategory::InputUnitRead,
-                    u64::from(first != 0 && first != source.len())
-                        + u64::from(last != 0 && last != source.len()),
+                    count_set([
+                        first != 0 && first != source.len(),
+                        last != 0 && last != source.len(),
+                    ]) as u64,
                 )?;
             }
             let source = source
@@ -1554,7 +1644,8 @@ impl SessionStorage {
         original: Option<&ConstructionCauseRef>,
         intended_parent: Option<usize>,
     ) -> Result<Option<ConstructionCauseRef>, SessionError> {
-        if intended_parent.is_some_and(|parent| parent >= self.construction.storage().len()) {
+        let records = self.construction.len(c)?;
+        if intended_parent.is_some_and(|parent| parent >= records) {
             return Err(SessionError::ForeignNode);
         }
         let Some(evidence) = &mut self.evidence else {
@@ -1602,7 +1693,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         slot: usize,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
-        let RetainedPayload::String { origins, .. } = &self.payloads.values[slot] else {
+        let RetainedPayload::String { origins, .. } = self.payloads.row(c, slot)? else {
             return Err(SessionError::WrongToken);
         };
         origins
@@ -1622,7 +1713,7 @@ impl SessionStorage {
         incoming: Option<OriginGroupRef>,
         units: usize,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
-        let RetainedPayload::String { origins: old, .. } = &self.payloads.values[old_slot] else {
+        let RetainedPayload::String { origins: old, .. } = self.payloads.row(c, old_slot)? else {
             return Err(SessionError::WrongToken);
         };
         let Some(evidence) = &mut self.evidence else {
@@ -1700,7 +1791,7 @@ impl SessionStorage {
         slot: usize,
         suspended: Option<StringLocation>,
     ) -> Result<(), SessionError> {
-        let (group, location) = match &self.payloads.values[slot] {
+        let (group, location) = match self.payloads.row(c, slot)? {
             RetainedPayload::String {
                 origins: Some(group),
                 location,
@@ -1756,12 +1847,12 @@ impl SessionStorage {
         if self.evidence.is_none() {
             return Ok(None);
         }
-        let left = match &self.payloads.values[old] {
+        let left = match self.payloads.row(c, old)? {
             RetainedPayload::String { origins, .. } => origins.as_ref(),
             RetainedPayload::HistoricalString { origins } => Some(origins),
             _ => return Err(SessionError::WrongToken),
         };
-        let RetainedPayload::String { origins: right, .. } = &self.payloads.values[incoming] else {
+        let RetainedPayload::String { origins: right, .. } = self.payloads.row(c, incoming)? else {
             return Err(SessionError::WrongToken);
         };
         let Some(evidence) = &mut self.evidence else {
@@ -1781,7 +1872,10 @@ impl SessionStorage {
         };
         let missing_right = if right.is_none() {
             {
-                let group = evidence.source_independent_group(c, total - offset)?;
+                let units = total
+                    .checked_sub(offset)
+                    .ok_or_else(|| latch_registry_row(c))?;
+                let group = evidence.source_independent_group(c, units)?;
                 evidence.bind_leaf_value(c, &group, incoming)?;
                 Some(group)
             }
@@ -1880,7 +1974,7 @@ impl ParseEvidence {
                         .causes
                         .as_slice()
                         .get(header.cause)
-                        .ok_or(SessionError::WrongToken)?;
+                        .ok_or_else(|| latch_registry_row(c))?;
                     c.charge(
                         WorkCategory::InspectByte,
                         mem::size_of::<ConstructionCause>() as u64,
@@ -1899,9 +1993,13 @@ impl ParseEvidence {
                     )?;
                 } else {
                     let mut covered = 0;
-                    for atom in
-                        &self.native.origins.as_slice()[leaf.start..leaf.start + leaf.length]
-                    {
+                    // Leaf chunks are issued only for ranges inside the origins.
+                    let atoms = leaf
+                        .start
+                        .checked_add(leaf.length)
+                        .and_then(|end| self.native.origins.as_slice().get(leaf.start..end))
+                        .ok_or(SessionError::WrongToken)?;
+                    for atom in atoms {
                         c.charge(
                             WorkCategory::InspectByte,
                             mem::size_of::<TextOrigin>() as u64,
@@ -1965,10 +2063,16 @@ pub(super) fn validate_range_computation(
     {
         return Err(SessionError::WrongToken);
     }
-    if matches!(value.operands[0], RangeOperand::Any(_))
-        || matches!(value.operands[1], RangeOperand::Any(_))
-        || matches!(value.operands[3], RangeOperand::Any(_))
-    {
+    if matches!(
+        value.operands.get(RangeOperandRole::Minimum),
+        RangeOperand::Any(_)
+    ) || matches!(
+        value.operands.get(RangeOperandRole::Maximum),
+        RangeOperand::Any(_)
+    ) || matches!(
+        value.operands.get(RangeOperandRole::ValueContent),
+        RangeOperand::Any(_)
+    ) {
         return Err(SessionError::WrongToken);
     }
     for edge in value.edges() {
@@ -2007,7 +2111,11 @@ pub(super) fn validate_input_computation(
             {
                 return Err(SessionError::WrongToken);
             }
-            for edge in [color.original, color.operands[0], color.operands[1]] {
+            for edge in [
+                color.original,
+                color.operands.copy(ColorOperandRole::Alpha),
+                color.operands.copy(ColorOperandRole::Colorspace),
+            ] {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if let Some(edge) = edge {
                     c.charge(
@@ -2643,9 +2751,10 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         c.require_source(source)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
+        storage.payloads.check_aliases(
+            ConstructionView::Active(storage.construction.storage(c)?),
+            c,
+        )?;
         let evidence = storage.evidence.as_mut().ok_or(SessionError::WrongToken)?;
         if evidence
             .native
@@ -2718,7 +2827,7 @@ impl ParserArenaSession {
                 _ => None,
             };
             if let Some((node, slot, kind)) = raw {
-                if node >= storage.construction.storage().len() {
+                if node >= storage.construction.storage(c)?.len() {
                     return Err(SessionError::WrongToken);
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
@@ -2765,7 +2874,7 @@ impl ParserArenaSession {
             {
                 cleanup_owner(c, &cause.control)?;
                 if cause.issuer.as_ptr() != Arc::as_ptr(&evidence.identity)
-                    || *node >= storage.construction.storage().len()
+                    || *node >= storage.construction.storage(c)?.len()
                 {
                     return Err(SessionError::WrongToken);
                 }
@@ -2807,7 +2916,7 @@ impl ParserArenaSession {
             };
             c.require_document_string(allocation, value)?;
             let Some(native) = location.value(
-                ConstructionView::Active(storage.construction.storage()),
+                ConstructionView::Active(storage.construction.storage(c)?),
                 &storage.payloads.values,
                 payload_slot,
                 c,
@@ -3029,7 +3138,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         source: usize,
     ) -> Result<Option<ConstructionCauseRef>, SessionError> {
-        if source >= self.construction.storage().len() {
+        if source >= self.construction.storage(c)?.len() {
             return Err(SessionError::ForeignNode);
         }
         let Some(evidence) = &mut self.evidence else {
@@ -3518,7 +3627,7 @@ pub(super) fn copy_generated_input_value(
     let RetainedPayload::String {
         origins: Some(group),
         ..
-    } = &payloads.values[slot]
+    } = payloads.row(c, slot)?
     else {
         return Err(SessionError::WrongToken);
     };

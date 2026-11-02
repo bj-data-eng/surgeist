@@ -22,9 +22,12 @@
 //! preparation ends at step18 and never fabricates a loaded or executed result.
 
 use crate::bounded::{HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError};
+use crate::keyed::{Table, slots};
+#[cfg(test)]
+use crate::parser::control::WalkSite;
 use crate::parser::control::{
-    ControlIdentity, DocumentStringAllocation, OwnedVec, ParseControl, ParseStop, SharedAllocation,
-    StandaloneUnsupported, VectorCapacity, WorkCategory,
+    ControlIdentity, DocumentStringAllocation, FinalReleaseError, OwnedVec, ParseControl,
+    ParseStop, SharedAllocation, StandaloneUnsupported, VectorCapacity, WorkCategory,
 };
 use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
@@ -87,6 +90,10 @@ pub(crate) mod read;
 pub(crate) mod report;
 mod value_sharing;
 use provenance::{FieldCopy, OriginGroupRef};
+#[cfg(test)]
+mod no_panic_tests;
+#[cfg(test)]
+mod read_fault_tests;
 mod select;
 mod svg;
 mod template;
@@ -170,7 +177,7 @@ pub(crate) enum ElementInsertionIgnored {
 }
 impl SessionError {
     /// An impossible registry state with no controller in reach.
-    fn registry_row() -> Self {
+    pub(crate) fn registry_row() -> Self {
         Self::Stop(ParseStop::InternalInvariant(
             crate::parser::control::Invariant::RegistryRow,
         ))
@@ -179,6 +186,130 @@ impl SessionError {
 /// An impossible registry state, latched as the controller's first stop.
 fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))
+}
+/// The result of a non-stop error that effect work met, classified by the
+/// kind of fault it names. Every variant is listed, so a new one must be
+/// classified deliberately.
+///
+/// - Outcomes of the document or a service that the driver classifies itself
+///   pass through unchanged and latch nothing.
+/// - An intrinsic operation that is still owed is the pending-effects stop.
+/// - A uniqueness check that failed is the aliased-allocation stop.
+/// - A retained row that is missing, of another kind, unjoined or out of
+///   place is a registry row.
+fn latch_effect_fault(control: &mut ParseControl, error: SessionError) -> SessionError {
+    use crate::parser::control::Invariant;
+    let invariant = match error {
+        SessionError::Stop(_)
+        | SessionError::CspService
+        | SessionError::CspProtocol(_)
+        | SessionError::AssociatedFacts
+        | SessionError::ScriptMetadataUnavailable
+        | SessionError::SvgScriptMetadataUnavailable
+        | SessionError::CompletionMetadataUnavailable
+        | SessionError::CompletionIncomplete
+        | SessionError::ContextFactUnavailable(_)
+        | SessionError::ContextReactionUnavailable => return error,
+        SessionError::PendingIntrinsicWork => Invariant::PendingFormEffects,
+        SessionError::AliasedPayload => Invariant::SharedAllocationAliased,
+        SessionError::NonceMetadataUnavailable
+        | SessionError::ForeignNode
+        | SessionError::RootMove
+        | SessionError::AssociationMove
+        | SessionError::NotContainer
+        | SessionError::TemplateContentsRequired
+        | SessionError::WrongSibling
+        | SessionError::Cycle
+        | SessionError::Consumed
+        | SessionError::WrongToken
+        | SessionError::DuplicateAttribute
+        | SessionError::TemplateInsertionStateUnavailable
+        | SessionError::NotDocument
+        | SessionError::OriginSplitUnavailable
+        | SessionError::AttributeStorageUnavailable
+        | SessionError::ImageFormMetadataUnavailable
+        | SessionError::FormAssociationMetadataUnavailable
+        | SessionError::TextareaMetadataUnavailable
+        | SessionError::OutputMetadataUnavailable
+        | SessionError::InputMetadataUnavailable
+        | SessionError::SelectMetadataUnavailable
+        | SessionError::NodeDocumentUnavailable
+        | SessionError::TemplateMetadataUnavailable
+        | SessionError::ProcessingInstructionMapUnavailable
+        | SessionError::ContextUnavailable
+        | SessionError::CapturedDocument => Invariant::RegistryRow,
+    };
+    SessionError::Stop(control.fail_invariant(invariant))
+}
+/// The position after `cursor`. Every caller reaches it only after the work
+/// list yielded an entry at `cursor`, so `cursor` is below an in-memory length
+/// (at most `isize::MAX`) and the successor cannot overflow.
+fn next_cursor(cursor: usize) -> usize {
+    cursor.saturating_add(1)
+}
+/// The successor of a record count or position, or the registry-row stop when
+/// it would overflow.
+fn successor(control: &mut ParseControl, value: usize) -> Result<usize, SessionError> {
+    value
+        .checked_add(1)
+        .ok_or_else(|| latch_registry_row(control))
+}
+/// How many of the flags are set; at most `N`.
+fn count_set<const N: usize>(flags: [bool; N]) -> usize {
+    flags.into_iter().filter(|flag| *flag).count()
+}
+impl PayloadStorage {
+    /// The registry row at `slot`. A slot past the registry is an impossible
+    /// registry state, latched as the controller's first stop.
+    fn row(
+        &self,
+        control: &mut ParseControl,
+        slot: usize,
+    ) -> Result<&RetainedPayload, SessionError> {
+        self.values
+            .get(slot)
+            .ok_or_else(|| latch_registry_row(control))
+    }
+    /// As [`Self::row`], for editing.
+    fn row_mut(
+        &mut self,
+        control: &mut ParseControl,
+        slot: usize,
+    ) -> Result<&mut RetainedPayload, SessionError> {
+        match self.values.get_mut(slot) {
+            Some(row) => Ok(row),
+            None => Err(latch_registry_row(control)),
+        }
+    }
+}
+/// The element record at `node`. A missing position or a record of another
+/// kind is an impossible registry state, latched as the controller's first stop.
+fn element_record<'a>(
+    construction: &'a ConstructionOwner,
+    control: &mut ParseControl,
+    node: usize,
+) -> Result<&'a HtmlElement, SessionError> {
+    match construction.node_at(node).map(|record| record.kind()) {
+        Some(HtmlNodeKind::Element(element)) => Ok(element),
+        _ => Err(latch_registry_row(control)),
+    }
+}
+/// The attribute at `position` of the element record at `node`, with the same
+/// registry-state stop as [`element_record`].
+fn element_attribute<'a>(
+    construction: &'a ConstructionOwner,
+    control: &mut ParseControl,
+    node: usize,
+    position: usize,
+) -> Result<&'a Attribute, SessionError> {
+    match element_record(construction, control, node)?
+        .attributes()
+        .as_slice()
+        .get(position)
+    {
+        Some(attribute) => Ok(attribute),
+        None => Err(latch_registry_row(control)),
+    }
 }
 impl From<ParseStop> for SessionError {
     fn from(value: ParseStop) -> Self {
@@ -200,6 +331,11 @@ fn validate_parser_attributes(
     backing: Arc<Vec<Attribute>>,
     control: &mut ParseControl,
 ) -> Result<OrderedAttributes, (SessionError, Arc<Vec<Attribute>>)> {
+    // The validation owner holds the only other count on `backing`; keeping one
+    // here hands the allocation back on every refusal without recovering it
+    // from the owner. On success the spare is simply dropped when this
+    // function exits.
+    let spare = Arc::clone(&backing);
     let mut validation = Some(HtmlAttributeStorage::from_shared_attributes(backing).validate());
     let validation_error = |error| match error {
         HtmlAttributeValidationError::Duplicate { .. } => SessionError::DuplicateAttribute,
@@ -208,7 +344,7 @@ fn validate_parser_attributes(
     let result = (|| {
         while let Some(action) = validation
             .as_mut()
-            .expect("owned attribute validation")
+            .ok_or_else(|| latch_registry_row(control))?
             .next_action()
             .map_err(validation_error)?
         {
@@ -227,13 +363,10 @@ fn validate_parser_attributes(
     })();
     match result {
         Ok(attributes) => Ok(attributes),
-        Err(error) => Err((
-            error,
-            validation
-                .expect("refusal retains attribute validation")
-                .abort()
-                .into_shared_attributes(),
-        )),
+        Err(error) => {
+            drop(validation);
+            Err((error, spare))
+        }
     }
 }
 
@@ -379,6 +512,8 @@ struct FrozenStorage {
     lease: Option<bounded::HtmlConstructionLease>,
     payloads: PayloadStorage,
     effects: ConstructionEffects,
+    /// Present until publication moves the evidence into the published history
+    /// beside this storage, where only its `PublishedEvidence` form is read.
     evidence: Option<ParseEvidence>,
     fragment: Option<FragmentContextStorage>,
 }
@@ -421,11 +556,11 @@ struct PayloadStorage {
 /// that exists, and registry rows are appended but never removed or reordered
 /// while the registry is live; rows of a joined kind are never replaced, so a
 /// join always names a row of its kind (the callers still check what they get).
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 struct NodeJoins {
     text: Option<NonZeroU32>,
     textarea: Option<NonZeroU32>,
-    rows: [Option<NonZeroU32>; JOIN_COUNT],
+    rows: JoinTable<Option<NonZeroU32>>,
     /// Registry slot plus one of the name of the record's last attribute as
     /// registered at creation; see `PayloadStorage::attribute_value_candidate`.
     attribute_strings: Option<NonZeroU32>,
@@ -462,16 +597,43 @@ impl Join {
     }
 }
 const JOIN_COUNT: usize = Join::StyleOccurrence as usize + 1;
+/// One value per [`Join`]; a lookup cannot be out of range.
+type JoinTable<T> = Table<Join, T, JOIN_COUNT>;
+slots!(Join, JOIN_COUNT, {
+    Attributes => 0,
+    NodeDocument => 1,
+    Document => 2,
+    Template => 3,
+    FormAssociation => 4,
+    Script => 5,
+    Image => 6,
+    Hyperlink => 7,
+    Style => 8,
+    Dialog => 9,
+    Nonce => 10,
+    Input => 11,
+    SelectFamily => 12,
+    Base => 13,
+    BaseDocument => 14,
+    LookupRegistry => 15,
+    StyleOccurrence => 16,
+});
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
 /// refused as the registry invariant (see `joined_cell`).
 const _: () = assert!(mem::size_of::<NodeJoins>() == 4 * (JOIN_COUNT + 3));
+impl Default for NodeJoins {
+    fn default() -> Self {
+        Self {
+            text: None,
+            textarea: None,
+            rows: JoinTable::filled(None),
+            attribute_strings: None,
+        }
+    }
+}
 impl NodeJoins {
     fn get(&self, join: Join) -> Option<usize> {
-        self.rows
-            .get(join as usize)
-            .copied()
-            .flatten()
-            .and_then(cell_slot)
+        self.rows.copy(join).and_then(cell_slot)
     }
     /// The registry row holding the record's merged text.
     fn text(&self) -> Option<usize> {
@@ -483,20 +645,13 @@ impl NodeJoins {
     }
     /// Names the latest registry row, the one a back-to-front scan finds.
     fn set_latest(&mut self, join: Join, slot: usize) -> Result<(), SessionError> {
-        let cell = self
-            .rows
-            .get_mut(join as usize)
-            .ok_or_else(SessionError::registry_row)?;
-        *cell = Some(joined_cell(slot)?);
+        *self.rows.get_mut(join) = Some(joined_cell(slot)?);
         Ok(())
     }
     /// Keeps the earliest registry row, the one a front-to-back scan finds, and
     /// reports whether the cell already named another row.
     fn set_first(&mut self, join: Join, slot: usize) -> Result<bool, SessionError> {
-        let cell = self
-            .rows
-            .get_mut(join as usize)
-            .ok_or_else(SessionError::registry_row)?;
+        let cell = self.rows.get_mut(join);
         let slot = joined_cell(slot)?;
         let repeated = cell.is_some_and(|current| current != slot);
         if cell.is_none_or(|current| slot < current) {
@@ -817,6 +972,18 @@ enum AttributeStorage {
         shared: SharedAllocation<Vec<Attribute>>,
         element: Option<usize>,
     },
+    /// The staged attributes were shared for validation, validation stopped
+    /// (refused by the attributes themselves, by a work stop or by a
+    /// cancellation), and the controller refused to unshare them again. The
+    /// same actual Arc and ticket stay here for the cleanup walk to retry the
+    /// release.
+    Unvalidated {
+        backing: Arc<Vec<Attribute>>,
+        allocation: VectorCapacity<Attribute>,
+        shared: SharedAllocation<Vec<Attribute>>,
+        original_len: usize,
+        reversed_pairs: usize,
+    },
 }
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) enum StringLocation {
@@ -1072,6 +1239,21 @@ impl PayloadStorage {
         control.charge(WorkCategory::RecordVisit, 1)?;
         Ok(self.node_joins.get(node).and_then(|cell| cell.get(join)))
     }
+    /// Forgets the join of the row at `slot`, for a test that leaves the row
+    /// bound to no node.
+    #[cfg(test)]
+    fn unjoin_for_test(&mut self, slot: usize) {
+        if let Some((join, node)) = self.values.get(slot).and_then(row_join)
+            && let Some(cell) = self.node_joins.get_mut(node)
+        {
+            *cell.rows.get_mut(join) = None;
+        }
+    }
+    /// The same join cell without a charge, for a published report, which has
+    /// no controller. The caller checks the row it gets.
+    fn joined_uncharged(&self, node: usize, join: Join) -> Option<usize> {
+        self.node_joins.get(node).and_then(|cell| cell.get(join))
+    }
     /// Registers the row at `slot` under the record it is bound to. Binding a
     /// row and joining it are one infallible step at every binding site; the
     /// test-build check at release compares every join with the registry.
@@ -1311,7 +1493,10 @@ impl PayloadStorage {
     ) -> Result<(), SessionError> {
         for index in first..self.values.len() {
             cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
-            let payload = &self.values[index];
+            let payload = self
+                .values
+                .get(index)
+                .ok_or_else(|| latch_registry_row(control))?;
             match payload {
                 RetainedPayload::String {
                     value,
@@ -1374,6 +1559,16 @@ impl PayloadStorage {
                     if !shared.finalized()
                         && Arc::strong_count(values.shared_attributes()) != expected
                     {
+                        return Err(SessionError::AliasedPayload);
+                    }
+                }
+                RetainedPayload::Attributes(Some(AttributeStorage::Unvalidated {
+                    backing,
+                    shared,
+                    ..
+                })) => {
+                    cleanup_charge(control, WorkCategory::ProviderCall, 1)?;
+                    if !shared.finalized() && Arc::strong_count(backing) != 1 {
                         return Err(SessionError::AliasedPayload);
                     }
                 }
@@ -1514,6 +1709,7 @@ impl PayloadStorage {
                     | AttributeStorage::Transferring { values, .. } => values.len(),
                     AttributeStorage::Frozen { values, .. }
                     | AttributeStorage::Removing { values, .. } => values.len(),
+                    AttributeStorage::Unvalidated { backing, .. } => backing.len(),
                 };
                 match storage {
                     AttributeStorage::Building {
@@ -1539,7 +1735,14 @@ impl PayloadStorage {
                         ..
                     } => {
                         if shared.finalized() {
-                            control.release_final_attributes(values, allocation, shared);
+                            // A refused bank and tickets are dropped with the
+                            // payload; the latched stop reports the skipped credit.
+                            keep_first(
+                                &mut refused,
+                                control
+                                    .release_final_attributes(values, allocation, shared)
+                                    .map_err(FinalReleaseError::discard),
+                            );
                             continue;
                         }
                         let backing = values.into_shared_attributes();
@@ -1554,6 +1757,21 @@ impl PayloadStorage {
                             }
                         }
                     }
+                    AttributeStorage::Unvalidated {
+                        backing,
+                        allocation,
+                        shared,
+                        ..
+                    } => match control.release_shared(backing, shared) {
+                        Ok(vector) => {
+                            if let Err(error) = release_vector(control, vector, allocation) {
+                                refused.get_or_insert(error);
+                            }
+                        }
+                        Err(_) => {
+                            refused.get_or_insert(SessionError::AliasedPayload);
+                        }
+                    },
                 }
                 keep_first(
                     &mut refused,
@@ -1578,7 +1796,7 @@ impl PayloadStorage {
             };
             if let Some(usage) = associated_usage {
                 drop(payload);
-                usage.release(control, owner);
+                keep_first(&mut refused, usage.release(control, owner));
                 continue;
             }
             if let RetainedPayload::CspState(value) = payload {
@@ -1590,12 +1808,15 @@ impl PayloadStorage {
             }
             if let RetainedPayload::Document { mut meta, .. } = payload {
                 if let Some(scheme) = meta.scheme.take() {
-                    scheme.release(control);
+                    keep_first(&mut refused, scheme.release(control));
                 }
                 continue;
             }
             if let RetainedPayload::AssociationOccurrence(value) = payload {
-                pending_association::release_occurrence(value, control);
+                keep_first(
+                    &mut refused,
+                    pending_association::release_occurrence(value, control),
+                );
                 continue;
             }
             if let RetainedPayload::PiAttributes { values, .. } = payload {
@@ -1620,7 +1841,7 @@ impl PayloadStorage {
                         control,
                         owner,
                         HtmlParseResource::SourceMapEntries,
-                        1 + u64::from(value_attribute.is_some()),
+                        if value_attribute.is_some() { 2 } else { 1 },
                     ),
                 );
             }
@@ -1636,13 +1857,37 @@ impl PayloadStorage {
                 drop(origins);
             }
         }
-        csp_storage.release(control);
+        keep_first(&mut refused, csp_storage.release(control));
         keep_first(&mut refused, release_vector(control, values, allocation));
         keep_first(
             &mut refused,
             release_logical(control, owner, HtmlParseResource::AuxiliaryEntries, entries),
         );
         refused.map_or(Ok(()), Err)
+    }
+}
+/// The position `index` counts from the end of `original_len` values.
+fn mirrored_position(original_len: usize, index: usize) -> Option<usize> {
+    original_len.checked_sub(index.checked_add(1)?)
+}
+/// Where a staged attribute location currently sits in a stage that
+/// `reversed_pairs` pairs have been swapped in.
+fn staged_position(
+    original_len: usize,
+    reversed_pairs: usize,
+    index: usize,
+    control: &mut ParseControl,
+) -> Result<usize, SessionError> {
+    let Some(position) = mirrored_position(original_len, index) else {
+        return Err(SessionError::AliasedPayload);
+    };
+    let boundary = original_len
+        .checked_sub(reversed_pairs)
+        .ok_or_else(|| latch_registry_row(control))?;
+    if position < reversed_pairs || position >= boundary {
+        mirrored_position(original_len, position).ok_or_else(|| latch_registry_row(control))
+    } else {
+        Ok(position)
     }
 }
 impl StringLocation {
@@ -1735,9 +1980,18 @@ impl StringLocation {
                         let position = if registry_index < *rebound {
                             index
                         } else if index == *removed {
-                            index + shifted
-                        } else if index > *removed && index <= removed + shifted {
-                            index - 1
+                            index
+                                .checked_add(*shifted)
+                                .ok_or_else(|| latch_registry_row(control))?
+                        } else if index > *removed
+                            && index
+                                <= removed
+                                    .checked_add(*shifted)
+                                    .ok_or_else(|| latch_registry_row(control))?
+                        {
+                            index
+                                .checked_sub(1)
+                                .ok_or_else(|| latch_registry_row(control))?
                         } else {
                             index
                         };
@@ -1763,7 +2017,7 @@ impl StringLocation {
                                 _ => None,
                             }
                         } else {
-                            let Some(position) = original_len.checked_sub(index + 1) else {
+                            let Some(position) = mirrored_position(*original_len, index) else {
                                 return Err(SessionError::AliasedPayload);
                             };
                             values.get(position)
@@ -1775,17 +2029,19 @@ impl StringLocation {
                         reversed_pairs,
                         ..
                     }))) => {
-                        let Some(position) = original_len.checked_sub(index + 1) else {
-                            return Err(SessionError::AliasedPayload);
-                        };
-                        let position = if position < *reversed_pairs
-                            || position >= original_len - reversed_pairs
-                        {
-                            original_len - 1 - position
-                        } else {
-                            position
-                        };
+                        let position =
+                            staged_position(*original_len, *reversed_pairs, index, control)?;
                         values.get(position)
+                    }
+                    Some(RetainedPayload::Attributes(Some(AttributeStorage::Unvalidated {
+                        backing,
+                        original_len,
+                        reversed_pairs,
+                        ..
+                    }))) => {
+                        let position =
+                            staged_position(*original_len, *reversed_pairs, index, control)?;
+                        backing.get(position)
                     }
                     Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {
                         values,
@@ -1826,6 +2082,23 @@ fn cleanup_charge(
 fn keep_first<E: Into<SessionError>>(refused: &mut Option<SessionError>, result: Result<(), E>) {
     if let Err(error) = result {
         refused.get_or_insert(error.into());
+    }
+}
+/// Lets a test make one step of a cleanup walk refuse after it did its work, as
+/// a reported refusal would. Call it before [`keep_first`] for that step.
+#[cfg(test)]
+fn inject_walk_refusal(
+    control: &mut ParseControl,
+    site: WalkSite,
+    refused: &mut Option<SessionError>,
+) {
+    if let Some(issued) = control.take_walk_refusal(site) {
+        let injected = if issued == 0 {
+            SessionError::WrongToken
+        } else {
+            latch_registry_row(control)
+        };
+        refused.get_or_insert(injected);
     }
 }
 fn release_logical(
@@ -2040,7 +2313,7 @@ impl SessionStorage {
         self.require(control)?;
         control.charge(WorkCategory::RecordVisit, 2)?;
         self.construction
-            .storage()
+            .storage(control)?
             .position(&node.handle)
             .map_err(|_| SessionError::ForeignNode)
     }
@@ -2142,7 +2415,8 @@ impl SessionStorage {
         units: usize,
     ) -> Result<ParserNode, SessionError> {
         control.require_identity(&self.control)?;
-        let count = 1 + usize::from(template);
+        // A template is a record and its content fragment.
+        let (count, entries): (usize, u64) = if template { (2, 4) } else { (1, 2) };
         let cause_slots = self.prepare_node_causes(control, count)?;
         // Each record retains its original child-ticket slot and one derived
         // node-join cell; payload metadata rows remain separately admitted.
@@ -2151,7 +2425,7 @@ impl SessionStorage {
             (HtmlParseResource::ManagedEdges, u64::from(template)),
             (HtmlParseResource::ManagedAttributes, attributes as u64),
             (HtmlParseResource::ManagedUtf16Units, units as u64),
-            (HtmlParseResource::AuxiliaryEntries, (2 * count) as u64),
+            (HtmlParseResource::AuxiliaryEntries, entries),
         ];
         control.check_acquire_many(&requests)?;
         // Preserve the original node/edge/logical preflight before preparing
@@ -2168,7 +2442,7 @@ impl SessionStorage {
         if nonce_slot.is_some() {
             payload_write::<Option<usize>>(control, 1)?;
         }
-        let index = self.construction.len();
+        let index = self.construction.len(control)?;
         control.reserve_vector_geometric(
             &mut self.payloads.node_joins,
             &mut self.payloads.node_joins_allocation,
@@ -2179,19 +2453,20 @@ impl SessionStorage {
             WorkCategory::CopyByte,
             count.saturating_mul(mem::size_of::<NodeJoins>()) as u64,
         )?;
-        control.charge(WorkCategory::RecordWrite, (2 * count) as u64)?;
+        control.charge(WorkCategory::RecordWrite, entries)?;
         control.charge(WorkCategory::CopyByte, mem::size_of::<ParserNode>() as u64)?;
         control.charge(WorkCategory::RecordVisit, 3)?;
-        let handle = self
+        let Some(handle) = self.construction.apply(control, command, &requests)? else {
+            return Err(latch_registry_row(control));
+        };
+        let Ok(position) = self
             .construction
-            .apply(control, command, &requests)?
-            .expect("created shared record handle");
-        let position = self
-            .construction
-            .storage()
+            .storage(control)?
             .node(&handle)
-            .expect("created checked handle belongs to the same actual storage")
-            .position();
+            .map(|record| record.position())
+        else {
+            return Err(latch_registry_row(control));
+        };
         let handle = ParserNode {
             handle,
             index: position,
@@ -2216,7 +2491,11 @@ impl SessionStorage {
                 else {
                     return Err(latch_registry_row(control));
                 };
-                *node = Some(index + offset);
+                *node = Some(
+                    index
+                        .checked_add(offset)
+                        .ok_or_else(|| latch_registry_row(control))?,
+                );
             }
         }
         Ok(handle)
@@ -2291,7 +2570,8 @@ impl SessionStorage {
         control.charge(WorkCategory::RecordWrite, 1)?;
         control.acquire(
             HtmlParseResource::AuxiliaryEntries,
-            1 + u64::from(list.is_some()) + u64::from(explicit_form),
+            1u64.saturating_add(u64::from(list.is_some()))
+                .saturating_add(u64::from(explicit_form)),
         )?;
         Ok(())
     }
@@ -2472,7 +2752,9 @@ impl SessionStorage {
                     QualifiedName::new(Namespace::none(), None, local),
                     value,
                 ));
-                remaining -= 1;
+                remaining = remaining
+                    .checked_sub(1)
+                    .ok_or_else(|| latch_registry_row(control))?;
                 self.bind_string(
                     local_ticket,
                     StringLocation::AttributeName(stage, remaining),
@@ -2741,34 +3023,17 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let (container, position) = attribute;
         control.charge(WorkCategory::RecordVisit, 3)?;
-        let HtmlNodeKind::Element(element) = &self
-            .construction
-            .node_at(node)
-            .ok_or_else(|| latch_registry_row(control))?
-            .kind()
-        else {
-            unreachable!()
-        };
-        let name = element.attributes().as_slice()[position]
-            .name()
-            .local_name();
+        let named = element_attribute(&self.construction, control, node, position)?;
+        let name = named.name().local_name();
         let value_attr = exact_ascii(control, Some(name), "value")?;
         let type_attr = exact_ascii(control, Some(name), "type")?;
         let checked_attr = exact_ascii(control, Some(name), "checked")?;
         let form_attr = exact_ascii(control, Some(name), "form")?;
-        let name_attr = element.attributes().as_slice()[position]
-            .name()
-            .namespace()
-            .uri()
-            .is_none()
-            && exact_ascii(control, Some(name), "name")?;
+        let name_attr =
+            named.name().namespace().uri().is_none() && exact_ascii(control, Some(name), "name")?;
         let state = self.read_input_state(control, slot)?;
         let src_attr = state.flags.input_type() == crate::HtmlInputType::Image
-            && element.attributes().as_slice()[position]
-                .name()
-                .namespace()
-                .uri()
-                .is_none()
+            && named.name().namespace().uri().is_none()
             && exact_ascii(control, Some(name), "src")?;
         let multiple_attr = state.flags.input_type() == crate::HtmlInputType::Email
             && exact_ascii(control, Some(name), "multiple")?;
@@ -2793,16 +3058,8 @@ impl SessionStorage {
             }
         }
         if type_attr {
-            let HtmlNodeKind::Element(element) = &self
-                .construction
-                .node_at(node)
-                .ok_or_else(|| latch_registry_row(control))?
-                .kind()
-            else {
-                unreachable!()
-            };
-            let next_kind =
-                input_type_state(control, element.attributes().as_slice()[position].value())?;
+            let attribute = element_attribute(&self.construction, control, node, position)?;
+            let next_kind = input_type_state(control, attribute.value())?;
             self.change_input_type(control, node, slot, container, state, next_kind)?;
         }
         if src_attr {
@@ -2826,15 +3083,7 @@ impl SessionStorage {
             )?;
         }
         if state.flags.input_type() == crate::HtmlInputType::Range {
-            let attribute = match &self
-                .construction
-                .node_at(node)
-                .ok_or_else(|| latch_registry_row(control))?
-                .kind()
-            {
-                HtmlNodeKind::Element(element) => &element.attributes().as_slice()[position],
-                _ => unreachable!(),
-            };
+            let attribute = element_attribute(&self.construction, control, node, position)?;
             let relevant = attribute.name().namespace().uri().is_none()
                 && (exact_ascii(control, Some(attribute.name().local_name()), "min")?
                     || exact_ascii(control, Some(attribute.name().local_name()), "max")?
@@ -2847,15 +3096,7 @@ impl SessionStorage {
         if state.flags.input_type() == crate::HtmlInputType::Color
             && initialization != InputAttributeInitialization::ClonedColor
         {
-            let attribute = match &self
-                .construction
-                .node_at(node)
-                .ok_or_else(|| latch_registry_row(control))?
-                .kind()
-            {
-                HtmlNodeKind::Element(element) => &element.attributes().as_slice()[position],
-                _ => unreachable!(),
-            };
+            let attribute = element_attribute(&self.construction, control, node, position)?;
             let relevant = attribute.name().namespace().uri().is_none()
                 && (exact_ascii(control, Some(attribute.name().local_name()), "alpha")?
                     || exact_ascii(control, Some(attribute.name().local_name()), "colorspace")?);
@@ -2903,14 +3144,7 @@ impl SessionStorage {
                 if effect == crate::HtmlInputTypeEffect::SetContentValueFromCurrent {
                     let mut value_position = None;
                     control.charge(WorkCategory::RecordVisit, 1)?;
-                    let HtmlNodeKind::Element(element) = &self
-                        .construction
-                        .node_at(node)
-                        .ok_or_else(|| latch_registry_row(control))?
-                        .kind()
-                    else {
-                        unreachable!()
-                    };
+                    let element = element_record(&self.construction, control, node)?;
                     for (index, attribute) in element.attributes().as_slice().iter().enumerate() {
                         control.charge(WorkCategory::RecordVisit, 1)?;
                         if exact_ascii(control, Some(attribute.name().local_name()), "value")? {
@@ -2957,14 +3191,7 @@ impl SessionStorage {
                 if effect == crate::HtmlInputTypeEffect::SetCurrentFromDefaultAndClearDirty {
                     let mut source = None;
                     control.charge(WorkCategory::RecordVisit, 1)?;
-                    let HtmlNodeKind::Element(element) = &self
-                        .construction
-                        .node_at(node)
-                        .ok_or_else(|| latch_registry_row(control))?
-                        .kind()
-                    else {
-                        unreachable!()
-                    };
+                    let element = element_record(&self.construction, control, node)?;
                     for (position, attribute) in element.attributes().as_slice().iter().enumerate()
                     {
                         control.charge(WorkCategory::RecordVisit, 2)?;
@@ -3107,20 +3334,10 @@ impl SessionStorage {
             control.charge(WorkCategory::RecordVisit, 2)?;
             control.charge(WorkCategory::ProviderCall, 1)?;
             payload_write::<QualifiedName>(control, 1)?;
-            let HtmlNodeKind::Element(element) = &self
-                .construction
-                .node_at(node)
-                .ok_or_else(|| latch_registry_row(control))?
-                .kind()
-            else {
-                unreachable!()
-            };
+            let attribute = element_attribute(&self.construction, control, node, position)?;
             payload_write::<Attribute>(control, 1)?;
             payload_write::<Option<Attribute>>(control, 1)?;
-            let mut incoming = Some(Attribute::new(
-                element.attributes().as_slice()[position].name().clone(),
-                value,
-            ));
+            let mut incoming = Some(Attribute::new(attribute.name().clone(), value));
             // Registry redirects and known shared-wrapper restoration are
             // preadmitted. The actual slot producer then commits all or none.
             payload_write::<[StringLocation; 2]>(control, 2)?;
@@ -3179,14 +3396,7 @@ impl SessionStorage {
         let mut checked = false;
         let mut value = None;
         control.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(element) = &self
-            .construction
-            .node_at(node)
-            .ok_or_else(|| latch_registry_row(control))?
-            .kind()
-        else {
-            unreachable!()
-        };
+        let element = element_record(&self.construction, control, node)?;
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
             control.charge(WorkCategory::RecordVisit, 1)?;
             if exact_ascii(control, Some(attribute.name().local_name()), "checked")? {
@@ -3324,6 +3534,9 @@ impl SessionStorage {
                 {
                     raw.extend_units(value.code_units(), control)?;
                     let added = value.len();
+                    let end = units.checked_add(added).ok_or_else(|| {
+                        control.stop_representation(HtmlParseResource::ManagedUtf16Units)
+                    })?;
                     let source = self.field_slot(control, StringLocation::Text(child))?;
                     let mut incoming = self.copied_slot_group(control, source)?;
                     if incoming.is_none() && self.evidence.is_some() {
@@ -3337,12 +3550,12 @@ impl SessionStorage {
                             self.evidence
                                 .as_mut()
                                 .ok_or(SessionError::WrongToken)?
-                                .merge_groups(control, &previous, &incoming, units, units + added)?
+                                .merge_groups(control, &previous, &incoming, units, end)?
                         } else {
                             incoming
                         });
                     }
-                    units += added;
+                    units = end;
                 }
             }
             Ok::<_, SessionError>(())
@@ -3497,9 +3710,12 @@ impl SessionStorage {
         self.require(control)?;
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
         Self::check_html_tag(control, tag)?;
-        let Tag {
+        let Some(Tag {
             name, attributes, ..
-        } = input.take().expect("checked start tag");
+        }) = input.take()
+        else {
+            return Err(SessionError::Consumed);
+        };
         self.allocate_html_payload(control, name.value, Some(name.origins), attributes)
     }
     /// The existing generic borrowed validation, shared without transferring
@@ -3513,10 +3729,9 @@ impl SessionStorage {
         lowercase_token_name(control, tag.name.value.text())?;
         tag.attributes.require_owner(control)?;
         for index in 0..tag.attributes.len() {
-            let attribute = tag
-                .attributes
-                .get_mut(index, control)?
-                .expect("indexed token attribute");
+            let Some(attribute) = tag.attributes.get_mut(index, control)? else {
+                return Err(latch_registry_row(control));
+            };
             Self::check_text(control, &mut attribute.name)?;
             Self::check_text(control, &mut attribute.value)?;
             lowercase_token_name(control, attribute.name.value.text())?;
@@ -3596,11 +3811,10 @@ impl SessionStorage {
             let namespace = literal_string(control, b"http://www.w3.org/1999/xhtml")?;
             let (namespace, namespace_ticket) = self.register_string(control, namespace, None)?;
             control.charge(WorkCategory::RecordVisit, 2)?;
-            let mut units = name.len().checked_add(namespace.len()).ok_or_else(|| {
-                control
-                    .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                    .unwrap_err()
-            })?;
+            let mut units = name
+                .len()
+                .checked_add(namespace.len())
+                .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             let (values, allocation) = control.new_vector()?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
@@ -3635,9 +3849,7 @@ impl SessionStorage {
                     .checked_add(local.len())
                     .and_then(|sum| sum.checked_add(value.len()))
                     .ok_or_else(|| {
-                        control
-                            .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                            .unwrap_err()
+                        control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                     })?;
                 let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                     values,
@@ -3701,11 +3913,22 @@ impl SessionStorage {
                 Err((error, backing)) => {
                     // Preserve the admitted shared wrapper in the owning phase
                     // even when intrinsic duplicate checking or work stops.
-                    let Ok(values) = control.release_shared(backing, shared) else {
-                        // Unpublished backing is uniquely owned; a refusal is an
-                        // invariant stop, and the container row stays empty for
-                        // cleanup to report.
-                        return Err(latch_registry_row(control));
+                    let values = match control.release_shared(backing, shared) {
+                        Ok(values) => values,
+                        Err(refused) => {
+                            // Unpublished backing is uniquely owned, so a
+                            // refusal is an invariant stop. The refused Arc and
+                            // ticket stay in the row for cleanup to retry.
+                            let (_, backing, shared) = refused.into_parts();
+                            *storage = Some(AttributeStorage::Unvalidated {
+                                backing,
+                                allocation,
+                                shared,
+                                original_len,
+                                reversed_pairs,
+                            });
+                            return Err(latch_registry_row(control));
+                        }
                     };
                     *storage = Some(AttributeStorage::Building {
                         values,
@@ -3819,7 +4042,10 @@ impl SessionStorage {
                 HtmlNodeKind::Document(_)
             )
         {
-            input.take().expect("verified text").release(control)?;
+            let Some(text) = input.take() else {
+                return Err(SessionError::Consumed);
+            };
+            text.release(control)?;
             return Ok(None);
         }
         let mut preceding = None;
@@ -3873,22 +4099,24 @@ impl SessionStorage {
             }
         }
         control.charge(WorkCategory::RecordVisit, 1)?;
-        let preceding = preceding.filter(|&index| {
-            matches!(
-                self.construction
-                    .node_at(index)
-                    .expect("retained construction position")
-                    .kind(),
-                HtmlNodeKind::Text(_)
-            )
-        });
-        let old_ticket = if let Some(index) = preceding {
-            Some(self.field_slot(control, StringLocation::Text(index))?)
-        } else {
-            None
+        let preceding = match preceding {
+            Some(index) => match self.construction.node_at(index).map(|record| record.kind()) {
+                Some(HtmlNodeKind::Text(_)) => Some(index),
+                Some(_) => None,
+                None => return Err(latch_registry_row(control)),
+            },
+            None => None,
         };
-        let dispose_old = match old_ticket {
-            Some(slot) => self.releasable_string(control, slot, true)?,
+        // The preceding Text record and the registry row holding its string.
+        let preceding = match preceding {
+            Some(index) => Some((
+                index,
+                self.field_slot(control, StringLocation::Text(index))?,
+            )),
+            None => None,
+        };
+        let dispose_old = match preceding {
+            Some((_, slot)) => self.releasable_string(control, slot, true)?,
             None => false,
         };
         let prepared = if preceding.is_none() {
@@ -3911,15 +4139,17 @@ impl SessionStorage {
         } else {
             None
         };
-        let text = input.take().expect("verified text");
+        let Some(text) = input.take() else {
+            return Err(SessionError::Consumed);
+        };
         let (value, ticket) = self.register_text(control, text)?;
-        if let Some(index) = preceding {
+        if let Some((index, old_slot)) = preceding {
             self.append_registered_text(
                 control,
                 text_append::RegisteredTextAppend {
                     parent: parent_index,
                     index,
-                    old_slot: old_ticket.expect("registered preceding text"),
+                    old_slot,
                     incoming_slot: ticket,
                     incoming: value,
                     dispose_old,
@@ -3989,19 +4219,26 @@ impl SessionStorage {
         control: &mut ParseControl,
         slot: usize,
     ) -> Result<(), SessionError> {
-        let RetainedPayload::String {
-            value,
-            allocation,
-            origins,
-            ..
-        } = mem::replace(&mut self.payloads.values[slot], RetainedPayload::Retired)
-        else {
-            return Err(SessionError::WrongToken);
+        let Some(row) = self.payloads.values.get_mut(slot) else {
+            return Err(latch_registry_row(control));
+        };
+        let (value, allocation, origins) = match mem::replace(row, RetainedPayload::Retired) {
+            RetainedPayload::String {
+                value,
+                allocation,
+                origins,
+                ..
+            } => (value, allocation, origins),
+            // A row of another kind is handed back where it was found.
+            other => {
+                *row = other;
+                return Err(SessionError::WrongToken);
+            }
         };
         drop(value);
         control.release_document_string(allocation)?;
         if let Some(origins) = origins {
-            self.payloads.values[slot] = RetainedPayload::HistoricalString { origins };
+            *row = RetainedPayload::HistoricalString { origins };
         }
         Ok(())
     }
@@ -4085,7 +4322,7 @@ impl SessionStorage {
         }
         let container = self.element_attribute_container(control, target)?;
         self.payloads.check_new_aliases(
-            ConstructionView::Active(self.construction.storage()),
+            ConstructionView::Active(self.construction.storage(control)?),
             control,
         )?;
         control.charge(WorkCategory::ProviderCall, 1)?;
@@ -4104,10 +4341,9 @@ impl SessionStorage {
         check_text_source(control, &tag.name)?;
         tag.attributes.require_owner(control)?;
         for index in 0..tag.attributes.len() {
-            let a = tag
-                .attributes
-                .get_mut(index, control)?
-                .expect("actual attribute");
+            let Some(a) = tag.attributes.get_mut(index, control)? else {
+                return Err(latch_registry_row(control));
+            };
             Self::check_text(control, &mut a.name)?;
             Self::check_text(control, &mut a.value)?;
             lowercase_token_name(control, a.name.value.text())?;
@@ -4132,7 +4368,7 @@ impl SessionStorage {
                 )?;
             }
             self.construction
-                .attribute_edit()
+                .attribute_edit(control)?
                 .selected_count()
                 .map_err(|error| construction_owner::construction_error(control, error))
         })();
@@ -4148,11 +4384,16 @@ impl SessionStorage {
             self.construction.abort_attributes(control)?;
             return Err(error);
         }
-        let Tag {
+        let Some(Tag {
             name,
             mut attributes,
             ..
-        } = input.take().expect("checked start html");
+        }) = input.take()
+        else {
+            // Nothing was taken: only the edit begun above needs ending.
+            self.construction.abort_attributes(control)?;
+            return Err(SessionError::Consumed);
+        };
         let result = (|| {
             name.release(control)?;
             let (values, allocation) = control.new_vector()?;
@@ -4172,13 +4413,18 @@ impl SessionStorage {
             let mut remaining = count;
             while !attributes.as_slice().is_empty() {
                 control.charge(WorkCategory::RecordVisit, 1)?;
-                let decision_index = attributes.len() - 1;
+                let decision_index = attributes
+                    .len()
+                    .checked_sub(1)
+                    .ok_or_else(|| latch_registry_row(control))?;
                 let keep = self
                     .construction
-                    .attribute_edit()
+                    .attribute_edit(control)?
                     .decision(decision_index)
                     .map_err(|error| construction_owner::construction_error(control, error))?;
-                let attribute = attributes.try_pop(control)?.expect("actual attribute");
+                let Some(attribute) = attributes.try_pop(control)? else {
+                    return Err(latch_registry_row(control));
+                };
                 if !keep {
                     let retained = (|| {
                         if let Some(evidence) = self.evidence.as_mut() {
@@ -4215,7 +4461,8 @@ impl SessionStorage {
                 control.reserve_vector_geometric_toward(values, allocation, 1, count)?;
                 control.charge(
                     WorkCategory::CopyByte,
-                    (mem::size_of::<Attribute>() + 2 * mem::size_of::<StringLocation>()) as u64,
+                    (const { mem::size_of::<Attribute>() + 2 * mem::size_of::<StringLocation>() })
+                        as u64,
                 )?;
                 control.charge(WorkCategory::RecordWrite, 3)?;
                 control.acquire(HtmlParseResource::ManagedAttributes, 1)?;
@@ -4223,7 +4470,9 @@ impl SessionStorage {
                     QualifiedName::new(Namespace::none(), None, local),
                     value,
                 ));
-                remaining -= 1;
+                remaining = remaining
+                    .checked_sub(1)
+                    .ok_or_else(|| latch_registry_row(control))?;
                 self.bind_string(name_ticket, StringLocation::AttributeName(stage, remaining))
                     .map_err(|_| latch_registry_row(control))?;
                 self.bind_string(
@@ -4240,15 +4489,9 @@ impl SessionStorage {
             // without a variable shift or a second attribute representation.
             self.edit_attributes(control, target, container, stage, count, false)?;
             control.charge(WorkCategory::RecordVisit, 1)?;
-            let old_len = match &self
-                .construction
-                .node_at(target)
-                .ok_or_else(|| latch_registry_row(control))?
-                .kind()
-            {
-                HtmlNodeKind::Element(v) => v.attributes().len(),
-                _ => unreachable!(),
-            };
+            let old_len = element_record(&self.construction, control, target)?
+                .attributes()
+                .len();
             self.begin_attribute_transfer(control, stage, container, old_len)?;
             payload_write::<PreparedAttributeMerge>(control, 1)?;
             Ok(Some(PreparedAttributeMerge {
@@ -4332,7 +4575,10 @@ impl SessionStorage {
         if self.construction.has_attribute_edit() {
             self.construction.finish_attributes(control)?;
         }
-        for position in start..start + count {
+        let end = start
+            .checked_add(count)
+            .ok_or_else(|| latch_registry_row(control))?;
+        for position in start..end {
             self.initial_nonce_attribute(control, target, position)?;
             self.initial_meta_attribute(control, target, position)?;
             self.association_attribute_hook(control, target, position)?;
@@ -4346,17 +4592,9 @@ impl SessionStorage {
             // Only an actual appended no-namespace href changes the pinned
             // first-Base href trigger. Other fields share this merge owner.
             let mut href_changed = false;
-            for position in start..start + count {
+            for position in start..end {
                 control.charge(WorkCategory::RecordVisit, 1)?;
-                let HtmlNodeKind::Element(element) = &self
-                    .construction
-                    .node_at(target)
-                    .ok_or_else(|| latch_registry_row(control))?
-                    .kind()
-                else {
-                    unreachable!()
-                };
-                let attribute = &element.attributes().as_slice()[position];
+                let attribute = element_attribute(&self.construction, control, target, position)?;
                 if attribute.name().namespace().uri().is_none()
                     && exact_ascii(control, Some(attribute.name().local_name()), "href")?
                 {
@@ -4391,10 +4629,17 @@ impl SessionStorage {
             *storage = taken;
             return Err(latch_registry_row(control));
         };
-        assert_eq!(
-            reversed_pairs, 0,
-            "last-pop consumes the unchanged reverse stage"
-        );
+        // Last-pop consumes the unchanged reverse stage; a stage that was
+        // already reversed is handed back to the row untouched.
+        if reversed_pairs != 0 {
+            *storage = Some(AttributeStorage::Building {
+                values,
+                allocation,
+                original_len,
+                reversed_pairs,
+            });
+            return Err(latch_registry_row(control));
+        }
         *storage = Some(AttributeStorage::Transferring {
             values,
             allocation,
@@ -4421,7 +4666,7 @@ impl SessionStorage {
         {
             control.charge(
                 WorkCategory::CopyByte,
-                (2 * mem::size_of::<StringLocation>()) as u64,
+                (const { 2 * mem::size_of::<StringLocation>() }) as u64,
             )?;
             control.charge(WorkCategory::RecordWrite, 1)?;
             #[cfg(test)]
@@ -4431,9 +4676,7 @@ impl SessionStorage {
                     StringLocation::AttributeName(
                         destination,
                         start.checked_add(index).ok_or_else(|| {
-                            control
-                                .representation::<()>(HtmlParseResource::ManagedAttributes)
-                                .unwrap_err()
+                            control.stop_representation(HtmlParseResource::ManagedAttributes)
                         })?,
                     )
                 }
@@ -4441,9 +4684,7 @@ impl SessionStorage {
                     StringLocation::AttributeValue(
                         destination,
                         start.checked_add(index).ok_or_else(|| {
-                            control
-                                .representation::<()>(HtmlParseResource::ManagedAttributes)
-                                .unwrap_err()
+                            control.stop_representation(HtmlParseResource::ManagedAttributes)
                         })?,
                     )
                 }
@@ -4451,9 +4692,7 @@ impl SessionStorage {
                     StringLocation::AttributeNamespace(
                         destination,
                         start.checked_add(index).ok_or_else(|| {
-                            control
-                                .representation::<()>(HtmlParseResource::ManagedAttributes)
-                                .unwrap_err()
+                            control.stop_representation(HtmlParseResource::ManagedAttributes)
                         })?,
                     )
                 }
@@ -4461,9 +4700,7 @@ impl SessionStorage {
                     StringLocation::AttributePrefix(
                         destination,
                         start.checked_add(index).ok_or_else(|| {
-                            control
-                                .representation::<()>(HtmlParseResource::ManagedAttributes)
-                                .unwrap_err()
+                            control.stop_representation(HtmlParseResource::ManagedAttributes)
                         })?,
                     )
                 }
@@ -4485,15 +4722,9 @@ impl SessionStorage {
             values, ..
         }))) = self.payloads.values.get(stage)
         else {
-            return Err(control
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into());
+            return Err(latch_registry_row(control));
         };
-        let attribute = values.last().ok_or_else(|| {
-            SessionError::Stop(
-                control.fail_invariant(crate::parser::control::Invariant::PendingFormEffects),
-            )
-        })?;
+        let attribute = values.last().ok_or_else(|| latch_registry_row(control))?;
         if attribute.name().namespace().uri().is_some()
             || !exact_ascii(control, Some(attribute.name().local_name()), "id")?
         {
@@ -4576,7 +4807,7 @@ impl SessionStorage {
         // container; the target stays an element while its attributes change.
         if !matches!(
             self.construction
-                .storage()
+                .storage(control)?
                 .node_at(target)
                 .map(|node| node.kind()),
             Some(HtmlNodeKind::Element(_))
@@ -4612,7 +4843,7 @@ impl SessionStorage {
         };
         let result = (|| {
             started?;
-            let group = self.construction.attribute_edit();
+            let group = self.construction.attribute_edit(control)?;
             let slot = if append {
                 let Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
                     values,
@@ -4639,7 +4870,7 @@ impl SessionStorage {
         // Restore the sole ticket before creating the registry's known alias.
         let Some(HtmlNodeKind::Element(record)) = self
             .construction
-            .storage()
+            .storage(control)?
             .node_at(target)
             .map(|node| node.kind())
         else {
@@ -4653,15 +4884,22 @@ impl SessionStorage {
             shared,
             element,
         });
+        let mut result = result;
         if append && result.is_ok() {
-            let RetainedPayload::Attributes(Some(AttributeStorage::Transferring { moved, .. })) =
-                &mut later[0]
-            else {
-                unreachable!()
-            };
-            *moved += 1;
-            if form_effects.is_some() {
-                self.effects.form = form_effects;
+            match later.first_mut() {
+                Some(RetainedPayload::Attributes(Some(AttributeStorage::Transferring {
+                    moved,
+                    ..
+                }))) => match moved.checked_add(1) {
+                    Some(next) => {
+                        *moved = next;
+                        if form_effects.is_some() {
+                            self.effects.form = form_effects;
+                        }
+                    }
+                    None => result = Err(latch_registry_row(control)),
+                },
+                _ => result = Err(latch_registry_row(control)),
             }
         }
         if result.is_err() {
@@ -4683,11 +4921,11 @@ impl SessionStorage {
         };
         let len = values.len();
         for left in 0..len / 2 {
-            let right = len - 1 - left;
-            control.admit_atomic_layout(mem::size_of::<Attribute>() * 2)?;
+            let right = mirrored_position(len, left).ok_or_else(|| latch_registry_row(control))?;
+            control.admit_atomic_layout(const { mem::size_of::<Attribute>() * 2 })?;
             control.charge(
                 WorkCategory::CopyByte,
-                (mem::size_of::<Attribute>() * 2) as u64,
+                (const { mem::size_of::<Attribute>() * 2 }) as u64,
             )?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             control.charge(WorkCategory::RecordWrite, 3)?;
@@ -4700,7 +4938,9 @@ impl SessionStorage {
                 return Err(latch_registry_row(control));
             };
             values.swap(left, right);
-            *reversed_pairs += 1;
+            *reversed_pairs = reversed_pairs
+                .checked_add(1)
+                .ok_or_else(|| latch_registry_row(control))?;
         }
         Ok(())
     }
@@ -4738,7 +4978,8 @@ impl SessionStorage {
         control: &mut ParseControl,
         index: usize,
     ) -> Result<bool, SessionError> {
-        self.associated_document_parent_in(control, self.construction.storage(), index)
+        let storage = self.construction.storage(control)?;
+        self.associated_document_parent_in(control, storage, index)
     }
     fn associated_document_parent_in(
         &self,
@@ -4785,7 +5026,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         ordinary_view_parent(
-            ConstructionView::Active(self.construction.storage()),
+            ConstructionView::Active(self.construction.storage(control)?),
             control,
             node,
             detached,
@@ -4798,7 +5039,7 @@ impl SessionStorage {
         mut node: usize,
         detached: Option<usize>,
     ) -> Result<usize, SessionError> {
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(control)?.len() {
             match self.ordinary_parent(control, node, detached)? {
                 Some(parent) => node = parent,
                 None => return Ok(node),
@@ -4813,7 +5054,8 @@ impl SessionStorage {
         node: usize,
         local: &str,
     ) -> Result<bool, SessionError> {
-        Self::html_local_in(control, self.construction.storage(), node, local)
+        let storage = self.construction.storage(control)?;
+        Self::html_local_in(control, storage, node, local)
     }
     fn html_local_in(
         control: &mut ParseControl,
@@ -4840,7 +5082,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         let mut next = self.ordinary_parent(control, node, detached)?;
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(control)?.len() {
             let Some(node) = next else { return Ok(None) };
             if self.html_local(control, node, "form")? {
                 return Ok(Some(node));
@@ -5024,7 +5266,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<Option<usize>, SessionError> {
         next_ordinary_view_node(
-            ConstructionView::Active(self.construction.storage()),
+            ConstructionView::Active(self.construction.storage(control)?),
             control,
             root,
             node,
@@ -5042,7 +5284,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<bool, SessionError> {
         let mut node = node;
-        for _ in 0..self.construction.storage().len() {
+        for _ in 0..self.construction.storage(c)?.len() {
             let Some(parent) = self.ordinary_parent(c, node, None)? else {
                 return Ok(false);
             };
@@ -5101,7 +5343,7 @@ impl SessionStorage {
         detached: Option<usize>,
     ) -> Result<bool, SessionError> {
         let mut root = self.ordinary_root(control, node, detached)?;
-        'roots: for _ in 0..self.construction.storage().len() {
+        'roots: for _ in 0..self.construction.storage(control)?.len() {
             control.charge(WorkCategory::RecordVisit, 1)?;
             if matches!(
                 self.construction
@@ -5123,7 +5365,7 @@ impl SessionStorage {
                 control.charge(WorkCategory::ProviderCall, 1)?;
                 let host_position = self
                     .construction
-                    .storage()
+                    .storage(control)?
                     .node_by_result_id(host)
                     .map_err(|_| SessionError::ForeignNode)?
                     .position();
@@ -5227,9 +5469,9 @@ impl SessionStorage {
                     self.form_attribute(control, node, "form")?.is_some(),
                 ),
                 Action::ReadCurrentOwnerIsNearestAncestor => {
-                    let owner = state
-                        .owner
-                        .expect("cursor retention requires actual current owner");
+                    let Some(owner) = state.owner else {
+                        return Err(latch_registry_row(control));
+                    };
                     Reply::CurrentOwnerIsNearestAncestor(
                         self.nearest_form(control, node, detached)? == Some(owner),
                     )
@@ -5266,7 +5508,10 @@ impl SessionStorage {
                     Reply::FormFound(found.is_some())
                 }
                 Action::AssociateFoundOwner => {
-                    state.owner = Some(found.expect("cursor association requires a found owner"));
+                    let Some(owner) = found else {
+                        return Err(latch_registry_row(control));
+                    };
+                    state.owner = Some(owner);
                     set_form_association_state(self, control, slot, state)?;
                     Reply::Applied
                 }
@@ -5430,16 +5675,16 @@ impl SessionStorage {
                                         has_owner: state.owner.is_some(),
                                     },
                                 ) == HtmlFormOwnerResetDecision::ResetIfOwnerInDifferentTree
-                                    && self.ordinary_root(control, node, detached)?
-                                        != self.ordinary_root(
-                                            control,
-                                            state.owner.expect("trigger requires actual owner"),
-                                            detached,
-                                        )?
                                 {
-                                    self.reset_form_association(
-                                        control, slot, node, state, detached,
-                                    )?;
+                                    let node_root = self.ordinary_root(control, node, detached)?;
+                                    let Some(owner) = state.owner else {
+                                        return Err(latch_registry_row(control));
+                                    };
+                                    if node_root != self.ordinary_root(control, owner, detached)? {
+                                        self.reset_form_association(
+                                            control, slot, node, state, detached,
+                                        )?;
+                                    }
                                 }
                             }
                             FormEffectStage::Insertion
@@ -5452,10 +5697,11 @@ impl SessionStorage {
                                 self.reset_form_association(control, slot, node, state, None)?;
                             }
                             FormEffectStage::Insertion | FormEffectStage::IdChange => {}
+                            // The children stages returned above.
                             FormEffectStage::Adoption
                             | FormEffectStage::RemovalChildren
                             | FormEffectStage::InsertionChildren => {
-                                unreachable!("children stage handled above")
+                                return Err(latch_registry_row(control));
                             }
                         }
                     }
@@ -5473,10 +5719,11 @@ impl SessionStorage {
                             FormEffectStage::Removal => !self.connected(control, node, detached)?,
                             FormEffectStage::Insertion => self.connected(control, node, None)?,
                             FormEffectStage::IdChange => true,
+                            // The children stages returned above.
                             FormEffectStage::Adoption
                             | FormEffectStage::RemovalChildren
                             | FormEffectStage::InsertionChildren => {
-                                unreachable!("children stage handled above")
+                                return Err(latch_registry_row(control));
                             }
                         };
                     if id_event {
@@ -5547,8 +5794,9 @@ impl SessionStorage {
                         {
                             control.charge(
                                 WorkCategory::CopyByte,
-                                (mem::size_of::<usize>() + mem::size_of::<FormAssociationState>())
-                                    as u64,
+                                (const {
+                                    mem::size_of::<usize>() + mem::size_of::<FormAssociationState>()
+                                }) as u64,
                             )?;
                             let candidate = *candidate;
                             let state = *state;
@@ -5598,9 +5846,7 @@ impl SessionStorage {
                 | SessionError::CspService
                 | SessionError::CspProtocol(_)),
             ) => Err(error),
-            Err(_) => Err(control
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(latch_effect_fault(control, error)),
             Ok(()) => Ok(()),
         }
     }
@@ -5697,7 +5943,10 @@ impl SessionStorage {
             payload_write::<InsertionCause>(control, 1)?;
             effects.cause = cause;
         }
-        control.charge(WorkCategory::ProviderCall, 2 + u64::from(before.is_some()))?;
+        control.charge(
+            WorkCategory::ProviderCall,
+            if before.is_some() { 3 } else { 2 },
+        )?;
         let node_handle = self
             .construction
             .node_at(node)
@@ -5708,12 +5957,14 @@ impl SessionStorage {
             .node_at(parent)
             .ok_or(SessionError::ForeignNode)?
             .handle();
-        let before_handle = before.map(|position| {
-            self.construction
-                .node_at(position)
-                .expect("checked reference child")
-                .handle()
-        });
+        let before_handle = before
+            .map(|position| {
+                self.construction
+                    .node_at(position)
+                    .map(|record| record.handle())
+                    .ok_or_else(|| latch_registry_row(control))
+            })
+            .transpose()?;
         let requests = &[(
             HtmlParseResource::ManagedEdges,
             u64::from(old_parent.is_none()),
@@ -5739,14 +5990,11 @@ impl SessionStorage {
                         // edge checks, before any actual scratch-bank provider.
                         control.observe_tree_depth(usage.depth() as u64)?;
                         control.charge(WorkCategory::RecordVisit, 1)?;
+                        let Some(view) = action.storage_view() else {
+                            return Err(latch_registry_row(control));
+                        };
                         revoke_standalone = self.standalone_ineligibility.is_none()
-                            && self.associated_document_parent_in(
-                                control,
-                                action
-                                    .storage_view()
-                                    .expect("computed usage retains mutable storage"),
-                                parent,
-                            )?;
+                            && self.associated_document_parent_in(control, view, parent)?;
                         control.check_acquire_many(requests)?;
                         action
                             .perform()
@@ -5794,7 +6042,7 @@ impl SessionStorage {
             self.construction.abort_pending(control, pending)?;
             return Err(error);
         }
-        self.construction.finish_pending(pending);
+        self.construction.finish_pending(control, pending)?;
         if form_effects.is_some() {
             self.effects.form = form_effects;
         }
@@ -5954,7 +6202,7 @@ impl SessionStorage {
                     // writes. The actual detached construction view stays here.
                     let mut ancestor = Some(index);
                     let mut connected = false;
-                    for _ in 0..self.construction.storage().len() {
+                    for _ in 0..self.construction.storage(control)?.len() {
                         let Some(current) = ancestor else { break };
                         control.charge(WorkCategory::RecordVisit, 1)?;
                         let record = self
@@ -6106,7 +6354,7 @@ impl SessionStorage {
         // returned at the end.
         let mut refused = None;
         if let Some(failed) = failed_text_append {
-            failed.release(control);
+            keep_first(&mut refused, failed.release(control));
         }
         if let Some(fragment) = fragment {
             keep_first(&mut refused, fragment.release(control, &owner));
@@ -6197,7 +6445,7 @@ impl ParserArenaSession {
         control.charge(WorkCategory::RecordVisit, 1)?;
         storage
             .construction
-            .storage()
+            .storage(control)?
             .position(&creation.arena)
             .map_err(|_| SessionError::ForeignNode)?;
         control.require_source_range(&creation.source)?;
@@ -6437,7 +6685,7 @@ impl ParserArenaSession {
         }
         if storage
             .construction
-            .storage()
+            .storage(c)?
             .position(&document.handle)
             .ok()
             != Some(0)
@@ -6471,9 +6719,8 @@ impl ParserArenaSession {
         check_disposal_text(control, &tag.name)?;
         tag.attributes.require_disposal_owner(control)?;
         check_text_source(control, &tag.name)?;
-        for position in 0..tag.attributes.len() {
+        for attribute in tag.attributes.as_slice() {
             control.charge(WorkCategory::RecordVisit, 1)?;
-            let attribute = &tag.attributes.as_slice()[position];
             check_disposal_text(control, &attribute.name)?;
             check_disposal_text(control, &attribute.value)?;
             control.require_source_range(&attribute.source)?;
@@ -6744,7 +6991,7 @@ impl ParserArenaSession {
             check_text_source(control, &attribute.value)?;
             // No recoverable duplicate rejection may follow an initialized
             // metadata slot. Compare actual unique no-namespace token names.
-            for earlier in &tag.attributes.as_slice()[..index] {
+            for earlier in tag.attributes.as_slice().iter().take(index) {
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 if exact_string_equal(
                     control,
@@ -6812,7 +7059,7 @@ impl ParserArenaSession {
         // creation pays for the registry its predecessors built.
         let storage = self.active_mut()?;
         storage.payloads.check_new_aliases(
-            ConstructionView::Active(storage.construction.storage()),
+            ConstructionView::Active(storage.construction.storage(control)?),
             control,
         )?;
         if !matches!(profile, CreationProfile::Ordinary) {
@@ -6878,7 +7125,7 @@ impl ParserArenaSession {
         {
             control.charge(
                 WorkCategory::ProviderCall,
-                1 + u64::from(value_source.is_some()),
+                if value_source.is_some() { 2 } else { 1 },
             )?;
             payload_write::<(crate::HtmlSourceRange, Option<crate::HtmlSourceRange>)>(control, 1)?;
             Some((token.clone(), value_source.cloned()))
@@ -6997,7 +7244,7 @@ impl ParserArenaSession {
             None
         };
         let source_slot = if let Some((token, value_attribute)) = input_sources {
-            let entries = 1 + u64::from(value_attribute.is_some());
+            let entries = if value_attribute.is_some() { 2 } else { 1 };
             control.acquire(HtmlParseResource::SourceMapEntries, entries)?;
             if let Err(error) = storage.prepare_payload_slot(control) {
                 // The slot refusal is the error reported; a refused logical
@@ -7063,47 +7310,39 @@ impl ParserArenaSession {
             None
         };
         let result = (|| {
+            // The creation metadata is resolved before the tag leaves its
+            // caller, so an impossible state keeps the token owned there.
+            let creation = if let Some(metadata) = details_slot {
+                Some(OrderedCreation::Details { metadata })
+            } else if let Some(input) = input_slot {
+                let (Some(association), Some(source)) = (slot, source_slot) else {
+                    return Err(latch_registry_row(control));
+                };
+                Some(OrderedCreation::Input {
+                    input,
+                    association,
+                    source,
+                })
+            } else if matches!(profile, CreationProfile::Select(..)) {
+                Some(OrderedCreation::Select {
+                    metadata: select_slot,
+                })
+            } else {
+                None
+            };
             let Tag {
                 name, attributes, ..
             } = take_payload(input, control)?;
-            let node = if let Some(metadata) = details_slot {
-                storage.allocate_ordered_payload(
-                    control,
-                    name,
-                    attributes,
-                    prepared,
-                    OrderedCreation::Details { metadata },
-                )?
-            } else if let Some(input_slot) = input_slot {
-                storage.allocate_ordered_payload(
-                    control,
-                    name,
-                    attributes,
-                    prepared,
-                    OrderedCreation::Input {
-                        input: input_slot,
-                        association: slot.expect("canonical input association"),
-                        source: source_slot.expect("original input sources"),
-                    },
-                )?
-            } else if matches!(profile, CreationProfile::Select(..)) {
-                storage.allocate_ordered_payload(
-                    control,
-                    name,
-                    attributes,
-                    prepared,
-                    OrderedCreation::Select {
-                        metadata: select_slot,
-                    },
-                )?
-            } else {
-                storage.allocate_html_payload_prepared(
+            let node = match creation {
+                Some(creation) => storage
+                    .allocate_ordered_payload(control, name, attributes, prepared, creation)?,
+                None => storage.allocate_html_payload_prepared(
                     control,
                     name.value,
                     Some(name.origins),
                     attributes,
                     prepared,
-                )?
+                )?,
             };
             storage.mark_document_parser_style(control, node.index)?;
             if let Some(link) = link_slot {
@@ -7285,7 +7524,7 @@ impl ParserArenaSession {
         let state = self.input_state(control, node)?;
         let storage = self.active()?;
         append_native_input_value(
-            ConstructionView::Active(storage.construction.storage()),
+            ConstructionView::Active(storage.construction.test_storage()),
             &storage.payloads,
             control,
             node.index,
@@ -7303,7 +7542,7 @@ impl ParserArenaSession {
         destination.require_owner(control)?;
         self.input_state(control, node)?;
         append_input_content(
-            ConstructionView::Active(self.active()?.construction.storage()),
+            ConstructionView::Active(self.active()?.construction.test_storage()),
             control,
             node.index,
             destination,
@@ -7350,7 +7589,7 @@ impl ParserArenaSession {
         destination.require_owner(control)?;
         self.output_state(control, node)?;
         append_descendant_text(
-            ConstructionView::Active(self.active()?.construction.storage()),
+            ConstructionView::Active(self.active()?.construction.test_storage()),
             control,
             node.index,
             destination,
@@ -7407,16 +7646,17 @@ impl ParserArenaSession {
         if !storage.html_local(control, node, "textarea")? {
             return Ok(());
         }
-        if storage.textarea_slot(control, node)?.is_none() {
-            return Err(control
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into());
+        match storage.textarea_slot(control, node) {
+            Ok(Some(_)) => {}
+            // No state row, or a row of another kind, for a textarea.
+            Ok(None) | Err(SessionError::WrongToken | SessionError::ForeignNode) => {
+                return Err(latch_registry_row(control));
+            }
+            Err(error) => return Err(error),
         }
         match storage.refresh_textarea(control, node, None, true) {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(control
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(latch_effect_fault(control, error)),
             Ok(()) => Ok(()),
         }
     }
@@ -7567,10 +7807,9 @@ impl ParserArenaSession {
         }
         tag.attributes.require_owner(control)?;
         for index in 0..tag.attributes.len() {
-            let attribute = tag
-                .attributes
-                .get_mut(index, control)?
-                .expect("actual attribute");
+            let Some(attribute) = tag.attributes.get_mut(index, control)? else {
+                return Err(latch_registry_row(control));
+            };
             SessionStorage::check_text(control, &mut attribute.name)?;
             SessionStorage::check_text(control, &mut attribute.value)?;
             check_text_source(control, &attribute.name)?;
@@ -7604,8 +7843,10 @@ impl ParserArenaSession {
         // HtmlSource::range reads each interior UTF8 endpoint once. Pre-admit
         // both reads together immediately before that bounded native helper.
         if source.as_utf8().is_some() {
-            let reads = u64::from(start != 0 && start != source.len())
-                + u64::from(end != 0 && end != source.len());
+            let reads = [start, end]
+                .into_iter()
+                .filter(|&endpoint| endpoint != 0 && endpoint != source.len())
+                .count() as u64;
             control.charge(WorkCategory::InputUnitRead, reads)?;
         }
         let range = source
@@ -7655,10 +7896,9 @@ impl ParserArenaSession {
         check_text_source(control, &tag.name)?;
         tag.attributes.require_owner(control)?;
         for index in 0..tag.attributes.len() {
-            let attribute = tag
-                .attributes
-                .get_mut(index, control)?
-                .expect("actual attribute");
+            let Some(attribute) = tag.attributes.get_mut(index, control)? else {
+                return Err(latch_registry_row(control));
+            };
             SessionStorage::check_text(control, &mut attribute.name)?;
             SessionStorage::check_text(control, &mut attribute.value)?;
             check_text_source(control, &attribute.name)?;
@@ -7796,7 +8036,7 @@ impl ParserArenaSession {
                 StringLocation::ProcessingInstructionData(node.index),
             )
             .map_err(|_| latch_registry_row(control))?;
-        storage.bind_pi_map(map, node.index);
+        storage.bind_pi_map(control, map, node.index)?;
         storage.parse_pi_map(control, node.index, map)?;
         Ok(node)
     }
@@ -7828,9 +8068,9 @@ impl ParserArenaSession {
         let mut registered: [Option<(DocumentString, usize)>; 3] = [None, None, None];
         let result = (|| {
             let mut units = 0usize;
-            for index in 0..3 {
+            for (field, slot) in incoming.iter_mut().zip(registered.iter_mut()) {
                 payload_write::<Option<Text>>(control, 2)?;
-                let value = if let Some(text) = incoming[index].take() {
+                let value = if let Some(text) = field.take() {
                     storage.register_text(control, text)?
                 } else {
                     let empty = literal_string(control, b"")?;
@@ -7838,17 +8078,15 @@ impl ParserArenaSession {
                 };
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 units = units.checked_add(value.0.len()).ok_or_else(|| {
-                    control
-                        .representation::<()>(HtmlParseResource::ManagedUtf16Units)
-                        .unwrap_err()
+                    control.stop_representation(HtmlParseResource::ManagedUtf16Units)
                 })?;
                 payload_write::<Option<(DocumentString, usize)>>(control, 2)?;
-                registered[index] = Some(value);
+                *slot = Some(value);
             }
             payload_write::<[Option<(DocumentString, usize)>; 3]>(control, 3)?;
-            let (name, a) = registered[0].take().expect("registered name");
-            let (public_id, b) = registered[1].take().expect("registered public identifier");
-            let (system_id, d) = registered[2].take().expect("registered system identifier");
+            let [Some((name, a)), Some((public_id, b)), Some((system_id, d))] = registered else {
+                return Err(latch_registry_row(control));
+            };
             control.charge(WorkCategory::RecordWrite, 4)?;
             // HTML's DOM creation step lowers missing token fields to empty
             // strings. Native authored Option data keeps its separate meaning.
@@ -7960,11 +8198,9 @@ impl ParserArenaSession {
         }
         payload_write::<HtmlDocumentMode>(control, 1)?;
         control.charge(WorkCategory::ProviderCall, 1)?;
-        let document = storage
-            .construction
-            .node_at(0)
-            .expect("retained document root")
-            .handle();
+        let Some(document) = storage.construction.node_at(0).map(|root| root.handle()) else {
+            return Err(latch_registry_row(control));
+        };
         storage.construction.apply(
             control,
             bounded::HtmlConstructionCommand::SetDocumentMode { document, mode },
@@ -8126,7 +8362,7 @@ impl ParserArenaSession {
             }
         } else {
             let mut ancestor = Some(target);
-            for _ in 0..storage.construction.storage().len() {
+            for _ in 0..storage.construction.storage(control)?.len() {
                 let Some(index) = ancestor else { break };
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 if index == element {
@@ -8144,7 +8380,7 @@ impl ParserArenaSession {
                     control.charge(WorkCategory::ProviderCall, 1)?;
                     let owner_position = storage
                         .construction
-                        .storage()
+                        .storage(control)?
                         .node_by_result_id(owner)
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
@@ -8326,6 +8562,11 @@ impl ParserArenaSession {
     ) -> Result<FrozenArena, SessionError> {
         let fragment_root = self.active_mut()?.prepare_freeze(control)?;
         self.active_mut()?.prepare_association_documents(control)?;
+        // A stopped append keeps its buffer for cleanup and cannot publish.
+        // The check precedes publication, so a refusal consumes nothing.
+        if self.active()?.failed_text_append.is_some() {
+            return Err(latch_registry_row(control));
+        }
         // Only a parser-initialized session carries this actual variable owner.
         // Prepay its active-to-frozen move before storage is taken; a stopped
         // share restores that same owner without useful recovery work.
@@ -8367,18 +8608,11 @@ impl ParserArenaSession {
             standalone_ineligibility: _,
             construction,
             payloads,
-            failed_text_append,
+            failed_text_append: _,
             style_order: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
-        } = self
-            .storage
-            .take()
-            .expect("successful preparation retains active storage");
-        assert!(
-            failed_text_append.is_none(),
-            "stopped append cannot publish"
-        );
+        } = self.storage.take().ok_or(SessionError::Consumed)?;
         let view = match result {
             bounded::HtmlConstructionResult::Document(value) => {
                 HtmlConstructionResult::Document(value)
@@ -8411,7 +8645,7 @@ impl ParserArenaSession {
         let storage = self.active()?;
         storage.require(control)?;
         storage.payloads.check_aliases(
-            ConstructionView::Active(storage.construction.storage()),
+            ConstructionView::Active(storage.construction.storage(control)?),
             control,
         )?;
         control.charge(WorkCategory::RecordVisit, 1)?;
@@ -8427,12 +8661,12 @@ impl ParserArenaSession {
     pub(crate) fn release(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
         cleanup_owner(control, &self.active()?.control)?;
         self.active()?.payloads.check_aliases(
-            ConstructionView::Active(self.active()?.construction.storage()),
+            ConstructionView::Active(self.active()?.construction.storage(control)?),
             control,
         )?;
         self.storage
             .take()
-            .expect("verified active owner retains storage")
+            .ok_or(SessionError::Consumed)?
             .release(control)
     }
 }
@@ -8773,11 +9007,15 @@ impl FrozenArena {
         storage
             .payloads
             .check_aliases(ConstructionView::Frozen(&storage.view), control)?;
-        storage.construction.require_recovery(
-            control,
-            storage.lease.as_ref().expect("real publication lease"),
-        )?;
-        let FrozenStorage {
+        // A missing lease is refused before anything is taken, so the owner
+        // stays where it was.
+        let Some(publication) = storage.lease.as_ref() else {
+            return Err(latch_registry_row(control));
+        };
+        storage
+            .construction
+            .require_recovery(control, publication)?;
+        let Some(FrozenStorage {
             view,
             control: owner,
             mut construction,
@@ -8786,7 +9024,10 @@ impl FrozenArena {
             effects,
             evidence,
             fragment,
-        } = self.storage.take().expect("preflighted frozen owner");
+        }) = self.storage.take()
+        else {
+            return Err(SessionError::Consumed);
+        };
         let mut result = Some(match view {
             HtmlConstructionResult::Document(value) => {
                 bounded::HtmlConstructionResult::Document(value)
@@ -8798,13 +9039,16 @@ impl FrozenArena {
         let recovery = match bounded::HtmlConstructionLease::try_recover(&mut result, &mut lease) {
             Ok(recovery) => recovery,
             Err(error) => {
-                let view = match result.take().expect("refusal preserves result slot") {
-                    bounded::HtmlConstructionResult::Document(value) => {
+                // `try_recover` refuses before it takes the result, so the slot
+                // filled above is still occupied.
+                let view = match result.take() {
+                    Some(bounded::HtmlConstructionResult::Document(value)) => {
                         HtmlConstructionResult::Document(value)
                     }
-                    bounded::HtmlConstructionResult::Fragment(value) => {
+                    Some(bounded::HtmlConstructionResult::Fragment(value)) => {
                         HtmlConstructionResult::Fragment(value)
                     }
+                    None => return Err(latch_registry_row(control)),
                 };
                 self.storage = Some(FrozenStorage {
                     view,
@@ -8819,24 +9063,42 @@ impl FrozenArena {
                 return Err(construction_owner::construction_error(control, error));
             }
         };
-        construction.recovered(control, recovery)?;
+        // Every owner is released even after a refusal; the first one is
+        // returned at the end. The recovery put the storage back before it
+        // could refuse, so the owner below can still be retired.
+        let mut refused = None;
+        let recovered = construction.recovered(control, recovery);
+        #[cfg(test)]
+        inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+        keep_first(&mut refused, recovered);
         if let Some(fragment) = fragment {
-            fragment
-                .release(control, &owner)
-                .expect("actual context effects owner");
+            let released = fragment.release(control, &owner);
+            #[cfg(test)]
+            inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+            keep_first(&mut refused, released);
         }
         if let Some(evidence) = evidence {
-            evidence.release(control)?;
+            let released = evidence.release(control);
+            #[cfg(test)]
+            inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+            keep_first(&mut refused, released);
         }
-        effects.release(control)?;
-        release_parts(
+        let released = effects.release(control);
+        #[cfg(test)]
+        inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+        keep_first(&mut refused, released);
+        let released = release_parts(
             control,
             &owner,
             ReleasedStorage {
                 construction,
                 payloads,
             },
-        )
+        );
+        #[cfg(test)]
+        inject_walk_refusal(control, WalkSite::FrozenOwner, &mut refused);
+        keep_first(&mut refused, released);
+        refused.map_or(Ok(()), Err)
     }
 }
 
@@ -8860,15 +9122,18 @@ fn release_parts(
         construction,
         payloads,
     } = parts;
+    // Retirement consumes the owner and may refuse; the logical counts it held
+    // are read first so they are released either way.
     let mut refused = None;
-    let usage = match construction.retire(control) {
-        Ok(usage) => Some(usage),
-        Err(error) => {
-            refused = Some(error);
-            None
-        }
-    };
-    let (edges, nodes) = usage.map_or((0, 0), |usage| (usage.edges() as u64, usage.nodes() as u64));
+    let usage = construction.usage(control).unwrap_or_else(|error| {
+        // Storage that is not at rest holds counts nothing can name.
+        refused = Some(error);
+        HtmlConstructionUsage::default()
+    });
+    let (edges, nodes) = (usage.edges() as u64, usage.nodes() as u64);
+    if let Err(error) = construction.retire(control) {
+        refused.get_or_insert(error);
+    }
     for (resource, units) in [
         (HtmlParseResource::ManagedEdges, edges),
         (
@@ -8945,7 +9210,7 @@ fn take_payload<T>(input: &mut Option<T>, control: &mut ParseControl) -> Result<
         return Err(SessionError::Consumed);
     }
     payload_write::<Option<T>>(control, 2)?;
-    Ok(input.take().expect("preflighted payload"))
+    input.take().ok_or(SessionError::Consumed)
 }
 fn literal_string(
     control: &mut ParseControl,
@@ -8953,11 +9218,9 @@ fn literal_string(
 ) -> Result<FrozenUtf16, SessionError> {
     let mut buffer = Utf16Buffer::new(control)?;
     let result = (|| {
-        let mut index = 0;
-        while index < literal.len() {
+        for &byte in literal {
             control.charge(WorkCategory::InspectByte, 1)?;
-            buffer.push_unit(u16::from(literal[index]), control)?;
-            index += 1;
+            buffer.push_unit(u16::from(byte), control)?;
         }
         Ok::<_, ParseStop>(())
     })();
@@ -9023,7 +9286,7 @@ fn check_formatting_tag(
         }
         // Pair matching for Noah relies on actual unique parsed names, not the
         // token's duplicate-recovery flag or an untrusted counter substitute.
-        for earlier in &tag.attributes.as_slice()[..index] {
+        for earlier in tag.attributes.as_slice().iter().take(index) {
             control.charge(WorkCategory::RecordVisit, 1)?;
             if exact_string_equal(
                 control,
@@ -9145,7 +9408,9 @@ fn release_formatting_tag(
     if control.stop().is_none() {
         payload_write::<Option<Tag>>(control, 2)?;
     }
-    let tag = input.take().expect("checked original formatting token");
+    let Some(tag) = input.take() else {
+        return Err(SessionError::Consumed);
+    };
     tag.name.release(control)?;
     release_token_attributes(tag.attributes, control)
 }
@@ -9177,9 +9442,9 @@ fn exact_string_equal(
     if left.len() != right.len() {
         return Ok(false);
     }
-    for index in 0..left.len() {
+    for (left, right) in left.code_units().iter().zip(right.code_units()) {
         control.charge(WorkCategory::InspectByte, 4)?;
-        if left.code_units()[index] != right.code_units()[index] {
+        if left != right {
             return Ok(false);
         }
     }
@@ -9214,9 +9479,8 @@ fn check_token_kind(token: &TokenKind, control: &mut ParseControl) -> Result<(),
         TokenKind::Tag(value) => {
             check_disposal_text(control, &value.name)?;
             value.attributes.require_disposal_owner(control)?;
-            for index in 0..value.attributes.len() {
+            for attribute in value.attributes.as_slice() {
                 cleanup_charge(control, WorkCategory::RecordVisit, 1)?;
-                let attribute = &value.attributes.as_slice()[index];
                 check_disposal_text(control, &attribute.name)?;
                 check_disposal_text(control, &attribute.value)?;
             }
@@ -9258,7 +9522,10 @@ pub(crate) fn release_token_kind(
         control.charge(WorkCategory::RecordVisit, fields)?;
         payload_write::<Option<TokenKind>>(control, 2)?;
     }
-    match input.take().expect("preflighted disposal payload") {
+    let Some(token) = input.take() else {
+        return Err(SessionError::Consumed);
+    };
+    match token {
         TokenKind::Text(text) | TokenKind::Comment(text) => text.release(control)?,
         TokenKind::ProcessingInstruction { target, data } => {
             target.release(control)?;
@@ -9314,11 +9581,18 @@ impl BodyTextRuns {
         }
         payload_write::<usize>(control, 1)?;
         payload_write::<Option<TextRun>>(control, 1)?;
-        let slot = entries
-            .get_mut(self.next, control)?
-            .expect("retained run slot");
-        let value = slot.take().expect("next slot has not been transferred");
-        self.next += 1;
+        let next = self
+            .next
+            .checked_add(1)
+            .ok_or_else(|| latch_registry_row(control))?;
+        let Some(slot) = entries.get_mut(self.next, control)? else {
+            return Err(latch_registry_row(control));
+        };
+        // A slot already transferred leaves the cursor where it was.
+        let Some(value) = slot.take() else {
+            return Err(latch_registry_row(control));
+        };
+        self.next = next;
         Ok(Some(value))
     }
     /// Preflight precedes disposal. Once it begins, newly latched work or
@@ -9338,7 +9612,9 @@ impl BodyTextRuns {
         if control.stop().is_none() {
             payload_write::<Option<OwnedVec<Option<TextRun>>>>(control, 1)?;
         }
-        let mut entries = self.entries.take().expect("preflight retained entries");
+        let Some(mut entries) = self.entries.take() else {
+            return Ok(());
+        };
         let mut failure = None;
         loop {
             let entry = if control.stop().is_some() {
@@ -9431,7 +9707,10 @@ fn push_text_run(
 ) -> Result<(), SessionError> {
     let run = draft.freeze(control)?;
     if let Err((stop, run)) = entries.try_push_recover(control, Some(run)) {
-        run.expect("submitted run").text.release(control)?;
+        // The refused push hands back the run it was given.
+        if let Some(run) = run {
+            run.text.release(control)?;
+        }
         return Err(stop.into());
     }
     Ok(())
@@ -9451,7 +9730,8 @@ fn stage_text_runs(
     let mut draft: Option<TextRunDraft> = None;
     let result = (|| {
         control.charge(WorkCategory::RecordVisit, 1)?;
-        let len = text.value.text().len();
+        let units = text.value.text().code_units();
+        let len = units.len();
         let mut covered = 0;
         for origin in text.origins.as_slice() {
             control.charge(WorkCategory::RecordVisit, 1)?;
@@ -9462,7 +9742,9 @@ fn stage_text_runs(
             let mut kind = None;
             for index in origin.start..origin.end {
                 control.charge(WorkCategory::InspectByte, 2)?;
-                let unit = text.value.text().code_units()[index];
+                let Some(&unit) = units.get(index) else {
+                    return Err(latch_registry_row(control));
+                };
                 let current = match partition {
                     TextPartition::Body => body_text_kind(unit),
                     TextPartition::FirstLf if index == 0 && unit == 10 => BodyTextKind::Whitespace,
@@ -9473,23 +9755,24 @@ fn stage_text_runs(
                 }
                 kind = Some(current);
             }
-            let kind = kind.expect("nonempty checked origin");
-            if draft.as_ref().is_some_and(|draft| draft.kind != kind) {
-                push_text_run(
-                    runs.entries.as_mut().expect("staging entries"),
-                    draft.take().expect("staged draft"),
-                    control,
-                )?;
+            let Some(kind) = kind else {
+                return Err(latch_registry_row(control));
+            };
+            let Some(entries) = runs.entries.as_mut() else {
+                return Err(latch_registry_row(control));
+            };
+            if let Some(previous) = draft.take_if(|draft| draft.kind != kind) {
+                push_text_run(entries, previous, control)?;
             }
-            if draft.is_none() {
-                draft = Some(TextRunDraft::new(kind, control)?);
-            }
-            let current = draft.as_mut().expect("current origin output");
+            let current = match &mut draft {
+                Some(current) => current,
+                empty => empty.insert(TextRunDraft::new(kind, control)?),
+            };
             let start = current.value.len();
-            current.value.extend_units(
-                &text.value.text().code_units()[origin.start..origin.end],
-                control,
-            )?;
+            let Some(origin_units) = units.get(origin.start..origin.end) else {
+                return Err(latch_registry_row(control));
+            };
+            current.value.extend_units(origin_units, control)?;
             control.charge(WorkCategory::ProviderCall, 1)?;
             payload_write::<crate::HtmlSourceRange>(control, 1)?;
             current.origins.try_push(
@@ -9506,12 +9789,13 @@ fn stage_text_runs(
         if covered != len {
             return Err(SessionError::OriginSplitUnavailable);
         }
-        if let Some(draft) = draft.take() {
-            push_text_run(
-                runs.entries.as_mut().expect("staging entries"),
-                draft,
-                control,
-            )?;
+        if draft.is_some() {
+            let Some(entries) = runs.entries.as_mut() else {
+                return Err(latch_registry_row(control));
+            };
+            if let Some(last) = draft.take() {
+                push_text_run(entries, last, control)?;
+            }
         }
         Ok(())
     })();
@@ -9554,7 +9838,7 @@ pub(crate) fn split_first_lf(
         return Ok(None);
     }
     control.charge(WorkCategory::InspectByte, 2)?;
-    if text.value.text().code_units()[0] != 10 {
+    if text.value.text().code_units().first() != Some(&10) {
         return Ok(None);
     }
     if text.value.text().len() == 1 {
@@ -9564,7 +9848,11 @@ pub(crate) fn split_first_lf(
     let mut runs = stage_text_runs(text, TextPartition::FirstLf, control)?;
     let prefix = match runs.take_next(control) {
         Ok(Some(run)) => run.text,
-        Ok(None) => unreachable!("nonempty LF prefix"),
+        // A text longer than one unit that starts with LF stages two runs.
+        Ok(None) => {
+            discard_runs(&mut runs, control)?;
+            return Err(latch_registry_row(control));
+        }
         Err(error) => {
             discard_runs(&mut runs, control)?;
             return Err(error);
@@ -9572,7 +9860,11 @@ pub(crate) fn split_first_lf(
     };
     let suffix = match runs.take_next(control) {
         Ok(Some(run)) => run.text,
-        Ok(None) => unreachable!("nonempty suffix"),
+        Ok(None) => {
+            prefix.release(control)?;
+            discard_runs(&mut runs, control)?;
+            return Err(latch_registry_row(control));
+        }
         Err(error) => {
             prefix.release(control)?;
             discard_runs(&mut runs, control)?;
@@ -9592,7 +9884,10 @@ pub(crate) fn split_first_lf(
         discard_runs(&mut runs, control)?;
         return Err(error);
     }
-    let original = input.replace(suffix).expect("borrowed original retained");
+    // The original is still in the caller's slot; the suffix replaces it.
+    let Some(original) = input.replace(suffix) else {
+        return Ok(Some(prefix));
+    };
     original.release(control)?;
     Ok(Some(prefix))
 }
@@ -9603,16 +9898,14 @@ pub(crate) fn split_leading_ascii_whitespace(
 ) -> Result<Option<Text>, SessionError> {
     let text = input.as_mut().ok_or(SessionError::Consumed)?;
     SessionStorage::check_text(control, text)?;
-    let mut cut = 0;
-    for index in 0..text.value.text().len() {
+    let mut cut = 0usize;
+    for &unit in text.value.text().code_units() {
         control.charge(WorkCategory::InspectByte, 2)?;
-        if !matches!(
-            text.value.text().code_units()[index],
-            0x09 | 0x0a | 0x0c | 0x0d | 0x20
-        ) {
+        if !matches!(unit, 0x09 | 0x0a | 0x0c | 0x0d | 0x20) {
             break;
         }
-        cut += 1;
+        // The run of whitespace cannot outgrow the text it is counted in.
+        cut = cut.saturating_add(1);
     }
     if cut == 0 {
         return Ok(None);
@@ -9650,9 +9943,10 @@ pub(crate) fn split_leading_ascii_whitespace(
         suffix.release(control)?;
         return Err(error);
     }
-    let original = input
-        .replace(suffix)
-        .expect("original input retained through all fallible work");
+    // The original is still in the caller's slot; the suffix replaces it.
+    let Some(original) = input.replace(suffix) else {
+        return Ok(Some(prefix));
+    };
     original.release(control)?;
     Ok(Some(prefix))
 }
@@ -9665,7 +9959,10 @@ fn slice_text(
     let mut buffer = Utf16Buffer::new(control)?;
     let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
     let result = (|| {
-        buffer.extend_units(&text.value.text().code_units()[start..end], control)?;
+        let Some(units) = text.value.text().code_units().get(start..end) else {
+            return Err(latch_registry_row(control));
+        };
+        buffer.extend_units(units, control)?;
         for origin in text.origins.as_slice() {
             control.charge(WorkCategory::RecordVisit, 1)?;
             if origin.start < start || origin.end > end {
@@ -9673,11 +9970,17 @@ fn slice_text(
             }
             control.charge(WorkCategory::ProviderCall, 1)?;
             payload_write::<crate::HtmlSourceRange>(control, 1)?;
+            let (Some(origin_start), Some(origin_end)) = (
+                origin.start.checked_sub(start),
+                origin.end.checked_sub(start),
+            ) else {
+                return Err(latch_registry_row(control));
+            };
             origins.try_push(
                 control,
                 TextOrigin {
-                    start: origin.start - start,
-                    end: origin.end - start,
+                    start: origin_start,
+                    end: origin_end,
                     source: origin.source.clone(),
                     kind: origin.kind,
                 },
@@ -9738,9 +10041,8 @@ fn input_type_state(
         }
         cursor.advance();
     }
-    Ok(cursor
-        .result()
-        .expect("all actual input recognition steps admitted"))
+    // The loop above admitted every recognition step, so the result exists.
+    cursor.result().ok_or_else(|| latch_registry_row(control))
 }
 fn validate_initial_input_origins(
     control: &mut ParseControl,
@@ -9770,14 +10072,19 @@ fn validate_initial_input_origins(
             if let crate::HtmlInputValueSanitization::String(policy) = policy
                 && policy != crate::HtmlInputSanitization::Preserve
             {
-                let mut omitted = 0;
-                for position in origin.start..origin.end {
+                let Some(units) = text.value.text().code_units().get(origin.start..origin.end)
+                else {
+                    return Err(latch_registry_row(control));
+                };
+                let mut omitted = 0usize;
+                for &unit in units {
                     control.charge(WorkCategory::InspectByte, 2)?;
-                    if !policy.retain_unit(text.value.text().code_units()[position]) {
-                        omitted += 1;
+                    if !policy.retain_unit(unit) {
+                        // At most one per unit of the range being counted.
+                        omitted = omitted.saturating_add(1);
                     }
                 }
-                if omitted != 0 && omitted != origin.end - origin.start {
+                if omitted != 0 && omitted != units.len() {
                     return Err(SessionError::OriginSplitUnavailable);
                 }
             }
@@ -9957,13 +10264,12 @@ fn copy_whole_generated_input_value(
     let mut cursor = crate::HtmlInputSanitizationCursor::new(policy, value.code_units(), mode);
     let mut range = next_input_range(c, &mut cursor)?;
     let mut retained = 0usize;
-    for position in 0..value.len() {
+    for (position, &unit) in value.code_units().iter().enumerate() {
         while range.is_some_and(|range| range.end() <= position) {
             payload_write::<Option<crate::HtmlInputRetainedRange>>(c, 1)?;
             range = next_input_range(c, &mut cursor)?;
         }
         c.charge(WorkCategory::InspectByte, 2)?;
-        let unit = value.code_units()[position];
         if range.is_some_and(|range| range.start() <= position && position < range.end())
             && cursor.retain_unit(unit)
         {
@@ -9971,7 +10277,8 @@ fn copy_whole_generated_input_value(
                 return Err(SessionError::OriginSplitUnavailable);
             }
             payload_write::<usize>(c, 1)?;
-            retained += 1;
+            // At most one per unit of the value being scanned.
+            retained = retained.saturating_add(1);
         }
     }
     while cursor.required_work().is_some() {
@@ -10067,10 +10374,13 @@ fn copy_input_value_core(
                     {
                         return Err(SessionError::OriginSplitUnavailable);
                     }
-                    let mut omitted = 0;
-                    for position in origin.start..origin.end {
+                    let Some(origin_units) = value.code_units().get(origin.start..origin.end)
+                    else {
+                        return Err(latch_registry_row(control));
+                    };
+                    let mut omitted = 0usize;
+                    for (position, &unit) in (origin.start..origin.end).zip(origin_units) {
                         control.charge(WorkCategory::InspectByte, 2)?;
-                        let unit = value.code_units()[position];
                         let keep = if let Some(cursor) = &mut selection {
                             while range.is_some_and(|range| range.end() <= position) {
                                 payload_write::<Option<crate::HtmlInputRetainedRange>>(control, 1)?;
@@ -10083,19 +10393,19 @@ fn copy_input_value_core(
                             policy.retain_unit(unit)
                         };
                         if !keep {
-                            omitted += 1;
+                            // At most one per unit of the origin being scanned.
+                            omitted = omitted.saturating_add(1);
                         }
                     }
-                    if omitted != 0 && omitted != origin.end - origin.start {
+                    if omitted != 0 && omitted != origin_units.len() {
                         return Err(SessionError::OriginSplitUnavailable);
                     }
                     if omitted == 0 {
                         let start = buffer.len();
                         let mut transformed = false;
                         if matches!(policy, crate::HtmlInputSanitization::Temporal(_)) {
-                            for position in origin.start..origin.end {
+                            for (position, &unit) in (origin.start..origin.end).zip(origin_units) {
                                 control.charge(WorkCategory::InspectByte, 2)?;
-                                let unit = value.code_units()[position];
                                 let replacement = selection
                                     .as_ref()
                                     .and_then(|cursor| cursor.replacement_unit(position));
@@ -10103,10 +10413,7 @@ fn copy_input_value_core(
                                 buffer.extend_units(&[replacement.unwrap_or(unit)], control)?;
                             }
                         } else {
-                            buffer.extend_units(
-                                &value.code_units()[origin.start..origin.end],
-                                control,
-                            )?;
+                            buffer.extend_units(origin_units, control)?;
                         }
                         control.charge(WorkCategory::ProviderCall, 1)?;
                         payload_write::<TextOrigin>(control, 1)?;
@@ -10199,9 +10506,9 @@ fn lowercase_token_name(
     control: &mut ParseControl,
     name: &DocumentString,
 ) -> Result<(), SessionError> {
-    for index in 0..name.len() {
+    for &unit in name.code_units() {
         control.charge(WorkCategory::InspectByte, 2)?;
-        if matches!(name.code_units()[index], 0x41..=0x5a) {
+        if matches!(unit, 0x41..=0x5a) {
             return Err(SessionError::WrongToken);
         }
     }
@@ -10218,9 +10525,9 @@ fn exact_ascii(
     if value.len() != expected.len() {
         return Ok(false);
     }
-    for (index, byte) in expected.bytes().enumerate() {
+    for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
         control.charge(WorkCategory::InspectByte, 3)?;
-        if value.code_units()[index] != u16::from(byte) {
+        if unit != u16::from(byte) {
             return Ok(false);
         }
     }
@@ -10278,8 +10585,7 @@ fn next_ordinary_view_after_subtree(
         control.charge(WorkCategory::RecordVisit, 1)?;
         let children = records.node_at(parent).ok_or(SessionError::ForeignNode)?;
         let mut found = false;
-        let mut position = 0;
-        while position < children.child_count() {
+        for position in 0..children.child_count() {
             control.charge(WorkCategory::RecordVisit, 1)?;
             let child = children
                 .child_at(position)
@@ -10289,7 +10595,6 @@ fn next_ordinary_view_after_subtree(
                 return Ok(Some(child));
             }
             found |= child == node;
-            position += 1;
         }
         if !found {
             return Err(SessionError::WrongSibling);
@@ -10489,9 +10794,8 @@ fn script_attribute<'a>(
     local: &str,
 ) -> Result<Option<&'a DocumentString>, SessionError> {
     control.charge(WorkCategory::RecordVisit, 1)?;
-    for position in 0..element.attributes().len() {
+    for attribute in element.attributes().as_slice() {
         control.charge(WorkCategory::RecordVisit, 3)?;
-        let attribute = &element.attributes().as_slice()[position];
         if attribute.name().namespace().uri().is_none()
             && exact_ascii(control, Some(attribute.name().local_name()), local)?
         {
@@ -10527,9 +10831,7 @@ fn classify_script(
     }
     // Classification returns the shared kind; the saved metadata slot remains
     // independent and is installed only by the actual preparation algorithm.
-    Ok(cursor
-        .result()
-        .expect("all admitted classification actions completed"))
+    cursor.result().ok_or_else(|| latch_registry_row(control))
 }
 #[cfg(test)]
 fn name_units(control: &mut ParseControl, name: &QualifiedName) -> Result<usize, SessionError> {
@@ -11998,7 +12300,10 @@ mod tests {
                 input.is_none(),
                 "lexical transfer precedes wrapper, credit={wrapper_credit}"
             );
-            assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                1
+            );
             assert_eq!(
                 session.freeze(&mut c).err(),
                 Some(SessionError::Stop(first))
@@ -12184,7 +12489,10 @@ mod tests {
                 }
             ));
             assert_eq!(result.err(), Some(SessionError::Stop(first)));
-            assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                3
+            );
             assert_eq!(
                 creation
                     .token
@@ -12663,7 +12971,7 @@ mod tests {
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            2 * session.active().unwrap().construction.storage().len() as u64
+            2 * session.active().unwrap().construction.test_storage().len() as u64
                 + session.active().unwrap().payloads.values.len() as u64
         );
         session.release(&mut c).unwrap();
@@ -13011,7 +13319,7 @@ mod tests {
                 c.usage()
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .current,
-                2 * storage.construction.storage().len() as u64
+                2 * storage.construction.test_storage().len() as u64
                     + storage.payloads.values.len() as u64
             );
             if result.is_err() {
@@ -13035,7 +13343,7 @@ mod tests {
     use crate::{Attribute, HtmlParseResource};
     use crate::{HtmlParseCancellation, HtmlParseLimits};
 
-    fn body_lexical_value(source: &crate::HtmlSource, c: &mut ParseControl) -> Text {
+    pub(super) fn body_lexical_value(source: &crate::HtmlSource, c: &mut ParseControl) -> Text {
         use crate::parser::tokenizer::{states::State, tests::LexerFixture};
         c.admit_source(source).unwrap();
         let mut tokenizer = LexerFixture::new(source, State::Data, None, c).unwrap();
@@ -15649,7 +15957,7 @@ mod tests {
             );
             let (mut c, mut session, capability, lexer, parent, mut input, range) =
                 input_owner(&request);
-            let records = session.active().unwrap().construction.storage().len();
+            let records = session.active().unwrap().construction.test_storage().len();
             let slots = session.active().unwrap().payloads.values.len();
             let alias = (case == 0).then(|| {
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -15695,7 +16003,7 @@ mod tests {
             );
             assert!(input.is_some());
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 records
             );
             assert_eq!(session.active().unwrap().payloads.values.len(), slots);
@@ -16528,7 +16836,7 @@ mod tests {
                 );
                 let (mut c, mut session, capability, lexer, parent, mut input, range) =
                     input_owner(&request);
-                let records = session.active().unwrap().construction.storage().len();
+                let records = session.active().unwrap().construction.test_storage().len();
                 let slots = session.active().unwrap().payloads.values.len();
                 let alias = (case == 0).then(|| {
                     input.as_ref().unwrap().attributes.as_slice()[1]
@@ -16576,7 +16884,7 @@ mod tests {
                 );
                 assert!(input.is_some());
                 assert_eq!(
-                    session.active().unwrap().construction.storage().len(),
+                    session.active().unwrap().construction.test_storage().len(),
                     records
                 );
                 assert_eq!(session.active().unwrap().payloads.values.len(), slots);
@@ -17112,7 +17420,7 @@ mod tests {
             );
             let (mut c, mut session, capability, lexer, parent, mut input, range) =
                 input_owner(&request);
-            let records = session.active().unwrap().construction.storage().len();
+            let records = session.active().unwrap().construction.test_storage().len();
             let slots = session.active().unwrap().payloads.values.len();
             let alias = (case == 0).then(|| {
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -17158,7 +17466,7 @@ mod tests {
             );
             assert!(input.is_some());
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 records
             );
             assert_eq!(session.active().unwrap().payloads.values.len(), slots);
@@ -17688,7 +17996,13 @@ mod tests {
                     101
                 );
                 assert_eq!(
-                    session.active().unwrap().construction.usage().utf16_units(),
+                    session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .test_storage()
+                        .usage()
+                        .utf16_units(),
                     90
                 );
                 assert!(
@@ -18376,7 +18690,15 @@ mod tests {
         let result = unrelated.mark_script_eof(&mut c, &node, &capability);
         assert_eq!(result, Err(SessionError::Stop(stop)));
         assert_eq!(c.stop(), Some(stop));
-        assert_eq!(unrelated.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            unrelated
+                .active()
+                .unwrap()
+                .construction
+                .test_storage()
+                .len(),
+            1
+        );
         assert!(original.active().unwrap().payloads.values.iter().any(|entry| matches!(entry, RetainedPayload::Script { metadata, .. } if !metadata.flags.already_started())));
         assert!(
             matches!(unrelated.freeze(&mut c), Err(SessionError::Stop(reason)) if reason == stop)
@@ -18527,7 +18849,7 @@ mod tests {
             assert_eq!(retained.script_type, None);
             assert_eq!(retained.preparation_document, None);
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 3 + depth
             );
             session.release(&mut c).unwrap();
@@ -19128,7 +19450,7 @@ mod tests {
             );
             assert_eq!(incoming.is_some(), cap == 17);
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 if cap == 27 { 3 } else { 2 }
             );
             let count = session
@@ -19198,7 +19520,7 @@ mod tests {
             }
         };
         let alias = tag.name.value.text().clone();
-        let before = session.active().unwrap().construction.storage().len();
+        let before = session.active().unwrap().construction.test_storage().len();
         let mut input = Some(tag);
         assert!(matches!(
             session.allocate_disabled_parser_script(
@@ -19212,7 +19534,7 @@ mod tests {
         ));
         assert!(input.is_some());
         assert_eq!(
-            session.active().unwrap().construction.storage().len(),
+            session.active().unwrap().construction.test_storage().len(),
             before
         );
         assert_eq!(c.stop(), None);
@@ -20094,7 +20416,10 @@ mod tests {
                 input.as_ref().unwrap().name.value.text().code_units(),
                 original
             );
-            assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                3
+            );
             assert_eq!(session.active().unwrap().payloads.values.len(), 16);
             assert!(session.active().unwrap().effects.form.is_none());
             assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
@@ -20513,7 +20838,7 @@ mod tests {
     fn listed_id_append_blocks_observation_before_rebind_and_keeps_cleanup_redirect() {
         let mut c = control();
         let (mut session, body, button, prepared) = listed_id_slot_fixture(&mut c);
-        let old_count = session.active().unwrap().construction.storage().len();
+        let old_count = session.active().unwrap().construction.test_storage().len();
         assert!(matches!(
             session.form_association_owner(&mut c, &button),
             Err(SessionError::Stop(ParseStop::InternalInvariant(
@@ -20523,7 +20848,7 @@ mod tests {
         let stop = c.stop().unwrap();
         assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
         let storage = session.active().unwrap();
-        assert_eq!(storage.construction.storage().len(), old_count);
+        assert_eq!(storage.construction.test_storage().len(), old_count);
         assert!(storage.effects.form.is_some());
         let HtmlNodeKind::Element(element) = &storage
             .construction
@@ -21301,23 +21626,24 @@ mod tests {
                 )
             })
             .collect();
-        let original_topology: Vec<_> = (0..session.active().unwrap().construction.storage().len())
-            .map(|position| {
-                let record = session
-                    .active()
-                    .unwrap()
-                    .construction
-                    .node_at(position)
-                    .unwrap();
-                (
-                    record.parent().map(|node| node.position()),
-                    record
-                        .children()
-                        .map(|node| node.position())
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect();
+        let original_topology: Vec<_> =
+            (0..session.active().unwrap().construction.test_storage().len())
+                .map(|position| {
+                    let record = session
+                        .active()
+                        .unwrap()
+                        .construction
+                        .node_at(position)
+                        .unwrap();
+                    (
+                        record.parent().map(|node| node.position()),
+                        record
+                            .children()
+                            .map(|node| node.position())
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect();
         let nodes = c.usage().resource(HtmlParseResource::ManagedNodes).current;
         let edges = c.usage().resource(HtmlParseResource::ManagedEdges).current;
         let mut input = Some(tag);
@@ -21350,7 +21676,7 @@ mod tests {
                     .collect::<Vec<_>>(),
             )
         });
-        let topology: Vec<_> = (0..session.active().unwrap().construction.storage().len())
+        let topology: Vec<_> = (0..session.active().unwrap().construction.test_storage().len())
             .map(|position| {
                 let record = session
                     .active()
@@ -21494,7 +21820,10 @@ mod tests {
             session.active().unwrap().payloads.values.capacity(),
             capacity
         );
-        assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            3
+        );
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
@@ -21579,7 +21908,7 @@ mod tests {
         ));
         assert!(input.is_none());
         let storage = session.active().unwrap();
-        assert_eq!(storage.construction.storage().len(), 4);
+        assert_eq!(storage.construction.test_storage().len(), 4);
         assert_eq!(
             storage
                 .construction
@@ -21745,7 +22074,7 @@ mod tests {
                     })) if limit == cap && current == cap
                 ));
                 let storage = session.active().unwrap();
-                assert_eq!(storage.construction.storage().len(), 4);
+                assert_eq!(storage.construction.test_storage().len(), 4);
                 assert!(
                     !storage
                         .payloads
@@ -21774,7 +22103,10 @@ mod tests {
                 ));
                 // Metadata, name, namespace and attributes are initialized;
                 // the next actual record-ticket entry is the rejected slot.
-                assert_eq!(session.active().unwrap().construction.storage().len(), 3);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    3
+                );
                 assert_eq!(session.active().unwrap().payloads.values.len(), 24);
                 assert!(
                     session
@@ -22191,12 +22523,18 @@ mod tests {
                             .current,
                         units
                     );
-                    assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+                    assert_eq!(
+                        session.active().unwrap().construction.test_storage().len(),
+                        2
+                    );
                 } else {
                     assert!(
                         matches!(result, Err(SessionError::Stop(ParseStop::LimitExceeded { resource: HtmlParseResource::ManagedUtf16Units, limit, .. })) if limit == cap)
                     );
-                    assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+                    assert_eq!(
+                        session.active().unwrap().construction.test_storage().len(),
+                        1
+                    );
                     assert_eq!(
                         session.freeze(&mut c).err(),
                         Some(SessionError::Stop(c.stop().unwrap()))
@@ -22289,7 +22627,10 @@ mod tests {
             wrong
         );
         assert_eq!(session.document_mode(&mut foreign), Err(wrong));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             session.document_mode(&mut c),
             Ok(HtmlDocumentMode::NoQuirks)
@@ -22303,7 +22644,10 @@ mod tests {
             session.document_mode(&mut c),
             Err(SessionError::Stop(ParseStop::Cancelled))
         );
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.stop(), Some(ParseStop::Cancelled));
@@ -22363,7 +22707,12 @@ mod tests {
         session
             .insert(&mut c, &branch, &destination, None, None)
             .unwrap();
-        let before = session.active().unwrap().construction.usage();
+        let before = session
+            .active()
+            .unwrap()
+            .construction
+            .test_storage()
+            .usage();
         assert_eq!(
             session
                 .reparent_children(&mut c, &from, &destination, None)
@@ -22401,7 +22750,7 @@ mod tests {
                 .position(),
             branch.index
         );
-        assert_eq!(storage.construction.usage(), before);
+        assert_eq!(storage.construction.test_storage().usage(), before);
         assert!(c.stop().is_none());
         session.release(&mut c).unwrap();
         assert_eq!(c.usage().actual_capacity_bytes, 0);
@@ -22421,7 +22770,7 @@ mod tests {
             .unwrap()
             .construction
             .actual_record_layout();
-        let required = original.active().unwrap().construction.len() + 3; // inert Document + template + contents
+        let required = original.active().unwrap().construction.test_storage().len() + 3; // inert Document + template + contents
         assert!(required > capacity);
         let one_short =
             initial - (capacity * element_size) as u64 + (required * element_size) as u64 - 1;
@@ -22446,7 +22795,7 @@ mod tests {
             matches!(error,Some(SessionError::Stop(ParseStop::LimitExceeded{resource:HtmlParseResource::ManagedCapacityBytes,limit,..})) if limit==one_short)
         );
         let storage = session.active().unwrap();
-        assert_eq!(storage.construction.len(), 1);
+        assert_eq!(storage.construction.test_storage().len(), 1);
         assert_eq!(storage.payloads.values.len(), payloads);
         assert!(storage.payloads.values.iter().any(|payload| matches!(
             payload,
@@ -22478,7 +22827,7 @@ mod tests {
             ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
                 .unwrap();
         let storage = session.active_mut().unwrap();
-        let held = storage.construction.len();
+        let held = storage.construction.test_storage().len();
         let mut capacities = vec![storage.construction.actual_record_layout().0];
         // Ask for ever more records, as a growing document does. An exact
         // policy changes the bank for every larger request.
@@ -22516,7 +22865,7 @@ mod tests {
         let at_eight = baseline.usage().actual_capacity_bytes;
         let storage = original.active().unwrap();
         let (capacity, element_size) = storage.construction.actual_record_layout();
-        let required = storage.construction.len() + 9;
+        let required = storage.construction.test_storage().len() + 9;
         assert!(capacity < required && required < 2 * capacity);
         let exact_fit =
             at_eight - (capacity * element_size) as u64 + (required * element_size) as u64;
@@ -22692,7 +23041,7 @@ mod tests {
                     .is_none())
             );
             assert!(storage.payloads.values.iter().any(|v| matches!(v, RetainedPayload::String { origins: Some(origins), location: StringLocation::AttributeValue(_, 2), .. } if storage.observed_origins(origins, &mut c).unwrap()[0].source == expected_origin)));
-            assert_eq!(storage.construction.usage().attributes(), 4);
+            assert_eq!(storage.construction.test_storage().usage().attributes(), 4);
             t.release(&mut c).unwrap();
             let mut frozen = session.freeze(&mut c).unwrap();
             let document = frozen.document().unwrap();
@@ -22875,7 +23224,10 @@ mod tests {
         // including those already rebound and those still using the redirect.
         storage
             .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)
+            .check_aliases(
+                ConstructionView::Active(storage.construction.test_storage()),
+                c,
+            )
             .unwrap();
     }
 
@@ -23506,7 +23858,7 @@ mod tests {
                 .unwrap()
                 .payloads
                 .check_aliases(
-                    ConstructionView::Active(session.active().unwrap().construction.storage()),
+                    ConstructionView::Active(session.active().unwrap().construction.test_storage()),
                     &mut c,
                 )
                 .unwrap();
@@ -24189,7 +24541,10 @@ mod tests {
         let (target, data) = input.take().expect("both original fields retained");
         assert_eq!(target.value.text().code_units(), [0x78]);
         assert_eq!(data.value.text().code_units(), [0xd800]);
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         target.release(&mut c).unwrap();
         data.release(&mut foreign).unwrap();
         session.release(&mut c).unwrap();
@@ -24618,7 +24973,10 @@ mod tests {
             }))
         ));
         assert!(input.is_none());
-        assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            2
+        );
         assert_eq!(
             c.usage().resource(HtmlParseResource::ManagedNodes).current,
             2
@@ -24726,7 +25084,10 @@ mod tests {
                 ..
             }))
         ));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedUtf16Units)
@@ -24883,7 +25244,10 @@ mod tests {
                 requested_delta: 1,
             }))
         ));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::ManagedAttributes)
@@ -25178,7 +25542,10 @@ mod tests {
                 .unwrap();
             assert_eq!(old.text().code_units(), historical);
             ParseEvidence::release_materialized_group(&mut c, &mut Some(old)).unwrap();
-            assert_eq!(storage.construction.usage().utf16_units(), prefix + 5);
+            assert_eq!(
+                storage.construction.test_storage().usage().utf16_units(),
+                prefix + 5
+            );
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::ManagedUtf16Units)
@@ -25336,7 +25703,13 @@ mod tests {
             [0xd800, 0x20, 0xd83d, 0xde00, 0]
         );
         assert_eq!(
-            session.active().unwrap().construction.usage().utf16_units(),
+            session
+                .active()
+                .unwrap()
+                .construction
+                .test_storage()
+                .usage()
+                .utf16_units(),
             5
         );
         // Actual retained strings: old2 + incoming3 + merged5. Four origin
@@ -26289,7 +26662,7 @@ mod tests {
             let retained = c.usage().clone();
             if count == 256 {
                 let storage = session.active().unwrap();
-                assert_eq!(storage.construction.storage().len(), 2);
+                assert_eq!(storage.construction.test_storage().len(), 2);
                 assert_eq!(storage.payloads.values.len(), 2 * count + 1);
                 assert_eq!(
                     storage
@@ -26470,7 +26843,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert!(
-                matches!(&event, crate::parser::tokenizer::token::Event::Token(token) if matches!(&token.token().kind, TokenKind::Eof))
+                matches!(&event, crate::parser::tokenizer::token::Event::Token(token) if matches!(&token.token_for_tests().kind, TokenKind::Eof))
             );
             event.release(&mut c).unwrap();
             lexer.release(&mut c).unwrap();
@@ -26721,7 +27094,10 @@ mod tests {
                 .is_none()
         );
         assert!(text.is_none());
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
@@ -26747,7 +27123,10 @@ mod tests {
             Err(SessionError::DuplicateAttribute)
         ));
         assert!(tag.is_none());
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
@@ -27124,7 +27503,10 @@ mod tests {
                 ..
             }))
         ));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             session
                 .active()
@@ -27429,7 +27811,10 @@ mod tests {
                 ..
             }))
         ));
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(
             control
                 .usage()
@@ -27597,7 +27982,10 @@ mod tests {
                 .kind() as *const HtmlNodeKind,
             records_pointer
         );
-        assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+        assert_eq!(
+            session.active().unwrap().construction.test_storage().len(),
+            1
+        );
         assert_eq!(control.usage().actual_capacity_bytes, root_capacity as u64);
         session.release(&mut control).unwrap();
         assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -28278,7 +28666,10 @@ mod tests {
                     .node(&mut c, &session)
                     .unwrap();
                 assert_ne!(inert.index, root.index);
-                assert_eq!(session.active().unwrap().construction.storage().len(), 4);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    4
+                );
                 assert!(state.target.is_none() && state._start.is_none() && state.end.is_none());
             } else {
                 let Err(SessionError::Stop(first)) = result else {
@@ -28294,7 +28685,10 @@ mod tests {
                     }
                 ));
                 assert!(input.is_some());
-                assert_eq!(session.active().unwrap().construction.storage().len(), 1);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    1
+                );
                 assert!(
                     !session
                         .active()
@@ -28364,7 +28758,10 @@ mod tests {
                         .current,
                     21
                 );
-                assert_eq!(session.active().unwrap().construction.storage().len(), 4);
+                assert_eq!(
+                    session.active().unwrap().construction.test_storage().len(),
+                    4
+                );
                 assert!(
                     session
                         .template_state(&mut c, &node)
@@ -28381,7 +28778,7 @@ mod tests {
                 );
                 assert_eq!(input.is_some(), cap == 14);
                 assert_eq!(
-                    session.active().unwrap().construction.storage().len(),
+                    session.active().unwrap().construction.test_storage().len(),
                     if cap == 14 { 1 } else { 2 }
                 );
                 assert_eq!(
@@ -28428,7 +28825,10 @@ mod tests {
             let mut input = Some((target, data));
             let result = session.allocate_processing_instruction(&mut c, &mut input, None);
             assert!(input.is_none());
-            assert_eq!(session.active().unwrap().construction.storage().len(), 2);
+            assert_eq!(
+                session.active().unwrap().construction.test_storage().len(),
+                2
+            );
             if cap == 19 {
                 let node = result.unwrap();
                 assert_eq!(
@@ -28599,7 +28999,7 @@ mod tests {
             .unwrap();
             let result = session.allocate_processing_instruction(&mut c, &mut input, None);
             let storage = session.active().unwrap();
-            if storage.construction.storage().len() == 2 {
+            if storage.construction.test_storage().len() == 2 {
                 installed = true;
                 let HtmlNodeKind::ProcessingInstruction(pi) = &storage
                     .construction
@@ -29704,7 +30104,7 @@ mod tests {
             );
             let (mut c, mut session, capability, lexer, parent, mut input, range) =
                 input_owner(&request);
-            let records = session.active().unwrap().construction.storage().len();
+            let records = session.active().unwrap().construction.test_storage().len();
             let slots = session.active().unwrap().payloads.values.len();
             let alias = (case == 0).then(|| {
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -29750,7 +30150,7 @@ mod tests {
             );
             assert!(input.is_some());
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 records
             );
             assert_eq!(session.active().unwrap().payloads.values.len(), slots);
@@ -29892,7 +30292,7 @@ mod tests {
             );
             let (mut c, mut session, capability, lexer, parent, mut input, range) =
                 input_owner(&request);
-            let records = session.active().unwrap().construction.storage().len();
+            let records = session.active().unwrap().construction.test_storage().len();
             let payloads = session.active().unwrap().payloads.values.len();
             let alias = (case == 0).then(|| {
                 input.as_ref().unwrap().attributes.as_slice()[1]
@@ -29936,7 +30336,7 @@ mod tests {
             );
             assert!(input.is_some());
             assert_eq!(
-                session.active().unwrap().construction.storage().len(),
+                session.active().unwrap().construction.test_storage().len(),
                 records
             );
             assert_eq!(session.active().unwrap().payloads.values.len(), payloads);
@@ -29984,8 +30384,8 @@ mod tests {
         }
         let (group, computation) = step.expect("literal 50 with min0 step20 selects60");
         assert!(!computation.original_is_fresh_empty());
-        assert!(computation.original_group().is_some());
-        assert!(computation.original_cause().is_some());
+        assert!(computation.original_group().unwrap().is_some());
+        assert!(computation.original_cause().unwrap().is_some());
         for role in [
             RangeOperandRole::Minimum,
             RangeOperandRole::Maximum,
@@ -29993,9 +30393,11 @@ mod tests {
         ] {
             let operand = computation.operand(role);
             assert_eq!(operand.kind(), RangeOperandKind::Finite);
-            assert!(operand.group().is_some() && operand.cause().is_some());
-            assert!((0..rows.len()).any(|i| rows.row(i).unwrap().relation()
-                == provenance::AssociationRelation::RangeDependency(role)));
+            assert!(operand.group().unwrap().is_some() && operand.cause().unwrap().is_some());
+            assert!(
+                (0..rows.len()).any(|i| rows.row(i).unwrap().unwrap().relation()
+                    == provenance::AssociationRelation::RangeDependency(role))
+            );
         }
         assert_eq!(
             computation.operand(RangeOperandRole::ValueContent).kind(),
@@ -30041,15 +30443,15 @@ mod tests {
         }
         let (group, computation) = underflow.expect("later min75 clamps generated50");
         assert!(!computation.original_is_fresh_empty());
-        let original = computation.original_group().unwrap();
-        let original_cause = computation.original_cause().unwrap();
+        let original = computation.original_group().unwrap().unwrap();
+        let original_cause = computation.original_cause().unwrap().unwrap();
         assert_eq!(
             original_cause.range_computation().unwrap().branch(),
             RangeBranch::InvalidDefaultMidpoint
         );
         let minimum = computation.operand(RangeOperandRole::Minimum);
         assert_eq!(minimum.kind(), RangeOperandKind::Finite);
-        assert!(minimum.cause().unwrap().source().is_some());
+        assert!(minimum.cause().unwrap().unwrap().source().is_some());
         assert_eq!(
             computation.operand(RangeOperandRole::Maximum).kind(),
             RangeOperandKind::Absent
@@ -30057,7 +30459,7 @@ mod tests {
         let mut frames = [history::HistoryFrame::default(); 32];
         for (target, expected, origin_free) in [
             (original, &[53, 48][..], true),
-            (minimum.group().unwrap(), &[55, 53][..], false),
+            (minimum.group().unwrap().unwrap(), &[55, 53][..], false),
             (group, &[55, 53][..], true),
         ] {
             let mut cursor = history.cursor(target, &mut frames, None).unwrap();
@@ -30069,7 +30471,7 @@ mod tests {
             assert!(matches!(cursor.advance(), history::HistoryStep::Complete));
         }
         let mut minimum_cursor = history
-            .cursor(minimum.group().unwrap(), &mut frames, None)
+            .cursor(minimum.group().unwrap().unwrap(), &mut frames, None)
             .unwrap();
         let history::HistoryStep::Leaf(minimum_atom) = minimum_cursor.advance() else {
             panic!("actual minimum lexical leaf")
@@ -30081,6 +30483,7 @@ mod tests {
         let mut complete = false;
         for _ in 0..=associations.len() {
             match reverse.advance() {
+                read::HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
                 read::HtmlParseReverseStep::Match(row) => {
                     if row.relation()
                         == provenance::AssociationRelation::RangeDependency(
@@ -30135,8 +30538,12 @@ mod tests {
         let mut frames = [history::HistoryFrame::default(); 32];
         for (target, expected, origin_free) in [
             // Valid authored75 was preserved, so this original is lexical.
-            (computation.original_group().unwrap(), &[55, 53][..], false),
-            (maximum.group().unwrap(), &[54, 48][..], false),
+            (
+                computation.original_group().unwrap().unwrap(),
+                &[55, 53][..],
+                false,
+            ),
+            (maximum.group().unwrap().unwrap(), &[54, 48][..], false),
             (group, &[54, 48][..], true),
         ] {
             let mut cursor = history.cursor(target, &mut frames, None).unwrap();
@@ -30153,6 +30560,7 @@ mod tests {
         let mut complete = false;
         for _ in 0..=associations.len() {
             match reverse.advance() {
+                read::HtmlParseReverseStep::Fault(fault) => panic!("{fault}"),
                 read::HtmlParseReverseStep::Match(row)
                     if row.relation()
                         == provenance::AssociationRelation::RangeDependency(

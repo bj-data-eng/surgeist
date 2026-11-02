@@ -5,13 +5,58 @@
 //! caller-owned scratch. This private owner is not a public parse-success seal.
 
 use super::*;
-use provenance::{ConstructionCause, GroupBody, HistoryData, LeafValue, OriginGroup};
+use provenance::{
+    AssociationView, ConstructionCause, GroupBody, HistoryData, LeafValue, NativeAssociation,
+    OriginGroup,
+};
 
 /// Only the metered history qualification paths construct this owner. Generic native freeze does not
 /// establish the complete D1/lexical and history-payload qualification.
+///
+/// It holds what a published report reads from, apart from the arena that
+/// built it. The storage is there, the evidence is there, and the source and
+/// the complete D1 projection are held beside the evidence, so no reader asks
+/// whether any of them is missing.
 pub(crate) struct FrozenHistory {
-    arena: FrozenArena,
+    /// Its evidence is the field below, moved out of it.
+    storage: FrozenStorage,
+    evidence: PublishedEvidence,
+    source: crate::HtmlSource,
+    rows: OwnedVec<NativeAssociation>,
 }
+/// The evidence of a published report. Publication moves the source and the
+/// complete projection out of it and into the report beside it, so what is
+/// left cannot answer a question about either. This type exposes only what a
+/// published report reads from the rest, and the evidence it wraps is
+/// reachable only to the tests that corrupt a report.
+pub(crate) struct PublishedEvidence(ParseEvidence);
+impl PublishedEvidence {
+    /// The construction cause a reference names, when this evidence issued it.
+    pub(crate) fn retained_cause(
+        &self,
+        reference: &provenance::ConstructionCauseRef,
+    ) -> Option<&ConstructionCause> {
+        self.0.retained_cause(reference)
+    }
+    /// The committed diagnostics.
+    pub(crate) fn diagnostics(&self) -> evidence::DiagnosticEvidenceView<'_> {
+        self.0.diagnostics()
+    }
+    fn history<'a>(&'a self, source: &'a crate::HtmlSource) -> HistoryData<'a> {
+        self.0.published_history(source)
+    }
+    fn associations<'a>(
+        &'a self,
+        source: &'a crate::HtmlSource,
+        rows: &'a [NativeAssociation],
+    ) -> AssociationView<'a> {
+        self.0.published_associations(source, rows)
+    }
+}
+/// A prepared arena that holds no custody of what a published report needs.
+/// The arena stays where it was, for release.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct Unpublishable;
 
 impl ParserArenaSession {
     #[cfg(test)]
@@ -21,9 +66,10 @@ impl ParserArenaSession {
     ) -> Result<FrozenHistory, SessionError> {
         let storage = self.active()?;
         storage.require(c)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
+        storage.payloads.check_aliases(
+            ConstructionView::Active(storage.construction.test_storage()),
+            c,
+        )?;
         let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         payload_write::<HistoryData<'_>>(c, 1)?;
@@ -32,9 +78,7 @@ impl ParserArenaSession {
         // Admit the actual new wrapper before the existing recoverable arena
         // transfer. There is no fallible operation after successful freeze.
         payload_write::<FrozenHistory>(c, 1)?;
-        Ok(FrozenHistory {
-            arena: self.freeze(c)?,
-        })
+        FrozenHistory::publish(&mut Some(self.freeze(c)?)).ok_or(SessionError::WrongToken)
     }
 }
 
@@ -104,14 +148,16 @@ fn qualify(
     }
     for (index, group) in data.groups.iter().enumerate() {
         header(c)?;
-        if group.cause >= data.causes.len()
-            || group
-                .retirement
-                .is_some_and(|cause| cause >= data.causes.len())
+        let Some(group_cause) = data.causes.get(group.cause) else {
+            return Err(SessionError::WrongToken);
+        };
+        if group
+            .retirement
+            .is_some_and(|cause| cause >= data.causes.len())
         {
             return Err(SessionError::WrongToken);
         }
-        if let Some(range) = data.causes[group.cause].computation {
+        if let Some(range) = group_cause.computation {
             for edge in range.edges() {
                 c.charge(WorkCategory::RecordVisit, 1)?;
                 if edge.is_some_and(|edge| edge.group >= index) {
@@ -126,9 +172,9 @@ fn qualify(
                 value,
             } => {
                 let end = start.checked_add(length).ok_or(SessionError::WrongToken)?;
-                if end > data.origins.len() {
+                let Some(origins) = data.origins.get(start..end) else {
                     return Err(SessionError::WrongToken);
-                }
+                };
                 match value {
                     LeafValue::Pending => return Err(SessionError::WrongToken),
                     LeafValue::Empty if group.units == 0 => {}
@@ -147,7 +193,7 @@ fn qualify(
                         }
                     }
                 }
-                for origin in &data.origins[start..end] {
+                for origin in origins {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     c.charge(
                         WorkCategory::InspectByte,
@@ -164,7 +210,11 @@ fn qualify(
                     return Err(SessionError::WrongToken);
                 }
                 header(c)?;
-                if data.groups[original].units != group.units {
+                if data
+                    .groups
+                    .get(original)
+                    .is_none_or(|original| original.units != group.units)
+                {
                     return Err(SessionError::WrongToken);
                 }
             }
@@ -177,9 +227,17 @@ fn qualify(
                     return Err(SessionError::WrongToken);
                 }
                 header(c)?;
-                let left = data.groups[original].units;
+                let left = data
+                    .groups
+                    .get(original)
+                    .ok_or(SessionError::WrongToken)?
+                    .units;
                 header(c)?;
-                let right = data.groups[incoming].units;
+                let right = data
+                    .groups
+                    .get(incoming)
+                    .ok_or(SessionError::WrongToken)?
+                    .units;
                 if left != offset || offset.checked_add(right) != Some(group.units) {
                     return Err(SessionError::WrongToken);
                 }
@@ -190,35 +248,96 @@ fn qualify(
 }
 
 impl FrozenHistory {
-    pub(super) fn arena(&self) -> &FrozenArena {
-        &self.arena
-    }
-    pub(super) fn arena_mut(&mut self) -> &mut FrozenArena {
-        &mut self.arena
-    }
-    pub(crate) fn view(&self) -> Result<HistoryView<'_>, SessionError> {
-        let storage = self.arena.storage.as_ref().ok_or(SessionError::Consumed)?;
-        let evidence = storage.evidence.as_ref().ok_or(SessionError::WrongToken)?;
-        Ok(HistoryView {
+    /// Moves a qualified arena out of `slot` into its published form. An
+    /// arena that cannot give it up, because it holds no storage, evidence,
+    /// source or complete projection, stays in `slot` whole and unchanged.
+    fn publish(slot: &mut Option<FrozenArena>) -> Option<Self> {
+        let arena = slot.as_mut()?;
+        if arena.finalizing.is_some() {
+            return None;
+        }
+        let mut storage = arena.storage.take()?;
+        let Some(mut evidence) = storage.evidence.take() else {
+            arena.storage = Some(storage);
+            return None;
+        };
+        let Some((source, rows)) = evidence.take_published() else {
+            storage.evidence = Some(evidence);
+            arena.storage = Some(storage);
+            return None;
+        };
+        // Nothing is left in the arena that anything reads.
+        *slot = None;
+        Some(Self {
             storage,
-            evidence,
-            data: evidence.history_data()?,
+            evidence: PublishedEvidence(evidence),
+            source,
+            rows,
         })
     }
-    pub(crate) fn associations(&self) -> Result<provenance::AssociationView<'_>, SessionError> {
-        self.arena.retained_evidence()?.associations()
+    pub(super) fn storage(&self) -> &FrozenStorage {
+        &self.storage
+    }
+    pub(super) fn storage_mut(&mut self) -> &mut FrozenStorage {
+        &mut self.storage
+    }
+    pub(super) fn evidence(&self) -> &PublishedEvidence {
+        &self.evidence
+    }
+    /// The published evidence, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn evidence_mut(&mut self) -> &mut ParseEvidence {
+        &mut self.evidence.0
+    }
+    /// The published association rows, for tests that corrupt a report.
+    #[cfg(test)]
+    pub(super) fn rows_for_test(&mut self) -> &mut [NativeAssociation] {
+        self.rows.as_mut_slice_for_test()
+    }
+    pub(crate) fn view(&self) -> HistoryView<'_> {
+        HistoryView {
+            storage: &self.storage,
+            evidence: &self.evidence,
+            data: self.evidence.history(&self.source),
+        }
+    }
+    pub(crate) fn associations(&self) -> AssociationView<'_> {
+        self.evidence
+            .associations(&self.source, self.rows.as_slice())
     }
     pub(crate) fn fragment(&self) -> Option<&HtmlFragment> {
-        self.arena.fragment()
+        match &self.storage.view {
+            HtmlConstructionResult::Fragment(view) => Some(view),
+            _ => None,
+        }
     }
     pub(crate) fn document(&self) -> Option<&HtmlDocument> {
-        self.arena.document()
+        match &self.storage.view {
+            HtmlConstructionResult::Document(view) => Some(view),
+            _ => None,
+        }
     }
-    /// Prepublication disposal, retaining the actual frozen owner on refusal.
-    /// A later public report consumes this owner and the execution controller.
+    /// The arena this was published from, with the evidence whole again.
     #[cfg(test)]
-    pub(crate) fn release(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
-        self.arena.release(c)
+    pub(super) fn into_arena(self) -> FrozenArena {
+        let Self {
+            mut storage,
+            evidence: PublishedEvidence(mut evidence),
+            source,
+            rows,
+        } = self;
+        evidence.restore_published(source, rows);
+        storage.evidence = Some(evidence);
+        FrozenArena {
+            storage: Some(storage),
+            finalizing: None,
+            sharing_started: false,
+        }
+    }
+    /// Prepublication disposal of the actual frozen owner.
+    #[cfg(test)]
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), SessionError> {
+        self.into_arena().release(c)
     }
 }
 
@@ -241,6 +360,11 @@ impl<'a> PreparedHistory<'a> {
                 #[cfg(test)]
                 mode,
             )
+    }
+    /// The prepared arena, for tests that corrupt what publication will take.
+    #[cfg(test)]
+    pub(crate) fn arena_for_test(&mut self) -> Option<&mut FrozenArena> {
+        self.input.as_mut()
     }
     pub(crate) fn prepare(
         input: &'a mut Option<FrozenArena>,
@@ -267,10 +391,12 @@ impl<'a> PreparedHistory<'a> {
     }
     /// All useful work and receiver admissions precede the consuming caller's
     /// final checkpoint/snapshot. Commit only moves the qualified actual slot.
-    pub(crate) fn commit(self) -> FrozenHistory {
-        FrozenHistory {
-            arena: self.input.take().expect("exclusive qualified history slot"),
-        }
+    ///
+    /// The slot was qualified as occupied and complete and is exclusively
+    /// borrowed, so a refusal is an impossible custody state. The arena is put
+    /// back for release, and the caller latches the refusal on its controller.
+    pub(crate) fn commit(self) -> Result<FrozenHistory, Unpublishable> {
+        FrozenHistory::publish(self.input).ok_or(Unpublishable)
     }
 }
 
@@ -278,18 +404,46 @@ impl<'a> PreparedHistory<'a> {
 /// slot or a caller assertion about the identity of another report.
 #[derive(Clone, Copy)]
 pub struct HistoryGroup<'a> {
-    evidence: &'a ParseEvidence,
+    evidence: &'a PublishedEvidence,
     index: usize,
 }
 pub(crate) struct HistoryView<'a> {
     storage: &'a FrozenStorage,
-    evidence: &'a ParseEvidence,
+    evidence: &'a PublishedEvidence,
     data: HistoryData<'a>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HistoryReadError {
     ForeignOwner,
-    InsufficientScratch { required: usize, supplied: usize },
+    InsufficientScratch {
+        required: usize,
+        supplied: usize,
+    },
+    /// The report's history holds a reference its own tables cannot resolve.
+    Unresolved(read::UnresolvedReference),
+}
+
+impl std::fmt::Display for HistoryReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ForeignOwner => f.write_str("the group belongs to another report"),
+            Self::InsufficientScratch { required, supplied } => write!(
+                f,
+                "the history cursor needs {required} scratch frames and was given {supplied}"
+            ),
+            Self::Unresolved(_) => {
+                f.write_str("the report's history holds a reference it cannot resolve")
+            }
+        }
+    }
+}
+impl std::error::Error for HistoryReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unresolved(fault) => Some(fault),
+            _ => None,
+        }
+    }
 }
 
 pub(crate) struct HistoryHeader<'a> {
@@ -338,8 +492,9 @@ impl<'a> HistoryLeaf<'a> {
         let original = self.origins.get(index)?;
         Some(HistoryOrigin {
             original,
-            start: self.offset + original.start,
-            end: self.offset + original.end,
+            // The offset and the atom's end lie within the group's units.
+            start: self.offset.saturating_add(original.start),
+            end: self.offset.saturating_add(original.end),
         })
     }
 }
@@ -364,44 +519,59 @@ impl<'a> HistoryView<'a> {
         }
         Ok(group.index)
     }
-    fn leaf(&self, group: &OriginGroup, offset: usize) -> HistoryLeaf<'a> {
-        let GroupBody::Leaf {
-            start,
-            length,
-            value,
-        } = group.body
-        else {
-            unreachable!("qualified leaf header")
-        };
+    /// The leaf a group's body names, or the fault if the report cannot
+    /// resolve its backing or its origins.
+    fn leaf(
+        &self,
+        (start, length, value): (usize, usize, LeafValue),
+        offset: usize,
+    ) -> Result<HistoryLeaf<'a>, read::UnresolvedReference> {
         let units = match value {
             LeafValue::Empty => &[],
             LeafValue::Payload(slot) => {
-                let RetainedPayload::String { value, .. } = &self.storage.payloads.values[slot]
+                let Some(RetainedPayload::String { value, .. }) =
+                    self.storage.payloads.values.get(slot)
                 else {
-                    unreachable!("qualified immutable backing owner")
+                    return Err(unresolved(read::UnresolvedKind::Fact));
                 };
                 value.code_units()
             }
-            LeafValue::Pending => unreachable!("pending leaves cannot freeze history"),
+            // A pending leaf cannot freeze into a history.
+            LeafValue::Pending => return Err(unresolved(read::UnresolvedKind::Fact)),
         };
-        HistoryLeaf {
+        let origins = start
+            .checked_add(length)
+            .and_then(|end| self.data.origins.get(start..end))
+            .ok_or_else(|| unresolved(read::UnresolvedKind::Group))?;
+        Ok(HistoryLeaf {
             units,
-            origins: &self.data.origins[start..start + length],
+            origins,
             offset,
-        }
+        })
     }
     pub(crate) fn header(
         &self,
         group: HistoryGroup<'_>,
     ) -> Result<HistoryHeader<'a>, HistoryReadError> {
         let index = self.require(group)?;
-        let group = &self.data.groups[index];
+        let group = self
+            .data
+            .groups
+            .get(index)
+            .ok_or_else(|| unresolved_history(read::UnresolvedKind::Group))?;
         let reference = |index| HistoryGroup {
             evidence: self.evidence,
             index,
         };
         let body = match group.body {
-            GroupBody::Leaf { .. } => HistoryBody::Leaf(self.leaf(group, 0)),
+            GroupBody::Leaf {
+                start,
+                length,
+                value,
+            } => HistoryBody::Leaf(
+                self.leaf((start, length, value), 0)
+                    .map_err(HistoryReadError::Unresolved)?,
+            ),
             GroupBody::Alias { original } => HistoryBody::Alias {
                 original: reference(original),
             },
@@ -415,10 +585,16 @@ impl<'a> HistoryView<'a> {
                 offset,
             },
         };
+        let cause = |index: usize| {
+            self.data
+                .causes
+                .get(index)
+                .ok_or_else(|| unresolved_history(read::UnresolvedKind::Cause))
+        };
         Ok(HistoryHeader {
             units: group.units,
-            cause: &self.data.causes[group.cause],
-            retirement: group.retirement.map(|index| &self.data.causes[index]),
+            cause: cause(group.cause)?,
+            retirement: group.retirement.map(cause).transpose()?,
             body,
         })
     }
@@ -431,20 +607,28 @@ impl<'a> HistoryView<'a> {
         let index = self.require(group)?;
         // Strict backward headers bound the pending DFS stack by index+1 even
         // for a shared DAG. Setup neither scans the graph nor clears scratch.
-        let required = index + 1;
+        let required = index.saturating_add(1);
         if scratch.len() < required {
             return Err(HistoryReadError::InsufficientScratch {
                 required,
                 supplied: scratch.len(),
             });
         }
-        scratch[0] = HistoryFrame { index, offset: 0 };
+        // `required` is at least one, so the scratch has a first frame.
+        let Some(first) = scratch.first_mut() else {
+            return Err(HistoryReadError::InsufficientScratch {
+                required,
+                supplied: 0,
+            });
+        };
+        *first = HistoryFrame { index, offset: 0 };
         Ok(HistoryCursor {
             view: self,
             scratch,
             length: 1,
             cancellation,
             cancelled: false,
+            fault: None,
         })
     }
 }
@@ -462,15 +646,33 @@ pub struct HistoryCursor<'a, 's> {
     length: usize,
     cancellation: Option<&'s crate::HtmlParseCancellation>,
     cancelled: bool,
+    fault: Option<read::UnresolvedReference>,
+}
+fn unresolved(kind: read::UnresolvedKind) -> read::UnresolvedReference {
+    read::UnresolvedReference::new(kind)
+}
+fn unresolved_history(kind: read::UnresolvedKind) -> HistoryReadError {
+    HistoryReadError::Unresolved(unresolved(kind))
 }
 pub enum HistoryStep<'a> {
     Progress,
     Leaf(HistoryLeaf<'a>),
     Complete,
     Cancelled,
+    /// The history holds a reference its own tables cannot resolve. The cursor
+    /// stays faulted, so a caller that continues is told again.
+    Fault(read::UnresolvedReference),
 }
 impl<'a> HistoryCursor<'a, '_> {
+    /// The fault, latched: a cursor that met one reports it from then on.
+    fn fail(&mut self, kind: read::UnresolvedKind) -> HistoryStep<'a> {
+        let fault = *self.fault.get_or_insert_with(|| unresolved(kind));
+        HistoryStep::Fault(fault)
+    }
     pub fn advance(&mut self) -> HistoryStep<'a> {
+        if let Some(fault) = self.fault {
+            return HistoryStep::Fault(fault);
+        }
         if self.cancelled
             || self
                 .cancellation
@@ -479,20 +681,35 @@ impl<'a> HistoryCursor<'a, '_> {
             self.cancelled = true;
             return HistoryStep::Cancelled;
         }
-        if self.length == 0 {
+        let Some(top) = self.length.checked_sub(1) else {
             return HistoryStep::Complete;
-        }
-        self.length -= 1;
-        let frame = self.scratch[self.length];
-        let group = &self.view.data.groups[frame.index];
+        };
+        self.length = top;
+        let Some(frame) = self.scratch.get(top).copied() else {
+            return self.fail(read::UnresolvedKind::Group);
+        };
+        let Some(group) = self.view.data.groups.get(frame.index) else {
+            return self.fail(read::UnresolvedKind::Group);
+        };
         match group.body {
-            GroupBody::Leaf { .. } => HistoryStep::Leaf(self.view.leaf(group, frame.offset)),
+            GroupBody::Leaf {
+                start,
+                length,
+                value,
+            } => match self.view.leaf((start, length, value), frame.offset) {
+                Ok(leaf) => HistoryStep::Leaf(leaf),
+                Err(fault) => self.fail(fault.kind()),
+            },
             GroupBody::Alias { original } => {
-                self.scratch[self.length] = HistoryFrame {
+                let Some(slot) = self.scratch.get_mut(top) else {
+                    return self.fail(read::UnresolvedKind::Group);
+                };
+                *slot = HistoryFrame {
                     index: original,
                     offset: frame.offset,
                 };
-                self.length += 1;
+                // The stack is bounded by the scratch the cursor was given.
+                self.length = top.saturating_add(1);
                 HistoryStep::Progress
             }
             GroupBody::Concat {
@@ -500,15 +717,24 @@ impl<'a> HistoryCursor<'a, '_> {
                 incoming,
                 offset,
             } => {
-                self.scratch[self.length] = HistoryFrame {
+                // The offset and the left part lie within the group's units.
+                let right = HistoryFrame {
                     index: incoming,
-                    offset: frame.offset + offset,
+                    offset: frame.offset.saturating_add(offset),
                 };
-                self.scratch[self.length + 1] = HistoryFrame {
+                let left = HistoryFrame {
                     index: original,
                     offset: frame.offset,
                 };
-                self.length += 2;
+                // Strict backward headers bound the stack by the scratch the
+                // cursor was given, so a graph that outgrows it is not one.
+                let Some([first, second]) = self.scratch.get_mut(top..=top.saturating_add(1))
+                else {
+                    return self.fail(read::UnresolvedKind::Group);
+                };
+                *first = right;
+                *second = left;
+                self.length = top.saturating_add(2);
                 HistoryStep::Progress
             }
         }
@@ -527,13 +753,16 @@ impl HistoryOrigin<'_> {
     }
 }
 impl FrozenHistory {
-    pub(super) fn native_node(&self, index: usize) -> HtmlNode<'_> {
-        let storage = self.arena.storage.as_ref().expect("qualified history");
-        storage
+    /// The node a stored index names, or the fault.
+    pub(super) fn native_node(
+        &self,
+        index: usize,
+    ) -> Result<HtmlNode<'_>, read::UnresolvedReference> {
+        self.storage
             .view
             .node_at(index)
-            .expect("qualified history destination")
-            .as_node()
+            .map(|node| node.as_node())
+            .ok_or(read::UnresolvedReference::new(read::UnresolvedKind::Node))
     }
 }
 
@@ -643,10 +872,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         let before = c.usage().clone();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             assert_eq!(view.source().identity(), source.identity());
             assert!(owner.document().is_none());
             let text = owner.fragment().unwrap().root().children().next().unwrap();
@@ -664,6 +893,7 @@ mod tests {
             let mut actions = 0;
             loop {
                 match cursor.advance() {
+                    HistoryStep::Fault(fault) => panic!("{fault}"),
                     HistoryStep::Progress => actions += 1,
                     HistoryStep::Leaf(leaf) => {
                         actions += 1;
@@ -727,9 +957,9 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         assert!(matches!(session.active(), Err(SessionError::Consumed)));
-        assert!(owner.associations().unwrap().len() > 0);
+        assert!(owner.associations().len() > 0);
         owner.release(&mut c).unwrap();
         zero(&c);
         // A native-only source-free arena cannot certify history either.
@@ -744,15 +974,113 @@ mod tests {
     }
 
     #[test]
+    fn a_prepared_history_without_its_projection_refuses_to_publish_and_keeps_the_arena() {
+        let source = crate::HtmlSource::utf8("AB");
+        let (mut c, mut session, _) = projected(&source);
+        let mut slot = Some(session.freeze(&mut c).unwrap());
+        let mut prepared = PreparedHistory::prepare(&mut slot, &mut c).unwrap();
+        prepared
+            .arena_for_test()
+            .unwrap()
+            .storage
+            .as_mut()
+            .unwrap()
+            .evidence
+            .as_mut()
+            .unwrap()
+            .drop_projection_for_test(&mut c);
+        assert!(
+            prepared.commit().is_err(),
+            "a history that lacks its projection is not published"
+        );
+        let mut arena = slot.take().expect("the arena stays where it was");
+        arena.release(&mut c).unwrap();
+        zero(&c);
+    }
+
+    #[test]
+    fn a_prepared_history_without_arena_storage_is_unpublishable_and_keeps_the_arena() {
+        let source = crate::HtmlSource::utf8("AB");
+        let (mut c, mut session, _) = projected(&source);
+        let mut slot = Some(session.freeze(&mut c).unwrap());
+        let mut prepared = PreparedHistory::prepare(&mut slot, &mut c).unwrap();
+        let storage = prepared.arena_for_test().unwrap().storage.take().unwrap();
+        assert_eq!(prepared.commit().err(), Some(Unpublishable));
+        let arena = slot.as_mut().expect("the arena stays where it was");
+        assert!(arena.storage.is_none());
+        arena.storage = Some(storage);
+        slot.take().unwrap().release(&mut c).unwrap();
+        zero(&c);
+    }
+
+    #[test]
+    fn a_prepared_history_without_evidence_is_unpublishable_and_puts_the_storage_back() {
+        let source = crate::HtmlSource::utf8("AB");
+        let (mut c, mut session, _) = projected(&source);
+        let mut slot = Some(session.freeze(&mut c).unwrap());
+        let mut prepared = PreparedHistory::prepare(&mut slot, &mut c).unwrap();
+        let evidence = prepared
+            .arena_for_test()
+            .unwrap()
+            .storage
+            .as_mut()
+            .unwrap()
+            .evidence
+            .take()
+            .unwrap();
+        assert_eq!(prepared.commit().err(), Some(Unpublishable));
+        let arena = slot.as_mut().expect("the arena stays where it was");
+        let storage = arena.storage.as_mut().expect("the storage was put back");
+        assert!(storage.evidence.is_none());
+        storage.evidence = Some(evidence);
+        slot.take().unwrap().release(&mut c).unwrap();
+        zero(&c);
+    }
+
+    #[test]
+    fn a_prepared_history_without_its_source_is_unpublishable_and_puts_everything_back() {
+        let source = crate::HtmlSource::utf8("AB");
+        let (mut c, mut session, _) = projected(&source);
+        let mut slot = Some(session.freeze(&mut c).unwrap());
+        let mut prepared = PreparedHistory::prepare(&mut slot, &mut c).unwrap();
+        let held = prepared
+            .arena_for_test()
+            .unwrap()
+            .storage
+            .as_mut()
+            .unwrap()
+            .evidence
+            .as_mut()
+            .unwrap()
+            .take_source_for_test()
+            .unwrap();
+        assert_eq!(prepared.commit().err(), Some(Unpublishable));
+        let arena = slot.as_mut().expect("the arena stays where it was");
+        let evidence = arena
+            .storage
+            .as_mut()
+            .expect("the storage was put back")
+            .evidence
+            .as_mut()
+            .expect("the evidence was put back");
+        // The refusal took nothing else out, so the projection is still there.
+        assert!(evidence.holds_projection_for_test());
+        assert!(evidence.take_source_for_test().is_none());
+        evidence.restore_source_for_test(held);
+        slot.take().unwrap().release(&mut c).unwrap();
+        zero(&c);
+    }
+
+    #[test]
     fn immutable_history_foreign_scope_and_small_scratch_leave_caller_storage_untouched() {
         let source = crate::HtmlSource::utf8("AB");
         let (mut c, mut session, group) = projected(&source);
         let (mut foreign_c, mut foreign_session, foreign_group) = projected(&source);
-        let mut owner = session.freeze_history(&mut c).unwrap();
-        let mut foreign = foreign_session.freeze_history(&mut foreign_c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
+        let foreign = foreign_session.freeze_history(&mut foreign_c).unwrap();
         {
-            let view = owner.view().unwrap();
-            let other = foreign.view().unwrap();
+            let view = owner.view();
+            let other = foreign.view();
             assert_eq!(
                 view.header(other.group(foreign_group).unwrap()).err(),
                 Some(HistoryReadError::ForeignOwner)
@@ -805,11 +1133,11 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         let before = c.usage().clone();
         old_cancel.cancel();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let mut scratch = [HistoryFrame::default(); 3];
             let query_cancel = HtmlParseCancellation::new();
             let mut cursor = view
@@ -878,10 +1206,10 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         let before = c.usage().clone();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let header = view.header(view.group(final_index).unwrap()).unwrap();
             assert_eq!(header.units, 128);
             assert_eq!(
@@ -930,6 +1258,7 @@ mod tests {
             let mut leaves = 0;
             loop {
                 match cursor.advance() {
+                    HistoryStep::Fault(fault) => panic!("{fault}"),
                     HistoryStep::Progress => progress += 1,
                     HistoryStep::Leaf(leaf) => {
                         assert_eq!(leaf.offset(), leaves);
@@ -1041,7 +1370,7 @@ mod tests {
     fn immutable_history_alias_refusal_cancel_and_foreign_control_preserve_transfer_and_retry() {
         let source = crate::HtmlSource::utf8("AB");
         let (mut c, mut session, _) = projected(&source);
-        let alias = (0..session.active().unwrap().construction.storage().len())
+        let alias = (0..session.active().unwrap().construction.test_storage().len())
             .find_map(|position| {
                 match session
                     .active()
@@ -1062,12 +1391,12 @@ mod tests {
         ));
         assert!(session.active().is_ok() && c.stop().is_none());
         drop(alias);
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         let alias = owner.fragment().unwrap().clone();
-        assert!(owner.release(&mut c).is_err());
-        assert!(owner.view().is_ok());
+        let mut arena = owner.into_arena();
+        assert!(arena.release(&mut c).is_err());
         drop(alias);
-        owner.release(&mut c).unwrap();
+        arena.release(&mut c).unwrap();
         zero(&c);
 
         let signal = HtmlParseCancellation::new();
@@ -1209,9 +1538,9 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let group = view.group(old_group).unwrap();
             assert_eq!(view.header(group).unwrap().units, 2);
             let mut scratch = vec![HistoryFrame::default(); old_group + 1];
@@ -1219,6 +1548,7 @@ mod tests {
             let mut units = Vec::new();
             loop {
                 match cursor.advance() {
+                    HistoryStep::Fault(fault) => panic!("{fault}"),
                     HistoryStep::Leaf(leaf) => {
                         assert_eq!(leaf.offset(), units.len());
                         for origin in leaf.origins() {
@@ -1298,16 +1628,16 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(
-            matches!(&event, Event::Token(token) if matches!(&token.token().kind, TokenKind::Eof))
+            matches!(&event, Event::Token(token) if matches!(&token.token_for_tests().kind, TokenKind::Eof))
         );
         event.release(&mut c).unwrap();
         lexer.release(&mut c).unwrap();
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let mut pointers = Vec::new();
             for index in 0..view.len() {
                 let header = view.header(view.group(index).unwrap()).unwrap();
@@ -1423,9 +1753,9 @@ mod tests {
         session
             .prepare_native_associations(&mut c, &source)
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let mut saw_name = false;
             let mut saw_namespace = false;
             for index in 0..view.len() {
@@ -1533,16 +1863,16 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(
-            matches!(&event, Event::Token(token) if matches!(token.token().kind, TokenKind::Eof))
+            matches!(&event, Event::Token(token) if matches!(token.token_for_tests().kind, TokenKind::Eof))
         );
         event.release(&mut c).unwrap();
         lexer.release(&mut c).unwrap();
         session
             .prepare_native_associations(&mut c, request.source())
             .unwrap();
-        let mut owner = session.freeze_history(&mut c).unwrap();
+        let owner = session.freeze_history(&mut c).unwrap();
         {
-            let view = owner.view().unwrap();
+            let view = owner.view();
             let header = view.header(view.group(before).unwrap()).unwrap();
             assert!(header.cause.source.is_none());
             let captured = header.cause.captured.as_ref().unwrap();
@@ -1575,5 +1905,15 @@ mod tests {
         }
         owner.release(&mut c).unwrap();
         zero(&c);
+    }
+
+    #[test]
+    fn committing_a_prepared_history_over_an_empty_slot_is_unpublishable() {
+        // The slot is exclusively borrowed and was qualified as occupied; an
+        // empty one is an impossible custody state, never a panic. The caller
+        // latches it on its controller.
+        let mut slot: Option<FrozenArena> = None;
+        let prepared = PreparedHistory { input: &mut slot };
+        assert_eq!(prepared.commit().err(), Some(Unpublishable));
     }
 }

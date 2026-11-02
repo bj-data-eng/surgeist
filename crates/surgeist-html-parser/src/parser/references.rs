@@ -15,7 +15,7 @@
 //! Longest probing stops when a prefix cannot continue, so its input inspections
 //! are bounded by the longest static name plus one, rather than query length.
 
-use super::control::{ParseControl, ParseStop, WorkCategory};
+use super::control::{Invariant, ParseControl, ParseStop, WorkCategory};
 #[cfg(test)]
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use std::{cmp::Ordering, mem::size_of};
@@ -60,7 +60,9 @@ fn record(
     control: &mut ParseControl,
 ) -> Result<&'static (&'static str, ReferenceValue), ParseStop> {
     control.charge(WorkCategory::RecordVisit, 1)?;
-    Ok(&data::NAMED_REFERENCES[index])
+    data::NAMED_REFERENCES
+        .get(index)
+        .ok_or_else(|| control.fail_invariant(Invariant::TokenizerState))
 }
 
 fn compare_name(
@@ -68,10 +70,8 @@ fn compare_name(
     query: &[u32],
     control: &mut ParseControl,
 ) -> Result<Ordering, ParseStop> {
-    for (position, unit) in query.iter().enumerate().take(name.len()) {
+    for (&point, &byte) in query.iter().zip(name.as_bytes()) {
         control.charge(WorkCategory::InspectByte, 5)?;
-        let point = *unit;
-        let byte = name.as_bytes()[position];
         let order = u32::from(byte).cmp(&point);
         if order != Ordering::Equal {
             return Ok(order);
@@ -86,9 +86,11 @@ fn starts_with(name: &str, query: &[u32], control: &mut ParseControl) -> Result<
     if query.len() > name.len() {
         return Ok(false);
     }
-    for (position, _) in query.iter().enumerate() {
+    // The query is no longer than the name, so the pairing visits every query
+    // point.
+    for (&point, &byte) in query.iter().zip(name.as_bytes()) {
         control.charge(WorkCategory::InspectByte, 5)?;
-        if u32::from(name.as_bytes()[position]) != query[position] {
+        if u32::from(byte) != point {
             return Ok(false);
         }
     }
@@ -105,10 +107,10 @@ pub(super) fn lookup_name(
     let mut upper = data::NAMED_REFERENCES.len();
     while lower < upper {
         control.charge(WorkCategory::StateStep, 1)?;
-        let middle = lower + (upper - lower) / 2;
+        let middle = lower.midpoint(upper);
         let candidate = record(middle, control)?;
         if compare_name(candidate.0, query, control)? == Ordering::Less {
-            lower = middle + 1;
+            lower = middle.saturating_add(1);
         } else {
             upper = middle;
         }
@@ -119,8 +121,9 @@ pub(super) fn lookup_name(
     }
     let candidate = record(lower, control)?;
     if compare_name(candidate.0, query, control)? == Ordering::Equal {
-        let can_continue = if lower + 1 < data::NAMED_REFERENCES.len() {
-            let next = record(lower + 1, control)?;
+        let following = lower.saturating_add(1);
+        let can_continue = if following < data::NAMED_REFERENCES.len() {
+            let next = record(following, control)?;
             starts_with(next.0, query, control)?
         } else {
             false
@@ -214,7 +217,10 @@ pub(super) fn c1_replacement(
         control.charge(WorkCategory::RecordVisit, 1)?;
         control.charge(WorkCategory::InspectByte, size_of::<Option<char>>() as u64)?;
         admit_result::<Option<char>>(control)?;
-        Ok(data::C1_REPLACEMENTS[index as usize])
+        data::C1_REPLACEMENTS
+            .get(index as usize)
+            .copied()
+            .ok_or_else(|| control.fail_invariant(Invariant::TokenizerState))
     } else {
         admit_result::<Option<char>>(control)?;
         Ok(None)
@@ -259,6 +265,19 @@ mod tests {
 
     fn points(name: &str) -> Vec<u32> {
         name.chars().map(u32::from).collect()
+    }
+
+    #[test]
+    fn a_table_index_beyond_the_table_stops_instead_of_indexing() {
+        let mut control = control();
+        let stop = record(data::NAMED_REFERENCES.len(), &mut control)
+            .err()
+            .unwrap();
+        assert_eq!(
+            stop,
+            ParseStop::InternalInvariant(Invariant::TokenizerState)
+        );
+        assert_eq!(control.stop(), Some(stop));
     }
 
     #[test]

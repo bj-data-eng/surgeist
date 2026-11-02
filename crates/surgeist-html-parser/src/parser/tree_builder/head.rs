@@ -144,6 +144,43 @@ pub(crate) enum HeadError {
     InvalidFormattingState,
     IncompleteCompletion,
 }
+impl HeadError {
+    /// The error names a state the stage's own sequencing cannot produce: an
+    /// owner, slot or mode it keeps is gone, or a token, formatting entry,
+    /// script nesting or tokenizer state is one it never creates, or a driver
+    /// steps a stage that waits at a boundary. No input reaches these; they are
+    /// faults of the parser, not unsupported documents.
+    ///
+    /// `AlreadyAtBoundary` is among them because the parse functions stop at
+    /// the first boundary a stage returns and the driver consumes the
+    /// after-head boundary itself. The other errors are not proven unreachable
+    /// from input and stay as they are: a tokenizer handoff that is refused
+    /// (queued events behind the first token are not excluded), the stack and
+    /// node errors of the kernel, and the session errors, which many sites share.
+    pub(super) fn invariant_fault(&self) -> bool {
+        match self {
+            Self::Consumed
+            | Self::MissingInput
+            | Self::MissingTokenizer
+            | Self::MissingReturnMode
+            | Self::InvalidFormattingState
+            | Self::InvalidTextToken
+            | Self::InvalidScriptNesting
+            | Self::AlreadyAtBoundary
+            | Self::TokenizerExhausted => true,
+            Self::Kernel(KernelError::Consumed) => true,
+            Self::Prologue(error) => error.invariant_fault(),
+            Self::Kernel(_)
+            | Self::Handoff(_)
+            | Self::ConstructionCapabilityUnavailable
+            | Self::UnsupportedScriptPause
+            | Self::UnsupportedPendingScript
+            | Self::IncompleteCompletion => false,
+            #[cfg(test)]
+            Self::NotAtBoundary => false,
+        }
+    }
+}
 impl std::fmt::Debug for HeadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -327,7 +364,7 @@ impl<'source> HeadStage<'source> {
         // Preserve the existing enclosing ownership-transfer admission and add
         // the actual end-continuation field, removing the former diagnostic vector. The table constructor separately
         // admits its four field writes. All admissions precede the first take.
-        if let Err(stop) = write(size_of::<Self>() + size_of::<HeadState>(), 29, c) {
+        if let Err(stop) = write(const { size_of::<Self>() + size_of::<HeadState>() }, 29, c) {
             lexical.release(c)?;
             formatting.release(c)?;
             table.entries.release(c)?;
@@ -341,7 +378,13 @@ impl<'source> HeadStage<'source> {
             template_modes.release(c)?;
             return Err(stop.into());
         }
-        let mut before = before.take().expect("verified prologue continuation");
+        let Some(mut before) = before.take() else {
+            lexical.release(c)?;
+            formatting.release(c)?;
+            table.entries.release(c)?;
+            template_modes.release(c)?;
+            return Err(HeadError::MissingInput);
+        };
         let pending = before.input.take().map(PendingToken::from_token);
         Ok(Self {
             source,
@@ -631,13 +674,14 @@ impl<'source> HeadStage<'source> {
                     .get(c, id)?;
             }
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if let Some(token) = event.token() {
+            if let Some(token) = event.token(c)? {
                 validate_source(self.source, token, c)?;
-                write(size_of::<Option<Event>>() + size_of::<PendingToken>(), 4, c)?;
-                let Event::Token(event) = state.lexical_pending.take().expect("retained event")
-                else {
-                    unreachable!("actual token variant inspected")
-                };
+                write(
+                    const { size_of::<Option<Event>>() + size_of::<PendingToken>() },
+                    4,
+                    c,
+                )?;
+                let event = super::take_token_event(&mut state.lexical_pending, c)?;
                 state.pending = Some(PendingToken::from_token(event.into_token(c)?));
                 // HTML877d pre/listing/textarea: the initial-LF rule applies to the
                 // token immediately after the start tag, whichever mode handles it.
@@ -650,7 +694,7 @@ impl<'source> HeadStage<'source> {
                 let event = state
                     .lexical_pending
                     .take()
-                    .expect("retained lexical event");
+                    .ok_or(HeadError::TokenizerExhausted)?;
                 if let Err((stop, event)) = state.lexical.try_push_recover(c, event) {
                     // Terminal recovery preserves ownership, without useful work.
                     state.lexical_pending = Some(event);
@@ -715,10 +759,12 @@ impl<'source> HeadStage<'source> {
             // Normal owner transfer is admitted before mutation; terminal
             // disposal only deallocates/account-releases retained owners.
             write(
-                size_of::<Option<HeadState>>()
-                    + size_of::<Option<Tokenizer>>()
-                    + size_of::<Option<Text>>()
-                    + size_of::<Option<Event>>(),
+                const {
+                    size_of::<Option<HeadState>>()
+                        + size_of::<Option<Tokenizer>>()
+                        + size_of::<Option<Text>>()
+                        + size_of::<Option<Event>>()
+                },
                 4,
                 c,
             )?;
@@ -768,7 +814,7 @@ impl<'source> HeadStage<'source> {
         }
         // These empty vectors still retain admitted capacities. Move and release
         // the whole state only after alias-sensitive arena release succeeded.
-        let state = self.state.take().expect("retained active state");
+        let state = self.state.take().ok_or(HeadError::Consumed)?;
         state.before.whitespace.release(c)?;
         state.lexical.release(c)?;
         state.formatting.release(c)?;
@@ -923,7 +969,7 @@ impl HeadState<'_> {
                 c.charge(WorkCategory::RecordVisit, 2)?;
                 c.charge(
                     WorkCategory::InspectByte,
-                    (size_of::<TagKind>() + size_of::<bool>()) as u64,
+                    const { size_of::<TagKind>() + size_of::<bool>() } as u64,
                 )?;
                 let kind = tag.kind;
                 let self_closing = tag.self_closing;
@@ -982,7 +1028,7 @@ impl HeadState<'_> {
                 let text = self
                     .whitespace_pending
                     .take()
-                    .expect("retained whitespace prefix");
+                    .ok_or(HeadError::MissingInput)?;
                 if let Err((stop, text)) = self.before.whitespace.try_push_recover(c, text) {
                     self.whitespace_pending = Some(text);
                     return Err(stop.into());
@@ -1286,7 +1332,7 @@ impl HeadState<'_> {
         write(size_of::<Option<HtmlSourceRange>>(), 1, c)?;
         self.script
             .as_mut()
-            .expect("qualified end script state")
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?
             .insertion_point = None;
         Ok(())
     }
@@ -1323,7 +1369,7 @@ impl HeadState<'_> {
             .ok_or(HeadError::MissingInput)?
             .payload
         else {
-            unreachable!("classified actual script tag")
+            return Err(HeadError::MissingInput);
         };
         let template = self.before.kernel.last_template(c)?;
         let context = template.as_ref().map_or(
@@ -1408,7 +1454,7 @@ impl HeadState<'_> {
             .ok_or(HeadError::Consumed)?
             .checked_next_input_position(script.capability.source, c)?;
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
@@ -1439,7 +1485,7 @@ impl HeadState<'_> {
             script.pause = false;
         }
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
@@ -1498,7 +1544,7 @@ impl HeadState<'_> {
             .ok_or(HeadError::Consumed)?
             .checked_next_input_position(script.capability.source, c)?;
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
@@ -1529,7 +1575,7 @@ impl HeadState<'_> {
             script.pause = false;
         }
         write(
-            size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>(),
+            const { size_of::<Option<Option<HtmlSourceRange>>>() + size_of::<Option<HtmlSourceRange>>() },
             2,
             c,
         )?;
@@ -1661,7 +1707,7 @@ impl HeadState<'_> {
                             .ok_or(HeadError::MissingInput)?
                             .payload
                         else {
-                            unreachable!("classified actual text")
+                            return Err(HeadError::InvalidTextToken);
                         };
                         self.before.kernel.insert_text(
                             input,
@@ -1990,8 +2036,8 @@ mod script_state_tests {
         ));
         assert_eq!(
             driver.control.stop(),
-            Some(ParseStop::UnsupportedStandaloneState(
-                crate::parser::control::StandaloneUnsupported::InvalidNesting
+            Some(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::TreeBuilderState
             ))
         );
         let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
@@ -2483,5 +2529,55 @@ mod event_retention_tests {
                 .resource(HtmlParseResource::WorkCredits),
             before.resource(HtmlParseResource::WorkCredits)
         );
+    }
+}
+
+#[cfg(test)]
+mod stage_custody_tests {
+    use super::super::{
+        entry,
+        tests::{assert_released, limits},
+    };
+    use super::*;
+    use crate::parser::tokenizer::{Tokenizer, states::State};
+    use crate::{HtmlDocumentParseRequest, HtmlParseCancellation, HtmlSource};
+
+    #[test]
+    fn a_head_stage_without_the_before_head_owner_reports_missing_input_and_keeps_the_tokenizer() {
+        let source = HtmlSource::utf8("<p>x");
+        let mut c = ParseControl::new(limits(100), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut tokenizer = Some(Tokenizer::new(&source, State::Data, None, &mut c).unwrap());
+        let mut before = None;
+        let error = HeadStage::new(&source, &mut before, &mut tokenizer, &mut c)
+            .err()
+            .unwrap();
+        assert!(matches!(error, HeadError::MissingInput), "{error:?}");
+        assert!(before.is_none());
+        // The tokenizer was neither taken nor charged for, so it still releases.
+        tokenizer.take().unwrap().release(&mut c).unwrap();
+        assert_released(&c);
+    }
+
+    #[test]
+    fn releasing_a_head_stage_without_its_state_reports_consumed_and_the_state_releases_later() {
+        let request =
+            HtmlDocumentParseRequest::offline(HtmlSource::utf8("<html><p>x"), limits(100));
+        let mut driver = entry::initialized_driver(&request);
+        for _ in 0..100 {
+            if driver.head.is_some() {
+                break;
+            }
+            driver.step().unwrap();
+        }
+        let head = driver.head.as_mut().unwrap();
+        // Private-state fault injection: the stage's state is not where release
+        // expects it.
+        let state = head.state.take().unwrap();
+        let error = head.release(&mut driver.control).unwrap_err();
+        assert!(matches!(error, HeadError::Consumed), "{error:?}");
+        head.state = Some(state);
+        driver.release().unwrap();
+        assert_released(&driver.control);
     }
 }

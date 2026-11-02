@@ -64,7 +64,8 @@ pub(crate) mod tests;
 use super::tokenizer::token::Tag;
 use super::{
     control::{
-        ControlIdentity, OwnedVec, ParseControl, ParseStop, StandaloneUnsupported, WorkCategory,
+        ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, StandaloneUnsupported,
+        WorkCategory,
     },
     tokenizer::token::Text,
 };
@@ -250,12 +251,18 @@ impl LocationKernel {
         let template = self.named(target, "template", c)?;
         self.push(target, c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        for shift in (index..self.stack()?.len() - 1).rev() {
+        // The push left the target on top, so the stack is not empty.
+        let top = self
+            .stack()?
+            .len()
+            .checked_sub(1)
+            .ok_or(KernelError::EmptyStack)?;
+        for shift in (index..top).rev() {
             if !self
                 .open
                 .as_mut()
                 .ok_or(KernelError::Consumed)?
-                .swap_slots(shift, shift + 1, c)?
+                .swap_slots(shift, shift.saturating_add(1), c)?
             {
                 return Err(KernelError::EmptyStack);
             }
@@ -359,6 +366,8 @@ impl LocationKernel {
         self.session.validate_node(c, target)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let len = self.stack()?.len();
+        // An empty stack holds no match, which is the same refusal as below.
+        let top = len.checked_sub(1).ok_or(KernelError::EmptyStack)?;
         for index in 0..len {
             let node = self.at(index, c)?;
             if self.session.same_node(c, &node, target)? {
@@ -367,13 +376,13 @@ impl LocationKernel {
                 if let Some(at) = self.template_position(index, c)? {
                     self.template_remove(at, c)?;
                 }
-                self.templates_shift(index + 1, false, c)?;
-                for shift in index..len - 1 {
+                self.templates_shift(index.saturating_add(1), false, c)?;
+                for shift in index..top {
                     if !self
                         .open
                         .as_mut()
                         .ok_or(KernelError::Consumed)?
-                        .swap_slots(shift, shift + 1, c)?
+                        .swap_slots(shift, shift.saturating_add(1), c)?
                     {
                         return Err(KernelError::EmptyStack);
                     }
@@ -396,17 +405,21 @@ impl LocationKernel {
             .ok_or(KernelError::Consumed)?
             .fragment_root(control)?;
         let open = OwnedVec::new(HtmlParseResource::OpenElements)?;
+        let templates = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         write(size_of::<Self>(), 5, control)?;
         write(size_of::<Option<ParserArenaSession>>(), 1, control)?;
         control.charge(WorkCategory::ProviderCall, 1)?;
+        // Every fallible step precedes the take, so a refusal leaves the
+        // caller's session where it was.
+        let Some(session) = session.take() else {
+            return Err(KernelError::Consumed);
+        };
         Ok(Self {
             owner: control.identity(),
-            session: session
-                .take()
-                .expect("verified session remains owned until commit"),
+            session,
             open: Some(open),
             stack_position_bound: 0,
-            templates: Some(OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?),
+            templates: Some(templates),
             root_target,
             foster_parenting: false,
         })
@@ -633,13 +646,13 @@ impl LocationKernel {
         while at > 0
             && templates
                 .as_slice()
-                .get(at - 1)
+                .get(at.saturating_sub(1))
                 .is_some_and(|below| *below > index)
         {
-            if !templates.swap_slots(at - 1, at, c)? {
+            if !templates.swap_slots(at.saturating_sub(1), at, c)? {
                 return Err(KernelError::EmptyStack);
             }
-            at -= 1;
+            at = at.saturating_sub(1);
         }
         Ok(())
     }
@@ -650,7 +663,7 @@ impl LocationKernel {
             return Err(KernelError::EmptyStack);
         }
         for shift in at..templates.len().saturating_sub(1) {
-            if !templates.swap_slots(shift, shift + 1, c)? {
+            if !templates.swap_slots(shift, shift.saturating_add(1), c)? {
                 return Err(KernelError::EmptyStack);
             }
         }
@@ -670,10 +683,10 @@ impl LocationKernel {
         while at > 0
             && templates
                 .as_slice()
-                .get(at - 1)
+                .get(at.saturating_sub(1))
                 .is_some_and(|index| *index >= from)
         {
-            at -= 1;
+            at = at.saturating_sub(1);
             let entry = templates.get_mut(at, c)?.ok_or(KernelError::EmptyStack)?;
             *entry = if up {
                 entry.saturating_add(1)
@@ -934,11 +947,10 @@ impl LocationKernel {
     fn release_stack(&mut self, control: &mut ParseControl) -> Result<(), KernelError> {
         // Every owner is taken and released even when an earlier release fails;
         // the first failure is the one returned.
-        let stack = self
-            .open
-            .take()
-            .expect("verified active stack")
-            .release(control);
+        let stack = match self.open.take() {
+            Some(open) => open.release(control).map_err(KernelError::from),
+            None => Err(KernelError::Consumed),
+        };
         let listings = match self.templates.take() {
             Some(templates) => templates.release(control),
             None => Ok(()),
@@ -1071,6 +1083,26 @@ impl std::fmt::Debug for StandaloneError {
         }
     }
 }
+impl StandaloneError {
+    /// An owner this driver's own sequencing keeps is gone while its controller
+    /// is still held: the first stop becomes the invariant, or stays the stop
+    /// that was already first.
+    pub(super) fn latch_invariant(control: &mut ParseControl) -> Self {
+        Self::Stop(control.fail_invariant(Invariant::TreeBuilderState))
+    }
+    /// The error names a state the driver's own sequencing cannot produce,
+    /// rather than a document or a limit.
+    pub(super) fn invariant_fault(&self) -> bool {
+        match self {
+            Self::Consumed | Self::TokenizerExhausted => true,
+            Self::Prologue(error) => error.invariant_fault(),
+            Self::Head(error) => error.invariant_fault(),
+            Self::UnsupportedDocumentInitialization
+            | Self::UnsupportedExecutionProfile
+            | Self::Stop(_) => false,
+        }
+    }
+}
 impl From<ParseStop> for StandaloneError {
     fn from(error: ParseStop) -> Self {
         Self::Stop(error)
@@ -1102,10 +1134,22 @@ pub(crate) struct StandaloneDocumentDriver<'source> {
     head: Option<head::HeadStage<'source>>,
     lexical: Option<OwnedVec<super::tokenizer::token::Event>>,
     failed_evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
-    failure_usage: Option<super::control::ParseUsage>,
+    /// Whether the failure evidence has been taken from the session. Set only
+    /// after the take succeeded, so a refused take can be retried.
+    evidence_taken: bool,
 }
 impl<'source> StandaloneDocumentDriver<'source> {
     pub(super) fn enable_meta_csp(&mut self, initial_base: bool) -> Result<(), StandaloneError> {
+        let result = self.enable_meta_csp_inner(initial_base);
+        if let Err(error) = &result
+            && error.invariant_fault()
+        {
+            // Any other refusal keeps the stop its caller latches for it.
+            StandaloneError::latch_invariant(&mut self.control);
+        }
+        result
+    }
+    fn enable_meta_csp_inner(&mut self, initial_base: bool) -> Result<(), StandaloneError> {
         let session = &mut self
             .prologue
             .as_mut()
@@ -1132,6 +1176,12 @@ impl<'source> StandaloneDocumentDriver<'source> {
         if let Err(error) = &result {
             // One controller owns terminality. Retained owners support cleanup,
             // never resumption or successful partial continuation publication.
+            if error.invariant_fault() {
+                // Nothing the document contains made this unsupported; a driver
+                // lost an owner its own sequencing keeps.
+                self.control.fail_invariant(Invariant::TreeBuilderState);
+                return;
+            }
             let reason = match error {
                 StandaloneError::Head(head::HeadError::UnsupportedScriptPause) => {
                     StandaloneUnsupported::ScriptPause
@@ -1151,7 +1201,17 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     SessionError::CompletionMetadataUnavailable
                     | SessionError::CompletionIncomplete,
                 ))) => StandaloneUnsupported::Completion,
-                _ => StandaloneUnsupported::InvalidNesting,
+                // Every other error a document or a limit can lead to. A stop
+                // is already the controller's first, so naming it changes
+                // nothing. A fault of the parser's own sequencing returned
+                // above.
+                StandaloneError::Stop(_)
+                | StandaloneError::Prologue(_)
+                | StandaloneError::Head(_)
+                | StandaloneError::UnsupportedDocumentInitialization
+                | StandaloneError::UnsupportedExecutionProfile
+                | StandaloneError::Consumed
+                | StandaloneError::TokenizerExhausted => StandaloneUnsupported::InvalidNesting,
             };
             self.control.stop_unsupported_standalone(reason);
         }
@@ -1287,18 +1347,16 @@ impl<'source> StandaloneDocumentDriver<'source> {
                         .get(c, id)?;
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                if event.token().is_some() {
+                if matches!(event, Event::Token(_)) {
                     write(
-                        size_of::<Option<Event>>()
-                            + size_of::<Option<super::tokenizer::token::Token>>(),
+                        const {
+                            size_of::<Option<Event>>()
+                                + size_of::<Option<super::tokenizer::token::Token>>()
+                        },
                         2,
                         c,
                     )?;
-                    let Event::Token(event) =
-                        self.event.take().expect("retained actual token event")
-                    else {
-                        unreachable!("variant inspected")
-                    };
+                    let event = take_token_event(&mut self.event, c)?;
                     self.token = Some(event.into_token(c)?);
                 } else {
                     self.lexical
@@ -1307,7 +1365,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
                         .reserve_geometric(c, 1)?;
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     write(size_of::<Option<Event>>(), 1, c)?;
-                    let event = self.event.take().expect("retained lexical event");
+                    let event = self
+                        .event
+                        .take()
+                        .ok_or(StandaloneError::TokenizerExhausted)?;
                     if let Err((stop, event)) = self
                         .lexical
                         .as_mut()
@@ -1332,34 +1393,35 @@ impl<'source> StandaloneDocumentDriver<'source> {
             }
             c.charge(WorkCategory::RecordVisit, 1)?;
             write(
-                size_of::<Option<prologue::BeforeHead>>()
-                    + size_of::<Option<prologue::DocumentPrologue>>(),
+                const {
+                    size_of::<Option<prologue::BeforeHead>>()
+                        + size_of::<Option<prologue::DocumentPrologue>>()
+                },
                 2,
                 c,
             )?;
             self.before = Some(
                 self.prologue
                     .as_mut()
-                    .expect("active prologue")
+                    .ok_or(StandaloneError::Consumed)?
                     .take_before_head(c)?,
             );
             self.prologue = None;
         }
         write(size_of::<Option<head::HeadStage>>(), 1, c)?;
-        self.head = Some(head::HeadStage::new(
+        let head = self.head.insert(head::HeadStage::new(
             self.source,
             &mut self.before,
             &mut self.tokenizer,
             c,
         )?);
         c.charge(WorkCategory::RecordVisit, 2)?;
-        let head = self.head.as_mut().expect("actual fresh head transfer");
         write(size_of::<ConstructionCapability>(), 5, c)?;
         c.charge(WorkCategory::ProviderCall, 1)?;
         let document = head
             .state
             .as_ref()
-            .expect("actual fresh head")
+            .ok_or(StandaloneError::Consumed)?
             .before
             .kernel
             .session
@@ -1376,10 +1438,14 @@ impl<'source> StandaloneDocumentDriver<'source> {
         // Swap retained real lexical evidence into the same head owner; leave
         // its original empty vector in this driver for release, without cloning.
         c.charge(WorkCategory::RecordVisit, 2)?;
-        write(size_of::<OwnedVec<Event>>() * 2, 2, c)?;
+        write(const { size_of::<OwnedVec<Event>>() * 2 }, 2, c)?;
         std::mem::swap(
-            &mut head.state.as_mut().expect("active head").lexical,
-            self.lexical.as_mut().expect("retained lexical evidence"),
+            &mut head
+                .state
+                .as_mut()
+                .ok_or(StandaloneError::Consumed)?
+                .lexical,
+            self.lexical.as_mut().ok_or(StandaloneError::Consumed)?,
         );
         Ok(head::HeadStep::Consumed)
     }
@@ -1504,7 +1570,8 @@ impl<'source> StandaloneDocumentDriver<'source> {
             if c.stop().is_none() {
                 write(size_of::<Option<prologue::BeforeHead>>(), 1, c)?;
             }
-            let before = self.before.take().expect("retained BeforeHead");
+        }
+        if let Some(before) = self.before.take() {
             before.whitespace.release(c)?;
         }
         if c.stop().is_none() {
@@ -1521,8 +1588,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
         if c.stop().is_none() {
             c.charge(WorkCategory::RecordVisit, 2)?;
             write(
-                size_of::<Option<super::tokenizer::token::Event>>()
-                    + size_of::<Option<super::tokenizer::Tokenizer>>(),
+                const {
+                    size_of::<Option<super::tokenizer::token::Event>>()
+                        + size_of::<Option<super::tokenizer::Tokenizer>>()
+                },
                 2,
                 c,
             )?;
@@ -1561,17 +1630,41 @@ impl<'source> StandaloneDocumentDriver<'source> {
         Ok(())
     }
 }
+/// Takes the token event out of `slot`. Any other content stays in the slot
+/// for the usual release, and the refusal is an invariant stop.
+fn take_token_event(
+    slot: &mut Option<super::tokenizer::token::Event>,
+    c: &mut ParseControl,
+) -> Result<super::tokenizer::token::TokenEvent, ParseStop> {
+    match slot.take() {
+        Some(super::tokenizer::token::Event::Token(event)) => Ok(event),
+        other => {
+            *slot = other;
+            Err(c.fail_invariant(super::control::Invariant::TreeBuilderState))
+        }
+    }
+}
 fn dispose_token(
     input: &mut Option<super::tokenizer::token::Token>,
     c: &mut ParseControl,
 ) -> Result<(), StandaloneError> {
     if c.stop().is_none() {
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let slot_bytes = size_of::<Option<super::tokenizer::token::Token>>();
         if input.is_some() {
-            write(slot_bytes + size_of::<prologue::PendingToken>(), 3, c)?;
+            write(
+                const {
+                    size_of::<Option<super::tokenizer::token::Token>>()
+                        + size_of::<prologue::PendingToken>()
+                },
+                3,
+                c,
+            )?;
         } else {
-            write(slot_bytes, 1, c)?;
+            write(
+                const { size_of::<Option<super::tokenizer::token::Token>>() },
+                1,
+                c,
+            )?;
         }
     }
     if let Some(token) = input.take() {

@@ -64,7 +64,8 @@ impl<'a> ReverseCursor<'a> {
             self.state = CursorState::Complete;
             return ReverseStep::Complete;
         };
-        self.index += 1;
+        // `index` named a row of the slice, so it is below the address space.
+        self.index = self.index.saturating_add(1);
         let Some(range) = &row.source else {
             return ReverseStep::Skipped;
         };
@@ -161,7 +162,12 @@ impl<'a> AssociationView<'a> {
             // Each interior endpoint requires one byte inspection. Boundary
             // zero/len require none; no scan, decode, handle clone or allocation.
             for offset in [start, end] {
-                if offset > 0 && offset < text.len() && text.as_bytes()[offset] & 0xc0 == 0x80 {
+                if offset > 0
+                    && text
+                        .as_bytes()
+                        .get(offset)
+                        .is_some_and(|byte| byte & 0xc0 == 0x80)
+                {
                     return Err(ReverseQueryError::Utf8Boundary);
                 }
             }
@@ -204,8 +210,8 @@ impl SpatialLink {
                 AssociationRelation::LexicalAnchor => 7,
                 AssociationRelation::Omission => 8,
                 AssociationRelation::Cause => 9,
-                AssociationRelation::RangeDependency(role) => 10 + role.index(),
-                AssociationRelation::ColorDependency(role) => 14 + role.index(),
+                AssociationRelation::RangeDependency(role) => 10usize.wrapping_add(role.index()),
+                AssociationRelation::ColorDependency(role) => 14usize.wrapping_add(role.index()),
             },
             self.start,
             self.end,
@@ -314,7 +320,8 @@ impl SpatialIndex {
             payload_write::<Option<SpatialEntry>>(c, 1)?;
             *slot = Some(SpatialEntry { key, visits: mask });
             payload_write::<usize>(c, 1)?;
-            self.count += 1;
+            // One entry per occupied slot, so the count is below the slot count.
+            self.count = self.count.saturating_add(1);
             Ok((true, true))
         }
     }
@@ -327,7 +334,11 @@ impl SpatialIndex {
             WorkCategory::InspectByte,
             mem::size_of::<SpatialLink>() as u64,
         )?;
-        let mut index = key.hash() % slots.len();
+        let length = slots.len();
+        let mut index = key
+            .hash()
+            .checked_rem(length)
+            .ok_or_else(|| latch_registry_row(c))?;
         loop {
             let slot = slots.get_mut(index, c)?.ok_or(SessionError::WrongToken)?;
             c.charge(
@@ -337,7 +348,10 @@ impl SpatialIndex {
             if slot.is_none() || slot.as_ref().is_some_and(|entry| entry.key == key) {
                 return Ok(index);
             }
-            index = (index + 1) % slots.len();
+            index = index
+                .saturating_add(1)
+                .checked_rem(length)
+                .ok_or_else(|| latch_registry_row(c))?;
         }
     }
 }
@@ -420,11 +434,14 @@ impl ParseEvidence {
                     )?;
                     let operands = match computation {
                         InputValueComputation::Range(range) => {
-                            range.operands.map(RangeOperand::edge)
+                            range.operands.map(RangeOperand::edge).into_array()
                         }
-                        InputValueComputation::Color(color) => {
-                            [color.operands[0], color.operands[1], None, None]
-                        }
+                        InputValueComputation::Color(color) => [
+                            color.operands.copy(ColorOperandRole::Alpha),
+                            color.operands.copy(ColorOperandRole::Colorspace),
+                            None,
+                            None,
+                        ],
                     };
                     for edge in operands {
                         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -460,18 +477,20 @@ impl ParseEvidence {
                     end: row.end,
                     historical: false,
                 };
-                index += 1;
+                index = next_cursor(index);
                 // project_field emits each actual field contiguously. Group and
                 // destination qualification remain distinct from atom boundaries.
                 if root.group.is_some() {
                     while index < self.native.native_rows {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        let next = &self
+                        let next = self
                             .native
                             .projection
                             .as_ref()
                             .ok_or(SessionError::WrongToken)?
-                            .as_slice()[index];
+                            .as_slice()
+                            .get(index)
+                            .ok_or_else(|| latch_registry_row(c))?;
                         c.charge(
                             WorkCategory::InspectByte,
                             mem::size_of::<NativeAssociation>() as u64,
@@ -484,7 +503,7 @@ impl ParseEvidence {
                         }
                         payload_write::<usize>(c, 1)?;
                         root.end = next.end;
-                        index += 1;
+                        index = next_cursor(index);
                     }
                 }
                 self.validate_spatial_link(c, root)?;
@@ -661,7 +680,13 @@ impl ParseEvidence {
                     rows.try_push(c, row)?;
                 }
                 c.charge(WorkCategory::RecordVisit, 1)?;
-                let cause = &self.native.causes.as_slice()[link.cause];
+                // `validate_spatial_link` named this cause above.
+                let cause = self
+                    .native
+                    .causes
+                    .as_slice()
+                    .get(link.cause)
+                    .ok_or_else(|| latch_registry_row(c))?;
                 payload_write::<(ConstructionOperation, [Option<usize>; 4])>(c, 1)?;
                 let (operation, original, incoming, original_cause, trigger) = (
                     cause.operation,
@@ -679,7 +704,7 @@ impl ParseEvidence {
                         RangeOperandRole::ValueContent,
                     ] {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        if let Some(edge) = range.operands[role.index()].edge() {
+                        if let Some(edge) = range.operands.get(role).edge() {
                             self.push_spatial_group(
                                 c,
                                 &mut pending,
@@ -695,7 +720,7 @@ impl ParseEvidence {
                     payload_write::<ColorComputation>(c, 1)?;
                     for role in [ColorOperandRole::Alpha, ColorOperandRole::Colorspace] {
                         c.charge(WorkCategory::RecordVisit, 1)?;
-                        if let Some(edge) = color.operands[role.index()] {
+                        if let Some(edge) = color.operands.copy(role) {
                             self.push_spatial_group(
                                 c,
                                 &mut pending,
@@ -710,7 +735,15 @@ impl ParseEvidence {
                 let body = if let Some(group) = link.group {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     payload_write::<GroupBody>(c, 1)?;
-                    Some(self.native.groups.as_slice()[group].body)
+                    // `validate_spatial_link` named this group above.
+                    Some(
+                        self.native
+                            .groups
+                            .as_slice()
+                            .get(group)
+                            .ok_or_else(|| latch_registry_row(c))?
+                            .body,
+                    )
                 } else {
                     None
                 };
@@ -766,7 +799,7 @@ impl ParseEvidence {
                         c.charge(WorkCategory::RecordVisit, 2)?;
                         c.charge(
                             WorkCategory::InspectByte,
-                            (2 * mem::size_of::<usize>()) as u64,
+                            const { (2 * mem::size_of::<usize>()) as u64 },
                         )?;
                         let left_units = self
                             .native
@@ -782,14 +815,12 @@ impl ParseEvidence {
                             .get(right)
                             .ok_or(SessionError::WrongToken)?
                             .units;
-                        if left_units != offset
-                            || offset.checked_add(right_units)
-                                != Some(
-                                    self.native.groups.as_slice()
-                                        [link.group.ok_or(SessionError::WrongToken)?]
-                                    .units,
-                                )
-                        {
+                        let total = link
+                            .group
+                            .and_then(|group| self.native.groups.as_slice().get(group))
+                            .ok_or_else(|| latch_registry_row(c))?
+                            .units;
+                        if left_units != offset || offset.checked_add(right_units) != Some(total) {
                             return Err(SessionError::WrongToken);
                         }
                         let middle = if link.historical {
@@ -902,8 +933,9 @@ impl ParseEvidence {
                 .as_slice()
                 .get(index)
                 .ok_or(SessionError::WrongToken)?;
+            // `start <= end` was checked above.
             if group.cause != link.cause
-                || (!link.historical && link.end - link.start != group.units)
+                || (!link.historical && link.end.checked_sub(link.start) != Some(group.units))
             {
                 return Err(SessionError::WrongToken);
             }
@@ -979,7 +1011,12 @@ impl ParseEvidence {
     pub(super) fn project_causes(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         for index in 0..self.native.causes.len() {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let cause = &self.native.causes.as_slice()[index];
+            let cause = self
+                .native
+                .causes
+                .as_slice()
+                .get(index)
+                .ok_or_else(|| latch_registry_row(c))?;
             if let Some(source) = &cause.source {
                 c.require_source_range(source)?;
             }
@@ -1007,6 +1044,62 @@ impl ParseEvidence {
                 .try_push(c, row)?;
         }
         Ok(())
+    }
+    /// Moves out what a published report keeps beside the evidence: the source
+    /// and the complete projection. `None`, with nothing moved, until the D1
+    /// projection and the lexical prefix are both complete.
+    pub(in crate::construction) fn take_published(
+        &mut self,
+    ) -> Option<(crate::HtmlSource, OwnedVec<NativeAssociation>)> {
+        if !self.native.projection_complete || self.native.lexical.end.is_none() {
+            return None;
+        }
+        let source = self.native.source.take()?;
+        let Some(rows) = self.native.projection.take() else {
+            self.native.source = Some(source);
+            return None;
+        };
+        Some((source, rows))
+    }
+    /// Puts back what [`Self::take_published`] moved out.
+    #[cfg(test)]
+    pub(in crate::construction) fn restore_published(
+        &mut self,
+        source: crate::HtmlSource,
+        rows: OwnedVec<NativeAssociation>,
+    ) {
+        self.native.source = Some(source);
+        self.native.projection = Some(rows);
+    }
+    /// The D1 inventory of a published report, whose complete projection and
+    /// source are held beside this evidence.
+    pub(in crate::construction) fn published_associations<'a>(
+        &'a self,
+        source: &'a crate::HtmlSource,
+        rows: &'a [NativeAssociation],
+    ) -> AssociationView<'a> {
+        AssociationView {
+            source,
+            rows,
+            causes: self.native.causes.as_slice(),
+            groups: self.native.groups.as_slice(),
+            occurrences: self.native.lexical.occurrences.as_slice(),
+            parts: self.native.lexical.parts.as_slice(),
+            omissions: self.native.lexical.omissions.as_slice(),
+        }
+    }
+    /// The history of a published report, whose source is held beside this
+    /// evidence.
+    pub(in crate::construction) fn published_history<'a>(
+        &'a self,
+        source: &'a crate::HtmlSource,
+    ) -> HistoryData<'a> {
+        HistoryData {
+            source,
+            origins: self.native.origins.as_slice(),
+            groups: self.native.groups.as_slice(),
+            causes: self.native.causes.as_slice(),
+        }
     }
     pub(crate) fn associations(&self) -> Result<AssociationView<'_>, SessionError> {
         if !self.native.projection_complete || self.native.lexical.end.is_none() {
@@ -1398,6 +1491,35 @@ mod tests {
             assert_eq!(c.usage().work(category), work.work(category));
         }
         assert_eq!(c.first_stop_usage(), Some(&first));
+        crate::parser::tree_builder::tests::assert_released(&c);
+    }
+
+    #[test]
+    fn lineage_over_more_native_rows_than_the_projection_holds_reports_the_registry_row() {
+        let registry_row =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        let source = crate::HtmlSource::utf8("A");
+        let mut c = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        let mut evidence = two_current_destinations(&mut c, &source);
+        // The second native row is gone, so the run of rows of the first one
+        // continues past the end of the projection.
+        evidence
+            .native
+            .projection
+            .as_mut()
+            .unwrap()
+            .try_pop(&mut c)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            evidence.project_lineage(&mut c),
+            Err(SessionError::Stop(registry_row))
+        );
+        assert_eq!(c.stop(), Some(registry_row));
+        evidence.release(&mut c).unwrap();
         crate::parser::tree_builder::tests::assert_released(&c);
     }
 

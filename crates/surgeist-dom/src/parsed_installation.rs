@@ -142,6 +142,10 @@ pub enum DomParsedHtmlInstallError {
     },
     NotCompletedOrdinaryReport,
     NotCompletedFragmentReport,
+    /// The report holds a reference to a record its own tables cannot resolve.
+    /// The report is not installed: a defect in the parser's qualification of
+    /// it must fail the installation, never change what is installed.
+    UnresolvedReport(surgeist_html_parser::HtmlParseUnresolvedReference),
     ForeignContext,
     CurrentPolicyUnavailable,
     CspProtocol(surgeist_html::HtmlCspProtocolError),
@@ -206,8 +210,15 @@ impl std::error::Error for DomParsedHtmlInstallError {
             Self::Target(error) => Some(error),
             Self::SourceLookup { error, .. } => Some(error),
             Self::CspProtocol(error) => Some(error),
+            Self::UnresolvedReport(error) => Some(error),
             _ => None,
         }
+    }
+}
+
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference> for DomParsedHtmlInstallError {
+    fn from(error: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::UnresolvedReport(error)
     }
 }
 

@@ -265,7 +265,10 @@ fn diagnostics(
     }
     let mut out = Vec::with_capacity(d.len());
     for i in 0..d.len() {
-        let (r, l) = d.retained_record(i).ok_or("diagnostic-lending")?;
+        let (r, l) = d
+            .retained_record(i)
+            .map_err(|_| "diagnostic-unresolved")?
+            .ok_or("diagnostic-lending")?;
         if !range(source, l.source_range()) {
             return Err("diagnostic-source-range");
         }
@@ -398,7 +401,10 @@ fn associations(report: &HtmlParseReport) -> std::result::Result<Vec<Association
     }
     let mut out = Vec::with_capacity(rows.len());
     for i in 0..rows.len() {
-        let r = rows.row(i).ok_or("association-lending")?;
+        let r = rows
+            .row(i)
+            .map_err(|_| "association-unresolved")?
+            .ok_or("association-lending")?;
         if r.source().is_some_and(|s| !range(report.source(), s)) || r.start() > r.end() {
             return Err("association-source-interval");
         }

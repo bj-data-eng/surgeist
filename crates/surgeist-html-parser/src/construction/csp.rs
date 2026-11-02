@@ -77,23 +77,36 @@ impl SessionStorage {
         f: impl FnOnce(&mut Self, &mut ParseControl, &mut State) -> Result<T, SessionError>,
     ) -> Result<T, SessionError> {
         let slot = self.csp_slot().ok_or(SessionError::WrongToken)?;
-        let RetainedPayload::CspState(value) = &mut self.payloads.values[slot] else {
-            unreachable!()
+        let RetainedPayload::CspState(value) = self.payloads.row_mut(c, slot)? else {
+            return Err(latch_registry_row(c));
         };
         let mut value = value.take().ok_or(SessionError::WrongToken)?;
         let result = f(self, c, &mut value);
-        value.account.settle(c);
+        let settled = value.account.settle(c);
+        let result = match (result, settled) {
+            (Ok(out), Ok(())) => Ok(out),
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(stop)) => Err(stop.into()),
+        };
         // Native temporaries have now actually dropped. Reconcile the receipt
         // to the complete graph still retained by original payloads.
         let result = result.and_then(|out| {
             self.reconcile_csp(c, &mut value)?;
             Ok(out)
         });
-        let RetainedPayload::CspState(original) = &mut self.payloads.values[slot] else {
-            unreachable!()
-        };
-        *original = Some(value);
-        result
+        match self.payloads.values.get_mut(slot) {
+            Some(RetainedPayload::CspState(original)) => {
+                *original = Some(value);
+                result
+            }
+            _ => {
+                // The state has no row left to return to: credit what it
+                // retained, as the registry's own release would have.
+                let invariant = latch_registry_row(c);
+                let _ = value.account.live.release(c);
+                Err(invariant)
+            }
+        }
     }
     fn reconcile_csp(&self, c: &mut ParseControl, state: &mut State) -> Result<(), SessionError> {
         let mut live = state
@@ -186,7 +199,7 @@ impl SessionStorage {
             .live
             .sub(live)
             .ok_or(SessionError::WrongToken)?;
-        retired.release(c);
+        retired.release(c)?;
         state.account.live = live;
         Ok(())
     }
@@ -198,8 +211,8 @@ impl SessionStorage {
         let Some(index) = self.csp_policy_slot(c, document)? else {
             return Ok(None);
         };
-        let RetainedPayload::CspPolicy(value) = &self.payloads.values[index] else {
-            unreachable!("qualified CSP policy")
+        let RetainedPayload::CspPolicy(value) = self.payloads.row(c, index)? else {
+            return Err(latch_registry_row(c));
         };
         Ok(value.value.as_ref())
     }
@@ -222,8 +235,14 @@ impl SessionStorage {
         }
         Ok(None)
     }
-    pub(super) fn csp_pending(&self) -> bool {
-        self.csp_slot().is_some_and(|slot|matches!(&self.payloads.values[slot],RetainedPayload::CspState(Some(v))if v.pending.is_some()))
+    pub(super) fn csp_pending(&self, c: &mut ParseControl) -> Result<bool, SessionError> {
+        let Some(slot) = self.csp_slot() else {
+            return Ok(false);
+        };
+        Ok(matches!(
+            self.payloads.row(c, slot)?,
+            RetainedPayload::CspState(Some(state)) if state.pending.is_some()
+        ))
     }
     pub(super) fn ensure_csp_policy(
         &mut self,
@@ -240,7 +259,7 @@ impl SessionStorage {
                 .ok_or(SessionError::WrongToken)?
                 .initial_document_with(&mut |a| state.account.admit(c, a))
                 .map_err(|e| protocol(c, e))?;
-            state.account.settle(c);
+            state.account.settle(c)?;
             if document == 0 {
                 payload_write::<Option<(HtmlCspPolicyId, HtmlCspPolicyRevision)>>(c, 1)?;
                 c.charge(WorkCategory::ProviderCall, 1)?;
@@ -335,7 +354,7 @@ impl SessionStorage {
             return Ok(true);
         };
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let RetainedPayload::CspState(Some(state)) = &self.payloads.values[index] else {
+        let RetainedPayload::CspState(Some(state)) = self.payloads.row(c, index)? else {
             return Err(SessionError::WrongToken);
         };
         Ok(state.initial_base
@@ -496,13 +515,14 @@ impl SessionStorage {
                     })
                     .map_err(|e| protocol(c, e.error))?;
                 let completion = publication.publish();
-                let RetainedPayload::CspPolicy(value) = &mut s.payloads.values[next_slot] else {
-                    unreachable!()
+                let RetainedPayload::CspPolicy(value) = s.payloads.row_mut(c, next_slot)? else {
+                    return Err(latch_registry_row(c));
                 };
                 value.value = Some(current);
-                let RetainedPayload::CspTransition(value) = &mut s.payloads.values[transition_slot]
+                let RetainedPayload::CspTransition(value) =
+                    s.payloads.row_mut(c, transition_slot)?
                 else {
-                    unreachable!()
+                    return Err(latch_registry_row(c));
                 };
                 value.value = Some(completion.into_parts());
                 s.meta_history_mut(doc)
@@ -516,5 +536,64 @@ impl SessionStorage {
             }
             result
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::construction::effects::tests::{graph, request};
+    use crate::construction::tests::storage_zero;
+
+    #[test]
+    fn a_meta_csp_state_row_replaced_during_its_use_reports_the_registry_row() {
+        let request = request("<body><div id=a>");
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let storage = session.active_mut().unwrap();
+        storage.prepare_payload_slot_owned(&mut c).unwrap();
+        let mut account = Account::default();
+        native_storage(&mut c, &mut account, size_of::<State>()).unwrap();
+        let slot = storage.payloads.values.len();
+        storage
+            .payloads
+            .values
+            .push(RetainedPayload::CspState(Some(Box::new(State {
+                owner: None,
+                account,
+                pending: None,
+                initial_base: false,
+                initial: None,
+                owner_usage: Storage::ZERO,
+            }))));
+        storage.csp_slot = Some(slot);
+        let result = storage.with_csp(&mut c, |this, _, _| {
+            this.payloads.values[slot] =
+                RetainedPayload::CspPolicy(Box::new(Policy { value: None }));
+            Ok(())
+        });
+        let invariant =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
+        assert_eq!(c.stop(), Some(invariant));
+        storage.csp_slot = None;
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+
+    #[test]
+    fn a_pending_query_with_a_state_slot_past_the_registry_reports_the_registry_row() {
+        let request = request("<body><div id=a>");
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let storage = session.active_mut().unwrap();
+        assert_eq!(storage.csp_pending(&mut c), Ok(false));
+        storage.csp_slot = Some(storage.payloads.values.len());
+        let result = storage.csp_pending(&mut c);
+        let invariant =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(result.err(), Some(SessionError::Stop(invariant)));
+        assert_eq!(c.stop(), Some(invariant));
+        storage.csp_slot = None;
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
     }
 }

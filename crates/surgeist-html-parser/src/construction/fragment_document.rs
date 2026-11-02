@@ -22,25 +22,50 @@ use history::FrozenHistory;
 /// Documents and independently created inert owners retain separate identities.
 /// All readers are fixed borrowed observations after bounded qualification.
 pub struct FragmentParserDocument<'a> {
-    storage: &'a FrozenStorage,
     source: &'a crate::HtmlSource,
     fragment: &'a FragmentContextStorage,
+    document: HtmlNode<'a>,
+    mode: HtmlDocumentMode,
+    completion: StandaloneDocumentState,
 }
 impl<'a> FragmentParserDocument<'a> {
-    pub(super) fn new(history: &'a FrozenHistory, source: &'a crate::HtmlSource) -> Option<Self> {
-        let storage = history.arena().storage.as_ref()?;
-        Some(Self {
-            storage,
+    /// The Document, its mode and its completion are read once, here, so the
+    /// readers cannot fail. The fault if the report holds no fragment context,
+    /// or no longer holds the Document or the completion row it was
+    /// qualified against.
+    pub(super) fn new(
+        history: &'a FrozenHistory,
+        source: &'a crate::HtmlSource,
+    ) -> Result<Self, read::UnresolvedReference> {
+        let fault = |kind| read::UnresolvedReference::new(kind);
+        let storage = history.storage();
+        let fragment = storage
+            .fragment
+            .as_ref()
+            .ok_or(fault(read::UnresolvedKind::Fragment))?;
+        let document = storage
+            .view
+            .node_at(0)
+            .ok_or(fault(read::UnresolvedKind::Node))?
+            .as_node();
+        let HtmlNodeKind::Document(mode) = document.kind() else {
+            return Err(fault(read::UnresolvedKind::Node));
+        };
+        let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
+            storage.payloads.values.get(fragment.completion)
+        else {
+            return Err(fault(read::UnresolvedKind::Fact));
+        };
+        Ok(Self {
             source,
-            fragment: storage.fragment.as_ref()?,
+            fragment,
+            document,
+            mode: *mode,
+            completion: *state,
         })
     }
     pub fn document(&self) -> HtmlNode<'a> {
-        self.storage
-            .view
-            .node_at(0)
-            .expect("qualified parser Document")
-            .as_node()
+        self.document
     }
     pub fn context(&self) -> &'a crate::HtmlFragmentContext {
         &self.fragment.context
@@ -49,18 +74,10 @@ impl<'a> FragmentParserDocument<'a> {
         self.source
     }
     pub fn mode(&self) -> HtmlDocumentMode {
-        let HtmlNodeKind::Document(mode) = self.document().kind() else {
-            unreachable!("qualified parser Document")
-        };
-        *mode
+        self.mode
     }
     pub fn completion(&self) -> StandaloneDocumentState {
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            self.storage.payloads.values[self.fragment.completion]
-        else {
-            unreachable!("qualified original completion slot")
-        };
-        state
+        self.completion
     }
     pub fn origin(&self) -> &'a context::FragmentParserOrigin {
         &self.fragment.origin
@@ -114,4 +131,54 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
     // and external producers. The identity and completion joins above select
     // that actual Document; no final-tree inference issues its creation proof.
     Ok(())
+}
+
+#[cfg(test)]
+pub(super) mod tests {
+    use crate::*;
+
+    /// A complete fragment report whose context element is a `div`.
+    pub(in crate::construction) fn fragment_report(literal: &str) -> HtmlParseReport {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder
+            .establish_document_template_facts(
+                &document,
+                HtmlDocumentClass::Html,
+                HtmlTemplateDocumentRole::Ordinary,
+                HtmlCaptureTemplateCacheInput::Absent,
+            )
+            .unwrap();
+        let div = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_root(&div).unwrap();
+        builder.establish_no_shadow_root(&div).unwrap();
+        let capture = builder.finish().unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap();
+        HtmlFragmentParseRequest::new(
+            HtmlSource::utf8(literal),
+            context,
+            crate::construction::tests::limits(),
+        )
+        .unwrap()
+        .parse()
+        .unwrap()
+    }
 }

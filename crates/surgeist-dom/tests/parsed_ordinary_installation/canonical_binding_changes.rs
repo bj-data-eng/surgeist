@@ -175,6 +175,7 @@ fn assert_historical_inputs(f: &Parsed) {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(observed, 1);

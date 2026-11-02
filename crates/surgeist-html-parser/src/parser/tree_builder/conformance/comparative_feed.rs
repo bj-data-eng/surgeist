@@ -284,7 +284,7 @@ fn ordinary_scalar_feeds_keep_independent_native_literals_and_complete_report_ar
             encode(&mut encoded, &actual);
             let rows = report.associations();
             for i in 0..rows.len() {
-                if let Some(s) = rows.row(i).unwrap().source() {
+                if let Some(s) = rows.row(i).unwrap().unwrap().source() {
                     assert_eq!(s.source(), report.source().identity());
                     assert!(s.end() <= report.source().len());
                 }

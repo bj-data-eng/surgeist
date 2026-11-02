@@ -288,6 +288,7 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
     let mut observed = false;
     loop {
         match cursor.advance() {
+            surgeist_html_parser::HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             surgeist_html_parser::HtmlParseMetadataStep::Record(row) => {
                 if let Some(link) = row.hyperlink() {
                     let surgeist_html_parser::HtmlParseMetadataDocument::Captured(actual) =
@@ -474,6 +475,7 @@ fn contextual_href_observation_requires_the_actual_canonical_bound_inputs() {
     let mut cursor = report.metadata();
     let source = loop {
         match cursor.advance() {
+            surgeist_html_parser::HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             surgeist_html_parser::HtmlParseMetadataStep::Record(row)
                 if row.hyperlink().is_some() =>
             {
@@ -889,6 +891,7 @@ fn unused_captured_base_graph_is_retained_and_charged_once_with_actual_spare_bac
             HtmlParseMetadataStep::Record(row) => assert!(row.document_base_facts().is_none()),
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     let captured_bytes = capture
@@ -1141,7 +1144,12 @@ fn contextual_disabled_script_prefix_and_style_keep_distinct_actual_parser_histo
         HtmlSource::utf8("<script>inert</script><style>a{}</style>"),
         true,
     );
-    let parser_source = report.fragment_parser_document().unwrap().document().id();
+    let parser_source = report
+        .fragment_parser_document()
+        .unwrap()
+        .unwrap()
+        .document()
+        .id();
     let original = dom
         .snapshot()
         .document(document)
@@ -1395,7 +1403,12 @@ fn contextual_inactive_img_retains_original_wait_then_native_update_advances_its
         HtmlImageSupport::Unavailable
     );
     let report = fragment_report(&capture, host, HtmlSource::utf8("<img src=x>"), false);
-    let auxiliary = report.fragment_parser_document().unwrap().document().id();
+    let auxiliary = report
+        .fragment_parser_document()
+        .unwrap()
+        .unwrap()
+        .document()
+        .id();
     let mut source_img = None;
     let mut cursor = report.metadata();
     loop {
@@ -1422,6 +1435,7 @@ fn contextual_inactive_img_retains_original_wait_then_native_update_advances_its
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     let source_img = source_img.unwrap();
@@ -1439,6 +1453,7 @@ fn contextual_inactive_img_retains_original_wait_then_native_update_advances_its
                 }
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => {}
         }
     }
@@ -1625,7 +1640,12 @@ fn contextual_all_modes_and_current_target_platform_remain_distinct_from_new_aux
             HtmlSource::utf8("<input><style>a{}</style><style>b{}</style>"),
             true,
         );
-        let parser = report.fragment_parser_document().unwrap().document().id();
+        let parser = report
+            .fragment_parser_document()
+            .unwrap()
+            .unwrap()
+            .document()
+            .id();
         let result = dom
             .install_parsed_html_fragment(report, &capture, limits(), &AtomicBool::new(false))
             .unwrap();
@@ -1840,7 +1860,7 @@ fn contextual_hosted_template_target_reuses_actual_inert_owner_without_overwriti
         .parse()
         .unwrap(),
     );
-    assert!(report.effects().unwrap().is_empty()); // actual existing inert owner reuse
+    assert!(report.effects().unwrap().unwrap().is_empty()); // actual existing inert owner reuse
     let installed = dom
         .install_parsed_html_fragment(report, &capture, limits(), &AtomicBool::new(false))
         .unwrap();
@@ -4236,7 +4256,12 @@ fn captured_fragment_dialogs_keep_target_state_and_auxiliary_identity_through_la
         ),
         false,
     );
-    let parser_document = report.fragment_parser_document().unwrap().document().id();
+    let parser_document = report
+        .fragment_parser_document()
+        .unwrap()
+        .unwrap()
+        .document()
+        .id();
     let source_root = report.fragment().unwrap().root().id();
     let installed = dom
         .install_parsed_html_fragment(report, &capture, limits(), &AtomicBool::new(false))
@@ -4413,6 +4438,7 @@ fn actual_selectedcontent_dialog_clone_has_distinct_original_metadata_and_curren
                 }
                 HtmlParseMetadataStep::Record(_) | HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(
@@ -4737,6 +4763,7 @@ fn parsed_input_image_history_transfers_never_entered_absent_empty_and_nonempty_
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         let (source, observed, coordinate, flags) = produced.unwrap();

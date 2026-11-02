@@ -32,6 +32,19 @@ impl StandaloneDocumentState {
     }
 }
 impl SessionStorage {
+    /// The completion row `completion_slot` found at `slot`. A row that is
+    /// gone or of another kind is an impossible registry state, latched as the
+    /// controller's first stop.
+    fn completion_state_mut(
+        &mut self,
+        c: &mut ParseControl,
+        slot: usize,
+    ) -> Result<&mut StandaloneDocumentState, SessionError> {
+        match self.payloads.row_mut(c, slot)? {
+            RetainedPayload::StandaloneDocumentCompletion { state, .. } => Ok(state),
+            _ => Err(latch_registry_row(c)),
+        }
+    }
     pub(super) fn completion_slot(&self, c: &mut ParseControl) -> Result<usize, SessionError> {
         self.require(c)?;
         self.completion_slot_during_effects(c)
@@ -144,12 +157,10 @@ impl ParserArenaSession {
             WorkCategory::CopyByte,
             mem::size_of::<StandaloneDocumentState>() as u64,
         )?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
-        Ok(state)
+        match storage.payloads.row(c, slot)? {
+            RetainedPayload::StandaloneDocumentCompletion { state, .. } => Ok(*state),
+            _ => Err(latch_registry_row(c)),
+        }
     }
     pub(crate) fn update_standalone_readiness(
         &mut self,
@@ -158,11 +169,7 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
         let slot = storage.completion_slot(c)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            &storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
+        let state = storage.completion_state_mut(c, slot)?;
         c.charge(
             WorkCategory::InspectByte,
             mem::size_of::<StandaloneDocumentState>() as u64,
@@ -178,11 +185,6 @@ impl ParserArenaSession {
             return Err(SessionError::CompletionIncomplete);
         }
         payload_write::<ConstructionReadiness>(c, 1)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            &mut storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
         state.readiness = readiness;
         Ok(())
     }
@@ -192,11 +194,7 @@ impl ParserArenaSession {
     ) -> Result<(), SessionError> {
         let storage = self.active_mut()?;
         let slot = storage.completion_slot(c)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
+        let state = storage.completion_state_mut(c, slot)?;
         c.charge(
             WorkCategory::InspectByte,
             mem::size_of::<StandaloneDocumentState>() as u64,
@@ -208,11 +206,6 @@ impl ParserArenaSession {
             return Err(SessionError::CompletionIncomplete);
         }
         payload_write::<bool>(c, 1)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            &mut storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
         state.ready_for_post_load_tasks = true;
         Ok(())
     }
@@ -228,9 +221,10 @@ impl ParserArenaSession {
         let storage = self.active()?;
         storage.require(c)?;
         storage.validate_completion_facts(c)?;
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
+        storage.payloads.check_aliases(
+            ConstructionView::Active(storage.construction.storage(c)?),
+            c,
+        )?;
         let state = self.standalone_document_state(c)?;
         if finished {
             storage.effects.require_freezable(c)?;
@@ -249,7 +243,7 @@ impl ParserArenaSession {
         &self,
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        if self.active()?.csp_pending() {
+        if self.active()?.csp_pending(c)? {
             return Err(SessionError::PendingIntrinsicWork);
         }
         let storage = self.active()?;
@@ -263,11 +257,7 @@ impl ParserArenaSession {
         self.require_standalone_effects_finished(c)?;
         let storage = self.active_mut()?;
         let slot = storage.completion_slot(c)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
+        let state = storage.completion_state_mut(c, slot)?;
         c.charge(
             WorkCategory::InspectByte,
             mem::size_of::<StandaloneDocumentState>() as u64,
@@ -279,11 +269,6 @@ impl ParserArenaSession {
             return Err(SessionError::CompletionIncomplete);
         }
         payload_write::<ConstructionCompletion>(c, 1)?;
-        let RetainedPayload::StandaloneDocumentCompletion { state, .. } =
-            &mut storage.payloads.values[slot]
-        else {
-            unreachable!("qualified completion slot")
-        };
         state.completion = ConstructionCompletion::Complete;
         Ok(())
     }
@@ -434,6 +419,29 @@ mod tests {
             Err(SessionError::NotDocument)
         );
         fragment.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn a_completion_slot_past_the_registry_or_naming_another_row_reports_the_registry_row() {
+        use crate::construction::effects::tests::{graph, request};
+        let request = request("<body><div id=a>");
+        let (mut c, mut session, _proof, _nodes) = graph(&request);
+        let storage = session.active_mut().unwrap();
+        let invariant =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        for slot in [storage.payloads.values.len(), 0] {
+            assert!(!matches!(
+                storage.payloads.values.get(slot),
+                Some(RetainedPayload::StandaloneDocumentCompletion { .. })
+            ));
+            assert_eq!(
+                storage.completion_state_mut(&mut c, slot).err(),
+                Some(SessionError::Stop(invariant))
+            );
+        }
+        assert_eq!(c.stop(), Some(invariant));
+        session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
     }
 }

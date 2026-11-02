@@ -107,14 +107,16 @@ fn template(report: &HtmlParseReport) -> (HtmlNode<'_>, HtmlNode<'_>) {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => panic!("actual parser template metadata"),
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
 }
 
 fn shadow(report: &HtmlParseReport) -> HtmlNode<'_> {
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     for index in 0..effects.len() {
-        if let Some(HtmlParseEffect::AttachShadow { contents, .. }) = effects.effect(index) {
+        if let Some(HtmlParseEffect::AttachShadow { contents, .. }) = effects.effect(index).unwrap()
+        {
             return report.fragment().unwrap().node(&contents.id()).unwrap();
         }
     }
@@ -156,14 +158,14 @@ fn assert_shadow_readback_source_and_native_alias(local_host: bool) {
         assert!(shadow.fragment_owner().is_none());
     }
     let mut effect_seen = false;
-    let effects = report.effects().unwrap();
+    let effects = report.effects().unwrap().unwrap();
     for index in 0..effects.len() {
         if let Some(HtmlParseEffect::AttachShadow {
             host,
             contents,
             source,
             ..
-        }) = effects.effect(index)
+        }) = effects.effect(index).unwrap()
         {
             effect_seen = true;
             assert_eq!(contents.id(), shadow.id());
@@ -197,7 +199,7 @@ fn assert_shadow_readback_source_and_native_alias(local_host: bool) {
     let rows = report.associations();
     let mut text_origin = false;
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         if let HtmlParseDestination::Field {
             node,
             field: HtmlParseField::Text,

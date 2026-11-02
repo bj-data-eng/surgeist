@@ -257,13 +257,16 @@ impl SessionStorage {
         new: bool,
     ) -> Result<(), SessionError> {
         c.charge(WorkCategory::ProviderCall, 1)?;
-        let operation = surgeist_html::dialog_attribute_operation(
+        // The owner answers an operation for exactly this null-namespace open
+        // attribute; anything else is an impossible registry state.
+        let Some(operation) = surgeist_html::dialog_attribute_operation(
             &Namespace::none(),
             KnownHtmlAttribute::Open,
             old,
             new,
-        )
-        .expect("actual exact null-namespace open change");
+        ) else {
+            return Err(latch_registry_row(c));
+        };
         self.dialog_hook(c, node, operation, None)
     }
     pub(super) fn dialog_tree_hook(

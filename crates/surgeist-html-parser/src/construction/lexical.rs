@@ -56,6 +56,13 @@ pub(crate) struct LexicalOccurrence {
     cause: usize,
     data_units: usize,
 }
+#[cfg(test)]
+impl LexicalOccurrence {
+    /// Names a cause the evidence does not hold.
+    pub(crate) fn corrupt_cause_for_test(&mut self) {
+        self.cause = usize::MAX;
+    }
+}
 impl LexicalOccurrence {
     pub(crate) fn cause(&self) -> usize {
         self.cause
@@ -125,7 +132,7 @@ impl LexicalStorage {
                 .capacity()
                 .checked_mul(mem::size_of::<T>())
                 .and_then(|bytes| u64::try_from(bytes).ok())
-                .ok_or_else(|| c.fail_invariant(Invariant::ReleaseUnderflow))
+                .ok_or_else(|| c.fail_invariant(Invariant::CapacityMismatch))
         }
         Ok([
             (self.occurrences.len() as u64, bytes(&self.occurrences, c)?),
@@ -158,7 +165,7 @@ impl ParseEvidence {
                 .as_ref()
                 .is_some_and(|source| point.end() != source.len())
         {
-            return Err(c.fail_invariant(Invariant::ForeignEvidence));
+            return Err(c.fail_invariant(Invariant::TokenizerState));
         }
         c.charge(
             WorkCategory::CopyByte,
@@ -240,12 +247,12 @@ impl ParseEvidence {
             )
             .map_err(|error| match error {
                 SessionError::Stop(stop) => stop,
-                _ => c.fail_invariant(Invariant::ForeignEvidence),
+                _ => c.fail_invariant(Invariant::RegistryRow),
             })?;
         let index = self.native.lexical.occurrences.len();
         payload_write::<LexicalOccurrence>(c, 1).map_err(|error| match error {
             SessionError::Stop(stop) => stop,
-            _ => c.fail_invariant(Invariant::ForeignEvidence),
+            _ => c.fail_invariant(Invariant::RegistryRow),
         })?;
         c.charge(WorkCategory::ProviderCall, 1)?;
         self.native.lexical.occurrences.reserve_geometric(c, 1)?;
@@ -280,18 +287,35 @@ impl ParseEvidence {
             WorkCategory::InspectByte,
             mem::size_of::<Weak<evidence::EvidenceIdentity>>() as u64,
         )?;
-        if reference.issuer.as_ptr() != Arc::as_ptr(&self.identity)
-            || self
-                .native
-                .lexical
-                .occurrences
-                .as_slice()
-                .get(reference.index)
-                .is_none()
-        {
+        if reference.issuer.as_ptr() != Arc::as_ptr(&self.identity) {
             return Err(c.fail_invariant(Invariant::ForeignEvidence));
         }
+        if self
+            .native
+            .lexical
+            .occurrences
+            .as_slice()
+            .get(reference.index)
+            .is_none()
+        {
+            return Err(c.fail_invariant(Invariant::RegistryRow));
+        }
         Ok(reference.index)
+    }
+    /// The occurrence a validated reference names. A position past the
+    /// occurrences cannot follow `require_lexical`; it is reported as the same
+    /// foreign-evidence stop.
+    fn lexical_occurrence(
+        &self,
+        c: &mut ParseControl,
+        index: usize,
+    ) -> Result<&LexicalOccurrence, ParseStop> {
+        self.native
+            .lexical
+            .occurrences
+            .as_slice()
+            .get(index)
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))
     }
     pub(crate) fn lexical_data_offset(
         &self,
@@ -301,7 +325,7 @@ impl ParseEvidence {
         let index = self.require_lexical(c, reference)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         c.charge(WorkCategory::InspectByte, mem::size_of::<usize>() as u64)?;
-        Ok(self.native.lexical.occurrences.as_slice()[index].data_units)
+        Ok(self.lexical_occurrence(c, index)?.data_units)
     }
     pub(crate) fn lexical_data_commit(
         &mut self,
@@ -312,12 +336,12 @@ impl ParseEvidence {
     ) -> Result<(), ParseStop> {
         let index = self.require_lexical(c, reference)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let occurrence = &self.native.lexical.occurrences.as_slice()[index];
+        let occurrence = self.lexical_occurrence(c, index)?;
         if occurrence.disposition != LexicalDisposition::Draft
             || occurrence.data_units != old
             || new < old
         {
-            return Err(c.fail_invariant(Invariant::ForeignEvidence));
+            return Err(c.fail_invariant(Invariant::TokenizerState));
         }
         c.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
         c.charge(WorkCategory::RecordWrite, 1)?;
@@ -325,7 +349,7 @@ impl ParseEvidence {
             .lexical
             .occurrences
             .get_mut(index, c)?
-            .expect("qualified data occurrence")
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?
             .data_units = new;
         Ok(())
     }
@@ -347,13 +371,13 @@ impl ParseEvidence {
             .occurrences
             .as_slice()
             .get(occurrence)
-            .ok_or_else(|| c.fail_invariant(Invariant::ForeignEvidence))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
         if record.disposition != LexicalDisposition::Draft
             || source.source() != record.source.source()
             || source.coordinates() != record.source.coordinates()
             || output.start > output.end
         {
-            return Err(c.fail_invariant(Invariant::ForeignEvidence));
+            return Err(c.fail_invariant(Invariant::TokenizerState));
         }
         if let Some(last) = self.native.lexical.parts.as_slice().last() {
             c.charge(WorkCategory::RecordVisit, 1)?;
@@ -403,13 +427,13 @@ impl ParseEvidence {
             .occurrences
             .as_slice()
             .get(occurrence)
-            .ok_or_else(|| c.fail_invariant(Invariant::ForeignEvidence))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
         if old.source.source() != source.source()
             || old.source.start() != source.start()
             || old.source.end() > source.end()
             || old.disposition != LexicalDisposition::Draft
         {
-            return Err(c.fail_invariant(Invariant::ForeignEvidence));
+            return Err(c.fail_invariant(Invariant::TokenizerState));
         }
         let cause_index = old.cause;
         // Acquire both actual mutable slots before any content update. A stop
@@ -418,19 +442,21 @@ impl ParseEvidence {
             .native
             .causes
             .get_mut(cause_index, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::ForeignEvidence))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
         let record = self
             .native
             .lexical
             .occurrences
             .get_mut(occurrence, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::ForeignEvidence))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
         c.charge(
             WorkCategory::CopyByte,
-            (mem::size_of::<Option<crate::HtmlSourceRange>>()
-                + mem::size_of::<crate::HtmlSourceRange>()
-                + mem::size_of::<LexicalKind>()
-                + mem::size_of::<LexicalDisposition>()) as u64,
+            const {
+                (mem::size_of::<Option<crate::HtmlSourceRange>>()
+                    + mem::size_of::<crate::HtmlSourceRange>()
+                    + mem::size_of::<LexicalKind>()
+                    + mem::size_of::<LexicalDisposition>()) as u64
+            },
         )?;
         c.charge(WorkCategory::RecordWrite, 2)?;
         c.charge(WorkCategory::ProviderCall, 2)?;
@@ -458,11 +484,11 @@ impl ParseEvidence {
             return Ok(());
         };
         let index = self.require_lexical(c, reference)?;
-        let record = &self.native.lexical.occurrences.as_slice()[index];
+        let record = self.lexical_occurrence(c, index)?;
         if record.kind != LexicalKind::Attribute
             || record.disposition != LexicalDisposition::StoredAttribute
         {
-            return Err(c.fail_invariant(Invariant::ForeignEvidence));
+            return Err(c.fail_invariant(Invariant::TokenizerState));
         }
         c.charge(WorkCategory::RecordWrite, 1)?;
         c.charge(
@@ -473,7 +499,7 @@ impl ParseEvidence {
             .lexical
             .occurrences
             .get_mut(index, c)?
-            .expect("qualified attribute")
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?
             .disposition = LexicalDisposition::AlreadyPresentAttribute;
         Ok(())
     }
@@ -487,7 +513,7 @@ impl ParseEvidence {
             return Ok(());
         };
         let index = self.require_lexical(c, reference)?;
-        let record = &self.native.lexical.occurrences.as_slice()[index];
+        let record = self.lexical_occurrence(c, index)?;
         if record.disposition == LexicalDisposition::Emitted {
             c.charge(WorkCategory::RecordWrite, 1)?;
             c.charge(
@@ -498,7 +524,7 @@ impl ParseEvidence {
                 .lexical
                 .occurrences
                 .get_mut(index, c)?
-                .expect("qualified occurrence")
+                .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?
                 .disposition = if ignored {
                 LexicalDisposition::Ignored
             } else {
@@ -536,9 +562,15 @@ impl ParseEvidence {
                 .ok_or(SessionError::WrongToken)?
                 .try_push(c, row)?;
         }
-        for index in 0..self.native.lexical.occurrences.len() {
+        for (index, occurrence) in self
+            .native
+            .lexical
+            .occurrences
+            .as_slice()
+            .iter()
+            .enumerate()
+        {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let occurrence = &self.native.lexical.occurrences.as_slice()[index];
             if matches!(
                 occurrence.disposition,
                 LexicalDisposition::Draft | LexicalDisposition::Emitted
@@ -572,9 +604,8 @@ impl ParseEvidence {
                 .ok_or(SessionError::WrongToken)?
                 .try_push(c, row)?;
         }
-        for index in 0..self.native.lexical.parts.len() {
+        for (index, part) in self.native.lexical.parts.as_slice().iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 2)?;
-            let part = &self.native.lexical.parts.as_slice()[index];
             let occurrence = self
                 .native
                 .lexical
@@ -615,9 +646,8 @@ impl ParseEvidence {
                 .ok_or(SessionError::WrongToken)?
                 .try_push(c, row)?;
         }
-        for index in 0..self.native.lexical.omissions.len() {
+        for (index, omission) in self.native.lexical.omissions.as_slice().iter().enumerate() {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let omission = &self.native.lexical.omissions.as_slice()[index];
             c.require_source_range(&omission.source)?;
             payload_write::<NativeAssociation>(c, 1)?;
             c.charge(WorkCategory::ProviderCall, 1)?;
@@ -676,14 +706,14 @@ mod tests {
                 crate::parser::tree_builder::tests::assert_released(&foreign);
             } else {
                 let expected = match case {
-                    1 => ParseStop::InternalInvariant(Invariant::ForeignEvidence),
+                    1 => ParseStop::InternalInvariant(Invariant::TokenizerState),
                     2 => {
                         cancellation.cancel();
                         ParseStop::Cancelled
                     }
                     3 => {
                         evidence.lexical_eof(&mut c, &point).unwrap();
-                        ParseStop::InternalInvariant(Invariant::ForeignEvidence)
+                        ParseStop::InternalInvariant(Invariant::TokenizerState)
                     }
                     _ => unreachable!(),
                 };
@@ -704,6 +734,56 @@ mod tests {
                 );
             }
             assert!(evidence.associations().is_err());
+            evidence.release(&mut c).unwrap();
+            crate::parser::tree_builder::tests::assert_released(&c);
+        }
+    }
+
+    /// A handle of the right issuer that names an occurrence the evidence does
+    /// not hold is a row that internal state names and cannot find; a part
+    /// whose output range is reversed contradicts the sequencing of the
+    /// tokenizer that records it. Neither is foreign evidence.
+    #[test]
+    fn lexical_row_and_sequencing_faults_are_not_foreign_evidence() {
+        for reversed_range in [false, true] {
+            let source = HtmlSource::utf8("<x>");
+            let mut c = ParseControl::new(
+                crate::construction::tests::limits(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+            let mut reference = evidence
+                .lexical_begin(
+                    &mut c,
+                    &source.range(0, 1).unwrap(),
+                    LexicalKind::Markup,
+                    None,
+                )
+                .unwrap();
+            let expected = if reversed_range {
+                let reversed = std::ops::Range { start: 1, end: 0 };
+                let stop = evidence
+                    .lexical_part(
+                        &mut c,
+                        &reference,
+                        LexicalRole::Syntax,
+                        &source.range(0, 1).unwrap(),
+                        reversed,
+                        None,
+                    )
+                    .unwrap_err();
+                (stop, Invariant::TokenizerState)
+            } else {
+                let valid = reference.index;
+                reference.index = evidence.native.lexical.occurrences.len();
+                let stop = evidence.lexical_data_offset(&mut c, &reference);
+                reference.index = valid;
+                (stop.unwrap_err(), Invariant::RegistryRow)
+            };
+            assert_eq!(expected.0, ParseStop::InternalInvariant(expected.1));
+            assert_eq!(c.stop(), Some(expected.0));
+            drop(reference);
             evidence.release(&mut c).unwrap();
             crate::parser::tree_builder::tests::assert_released(&c);
         }

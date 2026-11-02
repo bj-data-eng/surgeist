@@ -43,17 +43,62 @@ impl ImmutableParseReport {
             .resource(crate::HtmlParseResource::ManagedUtf16Units)
             .current()
     }
+    /// The retained storage, for tests that corrupt what a report holds.
+    #[cfg(test)]
+    pub(crate) fn storage_mut(&mut self) -> &mut ReportStorage {
+        &mut self.storage
+    }
     /// Original pending operations and sealed per-Document capture qualification.
     /// This does not execute or certify any CSSOM association.
     pub fn pending_associations(&self) -> crate::construction::pending_association::Cursor<'_> {
         crate::construction::pending_association::Cursor::new(self.storage.history())
     }
-    /// Refusal retains the same source-owning native seal. Generic native-only
-    /// completion cannot supply the actual D1/history proof required here.
+    /// The slot form that tests drive: the seal stays in its slot while the
+    /// report is committed, so even an unwind during the commit leaves it there.
+    #[cfg(test)]
     pub(crate) fn take_document(
         input: &mut Option<SealedOrdinaryConstruction>,
     ) -> Result<Self, SessionError> {
-        let sealed = input.as_mut().ok_or(SessionError::Consumed)?;
+        let (state, storage, usage) =
+            Self::commit_document(input.as_mut().ok_or(SessionError::Consumed)?)?;
+        let sealed = input.take().ok_or(SessionError::Consumed)?;
+        Ok(Self {
+            context: ReportContext::Document {
+                request: sealed.request,
+                state,
+            },
+            storage,
+            usage,
+        })
+    }
+    /// A refusal hands back the same source-owning seal.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn publish_document(
+        mut sealed: SealedOrdinaryConstruction,
+    ) -> Result<Self, (SessionError, SealedOrdinaryConstruction)> {
+        match Self::commit_document(&mut sealed) {
+            Ok((state, storage, usage)) => {
+                // The remaining source binding and execution control are consumed
+                // here; no useful work, release/refund or cancellation check
+                // follows snapshot.
+                Ok(Self {
+                    context: ReportContext::Document {
+                        request: sealed.request,
+                        state,
+                    },
+                    storage,
+                    usage,
+                })
+            }
+            Err(error) => Err((error, sealed)),
+        }
+    }
+    fn commit_document(
+        sealed: &mut SealedOrdinaryConstruction,
+    ) -> Result<(StandaloneDocumentState, ReportStorage, ParseUsage), SessionError> {
         sealed
             .parts
             .arena
@@ -77,36 +122,60 @@ impl ImmutableParseReport {
         )?;
         let c = storage.control();
         super::write(
-            size_of::<Self>()
-                + size_of::<Option<SealedOrdinaryConstruction>>()
-                + size_of::<SealedOrdinaryConstruction>()
-                + size_of::<ReportContext>()
-                + size_of::<ParseUsage>(),
+            const {
+                size_of::<Self>()
+                    + size_of::<Option<SealedOrdinaryConstruction>>()
+                    + size_of::<SealedOrdinaryConstruction>()
+                    + size_of::<ReportContext>()
+                    + size_of::<ParseUsage>()
+            },
             5,
             c,
         )?;
         c.checkpoint()?;
-        let mut storage = storage.commit();
+        let mut storage = storage
+            .commit()
+            .map_err(|fault| fault.latch(&mut sealed.parts.control))?;
         let c = &mut sealed.parts.control;
-        storage.release_execution_inputs(c);
+        storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        let sealed = input.take().expect("qualified original document seal");
-        // The remaining source binding and execution control are consumed here;
-        // no useful work, release/refund or cancellation check follows snapshot.
+        Ok((state, storage, usage))
+    }
+    /// The slot form that tests drive, as for the Document seal.
+    #[cfg(test)]
+    pub(crate) fn take_fragment(
+        input: &mut Option<SealedFragmentConstruction>,
+    ) -> Result<Self, SessionError> {
+        let (storage, usage) =
+            Self::commit_fragment(input.as_mut().ok_or(SessionError::Consumed)?)?;
+        let sealed = input.take().ok_or(SessionError::Consumed)?;
         Ok(Self {
-            context: ReportContext::Document {
-                request: sealed.request,
-                state,
-            },
+            context: ReportContext::Fragment(sealed.request),
             storage,
             usage,
         })
     }
-    pub(crate) fn take_fragment(
-        input: &mut Option<SealedFragmentConstruction>,
-    ) -> Result<Self, SessionError> {
-        let sealed = input.as_mut().ok_or(SessionError::Consumed)?;
+    /// A refusal hands back the same source-owning seal.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn publish_fragment(
+        mut sealed: SealedFragmentConstruction,
+    ) -> Result<Self, (SessionError, SealedFragmentConstruction)> {
+        match Self::commit_fragment(&mut sealed) {
+            Ok((storage, usage)) => Ok(Self {
+                context: ReportContext::Fragment(sealed.request),
+                storage,
+                usage,
+            }),
+            Err(error) => Err((error, sealed)),
+        }
+    }
+    fn commit_fragment(
+        sealed: &mut SealedFragmentConstruction,
+    ) -> Result<(ReportStorage, ParseUsage), SessionError> {
         sealed
             .parts
             .arena
@@ -124,26 +193,25 @@ impl ImmutableParseReport {
         )?;
         let c = storage.control();
         super::write(
-            size_of::<Self>()
-                + size_of::<Option<SealedFragmentConstruction>>()
-                + size_of::<SealedFragmentConstruction>()
-                + size_of::<ReportContext>()
-                + size_of::<ParseUsage>(),
+            const {
+                size_of::<Self>()
+                    + size_of::<Option<SealedFragmentConstruction>>()
+                    + size_of::<SealedFragmentConstruction>()
+                    + size_of::<ReportContext>()
+                    + size_of::<ParseUsage>()
+            },
             5,
             c,
         )?;
         c.checkpoint()?;
-        let mut storage = storage.commit();
+        let mut storage = storage
+            .commit()
+            .map_err(|fault| fault.latch(&mut sealed.parts.control))?;
         let c = &mut sealed.parts.control;
-        storage.release_execution_inputs(c);
+        storage.release_execution_inputs(c)?;
         sealed.request.release_associated_inputs();
         let usage = c.usage().clone();
-        let sealed = input.take().expect("qualified original fragment seal");
-        Ok(Self {
-            context: ReportContext::Fragment(sealed.request),
-            storage,
-            usage,
-        })
+        Ok((storage, usage))
     }
     pub fn document_base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {
         match &self.context {
@@ -182,12 +250,21 @@ impl ImmutableParseReport {
         }
     }
     /// Actual source-created auxiliary parser Document, qualified by this
-    /// completed contextual report. Ordinary reports cannot issue this lender.
+    /// completed contextual report. Ordinary reports cannot issue this lender,
+    /// and answer `None`. A contextual report that cannot present its Document
+    /// is a fault.
     pub fn fragment_parser_document(
         &self,
-    ) -> Option<crate::construction::fragment_document::FragmentParserDocument<'_>> {
-        self.context()?;
-        self.storage.fragment_parser_document(self.source())
+    ) -> Result<
+        Option<crate::construction::fragment_document::FragmentParserDocument<'_>>,
+        crate::construction::read::UnresolvedReference,
+    > {
+        if self.context().is_none() {
+            return Ok(None);
+        }
+        self.storage
+            .fragment_parser_document(self.source())
+            .map(Some)
     }
     pub fn document_state(&self) -> Option<StandaloneDocumentState> {
         match &self.context {
@@ -211,18 +288,7 @@ impl ImmutableParseReport {
     pub fn image_support(&self) -> crate::HtmlImageSupport {
         match &self.context {
             ReportContext::Document { request, .. } => request.image_support(),
-            ReportContext::Fragment(request) => match request
-                .context()
-                .capture()
-                .node(request.context().target_document().subject())
-                .expect("checked target document")
-                .kind()
-            {
-                crate::HtmlCapturedNodeKind::Document(facts) => {
-                    facts.parser_creation_image_support()
-                }
-                _ => unreachable!("checked target document"),
-            },
+            ReportContext::Fragment(request) => request.image_support(),
         }
     }
     pub fn allow_declarative_shadow_roots(&self) -> bool {
@@ -241,17 +307,23 @@ impl ImmutableParseReport {
         self.storage.metadata()
     }
     pub fn diagnostics(&self) -> crate::construction::evidence::DiagnosticEvidenceView<'_> {
-        self.storage
-            .evidence()
-            .expect("qualified report evidence")
-            .diagnostics()
+        self.storage.evidence().diagnostics()
     }
-    pub fn effects(&self) -> Option<crate::construction::context::FrozenFragmentEffects<'_>> {
-        match &self.context {
-            ReportContext::Fragment(_) => {
-                Some(self.storage.effects().expect("qualified report effects"))
+    pub fn effects(
+        &self,
+    ) -> Result<
+        Option<crate::construction::context::FrozenFragmentEffects<'_>>,
+        crate::construction::read::UnresolvedReference,
+    > {
+        match (self.storage.effects(), &self.context) {
+            // A contextual report holds its fragment storage, as
+            // `fragment_parser_document` also requires.
+            (None, ReportContext::Fragment(_)) => {
+                Err(crate::construction::read::UnresolvedReference::new(
+                    crate::construction::read::UnresolvedKind::Fragment,
+                ))
             }
-            _ => None,
+            (effects, _) => Ok(effects),
         }
     }
 }
@@ -366,6 +438,7 @@ mod tests {
         let mut cursor = report.metadata();
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     for (index, id) in details.iter().enumerate() {
                         if record.node().id() == *id {
@@ -506,7 +579,7 @@ mod tests {
             matches!(output.node(&children[0]).unwrap().kind(), HtmlNodeKind::Element(e) if e.name().local_name().code_units() == [116,101,109,112,108,97,116,101])
         );
         assert_eq!(output.node(&children[0]).unwrap().children().len(), 0);
-        let effects = report.effects().unwrap();
+        let effects = report.effects().unwrap().unwrap();
         // The attachment uses the captured target document directly. Only the
         // second template's ordinary fallback allocates that document's cache.
         assert_eq!(effects.len(), 2);
@@ -540,12 +613,13 @@ mod tests {
         assert!(
             matches!(output.node(&text).unwrap().kind(), HtmlNodeKind::Text(t) if t.code_units() == [65])
         );
-        assert!(report.history().associations().unwrap().len() > 0);
+        assert!(report.history().associations().len() > 0);
         let mut metadata = report.metadata();
         let mut captured_documents = 0;
         loop {
             use crate::construction::report::{MetadataDocument, MetadataStep};
             match metadata.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(MetadataDocument::Captured(document)) = record.node_document() {
                         assert!(matches!(document.kind(), HtmlCapturedNodeKind::Document(_)));
@@ -580,7 +654,7 @@ mod tests {
         assert_eq!(report.source().as_utf8(), Some(literal));
         assert!(report.fragment().is_none());
         assert!(report.context().is_none());
-        assert!(report.effects().is_none());
+        assert!(report.effects().unwrap().is_none());
         assert_eq!(
             report.document().unwrap().mode(),
             crate::HtmlDocumentMode::NoQuirks
@@ -599,12 +673,13 @@ mod tests {
                 (3, "#Z")
             ])
         );
-        assert!(report.history().associations().unwrap().len() > 0);
+        assert!(report.history().associations().len() > 0);
         let mut cursor = report.metadata();
         let mut values = Vec::new();
         let mut input_source = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some((state, raw)) = record.input() {
                         assert_eq!(state.flags.input_type(), surgeist_html::HtmlInputType::Text);
@@ -653,6 +728,92 @@ mod tests {
         super::super::tests::assert_released(&kept.parts.control);
     }
 
+    /// Publication refuses the seal with the registry-row stop latched first,
+    /// keeps the seal, and its release drains every resource.
+    fn assert_unpublishable(
+        literal: &str,
+        corrupt: impl FnOnce(&mut crate::construction::FrozenArena) -> bool,
+    ) {
+        let registry_row = crate::parser::control::ParseStop::InternalInvariant(
+            crate::parser::control::Invariant::RegistryRow,
+        );
+        let mut input = Some(ordinary(literal, true));
+        assert!(corrupt(
+            input.as_mut().unwrap().parts.arena.as_mut().unwrap()
+        ));
+        assert_eq!(
+            ImmutableParseReport::take_document(&mut input).err(),
+            Some(SessionError::Stop(registry_row))
+        );
+        let kept = input.as_mut().unwrap();
+        assert_eq!(kept.parts.control.stop(), Some(registry_row));
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
+    #[test]
+    fn an_occurrence_naming_a_first_base_the_report_lacks_is_not_published() {
+        assert_unpublishable(
+            "<!doctype html><style>b{}</style>",
+            crate::construction::FrozenArena::corrupt_first_base_for_test,
+        );
+    }
+
+    #[test]
+    fn a_metadata_row_left_bound_to_no_node_is_not_published() {
+        // A row of some kinds is also refused by a check of its own, so the
+        // refusal is required, not which check makes it.
+        for kind in crate::construction::report::UnboundRow::ALL {
+            let mut input = Some(ordinary(kind.literal(), true));
+            assert!(
+                input
+                    .as_mut()
+                    .unwrap()
+                    .parts
+                    .arena
+                    .as_mut()
+                    .unwrap()
+                    .unbind_row_for_test(kind)
+            );
+            assert!(
+                ImmutableParseReport::take_document(&mut input).is_err(),
+                "{kind:?}"
+            );
+            let kept = input.as_mut().expect("the seal is kept");
+            kept.release().unwrap();
+            super::super::tests::assert_released(&kept.parts.control);
+        }
+    }
+
+    #[test]
+    fn a_shadow_row_left_bound_to_no_node_is_not_published() {
+        // Shadow rows exist only in a contextual report that allows them.
+        let kind = crate::construction::report::UnboundRow::Shadow;
+        let mut input = Some(fragment(kind.literal(), true));
+        assert!(
+            input
+                .as_mut()
+                .unwrap()
+                .parts
+                .arena
+                .as_mut()
+                .unwrap()
+                .unbind_row_for_test(kind)
+        );
+        assert!(ImmutableParseReport::take_fragment(&mut input).is_err());
+        let kept = input.as_mut().expect("the seal is kept");
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
+    #[test]
+    fn a_document_naming_a_policy_row_the_report_lacks_is_not_published() {
+        assert_unpublishable(
+            "<!doctype html><p>a",
+            crate::construction::FrozenArena::corrupt_meta_policy_for_test,
+        );
+    }
+
     #[test]
     fn metadata_inventory_borrows_actual_family_and_document_facts_one_slot_at_a_time() {
         use crate::construction::report::{MetadataDocument, MetadataStep};
@@ -671,6 +832,7 @@ mod tests {
         let mut saved_creation = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(output) = record.output() {
                         assert_eq!(
@@ -756,6 +918,7 @@ mod tests {
         let mut script = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some((state, Some(value))) = record.creation() {
                         assert_eq!(state, crate::HtmlCustomElementState::Undefined);
@@ -1036,7 +1199,7 @@ mod tests {
             assert!(kept.parts.arena.is_none());
             let diagnostics = kept.parts.diagnostics().unwrap();
             assert_eq!(diagnostics.len(), 1);
-            let (diagnostic, location) = diagnostics.retained_record(0).unwrap();
+            let (diagnostic, location) = diagnostics.retained_record(0).unwrap().unwrap();
             assert_eq!(
                 diagnostic.kind(),
                 crate::HtmlParseDiagnosticKind::Prologue(
@@ -1079,6 +1242,7 @@ mod tests {
         let mut found = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(script) = record.script() {
                         assert!(script.flags.already_started() && !script.flags.force_async());
@@ -1315,6 +1479,7 @@ mod tests {
         let mut inert = false;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(count) = record.pi_attribute_count() {
                         assert_eq!(count, 1);
@@ -1391,6 +1556,7 @@ mod tests {
         let mut inapplicable = 0;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if record.select().is_some() {
                         select = Some(record.node().id());
@@ -1451,6 +1617,9 @@ mod tests {
                 let mut nonnull = 0;
                 loop {
                     match cursor.advance() {
+                        crate::construction::report::MetadataStep::Fault(fault) => {
+                            panic!("{fault}")
+                        }
                         crate::construction::report::MetadataStep::Record(record) => {
                             if record
                                 .option_nearest_select()
@@ -1517,6 +1686,7 @@ mod tests {
         let mut null = 0;
         loop {
             match cursor.advance() {
+                MetadataStep::Fault(fault) => panic!("{fault}"),
                 MetadataStep::Record(record) => {
                     if let Some(cache) = record.option_nearest_select() {
                         assert!(cache.is_none());

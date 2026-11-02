@@ -37,6 +37,7 @@ fn option_selectedness(body: &str) -> Vec<(String, bool)> {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     // Metadata is in registry order and the text is unique per option.

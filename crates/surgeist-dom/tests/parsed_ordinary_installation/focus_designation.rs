@@ -175,8 +175,13 @@ fn focused_designation_contextual_auxiliary_is_qualified_and_captured_owners_are
             .parse()
             .unwrap(),
         );
-        assert!(report.effects().unwrap().is_empty());
-        let auxiliary = report.fragment_parser_document().unwrap().document().id();
+        assert!(report.effects().unwrap().unwrap().is_empty());
+        let auxiliary = report
+            .fragment_parser_document()
+            .unwrap()
+            .unwrap()
+            .document()
+            .id();
         let installed = dom
             .install_parsed_html_fragment(report, &captured, limits(), &AtomicBool::new(false))
             .unwrap();
@@ -328,6 +333,7 @@ fn controlled_original_focus_candidate() -> (Dom, DocumentId, NodeId, NodeId) {
     let mut documents = 0;
     loop {
         match cursor.advance() {
+            HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
             HtmlParsePendingAssociationStep::Document(row) => {
                 documents += 1;
                 assert_eq!(

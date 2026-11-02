@@ -296,15 +296,9 @@ impl SessionStorage {
             .map_err(|_| latch_registry_row(c))?;
         self.edit_attributes(c, node, container, stage, 1, false)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        let HtmlNodeKind::Element(record) = &self
-            .construction
-            .node_at(node)
-            .ok_or_else(|| latch_registry_row(c))?
-            .kind()
-        else {
-            unreachable!()
-        };
-        let start = record.attributes().len();
+        let start = element_record(&self.construction, c, node)?
+            .attributes()
+            .len();
         self.begin_attribute_transfer(c, stage, container, start)?;
         self.finish_attribute_merge(
             c,
@@ -360,7 +354,10 @@ impl SessionStorage {
                     };
                     if let Some(which) = which {
                         payload_write::<Option<usize>>(c, 1)?;
-                        old_slots[which] = Some(slot);
+                        let Some(old) = old_slots.get_mut(which) else {
+                            return Err(latch_registry_row(c));
+                        };
+                        *old = Some(slot);
                     }
                 }
             }
@@ -406,7 +403,7 @@ impl SessionStorage {
         local: &str,
     ) -> Result<(), SessionError> {
         self.payloads
-            .check_aliases(ConstructionView::Active(self.construction.storage()), c)?;
+            .check_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
         let container = self.element_attribute_container(c, node)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
@@ -423,22 +420,17 @@ impl SessionStorage {
             if attr.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attr.name().local_name()), local)?
             {
-                selected = Some(index);
+                let style_effect =
+                    surgeist_html::KnownHtmlAttribute::from_name(attr.name()).map(|attribute| {
+                        surgeist_html::style_attribute_effect(attr.name().namespace(), attribute)
+                    });
+                selected = Some((index, style_effect));
                 break;
             }
         }
-        let Some(index) = selected else {
+        let Some((index, style_effect)) = selected else {
             return Ok(());
         };
-        let style_effect = surgeist_html::KnownHtmlAttribute::from_name(
-            element.attributes().as_slice()[index].name(),
-        )
-        .map(|attribute| {
-            surgeist_html::style_attribute_effect(
-                element.attributes().as_slice()[index].name().namespace(),
-                attribute,
-            )
-        });
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
         else {
@@ -470,12 +462,15 @@ impl SessionStorage {
         // original groups before any location is rebound, preserving the cause.
         for slot in 0..self.payloads.values.len() {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            if matches!(&self.payloads.values[slot], RetainedPayload::String { location: StringLocation::AttributeName(owner, position) | StringLocation::AttributeValue(owner, position) | StringLocation::AttributeNamespace(owner, position) | StringLocation::AttributePrefix(owner, position), .. } if *owner == container && *position == index)
+            if matches!(self.payloads.row(c, slot)?, RetainedPayload::String { location: StringLocation::AttributeName(owner, position) | StringLocation::AttributeValue(owner, position) | StringLocation::AttributeNamespace(owner, position) | StringLocation::AttributePrefix(owner, position), .. } if *owner == container && *position == index)
             {
                 self.retire_field_group(c, slot)?;
             }
         }
-        for position in index..len - 1 {
+        let Some(last) = len.checked_sub(1) else {
+            return Err(latch_registry_row(c));
+        };
+        for position in index..last {
             self.edit_removing_attribute(c, node, container, Some(position))?;
         }
         self.edit_removing_attribute(c, node, container, None)?;
@@ -486,33 +481,32 @@ impl SessionStorage {
             if let Some(RetainedPayload::String { location, .. }) =
                 self.payloads.values.get_mut(slot)
             {
-                let (owner, position) = match *location {
-                    StringLocation::AttributeName(o, p)
-                    | StringLocation::AttributeValue(o, p)
-                    | StringLocation::AttributeNamespace(o, p)
-                    | StringLocation::AttributePrefix(o, p) => (o, p),
-                    _ => (usize::MAX, 0),
-                };
+                // The constructor rebuilds the same location kind at its new
+                // position, so no second match can disagree with the first.
+                let (owner, position, rebuild): (usize, usize, fn(usize, usize) -> StringLocation) =
+                    match *location {
+                        StringLocation::AttributeName(o, p) => {
+                            (o, p, StringLocation::AttributeName)
+                        }
+                        StringLocation::AttributeValue(o, p) => {
+                            (o, p, StringLocation::AttributeValue)
+                        }
+                        StringLocation::AttributeNamespace(o, p) => {
+                            (o, p, StringLocation::AttributeNamespace)
+                        }
+                        StringLocation::AttributePrefix(o, p) => {
+                            (o, p, StringLocation::AttributePrefix)
+                        }
+                        _ => (usize::MAX, 0, StringLocation::AttributeName),
+                    };
                 if owner == container {
                     *location = if position == index {
                         StringLocation::Detached
                     } else {
-                        let p = position - usize::from(position > index);
-                        match *location {
-                            StringLocation::AttributeName(..) => {
-                                StringLocation::AttributeName(owner, p)
-                            }
-                            StringLocation::AttributeValue(..) => {
-                                StringLocation::AttributeValue(owner, p)
-                            }
-                            StringLocation::AttributeNamespace(..) => {
-                                StringLocation::AttributeNamespace(owner, p)
-                            }
-                            StringLocation::AttributePrefix(..) => {
-                                StringLocation::AttributePrefix(owner, p)
-                            }
-                            _ => unreachable!(),
-                        }
+                        rebuild(
+                            owner,
+                            position.saturating_sub(usize::from(position > index)),
+                        )
                     };
                 }
             }
@@ -522,7 +516,7 @@ impl SessionStorage {
             else {
                 return Err(latch_registry_row(c));
             };
-            *rebound = slot + 1;
+            *rebound = slot.saturating_add(1);
         }
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         payload_write::<usize>(c, 2)?;
@@ -591,9 +585,10 @@ impl ParserArenaSession {
         if !storage.html_local(c, node, family.local())? {
             return Err(SessionError::WrongToken);
         }
-        storage
-            .payloads
-            .check_aliases(ConstructionView::Active(storage.construction.storage()), c)?;
+        storage.payloads.check_aliases(
+            ConstructionView::Active(storage.construction.test_storage()),
+            c,
+        )?;
         let attr = input.as_ref().ok_or(SessionError::Consumed)?;
         c.require_source_range(&attr.source)?;
         check_formatting_text(c, &attr.name, &attr.source)?;
@@ -729,9 +724,7 @@ impl ParserArenaSession {
         match result {
             Ok(()) => Ok(()),
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
         }
     }
     pub(super) fn remove_managed_attribute(
@@ -769,9 +762,7 @@ impl ParserArenaSession {
         match result {
             Ok(()) => Ok(()),
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
         }
     }
 }

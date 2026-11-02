@@ -66,7 +66,7 @@ impl DraftText {
     ) -> Result<(), ParseStop> {
         let start = self.value.len();
         let point = CodePoint::new(point)
-            .ok_or_else(|| c.fail_invariant(super::super::control::Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(super::super::control::Invariant::TokenizerState))?;
         self.value.push_code_point(point, c)?;
         c.charge(
             WorkCategory::CopyByte,
@@ -82,6 +82,15 @@ impl DraftText {
                 kind,
             },
         )
+    }
+    /// Refuses a draft whose units and origin rows are not one to one, which
+    /// a caller replaying single-unit code points position by position needs.
+    pub(super) fn require_paired(&self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        if self.value.len() == self.origins.len() {
+            Ok(())
+        } else {
+            Err(c.fail_invariant(super::super::control::Invariant::TokenizerState))
+        }
     }
     pub(super) fn freeze(self, c: &mut ParseControl) -> Result<Text, ParseStop> {
         let Self { value, origins } = self;
@@ -358,9 +367,17 @@ pub(crate) enum Event {
     },
 }
 impl Event {
-    pub(crate) fn token(&self) -> Option<&Token> {
+    pub(crate) fn token(&self, c: &mut ParseControl) -> Result<Option<&Token>, ParseStop> {
         match self {
-            Self::Token(t) => Some(t.token()),
+            Self::Token(t) => t.token(c).map(Some),
+            _ => Ok(None),
+        }
+    }
+    /// Test observation of a well-formed event, outside any controller.
+    #[cfg(test)]
+    pub(crate) fn token_for_tests(&self) -> Option<&Token> {
+        match self {
+            Self::Token(t) => Some(t.token_for_tests()),
             _ => None,
         }
     }
@@ -387,8 +404,26 @@ impl TokenEvent {
         }
         Ok(Self { record })
     }
-    pub(crate) fn token(&self) -> &Token {
+    /// The token this event owns until it is released or taken by value.
+    pub(crate) fn token(&self, c: &mut ParseControl) -> Result<&Token, ParseStop> {
+        self.record
+            .as_slice()
+            .first()
+            .ok_or_else(|| c.fail_invariant(super::super::control::Invariant::TokenizerState))
+    }
+    /// Test observation of a well-formed event, outside any controller.
+    #[cfg(test)]
+    pub(crate) fn token_for_tests(&self) -> &Token {
         &self.record.as_slice()[0]
+    }
+    /// Test hook: the owner no longer holds its token, which is released.
+    #[cfg(test)]
+    pub(crate) fn emptied(token: Token, c: &mut ParseControl) -> Result<Self, ParseStop> {
+        let mut event = Self::new(token, c)?;
+        if let Some(token) = event.record.try_pop(c)? {
+            token.release(c)?;
+        }
+        Ok(event)
     }
     pub(crate) fn into_token(mut self, c: &mut ParseControl) -> Result<Token, ParseStop> {
         match self.record.try_pop(c) {
@@ -397,7 +432,7 @@ impl TokenEvent {
                 Ok(token)
             }
             Ok(None) => {
-                let stop = c.fail_invariant(super::super::control::Invariant::InputCursorState);
+                let stop = c.fail_invariant(super::super::control::Invariant::TokenizerState);
                 self.record.release(c)?;
                 Err(stop)
             }

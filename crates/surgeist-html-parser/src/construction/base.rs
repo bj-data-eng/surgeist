@@ -404,7 +404,7 @@ impl SessionStorage {
             if let RetainedPayload::BaseDocument { node, first, .. } = payload {
                 self.document_slot(c, *node)?;
                 if self.first_base_href(c, *node, None)? != *first {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             if let RetainedPayload::Base {
@@ -420,7 +420,7 @@ impl SessionStorage {
                         ..
                     })
                 ) {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             if let RetainedPayload::Base {
@@ -429,20 +429,22 @@ impl SessionStorage {
                 ..
             } = payload
             {
-                let node = node.ok_or(SessionError::WrongToken)?;
+                let node = node.ok_or_else(|| latch_registry_row(c))?;
                 if !is_base(
                     self.construction
                         .node_at(node)
                         .ok_or_else(|| latch_registry_row(c))?,
-                ) || frozen.response == Response::Pending
-                {
+                ) {
+                    return Err(latch_registry_row(c));
+                }
+                if frozen.response == Response::Pending {
                     return Err(c
                         .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
                         .into());
                 }
                 let slot = self
                     .base_document_slot(c, frozen.document)?
-                    .ok_or(SessionError::WrongToken)?;
+                    .ok_or_else(|| latch_registry_row(c))?;
                 let Some(RetainedPayload::BaseDocument { facts, .. }) =
                     self.payloads.values.get(slot)
                 else {
@@ -450,7 +452,7 @@ impl SessionStorage {
                 };
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 if !facts.same_owner(&frozen.environment) {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
         }
@@ -459,11 +461,11 @@ impl SessionStorage {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
 
-    fn request(text: &str) -> crate::HtmlDocumentParseRequest {
+    pub(in crate::construction) fn request(text: &str) -> crate::HtmlDocumentParseRequest {
         let revision =
             crate::HtmlBaseFactsRevision::new(crate::HtmlBaseProducerId::fresh(), 1, 1, 1);
         let fallback = crate::HtmlBaseUrlRecord::observed(
@@ -781,6 +783,135 @@ mod tests {
                 c.usage().resource(HtmlParseResource::WorkCredits).current,
                 at_stop.resource(HtmlParseResource::WorkCredits).current
             );
+            super::super::tests::storage_zero(&c);
+        }
+    }
+
+    /// Validation of a frozen base whose row is inconsistent. A row naming no
+    /// node, or a node that is not a base element, is a row of another kind
+    /// (the registry row); a response that is still owed is a pending effect.
+    #[test]
+    fn validating_a_frozen_base_labels_row_faults_and_a_pending_response_apart() {
+        use crate::parser::control::Invariant;
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
+        for (case, expected) in [(0, registry_row), (1, registry_row), (2, pending)] {
+            let request = request("<base href=A>");
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let root = session.root(&mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let base = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &root, &base, None, &capability)
+                .unwrap();
+            session
+                .active()
+                .unwrap()
+                .validate_base_facts(&mut c)
+                .unwrap();
+            let storage = session.active_mut().unwrap();
+            let row = storage
+                .payloads
+                .values
+                .iter_mut()
+                .find_map(|payload| match payload {
+                    RetainedPayload::Base {
+                        node: owner,
+                        frozen: BaseValue::Frozen(frozen),
+                        ..
+                    } if *owner == Some(base.index) => Some((owner, frozen)),
+                    _ => None,
+                })
+                .unwrap();
+            let original = row.1.response;
+            match case {
+                // The row names no node at all.
+                0 => *row.0 = None,
+                // The row names a node that is not a base element.
+                1 => *row.0 = Some(root.index),
+                // The base response is still owed.
+                _ => row.1.response = Response::Pending,
+            }
+            let result = session.active().unwrap().validate_base_facts(&mut c);
+            assert_eq!(result, Err(SessionError::Stop(expected)), "case {case}");
+            assert_eq!(c.stop(), Some(expected), "case {case}");
+            // The registry's own join check runs at release, so restore the row.
+            for payload in &mut session.active_mut().unwrap().payloads.values {
+                if let RetainedPayload::Base { node, frozen, .. } = payload
+                    && let BaseValue::Frozen(frozen) = frozen
+                    && (*node != Some(base.index) || case == 2)
+                {
+                    *node = Some(base.index);
+                    frozen.response = original;
+                }
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+        }
+    }
+
+    /// A base document row that disagrees with the tree, and a frozen base
+    /// whose document has no base-document row, are retained rows that are
+    /// inconsistent or missing.
+    #[test]
+    fn validating_base_rows_that_disagree_with_the_tree_reports_the_registry_row() {
+        use crate::parser::control::Invariant;
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        for case in 0..2 {
+            let request = request("<base href=A>");
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let root = session.root(&mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let base = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &root, &base, None, &capability)
+                .unwrap();
+            session
+                .active()
+                .unwrap()
+                .validate_base_facts(&mut c)
+                .unwrap();
+            let mut original = None;
+            for payload in &mut session.active_mut().unwrap().payloads.values {
+                match payload {
+                    // The document row no longer names the tree's first base.
+                    RetainedPayload::BaseDocument { first, .. } if case == 0 => {
+                        original = Some(*first);
+                        *first = None;
+                    }
+                    // The frozen base names a document without a base row.
+                    RetainedPayload::Base {
+                        frozen: BaseValue::Frozen(frozen),
+                        ..
+                    } if case == 1 => {
+                        original = Some(Some(frozen.document));
+                        frozen.document = base.index;
+                    }
+                    _ => {}
+                }
+            }
+            let result = session.active().unwrap().validate_base_facts(&mut c);
+            assert_eq!(result, Err(SessionError::Stop(registry_row)), "case {case}");
+            assert_eq!(c.stop(), Some(registry_row), "case {case}");
+            for payload in &mut session.active_mut().unwrap().payloads.values {
+                match payload {
+                    RetainedPayload::BaseDocument { first, .. } if case == 0 => {
+                        *first = original.unwrap();
+                    }
+                    RetainedPayload::Base {
+                        frozen: BaseValue::Frozen(frozen),
+                        ..
+                    } if case == 1 => {
+                        frozen.document = original.unwrap().unwrap();
+                    }
+                    _ => {}
+                }
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
             super::super::tests::storage_zero(&c);
         }
     }

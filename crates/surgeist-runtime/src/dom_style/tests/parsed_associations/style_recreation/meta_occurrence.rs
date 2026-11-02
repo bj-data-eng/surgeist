@@ -33,6 +33,7 @@ fn original_metas(session: &DomSession, id: DomParsedHtmlAssociationId) -> Vec<O
     let mut rows = Vec::new();
     loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.kind() == Kind::ChangePreferred => rows.push(row.id()),
             Step::Complete => return rows,
             _ => (),

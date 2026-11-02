@@ -11,7 +11,7 @@ impl SessionStorage {
         retire_slots: &[Option<usize>],
     ) -> Result<Attribute, SessionError> {
         self.begin_attribute_edit(control, node, HtmlConstructionAttributeEditMode::Slots)?;
-        let mut group = self.construction.take_attribute_edit();
+        let mut group = self.construction.take_attribute_edit(control)?;
         // Everything that can refuse is checked before ownership leaves the
         // container, and a refusal hands the edit back and aborts it. The edit
         // changes only the element's attributes, so the record checked here is
@@ -70,7 +70,7 @@ impl SessionStorage {
             Some(RetainedPayload::Attributes(backing)) => *backing = Some(restored),
             _ => return Err(self.refuse_attribute_edit(control, group)),
         }
-        self.construction.put_attribute_edit(group);
+        self.construction.put_attribute_edit(control, group)?;
         if result.is_ok() {
             self.construction.finish_attributes(control)?;
         } else {
@@ -86,10 +86,12 @@ impl SessionStorage {
         group: surgeist_html::bounded::HtmlConstructionAttributeEdit,
     ) -> SessionError {
         let invariant = latch_registry_row(control);
-        self.construction.put_attribute_edit(group);
-        // The invariant above is the reported first stop; an abort refusal
-        // would be secondary and is latched in the controller by its owner.
-        let _ = self.construction.abort_attributes(control);
+        // The invariant above is the reported first stop; a refusal to take the
+        // edit back already ended it, and an abort refusal would be secondary
+        // and is latched in the controller by its owner.
+        if self.construction.put_attribute_edit(control, group).is_ok() {
+            let _ = self.construction.abort_attributes(control);
+        }
         invariant
     }
 }

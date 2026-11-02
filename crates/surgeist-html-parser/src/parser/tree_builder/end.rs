@@ -81,7 +81,10 @@ impl HeadState<'_> {
                 if self.before.kernel.stack()?.len() == 0 {
                     self.set_end(EndPhase::DeferredScriptsAbsent, c)?;
                 } else {
-                    let script = self.script.as_ref().expect("qualified script state");
+                    let script = self
+                        .script
+                        .as_ref()
+                        .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
                     self.before
                         .kernel
                         .pop(c, Some(&script.capability))?
@@ -103,7 +106,10 @@ impl HeadState<'_> {
                 self.set_end(EndPhase::ScriptsCheckpoint, c)?;
             }
             EndPhase::ScriptsCheckpoint => {
-                let script = self.script.as_ref().expect("qualified script state");
+                let script = self
+                    .script
+                    .as_ref()
+                    .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
                 script
                     .capability
                     .checkpoint(c, &mut self.before.kernel.session)?;
@@ -113,7 +119,10 @@ impl HeadState<'_> {
             EndPhase::LoadBlockersCheckpoint => {
                 // Spin performs its checkpoint even with a satisfied wait goal.
                 // No actual loader/resource/browsing-context producer is admitted.
-                let script = self.script.as_ref().expect("qualified script state");
+                let script = self
+                    .script
+                    .as_ref()
+                    .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
                 script
                     .capability
                     .checkpoint(c, &mut self.before.kernel.session)?;
@@ -162,7 +171,7 @@ impl HeadState<'_> {
                 // Admit final cursor/token writes before marking completion. No
                 // fallible gap follows that stamp or can orphan the EOF anchor.
                 write(
-                    size_of::<Option<EndPhase>>() + size_of::<Option<prologue::PendingToken>>(),
+                    const { size_of::<Option<EndPhase>>() + size_of::<Option<prologue::PendingToken>>() },
                     2,
                     c,
                 )?;
@@ -186,7 +195,10 @@ impl HeadState<'_> {
         // for that parser Document. Actual intrinsic tasks still run through
         // the same checkpoint owner. New loader/host/realm/task producers must
         // revise this closed boundary.
-        let script = self.script.as_ref().expect("qualified script state");
+        let script = self
+            .script
+            .as_ref()
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
         script
             .capability
             .validate_session(c, &self.before.kernel.session)?;
@@ -201,7 +213,10 @@ impl HeadState<'_> {
         {
             return Err(HeadError::IncompleteCompletion);
         }
-        let script = self.script.as_ref().expect("qualified script state");
+        let script = self
+            .script
+            .as_ref()
+            .ok_or(HeadError::ConstructionCapabilityUnavailable)?;
         self.before
             .kernel
             .session

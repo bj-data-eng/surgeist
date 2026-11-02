@@ -6,7 +6,7 @@ use crate::bounded::{
 impl ParseControl {
     #[cfg(test)]
     pub(crate) fn test_limit(&mut self, resource: HtmlParseResource, limit: u64) {
-        self.limits[resource as usize] = limit;
+        *self.limits.get_mut(resource) = limit;
     }
     #[cfg(test)]
     pub(crate) fn observe_construction_attribute_append(&mut self) {
@@ -94,7 +94,9 @@ impl ParseControl {
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        let old = before.capacity * size_of::<crate::Attribute>();
+        let Some(old) = before.capacity.checked_mul(size_of::<crate::Attribute>()) else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
         let Some(overlap_bytes) = old.checked_add(new) else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
@@ -112,8 +114,12 @@ impl ParseControl {
         vector: &mut VectorCapacity<crate::Attribute>,
         expected: usize,
     ) -> Result<(), ParseStop> {
-        let old = vector.capacity * size_of::<crate::Attribute>();
-        let actual = after.capacity * size_of::<crate::Attribute>();
+        let (Some(old), Some(actual)) = (
+            vector.capacity.checked_mul(size_of::<crate::Attribute>()),
+            after.capacity.checked_mul(size_of::<crate::Attribute>()),
+        ) else {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        };
         let current = self
             .usage
             .resource(HtmlParseResource::ManagedCapacityBytes)
@@ -138,7 +144,7 @@ impl ParseControl {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 limit: expected as u64,
                 current: old as u64,
-                requested_delta: (actual - old) as u64,
+                requested_delta: actual.saturating_sub(old) as u64,
             });
         }
         Ok(())

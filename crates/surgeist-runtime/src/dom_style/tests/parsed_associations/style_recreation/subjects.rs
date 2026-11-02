@@ -15,6 +15,7 @@ fn rows(session: &DomSession, id: DomParsedHtmlAssociationId) -> (Vec<Occurrence
     let mut meta = None;
     loop {
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.requires_processing() => match row.kind() {
                 Kind::StyleUpdate(trigger) => {
                     assert_eq!(

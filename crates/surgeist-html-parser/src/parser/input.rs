@@ -631,17 +631,20 @@ impl<'source> InputCursor<'source> {
     ) -> Result<Option<(ConsumedSourceBoundary, ConsumedSourceBoundary)>, ParseStop> {
         c.require_identity(&self.owner)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        if !self.is_progressive() {
+        // Only a progressive cursor has a boundary, so the same match decides
+        // whether there is a span and supplies the boundary it falls back to.
+        let Some(boundary) = self.boundary() else {
             return Ok(None);
-        }
+        };
         c.charge(
             WorkCategory::CopyByte,
-            (2 * size_of::<ConsumedSourceBoundary>()) as u64,
+            const { 2 * size_of::<ConsumedSourceBoundary>() } as u64,
         )?;
-        Ok(Some(self.current_span().cloned().unwrap_or_else(|| {
-            let boundary = self.boundary().expect("progressive boundary");
-            (boundary.clone(), boundary.clone())
-        })))
+        Ok(Some(
+            self.current_span()
+                .cloned()
+                .unwrap_or_else(|| (boundary.clone(), boundary.clone())),
+        ))
     }
     /// A test-only synchronization point on actual consumed progress. The
     /// original handle is polled by the existing input-read admission path.
@@ -900,8 +903,8 @@ impl<'source> InputCursor<'source> {
             // retained std 1.97 reads one byte per interior endpoint, even when
             // start == end; zero/len read none. Admit both atomically immediately
             // before that bounded helper, so a rejected call reads neither.
-            let reads =
-                u64::from(start > 0 && start < text.len()) + u64::from(end > 0 && end < text.len());
+            let reads = u64::from(start > 0 && start < text.len())
+                .saturating_add(u64::from(end > 0 && end < text.len()));
             control.charge(WorkCategory::InputUnitRead, reads)?;
         }
         self.source
@@ -945,7 +948,9 @@ impl<'source> InputCursor<'source> {
         if let Some(text) = self.source.as_utf8() {
             let bytes = text.as_bytes();
             control.charge(WorkCategory::InputUnitRead, 1)?;
-            let first = bytes[position];
+            let Some(first) = bytes.get(position).copied() else {
+                return Err(control.fail_invariant(Invariant::InputCursorState));
+            };
             let (width, mut value) = match first {
                 0x00..=0x7F => (1, u32::from(first)),
                 0xC2..=0xDF => (2, u32::from(first & 0x1F)),
@@ -965,15 +970,15 @@ impl<'source> InputCursor<'source> {
             // The immutable source is already-valid UTF-8. Decode each byte
             // exactly once, with no str slicing or iterator boundary/payload
             // rereads hidden behind the advertised physical-read counter.
-            let mut offset = position + 1;
-            while offset < end {
+            let Some([_, continuations @ ..]) = bytes.get(position..end) else {
+                return Err(control.fail_invariant(Invariant::InputCursorState));
+            };
+            for &continuation in continuations {
                 control.charge(WorkCategory::InputUnitRead, 1)?;
-                let continuation = bytes[offset];
                 if continuation & 0xC0 != 0x80 {
                     return Err(control.fail_invariant(Invariant::InputCursorState));
                 }
                 value = (value << 6) | u32::from(continuation & 0x3F);
-                offset += 1;
             }
             let code_point = CodePoint(value);
             let boundary = start
@@ -989,28 +994,44 @@ impl<'source> InputCursor<'source> {
             return Err(control.fail_invariant(Invariant::InputCursorState));
         };
         control.charge(WorkCategory::InputUnitRead, 1)?;
-        let first = text.code_units()[position];
-        if (0xD800..=0xDBFF).contains(&first) && position + 1 < text.len() {
-            if position + 1 >= through {
+        let Some((&first, rest)) = text
+            .code_units()
+            .get(position..)
+            .and_then(<[u16]>::split_first)
+        else {
+            return Err(control.fail_invariant(Invariant::InputCursorState));
+        };
+        // `first` exists, so `position` is below the unit count and cannot be
+        // the last representable index.
+        let Some(next) = position.checked_add(1) else {
+            return Err(control.fail_invariant(Invariant::InputCursorState));
+        };
+        let lead = (0xD800..=0xDBFF).contains(&first);
+        if lead && let Some(&second) = rest.first() {
+            if next >= through {
                 return Ok(RawPoll::NeedInput);
             }
             control.charge(WorkCategory::InputUnitRead, 1)?;
-            let second = text.code_units()[position + 1];
             if (0xDC00..=0xDFFF).contains(&second) {
-                let value =
-                    0x10000 + ((u32::from(first) - 0xD800) << 10) + (u32::from(second) - 0xDC00);
+                let Some(end) = next.checked_add(1) else {
+                    return Err(control.fail_invariant(Invariant::InputCursorState));
+                };
+                // Both units lie in their surrogate ranges, tested above, so
+                // each offset from the range start is its low ten bits.
+                let value = ((u32::from(first & 0x3FF) << 10) | u32::from(second & 0x3FF))
+                    .saturating_add(0x10000);
                 let code_point = CodePoint(value);
                 let boundary = start
                     .map(|start| self.prove_raw_end(start, code_point, through, control))
                     .transpose()?;
                 return Ok(RawPoll::Ready(Some(DecodedRaw {
                     code_point,
-                    end: position + 2,
+                    end,
                     boundary,
                 })));
             }
         }
-        if (0xD800..=0xDBFF).contains(&first) && position + 1 == through && !sealed {
+        if lead && next == through && !sealed {
             return Ok(RawPoll::NeedInput);
         }
         let code_point = CodePoint(u32::from(first));
@@ -1019,7 +1040,7 @@ impl<'source> InputCursor<'source> {
             .transpose()?;
         Ok(RawPoll::Ready(Some(DecodedRaw {
             code_point,
-            end: position + 1,
+            end: next,
             boundary,
         })))
     }
@@ -2356,6 +2377,42 @@ mod tests {
             assert_eq!(cursor.position, 0);
             assert_eq!(cursor.current, None);
             assert_eq!(cursor.processed_through, 0);
+        }
+    }
+
+    #[test]
+    fn a_frontier_beyond_the_source_stops_instead_of_indexing_past_the_end() {
+        for source in [
+            HtmlSource::utf8("ab"),
+            HtmlSource::utf16(DocumentString::from_utf16(vec![0x61, 0x62])),
+        ] {
+            let mut control = control(&source);
+            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
+            cursor.make_available(source.len(), &mut control).unwrap();
+            for _ in 0..2 {
+                ready_character(cursor.poll_consume(&mut control).unwrap());
+            }
+            // The private frontier claims more input than the source holds.
+            let InputAvailability::Progressive { through, .. } = &mut cursor.availability else {
+                panic!("progressive cursor");
+            };
+            *through = source.len() + 98;
+            let stop = ParseStop::InternalInvariant(Invariant::InputCursorState);
+            assert_eq!(cursor.poll_consume(&mut control), Err(stop));
+            assert_eq!(control.stop(), Some(stop));
+            assert_eq!(cursor.position, 2);
+            for resource in [
+                HtmlParseResource::BufferedUtf16Units,
+                HtmlParseResource::AuxiliaryEntries,
+                HtmlParseResource::SourceMapEntries,
+                HtmlParseResource::ManagedCapacityBytes,
+            ] {
+                assert_eq!(
+                    control.usage().resource(resource).current,
+                    0,
+                    "{resource:?}"
+                );
+            }
         }
     }
 }

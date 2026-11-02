@@ -59,7 +59,7 @@ impl Fixture {
         self.owner
             .begin_attributes(c, 0, HtmlConstructionAttributeEditMode::Slots)?;
         let result = (|| {
-            let group = self.owner.attribute_edit();
+            let group = self.owner.attribute_edit(c).unwrap();
             let slot = match kind {
                 0 => group.reserve(100),
                 1 => group.replace(0, incoming),
@@ -91,7 +91,8 @@ impl Fixture {
         let result = (|| {
             let slot = self
                 .owner
-                .attribute_edit()
+                .attribute_edit(c)
+                .unwrap()
                 .append(incoming)
                 .map_err(|e| construction_error(c, e))?;
             prepare_attribute_slot(c, slot, &mut self.shared, &mut self.vector)?.commit();
@@ -324,9 +325,12 @@ fn checked_initial_append_inspects_exact_quadratic_current_prefix_pairs() {
             c.usage().work(WorkCategory::InspectByte) - before,
             8 * pairs as u64
         );
-        assert_eq!(fixture.owner.usage().attributes(), count);
+        assert_eq!(fixture.owner.test_storage().usage().attributes(), count);
         // Four literal root-name units plus three units per actual aN=v slot.
-        assert_eq!(fixture.owner.usage().utf16_units(), 4 + 3 * count);
+        assert_eq!(
+            fixture.owner.test_storage().usage().utf16_units(),
+            4 + 3 * count
+        );
         fixture.release(&mut c);
     }
 }
