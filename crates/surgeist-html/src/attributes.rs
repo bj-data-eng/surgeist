@@ -139,6 +139,7 @@ pub enum HtmlAttributeContextAuthorState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAttributeContextConformanceError {
     ImageMapRequiresAncestorAnchorWithHref,
     ImageControlsRequireNonemptyAlt,
@@ -162,6 +163,50 @@ pub enum HtmlAttributeContextConformanceError {
     /// Source dimension attributes require an actual HTML picture parent.
     SourceDimensionsRequirePictureParent,
 }
+
+impl std::fmt::Display for HtmlAttributeContextConformanceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::ImageMapRequiresAncestorAnchorWithHref => {
+                "image map attribute requires an ancestor a element with an href attribute"
+            }
+            Self::ImageControlsRequireNonemptyAlt => {
+                "image controls attribute requires a nonempty alt attribute"
+            }
+            Self::StylesheetDisabledRequiresStylesheetRel => {
+                "disabled attribute on a link requires the stylesheet relationship"
+            }
+            Self::ReferrerPolicyRequiresHref => {
+                "referrerpolicy attribute requires an href attribute"
+            }
+            Self::InputStateForbidsAttribute => {
+                "attribute is prohibited for the input element's type state"
+            }
+            Self::ScriptContextForbidsAttribute => {
+                "attribute is prohibited for this script type and placement"
+            }
+            Self::FormnovalidateRequiresSubmitButton => {
+                "formnovalidate attribute requires a submit button"
+            }
+            Self::FormOverrideRequiresSubmitButton => {
+                "formmethod and formenctype attributes require a submit button"
+            }
+            Self::TextareaHardWrapRequiresCols => {
+                "textarea with hard wrapping requires a cols attribute"
+            }
+            Self::BlockingRequiresStylesheetOrExpectRel => {
+                "blocking attribute on a link requires the stylesheet or expect relationship"
+            }
+            Self::IconSizesRequireIconRel => {
+                "sizes attribute on a link requires the icon or apple-touch-icon relationship"
+            }
+            Self::SourceDimensionsRequirePictureParent => {
+                "width and height attributes on source require a picture parent"
+            }
+        })
+    }
+}
+impl std::error::Error for HtmlAttributeContextConformanceError {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum SuppliedContext {
@@ -198,6 +243,7 @@ pub enum HtmlAttributeRecognition {
 
 /// A value violates an author requirement of this bounded intrinsic family.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAttributeConformanceError {
     UnrecognizedKeyword,
     /// A source-recognized keyword spelling is forbidden in authored markup.
@@ -225,6 +271,55 @@ pub enum HtmlAttributeConformanceError {
     InvalidUtf8EncodingLabel(HtmlUtf8EncodingLabelError),
     /// A specified `is` value violates HTML's local custom-element-name predicate.
     InvalidCustomElementName(HtmlCustomElementNameError),
+}
+
+impl std::fmt::Display for HtmlAttributeConformanceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnrecognizedKeyword => f.write_str("attribute value is not a recognized keyword"),
+            Self::NonconformingKeyword => {
+                f.write_str("attribute keyword is forbidden in authored markup")
+            }
+            Self::BooleanSpelling => {
+                f.write_str("boolean attribute value is neither empty nor the attribute's name")
+            }
+            Self::BdoDirectionRequired => f.write_str("bdo element requires a dir attribute"),
+            Self::BdoDirectionMustBeLtrOrRtl => {
+                f.write_str("bdo element dir attribute must be ltr or rtl")
+            }
+            Self::DetailsNameMustNotBeEmpty => {
+                f.write_str("details name attribute must not be empty")
+            }
+            Self::FormNameMustNotBeEmpty => f.write_str("form name attribute must not be empty"),
+            Self::DirnameMustNotBeEmpty => f.write_str("dirname attribute must not be empty"),
+            Self::InputPlaceholderContainsNewline { code_unit_offset } => write!(
+                f,
+                "input placeholder contains a line break at UTF-16 offset {code_unit_offset}"
+            ),
+            Self::InvalidIdToken(_) => f.write_str("id attribute is not a valid token"),
+            Self::InvalidMapNameToken(_) => f.write_str("map name attribute is not a valid token"),
+            Self::InvalidNavigableTarget(_) => {
+                f.write_str("attribute is not a valid navigable target name")
+            }
+            Self::InvalidUtf8EncodingLabel(_) => {
+                f.write_str("encoding label is not the required UTF-8 spelling")
+            }
+            Self::InvalidCustomElementName(_) => {
+                f.write_str("is attribute is not a valid custom-element name")
+            }
+        }
+    }
+}
+impl std::error::Error for HtmlAttributeConformanceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InvalidIdToken(error) | Self::InvalidMapNameToken(error) => Some(error),
+            Self::InvalidNavigableTarget(error) => Some(error),
+            Self::InvalidUtf8EncodingLabel(error) => Some(error),
+            Self::InvalidCustomElementName(error) => Some(error),
+            _ => None,
+        }
+    }
 }
 
 /// Intrinsic value author conformance is independent of state/applicability.

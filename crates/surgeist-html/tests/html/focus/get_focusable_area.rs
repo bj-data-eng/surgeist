@@ -2,8 +2,8 @@
 //! carry real adapter obligations; these pure tests do not supply geometry.
 use surgeist_html::{
     HtmlCurrentlyFocusedAreaOutcome as CurrentOutcome, HtmlGetFocusableAreaAction as A,
-    HtmlGetFocusableAreaCursor as C, HtmlGetFocusableAreaError as E,
-    HtmlGetFocusableAreaOutcome as O, HtmlGetFocusableAreaReply as R,
+    HtmlGetFocusableAreaCursor as C, HtmlGetFocusableAreaOutcome as O,
+    HtmlGetFocusableAreaReply as R,
 };
 
 const REPLIES: [R; 22] = [
@@ -35,7 +35,7 @@ fn step(c: &mut C, action: A, reply: R) {
     for wrong in REPLIES {
         if std::mem::discriminant(&wrong) != std::mem::discriminant(&reply) {
             let before = *c;
-            assert_eq!(c.reply(wrong), Err(E::WrongReply));
+            assert!(matches!(c.reply(wrong), Err(ref e) if e.is_wrong_reply()));
             assert_eq!(*c, before);
         }
     }
@@ -45,7 +45,7 @@ fn complete(c: &mut C, outcome: O) {
     assert_eq!(c.action(), A::Complete(outcome));
     for reply in REPLIES {
         let before = *c;
-        assert_eq!(c.reply(reply), Err(E::Terminal));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(*c, before);
     }
 }
@@ -103,9 +103,8 @@ fn area_shape_clause_requires_first_image_map_selection_before_any_later_clause(
     // The selected action requires the first img in ordinary tree order using
     // the target's map, not the first already-known/focusable retained shape.
     let before = c;
-    assert_eq!(
-        c.reply(R::ElementWithFocusableScrollRegions(true)),
-        Err(E::WrongReply)
+    assert!(
+        matches!(c.reply(R::ElementWithFocusableScrollRegions(true)), Err(ref e) if e.is_wrong_reply())
     );
     assert_eq!(c, before);
     step(&mut c, A::SelectFirstImageMapShape, R::Applied);
@@ -125,7 +124,7 @@ fn scroll_clause_requires_first_flat_preorder_region_before_document_element_cla
         R::ElementWithFocusableScrollRegions(true),
     );
     let before = c;
-    assert_eq!(c.reply(R::DocumentElement(true)), Err(E::WrongReply));
+    assert!(matches!(c.reply(R::DocumentElement(true)), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(c, before);
     step(&mut c, A::SelectFirstScrollableRegion, R::Applied);
     complete(&mut c, O::ScrollRegion);
@@ -294,7 +293,7 @@ fn genuine_existing_children_complete_before_parent_accepts_their_nullable_retur
     delegate.reply(DR::DescendantPresent(false)).unwrap();
     assert_eq!(delegate.action(), DA::Complete(DO::Null));
     assert_eq!(parent, waiting);
-    assert_eq!(parent.reply(R::Applied), Err(E::WrongReply));
+    assert!(matches!(parent.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(parent, waiting);
     step(
         &mut parent,
@@ -504,10 +503,9 @@ fn unavailable_current_child_is_not_a_null_or_document_reply_and_wrong_stage_pre
     // No actual active-Document evidence means the child supplies no reply.
     assert_eq!(parent.action(), A::RunCurrentlyFocusedArea);
     assert_eq!(parent, waiting);
-    assert_eq!(parent.reply(R::Applied), Err(E::WrongReply));
-    assert_eq!(
-        parent.reply(R::FocusDelegatePresent(false)),
-        Err(E::WrongReply)
+    assert!(matches!(parent.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
+    assert!(
+        matches!(parent.reply(R::FocusDelegatePresent(false)), Err(ref e) if e.is_wrong_reply())
     );
     assert_eq!(parent, waiting);
 
@@ -518,9 +516,8 @@ fn unavailable_current_child_is_not_a_null_or_document_reply_and_wrong_stage_pre
         CurrentOutcome::CandidateDocument,
         CurrentOutcome::CandidateFocusedArea,
     ] {
-        assert_eq!(
-            other.reply(R::CurrentlyFocusedArea(result)),
-            Err(E::WrongReply)
+        assert!(
+            matches!(other.reply(R::CurrentlyFocusedArea(result)), Err(ref e) if e.is_wrong_reply())
         );
         assert_eq!(other, before);
     }

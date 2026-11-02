@@ -2,6 +2,7 @@
 //! bounded by the entries it shifts, never by the siblings it leaves alone, and
 //! leaves exactly the order the DOM's insert and remove steps define.
 use super::*;
+use crate::html::support::cause;
 
 /// Sibling counts around the changed entries.
 const FANOUTS: [usize; 3] = [16, 128, 1024];
@@ -353,7 +354,7 @@ fn child_orders_match_the_reference_model_through_a_long_sequence_of_changes() {
             if model.insert(node, parent, before) {
                 owner = change(owner, command).0;
             } else {
-                owner = refuse(owner, command, HtmlConstructionError::WrongSibling);
+                owner = refuse(owner, command, cause::WRONG_SIBLING);
             }
         }
         for (index, parent) in parents.iter().enumerate() {
@@ -483,7 +484,7 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
                     parent: nodes[template].clone(),
                     before: None,
                 },
-                HtmlConstructionError::TemplateContentsRequired,
+                cause::TEMPLATE_CONTENTS_REQUIRED,
             );
             templates += 1;
         } else {
@@ -503,12 +504,12 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
             };
             let stranger = before.is_some_and(|b| model.parent_of(b) != Some(container));
             if stranger {
-                owner = refuse(owner, command, HtmlConstructionError::WrongSibling);
+                owner = refuse(owner, command, cause::WRONG_SIBLING);
                 strangers += 1;
             } else if before == Some(node) {
                 owner = change(owner, command).0;
             } else if model.cycle(node, container) {
-                owner = refuse(owner, command, HtmlConstructionError::Cycle);
+                owner = refuse(owner, command, cause::CYCLE);
                 cycles += 1;
             } else {
                 moves += usize::from(model.parent_of(node).is_some());

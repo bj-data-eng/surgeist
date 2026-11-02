@@ -115,6 +115,12 @@ pub enum HtmlInputFileSelection {
 /// Filename setter refusal for a nonempty proposed value. No files are created.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlInputFilenameInvalidState;
+impl std::fmt::Display for HtmlInputFilenameInvalidState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("a file input's value can only be set to the empty string")
+    }
+}
+impl std::error::Error for HtmlInputFilenameInvalidState {}
 pub fn input_filename_setter(
     value: &[u16],
 ) -> Result<HtmlInputFileSelection, HtmlInputFilenameInvalidState> {
@@ -989,6 +995,16 @@ impl HtmlInputInvalidSelectionRange {
         self.end
     }
 }
+impl std::fmt::Display for HtmlInputInvalidSelectionRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "input selection start {} is after its end {}",
+            self.start, self.end
+        )
+    }
+}
+impl std::error::Error for HtmlInputInvalidSelectionRange {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputEmptySelectionSupport {
     Supported,

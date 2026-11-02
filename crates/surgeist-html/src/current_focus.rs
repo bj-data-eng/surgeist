@@ -61,18 +61,53 @@ pub enum HtmlCurrentlyFocusedAreaReply {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlCurrentlyFocusedAreaError {
+pub struct HtmlCurrentlyFocusedAreaError {
+    kind: HtmlCurrentlyFocusedAreaErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlCurrentlyFocusedAreaErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlCurrentlyFocusedAreaError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending current focus action",
-            Self::Terminal => "current focus query is already complete",
-        })
+
+impl HtmlCurrentlyFocusedAreaErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlCurrentlyFocusedAreaError {
+        HtmlCurrentlyFocusedAreaError { kind: self }
     }
 }
+
+impl From<HtmlCurrentlyFocusedAreaErrorKind> for HtmlCurrentlyFocusedAreaError {
+    fn from(kind: HtmlCurrentlyFocusedAreaErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlCurrentlyFocusedAreaError {
+    /// Whether the cause is: reply does not match the pending current focus action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlCurrentlyFocusedAreaErrorKind::WrongReply)
+    }
+    /// Whether the cause is: current focus query is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlCurrentlyFocusedAreaErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlCurrentlyFocusedAreaError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlCurrentlyFocusedAreaErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending current focus action")
+            }
+            HtmlCurrentlyFocusedAreaErrorKind::Terminal => {
+                f.write_str("current focus query is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlCurrentlyFocusedAreaError {}
 
 /// Constant-state, allocation-free language cursor. Original adapters own actual
@@ -102,7 +137,7 @@ impl HtmlCurrentlyFocusedAreaCursor {
         use HtmlCurrentlyFocusedAreaOutcome as O;
         use HtmlCurrentlyFocusedAreaReply as R;
         if matches!(self.pending, A::Complete(_)) {
-            return Err(HtmlCurrentlyFocusedAreaError::Terminal);
+            return Err(HtmlCurrentlyFocusedAreaErrorKind::Terminal.error());
         }
         let next = match (self.pending, reply) {
             (A::ReadSystemFocus, R::SystemFocus(false)) => A::Complete(O::Null),
@@ -129,7 +164,7 @@ impl HtmlCurrentlyFocusedAreaCursor {
             (A::ReadResultFocusedArea, R::ResultFocusedAreaPresent(true)) => {
                 A::Complete(O::CandidateFocusedArea)
             }
-            _ => return Err(HtmlCurrentlyFocusedAreaError::WrongReply),
+            _ => return Err(HtmlCurrentlyFocusedAreaErrorKind::WrongReply.error()),
         };
         self.pending = next;
         Ok(())
@@ -138,5 +173,33 @@ impl HtmlCurrentlyFocusedAreaCursor {
 impl Default for HtmlCurrentlyFocusedAreaCursor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_currently_focused_area_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlCurrentlyFocusedAreaError) -> bool;
+        let cases: Vec<(HtmlCurrentlyFocusedAreaError, &str, Predicate)> = vec![
+            (
+                HtmlCurrentlyFocusedAreaErrorKind::WrongReply.error(),
+                "reply does not match the pending current focus action",
+                HtmlCurrentlyFocusedAreaError::is_wrong_reply,
+            ),
+            (
+                HtmlCurrentlyFocusedAreaErrorKind::Terminal.error(),
+                "current focus query is already complete",
+                HtmlCurrentlyFocusedAreaError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

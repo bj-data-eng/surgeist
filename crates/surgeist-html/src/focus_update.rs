@@ -157,18 +157,51 @@ pub enum HtmlFocusUpdateReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlFocusUpdateError {
+pub struct HtmlFocusUpdateError {
+    kind: HtmlFocusUpdateErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlFocusUpdateErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlFocusUpdateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending focus-update action",
-            Self::Terminal => "focus update is already complete",
-        })
+
+impl HtmlFocusUpdateErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlFocusUpdateError {
+        HtmlFocusUpdateError { kind: self }
     }
 }
+
+impl From<HtmlFocusUpdateErrorKind> for HtmlFocusUpdateError {
+    fn from(kind: HtmlFocusUpdateErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlFocusUpdateError {
+    /// Whether the cause is: reply does not match the pending focus-update action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlFocusUpdateErrorKind::WrongReply)
+    }
+    /// Whether the cause is: focus update is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlFocusUpdateErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlFocusUpdateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlFocusUpdateErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending focus-update action")
+            }
+            HtmlFocusUpdateErrorKind::Terminal => f.write_str("focus update is already complete"),
+        }
+    }
+}
+
 impl std::error::Error for HtmlFocusUpdateError {}
 
 /// Constant-state, non-Copy complete source-body cursor. All suffix trimming,
@@ -238,7 +271,7 @@ impl HtmlFocusUpdateCursor {
         use HtmlFocusUpdateRelatedTarget as T;
         use HtmlFocusUpdateReply as R;
         if self.pending == A::Complete {
-            return Err(HtmlFocusUpdateError::Terminal);
+            return Err(HtmlFocusUpdateErrorKind::Terminal.error());
         }
         let mut kind = self.entry_kind;
         let pending = match (self.pending, reply) {
@@ -384,7 +417,7 @@ impl HtmlFocusUpdateCursor {
                 A::DesignateEntryFocusedArea
             }
             (A::DesignateEntryFocusedArea, R::Applied) => A::ReadEntryKind { chain: C::New },
-            _ => return Err(HtmlFocusUpdateError::WrongReply),
+            _ => return Err(HtmlFocusUpdateErrorKind::WrongReply.error()),
         };
         self.pending = pending;
         self.entry_kind = kind;
@@ -394,5 +427,33 @@ impl HtmlFocusUpdateCursor {
 impl Default for HtmlFocusUpdateCursor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_focus_update_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlFocusUpdateError) -> bool;
+        let cases: Vec<(HtmlFocusUpdateError, &str, Predicate)> = vec![
+            (
+                HtmlFocusUpdateErrorKind::WrongReply.error(),
+                "reply does not match the pending focus-update action",
+                HtmlFocusUpdateError::is_wrong_reply,
+            ),
+            (
+                HtmlFocusUpdateErrorKind::Terminal.error(),
+                "focus update is already complete",
+                HtmlFocusUpdateError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

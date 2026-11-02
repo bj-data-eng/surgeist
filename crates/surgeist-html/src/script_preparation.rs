@@ -74,6 +74,7 @@ pub enum HtmlScriptPreparationReply {
 
 /// A refused transition; the pending action and all cursor state are preserved.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlScriptPreparationError {
     ReplyMismatch,
     EvidenceUnavailable,

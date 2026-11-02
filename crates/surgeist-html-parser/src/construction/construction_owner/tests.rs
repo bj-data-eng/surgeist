@@ -615,10 +615,8 @@ fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row
     drained(owner, &mut control);
 }
 
-/// Every refusal HTML's construction owner can return, with the error the
-/// session reports for it. The owner's error enum is open to later variants,
-/// which the compiler cannot make this crate classify, so this table is the
-/// inventory: a variant added to it needs a row here.
+/// Every fault the session names for HTML's construction owner, with the error
+/// it reports and whether that error latches a stop.
 ///
 /// - Handle, placement and cycle refusals are document-shaped errors the
 ///   callers classify themselves and latch nothing.
@@ -630,8 +628,8 @@ fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row
 /// - Every other refusal is the owner declining a request that the parser's
 ///   sequencing guarantees valid.
 #[test]
-fn every_construction_owner_refusal_reports_what_it_violates() {
-    use HtmlConstructionError as E;
+fn every_owner_fault_reports_what_it_violates() {
+    use OwnerFault as F;
     let invariant = |invariant| SessionError::Stop(ParseStop::InternalInvariant(invariant));
     let mismatch = invariant(Invariant::CapacityMismatch);
     let refusal = invariant(Invariant::ConstructionOwnerRefusal);
@@ -642,78 +640,202 @@ fn every_construction_owner_refusal_reports_what_it_violates() {
     let exhausted = SessionError::Stop(ParseStop::RepresentationExhausted {
         resource: HtmlParseResource::ManagedCapacityBytes,
     });
-    for (error, expected, latched) in [
-        (E::ForeignBuilder, SessionError::ForeignNode, false),
-        (E::UnknownNode, SessionError::ForeignNode, false),
-        (E::RootMove, SessionError::RootMove, false),
-        (E::AssociationMove, SessionError::AssociationMove, false),
+    for (fault, expected, latched) in [
+        (F::ForeignBuilder, SessionError::ForeignNode, false),
+        (F::UnknownNode, SessionError::ForeignNode, false),
+        (F::RootMove, SessionError::RootMove, false),
+        (F::AssociationMove, SessionError::AssociationMove, false),
         (
-            E::ParentCannotHaveChildren,
+            F::ParentCannotHaveChildren,
             SessionError::NotContainer,
             false,
         ),
         (
-            E::TemplateContentsRequired,
+            F::TemplateContentsRequired,
             SessionError::TemplateContentsRequired,
             false,
         ),
-        (E::WrongSibling, SessionError::WrongSibling, false),
-        (E::ParentChildConflict, SessionError::WrongSibling, false),
-        (E::Cycle, SessionError::Cycle, false),
+        (F::WrongSibling, SessionError::WrongSibling, false),
+        (F::ParentChildConflict, SessionError::WrongSibling, false),
+        (F::Cycle, SessionError::Cycle, false),
         (
-            E::SharedAllocationAliased,
+            F::SharedAllocationAliased,
             invariant(Invariant::SharedAllocationAliased),
             true,
         ),
-        (E::RepresentationExhausted, exhausted, true),
-        (E::CapacityMismatch, mismatch, true),
-        (E::ForeignAllocation, mismatch, true),
+        (F::RepresentationExhausted, exhausted, true),
+        (F::CapacityMismatch, mismatch, true),
+        (F::ForeignAllocation, mismatch, true),
+        (F::LimitExceeded, mismatch, true),
         (
-            E::LimitExceeded {
-                resource: HtmlConstructionResource::Nodes,
-                limit: 1,
-                attempted: 2,
-            },
-            mismatch,
-            true,
-        ),
-        (
-            E::ReleaseUnderflow,
+            F::ReleaseUnderflow,
             invariant(Invariant::ReleaseUnderflow),
             true,
         ),
-        (E::AllocationFailed, allocation_failed, true),
-        (E::ShadowHostMustBeElement, refusal, true),
-        (E::ShadowAlreadyAttached, refusal, true),
-        (E::WrongNodeKind, refusal, true),
-        (E::AssociationAlreadyOwned, refusal, true),
-        (E::InvalidTemplateAssociation, refusal, true),
-        (
-            E::DuplicateAttribute {
-                first: 0,
-                duplicate: 1,
-            },
-            refusal,
-            true,
-        ),
-        (E::AttributeNameMismatch, refusal, true),
-        (E::AttributeOrderMismatch, refusal, true),
-        (E::InvalidShadowAssociation, refusal, true),
-        (E::InvalidContentsReference, refusal, true),
-        (E::InvalidOutputRoot, refusal, true),
-        (E::OperationConsumed, refusal, true),
-        (E::OperationNotReady, refusal, true),
+        (F::AllocationFailed, allocation_failed, true),
+        (F::ShadowHostMustBeElement, refusal, true),
+        (F::ShadowAlreadyAttached, refusal, true),
+        (F::WrongNodeKind, refusal, true),
+        (F::AssociationAlreadyOwned, refusal, true),
+        (F::InvalidTemplateAssociation, refusal, true),
+        (F::DuplicateAttribute, refusal, true),
+        (F::AttributeNameMismatch, refusal, true),
+        (F::AttributeOrderMismatch, refusal, true),
+        (F::InvalidShadowAssociation, refusal, true),
+        (F::InvalidContentsReference, refusal, true),
+        (F::InvalidOutputRoot, refusal, true),
+        (F::OperationConsumed, refusal, true),
+        (F::OperationNotReady, refusal, true),
+        (F::Unlisted, refusal, true),
     ] {
         let mut c = crate::construction::tests::control();
-        assert_eq!(
-            construction_error(&mut c, error.clone()),
-            expected,
-            "{error:?}"
-        );
+        assert_eq!(report(&mut c, disposition(fault)), expected, "{fault:?}");
         let stop = match expected {
             SessionError::Stop(stop) => Some(stop),
             _ => None,
         };
-        assert_eq!(c.stop(), stop.filter(|_| latched), "{error:?}");
+        assert_eq!(c.stop(), stop.filter(|_| latched), "{fault:?}");
+    }
+}
+
+/// The construction path has no classification of its own: a document-shaped
+/// fault is a session error that `session_class` classifies as a fault of the
+/// parser, an accounting fault is the class a stage error would carry, and the
+/// error returned for a latched stop is the outcome `session_class` assigns to
+/// that stop. The unnamed cause is a parser fault, never a document outcome.
+#[test]
+fn owner_dispositions_agree_with_the_session_classification() {
+    let faults = OWNER_CAUSES
+        .iter()
+        .map(|(_, fault)| *fault)
+        .chain([OwnerFault::Unlisted]);
+    for fault in faults {
+        let mut c = crate::construction::tests::control();
+        let reported = report(&mut c, disposition(fault));
+        match disposition(fault) {
+            Disposition::Session(error) => {
+                assert_eq!(reported, error, "{fault:?}");
+                assert!(
+                    matches!(session_class(&error), SessionClass::Fault(_)),
+                    "{fault:?}"
+                );
+                assert_eq!(c.stop(), None, "{fault:?}");
+            }
+            Disposition::Class(class) => {
+                assert!(matches!(class, SessionClass::Fault(_)), "{fault:?}");
+                let SessionError::Stop(stop) = reported else {
+                    panic!("{fault:?} did not latch a stop");
+                };
+                assert_eq!(session_class(&reported), SessionClass::Outcome(stop));
+                assert_eq!(c.stop(), Some(stop), "{fault:?}");
+            }
+            Disposition::Representation | Disposition::AllocationFailed => {
+                let SessionError::Stop(stop) = reported else {
+                    panic!("{fault:?} did not latch a stop");
+                };
+                assert_eq!(session_class(&reported), SessionClass::Outcome(stop));
+                assert_eq!(c.stop(), Some(stop), "{fault:?}");
+            }
+        }
+    }
+    assert_eq!(
+        disposition(OwnerFault::Unlisted),
+        Disposition::Class(SessionClass::Fault(Invariant::ConstructionOwnerRefusal))
+    );
+}
+
+/// The cause table lists each fault once, so no two causes share a report by
+/// accident and the unlisted fault is reachable only for an unnamed cause.
+#[test]
+fn owner_cause_table_names_each_fault_once() {
+    for (index, (_, fault)) in OWNER_CAUSES.iter().enumerate() {
+        assert_ne!(*fault, OwnerFault::Unlisted);
+        assert!(
+            OWNER_CAUSES[index + 1..]
+                .iter()
+                .all(|(_, other)| other != fault),
+            "{fault:?} is named twice"
+        );
+    }
+}
+
+/// Errors that a builder provokes, each with the fault it must classify as and
+/// the check that exactly one of the owner's predicates recognizes it.
+#[test]
+fn provoked_owner_errors_classify_as_exactly_one_fault() {
+    use surgeist_html::{
+        DocumentString, HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlFragment,
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, Namespace,
+        OrderedAttributes, QualifiedName,
+    };
+    let name = |local: &str| QualifiedName::new(Namespace::html(), None, local);
+    let limits = HtmlConstructionLimits::new(100, 100, 100, 100_000, 100);
+    let properties = HtmlShadowRootProperties::new(
+        HtmlShadowRootMode::Open,
+        HtmlSlotAssignment::Named,
+        false,
+        false,
+        false,
+    );
+    let mut provoked = Vec::new();
+
+    let mut other = HtmlFragment::builder(limits).unwrap();
+    let mut builder = HtmlFragment::builder(limits).unwrap();
+    let foreign_root = other.root();
+    provoked.push((
+        OwnerFault::ForeignBuilder,
+        builder.append_text(&foreign_root, "x").unwrap_err(),
+    ));
+    let _ = &mut other;
+
+    let mut builder = HtmlDocument::builder(limits, HtmlDocumentMode::NoQuirks).unwrap();
+    let root = builder.root();
+    let leaf = builder.append_comment(&root, "").unwrap();
+    provoked.push((
+        OwnerFault::ParentCannotHaveChildren,
+        builder.append_text(&leaf, "x").unwrap_err(),
+    ));
+    provoked.push((
+        OwnerFault::ShadowHostMustBeElement,
+        builder
+            .attach_declarative_shadow(&leaf, properties)
+            .unwrap_err(),
+    ));
+    let template = builder
+        .append_element(&root, name("template"), OrderedAttributes::default())
+        .unwrap();
+    provoked.push((
+        OwnerFault::TemplateContentsRequired,
+        builder.append_text(&template, "x").unwrap_err(),
+    ));
+    let host = builder
+        .append_element(&root, name("div"), OrderedAttributes::default())
+        .unwrap();
+    builder
+        .attach_declarative_shadow(&host, properties)
+        .unwrap();
+    provoked.push((
+        OwnerFault::ShadowAlreadyAttached,
+        builder
+            .attach_declarative_shadow(&host, properties)
+            .unwrap_err(),
+    ));
+
+    let mut small = HtmlFragment::builder(HtmlConstructionLimits::new(3, 2, 0, 2, 2)).unwrap();
+    let small_root = small.root();
+    provoked.push((
+        OwnerFault::LimitExceeded,
+        small
+            .append_text(&small_root, DocumentString::from("too long"))
+            .unwrap_err(),
+    ));
+
+    for (fault, error) in provoked {
+        let matching = OWNER_CAUSES
+            .iter()
+            .filter(|(recognizes, _)| recognizes(&error))
+            .count();
+        assert_eq!(matching, 1, "{fault:?}: {error}");
+        assert_eq!(classify(&error), fault, "{error}");
     }
 }

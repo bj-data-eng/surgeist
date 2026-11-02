@@ -116,10 +116,47 @@ pub enum HtmlValuePoolError {
 }
 impl fmt::Display for HtmlValuePoolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HTML value pool protocol: {self:?}")
+        f.write_str(match self {
+            Self::ForeignOwner => "value pool action belongs to a different pool owner",
+            Self::WrongAction => "action does not match the pending value pool operation",
+            Self::NotReady => "value pool operation has an unfinished step",
+            Self::RepresentationExhausted => {
+                "value pool accounting size cannot be represented on this platform"
+            }
+        })
     }
 }
 impl Error for HtmlValuePoolError {}
+
+/// A refused seal preparation. The root is returned unfrozen and still open, so
+/// the caller can abort it or resolve the cause and prepare it again.
+#[derive(Debug)]
+#[must_use = "abort the returned root or prepare it again"]
+pub struct HtmlValuePoolSealRefusal {
+    error: HtmlValuePoolError,
+    root: HtmlValuePoolRoot,
+}
+
+impl HtmlValuePoolSealRefusal {
+    pub(super) fn new(error: HtmlValuePoolError, root: HtmlValuePoolRoot) -> Self {
+        Self { error, root }
+    }
+    /// The protocol misuse that refused the seal.
+    pub fn error(&self) -> HtmlValuePoolError {
+        self.error
+    }
+    /// Returns the refusal cause and the unfrozen root.
+    pub fn into_parts(self) -> (HtmlValuePoolError, HtmlValuePoolRoot) {
+        (self.error, self.root)
+    }
+}
+
+impl fmt::Display for HtmlValuePoolSealRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "value pool seal refused: {}", self.error)
+    }
+}
+impl Error for HtmlValuePoolSealRefusal {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Phase {
@@ -545,7 +582,7 @@ macro_rules! concrete_pool {
             pub fn prepare_seal(
                 &mut self,
                 root: HtmlValuePoolRoot,
-            ) -> Result<HtmlValuePoolSeal, (HtmlValuePoolError, HtmlValuePoolRoot)> {
+            ) -> Result<HtmlValuePoolSeal, HtmlValuePoolSealRefusal> {
                 self.inner.prepare_seal(root)
             }
             /// Pair adapters validate both plans before either seal. A valid

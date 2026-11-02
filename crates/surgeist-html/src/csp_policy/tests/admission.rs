@@ -14,7 +14,7 @@ fn empty_and_interrupted_request_return_the_original_owned_input() {
         .unwrap_err();
     assert!(matches!(
         error.error,
-        HtmlCspError::Protocol(HtmlCspProtocolError::EmptyContent)
+        HtmlCspError::Protocol(ref error) if error.is_empty_content()
     ));
     assert!(error.retained.is_empty());
     let input = DocumentString::from_utf16([0xd800, 49]);
@@ -244,21 +244,21 @@ fn rejected_attestation_returns_actual_native_custody_and_processor_releases_aft
 fn layout_arithmetic_rejects_unrepresentable_storage_and_disposal_before_admission() {
     assert_eq!(
         HtmlCspStorage::try_new(1, 1, 0),
-        Err(HtmlCspProtocolError::InvalidStorage)
+        Err(HtmlCspProtocolErrorKind::InvalidStorage.error())
     );
     assert_eq!(
         HtmlCspStorage::try_new(usize::MAX, usize::MAX, 0),
-        Err(HtmlCspProtocolError::InvalidStorage)
+        Err(HtmlCspProtocolErrorKind::InvalidStorage.error())
     );
     let storage = HtmlCspStorage::try_new(usize::MAX, 0, 0).unwrap();
     let work = HtmlCspDisposalWork::try_new(1, 1).unwrap();
     assert_eq!(
         HtmlCspArtifactLayout::try_new(storage, work),
-        Err(HtmlCspProtocolError::RepresentationExhausted)
+        Err(HtmlCspProtocolErrorKind::RepresentationExhausted.error())
     );
     let closing = HtmlCspDisposalWork::try_new(1, 0).unwrap();
     assert_eq!(
         HtmlCspLayout::processing(u64::MAX, HtmlCspStorage::default(), closing, 0),
-        Err(HtmlCspProtocolError::RepresentationExhausted)
+        Err(HtmlCspProtocolErrorKind::RepresentationExhausted.error())
     );
 }

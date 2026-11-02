@@ -145,6 +145,7 @@ pub struct HtmlConstructionAttributeEdit {
     appended: usize,
     next_selected: usize,
 }
+#[derive(Debug)]
 pub struct HtmlConstructionAttributeRejection {
     storage: HtmlConstructionStorage,
     element: HtmlBuilderNode,
@@ -163,6 +164,18 @@ impl HtmlConstructionAttributeRejection {
         (self.storage, self.element, self.mode, self.reason)
     }
 }
+impl HtmlConstructionAttributeRejection {
+    /// The cause the edit was refused for; the owners stay recoverable.
+    pub fn reason(&self) -> &HtmlConstructionError {
+        &self.reason
+    }
+}
+impl fmt::Display for HtmlConstructionAttributeRejection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "attribute edit rejected: {}", self.reason)
+    }
+}
+impl std::error::Error for HtmlConstructionAttributeRejection {}
 pub struct HtmlConstructionAttributeCompletion {
     storage: HtmlConstructionStorage,
     retirement: HtmlConstructionAttributePlanRetirement,
@@ -218,11 +231,11 @@ impl HtmlConstructionAttributeEdit {
     }
     pub fn shared_attributes(&self) -> Result<&Arc<Vec<Attribute>>, HtmlConstructionError> {
         if !self.target_checked {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         match &self.storage.arena.records[self.target].kind {
             HtmlNodeKind::Element(v) => Ok(v.attributes.shared_attributes()),
-            _ => Err(HtmlConstructionError::WrongNodeKind),
+            _ => Err(HtmlConstructionErrorKind::WrongNodeKind.into()),
         }
     }
     pub fn capacity(&self) -> HtmlConstructionAttributeCapacity {
@@ -244,7 +257,7 @@ impl HtmlConstructionAttributeEdit {
             return Err(e.clone());
         }
         if self.phase != GroupPhase::Ready || self.busy {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok(())
     }
@@ -266,7 +279,7 @@ impl HtmlConstructionAttributeEdit {
             return Err(e.clone());
         }
         if self.busy || self.phase == GroupPhase::Observing {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok((self.phase != GroupPhase::Ready)
             .then_some(HtmlConstructionAttributeAction { edit: self }))
@@ -278,10 +291,10 @@ impl HtmlConstructionAttributeEdit {
     ) -> Result<HtmlConstructionAttributeCandidate<'e, 'n>, HtmlConstructionError> {
         self.check_ready()?;
         let HtmlConstructionAttributeEditMode::NamedMerge { candidate_count } = self.mode else {
-            return Err(HtmlConstructionError::AttributeOrderMismatch);
+            return Err(HtmlConstructionErrorKind::AttributeOrderMismatch.into());
         };
         if index != self.decisions.len() || index >= candidate_count {
-            return Err(HtmlConstructionError::AttributeOrderMismatch);
+            return Err(HtmlConstructionErrorKind::AttributeOrderMismatch.into());
         }
         Ok(HtmlConstructionAttributeCandidate {
             edit: self,
@@ -298,12 +311,12 @@ impl HtmlConstructionAttributeEdit {
         self.decisions
             .get(index)
             .map(|v| v.keep)
-            .ok_or(HtmlConstructionError::AttributeOrderMismatch)
+            .ok_or(HtmlConstructionErrorKind::AttributeOrderMismatch.error())
     }
     pub fn selected_count(&self) -> Result<usize, HtmlConstructionError> {
         self.check_ready()?;
         if !self.planning_complete() {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok(self.selected)
     }
@@ -313,14 +326,14 @@ impl HtmlConstructionAttributeEdit {
     ) -> Result<HtmlConstructionAttributeSlot<'a>, HtmlConstructionError> {
         self.check_ready()?;
         if !self.planning_complete() || self.used {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         if matches!(
             self.mode,
             HtmlConstructionAttributeEditMode::NamedMerge { .. }
         ) && !matches!(input, SlotInput::Append(_) | SlotInput::Reserve(_))
         {
-            return Err(HtmlConstructionError::AttributeOrderMismatch);
+            return Err(HtmlConstructionErrorKind::AttributeOrderMismatch.into());
         }
         let usage = self.storage.usage();
         Ok(HtmlConstructionAttributeSlot {
@@ -367,10 +380,10 @@ impl HtmlConstructionAttributeEdit {
     ) -> Result<HtmlConstructionAttributeCompletion, HtmlConstructionError> {
         let edit = owner
             .as_ref()
-            .ok_or(HtmlConstructionError::OperationConsumed)?;
+            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
         edit.check_ready()?;
         if !edit.planning_complete() || edit.appended != edit.selected {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok(owner.take().expect("checked group").abort())
     }
@@ -418,13 +431,13 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
         self,
     ) -> Result<HtmlConstructionAttributeObservation<'a>, HtmlConstructionError> {
         let edit = self.edit;
-        let result = (|| {
+        let result = (|| -> Result<_, HtmlConstructionError> {
             Ok(match edit.phase {
                 GroupPhase::Target => {
                     edit.target = edit.storage.position(&edit.element)?;
                     let HtmlNodeKind::Element(v) = &edit.storage.arena.records[edit.target].kind
                     else {
-                        return Err(HtmlConstructionError::WrongNodeKind);
+                        return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
                     };
                     edit.capacity = HtmlConstructionAttributeCapacity {
                         initialized_len: v.attributes.len(),
@@ -446,7 +459,7 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
                         .arena
                         .temporary_generation
                         .checked_add(1)
-                        .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+                        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
                     let report = HtmlConstructionAllocationSnapshot::vector(
                         &edit.storage.arena.identity,
                         AllocationRole::AttributePlan(edit.target),
@@ -539,7 +552,7 @@ impl<'e, 'n> HtmlConstructionAttributeCandidate<'e, 'n> {
             return Err(e.clone());
         }
         if matches!(self.phase, CandidatePhase::Observing) {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok((!matches!(self.phase, CandidatePhase::Done))
             .then_some(HtmlConstructionAttributeCandidateAction { candidate: self }))
@@ -547,12 +560,12 @@ impl<'e, 'n> HtmlConstructionAttributeCandidate<'e, 'n> {
     pub fn try_finish(owner: &mut Option<Self>) -> Result<bool, HtmlConstructionError> {
         let candidate = owner
             .as_ref()
-            .ok_or(HtmlConstructionError::OperationConsumed)?;
+            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
         if let Some(e) = &candidate.failure {
             return Err(e.clone());
         }
         if !matches!(candidate.phase, CandidatePhase::Done) {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         let mut candidate = owner.take().expect("ready candidate");
         candidate.complete = true;
@@ -650,7 +663,7 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
             c.edit.busy = true;
         }
         let mut allocation = false;
-        let result = (|| {
+        let result = (|| -> Result<_, HtmlConstructionError> {
             Ok(match c.phase {
                 CandidatePhase::Target(index) => {
                     if index == c.edit.attributes().len() {
@@ -690,11 +703,12 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                             CandidatePhase::Witness
                         }
                     } else {
-                        let prior = prior.ok_or(HtmlConstructionError::AttributeNameMismatch)?;
+                        let prior =
+                            prior.ok_or(HtmlConstructionErrorKind::AttributeNameMismatch)?;
                         if c.edit.decisions[index].name.as_ptr()
                             != Arc::as_ptr(prior.shared_code_units())
                         {
-                            return Err(HtmlConstructionError::AttributeNameMismatch);
+                            return Err(HtmlConstructionErrorKind::AttributeNameMismatch.into());
                         }
                         CandidatePhase::PriorName {
                             index,
@@ -720,17 +734,17 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                     }
                 }
                 CandidatePhase::Reserve => {
-                    let new_generation = c
-                        .edit
-                        .storage
-                        .arena
-                        .temporary_generation
-                        .checked_add(1)
-                        .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+                    let new_generation =
+                        c.edit
+                            .storage
+                            .arena
+                            .temporary_generation
+                            .checked_add(1)
+                            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
                     let bytes = (c.index + 1)
                         .checked_mul(size_of::<NameDecision>())
                         .filter(|v| *v <= isize::MAX as usize)
-                        .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+                        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
                     let _ = bytes;
                     let result = c.edit.decisions.try_reserve_exact(1);
                     let snapshot = c.edit.plan.as_mut().expect("plan report");
@@ -741,7 +755,7 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                         c.edit.storage.arena.temporary_generation = new_generation;
                     }
                     allocation = true;
-                    result.map_err(|_| HtmlConstructionError::AllocationFailed)?;
+                    result.map_err(|_| HtmlConstructionErrorKind::AllocationFailed)?;
                     CandidatePhase::Witness
                 }
                 CandidatePhase::Witness => {
@@ -866,7 +880,7 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
                     }
             )
         {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         self.edit.shared_attributes()
     }
@@ -881,7 +895,7 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
             return Err(e.clone());
         }
         if matches!(self.phase, SlotPhase::Observing { .. }) {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok((!matches!(self.phase, SlotPhase::Ready))
             .then_some(HtmlConstructionAttributeSlotAction { slot: self }))
@@ -891,12 +905,12 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
     ) -> Result<HtmlConstructionReadyAttributeSlot<'e>, HtmlConstructionError> {
         let slot = owner
             .as_ref()
-            .ok_or(HtmlConstructionError::OperationConsumed)?;
+            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
         if let Some(e) = &slot.failure {
             return Err(e.clone());
         }
         if !matches!(slot.phase, SlotPhase::Ready) {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok(HtmlConstructionReadyAttributeSlot {
             slot: owner.take().expect("ready slot"),
@@ -905,11 +919,11 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
 }
 fn plus(a: usize, b: usize) -> Result<usize, HtmlConstructionError> {
     a.checked_add(b)
-        .ok_or(HtmlConstructionError::RepresentationExhausted)
+        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted.error())
 }
 fn minus(a: usize, b: usize) -> Result<usize, HtmlConstructionError> {
     a.checked_sub(b)
-        .ok_or(HtmlConstructionError::ReleaseUnderflow)
+        .ok_or(HtmlConstructionErrorKind::ReleaseUnderflow.error())
 }
 fn identical_name(left: &QualifiedName, right: &QualifiedName) -> bool {
     let namespace = match (left.namespace().uri(), right.namespace().uri()) {
@@ -1048,7 +1062,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
             s.edit.busy = true;
         }
         let mut capacity = false;
-        let result = (|| {
+        let result = (|| -> Result<_, HtmlConstructionError> {
             Ok(match s.phase {
                 SlotPhase::Input => match &s.input {
                     SlotInput::Reserve(additional) => {
@@ -1060,9 +1074,11 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                         }
                     }
                     SlotInput::Append(v) => {
-                        let attribute = v.last().ok_or(HtmlConstructionError::CapacityMismatch)?;
+                        let attribute = v
+                            .last()
+                            .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
                         if s.edit.capacity.initialized_len == s.edit.capacity.capacity {
-                            return Err(HtmlConstructionError::CapacityMismatch);
+                            return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
                         }
                         s.usage.attributes = plus(s.usage.attributes, 1)?;
                         s.usage.utf16_units =
@@ -1085,10 +1101,10 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                             .edit
                             .attributes()
                             .get(*index)
-                            .ok_or(HtmlConstructionError::CapacityMismatch)?;
+                            .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
                         let new = incoming
                             .as_ref()
-                            .ok_or(HtmlConstructionError::CapacityMismatch)?;
+                            .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
                         s.usage.utf16_units = plus(
                             minus(s.usage.utf16_units, attribute_units(old)?)?,
                             attribute_units(new)?,
@@ -1097,7 +1113,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                     }
                     SlotInput::Swap(index) => {
                         if plus(*index, 1)? >= s.edit.capacity.initialized_len {
-                            return Err(HtmlConstructionError::CapacityMismatch);
+                            return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
                         }
                         SlotPhase::Layout
                     }
@@ -1106,7 +1122,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                             .edit
                             .attributes()
                             .last()
-                            .ok_or(HtmlConstructionError::CapacityMismatch)?;
+                            .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
                         s.usage.attributes = minus(s.usage.attributes, 1)?;
                         s.usage.utf16_units = minus(s.usage.utf16_units, attribute_units(old)?)?;
                         SlotPhase::Layout
@@ -1114,13 +1130,13 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                 },
                 SlotPhase::NextName => {
                     if s.edit.appended == s.edit.selected {
-                        return Err(HtmlConstructionError::AttributeOrderMismatch);
+                        return Err(HtmlConstructionErrorKind::AttributeOrderMismatch.into());
                     }
                     let decision = s
                         .edit
                         .decisions
                         .get(s.plan_index)
-                        .ok_or(HtmlConstructionError::AttributeOrderMismatch)?;
+                        .ok_or(HtmlConstructionErrorKind::AttributeOrderMismatch)?;
                     if decision.keep {
                         SlotPhase::NamedIdentity
                     } else {
@@ -1134,7 +1150,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                         || s.edit.decisions[s.plan_index].name.as_ptr()
                             != Arc::as_ptr(attribute.name().local_name().shared_code_units())
                     {
-                        return Err(HtmlConstructionError::AttributeNameMismatch);
+                        return Err(HtmlConstructionErrorKind::AttributeNameMismatch.into());
                     }
                     SlotPhase::Layout
                 }
@@ -1179,13 +1195,14 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                                 name: NamePhase::Pair,
                             },
                             ComparisonStep::Equal => {
-                                return Err(HtmlConstructionError::DuplicateAttribute {
+                                return Err(HtmlConstructionErrorKind::DuplicateAttribute {
                                     first: index,
                                     duplicate: match s.input {
                                         SlotInput::Replace { index, .. } => index,
                                         _ => s.edit.capacity.initialized_len,
                                     },
-                                });
+                                }
+                                .into());
                             }
                         }
                     }
@@ -1195,15 +1212,15 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                         .minimum_capacity
                         .checked_mul(size_of::<Attribute>())
                         .filter(|v| *v <= isize::MAX as usize)
-                        .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+                        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
                     let _ = required_bytes;
                     let additional = s.minimum_capacity - s.edit.capacity.initialized_len;
                     let backing = Arc::get_mut(s.edit.backing_mut())
-                        .ok_or(HtmlConstructionError::SharedAllocationAliased)?;
+                        .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
                     let result = backing.try_reserve_exact(additional);
                     s.edit.capacity.capacity = backing.capacity();
                     capacity = true;
-                    result.map_err(|_| HtmlConstructionError::AllocationFailed)?;
+                    result.map_err(|_| HtmlConstructionErrorKind::AllocationFailed)?;
                     SlotPhase::Layout
                 }
                 SlotPhase::Layout => {
@@ -1216,7 +1233,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                 SlotPhase::Unique => {
                     let backing = s.edit.shared_attributes()?;
                     if Arc::strong_count(backing) != 1 || Arc::weak_count(backing) != 0 {
-                        return Err(HtmlConstructionError::SharedAllocationAliased);
+                        return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
                     }
                     SlotPhase::Ready
                 }
@@ -1609,10 +1626,11 @@ mod tests {
         let value = Arc::as_ptr(incoming.as_ref().unwrap().value().shared_code_units());
         assert_slot_refused(
             edit.replace(0, &mut incoming).unwrap(),
-            HtmlConstructionError::DuplicateAttribute {
+            HtmlConstructionErrorKind::DuplicateAttribute {
                 first: 1,
                 duplicate: 0,
-            },
+            }
+            .error(),
         );
         let incoming = incoming
             .as_ref()
@@ -1654,7 +1672,7 @@ mod tests {
             let value = Arc::as_ptr(incoming.as_ref().unwrap().value().shared_code_units());
             assert_slot_refused(
                 edit.replace(index, &mut incoming).unwrap(),
-                HtmlConstructionError::CapacityMismatch,
+                HtmlConstructionErrorKind::CapacityMismatch.error(),
             );
             let incoming = incoming
                 .as_ref()
@@ -1684,7 +1702,7 @@ mod tests {
         let mut incoming = None;
         assert_slot_refused(
             edit.replace(0, &mut incoming).unwrap(),
-            HtmlConstructionError::CapacityMismatch,
+            HtmlConstructionErrorKind::CapacityMismatch.error(),
         );
         assert!(incoming.is_none());
         let expected = [("a", "one"), ("b", "two")];
@@ -1705,7 +1723,7 @@ mod tests {
             let original = UnchangedAttributes::capture(&edit);
             assert_slot_refused(
                 edit.swap_adjacent(index).unwrap(),
-                HtmlConstructionError::CapacityMismatch,
+                HtmlConstructionErrorKind::CapacityMismatch.error(),
             );
             let expected = [("a", "one"), ("b", "two")];
             original.assert_unchanged(&edit, &target, &expected);
@@ -1722,7 +1740,10 @@ mod tests {
             HtmlConstructionAttributeEditMode::Slots,
         );
         let original = UnchangedAttributes::capture(&edit);
-        assert_slot_refused(edit.pop().unwrap(), HtmlConstructionError::CapacityMismatch);
+        assert_slot_refused(
+            edit.pop().unwrap(),
+            HtmlConstructionErrorKind::CapacityMismatch.error(),
+        );
         original.assert_unchanged(&edit, &target, &[]);
         original.assert_abort_and_retirement(edit, target, &[]);
     }
@@ -1788,7 +1809,7 @@ mod tests {
         ));
         assert!(matches!(
             HtmlConstructionAttributeEdit::try_finish(&mut edit),
-            Err(HtmlConstructionError::OperationNotReady)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         let name = DocumentString::from("x");
         let mut candidate = edit.as_mut().unwrap().candidate(0, &name).unwrap();
@@ -1799,7 +1820,7 @@ mod tests {
         drop(candidate);
         assert!(matches!(
             edit.as_mut().unwrap().candidate(0, &name),
-            Err(HtmlConstructionError::OperationNotReady)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         let (_, retirement) = edit.take().unwrap().abort().into_parts();
         assert_eq!(retire(retirement).0, 0);
@@ -1825,7 +1846,7 @@ mod tests {
         }
         assert!(matches!(
             HtmlConstructionAttributeCandidate::try_finish(&mut candidate),
-            Err(HtmlConstructionError::OperationNotReady)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         drop(candidate);
         let (_, retirement) = edit.abort().into_parts();
@@ -1852,7 +1873,10 @@ mod tests {
                 Err(error) => break error,
             }
         };
-        assert_eq!(failure, HtmlConstructionError::AttributeNameMismatch);
+        assert_eq!(
+            failure,
+            HtmlConstructionErrorKind::AttributeNameMismatch.error()
+        );
         drop(pending);
         assert_eq!(incoming.len(), 1);
         assert!(edit.attributes().is_empty());
@@ -1878,10 +1902,11 @@ mod tests {
         };
         assert_eq!(
             error,
-            HtmlConstructionError::DuplicateAttribute {
+            HtmlConstructionErrorKind::DuplicateAttribute {
                 first: 0,
                 duplicate: 1
             }
+            .error()
         );
         drop(pending);
         assert_eq!(incoming[0].value().to_utf8().unwrap(), "new");
@@ -1912,14 +1937,14 @@ mod tests {
             if matches!(observation.next, SlotPhase::Ready) {
                 assert!(matches!(
                     observation.shared_attributes(),
-                    Err(HtmlConstructionError::OperationNotReady)
+                    Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
                 ));
             }
             observation.accept();
         }
         assert!(matches!(
             pending.as_ref().unwrap().shared_attributes(),
-            Err(HtmlConstructionError::OperationNotReady)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         let ready = HtmlConstructionAttributeSlot::try_ready(&mut pending).unwrap();
         drop(ready);
@@ -1961,7 +1986,7 @@ mod tests {
         }
         assert!(matches!(
             HtmlConstructionAttributeSlot::try_ready(&mut pending),
-            Err(HtmlConstructionError::OperationNotReady)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         drop(pending);
         assert_eq!(incoming.len(), 1);
@@ -2068,7 +2093,7 @@ mod tests {
         .unwrap_or_else(|_| panic!("pending check"));
         assert!(matches!(
             edit.next_action().unwrap().unwrap().perform(),
-            Err(HtmlConstructionError::ForeignBuilder)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::ForeignBuilder
         ));
         let (storage, retirement) = edit.abort().into_parts();
         assert_eq!(storage.len(), 1);
@@ -2113,7 +2138,10 @@ mod tests {
                     Err(e) => break e,
                 }
             };
-            assert_eq!(error, HtmlConstructionError::AttributeNameMismatch);
+            assert_eq!(
+                error,
+                HtmlConstructionErrorKind::AttributeNameMismatch.error()
+            );
             drop(pending);
             assert_eq!(incoming.len(), 1);
             assert!(edit.attributes().is_empty());
@@ -2133,7 +2161,7 @@ mod tests {
         );
         assert!(matches!(
             edit.candidate(1, &names[1]),
-            Err(HtmlConstructionError::AttributeOrderMismatch)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::AttributeOrderMismatch
         ));
         plan(&mut edit, &names);
         slot(edit.reserve(2).unwrap());
@@ -2151,7 +2179,10 @@ mod tests {
                 Err(e) => break e,
             }
         };
-        assert_eq!(error, HtmlConstructionError::AttributeNameMismatch);
+        assert_eq!(
+            error,
+            HtmlConstructionErrorKind::AttributeNameMismatch.error()
+        );
         drop(pending);
         assert_eq!(replay.len(), 1);
         assert_eq!(incoming.len(), 1);
@@ -2177,7 +2208,7 @@ mod tests {
         let mut excess = vec![attribute("z", "excess")];
         assert!(matches!(
             edit.append(&mut excess),
-            Err(HtmlConstructionError::OperationNotReady)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         assert_eq!(excess.len(), 1);
         assert_eq!(edit.attributes().len(), 2);
@@ -2291,11 +2322,11 @@ mod tests {
         std::mem::forget(candidate);
         assert!(matches!(
             HtmlConstructionAttributeEdit::try_finish(&mut edit),
-            Err(HtmlConstructionError::OperationNotReady)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         assert!(matches!(
             edit.as_ref().unwrap().selected_count(),
-            Err(HtmlConstructionError::OperationNotReady)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         let (_, retirement) = edit.take().unwrap().abort().into_parts();
         assert_eq!(retire(retirement).0, 1);

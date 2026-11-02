@@ -3,8 +3,8 @@
 //! intention; DOM's assignment/query algorithms are not faked here.
 use std::convert::Infallible;
 use surgeist_html::bounded::{
-    HtmlSlotAssignAction as Action, HtmlSlotAssignCursor, HtmlSlotAssignCursorError,
-    HtmlSlotAssignReply as Reply, native_element_initialization_with,
+    HtmlSlotAssignAction as Action, HtmlSlotAssignCursor, HtmlSlotAssignReply as Reply,
+    native_element_initialization_with,
 };
 use surgeist_html::{
     HtmlElementClass, HtmlNativeFreshSlot, KnownHtmlElement, Namespace, QualifiedName,
@@ -177,7 +177,7 @@ impl Records {
                     | Action::CompareIncoming { .. } => Reply::Applied,
                     _ => Reply::SameNode(false),
                 };
-                assert_eq!(cursor.reply(wrong), Err(HtmlSlotAssignCursorError::Reply));
+                assert!(matches!(cursor.reply(wrong), Err(ref e) if e.is_reply()));
                 assert_eq!(cursor.action(), action);
             }
             let reply = self.apply(action);
@@ -406,7 +406,7 @@ fn wrong_replies_preserve_the_pending_action_and_all_subsequent_source_effects()
         Reply::ManualAssignmentPresent(false),
         Reply::ManualAssignmentPresent(true),
     ] {
-        assert_eq!(cursor.reply(reply), Err(HtmlSlotAssignCursorError::Reply));
+        assert!(matches!(cursor.reply(reply), Err(ref e) if e.is_reply()));
         assert_eq!(cursor.action(), Action::Complete);
     }
 }

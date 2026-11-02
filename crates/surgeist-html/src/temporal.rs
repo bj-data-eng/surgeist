@@ -37,6 +37,7 @@ use std::{error::Error, fmt, num::NonZeroU32};
 
 /// A rejected temporal grammar or source-defined intrinsic component constraint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlTemporalError {
     /// A year contains something other than one or more ASCII decimal digits.
     InvalidYearDigits,

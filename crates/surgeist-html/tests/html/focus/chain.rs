@@ -3,10 +3,9 @@
 //! a small identity/list adapter for pure protocols, not a native focus service.
 use surgeist_html::{
     HtmlCurrentFocusChainAction as CA, HtmlCurrentFocusChainCursor as CC,
-    HtmlCurrentFocusChainError as CE, HtmlCurrentFocusChainReply as CR,
-    HtmlCurrentlyFocusedAreaAction as QA, HtmlCurrentlyFocusedAreaCursor as QC,
-    HtmlCurrentlyFocusedAreaOutcome as QO, HtmlCurrentlyFocusedAreaReply as QR,
-    HtmlFocusChainAction as A, HtmlFocusChainCursor as C, HtmlFocusChainError as E,
+    HtmlCurrentFocusChainReply as CR, HtmlCurrentlyFocusedAreaAction as QA,
+    HtmlCurrentlyFocusedAreaCursor as QC, HtmlCurrentlyFocusedAreaOutcome as QO,
+    HtmlCurrentlyFocusedAreaReply as QR, HtmlFocusChainAction as A, HtmlFocusChainCursor as C,
     HtmlFocusChainReply as R, HtmlFocusedAreaKind,
 };
 
@@ -192,7 +191,7 @@ fn step(cursor: &mut C, reply: R) {
     let action = cursor.action();
     for wrong in REPLIES {
         if std::mem::discriminant(&wrong) != std::mem::discriminant(&reply) {
-            assert_eq!(cursor.reply(wrong), Err(E::WrongReply));
+            assert!(matches!(cursor.reply(wrong), Err(ref e) if e.is_wrong_reply()));
             assert_eq!(cursor.action(), action);
         }
     }
@@ -201,7 +200,7 @@ fn step(cursor: &mut C, reply: R) {
 fn terminal(cursor: &mut C) {
     assert_eq!(cursor.action(), A::Complete);
     for reply in REPLIES {
-        assert_eq!(cursor.reply(reply), Err(E::Terminal));
+        assert!(matches!(cursor.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(cursor.action(), A::Complete);
     }
 }
@@ -581,7 +580,7 @@ fn current_chain_wrong_stage_and_terminal_replies_preserve_exact_state() {
             let before = c.action();
             for wrong in replies {
                 if std::mem::discriminant(&wrong) != std::mem::discriminant(&actual) {
-                    assert_eq!(c.reply(wrong), Err(CE::WrongReply));
+                    assert!(matches!(c.reply(wrong), Err(ref e) if e.is_wrong_reply()));
                     assert_eq!(c.action(), before);
                 }
             }
@@ -589,7 +588,7 @@ fn current_chain_wrong_stage_and_terminal_replies_preserve_exact_state() {
         }
         assert_eq!(c.action(), CA::Complete);
         for reply in replies {
-            assert_eq!(c.reply(reply), Err(CE::Terminal));
+            assert!(matches!(c.reply(reply), Err(ref e) if e.is_terminal()));
             assert_eq!(c.action(), CA::Complete);
         }
     }
@@ -640,7 +639,7 @@ fn non_area_non_document_classification_is_typed_error_and_preserves_pending_cur
         step(&mut c, reply);
     }
     assert_eq!(c.action(), A::ReadDocument);
-    assert_eq!(c.reply(R::Document(false)), Err(E::InvalidCurrentObject));
+    assert!(matches!(c.reply(R::Document(false)), Err(ref e) if e.is_invalid_current_object()));
     assert_eq!(c.action(), A::ReadDocument);
     // The refused reply has not consumed the pending fact channel.
     step(&mut c, R::Document(true));

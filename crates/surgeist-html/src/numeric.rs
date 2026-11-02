@@ -1113,6 +1113,7 @@ impl TryFrom<HtmlInteger> for HtmlNonNegativeInteger {
 
 /// An exact decimal-magnitude constructor received no digits or a non-digit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlDecimalDigitsError {
     /// There were no code units.
     Empty,
@@ -1665,6 +1666,7 @@ impl HtmlDimensionList {
 
 /// Failures of the common numeric algorithms; request limits are separate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum NumericParseError {
     InvalidSyntax,
     Negative,
@@ -1858,7 +1860,7 @@ pub fn try_parse_integer(
     max_result_digits: usize,
     max_capacity_bytes: usize,
 ) -> Result<IntegerUnitStepResult, IntegerRecoveryError> {
-    let prefix = integer_prefix(input.code_units(), true).map_err(IntegerRecoveryError::Syntax)?;
+    let prefix = integer_prefix(input.code_units(), true)?;
     // The scanner proves at least one ASCII digit. All-zero input retains its
     // last zero, so canonical zero also requires exactly one output digit.
     let first = prefix
@@ -1867,8 +1869,8 @@ pub fn try_parse_integer(
         .position(|&unit| unit != b'0' as u16)
         .unwrap_or(prefix.digits.len() - 1);
     let canonical = &prefix.digits[first..];
-    let mut digits = reserve_integer_digits(canonical.len(), max_result_digits, max_capacity_bytes)
-        .map_err(IntegerRecoveryError::Allocation)?;
+    let mut digits =
+        reserve_integer_digits(canonical.len(), max_result_digits, max_capacity_bytes)?;
     for &unit in canonical {
         digits.push(char::from(unit as u8));
     }
@@ -2830,45 +2832,131 @@ impl ScannedIntegerPrefix {
 
 impl fmt::Display for NumericParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        f.write_str(match self {
+            Self::InvalidSyntax => "value does not match the HTML numeric syntax",
+            Self::Negative => "value is negative where a nonnegative value is required",
+            Self::FloatingPointOverflow => "value overflows the finite binary64 range",
+            Self::ZeroDimension => "dimension is zero where a nonzero value is required",
+        })
     }
 }
 impl Error for NumericParseError {}
 
 impl fmt::Display for IntegerUnitStepError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::RepresentationExhausted => {
+                f.write_str("integer digit count cannot be represented on this platform")
+            }
+            Self::DigitLimitExceeded { limit, required } => write!(
+                f,
+                "integer needs {required} digits, exceeding the limit of {limit}"
+            ),
+            Self::RequestedCapacityLimitExceeded { limit, required } => write!(
+                f,
+                "integer needs {required} bytes of digit storage, exceeding the limit of {limit}"
+            ),
+            Self::ActualCapacityLimitExceeded {
+                limit,
+                requested,
+                capacity_bytes,
+            } => write!(
+                f,
+                "allocating {requested} bytes of digit storage produced {capacity_bytes} bytes, exceeding the limit of {limit}"
+            ),
+            Self::AllocationFailed { requested } => {
+                write!(f, "allocating {requested} bytes of digit storage failed")
+            }
+        }
     }
 }
 impl Error for IntegerUnitStepError {}
 
 impl fmt::Display for IntegerRecoveryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        f.write_str(match self {
+            Self::Syntax(_) => "integer recovery rejected the input",
+            Self::Allocation(_) => "integer recovery could not store its digits",
+        })
     }
 }
-impl Error for IntegerRecoveryError {}
+impl From<NumericParseError> for IntegerRecoveryError {
+    fn from(error: NumericParseError) -> Self {
+        Self::Syntax(error)
+    }
+}
+impl From<IntegerUnitStepError> for IntegerRecoveryError {
+    fn from(error: IntegerUnitStepError) -> Self {
+        Self::Allocation(error)
+    }
+}
+impl Error for IntegerRecoveryError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Syntax(error) => Some(error),
+            Self::Allocation(error) => Some(error),
+        }
+    }
+}
 
 impl fmt::Display for FloatingPointAllocationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::RepresentationExhausted => {
+                f.write_str("floating-point token length cannot be represented on this platform")
+            }
+            Self::RequestedCapacityLimitExceeded { limit, required } => write!(
+                f,
+                "floating-point token needs {required} bytes of storage, exceeding the limit of {limit}"
+            ),
+            Self::ActualCapacityLimitExceeded {
+                limit,
+                requested,
+                capacity_bytes,
+            } => write!(
+                f,
+                "allocating {requested} bytes of floating-point token storage produced {capacity_bytes} bytes, exceeding the limit of {limit}"
+            ),
+            Self::AllocationFailed { requested } => write!(
+                f,
+                "allocating {requested} bytes of floating-point token storage failed"
+            ),
+        }
     }
 }
 impl Error for FloatingPointAllocationError {}
 
 impl fmt::Display for NumericMaterializationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        f.write_str(match self {
+            Self::Digits(_) => "numeric digits are not a valid decimal magnitude",
+            Self::Boundary(_) => "numeric materialization reached an allocation boundary",
+        })
     }
 }
-impl Error for NumericMaterializationError {}
+impl Error for NumericMaterializationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Digits(error) => Some(error),
+            Self::Boundary(error) => Some(error),
+        }
+    }
+}
 
 impl fmt::Display for NumericMaterializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        write!(
+            f,
+            "numeric materialization failed after allocating {} bytes",
+            self.capacity_bytes
+        )
     }
 }
-impl Error for NumericMaterializationFailure {}
+impl Error for NumericMaterializationFailure {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.kind)
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -15,7 +15,7 @@ impl HtmlCspStorage {
         entries: usize,
     ) -> Result<Self, HtmlCspProtocolError> {
         if utf16_units.checked_mul(2).is_none_or(|n| n > bytes) {
-            return Err(HtmlCspProtocolError::InvalidStorage);
+            return Err(HtmlCspProtocolErrorKind::InvalidStorage.error());
         }
         Ok(Self {
             bytes,
@@ -37,15 +37,15 @@ impl HtmlCspStorage {
             bytes: self
                 .bytes
                 .checked_add(other.bytes)
-                .ok_or(HtmlCspProtocolError::RepresentationExhausted)?,
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?,
             utf16_units: self
                 .utf16_units
                 .checked_add(other.utf16_units)
-                .ok_or(HtmlCspProtocolError::RepresentationExhausted)?,
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?,
             entries: self
                 .entries
                 .checked_add(other.entries)
-                .ok_or(HtmlCspProtocolError::RepresentationExhausted)?,
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?,
         })
     }
     pub(super) fn inline<T>() -> Self {
@@ -61,7 +61,7 @@ impl HtmlCspStorage {
             units
                 .checked_mul(2)
                 .and_then(|n| n.checked_add(size_of::<Vec<u16>>()))
-                .ok_or(HtmlCspProtocolError::RepresentationExhausted)?,
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?,
             units,
             1,
         )
@@ -80,7 +80,8 @@ impl HtmlCspDisposalWork {
     pub fn try_new(work_credits: u64, atomic_bytes: usize) -> Result<Self, HtmlCspProtocolError> {
         // Keep the two independently meaningful quantities representable in
         // the common checked action extent used by consuming controllers.
-        usize::try_from(work_credits).map_err(|_| HtmlCspProtocolError::RepresentationExhausted)?;
+        usize::try_from(work_credits)
+            .map_err(|_| HtmlCspProtocolErrorKind::RepresentationExhausted)?;
         Ok(Self {
             work_credits,
             atomic_bytes,
@@ -96,7 +97,7 @@ impl HtmlCspDisposalWork {
         Self::try_new(
             self.work_credits
                 .checked_add(other.work_credits)
-                .ok_or(HtmlCspProtocolError::RepresentationExhausted)?,
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?,
             self.atomic_bytes.max(other.atomic_bytes),
         )
     }
@@ -122,7 +123,7 @@ impl HtmlCspArtifactLayout {
         storage
             .bytes
             .checked_add(disposal.atomic_bytes)
-            .ok_or(HtmlCspProtocolError::RepresentationExhausted)?;
+            .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
         Ok(Self { storage, disposal })
     }
     pub fn storage(self) -> HtmlCspStorage {
@@ -176,7 +177,7 @@ impl HtmlCspLayout {
     ) -> Result<Self, HtmlCspProtocolError> {
         work_credits
             .checked_add(closing_work.work_credits)
-            .ok_or(HtmlCspProtocolError::RepresentationExhausted)?;
+            .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
         let retained = HtmlCspArtifactLayout::try_new(live, closing_work)?;
         Ok(Self {
             work_credits,
@@ -220,7 +221,7 @@ impl HtmlCspLayout {
     ) -> Result<Self, HtmlCspProtocolError> {
         8_u64
             .checked_add(closing_work.work_credits)
-            .ok_or(HtmlCspProtocolError::RepresentationExhausted)?;
+            .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
         let peak = retained.storage.add(overlap)?;
         Ok(Self {
             work_credits: 8,

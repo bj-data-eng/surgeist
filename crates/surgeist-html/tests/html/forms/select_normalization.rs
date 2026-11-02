@@ -300,7 +300,7 @@ fn incomplete_selection_never_clears_selectedcontent_and_first_true_stops_later_
         selectedcontent_update(false, false, selection),
         HtmlSelectedcontentUpdate::CloneOptionChildren { ordinal: 1 }
     );
-    assert_eq!(cursor.reply(None), Err(HtmlSelectCursorError::Reply));
+    assert!(matches!(cursor.reply(None), Err(ref e) if e.is_reply()));
     assert_eq!(
         HtmlSelectFirstSelectedCursor::new(0).action(),
         HtmlSelectFirstSelectedAction::Complete(HtmlSelectFirstSelection::NoSelection)
@@ -338,16 +338,14 @@ fn selectedcontent_ancestors_distinguish_nearest_select_and_nested_disabling_bou
 
 #[test]
 fn invalid_protocol_replies_and_multiple_context_preserve_the_pending_operation() {
-    assert_eq!(
-        HtmlSelectCursor::new(HtmlSelectOperation::MultipleRemoved, true, 2).unwrap_err(),
-        HtmlSelectCursorError::MultipleContext
+    assert!(
+        HtmlSelectCursor::new(HtmlSelectOperation::MultipleRemoved, true, 2)
+            .unwrap_err()
+            .is_multiple_context()
     );
     let mut cursor = HtmlSelectCursor::new(HtmlSelectOperation::Normalize, false, 2).unwrap();
     let pending = cursor.action();
-    assert_eq!(
-        cursor.reply(HtmlSelectReply::Applied),
-        Err(HtmlSelectCursorError::Reply)
-    );
+    assert!(matches!(cursor.reply(HtmlSelectReply::Applied), Err(ref e) if e.is_reply()));
     assert_eq!(cursor.action(), pending);
     cursor.reply(HtmlSelectReply::Selectedness(true)).unwrap();
     cursor.reply(HtmlSelectReply::Disabled(false)).unwrap();
@@ -358,10 +356,7 @@ fn invalid_protocol_replies_and_multiple_context_preserve_the_pending_operation(
             normalization_changed: false
         }
     );
-    assert_eq!(
-        cursor.reply(HtmlSelectReply::Applied),
-        Err(HtmlSelectCursorError::Reply)
-    );
+    assert!(matches!(cursor.reply(HtmlSelectReply::Applied), Err(ref e) if e.is_reply()));
 }
 
 #[test]

@@ -9,10 +9,11 @@ use std::convert::Infallible;
 use surgeist_html::bounded::native_element_initialization_with;
 use surgeist_html::{
     Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeContextAuthorState,
-    HtmlAttributeContextConformanceError, HtmlInputSanitization, HtmlInputValueSanitization,
-    HtmlNativeInitialization, HtmlNonNegativeInteger, HtmlNumericAttributeAuthorState,
-    HtmlNumericAttributeReport, HtmlNumericAttributeValueOrigin, HtmlValueInterpreter, HtmlYear,
-    KnownHtmlAttribute, KnownHtmlElement, Namespace, OrderedAttributes, QualifiedName,
+    HtmlAttributeContextConformanceError, HtmlConstructionError, HtmlConstructionResource,
+    HtmlInputSanitization, HtmlInputValueSanitization, HtmlNativeInitialization,
+    HtmlNonNegativeInteger, HtmlNumericAttributeAuthorState, HtmlNumericAttributeReport,
+    HtmlNumericAttributeValueOrigin, HtmlValueInterpreter, HtmlYear, KnownHtmlAttribute,
+    KnownHtmlElement, Namespace, OrderedAttributes, QualifiedName,
 };
 
 /// HTML-namespace element name with the exact local name and no prefix.
@@ -124,4 +125,111 @@ pub fn assert_span_unapplied(report: &SpanReport) {
     assert!(report.common().is_none());
     assert!(report.intrinsic().is_none());
     assert!(report.origin().is_none());
+}
+
+/// A construction refusal named by the predicate that recognizes its cause.
+///
+/// `HtmlConstructionError` keeps its cause private, so a test states the
+/// expected cause by the public `is_*` predicate and compares it with
+/// `assert_eq!(error, cause::CYCLE)`.
+#[derive(Clone, Copy)]
+pub struct Cause {
+    name: &'static str,
+    recognizes: fn(&HtmlConstructionError) -> bool,
+}
+
+impl Cause {
+    pub const fn new(name: &'static str, recognizes: fn(&HtmlConstructionError) -> bool) -> Self {
+        Self { name, recognizes }
+    }
+}
+
+impl std::fmt::Debug for Cause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name)
+    }
+}
+
+impl PartialEq<Cause> for HtmlConstructionError {
+    fn eq(&self, cause: &Cause) -> bool {
+        (cause.recognizes)(self)
+    }
+}
+
+/// Whether an optional refusal is present and has the expected cause.
+pub fn has_cause(error: Option<&HtmlConstructionError>, cause: Cause) -> bool {
+    error.is_some_and(|error| error == &cause)
+}
+
+/// Whether an optional refusal is a limit failure of exactly this resource,
+/// attempted total and configured limit.
+pub fn is_limit(
+    error: Option<&HtmlConstructionError>,
+    resource: HtmlConstructionResource,
+    attempted: usize,
+    limit: usize,
+) -> bool {
+    error.is_some_and(|error| {
+        error.exceeded_resource() == Some(resource)
+            && error.attempted() == Some(attempted)
+            && error.limit() == Some(limit)
+    })
+}
+
+/// The refusal causes tests expect.
+pub mod cause {
+    use super::Cause;
+    use surgeist_html::HtmlConstructionError;
+
+    pub const FOREIGN_BUILDER: Cause =
+        Cause::new("ForeignBuilder", HtmlConstructionError::is_foreign_builder);
+    pub const PARENT_CANNOT_HAVE_CHILDREN: Cause = Cause::new(
+        "ParentCannotHaveChildren",
+        HtmlConstructionError::is_parent_cannot_have_children,
+    );
+    pub const TEMPLATE_CONTENTS_REQUIRED: Cause = Cause::new(
+        "TemplateContentsRequired",
+        HtmlConstructionError::is_template_contents_required,
+    );
+    pub const SHADOW_HOST_MUST_BE_ELEMENT: Cause = Cause::new(
+        "ShadowHostMustBeElement",
+        HtmlConstructionError::is_shadow_host_must_be_element,
+    );
+    pub const SHADOW_ALREADY_ATTACHED: Cause = Cause::new(
+        "ShadowAlreadyAttached",
+        HtmlConstructionError::is_shadow_already_attached,
+    );
+    pub const WRONG_NODE_KIND: Cause =
+        Cause::new("WrongNodeKind", HtmlConstructionError::is_wrong_node_kind);
+    pub const WRONG_SIBLING: Cause =
+        Cause::new("WrongSibling", HtmlConstructionError::is_wrong_sibling);
+    pub const CYCLE: Cause = Cause::new("Cycle", HtmlConstructionError::is_cycle);
+    pub const INVALID_TEMPLATE_ASSOCIATION: Cause = Cause::new(
+        "InvalidTemplateAssociation",
+        HtmlConstructionError::is_invalid_template_association,
+    );
+    pub const OPERATION_NOT_READY: Cause = Cause::new(
+        "OperationNotReady",
+        HtmlConstructionError::is_operation_not_ready,
+    );
+    pub const FOREIGN_ALLOCATION: Cause = Cause::new(
+        "ForeignAllocation",
+        HtmlConstructionError::is_foreign_allocation,
+    );
+    pub const CAPACITY_MISMATCH: Cause = Cause::new(
+        "CapacityMismatch",
+        HtmlConstructionError::is_capacity_mismatch,
+    );
+    pub const SHARED_ALLOCATION_ALIASED: Cause = Cause::new(
+        "SharedAllocationAliased",
+        HtmlConstructionError::is_shared_allocation_aliased,
+    );
+    pub const REPRESENTATION_EXHAUSTED: Cause = Cause::new(
+        "RepresentationExhausted",
+        HtmlConstructionError::is_representation_exhausted,
+    );
+    pub const ALLOCATION_FAILED: Cause = Cause::new(
+        "AllocationFailed",
+        HtmlConstructionError::is_allocation_failed,
+    );
 }

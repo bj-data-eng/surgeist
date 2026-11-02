@@ -165,28 +165,56 @@ enum Rejected {
     Duplicate,
     Consumer,
 }
+/// The oracle key of a construction refusal, by the owner's cause predicates.
+fn construction_key(error: &HtmlConstructionError) -> &'static str {
+    if error.is_foreign_builder() {
+        "foreign-builder"
+    } else if error.is_parent_cannot_have_children() {
+        "leaf-parent"
+    } else if error.is_template_contents_required() {
+        "template-parent"
+    } else if error.is_shadow_host_must_be_element() {
+        "shadow-host"
+    } else if error.is_shadow_already_attached() {
+        "shadow-duplicate"
+    } else if error.is_limit_exceeded() {
+        "construction-limit"
+    } else if error.is_representation_exhausted() {
+        "construction-representation"
+    } else if error.is_allocation_failed() {
+        "construction-allocation"
+    } else {
+        "other-construction"
+    }
+}
+/// Whether a refusal is a resource refusal of the environment rather than of
+/// a limit: an allocation that failed or a count that cannot be represented.
+fn is_environment_refusal(error: &HtmlConstructionError) -> bool {
+    error.is_allocation_failed() || error.is_representation_exhausted()
+}
+/// Whether a refusal is exactly the limit failure of this resource, configured
+/// limit and attempted total.
+fn is_limit(
+    error: &HtmlConstructionError,
+    resource: HtmlConstructionResource,
+    limit: usize,
+    attempted: usize,
+) -> bool {
+    error.exceeded_resource() == Some(resource)
+        && error.limit() == Some(limit)
+        && error.attempted() == Some(attempted)
+}
 impl Rejected {
     fn key(&self) -> &'static str {
         match self {
-            Self::Construction(HtmlConstructionError::ForeignBuilder) => "foreign-builder",
-            Self::Construction(HtmlConstructionError::ParentCannotHaveChildren) => "leaf-parent",
-            Self::Construction(HtmlConstructionError::TemplateContentsRequired) => {
-                "template-parent"
-            }
-            Self::Construction(HtmlConstructionError::ShadowHostMustBeElement) => "shadow-host",
-            Self::Construction(HtmlConstructionError::ShadowAlreadyAttached) => "shadow-duplicate",
-            Self::Construction(HtmlConstructionError::LimitExceeded { .. }) => "construction-limit",
-            Self::Construction(HtmlConstructionError::RepresentationExhausted) => {
-                "construction-representation"
-            }
-            Self::Construction(HtmlConstructionError::AllocationFailed) => {
-                "construction-allocation"
-            }
-            Self::Construction(_) => "other-construction",
+            Self::Construction(error) => construction_key(error),
             Self::Pi(HtmlProcessingInstructionError::InvalidTarget) => "pi-target",
             Self::Pi(HtmlProcessingInstructionError::ReservedTarget) => "pi-reserved",
             Self::Pi(HtmlProcessingInstructionError::DataContainsGreaterThan) => "pi-greater",
             Self::Pi(HtmlProcessingInstructionError::DataEndsWithQuestionMark) => "pi-question",
+            // The error enum is open to later violations; one this oracle does
+            // not name is a mismatch against every prediction.
+            Self::Pi(_) => "other-pi",
             Self::Duplicate => "attribute-duplicate",
             Self::Consumer => "consumer-allocation",
         }
@@ -505,20 +533,13 @@ pub(super) fn evaluate(t: &NativeTarget, c: &NativeCase) -> Result<CaseOutcome> 
     t.credit(64, 8192, 64)?;
     let mut b = match Builder::new(c) {
         Ok(b) => b,
-        Err(HtmlConstructionError::LimitExceeded {
-            resource: HtmlConstructionResource::Nodes,
-            limit: 0,
-            attempted: 1,
-        }) if c.caps[0] == 0 => {
+        Err(e) if c.caps[0] == 0 && is_limit(&e, HtmlConstructionResource::Nodes, 0, 1) => {
             return CaseOutcome::expected_rejection(
                 vec![t.descriptor.properties()[2].clone()],
                 "native root node denied",
             );
         }
-        Err(
-            HtmlConstructionError::AllocationFailed
-            | HtmlConstructionError::RepresentationExhausted,
-        ) => {
+        Err(e) if is_environment_refusal(&e) => {
             return CaseOutcome::expected_rejection(
                 vec![t.descriptor.properties()[2].clone()],
                 "typed native root resource refusal",
@@ -601,19 +622,13 @@ pub(super) fn evaluate(t: &NativeTarget, c: &NativeCase) -> Result<CaseOutcome> 
                         limit,
                         attempted,
                     },
-                    Rejected::Construction(HtmlConstructionError::LimitExceeded {
-                        resource: r,
-                        limit: l,
-                        attempted: a,
-                    }),
-                ) if resource == r && limit == l && attempted == a => resource_refusal = true,
-                (
-                    Prediction::Accept,
-                    Rejected::Construction(
-                        HtmlConstructionError::AllocationFailed
-                        | HtmlConstructionError::RepresentationExhausted,
-                    ),
-                ) => resource_refusal = true,
+                    Rejected::Construction(error),
+                ) if is_limit(error, *resource, *limit, *attempted) => resource_refusal = true,
+                (Prediction::Accept, Rejected::Construction(error))
+                    if is_environment_refusal(error) =>
+                {
+                    resource_refusal = true
+                }
                 _ => {
                     return t.failure(
                         "native-rejection-mismatch",

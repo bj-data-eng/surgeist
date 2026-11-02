@@ -5,7 +5,7 @@ use surgeist_html::bounded::{
     HtmlAttributePool, HtmlAttributePoolOperation, HtmlAttributePoolResult, HtmlStringPool,
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolError,
     HtmlValuePoolMark, HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal,
-    HtmlValuePoolUsage, HtmlValuePoolWork,
+    HtmlValuePoolSealRefusal, HtmlValuePoolUsage, HtmlValuePoolWork,
 };
 use surgeist_html::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName};
 
@@ -226,7 +226,7 @@ macro_rules! consumer {
             fn prepare(
                 &mut self,
                 root: HtmlValuePoolRoot,
-            ) -> Result<HtmlValuePoolSeal, (HtmlValuePoolError, HtmlValuePoolRoot)> {
+            ) -> Result<HtmlValuePoolSeal, HtmlValuePoolSealRefusal> {
                 self.meter.pay(<$pool>::seal_work());
                 self.pool.prepare_seal(root)
             }
@@ -433,7 +433,8 @@ macro_rules! seal_case {
             assert_eq!(owner.run(&transient.value, true).label(), "Offered");
             let before_refusal = owner.storage();
             let root = match owner.prepare(root) {
-                Err((error, root)) => {
+                Err(refusal) => {
+                    let (error, root) = refusal.into_parts();
                     assert_eq!(error, HtmlValuePoolError::NotReady);
                     root
                 }
@@ -498,7 +499,8 @@ fn paired_seal_refusal_preserves_both_rollback_routes() {
     assert_eq!(banks.run(&bank.value, true).label(), "Offered");
     let first = strings.prepare(string_root).unwrap();
     let bank_root = match banks.prepare(bank_root) {
-        Err((error, root)) => {
+        Err(refusal) => {
+            let (error, root) = refusal.into_parts();
             assert_eq!(error, HtmlValuePoolError::NotReady);
             root
         }
@@ -1041,7 +1043,8 @@ macro_rules! freeze_readiness_only {
                 assert_eq!(owner.run(&transient.value, true).label(), "Offered");
                 let before_refusal = owner.storage();
                 let root = match owner.prepare(root) {
-                    Err((error, root)) => {
+                    Err(refusal) => {
+                        let (error, root) = refusal.into_parts();
                         assert_eq!(error, HtmlValuePoolError::NotReady);
                         root
                     }

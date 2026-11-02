@@ -162,7 +162,7 @@ impl HtmlMetaCspProcessor for Processor {
             .borrow_native_with::<NativePolicy, E>(&self.profile, admit)?;
         let q = request.qualification();
         let units = u64::try_from(q.content().len())
-            .map_err(|_| HtmlCspProtocolError::RepresentationExhausted)?;
+            .map_err(|_| HtmlCspProtocolErrorKind::RepresentationExhausted)?;
         admit(HtmlCspLayout::processing(
             units + 12,
             HtmlCspStorage::default(),
@@ -355,7 +355,7 @@ fn nochange_completes_once_and_a_second_old_basis_result_is_stale() {
         .unwrap_err();
     assert!(matches!(
         rejection.error,
-        HtmlCspError::Protocol(HtmlCspProtocolError::StaleAssociation)
+        HtmlCspError::Protocol(ref error) if error.is_stale_association()
     ));
     assert_eq!(rejection.retained.0.prior_policy(), &original);
     assert_eq!(p.calls, 2);
@@ -372,7 +372,7 @@ fn wrong_owner_document_request_and_actual_prior_are_rejected_without_replacemen
         .unwrap_err();
     assert!(matches!(
         error.error,
-        HtmlCspError::Protocol(HtmlCspProtocolError::ForeignOwner)
+        HtmlCspError::Protocol(ref error) if error.is_foreign_owner()
     ));
     assert_eq!(error.retained.code_units(), [49]);
     let mut other_doc = owner.initial_document_with(&mut allow).unwrap();
@@ -383,7 +383,7 @@ fn wrong_owner_document_request_and_actual_prior_are_rejected_without_replacemen
         .unwrap_err();
     assert!(matches!(
         rejected.error,
-        HtmlCspError::Protocol(HtmlCspProtocolError::ForeignDocument)
+        HtmlCspError::Protocol(ref error) if error.is_foreign_document()
     ));
     let (r, value) = rejected.retained;
     let other_r = request(&mut owner, &association, p.profile(), "2");
@@ -392,7 +392,7 @@ fn wrong_owner_document_request_and_actual_prior_are_rejected_without_replacemen
         .unwrap_err();
     assert!(matches!(
         rejected.error,
-        HtmlCspError::Protocol(HtmlCspProtocolError::WrongRequest)
+        HtmlCspError::Protocol(ref error) if error.is_wrong_request()
     ));
     let (_, value) = rejected.retained;
     let error = foreign
@@ -400,7 +400,7 @@ fn wrong_owner_document_request_and_actual_prior_are_rejected_without_replacemen
         .unwrap_err();
     assert!(matches!(
         error.error,
-        HtmlCspError::Protocol(HtmlCspProtocolError::ForeignOwner)
+        HtmlCspError::Protocol(ref error) if error.is_foreign_owner()
     ));
     assert!(association.policy().profile().is_none());
 }
@@ -421,20 +421,20 @@ fn profile_precedes_native_type_and_same_numeric_version_is_foreign() {
         association
             .policy()
             .borrow_native_with::<OtherNative, _>(foreign.profile(), &mut allow),
-        HtmlCspProtocolError::WrongProcessor,
+        HtmlCspProtocolErrorKind::WrongProcessor.error(),
     );
     let changed_profile = p.authority.profile_with(18, &mut allow).unwrap();
     protocol(
         association
             .policy()
             .borrow_native_with::<OtherNative, _>(&changed_profile, &mut allow),
-        HtmlCspProtocolError::WrongProfile,
+        HtmlCspProtocolErrorKind::WrongProfile.error(),
     );
     protocol(
         association
             .policy()
             .borrow_native_with::<OtherNative, _>(p.profile(), &mut allow),
-        HtmlCspProtocolError::WrongNativeArtifactType,
+        HtmlCspProtocolErrorKind::WrongNativeArtifactType.error(),
     );
     let rejected = owner
         .request_meta_insertion_with(
@@ -446,7 +446,7 @@ fn profile_precedes_native_type_and_same_numeric_version_is_foreign() {
         .unwrap_err();
     assert!(matches!(
         rejected.error,
-        HtmlCspError::Protocol(HtmlCspProtocolError::WrongProfile)
+        HtmlCspError::Protocol(ref error) if error.is_wrong_profile()
     ));
     assert_eq!(native(association.policy(), p.profile()).len, 1);
     assert_eq!(p.calls, 1, "borrowing performs no native processing");
@@ -509,7 +509,7 @@ fn two_policies_after_report_only_transfer_use_actual_retained_native_predecesso
         .unwrap_err();
     assert!(matches!(
         rejected.error,
-        HtmlCspError::Protocol(HtmlCspProtocolError::StaleAssociation)
+        HtmlCspError::Protocol(ref error) if error.is_stale_association()
     ));
     assert_eq!(
         &native(installed.policy(), p.profile()).values[..3],
@@ -587,7 +587,7 @@ fn equal_generation_private_branches_still_require_the_exact_prior_artifact() {
         .unwrap_err();
     assert!(matches!(
         rejected.error,
-        HtmlCspError::Protocol(HtmlCspProtocolError::PriorPolicyMismatch)
+        HtmlCspError::Protocol(ref error) if error.is_prior_policy_mismatch()
     ));
     assert_eq!(&native(b.policy(), p.profile()).values[..1], [202]);
 }

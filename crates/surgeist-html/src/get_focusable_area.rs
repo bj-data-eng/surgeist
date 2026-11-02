@@ -81,18 +81,53 @@ pub enum HtmlGetFocusableAreaReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlGetFocusableAreaError {
+pub struct HtmlGetFocusableAreaError {
+    kind: HtmlGetFocusableAreaErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlGetFocusableAreaErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlGetFocusableAreaError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending get-focusable-area action",
-            Self::Terminal => "get-focusable-area is already complete",
-        })
+
+impl HtmlGetFocusableAreaErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlGetFocusableAreaError {
+        HtmlGetFocusableAreaError { kind: self }
     }
 }
+
+impl From<HtmlGetFocusableAreaErrorKind> for HtmlGetFocusableAreaError {
+    fn from(kind: HtmlGetFocusableAreaErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlGetFocusableAreaError {
+    /// Whether the cause is: reply does not match the pending get-focusable-area action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlGetFocusableAreaErrorKind::WrongReply)
+    }
+    /// Whether the cause is: get-focusable-area is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlGetFocusableAreaErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlGetFocusableAreaError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlGetFocusableAreaErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending get-focusable-area action")
+            }
+            HtmlGetFocusableAreaErrorKind::Terminal => {
+                f.write_str("get-focusable-area is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlGetFocusableAreaError {}
 
 /// Constant-state, allocation-free complete source-body protocol. The caller
@@ -121,7 +156,7 @@ impl HtmlGetFocusableAreaCursor {
         use HtmlGetFocusableAreaOutcome as O;
         use HtmlGetFocusableAreaReply as R;
         if matches!(self.pending, A::Complete(_)) {
-            return Err(HtmlGetFocusableAreaError::Terminal);
+            return Err(HtmlGetFocusableAreaErrorKind::Terminal.error());
         }
         let next = match (self.pending, reply) {
             (A::ReadAreaWithFocusableShapes, R::AreaWithFocusableShapes(true)) => {
@@ -187,7 +222,7 @@ impl HtmlGetFocusableAreaCursor {
             ) => A::RunFocusDelegate,
             (A::RunFocusDelegate, R::FocusDelegatePresent(true)) => A::Complete(O::Delegate),
             (A::RunFocusDelegate, R::FocusDelegatePresent(false)) => A::Complete(O::Null),
-            _ => return Err(HtmlGetFocusableAreaError::WrongReply),
+            _ => return Err(HtmlGetFocusableAreaErrorKind::WrongReply.error()),
         };
         self.pending = next;
         Ok(())
@@ -196,5 +231,33 @@ impl HtmlGetFocusableAreaCursor {
 impl Default for HtmlGetFocusableAreaCursor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_get_focusable_area_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlGetFocusableAreaError) -> bool;
+        let cases: Vec<(HtmlGetFocusableAreaError, &str, Predicate)> = vec![
+            (
+                HtmlGetFocusableAreaErrorKind::WrongReply.error(),
+                "reply does not match the pending get-focusable-area action",
+                HtmlGetFocusableAreaError::is_wrong_reply,
+            ),
+            (
+                HtmlGetFocusableAreaErrorKind::Terminal.error(),
+                "get-focusable-area is already complete",
+                HtmlGetFocusableAreaError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }
