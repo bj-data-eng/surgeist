@@ -1211,15 +1211,21 @@ in this report describe that rendering historically.
 ## HTML text-assistance defaults — 2026-11-02
 
 The [text-assistance capture](html-text-assistance--877d6146487f.md) retains
-complete §§6.8.6, 6.8.7 and 6.8.8 from the existing immutable HTML snapshot and
-adds a bounded representation of that existing source identity. The source bytes
-retrieved from the commit snapshot URL hash to the recorded complete-document
-SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
-Pandoc was not available, so a small Python `html.parser` converter wrote the
-Markdown: block structure, tables, lists, the one literal example and the
-definition spans were converted, the MDN annotation block was omitted and
-relative links were made absolute. The multiset of words of the three sections
-was compared with the original markup; only list numbers, the code-fence
-language and the literal markup of the example differ by construction. Source
-scripts were not executed. Scope selects the attribute defaults and getter
-algorithms only; input methods and suggestion interfaces are outside it.
+complete §§6.8.6, 6.8.7 and 6.8.8 (lines 61343–61640 of the snapshot) from the
+existing immutable HTML snapshot and adds a bounded representation of that
+existing source identity. The source bytes retrieved from the commit snapshot
+URL hash to the recorded complete-document SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`. The
+tracked [html-to-markdown workflow](tools/html-to-markdown/README.md) converts
+whole pages with Pandoc, which was not available, and has no selected-section
+mode, so this capture is manually normalized: a throwaway standard-library
+`html.parser` script (not retained) wrote the Markdown. Block structure,
+tables, lists, the one literal example and the definition spans were
+converted, the MDN annotation block was omitted, relative links were made
+absolute, and the autocapitalize keyword table's `rowspan` cells were expanded
+by repeating the shared state cell. An ordered word-by-word comparison with the
+source sections, after removing list numbers and the code-fence tag, differs
+only in those two repeated state cells and in the literal example, whose words
+sit inside a fenced block. Source scripts were not executed. Scope selects the
+attribute defaults and getter algorithms only; input methods and suggestion
+interfaces are outside it.

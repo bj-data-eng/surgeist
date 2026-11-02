@@ -568,3 +568,18 @@ states the selected coverage and fidelity limits. The excerpt is not a full
 current-page response, immutable standard edition or amendment of the pinned
 HTML877d implementation basis. No endorsement or browser-conformance claim is
 implied; Surgeist's own license remains unchanged.
+
+## HTML writing suggestions, autocapitalization and autocorrection — 2026-11-02
+
+The [bounded complete-section capture](../../references/html-text-assistance--877d6146487f.md)
+adds §§6.8.6, 6.8.7 and 6.8.8 from the same immutable HTML snapshot
+`877d6146487f15b15bc8dd0e3c625063a37b456a`, complete original SHA-256
+`877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft). The exact
+[upstream license](LICENSE) continues to cover specification prose under CC BY
+4.0 and portions incorporated into source code under BSD 3-Clause. Changes by
+Surgeist on 2026-11-02: selected sections manually normalized to Markdown,
+source links made absolute, the autocapitalize table's `rowspan` cells
+expanded, and script/style/MDN annotations removed without executing source
+scripts. No input method, autocorrection engine or suggestion interface is
+incorporated.
