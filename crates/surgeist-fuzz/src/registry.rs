@@ -215,7 +215,7 @@ impl TargetRegistry {
                     return Err(error("descriptor omits a binary's required feature"));
                 }
                 for reference in descriptor.source_references() {
-                    check_source_reference(&root, reference)?;
+                    check_source_reference(&root, descriptor.id(), &descriptor_path, reference)?;
                 }
                 let id = descriptor.id().clone();
                 let target = RegisteredTarget {
@@ -246,24 +246,49 @@ impl TargetRegistry {
 /// A source reference is either an absolute URL, which this offline discovery
 /// does not fetch, or a workspace-relative file path with an optional
 /// `#fragment`; a path must name an existing regular file inside `root`.
-fn check_source_reference(root: &Path, reference: &str) -> Result<()> {
+fn check_source_reference(
+    root: &Path,
+    target: &TargetId,
+    descriptor: &Path,
+    reference: &str,
+) -> Result<()> {
     if is_url(reference) {
         return Ok(());
     }
+    let reject = |cause: &str| {
+        format!(
+            "target {target} in {}: source reference {reference:?} {cause}",
+            descriptor.display()
+        )
+    };
     let path = reference
         .split_once('#')
         .map_or(reference, |(path, _)| path);
-    let resolved = RelativePath::new(path)
-        .and_then(|path| path.resolve_existing(root))
-        .map_err(|_| {
-            error(format!(
-                "source reference {reference:?} is neither a URL nor an existing workspace file"
-            ))
-        })?;
+    let relative = RelativePath::new(path).map_err(|e| {
+        FuzzError::with_source(
+            FuzzErrorKind::Registry,
+            "discover targets",
+            reject("is malformed: neither a URL nor a workspace-relative path"),
+            e,
+        )
+    })?;
+    let resolved = relative.resolve_existing(root).map_err(|e| {
+        // Resolution fails both for a missing file and for one that leaves the
+        // root; only the latter exists once symlinks are followed.
+        let cause = if relative.join(root).canonicalize().is_ok() {
+            "escapes the workspace root"
+        } else {
+            "does not exist in the workspace"
+        };
+        FuzzError::with_source(
+            FuzzErrorKind::Registry,
+            "discover targets",
+            reject(cause),
+            e,
+        )
+    })?;
     if !resolved.is_file() {
-        return Err(error(format!(
-            "source reference {reference:?} does not name a file"
-        )));
+        return Err(error(reject("is not a file")));
     }
     Ok(())
 }
