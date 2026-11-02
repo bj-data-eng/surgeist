@@ -24,7 +24,9 @@ pub enum HtmlRationalError {
 }
 impl fmt::Display for HtmlRationalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        f.write_str(match self {
+            Self::ZeroDenominator => "rational denominator is zero",
+        })
     }
 }
 impl Error for HtmlRationalError {}

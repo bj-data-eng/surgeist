@@ -18,6 +18,7 @@ pub surgeist_html::bounded::AutocompleteMaterializationError::ScratchLimit
 pub surgeist_html::bounded::AutocompleteMaterializationError::ScratchLimit::limit: usize
 pub surgeist_html::bounded::AutocompleteMaterializationError::ScratchLimit::required: usize
 impl core::error::Error for surgeist_html::bounded::AutocompleteMaterializationError
+pub fn surgeist_html::bounded::AutocompleteMaterializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::bounded::AutocompleteMaterializationError
 pub fn surgeist_html::bounded::AutocompleteMaterializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::bounded::EmbeddedDimensionApplicability
@@ -673,6 +674,7 @@ pub enum surgeist_html::bounded::IntegerRecoveryError
 pub surgeist_html::bounded::IntegerRecoveryError::Allocation(surgeist_html::bounded::IntegerUnitStepError)
 pub surgeist_html::bounded::IntegerRecoveryError::Syntax(surgeist_html::bounded::NumericParseError)
 impl core::error::Error for surgeist_html::bounded::IntegerRecoveryError
+pub fn surgeist_html::bounded::IntegerRecoveryError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::bounded::IntegerRecoveryError
 pub fn surgeist_html::bounded::IntegerRecoveryError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::bounded::IntegerUnitStep
@@ -714,6 +716,7 @@ pub enum surgeist_html::bounded::NumericMaterializationError
 pub surgeist_html::bounded::NumericMaterializationError::Boundary(surgeist_html::bounded::IntegerUnitStepError)
 pub surgeist_html::bounded::NumericMaterializationError::Digits(surgeist_html::HtmlDecimalDigitsError)
 impl core::error::Error for surgeist_html::bounded::NumericMaterializationError
+pub fn surgeist_html::bounded::NumericMaterializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::bounded::NumericMaterializationError
 pub fn surgeist_html::bounded::NumericMaterializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::bounded::NumericParseError
@@ -1462,6 +1465,7 @@ impl surgeist_html::bounded::NumericMaterializationFailure
 pub const fn surgeist_html::bounded::NumericMaterializationFailure::capacity_bytes(&self) -> usize
 pub const fn surgeist_html::bounded::NumericMaterializationFailure::kind(&self) -> surgeist_html::bounded::NumericMaterializationError
 impl core::error::Error for surgeist_html::bounded::NumericMaterializationFailure
+pub fn surgeist_html::bounded::NumericMaterializationFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::bounded::NumericMaterializationFailure
 pub fn surgeist_html::bounded::NumericMaterializationFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::NumericMaterialized<T>
@@ -1635,6 +1639,7 @@ pub enum surgeist_html::HtmlAcceptSpecifierError
 pub surgeist_html::HtmlAcceptSpecifierError::MissingLeadingDot
 pub surgeist_html::HtmlAcceptSpecifierError::Token(surgeist_html::HtmlTokenError)
 impl core::error::Error for surgeist_html::HtmlAcceptSpecifierError
+pub fn surgeist_html::HtmlAcceptSpecifierError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::HtmlAcceptSpecifierError
 pub fn surgeist_html::HtmlAcceptSpecifierError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlAcceptSpecifierKind
@@ -1658,6 +1663,9 @@ pub surgeist_html::HtmlAreaCoordinatesAuthorError::NonincreasingX
 pub surgeist_html::HtmlAreaCoordinatesAuthorError::NonincreasingY
 pub surgeist_html::HtmlAreaCoordinatesAuthorError::NonintegerItem
 pub surgeist_html::HtmlAreaCoordinatesAuthorError::NonintegerItem::index: usize
+impl core::error::Error for surgeist_html::HtmlAreaCoordinatesAuthorError
+impl core::fmt::Display for surgeist_html::HtmlAreaCoordinatesAuthorError
+pub fn surgeist_html::HtmlAreaCoordinatesAuthorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlAreaCoordinatesAuthorState
 pub surgeist_html::HtmlAreaCoordinatesAuthorState::Conforming
 pub surgeist_html::HtmlAreaCoordinatesAuthorState::Nonconforming(surgeist_html::HtmlAreaCoordinatesAuthorError)
@@ -1721,6 +1729,10 @@ pub surgeist_html::HtmlAttributeConformanceError::InvalidNavigableTarget(surgeis
 pub surgeist_html::HtmlAttributeConformanceError::InvalidUtf8EncodingLabel(surgeist_html::HtmlUtf8EncodingLabelError)
 pub surgeist_html::HtmlAttributeConformanceError::NonconformingKeyword
 pub surgeist_html::HtmlAttributeConformanceError::UnrecognizedKeyword
+impl core::error::Error for surgeist_html::HtmlAttributeConformanceError
+pub fn surgeist_html::HtmlAttributeConformanceError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlAttributeConformanceError
+pub fn surgeist_html::HtmlAttributeConformanceError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlAttributeContextAuthorState
 pub surgeist_html::HtmlAttributeContextAuthorState::Conforming
 pub surgeist_html::HtmlAttributeContextAuthorState::Nonconforming(surgeist_html::HtmlAttributeContextConformanceError)
@@ -1741,6 +1753,9 @@ pub surgeist_html::HtmlAttributeContextConformanceError::ScriptContextForbidsAtt
 pub surgeist_html::HtmlAttributeContextConformanceError::SourceDimensionsRequirePictureParent
 pub surgeist_html::HtmlAttributeContextConformanceError::StylesheetDisabledRequiresStylesheetRel
 pub surgeist_html::HtmlAttributeContextConformanceError::TextareaHardWrapRequiresCols
+impl core::error::Error for surgeist_html::HtmlAttributeContextConformanceError
+impl core::fmt::Display for surgeist_html::HtmlAttributeContextConformanceError
+pub fn surgeist_html::HtmlAttributeContextConformanceError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlAttributeObservation
 pub surgeist_html::HtmlAttributeObservation::Missing
 pub surgeist_html::HtmlAttributeObservation::PresentEmpty
@@ -1827,6 +1842,7 @@ pub enum surgeist_html::HtmlAutocompleteSectionError
 pub surgeist_html::HtmlAutocompleteSectionError::MissingSectionPrefix
 pub surgeist_html::HtmlAutocompleteSectionError::Token(surgeist_html::HtmlTokenError)
 impl core::error::Error for surgeist_html::HtmlAutocompleteSectionError
+pub fn surgeist_html::HtmlAutocompleteSectionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::HtmlAutocompleteSectionError
 pub fn surgeist_html::HtmlAutocompleteSectionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlAutocompleteSyntaxError
@@ -1838,6 +1854,9 @@ pub surgeist_html::HtmlAutocompleteSyntaxError::UnexpectedToken
 pub surgeist_html::HtmlAutocompleteSyntaxError::UnexpectedToken::token_index: usize
 pub surgeist_html::HtmlAutocompleteSyntaxError::UnrecognizedDetailField
 pub surgeist_html::HtmlAutocompleteSyntaxError::UnrecognizedDetailField::token_index: usize
+impl core::error::Error for surgeist_html::HtmlAutocompleteSyntaxError
+impl core::fmt::Display for surgeist_html::HtmlAutocompleteSyntaxError
+pub fn surgeist_html::HtmlAutocompleteSyntaxError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlAutocompleteSyntaxState
 pub surgeist_html::HtmlAutocompleteSyntaxState::Invalid(surgeist_html::HtmlAutocompleteSyntaxError)
 pub surgeist_html::HtmlAutocompleteSyntaxState::Missing
@@ -2319,6 +2338,9 @@ pub surgeist_html::HtmlCurrentlyFocusedAreaReply::SystemFocus(bool)
 pub enum surgeist_html::HtmlCustomCommandError
 pub surgeist_html::HtmlCustomCommandError::BoundaryWhitespace
 pub surgeist_html::HtmlCustomCommandError::MissingPrefix
+impl core::error::Error for surgeist_html::HtmlCustomCommandError
+impl core::fmt::Display for surgeist_html::HtmlCustomCommandError
+pub fn surgeist_html::HtmlCustomCommandError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlCustomControlAttributeContext
 pub surgeist_html::HtmlCustomControlAttributeContext::FormAssociated
 pub surgeist_html::HtmlCustomControlAttributeContext::NotFormAssociated
@@ -3039,6 +3061,10 @@ pub surgeist_html::HtmlImageAttributeConformanceError::CommonValue(surgeist_html
 pub surgeist_html::HtmlImageAttributeConformanceError::EmptyAlt
 pub surgeist_html::HtmlImageAttributeConformanceError::EmptySource
 pub surgeist_html::HtmlImageAttributeConformanceError::RequiredAttributeMissing
+impl core::error::Error for surgeist_html::HtmlImageAttributeConformanceError
+pub fn surgeist_html::HtmlImageAttributeConformanceError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlImageAttributeConformanceError
+pub fn surgeist_html::HtmlImageAttributeConformanceError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlImageAttributeEffect
 pub surgeist_html::HtmlImageAttributeEffect::CompareCrossOrigin
 pub surgeist_html::HtmlImageAttributeEffect::CompareLoading
@@ -3336,6 +3362,9 @@ pub surgeist_html::HtmlLinkDestinationContextError::AsRequiresPreloadOrModulePre
 pub surgeist_html::HtmlLinkDestinationContextError::ModulePreloadRequiresModuleDestination
 pub surgeist_html::HtmlLinkDestinationContextError::PreloadRequiresAs
 pub surgeist_html::HtmlLinkDestinationContextError::PreloadRequiresPreloadDestination
+impl core::error::Error for surgeist_html::HtmlLinkDestinationContextError
+impl core::fmt::Display for surgeist_html::HtmlLinkDestinationContextError
+pub fn surgeist_html::HtmlLinkDestinationContextError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlLinkDestinationProcessing
 pub surgeist_html::HtmlLinkDestinationProcessing::Destination(surgeist_html::HtmlLinkDestination)
 pub surgeist_html::HtmlLinkDestinationProcessing::NoState
@@ -3431,6 +3460,8 @@ pub surgeist_html::HtmlMeterAuthorRelation::MinimumOptimum
 pub surgeist_html::HtmlMeterAuthorRelation::MinimumValue
 pub surgeist_html::HtmlMeterAuthorRelation::OptimumMaximum
 pub surgeist_html::HtmlMeterAuthorRelation::ValueMaximum
+impl core::fmt::Display for surgeist_html::HtmlMeterAuthorRelation
+pub fn surgeist_html::HtmlMeterAuthorRelation::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlMeterNativeError
 pub surgeist_html::HtmlMeterNativeError::RelationViolation(surgeist_html::HtmlMeterAuthorRelation)
 pub surgeist_html::HtmlMeterNativeError::RepresentationUnavailable
@@ -3438,6 +3469,7 @@ pub surgeist_html::HtmlMeterNativeError::Syntax
 pub surgeist_html::HtmlMeterNativeError::Syntax::error: surgeist_html::HtmlValueSyntaxError
 pub surgeist_html::HtmlMeterNativeError::Syntax::role: surgeist_html::HtmlMeterNumberRole
 impl core::error::Error for surgeist_html::HtmlMeterNativeError
+pub fn surgeist_html::HtmlMeterNativeError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::HtmlMeterNativeError
 pub fn surgeist_html::HtmlMeterNativeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlMeterNumberAuthorState
@@ -3454,6 +3486,8 @@ pub surgeist_html::HtmlMeterNumberRole::Maximum
 pub surgeist_html::HtmlMeterNumberRole::Minimum
 pub surgeist_html::HtmlMeterNumberRole::Optimum
 pub surgeist_html::HtmlMeterNumberRole::Value
+impl core::fmt::Display for surgeist_html::HtmlMeterNumberRole
+pub fn surgeist_html::HtmlMeterNumberRole::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlMeterRelationState
 pub surgeist_html::HtmlMeterRelationState::Conforming
 pub surgeist_html::HtmlMeterRelationState::NotRequired
@@ -3474,6 +3508,7 @@ pub enum surgeist_html::HtmlMicrodataTokenListError
 pub surgeist_html::HtmlMicrodataTokenListError::Duplicate(surgeist_html::HtmlDuplicateTokenError)
 pub surgeist_html::HtmlMicrodataTokenListError::Empty
 impl core::error::Error for surgeist_html::HtmlMicrodataTokenListError
+pub fn surgeist_html::HtmlMicrodataTokenListError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::HtmlMicrodataTokenListError
 pub fn surgeist_html::HtmlMicrodataTokenListError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlModificationTimestamp<'a>
@@ -3520,6 +3555,9 @@ pub surgeist_html::HtmlNavigableTargetError::ReservedLeadingUnderscore
 pub surgeist_html::HtmlNavigableTargetError::TabOrNewlineWithLessThan
 pub surgeist_html::HtmlNavigableTargetError::TabOrNewlineWithLessThan::less_than_code_unit_offset: usize
 pub surgeist_html::HtmlNavigableTargetError::TabOrNewlineWithLessThan::tab_or_newline_code_unit_offset: usize
+impl core::error::Error for surgeist_html::HtmlNavigableTargetError
+impl core::fmt::Display for surgeist_html::HtmlNavigableTargetError
+pub fn surgeist_html::HtmlNavigableTargetError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlNavigableTargetKeyword
 pub surgeist_html::HtmlNavigableTargetKeyword::Blank
 pub surgeist_html::HtmlNavigableTargetKeyword::Parent
@@ -3560,6 +3598,10 @@ pub surgeist_html::HtmlNumericAttributeConformanceError::CommonValue(surgeist_ht
 pub surgeist_html::HtmlNumericAttributeConformanceError::MaximumExceeded
 pub surgeist_html::HtmlNumericAttributeConformanceError::MaximumExceeded::maximum: u16
 pub surgeist_html::HtmlNumericAttributeConformanceError::ZeroMustBePositive
+impl core::error::Error for surgeist_html::HtmlNumericAttributeConformanceError
+pub fn surgeist_html::HtmlNumericAttributeConformanceError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlNumericAttributeConformanceError
+pub fn surgeist_html::HtmlNumericAttributeConformanceError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlNumericAttributeValueOrigin
 pub surgeist_html::HtmlNumericAttributeValueOrigin::Clamped
 pub surgeist_html::HtmlNumericAttributeValueOrigin::MissingDefault
@@ -3655,6 +3697,10 @@ pub enum surgeist_html::HtmlProgressNumberAuthorError
 pub surgeist_html::HtmlProgressNumberAuthorError::NegativeValue
 pub surgeist_html::HtmlProgressNumberAuthorError::NonpositiveMaximum
 pub surgeist_html::HtmlProgressNumberAuthorError::Syntax(surgeist_html::HtmlValueSyntaxError)
+impl core::error::Error for surgeist_html::HtmlProgressNumberAuthorError
+pub fn surgeist_html::HtmlProgressNumberAuthorError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlProgressNumberAuthorError
+pub fn surgeist_html::HtmlProgressNumberAuthorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlProgressNumberAuthorState
 pub surgeist_html::HtmlProgressNumberAuthorState::Conforming
 pub surgeist_html::HtmlProgressNumberAuthorState::Missing
@@ -3961,6 +4007,9 @@ pub surgeist_html::HtmlSrcsetContextViolation::SourceParentNotPicture
 pub surgeist_html::HtmlSrcsetContextViolation::SourceSrcsetRequired
 pub surgeist_html::HtmlSrcsetContextViolation::SrcOrSrcsetRequired
 pub surgeist_html::HtmlSrcsetContextViolation::WidthDescriptorsRequiredForSizes
+impl core::error::Error for surgeist_html::HtmlSrcsetContextViolation
+impl core::fmt::Display for surgeist_html::HtmlSrcsetContextViolation
+pub fn surgeist_html::HtmlSrcsetContextViolation::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlSrcsetDensityError
 pub surgeist_html::HtmlSrcsetDensityError::InvalidSyntax
 pub surgeist_html::HtmlSrcsetDensityError::Nonpositive
@@ -3985,7 +4034,10 @@ pub surgeist_html::HtmlSrcsetFollowingImageObservation::Unavailable
 pub enum surgeist_html::HtmlSrcsetInterpretationError
 pub surgeist_html::HtmlSrcsetInterpretationError::RawAdmission(surgeist_html::HtmlValueAdmissionError)
 pub surgeist_html::HtmlSrcsetInterpretationError::RepresentationExhausted
+impl core::convert::From<surgeist_html::HtmlValueAdmissionError> for surgeist_html::HtmlSrcsetInterpretationError
+pub fn surgeist_html::HtmlSrcsetInterpretationError::from(error: surgeist_html::HtmlValueAdmissionError) -> Self
 impl core::error::Error for surgeist_html::HtmlSrcsetInterpretationError
+pub fn surgeist_html::HtmlSrcsetInterpretationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::HtmlSrcsetInterpretationError
 pub fn surgeist_html::HtmlSrcsetInterpretationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlSrcsetParentObservation
@@ -3998,6 +4050,9 @@ pub surgeist_html::HtmlSrcsetParseError::FutureHeightDescriptor
 pub surgeist_html::HtmlSrcsetParseError::MultipleTrailingCommas
 pub surgeist_html::HtmlSrcsetParseError::RejectedCandidate
 pub surgeist_html::HtmlSrcsetParseError::SkippedCommas
+impl core::error::Error for surgeist_html::HtmlSrcsetParseError
+impl core::fmt::Display for surgeist_html::HtmlSrcsetParseError
+pub fn surgeist_html::HtmlSrcsetParseError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlSrcsetProcessingState
 pub surgeist_html::HtmlSrcsetProcessingState::Candidates
 pub surgeist_html::HtmlSrcsetProcessingState::MissingAttribute
@@ -4147,6 +4202,7 @@ pub surgeist_html::HtmlTokenDeclarationError::InvalidIconSize
 pub surgeist_html::HtmlTokenDeclarationError::InvalidIconSize::reason: surgeist_html::HtmlIconSizeError
 pub surgeist_html::HtmlTokenDeclarationError::InvalidIconSize::token_index: usize
 impl core::error::Error for surgeist_html::HtmlTokenDeclarationError
+pub fn surgeist_html::HtmlTokenDeclarationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::HtmlTokenDeclarationError
 pub fn surgeist_html::HtmlTokenDeclarationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlTokenError
@@ -4187,12 +4243,19 @@ pub surgeist_html::HtmlValueAuthorState::Valid(T)
 pub enum surgeist_html::HtmlValueFailure
 pub surgeist_html::HtmlValueFailure::Representation(surgeist_html::HtmlValueRepresentationError)
 pub surgeist_html::HtmlValueFailure::Syntax(surgeist_html::HtmlValueSyntaxError)
+impl core::error::Error for surgeist_html::HtmlValueFailure
+pub fn surgeist_html::HtmlValueFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlValueFailure
+pub fn surgeist_html::HtmlValueFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlValueRecoveryState<T>
 pub surgeist_html::HtmlValueRecoveryState::Failed(surgeist_html::HtmlValueFailure)
 pub surgeist_html::HtmlValueRecoveryState::Missing
 pub surgeist_html::HtmlValueRecoveryState::Value(T)
 pub enum surgeist_html::HtmlValueRepresentationError
 pub surgeist_html::HtmlValueRepresentationError::FloatingPointOverflow
+impl core::error::Error for surgeist_html::HtmlValueRepresentationError
+impl core::fmt::Display for surgeist_html::HtmlValueRepresentationError
+pub fn surgeist_html::HtmlValueRepresentationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlValueSyntax
 pub surgeist_html::HtmlValueSyntax::CommaSeparatedTokens
 pub surgeist_html::HtmlValueSyntax::Date
@@ -4226,6 +4289,10 @@ pub surgeist_html::HtmlValueSyntaxError::NegativeNonnegativeInteger
 pub surgeist_html::HtmlValueSyntaxError::Temporal(surgeist_html::HtmlTemporalError)
 pub surgeist_html::HtmlValueSyntaxError::TransparentLegacyColor
 pub surgeist_html::HtmlValueSyntaxError::ZeroNonzeroDimension
+impl core::error::Error for surgeist_html::HtmlValueSyntaxError
+pub fn surgeist_html::HtmlValueSyntaxError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::HtmlValueSyntaxError
+pub fn surgeist_html::HtmlValueSyntaxError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlWritingSuggestions
 pub surgeist_html::HtmlWritingSuggestions::False
 pub surgeist_html::HtmlWritingSuggestions::True
@@ -5346,6 +5413,9 @@ pub fn surgeist_html::HtmlInputColorSpaceCursor<'a>::new(value: core::option::Op
 pub fn surgeist_html::HtmlInputColorSpaceCursor<'a>::required_work(&self) -> core::option::Option<surgeist_html::HtmlInputRuleWork>
 pub fn surgeist_html::HtmlInputColorSpaceCursor<'a>::result(&self) -> core::option::Option<surgeist_html::HtmlInputColorSpace>
 pub struct surgeist_html::HtmlInputFilenameInvalidState
+impl core::error::Error for surgeist_html::HtmlInputFilenameInvalidState
+impl core::fmt::Display for surgeist_html::HtmlInputFilenameInvalidState
+pub fn surgeist_html::HtmlInputFilenameInvalidState::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlInputFlags
 impl surgeist_html::HtmlInputFlags
 pub fn surgeist_html::HtmlInputFlags::checked_attribute_changed(self, change: surgeist_html::HtmlInputCheckedAttributeChange) -> core::option::Option<Self>
@@ -5395,6 +5465,9 @@ pub struct surgeist_html::HtmlInputInvalidSelectionRange
 impl surgeist_html::HtmlInputInvalidSelectionRange
 pub fn surgeist_html::HtmlInputInvalidSelectionRange::end(self) -> usize
 pub fn surgeist_html::HtmlInputInvalidSelectionRange::start(self) -> usize
+impl core::error::Error for surgeist_html::HtmlInputInvalidSelectionRange
+impl core::fmt::Display for surgeist_html::HtmlInputInvalidSelectionRange
+pub fn surgeist_html::HtmlInputInvalidSelectionRange::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlInputNumericAttributeReport
 impl surgeist_html::HtmlInputNumericAttributeReport
 pub fn surgeist_html::HtmlInputNumericAttributeReport::any_keyword(&self) -> bool
@@ -6374,6 +6447,8 @@ impl core::convert::From<surgeist_html::HtmlValueAdmissionError> for surgeist_ht
 pub fn surgeist_html::HtmlControlLengthError::from(error: surgeist_html::HtmlValueAdmissionError) -> Self
 impl core::convert::From<surgeist_html::HtmlValueAdmissionError> for surgeist_html::HtmlInputNumericConstraintsError
 pub fn surgeist_html::HtmlInputNumericConstraintsError::from(value: surgeist_html::HtmlValueAdmissionError) -> Self
+impl core::convert::From<surgeist_html::HtmlValueAdmissionError> for surgeist_html::HtmlSrcsetInterpretationError
+pub fn surgeist_html::HtmlSrcsetInterpretationError::from(error: surgeist_html::HtmlValueAdmissionError) -> Self
 impl core::error::Error for surgeist_html::HtmlValueAdmissionError
 impl core::fmt::Display for surgeist_html::HtmlValueAdmissionError
 pub fn surgeist_html::HtmlValueAdmissionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result

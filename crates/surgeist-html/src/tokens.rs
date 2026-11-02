@@ -78,7 +78,21 @@ pub enum HtmlTokenError {
 
 impl fmt::Display for HtmlTokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid native HTML token: {self:?}")
+        match self {
+            Self::EmptySpaceToken => f.write_str("space-separated token is empty"),
+            Self::SpaceTokenWhitespace { code_unit_offset } => write!(
+                f,
+                "space-separated token contains ASCII whitespace at UTF-16 offset {code_unit_offset}"
+            ),
+            Self::CommaTokenBoundaryWhitespace { code_unit_offset } => write!(
+                f,
+                "comma-separated token has leading or trailing ASCII whitespace at UTF-16 offset {code_unit_offset}"
+            ),
+            Self::CommaTokenComma { code_unit_offset } => write!(
+                f,
+                "comma-separated token contains a comma at UTF-16 offset {code_unit_offset}"
+            ),
+        }
     }
 }
 impl Error for HtmlTokenError {}

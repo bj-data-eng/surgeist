@@ -30,6 +30,27 @@ pub enum HtmlNumericAttributeConformanceError {
     },
 }
 
+impl std::fmt::Display for HtmlNumericAttributeConformanceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CommonValue(_) => f.write_str("numeric attribute value is not valid"),
+            Self::ZeroMustBePositive => f.write_str("numeric attribute value must be positive"),
+            Self::MaximumExceeded { maximum } => write!(
+                f,
+                "numeric attribute value exceeds its maximum of {maximum}"
+            ),
+        }
+    }
+}
+impl std::error::Error for HtmlNumericAttributeConformanceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::CommonValue(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
 /// Why the selected attribute clause produced its intrinsic content value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlNumericAttributeValueOrigin {

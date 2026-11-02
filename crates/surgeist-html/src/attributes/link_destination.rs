@@ -75,6 +75,24 @@ pub enum HtmlLinkDestinationContextError {
     AsRequiresPreloadOrModulePreloadRel,
 }
 
+impl std::fmt::Display for HtmlLinkDestinationContextError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::PreloadRequiresAs => "preload link requires an as attribute",
+            Self::PreloadRequiresPreloadDestination => {
+                "preload link as attribute must name a preload destination"
+            }
+            Self::ModulePreloadRequiresModuleDestination => {
+                "modulepreload link as attribute must name a script-like destination"
+            }
+            Self::AsRequiresPreloadOrModulePreloadRel => {
+                "as attribute requires the preload or modulepreload relationship"
+            }
+        })
+    }
+}
+impl std::error::Error for HtmlLinkDestinationContextError {}
+
 /// A symbolic destination decision from the selected link-type algorithm.
 ///
 /// This is neither an as enum default nor evidence that a request was created.

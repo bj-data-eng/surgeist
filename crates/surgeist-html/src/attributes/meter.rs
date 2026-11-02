@@ -396,12 +396,47 @@ pub enum HtmlMeterNativeError {
     RelationViolation(HtmlMeterAuthorRelation),
     RepresentationUnavailable,
 }
-impl fmt::Display for HtmlMeterNativeError {
+impl fmt::Display for HtmlMeterNumberRole {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "invalid authored meter attributes: {self:?}")
+        formatter.write_str(match self {
+            Self::Value => "value",
+            Self::Minimum => "min",
+            Self::Maximum => "max",
+            Self::Low => "low",
+            Self::High => "high",
+            Self::Optimum => "optimum",
+        })
     }
 }
-impl Error for HtmlMeterNativeError {}
+impl fmt::Display for HtmlMeterAuthorRelation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (lesser, greater) = self.operands();
+        write!(formatter, "meter {lesser} must not exceed {greater}")
+    }
+}
+impl fmt::Display for HtmlMeterNativeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Syntax { role, .. } => {
+                write!(
+                    formatter,
+                    "meter {role} attribute is not a valid floating-point number"
+                )
+            }
+            Self::RelationViolation(relation) => fmt::Display::fmt(relation, formatter),
+            Self::RepresentationUnavailable => formatter
+                .write_str("meter attributes cannot be compared in the selected numeric model"),
+        }
+    }
+}
+impl Error for HtmlMeterNativeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Syntax { error, .. } => Some(error),
+            Self::RelationViolation(_) | Self::RepresentationUnavailable => None,
+        }
+    }
+}
 
 /// Checked coupled authored syntax, not a mathematical quantity or processed
 /// meter state. Accepted code units are preserved exactly, including numbers

@@ -19,6 +19,16 @@ pub enum HtmlCustomCommandError {
     BoundaryWhitespace,
 }
 
+impl std::fmt::Display for HtmlCustomCommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::MissingPrefix => "custom command does not start with two hyphens",
+            Self::BoundaryWhitespace => "custom command starts or ends with ASCII whitespace",
+        })
+    }
+}
+impl std::error::Error for HtmlCustomCommandError {}
+
 /// Exact custom author keyword with a two-hyphen prefix and no ASCII boundary
 /// whitespace. This selected HTML/Infra interpretation does not prove element,
 /// target, activation or serialized-character conformance.

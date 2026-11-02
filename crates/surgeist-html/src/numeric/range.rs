@@ -1058,7 +1058,12 @@ impl RangeNumericRequest {
 }
 impl std::fmt::Display for RangeNumericError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        f.write_str(match self {
+            Self::Integrity => "range numeric reply does not match its pending request",
+            Self::Representation => "range numeric length cannot be represented on this platform",
+            Self::Overflow => "range numeric value exceeds the representable range",
+            Self::InvalidSyntax => "range numeric input does not match the HTML numeric syntax",
+        })
     }
 }
 impl std::error::Error for RangeNumericError {}

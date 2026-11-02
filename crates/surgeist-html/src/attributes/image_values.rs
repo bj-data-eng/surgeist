@@ -34,6 +34,25 @@ pub enum HtmlImageAttributeConformanceError {
     CommonValue(HtmlValueFailure),
 }
 
+impl std::fmt::Display for HtmlImageAttributeConformanceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RequiredAttributeMissing => f.write_str("required image attribute is missing"),
+            Self::EmptyAlt => f.write_str("image alt attribute is empty"),
+            Self::EmptySource => f.write_str("image src attribute is empty"),
+            Self::CommonValue(_) => f.write_str("image dimension attribute value is not valid"),
+        }
+    }
+}
+impl std::error::Error for HtmlImageAttributeConformanceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::CommonValue(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
 /// A delegated or resource-dependent requirement is not certified locally.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlImageExternalConformance {
@@ -62,7 +81,10 @@ pub enum HtmlInputImageAttributeError {
 }
 impl fmt::Display for HtmlInputImageAttributeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid local Input Image string: {self:?}")
+        f.write_str(match self {
+            Self::EmptyAlt => "image-button alt attribute is empty",
+            Self::EmptySource => "image-button src attribute is empty",
+        })
     }
 }
 impl Error for HtmlInputImageAttributeError {}

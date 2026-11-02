@@ -374,7 +374,14 @@ pub enum HtmlProcessingInstructionError {
 }
 impl fmt::Display for HtmlProcessingInstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid native HTML processing instruction: {self:?}")
+        f.write_str(match self {
+            Self::InvalidTarget => "processing-instruction target is not a valid XML name",
+            Self::ReservedTarget => {
+                "processing-instruction target is reserved (xml or xml-stylesheet)"
+            }
+            Self::DataContainsGreaterThan => "processing-instruction data contains '>'",
+            Self::DataEndsWithQuestionMark => "processing-instruction data ends with '?'",
+        })
     }
 }
 impl Error for HtmlProcessingInstructionError {}

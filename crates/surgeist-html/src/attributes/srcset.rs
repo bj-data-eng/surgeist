@@ -47,7 +47,11 @@ pub enum HtmlSrcsetUrlTokenError {
 }
 impl fmt::Display for HtmlSrcsetUrlTokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid HTML srcset URL token: {self:?}")
+        f.write_str(match self {
+            Self::Empty => "srcset image candidate URL is empty",
+            Self::AsciiWhitespace => "srcset image candidate URL contains ASCII whitespace",
+            Self::EdgeComma => "srcset image candidate URL starts or ends with a comma",
+        })
     }
 }
 impl Error for HtmlSrcsetUrlTokenError {}
@@ -131,7 +135,13 @@ pub enum HtmlSrcsetDensityError {
 }
 impl fmt::Display for HtmlSrcsetDensityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid HTML srcset density: {self:?}")
+        f.write_str(match self {
+            Self::InvalidSyntax => "srcset density is not a valid floating-point number",
+            Self::Nonpositive => "srcset density is not greater than zero",
+            Self::RepresentationExhausted => {
+                "srcset density size cannot be represented on this platform"
+            }
+        })
     }
 }
 impl Error for HtmlSrcsetDensityError {}
@@ -184,7 +194,38 @@ pub enum HtmlSrcsetAuthorViolation {
 }
 impl fmt::Display for HtmlSrcsetAuthorViolation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HTML srcset author constraint: {self:?}")
+        match self {
+            Self::EmptyList => f.write_str("srcset has no image candidate strings"),
+            Self::MissingCandidate => {
+                f.write_str("srcset has a comma without an image candidate string")
+            }
+            Self::InvalidUrlToken => {
+                f.write_str("srcset image candidate URL is not a valid URL token")
+            }
+            Self::InvalidDescriptor => {
+                f.write_str("srcset image candidate descriptor is not a valid width or density")
+            }
+            Self::NonpositiveDescriptor => {
+                f.write_str("srcset image candidate descriptor is not greater than zero")
+            }
+            Self::MultipleDescriptors => {
+                f.write_str("srcset image candidate has more than one descriptor")
+            }
+            Self::FutureHeightDescriptor => {
+                f.write_str("srcset image candidate uses the unsupported height descriptor")
+            }
+            Self::DuplicateWidth { first, duplicate } => write!(
+                f,
+                "srcset image candidate {duplicate} repeats the width of candidate {first}"
+            ),
+            Self::DuplicateDensity { first, duplicate } => write!(
+                f,
+                "srcset image candidate {duplicate} repeats the density of candidate {first}"
+            ),
+            Self::MixedWidthDescriptors => f.write_str(
+                "srcset has a candidate without a width descriptor beside width descriptors",
+            ),
+        }
     }
 }
 impl Error for HtmlSrcsetAuthorViolation {}
@@ -353,6 +394,22 @@ pub enum HtmlSrcsetParseError {
     RejectedCandidate,
     DensityConversionOverflow,
 }
+impl fmt::Display for HtmlSrcsetParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::SkippedCommas => "srcset has more than one comma between image candidates",
+            Self::MultipleTrailingCommas => {
+                "srcset image candidate URL is followed by more than one trailing comma"
+            }
+            Self::FutureHeightDescriptor => {
+                "srcset image candidate uses the unsupported height descriptor"
+            }
+            Self::RejectedCandidate => "srcset image candidate is rejected and ignored",
+            Self::DensityConversionOverflow => "srcset density overflows the finite binary64 range",
+        })
+    }
+}
+impl Error for HtmlSrcsetParseError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSrcsetParseDiagnostic {
     error: HtmlSrcsetParseError,
@@ -461,6 +518,27 @@ pub enum HtmlSrcsetContextViolation {
     PreloadRelRequired,
     ImageAsStateRequired,
 }
+impl fmt::Display for HtmlSrcsetContextViolation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::SrcOrSrcsetRequired => "img element requires a src or srcset attribute",
+            Self::SourceParentNotPicture => {
+                "source element with a srcset attribute requires a picture parent"
+            }
+            Self::SourceSrcsetRequired => "source element in a picture requires a srcset attribute",
+            Self::SizesRequired => "srcset with width descriptors requires a sizes attribute",
+            Self::WidthDescriptorsRequiredForSizes => {
+                "sizes attribute requires every srcset candidate to use a width descriptor"
+            }
+            Self::ImagesizesRequired => {
+                "imagesrcset with width descriptors requires an imagesizes attribute"
+            }
+            Self::PreloadRelRequired => "imagesrcset requires a preload link relationship",
+            Self::ImageAsStateRequired => "imagesrcset requires the image destination",
+        })
+    }
+}
+impl Error for HtmlSrcsetContextViolation {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlSrcsetContextAuthorState {
     NotRequired,
@@ -561,10 +639,27 @@ pub enum HtmlSrcsetInterpretationError {
 }
 impl fmt::Display for HtmlSrcsetInterpretationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HTML srcset interpretation failed: {self:?}")
+        f.write_str(match self {
+            Self::RawAdmission(_) => "srcset value was refused by raw-value admission",
+            Self::RepresentationExhausted => {
+                "srcset interpretation size cannot be represented on this platform"
+            }
+        })
     }
 }
-impl Error for HtmlSrcsetInterpretationError {}
+impl Error for HtmlSrcsetInterpretationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::RawAdmission(error) => Some(error),
+            Self::RepresentationExhausted => None,
+        }
+    }
+}
+impl From<HtmlValueAdmissionError> for HtmlSrcsetInterpretationError {
+    fn from(error: HtmlValueAdmissionError) -> Self {
+        Self::RawAdmission(error)
+    }
+}
 
 #[derive(Clone, Copy)]
 enum Role {
@@ -694,13 +789,11 @@ impl HtmlValueInterpreter {
         raw: Option<&impl crate::HtmlAttributeInput>,
         context: Option<&HtmlSrcsetContext>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
-        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))
-            .map_err(HtmlSrcsetInterpretationError::RawAdmission)?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         // Surrounding raw values use the same per-value standalone admission.
         if let Some(context) = context {
             for attribute in context.attributes().iter() {
-                self.admit_attribute_raw(Some(attribute.value()))
-                    .map_err(HtmlSrcsetInterpretationError::RawAdmission)?;
+                self.admit_attribute_raw(Some(attribute.value()))?;
             }
             if let HtmlSrcsetContext::Source {
                 following_image: HtmlSrcsetFollowingImageObservation::Element { attributes, .. },
@@ -708,8 +801,7 @@ impl HtmlValueInterpreter {
             } = context
             {
                 for attribute in attributes_iter(attributes) {
-                    self.admit_attribute_raw(Some(attribute.value()))
-                        .map_err(HtmlSrcsetInterpretationError::RawAdmission)?;
+                    self.admit_attribute_raw(Some(attribute.value()))?;
                 }
             }
         }

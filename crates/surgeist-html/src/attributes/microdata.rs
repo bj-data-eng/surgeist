@@ -85,10 +85,20 @@ pub enum HtmlMicrodataTokenListError {
 }
 impl std::fmt::Display for HtmlMicrodataTokenListError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::Empty => f.write_str("microdata token list contains no tokens"),
+            Self::Duplicate(_) => f.write_str("microdata token list contains a duplicate token"),
+        }
     }
 }
-impl std::error::Error for HtmlMicrodataTokenListError {}
+impl std::error::Error for HtmlMicrodataTokenListError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Empty => None,
+            Self::Duplicate(error) => Some(error),
+        }
+    }
+}
 /// A unique native token list; type URLs and contextual author rules are unchecked.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMicrodataTokenList {

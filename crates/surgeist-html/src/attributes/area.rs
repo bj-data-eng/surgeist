@@ -258,6 +258,25 @@ pub enum HtmlAreaCoordinatesAuthorError {
     NonincreasingX,
     NonincreasingY,
 }
+impl fmt::Display for HtmlAreaCoordinatesAuthorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingRequired => f.write_str("area shape requires a coords attribute"),
+            Self::ForbiddenPresence => f.write_str("default area shape forbids a coords attribute"),
+            Self::InvalidListSyntax => {
+                f.write_str("area coords is not a valid list of comma-separated integers")
+            }
+            Self::Cardinality => f.write_str("area coords has the wrong number of values"),
+            Self::NonintegerItem { index } => {
+                write!(f, "area coords item at index {index} is not an integer")
+            }
+            Self::NegativeRadius => f.write_str("area circle radius is negative"),
+            Self::NonincreasingX => f.write_str("area rectangle x coordinates must increase"),
+            Self::NonincreasingY => f.write_str("area rectangle y coordinates must increase"),
+        }
+    }
+}
+impl Error for HtmlAreaCoordinatesAuthorError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlAreaCoordinatesAuthorState {
     Unapplied,

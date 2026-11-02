@@ -86,10 +86,20 @@ pub enum HtmlAcceptSpecifierError {
 }
 impl fmt::Display for HtmlAcceptSpecifierError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid HTML accept extension: {self:?}")
+        f.write_str(match self {
+            Self::Token(_) => "accept specifier is not a valid comma-separated token",
+            Self::MissingLeadingDot => "accept file extension does not start with a full stop",
+        })
     }
 }
-impl Error for HtmlAcceptSpecifierError {}
+impl Error for HtmlAcceptSpecifierError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Token(error) => Some(error),
+            Self::MissingLeadingDot => None,
+        }
+    }
+}
 
 /// An established HTML uniqueness violation, independent of MIME availability.
 #[derive(Clone, Debug, Eq, PartialEq)]

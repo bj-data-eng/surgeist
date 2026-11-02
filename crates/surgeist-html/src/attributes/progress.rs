@@ -18,6 +18,24 @@ pub enum HtmlProgressNumberAuthorError {
     NonpositiveMaximum,
 }
 
+impl fmt::Display for HtmlProgressNumberAuthorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Syntax(_) => "progress attribute is not a valid floating-point number",
+            Self::NegativeValue => "progress value attribute is negative",
+            Self::NonpositiveMaximum => "progress max attribute is not greater than zero",
+        })
+    }
+}
+impl Error for HtmlProgressNumberAuthorError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Syntax(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
 /// Strict grammar and the selected slot's sign requirement. Value conformance
 /// here does not certify the separate value-versus-maximum requirement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
