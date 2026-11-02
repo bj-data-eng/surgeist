@@ -183,6 +183,10 @@ impl<'source> FragmentEntry<'source> {
             return Err(InitializationState::Failed);
         }
         let mut driver = self.driver.take().ok_or(InitializationState::Consumed)?;
+        // The two `ParseUsage` terms are the two snapshot copies a later
+        // `into_failed` makes (the stop-time clone and the cleanup clone); the
+        // `FailedContextFragment` term is that struct's by-value construction
+        // holding them. They are distinct copies, so no usage is charged twice.
         let transfer = driver
             .control
             .require_source(driver.request.source())
@@ -1697,6 +1701,56 @@ mod tests {
         failure.release().unwrap();
         assert_reclaimed(failure.retained_usage());
     }
+    /// The request join of a fragment failure, listed term by term from what
+    /// production moves rather than read from `request_join_layout`: the
+    /// carrier's stopped slot (cleared), the request parts it hands over and
+    /// the owned failure that joins them, with one write per cleared slot,
+    /// seven request fields and two joined fields.
+    fn listed_request_join() -> (usize, usize) {
+        (
+            size_of::<Option<StoppedFragmentConstruction>>()
+                + size_of::<FragmentRequestParts>()
+                + size_of::<OwnedFragmentFailure>(),
+            1 + 7 + 2,
+        )
+    }
+    /// The transfer of a cleaned fragment failure into its carrier, listed
+    /// term by term and not read from `execution_transfer_layout`: the
+    /// controller's source binding slot (cleared), the stopped construction
+    /// built by value, the carrier's two own failure options, and the request
+    /// join. The cleaned failure and the error move by value, so neither has
+    /// a slot term.
+    fn listed_execution_transfer() -> (usize, usize) {
+        let (join_bytes, join_writes) = listed_request_join();
+        (
+            size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                + size_of::<StoppedFragmentConstruction>()
+                + 2 * size_of::<Option<StoppedFragmentConstruction>>()
+                + join_bytes,
+            1 + 7 + 2 + join_writes,
+        )
+    }
+    #[test]
+    fn the_lowered_fragment_failure_charges_are_the_listed_production_terms() {
+        // A frozen failure is cleaned and detached into the carrier by value
+        // exactly as an active one is, so both layouts are the same listed
+        // transfer. Neither carries a slot for the failed owner or the error.
+        assert_eq!(execution_transfer_layout(), listed_execution_transfer());
+        assert_eq!(frozen_failure_layout(), listed_execution_transfer());
+        // The layouts changed when their stale option slots were removed, so
+        // the listed sum is also spelled without the shared helper: three
+        // option slots and nine moved fields of the carrier, then the join.
+        let (bytes, writes) = listed_execution_transfer();
+        assert_eq!(
+            bytes,
+            size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                + size_of::<StoppedFragmentConstruction>()
+                + 3 * size_of::<Option<StoppedFragmentConstruction>>()
+                + size_of::<FragmentRequestParts>()
+                + size_of::<OwnedFragmentFailure>()
+        );
+        assert_eq!(writes, 20);
+    }
     #[test]
     fn ready_driver_transfer_exact_and_one_short_retains_real_stage_without_token_pull() {
         let measured_request = request("<p>A");
@@ -1718,12 +1772,13 @@ mod tests {
         // Actual driver + owning Option movement, separate active terminal
         // failure/join envelope, six failure fields/two usage snapshots,
         // followed by the two additional qualified terminal joins.
+        let (execution_bytes, execution_writes) = listed_execution_transfer();
         let bytes = size_of::<ContextFragmentDriver>()
             + size_of::<Option<ContextFragmentDriver>>()
-            + execution_transfer_layout().0
+            + execution_bytes
             + size_of::<FailedContextFragment>()
             + 2 * size_of::<ParseUsage>();
-        let writes = 2 + execution_transfer_layout().1 + 8;
+        let writes = 2 + execution_writes + 8;
         let tail = bytes as u64 + writes as u64 + 2 * terminal_qualification_bytes() as u64;
         for missing in [0, 1] {
             let mut owner = FragmentInitializationOwner::new(with_limits(

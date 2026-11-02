@@ -368,7 +368,7 @@ pub(super) const fn terminal_transfer_layout() -> (usize, usize) {
         use std::mem::size_of;
         (
             size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
-                + size_of::<super::terminal::DetachedStandaloneFailure>()
+                + size_of::<crate::parser::tree_builder::terminal::DetachedStandaloneFailure>()
                 + size_of::<DocumentRequestParts>()
                 + size_of::<OwnedOrdinaryFailure>(),
             1 + 5 + 4 + 2,
@@ -572,6 +572,25 @@ mod tests {
     use crate::parser::tree_builder::{StandaloneDocumentDriver, head::HeadStep};
     use crate::{HtmlParseResource, HtmlSource};
 
+    /// The ordinary terminal transfer listed term by term from what production
+    /// moves, not read from `terminal_transfer_layout`: the controller's source
+    /// binding slot (cleared), the detached failure, the request parts it joins
+    /// and the owned failure, with one write for the cleared slot, five
+    /// detached fields, four request fields and two joined fields.
+    #[test]
+    fn the_lowered_terminal_transfer_charge_is_the_listed_production_terms() {
+        use std::mem::size_of;
+        assert_eq!(
+            terminal_transfer_layout(),
+            (
+                size_of::<Option<(crate::HtmlSourceId, crate::HtmlSourceCoordinates)>>()
+                    + size_of::<crate::parser::tree_builder::terminal::DetachedStandaloneFailure>()
+                    + size_of::<DocumentRequestParts>()
+                    + size_of::<OwnedOrdinaryFailure>(),
+                12,
+            )
+        );
+    }
     fn frozen(request: &HtmlDocumentParseRequest) -> FrozenStandaloneParts {
         let mut driver = Some(super::super::entry::initialized_driver(request));
         for _ in 0..4096 {

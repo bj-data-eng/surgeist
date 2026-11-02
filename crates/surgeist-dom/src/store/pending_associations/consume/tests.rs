@@ -326,5 +326,8 @@ fn a_preferred_name_change_without_its_original_name_is_a_typed_report_defect() 
             occurrence: found,
         }) if contribution == id && found == occurrence
     ));
-    assert_eq!(require_preferred_name(Some(7), id, occurrence.clone()).unwrap(), 7);
+    assert_eq!(
+        require_preferred_name(Some(7), id, occurrence.clone()).unwrap(),
+        7
+    );
 }
