@@ -5083,7 +5083,7 @@ pub fn surgeist_html::HtmlCspError<E>::from(error: surgeist_html::HtmlCspProtoco
 pub struct surgeist_html::HtmlCspRejected<T, E>
 pub surgeist_html::HtmlCspRejected::error: surgeist_html::HtmlCspError<E>
 pub surgeist_html::HtmlCspRejected::retained: T
-impl<T, E: core::fmt::Display> core::fmt::Display for surgeist_html::HtmlCspRejected<T, E>
+impl<T, E> core::fmt::Display for surgeist_html::HtmlCspRejected<T, E>
 pub fn surgeist_html::HtmlCspRejected<T, E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: core::fmt::Debug, E: core::error::Error + 'static> core::error::Error for surgeist_html::HtmlCspRejected<T, E>
 pub fn surgeist_html::HtmlCspRejected<T, E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
