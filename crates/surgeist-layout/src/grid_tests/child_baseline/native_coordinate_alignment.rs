@@ -1146,3 +1146,110 @@ fn reversed_native_composite_supplied_last_zero_f32() {
 fn reversed_native_composite_supplied_last_zero_f64() {
     reversed_composite_selected_port::<f64>(SelectedPort::Last);
 }
+
+fn spanning_selected_context_track<S: LayoutScalar>(selected: SelectedPort) {
+    let preference = alignment(selected);
+    let (peer_start, peer_end, expected_point) = match selected {
+        // VRL First belongs to owner-Last, but retains its FIRST alignment
+        // context track: col1 end100 - max(actor50, peer10) =50.
+        SelectedPort::First => (1, 2, 50.0),
+        // VRL Last belongs to owner-First on the LAST context track: col2
+        // start100 + max(actual selected p0, peer p0) =100.
+        SelectedPort::Last => (2, 3, 100.0),
+    };
+    let mut tree = PublicLayoutTreeOf::<S>::new().children(0, [20, 21]).style(
+        0,
+        NodeInputOf {
+            display: Display::Grid,
+            size: Size::new(
+                PreferredSizeOf::px(value(200.0)),
+                PreferredSizeOf::px(value(80.0)),
+            ),
+            grid_template_columns: vec![TrackComponentOf::px(value(100.0)); 2],
+            grid_template_rows: vec![TrackComponentOf::px(value(40.0)); 2],
+            ..NodeInputOf::default()
+        },
+    );
+    for (node, row, start, end, block) in [(20, 1, 1, 3, 50.0), (21, 2, peer_start, peer_end, 10.0)]
+    {
+        tree = tree.children(node, []).style(
+            node,
+            NodeInputOf {
+                display: Display::Flex,
+                writing_mode: WritingMode::VerticalRl,
+                direction: Direction::Ltr,
+                box_sizing: BoxSizing::BorderBox,
+                size: physical_size(WritingMode::VerticalRl, 20.0, block).map(PreferredSizeOf::px),
+                grid_row: GridPlacement::try_lines(row, row + 1).unwrap(),
+                grid_column: GridPlacement::try_lines(start, end).unwrap(),
+                justify_self: Some(preference),
+                align_self: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    let batch = completed(&tree);
+    let axes = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
+    assert_eq!(
+        normal_box(&batch, 0).size,
+        Size::new(value(200.0), value(80.0))
+    );
+    assert_eq!(
+        LayoutTree::node_input(&tree, 20).grid_column,
+        GridPlacement::try_lines(1, 3).unwrap()
+    );
+    assert_eq!(
+        LayoutTree::node_input(&tree, 21).grid_column,
+        GridPlacement::try_lines(peer_start, peer_end).unwrap()
+    );
+    let mut points = Vec::new();
+    for (node, block) in [(20, 50.0), (21, 10.0)] {
+        assert_eq!(Traverse::child_count(&tree, node), 0);
+        assert!(!LayoutTree::has_leaf_measurement(&tree, node));
+        let actual = normal_box(&batch, node);
+        assert_eq!(
+            actual.size,
+            physical_size(WritingMode::VerticalRl, 20.0, block)
+        );
+        assert_eq!(
+            (actual.margin, actual.border, actual.padding),
+            (Edges::ZERO, Edges::ZERO, Edges::ZERO)
+        );
+        let port = selected_port(&batch, node, axes, selected);
+        assert_eq!(
+            port,
+            S::ZERO,
+            "the real empty VRL body selects its line-under physical border port"
+        );
+        let origin = absolute_origin(&tree, &batch, node);
+        points.push(origin.x + port);
+    }
+    assert_eq!(
+        points[0], points[1],
+        "the spanned actor and actual context-track peer share one physical point"
+    );
+    for point in points {
+        assert_eq!(
+            point,
+            value(expected_point),
+            "the physical anchor belongs to the selected context track, not the whole spanned area"
+        );
+    }
+}
+
+#[test]
+fn spanning_native_first_retains_selected_column_f32() {
+    spanning_selected_context_track::<f32>(SelectedPort::First);
+}
+#[test]
+fn spanning_native_first_retains_selected_column_f64() {
+    spanning_selected_context_track::<f64>(SelectedPort::First);
+}
+#[test]
+fn spanning_native_last_retains_selected_column_f32() {
+    spanning_selected_context_track::<f32>(SelectedPort::Last);
+}
+#[test]
+fn spanning_native_last_retains_selected_column_f64() {
+    spanning_selected_context_track::<f64>(SelectedPort::Last);
+}
