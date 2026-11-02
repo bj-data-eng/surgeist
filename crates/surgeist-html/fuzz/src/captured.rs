@@ -249,6 +249,12 @@ impl Inputs<'_> {
     }
 }
 
+/// Admitted adapter usage never exceeds its allowance.
+fn within(usage: HtmlConstructionCaptureUsage, limits: HtmlConstructionCaptureLimits) -> bool {
+    usage.mapping_entries() <= limits.mapping_entries()
+        && usage.scratch_entries() <= limits.scratch_entries()
+        && usage.work() <= limits.work()
+}
 fn limits_for(n: usize) -> HtmlConstructionCaptureLimits {
     HtmlConstructionCaptureLimits::new(n + 8, 1 << 24, 1 << 40)
 }
@@ -703,6 +709,9 @@ pub(crate) fn check(result: &HtmlConstructionResult, plan: &Plan) -> Result<Verd
                 return violation(0, "mapping-count", format!("{:?}", import.usage()));
             }
             let imported = import.usage();
+            if !within(imported, limits) {
+                return violation(2, "usage-over-limit", format!("{imported:?}"));
+            }
             let finished = match import.finish() {
                 Ok(f) => f,
                 // Finishing spends the same work allowance as the traversal, so
@@ -760,6 +769,9 @@ pub(crate) fn check(result: &HtmlConstructionResult, plan: &Plan) -> Result<Verd
             let Ok(second) = second else {
                 return violation(0, "reimport-refused", "fault-free re-import");
             };
+            if !within(second.usage(), limits_for(n)) {
+                return violation(2, "usage-over-limit", format!("{:?}", second.usage()));
+            }
             let Ok(second) = second.finish() else {
                 return violation(0, "reimport-refused", "fault-free re-import finish");
             };
@@ -798,10 +810,7 @@ pub(crate) fn check(result: &HtmlConstructionResult, plan: &Plan) -> Result<Verd
                 return violation(2, "facts-not-returned", format!("{reason:?}"));
             }
             let admitted = failure.usage();
-            if admitted.mapping_entries() > limits.mapping_entries()
-                || admitted.work() > limits.work()
-                || admitted.scratch_entries() > limits.scratch_entries()
-            {
+            if !within(admitted, limits) {
                 return violation(2, "usage-over-limit", format!("{admitted:?}"));
             }
             let source_ok = failure.source().len() == result.len();
@@ -832,6 +841,9 @@ pub(crate) fn check(result: &HtmlConstructionResult, plan: &Plan) -> Result<Verd
                     );
                 }
             };
+            if !within(retried.usage(), limits_for(n)) {
+                return violation(2, "usage-over-limit", format!("{:?}", retried.usage()));
+            }
             let Ok(finished) = retried.finish() else {
                 return violation(2, "retry-refused", format!("finish after {reason:?}"));
             };
