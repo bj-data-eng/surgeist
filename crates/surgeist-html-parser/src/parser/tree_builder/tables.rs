@@ -134,7 +134,7 @@ impl HeadState<'_> {
                     .node(context.context_element().subject())
                     .map_err(|_| crate::construction::SessionError::ContextUnavailable)?;
                 let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
-                    return Err(KernelError::NotElement.into());
+                    return Err(crate::construction::SessionError::ContextUnavailable.into());
                 };
                 element.name()
             } else {

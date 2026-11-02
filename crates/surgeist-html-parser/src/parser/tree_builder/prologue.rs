@@ -11,7 +11,7 @@
 // d7232d746d3112f08926d169591576bd12fe2fdf, Initial and BeforeHtml.
 // HTML 877d6146487f15b15bc8dd0e3c625063a37b456a governs doctype and PI drift.
 
-use super::{InsertionLocation, KernelError, LocationKernel, doctype, write};
+use super::{InsertionLocation, KernelError, LocationKernel, StopCause, doctype, write};
 use crate::construction::{
     ParserArenaSession, RootKind, SessionError, release_token_kind, split_leading_ascii_whitespace,
     validate_token_kind,
@@ -57,19 +57,20 @@ pub(crate) enum PrologueError {
     Consumed,
 }
 impl PrologueError {
-    /// A prologue owner its driver keeps is gone, or the driver processed or
-    /// took a prologue out of order. The driver takes the prologue's before-head
-    /// state in the same step that reports it and a failure ends the driver, so
-    /// no input leads to either order fault.
-    pub(super) fn invariant_fault(&self) -> bool {
+    /// What ends a parse that this error ends: the cause of the kernel error it
+    /// carries, or a lost owner. A lost owner is a prologue owner its driver
+    /// keeps that is gone, or a prologue the driver processed or took out of
+    /// order. The driver takes the prologue's before-head state in the same
+    /// step that reports it and a failure ends the driver, so no input leads to
+    /// either order fault.
+    pub(super) fn stop_cause(&self) -> StopCause {
         match self {
-            Self::Consumed
-            | Self::MissingInput
-            | Self::AlreadyAtBeforeHead
+            Self::Kernel(error) => error.stop_cause(),
+            Self::AlreadyAtBeforeHead
             | Self::NotAtBeforeHead
-            | Self::PendingInput => true,
-            Self::Kernel(KernelError::Consumed) => true,
-            Self::Kernel(_) => false,
+            | Self::PendingInput
+            | Self::MissingInput
+            | Self::Consumed => StopCause::LostOwner,
         }
     }
 }
@@ -765,7 +766,7 @@ mod owner_loss_tests {
         assert!(prologue.pending.is_none());
         let error = prologue.take_before_head(&mut c).err().unwrap();
         assert!(matches!(error, PrologueError::NotAtBeforeHead), "{error:?}");
-        assert!(error.invariant_fault());
+        assert!(error.stop_cause().is_lost_owner());
         assert!(prologue.kernel.is_some(), "the refusal took the kernel");
         prologue.release(&mut c).unwrap();
         super::super::tests::assert_released(&c);

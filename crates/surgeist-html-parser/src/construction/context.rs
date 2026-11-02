@@ -1524,8 +1524,7 @@ impl ParserArenaSession {
             Ok::<(), SessionError>(())
         })();
         if let Err(error) = result {
-            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            return Err(error);
+            return Err(super::end_session_on(c, error));
         }
         Ok(true)
     }
@@ -1714,8 +1713,9 @@ impl SessionStorage {
         // visited session and visits no effect record. The test-only check
         // above scans the effects to compare against it and is not charged.
         if fragment.unbound_effects != 0 {
-            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            return Err(SessionError::ContextUnavailable);
+            return Err(c
+                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .into());
         }
         Ok(())
     }
@@ -2875,6 +2875,77 @@ mod tests {
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         crate::parser::tree_builder::tests::assert_released(&c);
+    }
+
+    /// An effect a stop left unbound refuses the session as that stop, the
+    /// first one, and not as a second error that the failure's reason would
+    /// then disagree with.
+    #[test]
+    fn an_unbound_effect_refuses_the_session_as_the_first_stop() {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let context = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_root(&context).unwrap();
+        let capture = builder.finish().unwrap();
+        let target = capture
+            .document_id(&capture.subject_id(&document).unwrap())
+            .unwrap();
+        let context =
+            HtmlFragmentContext::element(&capture, &capture.subject_id(&context).unwrap()).unwrap();
+        let request = HtmlFragmentParseRequest::new(
+            HtmlSource::utf8("<p>"),
+            context,
+            crate::parser::tree_builder::tests::limits(100),
+        )
+        .unwrap();
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut session =
+            ParserArenaSession::new(&mut c, RootKind::Document(HtmlDocumentMode::NoQuirks))
+                .unwrap();
+        session.initialize_standalone_document(&mut c).unwrap();
+        session.initialize_fragment(&mut c, &request).unwrap();
+        {
+            let fragment = session.active_mut().unwrap().fragment.as_mut().unwrap();
+            fragment
+                .effects
+                .try_push(
+                    &mut c,
+                    ContextEffect::TemplateCache {
+                        document: target,
+                        inert: None,
+                    },
+                )
+                .unwrap();
+            fragment.unbound_effects += 1;
+        }
+        let first = c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+        assert_eq!(
+            session
+                .active()
+                .unwrap()
+                .require_context_ready(&mut c)
+                .err(),
+            Some(SessionError::Stop(first))
+        );
+        session.release(&mut c).unwrap();
     }
 
     #[test]

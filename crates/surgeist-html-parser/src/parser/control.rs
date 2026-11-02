@@ -603,6 +603,14 @@ impl ParseControl {
         }
         self.latch_stop(ParseStop::InternalInvariant(invariant))
     }
+    /// Latches the stop for a construction outcome that no producer latched, as
+    /// the producers of the outcomes that have a stop of their own do.
+    pub(crate) fn stop_outcome(&mut self, stop: ParseStop) -> ParseStop {
+        if let Err(first) = self.checkpoint() {
+            return first;
+        }
+        self.latch_stop(stop)
+    }
     pub(crate) fn stop_unsupported_standalone(
         &mut self,
         reason: StandaloneUnsupported,

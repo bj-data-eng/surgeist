@@ -432,9 +432,15 @@ fn captured_declarative_shadow_style_uses_original_shadow_including_root() {
             context.clone(), limits(), surgeist_html::HtmlParserScriptingMode::Inert, true).unwrap().parse();
         let Some(connected) = connection else {
             let failure = result.unwrap_err();
-            assert!(matches!(
+            // The capture never established the form's parent, and the failure
+            // names that fact.
+            assert_eq!(
                 failure.reason(),
-                HtmlParseFailureReason::Stop(HtmlParseStop::UnsupportedStandaloneState(_))
+                HtmlParseFailureReason::MissingContextFact(HtmlCaptureFact::Parent)
+            );
+            assert!(matches!(
+                failure.first_stop(),
+                Some(HtmlParseStop::UnsupportedStandaloneState(_))
             ));
             assert!(failure.cleanup_error().is_none());
             continue;

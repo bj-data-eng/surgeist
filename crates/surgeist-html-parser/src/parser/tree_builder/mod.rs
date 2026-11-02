@@ -47,6 +47,8 @@ mod foreign;
 mod formatting;
 mod frameset;
 pub(crate) mod head;
+#[cfg(test)]
+mod outcome_tests;
 pub(crate) mod parse;
 pub(crate) mod prologue;
 #[cfg(test)]
@@ -96,6 +98,62 @@ impl From<ParseStop> for KernelError {
 impl From<SessionError> for KernelError {
     fn from(value: SessionError) -> Self {
         Self::Session(value)
+    }
+}
+impl KernelError {
+    /// What ends a parse that this error ends. A stop is already latched. A
+    /// session error is classified by its own class. The stack of open
+    /// elements being empty, holding a node that is not an element, starting
+    /// with a non-HTML element or holding an element twice are shapes input
+    /// may reach, which the standalone environment does not continue from.
+    pub(super) fn stop_cause(&self) -> StopCause {
+        match self {
+            Self::Stop(stop) => StopCause::Session(SessionError::Stop(*stop)),
+            Self::Session(error) => StopCause::Session(*error),
+            Self::EmptyStack
+            | Self::NotElement
+            | Self::FirstOpenElementNotHtml
+            | Self::DuplicateOpenElement => {
+                StopCause::Unsupported(StandaloneUnsupported::InvalidNesting)
+            }
+            Self::Consumed => StopCause::LostOwner,
+        }
+    }
+}
+
+/// What ended an execution, as far as the first stop and the failure's reason
+/// are concerned. Every error type of every driver and stage names its cause
+/// once (`stop_cause`), exhaustively, and the stop ([`Self::latch`]) and the
+/// reason (`parse::cause_reason`) are both derived from it, so they cannot
+/// disagree and one cause is one stop whichever driver or stage raised it.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum StopCause {
+    /// An owner the driver's own sequencing keeps is gone: the first stop is
+    /// the invariant, or stays the stop that was already first.
+    LostOwner,
+    /// A session error, which ends the parse as its class says
+    /// (`SessionClass`).
+    Session(SessionError),
+    /// A state the closed standalone environment does not continue from.
+    Unsupported(StandaloneUnsupported),
+}
+impl StopCause {
+    pub(super) fn latch(self, control: &mut ParseControl) {
+        match self {
+            Self::LostOwner => {
+                control.fail_invariant(Invariant::TreeBuilderState);
+            }
+            Self::Session(error) => {
+                crate::construction::session_class(&error).latch(control);
+            }
+            Self::Unsupported(state) => {
+                control.stop_unsupported_standalone(state);
+            }
+        }
+    }
+    /// Whether the cause is a lost owner of the driver's own sequencing.
+    pub(super) fn is_lost_owner(self) -> bool {
+        matches!(self, Self::LostOwner)
     }
 }
 
@@ -1095,13 +1153,22 @@ impl StandaloneError {
     /// The error names a state the driver's own sequencing cannot produce,
     /// rather than a document or a limit.
     pub(super) fn invariant_fault(&self) -> bool {
+        self.stop_cause().is_lost_owner()
+    }
+}
+impl StandaloneError {
+    /// What ended the execution, for the first stop and the reason it reports.
+    /// A document initialization or execution profile the standalone
+    /// environment was not given proof of is the provenance boundary.
+    pub(super) fn stop_cause(&self) -> StopCause {
         match self {
-            Self::Consumed | Self::TokenizerExhausted => true,
-            Self::Prologue(error) => error.invariant_fault(),
-            Self::Head(error) => error.invariant_fault(),
-            Self::UnsupportedDocumentInitialization
-            | Self::UnsupportedExecutionProfile
-            | Self::Stop(_) => false,
+            Self::Stop(stop) => StopCause::Session(SessionError::Stop(*stop)),
+            Self::Prologue(error) => error.stop_cause(),
+            Self::Head(error) => error.stop_cause(),
+            Self::UnsupportedDocumentInitialization | Self::UnsupportedExecutionProfile => {
+                StopCause::Unsupported(StandaloneUnsupported::Provenance)
+            }
+            Self::Consumed | Self::TokenizerExhausted => StopCause::LostOwner,
         }
     }
 }
@@ -1178,44 +1245,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
         if let Err(error) = &result {
             // One controller owns terminality. Retained owners support cleanup,
             // never resumption or successful partial continuation publication.
-            if error.invariant_fault() {
-                // Nothing the document contains made this unsupported; a driver
-                // lost an owner its own sequencing keeps.
-                self.control.fail_invariant(Invariant::TreeBuilderState);
-                return;
-            }
-            let reason = match error {
-                StandaloneError::Head(head::HeadError::UnsupportedScriptPause) => {
-                    StandaloneUnsupported::ScriptPause
-                }
-                StandaloneError::Head(head::HeadError::UnsupportedPendingScript) => {
-                    StandaloneUnsupported::PendingScript
-                }
-                StandaloneError::Head(head::HeadError::ConstructionCapabilityUnavailable) => {
-                    StandaloneUnsupported::Provenance
-                }
-                StandaloneError::Head(head::HeadError::Kernel(KernelError::Session(
-                    SessionError::ScriptMetadataUnavailable
-                    | SessionError::SvgScriptMetadataUnavailable,
-                ))) => StandaloneUnsupported::ScriptDocument,
-                StandaloneError::Head(head::HeadError::IncompleteCompletion)
-                | StandaloneError::Head(head::HeadError::Kernel(KernelError::Session(
-                    SessionError::CompletionMetadataUnavailable
-                    | SessionError::CompletionIncomplete,
-                ))) => StandaloneUnsupported::Completion,
-                // Every other error a document or a limit can lead to. A stop
-                // is already the controller's first, so naming it changes
-                // nothing. A fault of the parser's own sequencing returned
-                // above.
-                StandaloneError::Stop(_)
-                | StandaloneError::Prologue(_)
-                | StandaloneError::Head(_)
-                | StandaloneError::UnsupportedDocumentInitialization
-                | StandaloneError::UnsupportedExecutionProfile
-                | StandaloneError::Consumed
-                | StandaloneError::TokenizerExhausted => StandaloneUnsupported::InvalidNesting,
-            };
-            self.control.stop_unsupported_standalone(reason);
+            // A stop is already the controller's first, so naming it changes
+            // nothing; every other error ends the parse as its cause says, in
+            // whichever stage it was met.
+            error.stop_cause().latch(&mut self.control);
         }
     }
     #[cfg(test)]

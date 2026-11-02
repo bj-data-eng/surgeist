@@ -148,7 +148,11 @@ impl SessionStorage {
                             if !peer_name.is_empty()
                                 && exact_string_equal(c, subject_name, peer_name)?
                             {
-                                return Err(SessionError::InputMetadataUnavailable);
+                                // The group cannot be evaluated without state
+                                // the closed environment never gave the peer.
+                                return Err(c
+                                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                                    .into());
                             }
                         }
                     }
@@ -167,10 +171,7 @@ impl SessionStorage {
         match result {
             Ok(()) => Ok(()),
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(error) => {
-                c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-                Err(error)
-            }
+            Err(error) => Err(super::end_session_on(c, error)),
         }
     }
     pub(super) fn radio_insertion(
