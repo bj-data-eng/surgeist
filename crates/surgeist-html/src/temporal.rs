@@ -2566,14 +2566,16 @@ mod tests {
             "2400-02-29",
             "1234567890123456789012345678900400-02-29",
         ] {
-            assert!(
-                borrowed(
-                    &DocumentString::from(raw),
-                    TemporalPhase::Author,
-                    TemporalAlternative::Date
-                )
-                .is_ok()
-            );
+            // Every such year is congruent to 400 modulo 400, so its date is
+            // day 145790 of the cycle (Python: date(400, 2, 29).toordinal() - 1).
+            let input = DocumentString::from(raw);
+            let BorrowedTemporalPlan::Date(date) =
+                borrowed(&input, TemporalPhase::Author, TemporalAlternative::Date).unwrap()
+            else {
+                panic!("date")
+            };
+            assert_eq!(date.year().remainder_400(), 0, "{raw}");
+            assert_eq!(date.within_cycle_days(), 145790, "{raw}");
         }
     }
     #[test]
@@ -2676,35 +2678,52 @@ mod tests {
             .unwrap_err(),
             HtmlTemporalError::InvalidSyntax
         );
-        for raw in [
-            "2000-01-01T00:00Zx",
-            "2000-01-01T00:00",
-            "2000-01-01T00:00+24:00",
+        // Parse a global date and time string (same file, lines 3201-3225): an
+        // absent or trailing-garbage offset fails the grammar, and hour 24 fails
+        // the component's 0..=23 range.
+        for (raw, error) in [
+            ("2000-01-01T00:00Zx", HtmlTemporalError::InvalidSyntax),
+            ("2000-01-01T00:00", HtmlTemporalError::InvalidSyntax),
+            (
+                "2000-01-01T00:00+24:00",
+                HtmlTemporalError::OffsetOutOfRange,
+            ),
         ] {
-            assert!(
+            assert_eq!(
                 borrowed(
                     &DocumentString::from(raw),
                     TemporalPhase::Recovery,
                     TemporalAlternative::GlobalDateTime
                 )
-                .is_err()
+                .unwrap_err(),
+                error,
+                "{raw}"
             );
         }
     }
     #[test]
     fn borrowed_week_rules_and_full_consumption_keep_typed_failures() {
-        for raw in [
-            "2015-W53",
-            "2020-W53",
-            "1234567890123456789012345678900004-W53",
+        // Week-years 2015 and 2020 have 53 weeks (Weeks clause, same file as
+        // above, line 3229): January 1st is a Thursday in 2015 and a Wednesday
+        // in the leap year 2020. The huge year is 4 mod 400 and so shares the
+        // calendar of 2004, which starts on a Thursday. The plan keeps the week
+        // number, the borrowed year digits and the year's remainder modulo 400.
+        for (raw, remainder) in [
+            ("2015-W53", 15),
+            ("2020-W53", 20),
+            ("1234567890123456789012345678900004-W53", 4),
         ] {
-            assert!(
-                borrowed(
-                    &DocumentString::from(raw),
-                    TemporalPhase::Recovery,
-                    TemporalAlternative::Week
-                )
-                .is_ok(),
+            let input = DocumentString::from(raw);
+            let BorrowedTemporalPlan::Week(week) =
+                borrowed(&input, TemporalPhase::Recovery, TemporalAlternative::Week).unwrap()
+            else {
+                panic!("week")
+            };
+            assert_eq!(week.week, 53, "{raw}");
+            assert_eq!(week.year().remainder_400(), remainder, "{raw}");
+            assert_eq!(
+                week.year().digits(),
+                &input.code_units()[..raw.len() - 4],
                 "{raw}"
             );
         }
@@ -3538,13 +3557,33 @@ mod tests {
 
     #[test]
     fn processing_offsets_admit_negative_zero_and_preserve_strict_boundary() {
+        // Parse a time-zone offset component (references/html-language-foundations--877d6146487f--b55e73c31978.md
+        // lines 3116-3160): negative zero parses to the zero offset, while the
+        // valid-string rule (line 3091) admits "-" only for a nonzero offset.
+        let zero = HtmlTimeZoneOffset::new(0).unwrap();
+        let utc = parse_global_date_time(&text("0001-01-01T00:00Z")).unwrap();
         for raw in ["-0000", "-00:00"] {
-            assert_eq!(parse_time_zone_offset(&text(raw)).unwrap().minutes(), 0);
-            assert!(validate_time_zone_offset(&text(raw)).is_err());
-            assert!(parse_global_date_time(&text(&format!("0001-01-01T00:00{raw}"))).is_ok());
+            assert_eq!(parse_time_zone_offset(&text(raw)), Ok(zero), "{raw}");
+            assert_eq!(
+                validate_time_zone_offset(&text(raw)),
+                Err(HtmlTemporalError::InvalidSyntax),
+                "{raw}"
+            );
+            let global = parse_global_date_time(&text(&format!("0001-01-01T00:00{raw}"))).unwrap();
+            assert_eq!(global.offset(), zero, "{raw}");
+            assert_eq!(global, utc, "{raw}");
         }
-        for raw in ["+00000", "+00:000", "-24:00", "Zx", "z"] {
-            assert!(parse_time_zone_offset(&text(raw)).is_err());
+        // Component step 4 fails on a digit run of other than two or four
+        // characters or a minute run of other than two; step 5 fails on hours
+        // above 23; the whole algorithm fails on unconsumed input.
+        for (raw, error) in [
+            ("+00000", HtmlTemporalError::InvalidSyntax),
+            ("+00:000", HtmlTemporalError::InvalidSyntax),
+            ("-24:00", HtmlTemporalError::OffsetOutOfRange),
+            ("Zx", HtmlTemporalError::InvalidSyntax),
+            ("z", HtmlTemporalError::InvalidSyntax),
+        ] {
+            assert_eq!(parse_time_zone_offset(&text(raw)), Err(error), "{raw}");
         }
     }
 
