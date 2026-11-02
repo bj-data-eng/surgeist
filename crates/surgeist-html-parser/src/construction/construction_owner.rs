@@ -259,14 +259,18 @@ fn disposition(fault: OwnerFault) -> Disposition {
 /// The session error for a refusal from HTML's construction owner, with every
 /// cause of its error classified by what it violates.
 ///
-/// Classification has one table, [`session_class`]. A document-shaped refusal
-/// becomes the [`SessionError`] that `session_class` already classifies, and
-/// nothing is latched here. Every other cause becomes the [`SessionClass`] that
-/// a stage error would carry, and is latched through [`SessionClass::latch`], so
-/// the stop and the failure's reason derive from the same class
-/// (`StopCause`). Two environment stops, a count that cannot be represented
-/// and an allocation that failed, are latched directly, as their controller
-/// owners latch them.
+/// There are two tables, and the second is built on the first.
+/// [`session_class`] classifies every session error; `OWNER_CAUSES` and
+/// [`disposition`] classify the construction owner's causes, which are not
+/// session errors until this function converts them. A document-shaped
+/// refusal converts to the [`SessionError`] that `session_class` already
+/// classifies, and nothing is latched here. Every other cause converts to the
+/// [`SessionClass`] that a stage error would carry and is latched through
+/// [`SessionClass::latch`], so the stop and the failure's reason derive from
+/// the same class (`StopCause`). Two environment stops, a count that cannot be
+/// represented and an allocation that failed, are latched directly, as their
+/// controller owners latch them. A test checks that no document-shaped
+/// disposition disagrees with `session_class`.
 ///
 /// - Handle, placement and cycle refusals are errors about the document's own
 ///   shape; their callers classify them and nothing is latched here.
@@ -289,7 +293,12 @@ fn disposition(fault: OwnerFault) -> Disposition {
 /// never an outcome of the document: every cause that parsed input can reach
 /// (a limit, an allocation, a count) is named, so `Unlisted` reports the
 /// construction-owner invariant and cannot end a parse as a document outcome.
-/// The inventory tests cover every current cause.
+/// The tests cover what they can reach: every fault's disposition, the table
+/// naming each fault once, and the errors a builder provokes classifying
+/// through exactly one predicate. That the table lists all 29 causes of the
+/// owner's error rests on the owner's own cause tests, which pin one predicate
+/// per cause, and on this table's fixed length; the parser cannot build every
+/// cause through the public API.
 pub(super) fn construction_error(
     control: &mut ParseControl,
     error: HtmlConstructionError,
