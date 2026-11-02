@@ -999,6 +999,16 @@ mod absent_owner_tests {
     use super::*;
     use crate::parser::control::Invariant;
 
+    /// The integrity fault of the range machine is the state of retained
+    /// staging rows and buffers, not a capacity that was charged.
+    #[test]
+    fn a_range_machine_integrity_fault_reports_the_registry_row() {
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        let mut c = crate::construction::tests::control();
+        assert_eq!(integrity(&mut c), SessionError::Stop(registry_row));
+        assert_eq!(c.stop(), Some(registry_row));
+    }
+
     /// Range work that finds no range owner has lost a retained owner; it is
     /// not an operation that is still owed.
     #[test]

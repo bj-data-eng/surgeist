@@ -704,14 +704,14 @@ mod tests {
                 crate::parser::tree_builder::tests::assert_released(&foreign);
             } else {
                 let expected = match case {
-                    1 => ParseStop::InternalInvariant(Invariant::ForeignEvidence),
+                    1 => ParseStop::InternalInvariant(Invariant::TokenizerState),
                     2 => {
                         cancellation.cancel();
                         ParseStop::Cancelled
                     }
                     3 => {
                         evidence.lexical_eof(&mut c, &point).unwrap();
-                        ParseStop::InternalInvariant(Invariant::ForeignEvidence)
+                        ParseStop::InternalInvariant(Invariant::TokenizerState)
                     }
                     _ => unreachable!(),
                 };
@@ -732,6 +732,56 @@ mod tests {
                 );
             }
             assert!(evidence.associations().is_err());
+            evidence.release(&mut c).unwrap();
+            crate::parser::tree_builder::tests::assert_released(&c);
+        }
+    }
+
+    /// A handle of the right issuer that names an occurrence the evidence does
+    /// not hold is a row that internal state names and cannot find; a part
+    /// whose output range is reversed contradicts the sequencing of the
+    /// tokenizer that records it. Neither is foreign evidence.
+    #[test]
+    fn lexical_row_and_sequencing_faults_are_not_foreign_evidence() {
+        for reversed_range in [false, true] {
+            let source = HtmlSource::utf8("<x>");
+            let mut c = ParseControl::new(
+                crate::construction::tests::limits(),
+                HtmlParseCancellation::new(),
+            );
+            c.admit_source(&source).unwrap();
+            let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+            let mut reference = evidence
+                .lexical_begin(
+                    &mut c,
+                    &source.range(0, 1).unwrap(),
+                    LexicalKind::Markup,
+                    None,
+                )
+                .unwrap();
+            let expected = if reversed_range {
+                let reversed = std::ops::Range { start: 1, end: 0 };
+                let stop = evidence
+                    .lexical_part(
+                        &mut c,
+                        &reference,
+                        LexicalRole::Syntax,
+                        &source.range(0, 1).unwrap(),
+                        reversed,
+                        None,
+                    )
+                    .unwrap_err();
+                (stop, Invariant::TokenizerState)
+            } else {
+                let valid = reference.index;
+                reference.index = evidence.native.lexical.occurrences.len();
+                let stop = evidence.lexical_data_offset(&mut c, &reference);
+                reference.index = valid;
+                (stop.unwrap_err(), Invariant::RegistryRow)
+            };
+            assert_eq!(expected.0, ParseStop::InternalInvariant(expected.1));
+            assert_eq!(c.stop(), Some(expected.0));
+            drop(reference);
             evidence.release(&mut c).unwrap();
             crate::parser::tree_builder::tests::assert_released(&c);
         }
