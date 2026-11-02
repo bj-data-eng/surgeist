@@ -137,25 +137,6 @@ fn described(storage: HtmlConstructionStorage, command: HtmlConstructionCommand)
     }
 }
 
-/// The work categories a consumer charges a commit description against.
-#[derive(Debug, Eq, PartialEq)]
-enum Resource {
-    CopyByte,
-    RecordWrite,
-}
-
-/// A consumer's admission of a commit description, in its charging order
-/// (copied bytes, then record writes), against fixed limits.
-fn admit(limits: (usize, usize), described: &Described) -> Result<(), Resource> {
-    if described.copied_bytes > limits.1 {
-        return Err(Resource::CopyByte);
-    }
-    if described.record_writes > limits.0 {
-        return Err(Resource::RecordWrite);
-    }
-    Ok(())
-}
-
 /// The figures of a commit that assigns `writes` fields of `bytes` in all and
 /// also writes the usage.
 fn with_usage(writes: usize, bytes: usize) -> (usize, usize) {
@@ -164,38 +145,22 @@ fn with_usage(writes: usize, bytes: usize) -> (usize, usize) {
 
 /// Checks the description of `command` against the figures its commit arm
 /// derives (`writes` record writes of `bytes` in all, besides the depth cache's
-/// writes), and that exactly those figures are the limit that admits it.
-fn assert_exact_fit(
+/// writes).
+fn assert_described(
     label: &str,
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
     (writes, bytes): (usize, usize),
 ) {
     let described = described(storage, command);
-    let expected = (
-        writes + described.depth_writes,
-        bytes + described.depth_writes * size_of::<usize>(),
-    );
     assert_eq!(
         (described.record_writes, described.copied_bytes),
-        expected,
+        (
+            writes + described.depth_writes,
+            bytes + described.depth_writes * size_of::<usize>(),
+        ),
         "{label}: described (writes, bytes) against the commit arm's"
     );
-    assert_eq!(admit(expected, &described), Ok(()), "{label}: exact limit");
-    if expected.0 > 0 {
-        assert_eq!(
-            admit((expected.0 - 1, expected.1), &described),
-            Err(Resource::RecordWrite),
-            "{label}: one write fewer"
-        );
-    }
-    if expected.1 > 0 {
-        assert_eq!(
-            admit((expected.0, expected.1 - 1), &described),
-            Err(Resource::CopyByte),
-            "{label}: one byte fewer"
-        );
-    }
 }
 
 #[test]
@@ -203,7 +168,7 @@ fn attaching_a_shadow_describes_the_two_fields_it_assigns() {
     // The arm assigns the contents' owner and the host's shadow association.
     let (storage, host) = element(begin(), "host");
     let (storage, contents) = shadow(storage);
-    assert_exact_fit(
+    assert_described(
         "AttachShadow",
         storage,
         HtmlConstructionCommand::AttachShadow { host, contents },
@@ -218,7 +183,7 @@ fn attaching_a_template_shadow_describes_the_four_fields_it_assigns() {
     let (storage, template) = element(begin(), "template");
     let (storage, host) = element(storage, "host");
     let (storage, contents) = shadow(storage);
-    assert_exact_fit(
+    assert_described(
         "AttachTemplateShadow",
         storage,
         HtmlConstructionCommand::AttachTemplateShadow {
@@ -235,7 +200,7 @@ fn setting_template_shadow_contents_describes_the_two_fields_it_assigns() {
     // The arm assigns the old contents' owner and the template's contents.
     let (storage, template) = element(begin(), "template");
     let (storage, contents) = shadow(storage);
-    assert_exact_fit(
+    assert_described(
         "SetTemplateShadowContents",
         storage,
         HtmlConstructionCommand::SetTemplateShadowContents { template, contents },
@@ -249,7 +214,7 @@ fn reassigning_owned_contents_describes_the_three_fields_it_assigns() {
     // new contents' owner.
     let (storage, template) = element(begin(), "template");
     let (storage, contents) = create(storage, HtmlConstructionCommand::CreateFragment);
-    assert_exact_fit(
+    assert_described(
         "ReassignTemplateContents over owned contents",
         storage,
         HtmlConstructionCommand::ReassignTemplateContents { template, contents },
@@ -271,7 +236,7 @@ fn reassigning_over_a_shadow_reference_describes_the_two_fields_it_assigns() {
             contents: shadow,
         },
     );
-    assert_exact_fit(
+    assert_described(
         "ReassignTemplateContents over a shadow reference",
         storage,
         HtmlConstructionCommand::ReassignTemplateContents {
@@ -312,7 +277,7 @@ fn replacing_text_like_content_describes_the_kind_it_assigns() {
     for (kind, content) in replacements {
         let label = format!("ReplaceContent over {kind:?}");
         let (storage, node) = create(begin(), HtmlConstructionCommand::Create { kind });
-        assert_exact_fit(
+        assert_described(
             &label,
             storage,
             HtmlConstructionCommand::ReplaceContent { node, content },
@@ -326,7 +291,7 @@ fn renaming_an_element_describes_the_name_and_the_link_history_it_assigns() {
     // The arm assigns the name, and clears the link history unless the new
     // name is an HTML link.
     let (storage, node) = element(begin(), "div");
-    assert_exact_fit(
+    assert_described(
         "ReplaceContent renaming to a non-link",
         storage,
         HtmlConstructionCommand::ReplaceContent {
@@ -339,7 +304,7 @@ fn renaming_an_element_describes_the_name_and_the_link_history_it_assigns() {
         ),
     );
     let (storage, node) = element(begin(), "div");
-    assert_exact_fit(
+    assert_described(
         "ReplaceContent renaming to a link",
         storage,
         HtmlConstructionCommand::ReplaceContent {
@@ -353,7 +318,7 @@ fn renaming_an_element_describes_the_name_and_the_link_history_it_assigns() {
 #[test]
 fn replacing_attributes_describes_the_collection_it_assigns() {
     let (storage, element) = element(begin(), "div");
-    assert_exact_fit(
+    assert_described(
         "ReplaceAttributes",
         storage,
         HtmlConstructionCommand::ReplaceAttributes {
@@ -372,7 +337,7 @@ fn setting_the_document_mode_describes_the_kind_it_assigns() {
             mode: HtmlDocumentMode::NoQuirks,
         },
     );
-    assert_exact_fit(
+    assert_described(
         "SetDocumentMode",
         storage,
         HtmlConstructionCommand::SetDocumentMode {
@@ -393,7 +358,7 @@ fn setting_link_flags_describes_the_history_it_assigns() {
             link_flags: None,
         },
     );
-    assert_exact_fit(
+    assert_described(
         "SetLinkFlags",
         storage,
         HtmlConstructionCommand::SetLinkFlags {
@@ -414,7 +379,7 @@ fn creating_records_describes_each_record_and_its_depth_count() {
             OrderedAttributes::default(),
         )),
     };
-    assert_exact_fit(
+    assert_described(
         "Create of an element",
         begin(),
         command,
@@ -427,7 +392,7 @@ fn creating_records_describes_each_record_and_its_depth_count() {
             OrderedAttributes::default(),
         )),
     };
-    assert_exact_fit(
+    assert_described(
         "Create of a template",
         begin(),
         command,
@@ -439,7 +404,7 @@ fn creating_records_describes_each_record_and_its_depth_count() {
 fn commands_that_change_no_record_describe_no_write() {
     // Neither arm assigns anything: the reservation grows the record bank and
     // the transfer check only reads, so even the usage is not written.
-    assert_exact_fit(
+    assert_described(
         "ReserveRecords",
         begin(),
         HtmlConstructionCommand::ReserveRecords { additional: 2 },
@@ -447,7 +412,7 @@ fn commands_that_change_no_record_describe_no_write() {
     );
     let (storage, from) = create(begin(), HtmlConstructionCommand::CreateFragment);
     let (storage, to) = create(storage, HtmlConstructionCommand::CreateFragment);
-    assert_exact_fit(
+    assert_described(
         "CheckChildTransfer",
         storage,
         HtmlConstructionCommand::CheckChildTransfer { from, to },
