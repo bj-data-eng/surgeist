@@ -366,11 +366,26 @@ where
                     origin_sum(parent_visual, output.location)?,
                 ),
             };
+            let measured_inset_basis = self
+                .unrounded_entries
+                .iter()
+                .find(|entry| entry.node() == node)
+                .and_then(LayoutOutputEntryOf::measured_inset_basis)
+                .ok_or_else(|| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::TextPlacement,
+                        LayoutErrorKindOf::InternalInvariant(
+                            LayoutInternalInvariant::InvalidOutputGeometryPhase,
+                        ),
+                    )
+                })?;
             frames.push(crate::text_layout::state::CanonicalFrame {
                 node,
                 origin,
                 normal_origin,
                 normal,
+                measured_inset_basis,
                 output,
             });
             pending.extend(
@@ -838,6 +853,32 @@ where
     ) -> Option<&mut crate::text_layout::state::TextComputation<'input, Self::Node, Self::Scalar>>
     {
         self.text.as_mut()
+    }
+
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> LayoutResultOf<
+        Self::Node,
+        LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        Self::Scalar,
+        Tree::MeasureError,
+    > {
+        self.unrounded_entries
+            .iter()
+            .rev()
+            .find(|entry| entry.node() == node)
+            .copied()
+            .filter(|entry| entry.geometry_state().is_unrounded())
+            .ok_or_else(|| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::InternalInvariant(
+                        LayoutInternalInvariant::MissingStagedUnroundedOutput,
+                    ),
+                )
+            })
     }
 
     fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {

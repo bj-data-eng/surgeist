@@ -62,6 +62,11 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         }
         Ok(crate::block::float_context::ChildOutput { output, floats })
     }
+    /// Actual accepted current-trial custody; never a host/cache reconstruction.
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> UnroundedEntryResult<Self::Node, Self::Scalar, M>;
     fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>);
     // Absence is the actual box-only profile, not a successful no-op finalizer.
     fn text_computation(

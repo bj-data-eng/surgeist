@@ -1509,6 +1509,19 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            Err(crate::test_support::layout_tree::missing_staged_unrounded(
+                node,
+            ))
+        }
+
         fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
         fn compute_child(
@@ -1958,6 +1971,19 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
 
         fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
             crate::LayoutInputViewOf::Box(self.node_input(node))
+        }
+
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            Err(crate::test_support::layout_tree::missing_staged_unrounded(
+                node,
+            ))
         }
 
         fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}

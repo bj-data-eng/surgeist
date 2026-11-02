@@ -177,6 +177,24 @@ mod tests {
             self.layout_input.as_view()
         }
 
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+            Self::Scalar,
+            Infallible,
+        > {
+            Err(crate::LayoutErrorOf::new(
+                crate::LayoutErrorSiteOf::Node(node),
+                crate::LayoutOperation::ChildLayout,
+                crate::LayoutErrorKindOf::InternalInvariant(
+                    crate::LayoutInternalInvariant::MissingStagedUnroundedOutput,
+                ),
+            ))
+        }
+
         fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, S>) {}
 
         fn compute_child(

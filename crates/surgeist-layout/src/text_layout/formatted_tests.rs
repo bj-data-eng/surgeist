@@ -292,6 +292,7 @@ fn a_summary_receipt_cannot_authenticate_different_geometry_or_canonical_frames(
         origin: crate::Point::new(1.0, 0.0),
         normal_origin: crate::Point::new(1.0, 0.0),
         normal: crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
+        measured_inset_basis: None,
         output: crate::NodeOutputOf::new(),
     }]);
     assert!(!state.cache_matches(0, &input(), context, output));

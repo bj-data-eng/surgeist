@@ -3693,7 +3693,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, NodeOutput>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -3751,7 +3751,7 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, NodeOutput>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
     }
 
     impl RecursiveTree {
@@ -3810,10 +3810,23 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
         fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
-            let node = entry.node();
-            let layout = entry.output();
-            self.layouts.insert(node, layout);
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -3884,8 +3897,8 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
     .unwrap();
 
     assert_eq!(output.size, Size::new(200.0, 40.0));
-    assert_eq!(tree.layouts[&2].size, Size::new(200.0, 40.0));
-    assert_eq!(tree.layouts[&3].size, Size::new(200.0, 40.0));
+    assert_eq!(tree.layouts[&2].output().size, Size::new(200.0, 40.0));
+    assert_eq!(tree.layouts[&3].output().size, Size::new(200.0, 40.0));
 }
 
 #[test]
@@ -3894,7 +3907,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, NodeOutput>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -3952,7 +3965,7 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, NodeOutput>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
     }
 
     impl RecursiveTree {
@@ -4011,10 +4024,23 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
         fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
-            let node = entry.node();
-            let layout = entry.output();
-            self.layouts.insert(node, layout);
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -4082,9 +4108,9 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
     .unwrap();
 
     assert_eq!(output.size, Size::new(200.0, 10.0));
-    assert_eq!(tree.layouts[&2].size, Size::new(100.0, 10.0));
-    assert_eq!(tree.layouts[&3].location, Point::new(5.0, 5.0));
-    assert_eq!(tree.layouts[&3].size, Size::new(45.0, 0.0));
+    assert_eq!(tree.layouts[&2].output().size, Size::new(100.0, 10.0));
+    assert_eq!(tree.layouts[&3].output().location, Point::new(5.0, 5.0));
+    assert_eq!(tree.layouts[&3].output().size, Size::new(45.0, 0.0));
 }
 
 #[test]

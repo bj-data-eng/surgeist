@@ -2541,6 +2541,19 @@ fn block_empty_auto_height_can_collapse_through() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            Err(crate::test_support::layout_tree::missing_staged_unrounded(
+                node,
+            ))
+        }
+
         fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
         fn compute_child(
@@ -2681,6 +2694,19 @@ fn block_with_padding_reports_own_margins_when_child_collapse_is_blocked() {
 
         fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
             crate::LayoutInputViewOf::Box(self.node_input(node))
+        }
+
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            Err(crate::test_support::layout_tree::missing_staged_unrounded(
+                node,
+            ))
         }
 
         fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
@@ -3390,6 +3416,19 @@ fn block_compute_size_uses_definite_min_max_without_measuring_children() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            Err(crate::test_support::layout_tree::missing_staged_unrounded(
+                node,
+            ))
+        }
+
         fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
         fn compute_child(
@@ -3529,6 +3568,19 @@ fn block_definite_compute_size_keeps_grid_children_on_fast_path_until_grid_basel
 
         fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
             crate::LayoutInputViewOf::Box(self.node_input(node))
+        }
+
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            Err(crate::test_support::layout_tree::missing_staged_unrounded(
+                node,
+            ))
         }
 
         fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}

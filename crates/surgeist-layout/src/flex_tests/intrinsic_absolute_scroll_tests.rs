@@ -5368,7 +5368,7 @@ struct Fri05C04FlexAutoPassTree {
     child_outputs: HashMap<u32, ComputeOutput>,
     child_inputs: Vec<ComputeInput>,
     child_requests: Vec<(u32, ComputeInput)>,
-    layouts: Vec<(u32, NodeOutput)>,
+    layouts: Vec<(u32, crate::LayoutOutputEntryOf<u32, Scalar>)>,
 }
 
 impl Traverse for Fri05C04FlexAutoPassTree {
@@ -5404,7 +5404,7 @@ struct Fri05C04FlexAutoPassTreeCompute<'input> {
     child_outputs: &'input mut HashMap<u32, ComputeOutput>,
     child_inputs: &'input mut Vec<ComputeInput>,
     child_requests: &'input mut Vec<(u32, ComputeInput)>,
-    layouts: &'input mut Vec<(u32, NodeOutput)>,
+    layouts: &'input mut Vec<(u32, crate::LayoutOutputEntryOf<u32, Scalar>)>,
 }
 
 impl Fri05C04FlexAutoPassTree {
@@ -5471,10 +5471,25 @@ impl<'input> Compute<'input> for Fri05C04FlexAutoPassTreeCompute<'input> {
         crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> crate::engine::contracts::UnroundedEntryResult<
+        Self::Node,
+        Self::Scalar,
+        core::convert::Infallible,
+    > {
+        self.layouts
+            .iter()
+            .rev()
+            .find(|(subject, _)| *subject == node)
+            .map(|(_, entry)| *entry)
+            .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+            .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+    }
+
     fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
-        let node = entry.node();
-        let layout = entry.output();
-        self.layouts.push((node, layout));
+        self.layouts.push((entry.node(), entry));
     }
 
     fn compute_child(
@@ -5730,7 +5745,7 @@ fn fri05_c04_flex_auto_direct_nested_passes_separate_local_and_containing_state(
         .layouts
         .iter()
         .rev()
-        .find_map(|(node, output)| (*node == 1).then_some(*output))
+        .find_map(|(node, output)| (*node == 1).then_some(output.output()))
         .expect("outer retains the stable inner flex output");
     assert_eq!(inner.scroll_geometry.unwrap().scrollbar_size(), Size::ZERO);
 
@@ -5760,7 +5775,7 @@ fn fri05_c04_flex_auto_direct_inner_settlement_becomes_grandchild_containing_pas
         .layouts
         .iter()
         .rev()
-        .find_map(|(node, output)| (*node == 1).then_some(*output))
+        .find_map(|(node, output)| (*node == 1).then_some(output.output()))
         .expect("outer retains the independently settled inner flex output");
     assert_eq!(
         inner.scroll_geometry.unwrap().scrollbar_size(),

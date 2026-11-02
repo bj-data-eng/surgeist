@@ -2520,6 +2520,19 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            Err(crate::test_support::layout_tree::missing_staged_unrounded(
+                node,
+            ))
+        }
+
         fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
         fn compute_child(
@@ -2658,6 +2671,19 @@ fn grid_content_size_mode_ignores_authored_size() {
 
         fn layout_input(&self, node: Self::Node) -> crate::LayoutInputViewOf<'input, Self::Scalar> {
             crate::LayoutInputViewOf::Box(self.node_input(node))
+        }
+
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            Err(crate::test_support::layout_tree::missing_staged_unrounded(
+                node,
+            ))
         }
 
         fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}

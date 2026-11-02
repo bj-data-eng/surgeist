@@ -1543,6 +1543,23 @@ impl<S: LayoutScalar> NormalGeometryOf<S> {
     }
 }
 
+/// Final used normal content extent before publication corner rounding.
+/// Issued only from accepted measured geometry, never canonical pixel extents.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct MeasuredInsetBasisOf<S: LayoutScalar> {
+    size: Size<S>,
+}
+
+impl<S: LayoutScalar> MeasuredInsetBasisOf<S> {
+    pub(crate) const fn from_used_content_size(size: Size<S>) -> Self {
+        Self { size }
+    }
+
+    pub(crate) const fn size(self) -> Size<S> {
+        self.size
+    }
+}
+
 /// The actual paired corner evaluation retained in an accepted atomic source.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CanonicalAtomicGeometryOf<S: LayoutScalar> {
@@ -1645,6 +1662,25 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
                 readback: AtomicReadbackPhase::Pending,
             },
         }
+    }
+
+    /// Extract measured custody only from a current unrounded stage. The outer
+    /// Option distinguishes wrong phase from genuine non-box metadata.
+    pub(crate) fn measured_inset_basis(&self) -> Option<Option<MeasuredInsetBasisOf<S>>> {
+        let measured = match self.geometry {
+            GeometryStateOf::OrdinaryUnrounded { measured_normal }
+            | GeometryStateOf::CanonicalAtomic {
+                measured_normal,
+                readback: AtomicReadbackPhase::Pending,
+                ..
+            } => measured_normal,
+            _ => return None,
+        };
+        Some(
+            measured
+                .content_box
+                .map(|rect| MeasuredInsetBasisOf::from_used_content_size(rect.size())),
+        )
     }
 
     pub(crate) const fn geometry_state(&self) -> GeometryStateOf<S> {

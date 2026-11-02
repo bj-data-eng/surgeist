@@ -10,6 +10,7 @@ pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
     pub origin: Point<f64>,
     pub normal_origin: Point<f64>,
     pub normal: crate::output::NormalGeometryOf<S>,
+    pub measured_inset_basis: Option<crate::output::MeasuredInsetBasisOf<S>>,
     pub output: NodeOutputOf<S>,
 }
 

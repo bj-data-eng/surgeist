@@ -1,5 +1,5 @@
 use super::absolute::absolute_static_position;
-use super::in_flow::relative_inset_offset;
+use super::relative::{self, InsetReference};
 use super::scroll::{
     BlockScrollContributions, child_scrollbar_size, retained_child_scroll_geometry,
 };
@@ -502,6 +502,12 @@ where
             .and_then(|state| state.run(container, run))
     });
     let text_binding = text_run.as_ref().map(|run| run.binding);
+    let inset_reference = tree
+        .text_computation()
+        .and_then(|state| state.frame(container))
+        .map_or(InsetReference::Measurement(node_inner_size), |frame| {
+            InsetReference::Accepted(frame.measured_inset_basis)
+        });
     if text_run.as_ref().is_some_and(|run| {
         run.nodes().is_empty()
             && run.binding.line_strut.is_none()
@@ -824,16 +830,13 @@ where
             });
         }
         if text_binding.is_some() {
-            let relative_offset = relative_inset_offset(
-                child_style
-                    .common
-                    .inset
-                    .zip_size(node_inner_size, |length, basis| {
-                        resolve_auto_optional(length, basis)
-                    })
-                    .transpose_with_node(tree, child)?,
+            let relative_offset = relative::resolve(
+                tree,
+                child,
+                *child_style.common.inset,
+                inset_reference,
                 constants.flow_axes,
-            );
+            )?;
             let content_box = output
                 .scroll_geometry
                 .map(|geometry| geometry.content_box())
@@ -1798,9 +1801,11 @@ where
                 },
             )
             .map_err(|error| layout_child_geometry_error(container, child, error))?;
-            contributions
-                .include_in_flow_geometry(location, source.item.margin, scroll_geometry)
-                .map_err(|error| layout_child_geometry_error(container, child, error))?;
+            if text_binding.is_some() || !relative::needs_basis(*child_projection.common.inset) {
+                contributions
+                    .include_in_flow_geometry(location, source.item.margin, scroll_geometry)
+                    .map_err(|error| layout_child_geometry_error(container, child, error))?;
+            }
             let named_baselines = match source.canonical_geometry {
                 Some(canonical) => crate::text_layout::run::pending_visual_named_baselines(
                     output.named_baselines,
@@ -2079,19 +2084,18 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    if captured {
+    if captured || relative::needs_basis(*projection.common.inset) {
+        // Captured offsets are sealed by the real converter. Native percentage
+        // offsets are deferred until this parent's performed normal size exists.
         return Ok(Point::ZERO);
     }
-    Ok(relative_inset_offset(
-        projection
-            .common
-            .inset
-            .zip_size(inner_size, |length, basis| {
-                resolve_auto_optional(length, basis)
-            })
-            .transpose_with_node(tree, child)?,
+    relative::resolve(
+        tree,
+        child,
+        *projection.common.inset,
+        InsetReference::Measurement(inner_size),
         axes,
-    ))
+    )
 }
 
 /// Compare the actual post-match displacement inside the same retained frame.

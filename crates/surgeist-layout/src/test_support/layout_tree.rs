@@ -11,6 +11,17 @@ use crate::{
     Size, SizingMode, Traverse, compute_block, compute_flex, compute_grid,
 };
 
+/// The fake retained no current-trial custody for this actual request.
+pub(crate) fn missing_staged_unrounded<Node, S: LayoutScalar, M>(
+    node: Node,
+) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(
+        LayoutErrorSiteOf::Node(node),
+        LayoutOperation::ChildLayout,
+        LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::MissingStagedUnroundedOutput),
+    )
+}
+
 /// Authors an ordinary box fixture with no relative visual displacement.
 pub(crate) fn ordinary_unrounded_box<S: LayoutScalar>(
     node: u32,
@@ -430,6 +441,21 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
             .get(&node)
             .map(|input| input.as_view())
             .unwrap_or_else(|| panic!("oracle node {node} must define a layout input"))
+    }
+
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> crate::engine::contracts::UnroundedEntryResult<
+        Self::Node,
+        Self::Scalar,
+        core::convert::Infallible,
+    > {
+        self.layouts
+            .get(&node)
+            .copied()
+            .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+            .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
     }
 
     fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, S>) {

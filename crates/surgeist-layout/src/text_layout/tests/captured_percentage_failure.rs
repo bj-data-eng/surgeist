@@ -25,7 +25,14 @@ fn captured_final_percent_failure_preserves_publication<S: LayoutScalar>(maximum
     // of whether final-auto percentage settlement has yet been implemented.
     let baseline = custody_compute(&host, vec![binding.clone()], &[]);
     custody_assert_simple(&baseline, false, 0.72);
-    captured_percent_source(&baseline, &paragraph, false, 50.0, 12.0);
+    captured_percent_source(
+        &baseline,
+        &paragraph,
+        false,
+        50.0,
+        12.0,
+        &paragraph.binding(0).nodes,
+    );
     let original_fragments = baseline
         .final_inline_fragments()
         .iter()
@@ -103,7 +110,14 @@ fn captured_final_percent_failure_preserves_publication<S: LayoutScalar>(maximum
         original_pending
     );
     custody_assert_simple(&baseline, false, 0.72);
-    captured_percent_source(&baseline, &paragraph, false, 50.0, 12.0);
+    captured_percent_source(
+        &baseline,
+        &paragraph,
+        false,
+        50.0,
+        12.0,
+        &paragraph.binding(0).nodes,
+    );
     assert_eq!(
         baseline
             .final_inline_fragments()
@@ -120,7 +134,14 @@ fn captured_final_percent_failure_preserves_publication<S: LayoutScalar>(maximum
         .tree
         .insert_input(2, LayoutInputOf::box_input(captured_percent_atom(false)));
     let recovered = custody_compute(&host, vec![binding], &[2]);
-    captured_percent_source(&recovered, &paragraph, false, 50.0, 12.0);
+    captured_percent_source(
+        &recovered,
+        &paragraph,
+        false,
+        50.0,
+        12.0,
+        &paragraph.binding(0).nodes,
+    );
     custody_assert_simple(&recovered, false, 0.72);
     custody_same_scene(&recovered, &baseline);
     // Successful staging still leaves the old accepted publication untouched.

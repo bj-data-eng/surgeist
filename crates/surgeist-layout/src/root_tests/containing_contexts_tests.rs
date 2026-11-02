@@ -393,6 +393,15 @@ impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C07DirectTree<'input,
         self.0.layout_input(node)
     }
 
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> crate::engine::contracts::UnroundedEntryResult<Self::Node, Self::Scalar, ()> {
+        Err(crate::test_support::layout_tree::missing_staged_unrounded(
+            node,
+        ))
+    }
+
     fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
     fn compute_child(
@@ -5522,7 +5531,7 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
     #[derive(Default)]
     struct HiddenTree<S: LayoutScalar> {
         children: HashMap<u32, Vec<u32>>,
-        layouts: HashMap<u32, NodeOutputOf<S>>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
         caches: HashMap<u32, CacheOf<S>>,
         styles: HashMap<u32, NodeInputOf<S>>,
         calls: Vec<(u32, ComputeInputOf<S>)>,
@@ -5553,7 +5562,7 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
 
     struct HiddenTreeCompute<'input, S: LayoutScalar> {
         children: &'input HashMap<u32, Vec<u32>>,
-        layouts: &'input mut HashMap<u32, NodeOutputOf<S>>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
         caches: &'input mut HashMap<u32, CacheOf<S>>,
         styles: &'input HashMap<u32, NodeInputOf<S>>,
         calls: &'input mut Vec<(u32, ComputeInputOf<S>)>,
@@ -5620,10 +5629,23 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
         fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
-            let node = entry.node();
-            let layout = entry.output();
-            self.layouts.insert(node, layout);
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -5735,7 +5757,7 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
     assert_eq!(tree.calls, vec![(2, expected_input), (3, expected_input)]);
     for node in [1, 2, 3] {
         assert_eq!(
-            tree.layouts[&node],
+            tree.layouts[&node].output(),
             NodeOutputOf::with_source_index(crate::SourceIndex::new(0))
         );
         assert!(tree.caches[&node].is_empty());

@@ -4,9 +4,7 @@ use super::inline_run::{
     visible_inline_boundary_in_flow, visible_line_break_in_flow,
 };
 use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
-use super::sizing::{
-    maximum_size, minimum_size, preferred_size, resolve_auto_optional, resolve_length_or_zero,
-};
+use super::sizing::{maximum_size, minimum_size, preferred_size, resolve_length_or_zero};
 use super::*;
 
 /// Raw baseline or float work needed even by an otherwise definite size query.
@@ -815,16 +813,18 @@ where
                 flow.items.push(item);
             }
         }
-        let inset_offset = relative_inset_offset(
-            child_style
-                .common
-                .inset
-                .zip_size(node_inner_size, |length, basis| {
-                    resolve_auto_optional(length, basis)
-                })
-                .transpose_with_node(tree, child)?,
-            constants.flow_axes,
-        );
+        let deferred_inset = super::relative::needs_basis(*child_style.common.inset);
+        let inset_offset = if deferred_inset {
+            Point::ZERO
+        } else {
+            super::relative::resolve(
+                tree,
+                child,
+                *child_style.common.inset,
+                super::relative::InsetReference::Measurement(node_inner_size),
+                constants.flow_axes,
+            )?
+        };
         let top_margin_set = output
             .block_margin_collapse
             .at(constants.flow_axes.block_start())
@@ -928,9 +928,11 @@ where
                 },
             )
             .map_err(|error| layout_child_geometry_error(node, child, error))?;
-            contributions
-                .include_in_flow_geometry(location, child_margin, scroll_geometry)
-                .map_err(|error| layout_child_geometry_error(node, child, error))?;
+            if !deferred_inset {
+                contributions
+                    .include_in_flow_geometry(location, child_margin, scroll_geometry)
+                    .map_err(|error| layout_child_geometry_error(node, child, error))?;
+            }
             tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
                 crate::output::NormalGeometryOf::box_geometry(

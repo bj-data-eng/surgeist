@@ -22,6 +22,7 @@ fn captured_percent_source<S: LayoutScalar>(
     left: bool,
     width: f64,
     height: f64,
+    native_nodes: &[u32],
 ) {
     for finalized in [false, true] {
         assert_eq!(
@@ -32,10 +33,7 @@ fn captured_percent_source<S: LayoutScalar>(
     let placed = batch.placed_text();
     assert_eq!(placed.len(), 1);
     assert_eq!(placed[0].container(), 0);
-    assert_eq!(
-        placed[0].nodes(),
-        if left { &[1, 2, 3][..] } else { &[1, 2][..] }
-    );
+    assert_eq!(placed[0].nodes(), native_nodes);
     let layout = placed[0].layout();
     assert_eq!(
         layout.source().text().code_units(),
@@ -132,10 +130,10 @@ fn captured_percent_matches_constant<S: LayoutScalar>(left: bool) {
         CustodyHost::<S>::new(custody_restorable_fixture(&p, left, resolved.to_f64()));
     let control = custody_compute(&control_host, vec![p.binding(0)], &[]);
     custody_assert_simple(&control, left, if left { 0.32 } else { 0.72 });
-    captured_percent_source(&control, &p, left, 50.0, 12.0);
+    captured_percent_source(&control, &p, left, 50.0, 12.0, &p.binding(0).nodes);
     let percent_host = CustodyHost::<S>::new(captured_percent_fixture(&p, left));
     let actual = custody_compute(&percent_host, vec![p.binding(0)], &[]);
-    captured_percent_source(&actual, &p, left, 50.0, 12.0);
+    captured_percent_source(&actual, &p, left, 50.0, 12.0, &p.binding(0).nodes);
     //6% of final normal12 gives.72: measured top-.4+.72=.32,
     // end10.72 => visual0..11, with content1..10.
     // .64% of actual width50 gives.32: border10.32..20.72
@@ -168,7 +166,7 @@ fn captured_percent_changed_basis_preserves_publication<S: LayoutScalar>(left: b
     };
     let mut host = CustodyHost::<S>::new(captured_percent_fixture(&p, left));
     let cold = custody_compute(&host, vec![p.binding(0)], &[]);
-    captured_percent_source(&cold, &p, left, 50.0, 12.0);
+    captured_percent_source(&cold, &p, left, 50.0, 12.0, &p.binding(0).nodes);
     custody_assert_simple(&cold, left, if left { 0.32 } else { 0.72 });
     let old_fragments = cold
         .final_inline_fragments()
@@ -182,7 +180,12 @@ fn captured_percent_changed_basis_preserves_publication<S: LayoutScalar>(left: b
     let warm = custody_compute(&host, vec![p.binding(0)], &[]);
     assert!(host.inner.hits.borrow().contains(&2));
     assert!(host.returned.borrow().contains(&pending));
-    captured_percent_source(&warm, &p, left, 50.0, 12.0);
+    let committed_float = custody_entry(&cold, 4, false);
+    assert!(
+        host.returned.borrow().contains(&committed_float),
+        "warm reuse traverses the actual committed subtree beyond its parent receipt"
+    );
+    captured_percent_source(&warm, &p, left, 50.0, 12.0, &p.binding(0).nodes);
     custody_same_scene(&warm, &cold);
     warm.apply_to(&mut host).unwrap();
     let prior = host.inner.published.as_ref().unwrap().clone();
@@ -219,7 +222,7 @@ fn captured_percent_changed_basis_preserves_publication<S: LayoutScalar>(left: b
     };
     let dirty = if left { &[0][..] } else { &[0, 5][..] };
     let changed = custody_compute(&host, vec![p.binding(0)], dirty);
-    captured_percent_source(&changed, &p, left, width, height);
+    captured_percent_source(&changed, &p, left, width, height, &p.binding(0).nodes);
     if !left {
         let block = custody_entry(&changed, 5, true).output();
         assert_eq!(block.location, Point::new(S::ZERO, custody_n::<S>(12.0)));
@@ -256,7 +259,7 @@ fn captured_percent_changed_basis_preserves_publication<S: LayoutScalar>(left: b
     );
     let control_host = CustodyHost::<S>::new(control_tree);
     let constant = custody_compute(&control_host, vec![p.binding(0)], &[]);
-    captured_percent_source(&constant, &p, left, width, height);
+    captured_percent_source(&constant, &p, left, width, height, &p.binding(0).nodes);
     custody_same_scene(&changed, &constant);
     assert_ne!(
         custody_entry(&changed, 2, true).output().size,
@@ -272,7 +275,7 @@ fn captured_percent_changed_basis_preserves_publication<S: LayoutScalar>(left: b
     );
     assert_eq!(host.inner.caches, prior_caches);
     custody_same_scene(host.inner.published.as_ref().unwrap(), &prior);
-    captured_percent_source(&cold, &p, left, 50.0, 12.0);
+    captured_percent_source(&cold, &p, left, 50.0, 12.0, &p.binding(0).nodes);
     assert_eq!(
         cold.final_inline_fragments()
             .iter()
@@ -283,7 +286,7 @@ fn captured_percent_changed_basis_preserves_publication<S: LayoutScalar>(left: b
     host.inner.reject_batch = false;
     changed.apply_to(&mut host).unwrap();
     custody_same_scene(host.inner.published.as_ref().unwrap(), &changed);
-    captured_percent_source(&cold, &p, left, 50.0, 12.0);
+    captured_percent_source(&cold, &p, left, 50.0, 12.0, &p.binding(0).nodes);
 }
 
 #[test]
@@ -321,3 +324,6 @@ fn captured_percent_changed_width_warm_publication_f64() {
 
 #[path = "captured_percentage_failure.rs"]
 mod captured_percentage_failure;
+
+#[path = "percentage_gutter_basis.rs"]
+mod percentage_gutter_basis;

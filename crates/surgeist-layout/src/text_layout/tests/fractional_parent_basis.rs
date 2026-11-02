@@ -282,3 +282,6 @@ fn captured_percentage_uses_measured_fractional_parent_not_canonical_height_f32(
 fn captured_percentage_uses_measured_fractional_parent_not_canonical_height_f64() {
     measured_fractional_parent_basis::<f64>();
 }
+
+#[path = "fractional_parent_origin.rs"]
+mod fractional_parent_origin;
