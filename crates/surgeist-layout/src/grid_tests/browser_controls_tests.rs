@@ -23,13 +23,26 @@ fn fri08_c05_later_owned_browser_parity_disposition(relative_path: &str) -> Stri
 }
 
 #[test]
-fn fri09_c05_control_records_ordinary_grid_baseline_distribution_mismatch() {
-    assert_eq!(
-        fri08_c05_later_owned_browser_parity_disposition(
-            "tests/layout/browser_parity/xml/grid/grid_align_items_baseline_child_multiline_no_override_on_secondline__content_box_ltr.xml",
-        ),
-        "grid_align_items_baseline_child_multiline_no_override_on_secondline__content_box_ltr/1: y mismatch, expected 68, got 60"
-    );
+fn fixed_grid_contributions_preserve_baseline_distribution() {
+    for family in [
+        "grid_align_items_baseline_child_multiline_no_override_on_secondline",
+        "grid_align_items_baseline_child_multiline_override",
+    ] {
+        for variant in [
+            "border_box_ltr",
+            "border_box_rtl",
+            "content_box_ltr",
+            "content_box_rtl",
+        ] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/layout/browser_parity/xml/grid")
+                .join(format!("{family}__{variant}.xml"));
+            let golden = fri06_c12_t08_browser_front_door::Golden::parse_file(&path)
+                .unwrap_or_else(|error| panic!("{} must parse: {error}", path.display()));
+            fri06_c12_t08_browser_front_door::assert_surgeist_matches(&golden)
+                .unwrap_or_else(|error| panic!("{} must match: {error}", path.display()));
+        }
+    }
 }
 
 #[test]

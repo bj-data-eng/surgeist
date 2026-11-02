@@ -36,8 +36,6 @@ pub enum HtmlFragmentInsertionMode {
     BeforeHead,
 }
 
-const HTML_NAMESPACE: &str = "http://www.w3.org/1999/xhtml";
-
 /// The finite comparisons needed by fragment initialization. The consumer
 /// admits and executes a comparison before the policy can inspect its result.
 pub enum HtmlFragmentNameTest<'a> {
@@ -135,8 +133,7 @@ fn exact(value: &DocumentString, literal: &str) -> bool {
             .eq(literal.bytes().map(u16::from))
 }
 fn html_namespace(name: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
-    name.namespace_uri()
-        .is_some_and(|uri| exact(uri, HTML_NAMESPACE))
+    crate::values::is_html_namespace_uri(name.namespace_uri())
 }
 
 /// Selects only the tokenizer state from an exact name and already-resolved mode.

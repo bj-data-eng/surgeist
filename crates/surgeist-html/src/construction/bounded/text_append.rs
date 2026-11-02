@@ -127,7 +127,6 @@ pub struct HtmlConstructionTextAppend {
     incoming: DocumentString,
     pending: Option<DocumentString>,
     phase: Phase,
-    next: Option<Phase>,
     failure: Option<HtmlConstructionError>,
     target: Option<usize>,
     old_len: usize,
@@ -143,6 +142,8 @@ pub struct HtmlConstructionTextAppendAction<'a> {
 }
 pub struct HtmlConstructionTextAppendObservation<'a> {
     owner: &'a mut HtmlConstructionTextAppend,
+    /// The phase this accepted observation resumes.
+    next: Phase,
 }
 pub struct HtmlConstructionTextAppendReady {
     owner: HtmlConstructionTextAppend,
@@ -182,7 +183,6 @@ impl HtmlConstructionTextAppend {
             incoming,
             pending: None,
             phase: Phase::Inspect,
-            next: None,
             failure: None,
             target: None,
             old_len: 0,
@@ -570,9 +570,8 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
         })();
         match result {
             Ok(next) => {
-                owner.next = Some(next);
                 owner.phase = Phase::Observing;
-                Ok(HtmlConstructionTextAppendObservation { owner })
+                Ok(HtmlConstructionTextAppendObservation { owner, next })
             }
             Err(error) => {
                 owner.failure = Some(error.clone());
@@ -594,7 +593,7 @@ impl HtmlConstructionTextAppendObservation<'_> {
         self.owner.backing()
     }
     pub fn accept(self) {
-        self.owner.phase = self.owner.next.take().expect("pending observation");
+        self.owner.phase = self.next;
     }
 }
 impl HtmlConstructionTextAppendReady {

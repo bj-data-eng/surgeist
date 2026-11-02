@@ -265,20 +265,15 @@ impl HtmlInputRetainedRange {
         self.end
     }
 }
-enum SanitizerStep {
-    Temporal,
-    Number,
+enum SanitizerStep<'a> {
+    Temporal(crate::temporal::TemporalValidationCursor<'a>),
+    Number(crate::numeric::FloatingPointGrammarCursor<'a>),
     Leading,
     Trailing,
     Emit,
     Commas,
     Pending,
     Done,
-}
-enum InputValidationCursor<'a> {
-    None,
-    Temporal(crate::temporal::TemporalValidationCursor<'a>),
-    Number(crate::numeric::FloatingPointGrammarCursor<'a>),
 }
 /// Complete borrowed sanitizer boundary decisions. Each advance performs at
 /// most one admitted source-unit inspection or fixed state action. Adapters
@@ -290,30 +285,24 @@ pub struct HtmlInputSanitizationCursor<'a> {
     mode: HtmlInputEmailMode,
     start: usize,
     end: usize,
-    step: SanitizerStep,
+    step: SanitizerStep<'a>,
     commas: crate::tokens::CommaTokenCursor<'a>,
     pending: Option<HtmlInputRetainedRange>,
     count: usize,
-    validation: InputValidationCursor<'a>,
     temporal_plan: Option<crate::temporal::TemporalInputPlan>,
 }
 impl<'a> HtmlInputSanitizationCursor<'a> {
     pub fn new(policy: HtmlInputSanitization, units: &'a [u16], mode: HtmlInputEmailMode) -> Self {
-        let validation = match policy {
-            HtmlInputSanitization::Temporal(format) => InputValidationCursor::Temporal(
+        let step = match policy {
+            HtmlInputSanitization::Temporal(format) => SanitizerStep::Temporal(
                 crate::temporal::TemporalValidationCursor::new(units, format.owner(), true),
             ),
             HtmlInputSanitization::Number => {
-                InputValidationCursor::Number(crate::numeric::FloatingPointGrammarCursor::new(
+                SanitizerStep::Number(crate::numeric::FloatingPointGrammarCursor::new(
                     units,
                     crate::numeric::FloatingPointParseMode::Author,
                 ))
             }
-            _ => InputValidationCursor::None,
-        };
-        let step = match policy {
-            HtmlInputSanitization::Temporal(_) => SanitizerStep::Temporal,
-            HtmlInputSanitization::Number => SanitizerStep::Number,
             HtmlInputSanitization::Email if mode == HtmlInputEmailMode::Multiple => {
                 SanitizerStep::Commas
             }
@@ -332,7 +321,6 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
             commas: crate::tokens::CommaTokenCursor::new(units),
             pending: None,
             count: 0,
-            validation,
             temporal_plan: None,
         }
     }
@@ -345,19 +333,18 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
             .map(|_| 0x54)
     }
     pub fn required_work(&self) -> Option<HtmlInputRuleWork> {
-        match self.step {
+        match &self.step {
             SanitizerStep::Done => None,
-            SanitizerStep::Number | SanitizerStep::Temporal => Some(
-                if match &self.validation {
-                    InputValidationCursor::Number(cursor) => cursor.inspects_unit(),
-                    InputValidationCursor::Temporal(cursor) => cursor.inspects_unit(),
-                    InputValidationCursor::None => unreachable!("validation step"),
-                } {
-                    HtmlInputRuleWork::InspectValueUnit
-                } else {
-                    HtmlInputRuleWork::ReadField
-                },
-            ),
+            SanitizerStep::Number(cursor) => Some(if cursor.inspects_unit() {
+                HtmlInputRuleWork::InspectValueUnit
+            } else {
+                HtmlInputRuleWork::ReadField
+            }),
+            SanitizerStep::Temporal(cursor) => Some(if cursor.inspects_unit() {
+                HtmlInputRuleWork::InspectValueUnit
+            } else {
+                HtmlInputRuleWork::ReadField
+            }),
             SanitizerStep::Leading | SanitizerStep::Trailing if self.start < self.end => {
                 Some(HtmlInputRuleWork::InspectValueUnit)
             }
@@ -368,11 +355,8 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
         }
     }
     pub fn advance(&mut self) -> Option<HtmlInputRetainedRange> {
-        match self.step {
-            SanitizerStep::Number => {
-                let InputValidationCursor::Number(cursor) = &mut self.validation else {
-                    unreachable!("Number grammar state")
-                };
+        match &mut self.step {
+            SanitizerStep::Number(cursor) => {
                 cursor.advance();
                 if cursor.is_finished() {
                     self.end = if cursor.is_valid() {
@@ -383,10 +367,7 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
                     self.step = SanitizerStep::Emit;
                 }
             }
-            SanitizerStep::Temporal => {
-                let InputValidationCursor::Temporal(scanner) = &mut self.validation else {
-                    unreachable!("temporal scanner")
-                };
+            SanitizerStep::Temporal(scanner) => {
                 scanner.advance();
                 if scanner.finished() {
                     self.temporal_plan = scanner.normalization();
@@ -749,10 +730,10 @@ pub enum HtmlInputRuleWork {
     InspectValueUnit,
 }
 
-enum TypeStep {
+enum TypeStep<'a> {
     Row,
-    Length(&'static str, HtmlInputType),
-    Unit(&'static str, HtmlInputType, usize),
+    Length(&'a DocumentString, &'static str, HtmlInputType),
+    Unit(&'a DocumentString, &'static str, HtmlInputType, usize),
     Done(HtmlInputType),
 }
 /// Borrowed recognizer over the authoritative attributes-owned 22-state rows.
@@ -760,7 +741,7 @@ enum TypeStep {
 pub struct HtmlInputTypeCursor<'a> {
     value: Option<&'a DocumentString>,
     row: usize,
-    step: TypeStep,
+    step: TypeStep<'a>,
 }
 impl<'a> HtmlInputTypeCursor<'a> {
     pub fn new(value: Option<&'a DocumentString>) -> Self {
@@ -782,36 +763,37 @@ impl<'a> HtmlInputTypeCursor<'a> {
     pub fn advance(&mut self) {
         self.step = match self.step {
             TypeStep::Row => {
-                if self.value.is_none() {
-                    TypeStep::Done(crate::HtmlInputType::missing_value_default())
-                } else if let Some((keyword, state)) =
-                    crate::attributes::input_type_keyword(self.row)
-                {
-                    self.row += 1;
-                    TypeStep::Length(keyword, state)
+                if let Some(value) = self.value {
+                    if let Some((keyword, state)) = crate::attributes::input_type_keyword(self.row)
+                    {
+                        self.row += 1;
+                        TypeStep::Length(value, keyword, state)
+                    } else {
+                        TypeStep::Done(crate::attributes::input_type_invalid_default())
+                    }
                 } else {
-                    TypeStep::Done(crate::attributes::input_type_invalid_default())
+                    TypeStep::Done(crate::HtmlInputType::missing_value_default())
                 }
             }
-            TypeStep::Length(keyword, state) => {
-                if self.value.expect("present row").len() != keyword.len() {
+            TypeStep::Length(value, keyword, state) => {
+                if value.len() != keyword.len() {
                     TypeStep::Row
                 } else if keyword.is_empty() {
                     TypeStep::Done(state)
                 } else {
-                    TypeStep::Unit(keyword, state, 0)
+                    TypeStep::Unit(value, keyword, state, 0)
                 }
             }
-            TypeStep::Unit(keyword, state, position) => {
+            TypeStep::Unit(value, keyword, state, position) => {
                 if !crate::attributes::ascii_keyword_unit(
-                    self.value.expect("present row").code_units()[position],
+                    value.code_units()[position],
                     keyword.as_bytes()[position],
                 ) {
                     TypeStep::Row
                 } else if position + 1 == keyword.len() {
                     TypeStep::Done(state)
                 } else {
-                    TypeStep::Unit(keyword, state, position + 1)
+                    TypeStep::Unit(value, keyword, state, position + 1)
                 }
             }
             TypeStep::Done(state) => TypeStep::Done(state),
@@ -826,10 +808,15 @@ impl<'a> HtmlInputTypeCursor<'a> {
     }
 }
 
-enum ColorSpaceStep {
+enum ColorSpaceStep<'a> {
     Row,
-    Length(&'static str, crate::HtmlInputColorSpace),
-    Unit(&'static str, crate::HtmlInputColorSpace, usize),
+    Length(&'a DocumentString, &'static str, crate::HtmlInputColorSpace),
+    Unit(
+        &'a DocumentString,
+        &'static str,
+        crate::HtmlInputColorSpace,
+        usize,
+    ),
     Done(crate::HtmlInputColorSpace),
 }
 /// Borrowed recognizer over the authoritative attributes-owned colorspace rows.
@@ -837,7 +824,7 @@ enum ColorSpaceStep {
 pub struct HtmlInputColorSpaceCursor<'a> {
     value: Option<&'a DocumentString>,
     row: usize,
-    step: ColorSpaceStep,
+    step: ColorSpaceStep<'a>,
 }
 impl<'a> HtmlInputColorSpaceCursor<'a> {
     pub fn new(value: Option<&'a DocumentString>) -> Self {
@@ -859,36 +846,38 @@ impl<'a> HtmlInputColorSpaceCursor<'a> {
     pub fn advance(&mut self) {
         self.step = match self.step {
             ColorSpaceStep::Row => {
-                if self.value.is_none() {
-                    ColorSpaceStep::Done(crate::attributes::input_colorspace_default())
-                } else if let Some((keyword, state)) =
-                    crate::attributes::input_colorspace_keyword(self.row)
-                {
-                    self.row += 1;
-                    ColorSpaceStep::Length(keyword, state)
+                if let Some(value) = self.value {
+                    if let Some((keyword, state)) =
+                        crate::attributes::input_colorspace_keyword(self.row)
+                    {
+                        self.row += 1;
+                        ColorSpaceStep::Length(value, keyword, state)
+                    } else {
+                        ColorSpaceStep::Done(crate::attributes::input_colorspace_invalid_default())
+                    }
                 } else {
-                    ColorSpaceStep::Done(crate::attributes::input_colorspace_invalid_default())
+                    ColorSpaceStep::Done(crate::attributes::input_colorspace_default())
                 }
             }
-            ColorSpaceStep::Length(keyword, state) => {
-                if self.value.expect("present row").len() != keyword.len() {
+            ColorSpaceStep::Length(value, keyword, state) => {
+                if value.len() != keyword.len() {
                     ColorSpaceStep::Row
                 } else if keyword.is_empty() {
                     ColorSpaceStep::Done(state)
                 } else {
-                    ColorSpaceStep::Unit(keyword, state, 0)
+                    ColorSpaceStep::Unit(value, keyword, state, 0)
                 }
             }
-            ColorSpaceStep::Unit(keyword, state, position) => {
+            ColorSpaceStep::Unit(value, keyword, state, position) => {
                 if !crate::attributes::ascii_keyword_unit(
-                    self.value.expect("present row").code_units()[position],
+                    value.code_units()[position],
                     keyword.as_bytes()[position],
                 ) {
                     ColorSpaceStep::Row
                 } else if position + 1 == keyword.len() {
                     ColorSpaceStep::Done(state)
                 } else {
-                    ColorSpaceStep::Unit(keyword, state, position + 1)
+                    ColorSpaceStep::Unit(value, keyword, state, position + 1)
                 }
             }
             ColorSpaceStep::Done(state) => ColorSpaceStep::Done(state),

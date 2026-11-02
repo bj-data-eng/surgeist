@@ -39,6 +39,12 @@ impl HtmlMediaValue {
     }
 }
 
+enum Pending<'a> {
+    Inspect(usize, &'a [u16]),
+    Finish,
+    Complete,
+}
+
 /// Allocation-free borrowed scan. Each advance performs one announced action.
 pub struct HtmlMediaValueCursor<'a> {
     units: Option<&'a [u16]>,
@@ -57,26 +63,35 @@ impl<'a> HtmlMediaValueCursor<'a> {
             result: None,
         }
     }
-    pub fn next_action(&self) -> HtmlMediaCursorAction {
+    /// The one decision behind both the announced and the performed action;
+    /// an inspection carries the units it reads.
+    fn pending(&self) -> Pending<'a> {
         if self.result.is_some() {
-            HtmlMediaCursorAction::Complete
-        } else if self.units.is_some_and(|u| self.position < u.len()) {
-            HtmlMediaCursorAction::InspectUnit(self.position)
+            Pending::Complete
+        } else if let Some(units) = self.units.filter(|u| self.position < u.len()) {
+            Pending::Inspect(self.position, units)
         } else {
-            HtmlMediaCursorAction::Finish
+            Pending::Finish
+        }
+    }
+    pub fn next_action(&self) -> HtmlMediaCursorAction {
+        match self.pending() {
+            Pending::Complete => HtmlMediaCursorAction::Complete,
+            Pending::Inspect(index, _) => HtmlMediaCursorAction::InspectUnit(index),
+            Pending::Finish => HtmlMediaCursorAction::Finish,
         }
     }
     pub fn advance(&mut self) {
-        match self.next_action() {
-            HtmlMediaCursorAction::InspectUnit(index) => {
-                let unit = self.units.expect("announced present input")[index];
+        match self.pending() {
+            Pending::Inspect(index, units) => {
+                let unit = units[index];
                 if !matches!(unit, 9 | 10 | 12 | 13 | 32) {
                     self.first.get_or_insert(index);
                     self.end = index + 1;
                 }
                 self.position += 1;
             }
-            HtmlMediaCursorAction::Finish => {
+            Pending::Finish => {
                 let class = match self.units {
                     None => HtmlMediaValueClass::Absent,
                     Some([]) => HtmlMediaValueClass::Empty,
@@ -96,7 +111,7 @@ impl<'a> HtmlMediaValueCursor<'a> {
                     restrictive_picture_value: self.first.is_some() && !all,
                 });
             }
-            HtmlMediaCursorAction::Complete => {}
+            Pending::Complete => {}
         }
     }
     pub fn result(&self) -> Option<HtmlMediaValue> {
@@ -120,16 +135,18 @@ pub(crate) mod theme {
     use super::ascii_equal;
     /// One fixed-name comparison step; shared by ordinary and controlled owners.
     pub struct ThemeColorNameCursor<'a> {
-        units: Option<&'a [u16]>,
+        /// Empty when the name is absent, which is never equal.
+        units: &'a [u16],
         position: usize,
         equal: bool,
     }
     impl<'a> ThemeColorNameCursor<'a> {
         pub fn new(units: Option<&'a [u16]>) -> Self {
+            let units = units.unwrap_or(&[]);
             Self {
                 units,
                 position: 0,
-                equal: units.is_some_and(|u| u.len() == 11),
+                equal: units.len() == 11,
             }
         }
         pub fn is_complete(&self) -> bool {
@@ -137,10 +154,7 @@ pub(crate) mod theme {
         }
         pub fn advance(&mut self) {
             if !self.is_complete() {
-                self.equal = ascii_equal(
-                    self.units.expect("fixed name input")[self.position],
-                    b"theme-color"[self.position],
-                );
+                self.equal = ascii_equal(self.units[self.position], b"theme-color"[self.position]);
                 self.position += 1;
             }
         }

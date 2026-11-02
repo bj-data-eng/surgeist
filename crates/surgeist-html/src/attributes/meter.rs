@@ -278,7 +278,7 @@ impl HtmlValueInterpreter {
         let (low, l) = self.meter_number(element, raw[3], HtmlMeterNumberRole::Low)?;
         let (high, h) = self.meter_number(element, raw[4], HtmlMeterNumberRole::High)?;
         let (optimum, o) = self.meter_number(element, raw[5], HtmlMeterNumberRole::Optimum)?;
-        let applicable = element.namespace_uri() == Namespace::html().uri()
+        let applicable = crate::values::is_html_namespace_uri(element.namespace_uri())
             && KnownHtmlElement::from_name(element) == Some(KnownHtmlElement::Meter);
         let relations = meter_relations(&[v, min, max, l, h, o], applicable);
         Ok(HtmlMeterAttributeReport {

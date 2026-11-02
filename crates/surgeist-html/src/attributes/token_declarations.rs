@@ -350,12 +350,25 @@ pub enum IconSizeShape {
         height: std::ops::Range<usize>,
     },
 }
+/// The grammar stage; each stage owns the data it requires.
+#[derive(Clone, Copy)]
+enum IconSizeStage {
+    /// Compare the whole token with `any`.
+    Any,
+    /// Locate the only `x` separator.
+    Separator {
+        separator: Option<usize>,
+        multiple: bool,
+    },
+    /// Check the width digits before this separator.
+    Width(usize),
+    /// Check the height digits after this separator.
+    Height(usize),
+}
 pub struct IconSizeCursor<'a> {
     units: &'a [u16],
-    stage: u8,
+    stage: IconSizeStage,
     index: usize,
-    separator: Option<usize>,
-    multiple: bool,
     result: Option<Result<IconSizeShape, HtmlIconSizeError>>,
 }
 impl<'a> IconSizeCursor<'a> {
@@ -366,10 +379,8 @@ impl<'a> IconSizeCursor<'a> {
     pub fn new(units: &'a [u16]) -> Self {
         Self {
             units,
-            stage: 0,
+            stage: IconSizeStage::Any,
             index: 0,
-            separator: None,
-            multiple: false,
             result: None,
         }
     }
@@ -379,11 +390,23 @@ impl<'a> IconSizeCursor<'a> {
     pub fn result(&self) -> Option<&Result<IconSizeShape, HtmlIconSizeError>> {
         self.result.as_ref()
     }
+    /// Steps until the grammar completes and returns its result.
+    fn finish(mut self) -> Result<IconSizeShape, HtmlIconSizeError> {
+        loop {
+            if let Some(result) = self.result.take() {
+                return result;
+            }
+            self.step();
+        }
+    }
     pub fn step(&mut self) {
         match self.stage {
-            0 => {
+            IconSizeStage::Any => {
                 if self.units.len() != 3 {
-                    self.stage = 1;
+                    self.stage = IconSizeStage::Separator {
+                        separator: None,
+                        multiple: false,
+                    };
                     self.index = 0;
                 } else if self.index == 3 {
                     self.result = Some(Ok(IconSizeShape::Scalable));
@@ -391,33 +414,39 @@ impl<'a> IconSizeCursor<'a> {
                 {
                     self.index += 1;
                 } else {
-                    self.stage = 1;
+                    self.stage = IconSizeStage::Separator {
+                        separator: None,
+                        multiple: false,
+                    };
                     self.index = 0;
                 }
             }
-            1 => {
+            IconSizeStage::Separator {
+                separator,
+                multiple,
+            } => {
                 if self.index == self.units.len() {
-                    if self.multiple || self.separator.is_none() {
-                        self.result = Some(Err(HtmlIconSizeError::Separator));
-                    } else {
-                        self.stage = 2;
-                        self.index = 0;
+                    match (separator, multiple) {
+                        (Some(separator), false) => {
+                            self.stage = IconSizeStage::Width(separator);
+                            self.index = 0;
+                        }
+                        _ => self.result = Some(Err(HtmlIconSizeError::Separator)),
                     }
                 } else {
                     let unit = self.units[self.index];
                     if unit == 120 || unit == 88 {
-                        if self.separator.is_some() {
-                            self.multiple = true;
-                        } else {
-                            self.separator = Some(self.index);
-                        }
+                        self.stage = IconSizeStage::Separator {
+                            separator: separator.or(Some(self.index)),
+                            multiple: multiple || separator.is_some(),
+                        };
                     }
                     self.index += 1;
                 }
             }
-            2 | 3 => {
-                let separator = self.separator.expect("separator phase established");
-                let (start, end) = if self.stage == 2 {
+            IconSizeStage::Width(separator) | IconSizeStage::Height(separator) => {
+                let width = matches!(self.stage, IconSizeStage::Width(_));
+                let (start, end) = if width {
                     (0, separator)
                 } else {
                     (separator + 1, self.units.len())
@@ -433,8 +462,8 @@ impl<'a> IconSizeCursor<'a> {
                     }
                 }
                 if start + self.index == end {
-                    if self.stage == 2 {
-                        self.stage = 3;
+                    if width {
+                        self.stage = IconSizeStage::Height(separator);
                         self.index = 0;
                     } else {
                         self.result = Some(Ok(IconSizeShape::Bitmap {
@@ -448,18 +477,13 @@ impl<'a> IconSizeCursor<'a> {
                     self.result = Some(Err(HtmlIconSizeError::DimensionDigits));
                 }
             }
-            _ => unreachable!("closed cursor stages"),
         }
     }
 }
 fn icon_size(token: &HtmlSpaceToken) -> Result<HtmlIconSize, HtmlIconSizeError> {
     let units = token.value().code_units();
-    let mut cursor = IconSizeCursor::new(units);
-    while !cursor.is_complete() {
-        cursor.step();
-    }
-    match cursor.result().expect("complete sizes grammar") {
-        Err(error) => Err(*error),
+    match IconSizeCursor::new(units).finish() {
+        Err(error) => Err(error),
         Ok(IconSizeShape::Scalable) => Ok(HtmlIconSize::Scalable),
         Ok(IconSizeShape::Bitmap { width, height }) => {
             let dimension = |range: std::ops::Range<usize>| {

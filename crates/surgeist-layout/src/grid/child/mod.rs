@@ -442,11 +442,8 @@ where
         let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
         let first_baseline =
             baselines.first_or_synthesize_block_baseline(child_flow_axes, output.size);
-        let last_baseline = baselines
-            .last_block_baseline(child_flow_axes)
-            .unwrap_or_else(|| {
-                baselines.first_or_synthesize_block_baseline(child_flow_axes, output.size)
-            });
+        let last_baseline =
+            baselines.last_or_synthesize_block_baseline(child_flow_axes, output.size);
         let block_auto_margins = logical_unresolved_margin.block_start.is_none()
             || logical_unresolved_margin.block_end.is_none();
         let row_span_tracks = row_tracks.get(area.row..area.row_end).unwrap_or(&[]);

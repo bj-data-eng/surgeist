@@ -214,7 +214,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         self.require(self.media_admitted && self.html_namespace.is_none())
             .map_err(HtmlMediaActionError::Protocol)?;
         self.execute(|| admit(1))?;
-        let expected = b"http://www.w3.org/1999/xhtml";
+        let expected = crate::values::HTML_NAMESPACE_URI.as_bytes();
         let result = if let Some(uri) = self.element.namespace_uri() {
             self.namespace_code_units = uri.len();
             if uri.len() != expected.len() {
@@ -304,19 +304,31 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         &mut self,
         admit: impl FnOnce(usize) -> Result<(), E>,
     ) -> Result<(), HtmlMediaActionError<E>> {
-        let action = self
-            .value_action()
-            .map_err(HtmlMediaActionError::Protocol)?;
-        self.require(action != HtmlMediaCursorAction::Complete)
-            .map_err(HtmlMediaActionError::Protocol)?;
-        self.execute(|| {
-            admit(if action == HtmlMediaCursorAction::Finish {
-                4
-            } else {
-                1
-            })
-        })?;
-        self.value.as_mut().expect("begun value").advance();
+        if self.stopped {
+            return Err(HtmlMediaActionError::Protocol(
+                HtmlMediaInterpretationError::Stopped,
+            ));
+        }
+        let Some(cursor) = self.value.as_mut() else {
+            return Err(HtmlMediaActionError::Protocol(
+                HtmlMediaInterpretationError::NotReady,
+            ));
+        };
+        let action = cursor.next_action();
+        if action == HtmlMediaCursorAction::Complete || self.report.is_some() {
+            return Err(HtmlMediaActionError::Protocol(
+                HtmlMediaInterpretationError::WrongPhase,
+            ));
+        }
+        if let Err(error) = admit(if action == HtmlMediaCursorAction::Finish {
+            4
+        } else {
+            1
+        }) {
+            self.stopped = true;
+            return Err(HtmlMediaActionError::Admission(error));
+        }
+        cursor.advance();
         Ok(())
     }
     pub fn value(&self) -> Result<HtmlMediaValue, HtmlMediaInterpretationError> {
@@ -362,10 +374,26 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         &mut self,
         admit: impl FnOnce(usize) -> Result<(), E>,
     ) -> Result<(), HtmlMediaActionError<E>> {
-        self.require(self.theme_color_complete() == Ok(false))
-            .map_err(HtmlMediaActionError::Protocol)?;
-        self.execute(|| admit(1))?;
-        self.theme.as_mut().expect("begun name").advance();
+        if self.stopped {
+            return Err(HtmlMediaActionError::Protocol(
+                HtmlMediaInterpretationError::Stopped,
+            ));
+        }
+        let Some(cursor) = self.theme.as_mut() else {
+            return Err(HtmlMediaActionError::Protocol(
+                HtmlMediaInterpretationError::WrongPhase,
+            ));
+        };
+        if cursor.is_complete() || self.report.is_some() {
+            return Err(HtmlMediaActionError::Protocol(
+                HtmlMediaInterpretationError::WrongPhase,
+            ));
+        }
+        if let Err(error) = admit(1) {
+            self.stopped = true;
+            return Err(HtmlMediaActionError::Admission(error));
+        }
+        cursor.advance();
         Ok(())
     }
     pub fn theme_color(&self) -> Result<bool, HtmlMediaInterpretationError> {
@@ -443,14 +471,18 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
                 },
             )
         };
+        let role = self.role.ok_or(HtmlMediaActionError::Protocol(
+            HtmlMediaInterpretationError::NotReady,
+        ))?;
+        let value = self.value().map_err(HtmlMediaActionError::Protocol)?;
         self.execute(admit)?;
         self.applicability = Some(applicability);
         self.report = Some(HtmlMediaAttributeReport {
             raw: self.raw.map(capture_attribute),
             name: self.name_attribute().map(capture_attribute),
             applicability,
-            role: self.role.expect("classified"),
-            value: self.value().expect("complete value"),
+            role,
+            value,
             placement,
         });
         Ok(())
