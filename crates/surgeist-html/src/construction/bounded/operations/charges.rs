@@ -109,8 +109,11 @@ struct RecordSnapshot {
     parent: Option<usize>,
     children: Vec<usize>,
     children_generation: u64,
-    /// The depth histogram's count at this record's index.
+    /// The depth cache: this record's depth, the histogram count at its index
+    /// and the walk level count at its index.
+    depth: usize,
     population: usize,
+    level_count: usize,
     template_contents: Option<TemplateContents>,
     shadow: Option<ShadowAssociation>,
     shadow_properties: Option<HtmlShadowRootProperties>,
@@ -129,19 +132,18 @@ fn snapshot(storage: &HtmlConstructionStorage) -> Snapshot {
         .records
         .iter()
         .map(|record| {
-            // No `..`: a field added to `Record` stops this compiling. The depth
-            // cache's depth and scratch are listed to be set aside, as the depth
-            // plan owns their writes.
+            // No `..`: a field added to `Record` stops this compiling. The walk
+            // cursor is scratch that a walk resets before it reads it.
             let Record {
                 kind,
                 document_focused_area_designation,
                 parent,
                 children,
                 children_generation,
-                depth: _,
+                depth,
                 population,
                 walk_cursor: _,
-                level_count: _,
+                level_count,
                 template_contents,
                 shadow,
                 shadow_properties,
@@ -154,7 +156,9 @@ fn snapshot(storage: &HtmlConstructionStorage) -> Snapshot {
                 parent: *parent,
                 children: children.clone(),
                 children_generation: *children_generation,
+                depth: *depth,
                 population: *population,
+                level_count: *level_count,
                 template_contents: *template_contents,
                 shadow: shadow.clone(),
                 shadow_properties: *shadow_properties,
@@ -173,14 +177,16 @@ fn snapshot(storage: &HtmlConstructionStorage) -> Snapshot {
 /// scratch and counts, whose writes the depth plan describes.
 fn assigned(before: &RecordSnapshot, after: &RecordSnapshot) -> Vec<&'static str> {
     // No `..`: a field added to the snapshot stops this compiling. The depth
-    // histogram's count is set aside, as the depth plan owns its writes.
+    // cache's fields are set aside here and counted by `depth_cache_changes`.
     let RecordSnapshot {
         kind: kind_before,
         document_focused_area_designation: designation_before,
         parent: parent_before,
         children: children_before,
         children_generation: generation_before,
+        depth: _,
         population: _,
+        level_count: _,
         template_contents: contents_before,
         shadow: shadow_before,
         shadow_properties: properties_before,
@@ -193,7 +199,9 @@ fn assigned(before: &RecordSnapshot, after: &RecordSnapshot) -> Vec<&'static str
         parent: parent_after,
         children: children_after,
         children_generation: generation_after,
+        depth: _,
         population: _,
+        level_count: _,
         template_contents: contents_after,
         shadow: shadow_after,
         shadow_properties: properties_after,
@@ -254,6 +262,28 @@ fn assigned(before: &RecordSnapshot, after: &RecordSnapshot) -> Vec<&'static str
             .map(|(_, name)| *name),
     );
     fields
+}
+
+/// The depth cache writes a commit visibly made: each existing record whose
+/// depth or walk level count changed, and each histogram count that moved. A
+/// write of an unchanged value is not seen, so this is a lower bound.
+fn depth_cache_changes(before: &Snapshot, after: &Snapshot) -> usize {
+    let existing = before.records.iter().zip(&after.records);
+    let records: usize = existing
+        .map(|(before, after)| {
+            usize::from(before.depth != after.depth)
+                + usize::from(before.level_count != after.level_count)
+        })
+        .sum();
+    let counts = after
+        .records
+        .iter()
+        .enumerate()
+        .filter(|(index, record)| {
+            record.population != before.records.get(*index).map_or(0, |old| old.population)
+        })
+        .count();
+    records + counts
 }
 
 /// The bytes one assignment of the named field copies.
@@ -350,6 +380,7 @@ fn assert_assigned(
     command: HtmlConstructionCommand,
     fields: &[&str],
     usage: UsageEffect,
+    moves_depth: bool,
 ) {
     let seen = observe(storage, command);
     assert_eq!(
@@ -377,6 +408,19 @@ fn assert_assigned(
             assert_eq!(seen.before.usage, seen.after.usage, "{label}: usage stays")
         }
     }
+    // The depth plan describes the cache writes; the commit may not make more
+    // than it describes.
+    let cache = depth_cache_changes(&seen.before, &seen.after);
+    assert_eq!(
+        cache > 0,
+        moves_depth,
+        "{label}: the fixture moves the depth"
+    );
+    assert!(
+        seen.depth_writes >= cache,
+        "{label}: {cache} depth cache changes seen against {} writes described",
+        seen.depth_writes
+    );
     let usage_writes = usize::from(usage != UsageEffect::Untouched);
     let usage_bytes = usage_writes * size_of::<HtmlConstructionUsage>();
     let field_bytes: usize = observed.iter().map(|field| field_size(field)).sum();
@@ -414,6 +458,13 @@ fn assert_created(
             assigned(before, after),
             Vec::<&str>::new(),
             "{label}: record {index}"
+        );
+        // Only histogram counts change, and they are the increments counted
+        // below; no existing record moves.
+        assert_eq!(
+            (before.depth, before.level_count),
+            (after.depth, after.level_count),
+            "{label}: depth cache of record {index}"
         );
     }
     assert_ne!(
@@ -485,6 +536,7 @@ fn attaching_a_shadow_assigns_the_contents_owner_and_the_host_association() {
         HtmlConstructionCommand::AttachShadow { host, contents },
         &["owner", "shadow"],
         UsageEffect::Changes,
+        true,
     );
 }
 
@@ -505,6 +557,7 @@ fn attaching_a_template_shadow_assigns_both_owners_the_contents_and_the_associat
         },
         &["owner", "owner", "template_contents", "shadow"],
         UsageEffect::Changes,
+        true,
     );
 }
 
@@ -518,6 +571,7 @@ fn setting_template_shadow_contents_assigns_the_old_owner_and_the_contents() {
         HtmlConstructionCommand::SetTemplateShadowContents { template, contents },
         &["owner", "template_contents"],
         UsageEffect::Changes,
+        true,
     );
 }
 
@@ -532,6 +586,7 @@ fn reassigning_owned_contents_assigns_both_owners_and_the_contents() {
         HtmlConstructionCommand::ReassignTemplateContents { template, contents },
         &["owner", "owner", "template_contents"],
         UsageEffect::Changes,
+        true,
     );
 }
 
@@ -556,6 +611,7 @@ fn reassigning_over_a_shadow_reference_assigns_the_new_owner_and_the_contents() 
         },
         &["owner", "template_contents"],
         UsageEffect::Changes,
+        true,
     );
 }
 
@@ -591,6 +647,7 @@ fn replacing_text_like_content_assigns_the_kind() {
             HtmlConstructionCommand::ReplaceContent { node, content },
             &["kind"],
             UsageEffect::Changes,
+            false,
         );
     }
 }
@@ -608,6 +665,7 @@ fn renaming_an_element_assigns_the_name_and_clears_the_link_history_unless_a_lin
         },
         &["kind.element.name", "kind.element.link_flags"],
         UsageEffect::Changes,
+        false,
     );
     // A rename to a link leaves the history alone.
     let (storage, node) = element(begin(), "div");
@@ -620,6 +678,7 @@ fn renaming_an_element_assigns_the_name_and_clears_the_link_history_unless_a_lin
         },
         &["kind.element.name"],
         UsageEffect::Changes,
+        false,
     );
 }
 
@@ -650,6 +709,7 @@ fn replacing_attributes_assigns_the_collection() {
         },
         &["kind.element.attributes"],
         UsageEffect::Changes,
+        false,
     );
 }
 
@@ -675,6 +735,7 @@ fn replacing_attributes_with_equal_values_still_assigns_the_collection() {
         },
         &["kind.element.attributes"],
         UsageEffect::Identical,
+        false,
     );
 }
 
@@ -695,6 +756,7 @@ fn setting_the_document_mode_assigns_the_kind() {
         },
         &["kind"],
         UsageEffect::Identical,
+        false,
     );
 }
 
@@ -710,6 +772,7 @@ fn setting_link_flags_assigns_the_link_history() {
         },
         &["kind.element.link_flags"],
         UsageEffect::Identical,
+        false,
     );
 }
 
@@ -742,6 +805,7 @@ fn commands_that_change_no_record_assign_nothing_and_describe_no_write() {
         HtmlConstructionCommand::ReserveRecords { additional: 2 },
         &[],
         UsageEffect::Untouched,
+        false,
     );
     let (storage, from) = create(begin(), HtmlConstructionCommand::CreateFragment);
     let (storage, to) = create(storage, HtmlConstructionCommand::CreateFragment);
@@ -751,5 +815,6 @@ fn commands_that_change_no_record_assign_nothing_and_describe_no_write() {
         HtmlConstructionCommand::CheckChildTransfer { from, to },
         &[],
         UsageEffect::Untouched,
+        false,
     );
 }
