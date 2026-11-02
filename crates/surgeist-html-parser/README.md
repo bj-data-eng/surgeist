@@ -198,6 +198,17 @@ cargo clippy --offline --locked -j 1 -p surgeist-html-parser --all-targets -- -F
 python3 crates/surgeist-html-parser/tools/generate_character_references.py --check
 ```
 
+An opt-in tool prints scalar-feed phase timings and, when
+`SURGEIST_COMPARISON_ARTIFACT` names a file, writes the comparison artifact.
+It needs the crate-private progressive driver, so it is an ignored test-harness
+entry that no ordinary test run executes:
+
+```sh
+SURGEIST_COMPARISON_ARTIFACT=/absolute/path/artifact.bin \
+  cargo test --offline --locked -j 1 -p surgeist-html-parser --lib \
+  comparison_artifact_tool -- --ignored --nocapture
+```
+
 The existing [HTML fuzz package](../surgeist-html/fuzz/README.md) consumes these
 public requests directly. [Attribution](NOTICE.md) preserves parser source and
 fixture notices.
