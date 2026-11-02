@@ -168,8 +168,12 @@ pub(crate) struct InputCursor<'source> {
     position: usize,
     current: Option<InputRead>,
     reconsume: bool,
-    /// Preprocessing records are emitted on first committed traversal only.
-    /// Lookahead does not advance this frontier; replay cannot duplicate errors.
+    /// Preprocessing records are emitted once, at the first traversal that
+    /// reaches a character: its consumption, or an ASCII lookahead that stops
+    /// at the next input character (`commit_examined`), which advances this
+    /// frontier past it. Other lookahead leaves it alone. A character at or
+    /// below the frontier carries no record, so replay and rewind cannot
+    /// duplicate errors.
     processed_through: usize,
     availability: InputAvailability,
     #[cfg(test)]
