@@ -13,7 +13,7 @@ use super::base::{BaseValue, ResponseDomain};
 use super::tests::storage_zero;
 use super::{KindList, RetainedPayload};
 use crate::construction::effects::tests::{graph, request};
-use crate::parser::control::{prepared_slots, stop_after_prepared_slot};
+use crate::parser::control::{PreparedSlotStopScope, prepared_slots, stop_after_prepared_slot};
 use crate::parser::tree_builder::tests::limits;
 use crate::{
     HtmlParseBaseFacts, HtmlParseFailure, HtmlParseLimits, HtmlParseResource,
@@ -90,7 +90,7 @@ fn retained_after_each_prepared_slot(
     parse: &dyn Fn(HtmlParseLimits) -> Result<(), Box<Stopped>>,
 ) -> Vec<String> {
     let unrestricted = limits(100);
-    stop_after_prepared_slot(None);
+    let _scope = PreparedSlotStopScope::begin();
     if let Err(stop) = parse(unrestricted) {
         panic!(
             "the unstopped parse completes, but stopped with {:?}",
@@ -447,4 +447,16 @@ fn a_row_of_another_kind_than_its_slot_admitted_is_refused_and_still_released() 
     assert_eq!(storage.payloads.values.len(), rows, "nothing was appended");
     session.release(&mut c).unwrap();
     storage_zero(&c);
+}
+
+#[test]
+fn an_armed_stop_does_not_outlive_a_sweep_that_unwinds() {
+    let unwound = std::panic::catch_unwind(|| {
+        let _scope = PreparedSlotStopScope::begin();
+        stop_after_prepared_slot(Some(0));
+        panic!("a sweep fails with its stop armed");
+    });
+    assert!(unwound.is_err());
+    // A stop left armed would cancel this parse at its first prepared slot.
+    assert!(document("<!doctype html><p>x")(limits(100)).is_ok());
 }

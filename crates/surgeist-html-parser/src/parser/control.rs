@@ -343,6 +343,24 @@ pub(crate) fn stop_after_prepared_slot(index: Option<usize>) {
 pub(crate) fn prepared_slots() -> usize {
     PREPARED_SLOT_STOP.get().prepared
 }
+/// Clears the stop [`stop_after_prepared_slot`] set when it is dropped, so a
+/// test that panics before it does can leave nothing armed for the next test
+/// that runs on its thread.
+#[cfg(test)]
+pub(crate) struct PreparedSlotStopScope;
+#[cfg(test)]
+impl PreparedSlotStopScope {
+    pub(crate) fn begin() -> Self {
+        stop_after_prepared_slot(None);
+        Self
+    }
+}
+#[cfg(test)]
+impl Drop for PreparedSlotStopScope {
+    fn drop(&mut self) {
+        stop_after_prepared_slot(None);
+    }
+}
 
 /// A cleanup walk that keeps going after a refusal, so tests can make one of
 /// its steps refuse.
