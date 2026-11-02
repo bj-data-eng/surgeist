@@ -11,6 +11,7 @@ mod seeds;
 mod tests;
 mod tree;
 
+use crate::captured::Plan;
 use crate::{UnicodeSource, error};
 use model::*;
 use surgeist_fuzz::{
@@ -126,6 +127,8 @@ pub struct MarkupCase {
     pub(crate) body: Body,
     pub(crate) caps: [u64; 19],
     pub(crate) cancelled: bool,
+    /// External facts and the injected fault of a capture-import case.
+    pub(crate) plan: Option<Plan>,
 }
 pub(crate) use MarkupCase as Case;
 
@@ -136,6 +139,7 @@ impl Case {
         body: Body,
         caps: [u64; 19],
         cancelled: bool,
+        plan: Option<Plan>,
     ) -> Result<Self> {
         let case = Self {
             mode,
@@ -143,6 +147,7 @@ impl Case {
             body,
             caps,
             cancelled,
+            plan,
         };
         case.validate()?;
         Ok(case)
@@ -201,6 +206,9 @@ impl Case {
         }
     }
     pub(crate) fn validate(&self) -> Result<()> {
+        if self.plan.is_some_and(|p| !p.valid()) {
+            return Err(error("capture fact tag"));
+        }
         if self
             .caps
             .iter()
@@ -260,12 +268,19 @@ impl Case {
 /// HTML-owned concrete shared-framework consumer for parse markup recipes.
 pub struct MarkupTarget {
     pub(crate) descriptor: TargetDescriptor,
+    /// Whether this is the parse-then-capture-import target.
+    pub(crate) capture: bool,
 }
 impl MarkupTarget {
     pub fn parse() -> Self {
-        Self::by_id("surgeist-html::markup-parse")
+        Self::by_id("surgeist-html::markup-parse", false)
     }
-    fn by_id(id: &str) -> Self {
+    /// Parses a recipe, then imports the result into a semantic capture under
+    /// supplied external facts and at most one injected fault.
+    pub fn capture() -> Self {
+        Self::by_id("surgeist-html::capture-import", true)
+    }
+    fn by_id(id: &str, capture: bool) -> Self {
         let manifest: FuzzManifest =
             toml::from_str(include_str!("../../fuzz.toml")).expect("checked owner descriptor");
         Self {
@@ -274,11 +289,12 @@ impl MarkupTarget {
                 .into_iter()
                 .find(|d| d.id().as_str() == id)
                 .expect("registered target"),
+            capture,
         }
     }
     /// One of the handwritten recipes whose canonical files are the seeds.
     pub fn seed(&self, id: u8) -> Result<MarkupCase> {
-        seeds::case(id)
+        seeds::case(id, self.capture)
     }
     pub(crate) fn credit(&self, case: &Case, encoded: usize) -> Result<()> {
         let mut counts = Counts {
@@ -313,11 +329,14 @@ impl CaseTarget for MarkupTarget {
         if input.len() as u64 > self.descriptor.limits().bytes() {
             return Err(error("byte admission"));
         }
-        let case = codec::decode(input)?;
+        let case = codec::decode(input, self.capture)?;
         self.credit(&case, input.len())?;
         Ok(case)
     }
     fn encode(&self, case: &MarkupCase) -> Result<Vec<u8>> {
+        if case.plan.is_some() != self.capture {
+            return Err(error("case belongs to the other markup target"));
+        }
         let bytes = codec::encode(case)?;
         if bytes.len() as u64 > self.descriptor.limits().bytes() {
             return Err(error("encoded byte limit"));
@@ -327,13 +346,16 @@ impl CaseTarget for MarkupTarget {
     }
     fn evaluate(&self, case: &MarkupCase) -> Result<CaseOutcome> {
         case.validate()?;
+        if case.plan.is_some() != self.capture {
+            return Err(error("case belongs to the other markup target"));
+        }
         observe::evaluate_parse(self, case)
     }
     fn generate(&self, input: &[u8]) -> Result<Generation<MarkupCase>> {
         if input.len() as u64 > self.descriptor.limits().bytes() {
             return Err(error("entropy byte admission"));
         }
-        match generate::synthesize(input) {
+        match generate::synthesize(input, self.capture) {
             Some(case) => {
                 match codec::encode(&case).and_then(|bytes| self.credit(&case, bytes.len())) {
                     Ok(()) => Ok(Generation::Generated(case)),

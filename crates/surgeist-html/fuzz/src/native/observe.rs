@@ -1,5 +1,7 @@
 //! Finite public-native lending and independent recipe expectations.
 use super::*;
+use crate::captured::{Fault, Plan, Verdict, check};
+use surgeist_html::bounded::HtmlConstructionResult;
 
 pub(super) struct Expected {
     op: Option<usize>,
@@ -696,7 +698,28 @@ pub(super) fn evaluate(t: &NativeTarget, c: &NativeCase) -> Result<CaseOutcome> 
         }
         return t.failure(key, "public frozen native recipe mismatch");
     }
-    if c.literal.is_some() || !resource_refusal {
+    // The frozen result enters the semantic capture adapter under facts and at
+    // most one fault chosen by the recipe's shape, with the adapter's contract
+    // (mirror, fact qualification, atomic refusal) checked by the shared owner.
+    let result = match &frozen {
+        Frozen::Document(d) => HtmlConstructionResult::Document(d.clone()),
+        Frozen::Fragment(f) => HtmlConstructionResult::Fragment(f.clone()),
+    };
+    let plan = Plan {
+        scripting: (c.ops.len() % 3) as u8,
+        registry: (usize::from(c.root) % 3) as u8,
+        is_value: ((c.ops.len() / 3) % 3) as u8,
+        shadow: (c.ops.len() % 8) as u8,
+        fault: Fault::ALL[(c.ops.len() + usize::from(c.root)) % Fault::ALL.len()],
+        pick: c.ops.len() as u8,
+    };
+    let mut bounded = false;
+    match check(&result, &plan)? {
+        Verdict::Violation { key, detail, .. } => return t.capture_failure(key, detail),
+        Verdict::ResourceStop => bounded = true,
+        Verdict::Verified => {}
+    }
+    if c.literal.is_some() || !(resource_refusal || bounded) {
         CaseOutcome::evaluated(t.properties(c.literal.is_some()))
     } else {
         CaseOutcome::expected_rejection(

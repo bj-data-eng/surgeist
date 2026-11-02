@@ -42,7 +42,7 @@ fn plain(local: &'static str, value: &str) -> ExpAttr {
 
 #[test]
 fn document_seed_spells_references_newlines_quotes_and_the_shell() {
-    let case = seeds::case(0).unwrap();
+    let case = seeds::case(0, false).unwrap();
     let Mode::Document { doctype, shell } = case.mode else {
         panic!("document seed")
     };
@@ -60,7 +60,7 @@ fn document_seed_spells_references_newlines_quotes_and_the_shell() {
 fn document_seed_expects_references_decoded_and_newlines_normalized() {
     // 13.2.5.72 `&amp;` is `&`; 13.2.3.5 CR LF is one LF; a missing doctype
     // identifier is the empty string; `<!DOCTYPE html>` is no-quirks.
-    let case = seeds::case(0).unwrap();
+    let case = seeds::case(0, false).unwrap();
     let div = element(
         HTML_NS,
         "div",
@@ -113,7 +113,7 @@ fn svg_seed_spells_mixed_case_and_expects_adjusted_names_and_qualified_attribute
     // 13.2.6.5: `viewbox` becomes `viewBox`, `foreignobject` becomes
     // `foreignObject`, `xlink:href` and `xml:lang` take their namespaces and
     // prefixes; the foreignObject is an HTML integration point.
-    let case = seeds::case(3).unwrap();
+    let case = seeds::case(3, false).unwrap();
     let Mode::Document { doctype, shell } = case.mode else {
         panic!("document seed")
     };
@@ -172,8 +172,8 @@ fn declarative_shadow_is_a_root_when_permitted_and_a_first_child_template_when_n
     // with permission the template's contents become the host's
     // shadow root; without it the template is inserted as an ordinary element
     // that keeps its attributes.
-    let permitted = seeds::case(8).unwrap();
-    let refused = seeds::case(9).unwrap();
+    let permitted = seeds::case(8, false).unwrap();
+    let refused = seeds::case(9, false).unwrap();
     assert!(permitted.shadow_permitted() && !refused.shadow_permitted());
     let class = Class::Flow;
     let span = element(HTML_NS, "span", vec![], vec![text("s")]);
@@ -247,6 +247,7 @@ fn text_without_a_parsed_value_and_newline_fusion_are_not_valid_recipes() {
             Body::Exact(items),
             crate::codec::CAPS,
             false,
+            None,
         )
     };
     // A lone NUL is ignored in HTML text, so no text node would exist.

@@ -1,5 +1,5 @@
 schema = 1
-fixtures = ["seeds/document", "seeds/fragment", "seeds/native", "seeds/markup"]
+fixtures = ["seeds/document", "seeds/fragment", "seeds/native", "seeds/markup", "seeds/capture"]
 
 [[targets]]
 id = "surgeist-html::unicode-document"
@@ -33,8 +33,8 @@ max_generation_rejections = 64
 id = "surgeist-html::native-authoring"
 owner = "surgeist-html"
 binary = "html-native-worker"
-properties = ["surgeist-html::native-exact-values", "surgeist-html::native-associations", "surgeist-html::native-rejection", "surgeist-html::native-identities", "surgeist-html::native-literal-semantics"]
-source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "crates/surgeist-html/src/construction.rs", "crates/surgeist-html/src/values.rs", "crates/surgeist-html/tests/html/construction.rs", "crates/surgeist-html/fuzz/README.md"]
+properties = ["surgeist-html::native-exact-values", "surgeist-html::native-associations", "surgeist-html::native-rejection", "surgeist-html::native-identities", "surgeist-html::native-literal-semantics", "surgeist-html::native-capture"]
+source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "crates/surgeist-html/src/construction.rs", "crates/surgeist-html/src/values.rs", "crates/surgeist-html/tests/html/construction.rs", "crates/surgeist-html-semantics/src/capture/construction.rs", "crates/surgeist-html/fuzz/README.md"]
 format = { identity = "surgeist-html::native-authoring", revision = 1 }
 generator_identity = { identity = "surgeist-html::native-authoring", revision = 1 }
 encoding = "structured"
@@ -53,6 +53,20 @@ format = { identity = "surgeist-html::markup-parse", revision = 1 }
 generator_identity = { identity = "surgeist-html::markup-parse", revision = 1 }
 encoding = "structured"
 limits = { bytes = 262144, nodes = 64, depth = 8, text_units = 8192, operations = 8 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 64
+
+[[targets]]
+id = "surgeist-html::capture-import"
+owner = "surgeist-html"
+binary = "html-capture-worker"
+properties = ["surgeist-html::source-preservation", "surgeist-html::native-report", "surgeist-html::diagnostic-provenance", "surgeist-html::terminal-ownership", "surgeist-html::immutable-after-cancel", "surgeist-html::exact-markup-tree", "surgeist-html::capture-mirror", "surgeist-html::capture-fact-qualification", "surgeist-html::capture-atomic-refusal"]
+source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md", "crates/surgeist-html-semantics/src/capture/construction.rs", "crates/surgeist-html-semantics/src/capture.rs", "crates/surgeist-html-semantics/tests/semantics/capture/construction.rs", "crates/surgeist-html-parser/tests/parser/construction/capture.rs", "crates/surgeist-html/fuzz/README.md#capture-import"]
+format = { identity = "surgeist-html::capture-import", revision = 1 }
+generator_identity = { identity = "surgeist-html::capture-import", revision = 1 }
+encoding = "structured"
+limits = { bytes = 262144, nodes = 64, depth = 8, text_units = 8192, operations = 16 }
 requirements = { features = [], capabilities = ["replay", "case-capture"] }
 min_evaluated = 1
 max_generation_rejections = 64

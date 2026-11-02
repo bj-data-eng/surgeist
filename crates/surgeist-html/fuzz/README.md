@@ -1,11 +1,18 @@
-# HTML Unicode parse fuzz cases
+# HTML parse, construction and capture fuzz cases
 
-This verification package consumes shared `surgeist-html` values, public
-`surgeist-html-parser` document and fragment parsing, and explicit
+This verification package consumes shared `surgeist-html` values and native
+builders, public `surgeist-html-parser` document and fragment parsing, and
 `surgeist-html-semantics` captures. Shared [surgeist-fuzz](../../surgeist-fuzz/README.md)
 owns engines, workers, supervision, artifacts, replay and reduction. HTML owns
-this strict codec, generation, literal expectations and evaluator. No HTML
-production API or private parser algorithm is copied or exposed here.
+the strict codecs, generation, expectations and evaluators. No HTML production
+API or private parser algorithm is copied or exposed here.
+
+| Target | Section | Oracle |
+| --- | --- | --- |
+| `surgeist-html::unicode-document`, `unicode-fragment` | Cases and codec | Literal seeds and shared parse contracts over arbitrary Unicode |
+| `surgeist-html::markup-parse` | Markup recipes | Tree computed from the recipe and the HTML Standard |
+| `surgeist-html::capture-import` | Capture import | Source views and the adapter's documented contract |
+| `surgeist-html::native-authoring` | Native authoring | Recipe-derived outcome of each builder command |
 
 ## Cases and codec
 
@@ -213,6 +220,61 @@ whole source, and the parser's feed operations are private, so their exclusion a
 their private tests are unchanged. No target runs scripting, image resources or
 an enabled-scripting fragment.
 
+## Capture import
+
+The `surgeist-html::capture-import` target (worker
+[html-capture-worker](src/bin/capture.rs)) is the markup target followed by the
+public semantics adapter. It parses a recipe or token soup exactly as above,
+then imports the published document or fragment into a semantic capture with
+`HtmlConstructionCaptureAdapter`. Its canonical `HCP1` form is the `HMK1` form
+with six plan bytes after the caps: scripting status (disabled, enabled,
+unavailable), registry input (null, unavailable, one shared complete registry),
+the `is` slot (absent, unavailable, a value), the shadow-root facts (declarative,
+available to internals, keep registry null) and one fault with a selector. A
+case of one target is refused by the other.
+
+The adapter's contract is stated in its source and README: facts are supplied
+per node and never inferred from topology; a refused import returns the
+original builder, source and facts, with the builder's retained usage unchanged;
+a completed import yields one subject per reachable node. The check
+([captured.rs](src/captured.rs)) walks the source only through its public node
+views and compares every captured node:
+
+- kind and payload (document mode, element name and ordered attributes, text,
+  comment, processing instruction and doctype), the ordinary parent and ordered
+  children, template contents, shadow root and the host of shadow and template
+  contents, and the node document (the result document, or the supplied entry
+  document for a fragment);
+- the supplied external facts exactly as given (scripting, registry identity
+  shared across nodes, `is` slot, shadow-root facts), with nothing inferred;
+- the subject count, the adapter mapping count and the immutability of the first
+  capture across a second, deterministic import of the same source.
+
+The twelve faults are none, a host revision other than the builder's, a missing
+node, a duplicated node, a fact of the wrong role, a node of another result, a
+registry of another builder, cancellation before the call, a mapping allowance of
+one fewer than the reachable nodes, a scratch allowance of zero, a small work
+allowance and a capture-builder subject limit of one fewer than needed. Each
+fault but the work allowance has one required refusal (host revision mismatch,
+missing node document, duplicate node facts, wrong fact role, foreign result,
+foreign builder, cancelled, limit exceeded, a capture limit); the work allowance
+may either complete or stop at a limit. After a refusal the returned builder
+usage must equal its usage before the call, the facts and source must be
+returned, admitted usage must stay within the allowance, and the returned
+builder and source must complete a fault-free import that passes the same
+mirror checks (except after the builder's own subject limit, which cannot be
+retried). A stop on the work allowance is `ExpectedRejection`; a completed
+refusal check is a verified result.
+
+The native authoring target also imports every frozen result under facts and a
+fault chosen from the recipe's shape (`surgeist-html::native-capture`).
+
+**Not covered here.** Semantic query families (`HtmlSemanticQuery`) are not
+exercised: the recipe language carries no microdata, form, link, base or
+table vocabulary, and their owner keeps their tests. Absent shadow roots and
+unavailable (rather than absent) associations of ordinary elements are not
+asserted, because the adapter does not claim them.
+
 ## Native authoring
 
 The separate `surgeist-html::native-authoring` target uses the actual public
@@ -292,14 +354,15 @@ Generation and evaluation:
 
 Tests cover default workers, strict transport, quota boundaries, contract
 refusals, canonical replay/reduction, registry, and finite property and coverage
-driver parity.
+driver parity. Each frozen result is also imported into a semantic capture
+(`surgeist-html::native-capture`, see Capture import).
 
-Remaining #1139 obligations include additional actual captured contexts/options,
-UTF8/UTF16 paired semantic projections with independently mapped coordinates,
-full metadata/history/reverse-query properties, native authoring/semantic operation
-targets, source-qualified unsupported families, clean-source finite campaigns,
-existing corpus/full-path conformance and separately measured scaling/memory work.
-Private progressive ordinary feeding and fragment-feeding exclusions are unchanged;
-existing private feed/corpus tests remain independent. This package certifies no
-whole HTML contribution or issue closure. Framework child contracts #1141–1146
-were completed at integration; parent #1140 and HTML #1139 remain owning work.
+Remaining #1139 obligations include UTF8/UTF16 paired semantic projections with
+independently mapped coordinates, full metadata/history/reverse-query properties,
+semantic query families over captured results, source-qualified unsupported
+families, existing corpus/full-path conformance and separately measured
+scaling/memory work. Private progressive ordinary feeding and fragment-feeding
+exclusions are unchanged; existing private feed/corpus tests remain independent.
+This package certifies no whole HTML contribution or issue closure. Framework
+child contracts #1141–1146 were completed at integration; parent #1140 and HTML
+#1139 remain owning work.

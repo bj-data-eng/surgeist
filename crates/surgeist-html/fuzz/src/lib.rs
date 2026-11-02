@@ -1,5 +1,6 @@
 //! HTML-owned concrete cases over public complete parse front doors.
 #![forbid(unsafe_code)]
+pub(crate) mod captured;
 pub(crate) mod codec;
 mod markup;
 mod native;

@@ -3,6 +3,7 @@
 //! parser output.
 use super::model::*;
 use super::{Body, Case, Mode};
+use crate::captured::{Fault, Plan};
 use crate::error;
 use surgeist_fuzz::Result;
 
@@ -59,8 +60,138 @@ fn shadow_host(tag: usize, bits: u8, inner: Vec<Item>, light: Vec<Item>) -> Item
 const DOC: fn(u8, u8) -> Mode = |doctype, shell| Mode::Document { doctype, shell };
 const FRAG: fn(u8, bool) -> Mode = |context, shadow| Mode::Fragment { context, shadow };
 
-pub(crate) fn case(id: u8) -> Result<Case> {
-    let (mode, utf16, items) = match id {
+/// Capture-import seeds pair a balanced recipe with external facts or one fault.
+const CAPTURE: [(u8, Plan); 16] = [
+    (0, Plan::DEFAULT),
+    (
+        1,
+        Plan {
+            scripting: 1,
+            registry: 2,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        2,
+        Plan {
+            scripting: 2,
+            registry: 1,
+            is_value: 1,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        3,
+        Plan {
+            registry: 2,
+            is_value: 2,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        4,
+        Plan {
+            fault: Fault::Revision,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        5,
+        Plan {
+            fault: Fault::MissingFacts,
+            pick: 3,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        6,
+        Plan {
+            fault: Fault::DuplicateFacts,
+            pick: 2,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        7,
+        Plan {
+            fault: Fault::RoleMismatch,
+            pick: 1,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        8,
+        Plan {
+            registry: 2,
+            shadow: 5,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        9,
+        Plan {
+            fault: Fault::ForeignNode,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        10,
+        Plan {
+            registry: 2,
+            fault: Fault::ForeignRegistry,
+            pick: 1,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        11,
+        Plan {
+            fault: Fault::MappingLimit,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        8,
+        Plan {
+            fault: Fault::Cancelled,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        4,
+        Plan {
+            fault: Fault::ScratchLimit,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        3,
+        Plan {
+            fault: Fault::WorkLimit,
+            pick: 5,
+            ..Plan::DEFAULT
+        },
+    ),
+    (
+        8,
+        Plan {
+            fault: Fault::SubjectLimit,
+            ..Plan::DEFAULT
+        },
+    ),
+];
+
+pub(crate) fn case(id: u8, capture: bool) -> Result<Case> {
+    let (recipe, plan) = if capture {
+        let (recipe, plan) = CAPTURE
+            .get(usize::from(id))
+            .copied()
+            .ok_or_else(|| error("unknown capture seed"))?;
+        (recipe, Some(plan))
+    } else {
+        (id, None)
+    };
+    let (mode, utf16, items) = match recipe {
         // References, CRLF normalization and attribute folding in a no-quirks document.
         0 => (
             DOC(1, 0),
@@ -259,5 +390,12 @@ pub(crate) fn case(id: u8) -> Result<Case> {
         ),
         _ => return Err(error("unknown markup seed")),
     };
-    Case::new(mode, utf16, Body::Exact(items), crate::codec::CAPS, false)
+    Case::new(
+        mode,
+        utf16,
+        Body::Exact(items),
+        crate::codec::CAPS,
+        false,
+        plan,
+    )
 }

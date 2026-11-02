@@ -2,7 +2,7 @@
 //!
 //! | Bytes | Meaning |
 //! | --- | --- |
-//! | 0..4 | `HMK1` |
+//! | 0..4 | `HMK1`, or `HCP1` for a capture-import case |
 //! | 4 | mode: 0 document, 1 fragment |
 //! | 5 | source: 0 UTF-8, 1 UTF-16 |
 //! | 6 | document prologue or fragment context |
@@ -10,9 +10,11 @@
 //! | 8 | body: 0 balanced recipe, 1 free-form token soup |
 //! | 9 | flags: bit 0 cancelled before the parse |
 //! | 10..162 | nineteen u64 parser caps |
-//! | 162.. | the body, with no trailing bytes |
+//! | 162..168 | `HCP1` only: scripting, registry, `is` slot, shadow facts, fault, pick |
+//! | 162.. or 168.. | the body, with no trailing bytes |
 use super::model::*;
 use super::{Body, Case, Mode, SOUP, Segment};
+use crate::captured::{Fault, Plan};
 use crate::error;
 use surgeist_fuzz::Result;
 
@@ -132,8 +134,9 @@ impl Reader<'_> {
     }
 }
 
-pub(crate) fn decode(input: &[u8]) -> Result<Case> {
-    if input.len() < HEADER || input.get(..4) != Some(b"HMK1") {
+pub(crate) fn decode(input: &[u8], capture: bool) -> Result<Case> {
+    let magic: &[u8] = if capture { b"HCP1" } else { b"HMK1" };
+    if input.len() < HEADER + 6 * usize::from(capture) || input.get(..4) != Some(magic) {
         return Err(error("markup header"));
     }
     let mut r = Reader {
@@ -175,6 +178,23 @@ pub(crate) fn decode(input: &[u8]) -> Result<Case> {
         let b = r.take(8)?;
         *cap = u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]);
     }
+    let plan = if capture {
+        let b = r.take(6)?;
+        let plan = Plan {
+            scripting: b[0],
+            registry: b[1],
+            is_value: b[2],
+            shadow: b[3],
+            fault: Fault::from_tag(b[4]).ok_or_else(|| error("fault tag"))?,
+            pick: b[5],
+        };
+        if !plan.valid() {
+            return Err(error("capture fact tag"));
+        }
+        Some(plan)
+    } else {
+        None
+    };
     let body = match body_kind {
         0 => Body::Exact(r.items(0)?),
         1 => {
@@ -213,7 +233,7 @@ pub(crate) fn decode(input: &[u8]) -> Result<Case> {
     if r.at != input.len() {
         return Err(error("trailing markup bytes"));
     }
-    Case::new(mode, utf16, body, caps, cancelled)
+    Case::new(mode, utf16, body, caps, cancelled, plan)
 }
 
 struct Writer(Vec<u8>);
@@ -280,7 +300,11 @@ impl Writer {
 pub(crate) fn encode(case: &Case) -> Result<Vec<u8>> {
     case.validate()?;
     let mut w = Writer(Vec::with_capacity(HEADER + 256));
-    w.0.extend_from_slice(b"HMK1");
+    w.0.extend_from_slice(if case.plan.is_some() {
+        b"HCP1"
+    } else {
+        b"HMK1"
+    });
     let (mode, a, b) = match case.mode {
         Mode::Document { doctype, shell } => (0, doctype, shell),
         Mode::Fragment { context, shadow } => (1, context, u8::from(shadow)),
@@ -298,6 +322,16 @@ pub(crate) fn encode(case: &Case) -> Result<Vec<u8>> {
     ]);
     for cap in case.caps {
         w.0.extend_from_slice(&cap.to_le_bytes());
+    }
+    if let Some(p) = &case.plan {
+        w.0.extend([
+            p.scripting,
+            p.registry,
+            p.is_value,
+            p.shadow,
+            p.fault.tag(),
+            p.pick,
+        ]);
     }
     match &case.body {
         Body::Exact(items) => w.items(items)?,

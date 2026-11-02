@@ -1,18 +1,22 @@
 //! Evaluation of a markup recipe through the public parse front doors.
 use super::model::{CONTEXTS, Ns};
 use super::{Body, Case, MarkupTarget, Mode, compare, tree};
+use crate::captured::{Verdict, check};
 use crate::observe::{
     Expect, Props, Spec, context_for, verify_failure, verify_immutable, verify_report,
 };
 use surgeist_fuzz::*;
+use surgeist_html::bounded::HtmlConstructionResult;
 use surgeist_html::*;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseCancellation, HtmlParseFailure,
     HtmlParseReport, HtmlSource,
 };
 
-/// Property slots: the five shared parse slots, then the tree oracle.
+/// Property slots: the five shared parse slots, the tree oracle, then the
+/// capture mirror, fact qualification and atomic refusal of the capture target.
 pub(crate) const TREE: usize = 5;
+const CAPTURE: usize = 6;
 
 pub(crate) fn source_of(case: &Case) -> HtmlSource {
     match case.source() {
@@ -136,12 +140,42 @@ pub(crate) fn evaluate_parse(target: &MarkupTarget, case: &Case) -> Result<CaseO
             {
                 return props.failure(TREE, key, "parsed tree differs from the recipe");
             }
+            let mut bounded = false;
+            if let Some(plan) = &case.plan {
+                let result = match (report.document(), report.fragment()) {
+                    (Some(d), _) => HtmlConstructionResult::Document(d.clone()),
+                    (_, Some(f)) => HtmlConstructionResult::Fragment(f.clone()),
+                    _ => {
+                        return props.failure(1, "missing-native-root", "report without a root");
+                    }
+                };
+                match check(&result, plan)? {
+                    Verdict::Violation {
+                        property,
+                        key,
+                        detail,
+                    } => return props.failure(CAPTURE + property, key, detail),
+                    Verdict::ResourceStop => bounded = true,
+                    Verdict::Verified => {}
+                }
+            }
             if let Some(outcome) = verify_immutable(&props, &report, &seen, &cancel)? {
                 return Ok(outcome);
             }
             let mut checked = vec![0, 1, 2, 4];
             if exact.is_some() {
                 checked.push(TREE);
+            }
+            if case.plan.is_some() {
+                checked.extend([CAPTURE, CAPTURE + 1, CAPTURE + 2]);
+            }
+            if bounded {
+                // An adapter work allowance stopped the import; the refusal was
+                // atomic and a fault-free retry completed.
+                return CaseOutcome::expected_rejection(
+                    props.ids(&checked),
+                    "capture adapter work allowance",
+                );
             }
             CaseOutcome::evaluated(props.ids(&checked))
         }

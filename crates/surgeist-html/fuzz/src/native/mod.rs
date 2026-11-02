@@ -301,7 +301,21 @@ impl NativeTarget {
         )
     }
     fn properties(&self, literal: bool) -> Vec<PropertyId> {
-        self.descriptor.properties()[..if literal { 5 } else { 4 }].to_vec()
+        let all = self.descriptor.properties();
+        let mut checked = all[..if literal { 5 } else { 4 }].to_vec();
+        checked.push(all[5].clone());
+        checked
+    }
+    /// A captured-import violation names the sixth property.
+    fn capture_failure(&self, key: &str, detail: impl Into<String>) -> Result<CaseOutcome> {
+        CaseOutcome::failure(
+            FailureKey::new(
+                self.descriptor.properties()[5].clone(),
+                FailureClass::PropertyViolation,
+                Some(key.into()),
+            )?,
+            detail,
+        )
     }
 }
 impl CaseTarget for NativeTarget {

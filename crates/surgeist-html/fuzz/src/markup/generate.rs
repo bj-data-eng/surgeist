@@ -7,6 +7,7 @@
 //! slice always yields the same recipe.
 use super::model::*;
 use super::{Body, Case, MAX_SEGMENTS, Mode, SOUP, Segment};
+use crate::captured::{Fault, Plan};
 
 const UNITS: [u16; 22] = [
     0x61, 0x42, 0x30, 0x20, 0x0A, 0x09, 0x2D, 0x3E, 0x3D, 0x2F, 0xE9, 0x4E2D, 0xFEFF, 0xA0, 0xD800,
@@ -174,7 +175,7 @@ impl Gen<'_> {
     }
 }
 
-pub(crate) fn synthesize(input: &[u8]) -> Option<Case> {
+pub(crate) fn synthesize(input: &[u8], capture: bool) -> Option<Case> {
     let mut g = Gen {
         c: Cur {
             bytes: input,
@@ -244,7 +245,20 @@ pub(crate) fn synthesize(input: &[u8]) -> Option<Case> {
         segments.truncate(MAX_SEGMENTS);
         Body::Soup(segments)
     };
-    Case::new(mode, g.utf16, body, caps, cancelled).ok()
+    let plan = capture.then(|| Plan {
+        scripting: g.c.below(3) as u8,
+        registry: g.c.below(3) as u8,
+        is_value: g.c.below(3) as u8,
+        shadow: g.c.below(8) as u8,
+        // Half of the cases import cleanly; the rest inject one fault.
+        fault: if g.c.byte().is_multiple_of(2) {
+            Fault::None
+        } else {
+            Fault::ALL[1 + g.c.below(Fault::ALL.len() - 1)]
+        },
+        pick: g.c.byte(),
+    });
+    Case::new(mode, g.utf16, body, caps, cancelled, plan).ok()
 }
 
 /// All single-step reductions of a list: remove an item, unwrap an element,
@@ -322,6 +336,7 @@ pub(crate) fn candidates(case: &Case) -> Vec<Case> {
         body,
         caps: case.caps,
         cancelled: case.cancelled,
+        plan: case.plan,
     };
     let mut out = Vec::new();
     match &case.body {

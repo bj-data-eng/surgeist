@@ -49,3 +49,9 @@ name = "html-markup-worker"
 path = "src/bin/markup.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "html-capture-worker"
+path = "src/bin/capture.rs"
+test = false
+doc = false
