@@ -5808,14 +5808,7 @@ impl SessionStorage {
                             effects.root,
                             effects.old_parent,
                         )?;
-                        self.meta_tree_hook(
-                            control,
-                            node,
-                            detached,
-                            effects.stage == FormEffectStage::Removal,
-                            effects.old_parent,
-                            service,
-                        )?;
+                        self.meta_tree_hook(control, node, detached, &effects, service)?;
                         self.association_tree_hook(
                             control,
                             node,
@@ -8261,6 +8254,9 @@ impl ParserArenaSession {
             return Err(SessionError::NotDocument);
         }
         payload_write::<HtmlDocumentMode>(control, 1)?;
+        // The color-scheme grammar depends on the mode, so what an earlier walk
+        // learned of that selection no longer holds.
+        storage.forget_color_scheme_selection(control)?;
         control.charge(WorkCategory::ProviderCall, 1)?;
         let Some(document) = storage.construction.node_at(0).map(|root| root.handle()) else {
             return Err(latch_registry_row(control));
