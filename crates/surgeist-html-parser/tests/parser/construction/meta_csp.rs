@@ -496,7 +496,12 @@ fn finite_original_storage_and_work_boundaries_release_partial_csp_state() {
         HtmlParseResource::ManagedCapacityBytes,
         HtmlParseResource::WorkCredits,
     ] {
-        for cap in [0, 128, 1024, 4096, 16384, 65536] {
+        // Where admission first refuses depends on the sizes of the records the
+        // parser retains, so a fine sweep follows the round caps.
+        for cap in [0, 128, 1024, 4096, 16384, 65536]
+            .into_iter()
+            .chain((0..6000).step_by(16))
+        {
             let builder = limits().into_builder();
             let limits = match resource {
                 HtmlParseResource::ManagedCapacityBytes => builder.managed_capacity_bytes(cap),

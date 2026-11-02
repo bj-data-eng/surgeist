@@ -100,6 +100,7 @@ mod template;
 mod text_append;
 #[cfg(test)]
 mod text_append_tests;
+mod tree_root;
 pub use completion::{ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState};
 use effects::ConstructionEffects;
 pub(crate) use foreign::ForeignNamespace;
@@ -496,6 +497,9 @@ struct SessionStorage {
     /// The registry row listing the document tree's style elements while every
     /// change to that list since it was built has been applied to it.
     style_order: Option<pending_association::CurrentOrder>,
+    /// The subtree whose insertion or removal last walked each color selection;
+    /// see [`meta::MetaBatch`].
+    meta_batches: meta::MetaDomainTable<Option<meta::MetaBatch>>,
 }
 
 use crate::bounded::HtmlConstructionResult;
@@ -546,6 +550,12 @@ struct PayloadStorage {
     /// unique per record joined that record. Zero proves the join names the
     /// only row, so preparation need not scan the registry to count them.
     repeated_unique_rows: usize,
+    /// The generation of the cached tree roots in [`NodeJoins`]; `None` once no
+    /// later generation can be named, when nothing is cached.
+    tree_stamp: Option<NonZeroU32>,
+    /// How many topology changes have been announced, or `None` once the count
+    /// cannot go on; see [`tree_root`].
+    topology_changes: Option<u64>,
 }
 /// Derived joins into the actual payload registry, one cell per record
 /// position. Dense record positions are append-only; a join never substitutes
@@ -564,6 +574,8 @@ struct NodeJoins {
     /// Registry slot plus one of the name of the record's last attribute as
     /// registered at creation; see `PayloadStorage::attribute_value_candidate`.
     attribute_strings: Option<NonZeroU32>,
+    /// The record's tree root as last found; see [`tree_root`].
+    tree_root: tree_root::TreeRootCell,
 }
 /// Node-keyed registry row kinds with a join in [`NodeJoins`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -620,7 +632,9 @@ slots!(Join, JOIN_COUNT, {
 });
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
 /// refused as the registry invariant (see `joined_cell`).
-const _: () = assert!(mem::size_of::<NodeJoins>() == 4 * (JOIN_COUNT + 3));
+const _: () = assert!(
+    mem::size_of::<NodeJoins>() == 4 * (JOIN_COUNT + 3) + mem::size_of::<tree_root::TreeRootCell>()
+);
 impl Default for NodeJoins {
     fn default() -> Self {
         Self {
@@ -628,6 +642,7 @@ impl Default for NodeJoins {
             textarea: None,
             rows: JoinTable::filled(None),
             attribute_strings: None,
+            tree_root: tree_root::TreeRootCell::default(),
         }
     }
 }
@@ -2207,6 +2222,7 @@ impl SessionStorage {
             construction,
             failed_text_append: None,
             style_order: Some(pending_association::CurrentOrder::empty_main_tree()),
+            meta_batches: meta::MetaDomainTable::filled(None),
             payloads: PayloadStorage {
                 values,
                 allocation,
@@ -2219,6 +2235,8 @@ impl SessionStorage {
                 audited_rows: 0,
                 selectedcontent_rows: 0,
                 repeated_unique_rows: 0,
+                tree_stamp: NonZeroU32::new(1),
+                topology_changes: Some(0),
             },
         };
         let kind = match root {
@@ -2521,6 +2539,17 @@ impl SessionStorage {
         list: Option<KindList>,
     ) -> Result<(), SessionError> {
         self.prepare_payload_slot_with(control, list, false)
+    }
+    /// Returns the entry `prepare_payload_slot_owned` admitted when the row it
+    /// was for cannot be pushed. An entry no row holds is released by nothing
+    /// else.
+    fn unprepare_payload_slot(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
+        release_logical(
+            control,
+            &self.control,
+            HtmlParseResource::AuxiliaryEntries,
+            1,
+        )
     }
     /// As `prepare_payload_slot_for`, also admitting the entry of the
     /// explicit-form list when the row is of a listed control with a `form`
@@ -4996,46 +5025,50 @@ impl SessionStorage {
     /// producer inventory. This qualifies topology mutation, not preparation's
     /// source-ordered ordinary connectivity condition.
     fn associated_document_parent(
-        &self,
+        &mut self,
         control: &mut ParseControl,
         index: usize,
     ) -> Result<bool, SessionError> {
         let storage = self.construction.storage(control)?;
-        self.associated_document_parent_in(control, storage, index)
+        let root = self.payloads.tree_root(control, storage, index)?;
+        self.associated_root_in(control, storage, root)
     }
     fn associated_document_parent_in(
+        &mut self,
+        control: &mut ParseControl,
+        storage: &bounded::HtmlConstructionStorage,
+        index: usize,
+    ) -> Result<bool, SessionError> {
+        let root = self.payloads.tree_root(control, storage, index)?;
+        self.associated_root_in(control, storage, root)
+    }
+    /// Whether the tree rooted at `root`, found along parent edges, is a
+    /// fragment that an associated document owns. Only a fragment has an
+    /// owner, and an owned fragment has no parent, so the root decides.
+    fn associated_root_in(
         &self,
         control: &mut ParseControl,
         storage: &bounded::HtmlConstructionStorage,
-        mut index: usize,
+        root: usize,
     ) -> Result<bool, SessionError> {
-        for _ in 0..storage.len() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            let record = storage.node_at(index).ok_or(SessionError::ForeignNode)?;
-            if let Some(owner) = &record.fragment_owner() {
-                match owner {
-                    HtmlFragmentOwner::ShadowHost(_) => return Ok(self.fragment.is_none()),
-                    HtmlFragmentOwner::Template(template) => {
-                        control.charge(WorkCategory::ProviderCall, 1)?;
-                        let template_position = storage
-                            .node_by_result_id(template)
-                            .map_err(|_| SessionError::ForeignNode)?
-                            .position();
-                        let (_, state) =
-                            self.template_slot_in(control, storage, template_position)?;
-                        if state.contents != index {
-                            return Err(SessionError::TemplateMetadataUnavailable);
-                        }
-                        return Ok(false);
-                    }
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        let record = storage.node_at(root).ok_or(SessionError::ForeignNode)?;
+        match record.fragment_owner() {
+            None => Ok(false),
+            Some(HtmlFragmentOwner::ShadowHost(_)) => Ok(self.fragment.is_none()),
+            Some(HtmlFragmentOwner::Template(template)) => {
+                control.charge(WorkCategory::ProviderCall, 1)?;
+                let template_position = storage
+                    .node_by_result_id(template)
+                    .map_err(|_| SessionError::ForeignNode)?
+                    .position();
+                let (_, state) = self.template_slot_in(control, storage, template_position)?;
+                if state.contents != root {
+                    return Err(SessionError::TemplateMetadataUnavailable);
                 }
+                Ok(false)
             }
-            let Some(parent) = record.parent().map(|node| node.position()) else {
-                return Ok(false);
-            };
-            index = parent;
         }
-        Err(SessionError::Cycle)
     }
 
     /// Only ordinary parents participate in form association. The single
@@ -5061,6 +5094,10 @@ impl SessionStorage {
         mut node: usize,
         detached: Option<usize>,
     ) -> Result<usize, SessionError> {
+        if detached.is_none() {
+            let storage = self.construction.storage(control)?;
+            return self.payloads.tree_root_uncached(control, storage, node);
+        }
         for _ in 0..self.construction.storage(control)?.len() {
             match self.ordinary_parent(control, node, detached)? {
                 Some(parent) => node = parent,
@@ -5779,20 +5816,14 @@ impl SessionStorage {
                             effects.root,
                             effects.old_parent,
                         )?;
-                        self.meta_tree_hook(
-                            control,
-                            node,
-                            detached,
-                            effects.stage == FormEffectStage::Removal,
-                            effects.old_parent,
-                            service,
-                        )?;
+                        self.meta_tree_hook(control, node, detached, &effects, service)?;
                         self.association_tree_hook(
                             control,
                             node,
                             detached,
                             effects.stage == FormEffectStage::Removal,
                             effects.old_parent,
+                            effects.root,
                         )?;
                         self.intrinsic_tree_hook(
                             control,
@@ -5965,6 +5996,7 @@ impl SessionStorage {
             payload_write::<InsertionCause>(control, 1)?;
             effects.cause = cause;
         }
+        let reroot = self.begin_reroot(control, node, Some(parent))?;
         control.charge(
             WorkCategory::ProviderCall,
             if before.is_some() { 3 } else { 2 },
@@ -6061,10 +6093,14 @@ impl SessionStorage {
             Ok::<_, SessionError>(())
         })();
         if let Err(error) = result {
-            self.construction.abort_pending(control, pending)?;
+            let aborted = self.construction.abort_pending(control, pending);
+            self.end_reroot(reroot);
+            aborted?;
             return Err(error);
         }
-        self.construction.finish_pending(control, pending)?;
+        let finished = self.construction.finish_pending(control, pending);
+        self.end_reroot(reroot);
+        finished?;
         if form_effects.is_some() {
             self.effects.form = form_effects;
         }
@@ -6116,11 +6152,14 @@ impl SessionStorage {
             .node_at(node)
             .ok_or(SessionError::ForeignNode)?
             .handle();
-        self.construction.apply(
+        let reroot = self.begin_reroot(control, node, None)?;
+        let detached = self.construction.apply(
             control,
             bounded::HtmlConstructionCommand::Detach { node: handle },
             &[],
-        )?;
+        );
+        self.end_reroot(reroot);
+        detached?;
         if form_effects.is_some() {
             self.effects.form = form_effects;
         }
@@ -6369,6 +6408,7 @@ impl SessionStorage {
             payloads,
             failed_text_append,
             style_order: _,
+            meta_batches: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
         } = self;
@@ -6489,11 +6529,15 @@ impl ParserArenaSession {
         let storage = self.active()?;
         let parent = storage.index(control, intended_parent)?;
         storage.creation_parent(control, parent)?;
-        if storage.associated_document_parent(control, parent)? {
+        if self
+            .active_mut()?
+            .associated_document_parent(control, parent)?
+        {
             return Err(control
                 .stop_unsupported_standalone(StandaloneUnsupported::ScriptDocument)
                 .into());
         }
+        let storage = self.active()?;
         let tag = self.require_formatting_creation(control, creation)?;
         let document = storage.node_document_ref(control, parent)?;
         let mut prepared =
@@ -6989,11 +7033,15 @@ impl ParserArenaSession {
         let storage = self.active()?;
         let parent = storage.index(control, intended_parent)?;
         storage.container(control, parent)?;
-        if storage.associated_document_parent(control, parent)? {
+        if self
+            .active_mut()?
+            .associated_document_parent(control, parent)?
+        {
             return Err(control
                 .stop_unsupported_standalone(StandaloneUnsupported::ScriptDocument)
                 .into());
         }
+        let storage = self.active()?;
         let document = storage.node_document_ref(control, parent)?;
         let form = current_form
             .map(|form| storage.index(control, form))
@@ -8632,6 +8680,7 @@ impl ParserArenaSession {
             payloads,
             failed_text_append: _,
             style_order: _,
+            meta_batches: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
         } = self.storage.take().ok_or(SessionError::Consumed)?;
@@ -10586,6 +10635,7 @@ fn next_ordinary_view_node(
             .ok_or_else(|| latch_registry_row(control))?
             .position();
         if detached != Some(child) || root == child {
+            control.note_sibling(node, position);
             return Ok(Some(child));
         }
     }
@@ -10606,20 +10656,43 @@ fn next_ordinary_view_after_subtree(
             .ok_or(SessionError::WrongSibling)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
         let children = records.node_at(parent).ok_or(SessionError::ForeignNode)?;
-        let mut found = false;
-        for position in 0..children.child_count() {
+        let count = children.child_count();
+        // The walk that reached `node` usually left its ordinal behind, so the
+        // search for it starts there and costs the siblings after it, not the
+        // ones before.
+        let mut ordinal = None;
+        if let Some(hinted) = control.sibling_hint(parent)
+            && hinted < count
+        {
+            control.charge(WorkCategory::RecordVisit, 1)?;
+            if children.child_at(hinted).map(|child| child.position()) == Some(node) {
+                ordinal = Some(hinted);
+            }
+        }
+        if ordinal.is_none() {
+            for position in 0..count {
+                control.charge(WorkCategory::RecordVisit, 1)?;
+                let child = children
+                    .child_at(position)
+                    .ok_or_else(|| latch_registry_row(control))?
+                    .position();
+                if child == node {
+                    ordinal = Some(position);
+                    break;
+                }
+            }
+        }
+        let ordinal = ordinal.ok_or(SessionError::WrongSibling)?;
+        for position in ordinal.saturating_add(1)..count {
             control.charge(WorkCategory::RecordVisit, 1)?;
             let child = children
                 .child_at(position)
                 .ok_or_else(|| latch_registry_row(control))?
                 .position();
-            if found && (detached != Some(child) || root == child) {
+            if detached != Some(child) || root == child {
+                control.note_sibling(parent, position);
                 return Ok(Some(child));
             }
-            found |= child == node;
-        }
-        if !found {
-            return Err(SessionError::WrongSibling);
         }
         node = parent;
     }
@@ -12388,8 +12461,15 @@ mod tests {
         let storage = session.active().unwrap();
         let parent = storage.index(c, parent).unwrap();
         storage.container(c, parent).unwrap();
-        assert!(!storage.associated_document_parent(c, parent).unwrap());
+        assert!(
+            !session
+                .active_mut()
+                .unwrap()
+                .associated_document_parent(c, parent)
+                .unwrap()
+        );
         session.require_formatting_creation(c, creation).unwrap();
+        let storage = session.active().unwrap();
         let document = storage.node_document_ref(c, parent).unwrap();
         session
             .active_mut()

@@ -269,7 +269,10 @@ impl SessionStorage {
                 ));
             }
             this.prepare_payload_slot_owned(c)?;
-            native_storage(c, &mut state.account, size_of::<Policy>())?;
+            if let Err(error) = native_storage(c, &mut state.account, size_of::<Policy>()) {
+                this.unprepare_payload_slot(c)?;
+                return Err(error);
+            }
             let index = this.payloads.values.len();
             this.payloads
                 .values
@@ -379,8 +382,12 @@ impl ParserArenaSession {
         }
         s.prepare_payload_slot_owned(c)?;
         let mut account = Account::default();
-        payload_write::<Option<usize>>(c, 1)?;
-        native_storage(c, &mut account, size_of::<State>())?;
+        if let Err(error) = payload_write::<Option<usize>>(c, 1)
+            .and_then(|()| native_storage(c, &mut account, size_of::<State>()))
+        {
+            s.unprepare_payload_slot(c)?;
+            return Err(error);
+        }
         s.csp_slot = Some(s.payloads.values.len());
         s.payloads
             .values
