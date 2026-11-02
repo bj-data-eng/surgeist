@@ -1535,8 +1535,11 @@ impl<'source> Tokenizer<'source> {
                 examined: lookahead.examined,
             }
         };
-        // The state decides on the next input character, so that character's
-        // stream error precedes whatever the mismatch reports.
+        // Report the next input character's stream error before the mismatch
+        // is acted on. The pinned standard sets no relative order between
+        // input-stream and tokenizer errors; this is the smallest rule
+        // consistent with html5lib test3.test case 80 and test4.test cases
+        // 60-62 (see the tokenizer ordering test).
         if let Some(examined) = lookahead.examined {
             self.error_at_source(
                 Self::input_stream_code(examined.diagnostic),

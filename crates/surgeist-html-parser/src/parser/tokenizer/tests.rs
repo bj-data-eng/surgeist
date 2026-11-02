@@ -2031,14 +2031,18 @@ fn lookahead_reports_input_stream_error_of_the_next_input_character_first() {
         InvalidCharacterSequenceAfterDoctypeName as AfterName,
         NoncharacterInInputStream as Noncharacter,
     };
-    // HTML877d 13.2.3.5: every control, noncharacter and surrogate in the input
-    // stream is a parse error of the stream itself. The markup declaration open
-    // state decides on the next input character (and the characters after it),
-    // so the stream error of that character precedes incorrectly-opened-comment;
-    // html5lib tokenizer/test3.test case 80 expects the first rows. The
-    // characters after it are only the "next few characters" and report when a
-    // later state consumes them, after the decision (html5lib test4.test cases
-    // 59-62 expect the last rows).
+    // HTML877d 13.2.3.5 makes every control, noncharacter and surrogate in the
+    // input stream a parse error of the stream itself, and the markup
+    // declaration open state looks at the next few characters, but the pinned
+    // standard sets no relative order between input-stream and tokenizer
+    // errors. The rule tested is the smallest consistent with the retained
+    // html5lib corpus, the only cases that pair incorrectly-opened-comment with
+    // a stream error: test3.test case 80 (`<!` U+000B) expects the stream error
+    // first, test4.test cases 60-62 (`<!doc` plus U+0080, U+FDD1, U+1FFFF)
+    // expect it after (case 59 uses NUL, a tokenizer error, and does not
+    // discriminate). So only the stream error of the next input character
+    // precedes the mismatch; later characters report when consumed. The rows
+    // beyond the corpus follow that rule and are not corpus-derived.
     for (input, expected) in [
         ("<!\u{b}", vec![Control, Incorrect]),
         ("<!\u{80}", vec![Control, Incorrect]),

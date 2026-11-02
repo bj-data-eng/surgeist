@@ -216,10 +216,13 @@ otherwise a `?`-prefixed bogus comment with
 `invalid-first-character-of-processing-instruction-target`, preceded by
 `control-character-in-input-stream` for test3/1163 (U+000B) and followed by
 `unexpected-null-character` for test3/1160 and 1166 (U+0000). A tokenizer panic
-fails any case, excluded or not. Test3/80 (`<!` U+000B) matches the corpus: the
-input-stream error of the next input character, which the markup declaration
-open state decides on, precedes `incorrectly-opened-comment`, while a character
-further into its lookahead region reports when consumed (test4/59–62).
+fails any case, excluded or not. Test3/80 (`<!` U+000B) matches the corpus. The
+pinned standard sets no relative order between input-stream and tokenizer
+errors, so the rule is the smallest consistent with the corpus: the
+input-stream error of the next input character precedes
+`incorrectly-opened-comment` (test3/80), while a character further into the
+lookahead region reports when consumed (test4/60–62; test4/59 uses NUL and
+does not discriminate).
 `xmlViolation.test` is not bundled because it assumes infoset coercion rather
 than the HTML tokenizer.
 
