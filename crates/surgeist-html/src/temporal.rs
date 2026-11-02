@@ -2932,6 +2932,111 @@ mod tests {
     }
 
     #[test]
+    fn pinned_parse_steps_report_each_range_before_later_steps_and_trailing_input() {
+        use HtmlTemporalError::*;
+        use TemporalAlternative as Alt;
+        // Each row follows the pinned algorithm for its alternative: HTML
+        // foundations 2.3.5.1 (months), 2.3.5.2 (dates), 2.3.5.5 (local
+        // date-times), 2.3.5.6 (offsets), 2.3.5.7 (global date-times) and
+        // 2.3.5.9 (durations). The outcome is the first step that fails.
+        let rows: &[(Alt, &str, Option<HtmlTemporalError>)] = &[
+            // Month: year (steps 1-2), hyphen (3), month digits (4), range (5).
+            (Alt::Month, "2024-02", None),
+            (Alt::Month, "0000", Some(ZeroYear)),
+            (Alt::Month, "0000-13", Some(ZeroYear)),
+            (Alt::Month, "2024-13x", Some(MonthOutOfRange)),
+            (Alt::Month, "2024-00", Some(MonthOutOfRange)),
+            (Alt::Month, "2024-1", Some(InvalidSyntax)),
+            (Alt::Month, "2024-02x", Some(InvalidSyntax)),
+            // Date: month component, hyphen (3), day digits (4), range (5).
+            (Alt::Date, "2024-13-99", Some(MonthOutOfRange)),
+            (Alt::Date, "2023-02-30x", Some(DayOutOfRange)),
+            (Alt::Date, "2023-02-00x", Some(DayOutOfRange)),
+            (Alt::Date, "2023-02", Some(InvalidSyntax)),
+            (Alt::Date, "2023-02-3", Some(InvalidSyntax)),
+            (Alt::Date, "2023-02-28x", Some(InvalidSyntax)),
+            // Local date and time: date (3), separator (4), time (5), end (6).
+            (Alt::LocalDateTime, "2023-02-30T24:00", Some(DayOutOfRange)),
+            (
+                Alt::LocalDateTime,
+                "2023-02-28T24:00:XX",
+                Some(HourOutOfRange),
+            ),
+            (
+                Alt::LocalDateTime,
+                "2023-02-28 23:60..",
+                Some(MinuteOutOfRange),
+            ),
+            (
+                Alt::LocalDateTime,
+                "2023-02-28T23:59:60x",
+                Some(SecondOutOfRange),
+            ),
+            (
+                Alt::LocalDateTime,
+                "2023-02-28T23:59:59x",
+                Some(InvalidSyntax),
+            ),
+            (Alt::LocalDateTime, "2023-02-28X23:59", Some(InvalidSyntax)),
+            // Offset component: the hour digits and colon (step 4) precede the
+            // hour range (5) and minute range (7); both report OffsetOutOfRange.
+            (Alt::TimeZoneOffset, "+24:00", Some(OffsetOutOfRange)),
+            (Alt::TimeZoneOffset, "-23:60", Some(OffsetOutOfRange)),
+            (Alt::TimeZoneOffset, "+2400", Some(OffsetOutOfRange)),
+            (Alt::TimeZoneOffset, "+24:6", Some(InvalidSyntax)),
+            (Alt::TimeZoneOffset, "+24", Some(InvalidSyntax)),
+            (Alt::TimeZoneOffset, "+12:00x", Some(InvalidSyntax)),
+            // Global: time (5), end (6), offset (7), end (8).
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T24:00Z",
+                Some(HourOutOfRange),
+            ),
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T23:59:60",
+                Some(SecondOutOfRange),
+            ),
+            (Alt::GlobalDateTime, "2023-02-28T23:59", Some(InvalidSyntax)),
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T23:59+24:00x",
+                Some(OffsetOutOfRange),
+            ),
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T23:59+2400x",
+                Some(OffsetOutOfRange),
+            ),
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T23:59Zx",
+                Some(InvalidSyntax),
+            ),
+        ];
+        for &(alternative, raw, expected) in rows {
+            for phase in [TemporalPhase::Author, TemporalPhase::Recovery] {
+                let got = borrowed(&text(raw), phase, alternative).map(|_| ());
+                assert_eq!(got.err(), expected, "{alternative:?} {phase:?} {raw}");
+            }
+        }
+        // Duration recovery (2.3.5.9): the nonzero-month check is step 10, after
+        // the component loop and the step 9 count check.
+        for (raw, expected) in [
+            ("1Y", Some(NonzeroCalendarDuration)),
+            ("P2M", Some(NonzeroCalendarDuration)),
+            ("1Yx", Some(InvalidSyntax)),
+            ("1Y1", Some(InvalidSyntax)),
+            ("0Y0M", None),
+            ("P", Some(InvalidSyntax)),
+            ("", Some(InvalidSyntax)),
+        ] {
+            let got = parse_duration(&text(raw)).map(|_| ());
+            assert_eq!(got.err(), expected, "duration {raw}");
+        }
+    }
+
+    #[test]
     fn both_day_counts_agree_with_an_independent_calendar_walk() {
         // Walk the proleptic Gregorian calendar from 0001-01-01 one day at a
         // time, so the zero-based day index is the expected ordinal.
