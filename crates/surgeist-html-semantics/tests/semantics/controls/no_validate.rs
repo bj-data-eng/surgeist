@@ -1,5 +1,6 @@
 use crate::semantics::support::{
-    moderate_semantic_limits as limits, small_builder_without_registries as builder,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, moderate_semantic_limits as limits,
+    result_record_bytes, small_builder_without_registries as builder,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -647,66 +648,26 @@ fn payload_records_bytes_work_and_output_caps_are_exact_and_atomic() {
     );
     let cx = context(&f, None);
     let req = request(&f, HtmlSemanticQuery::SubmitterNoValidate);
-    let baseline = report(&f, &cx).usage();
-    assert_eq!(baseline.nested_output_records(), 1);
-    assert_eq!(baseline.scratch_records(), 0);
-    assert_eq!(baseline.peak_scratch_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, baseline.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            baseline.output_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            baseline.nested_output_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            baseline.allocated_bytes(),
-        ),
-    ] {
-        for cap in [exact, exact - 1] {
-            let l = HtmlSemanticLimits::new(
-                if resource == HtmlSemanticResource::Work {
-                    cap
-                } else {
-                    10000000
-                },
-                if resource == HtmlSemanticResource::OutputRecords {
-                    cap
-                } else {
-                    100
-                },
-                0,
-                0,
-                if resource == HtmlSemanticResource::AllocatedBytes {
-                    cap
-                } else {
-                    1000000
-                },
-                if resource == HtmlSemanticResource::NestedOutputRecords {
-                    cap
-                } else {
-                    10000
-                },
-            );
-            let mut s = session(&f, &cx, l, 100, HtmlSemanticCancellation::new());
-            let r = s.query(std::slice::from_ref(&req));
-            if cap == exact {
-                assert_eq!(value(&r.unwrap()).value(), Some(true));
-            } else {
-                let e = r.unwrap_err();
-                assert!(
-                    matches!(e.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{resource:?}: {e:?}"
-                );
-                assert_eq!(e.qualification().unwrap().limits(), l);
-                assert_eq!(s.query(&[]).unwrap_err(), e);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
+    // One result record and one nested payload record, and no scratch (the
+    // submitter is an input without a form owner). The payload type and the
+    // intrinsic envelopes are private layout, so the byte charge must cover
+    // the result record and one payload byte, and work is required to be
+    // charged without being pinned.
+    let r = assert_exact_and_one_short_caps(
+        "submitter no-validate",
+        &f.capture,
+        &cx,
+        100,
+        HtmlSemanticLimits::new(10000000, 100, 0, 0, 1000000, 10000),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 1),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(value(&r).value(), Some(true));
     let mut s = session(
         &f,
         &cx,

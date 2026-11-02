@@ -1,15 +1,17 @@
 use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
     compact_builder_without_registries as builder, moderate_semantic_limits_with_scratch as limits,
+    result_record_bytes,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedNodeKind, HtmlCapturedShadowProperties,
-    HtmlControlLabels, HtmlCustomControlClassification, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
-    HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedNodeKind,
+    HtmlCapturedShadowProperties, HtmlControlLabels, HtmlCustomControlClassification,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
+    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -514,74 +516,34 @@ fn exact_caps_cover_retained_capacity_nested_scratch_and_atomic_failures() {
     );
     let c = context(&f, &[]);
     let req = HtmlSemanticRequest::new(f.ids[0].clone(), HtmlSemanticQuery::ControlLabels);
-    let baseline = report(&f, &c).usage();
-    assert!(baseline.nested_output_records() >= 2);
-    assert!(baseline.peak_scratch_records() > 0);
-    assert_eq!(baseline.scratch_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, baseline.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            baseline.output_records(),
-        ),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            baseline.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            baseline.nested_output_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            baseline.allocated_bytes(),
-        ),
-    ] {
-        for cap in [exact, exact - 1] {
-            let l = HtmlSemanticLimits::new(
-                if resource == HtmlSemanticResource::Work {
-                    cap
-                } else {
-                    10000000
-                },
-                if resource == HtmlSemanticResource::OutputRecords {
-                    cap
-                } else {
-                    100
-                },
-                if resource == HtmlSemanticResource::ScratchRecords {
-                    cap
-                } else {
-                    10000
-                },
-                0,
-                if resource == HtmlSemanticResource::AllocatedBytes {
-                    cap
-                } else {
-                    1000000
-                },
-                if resource == HtmlSemanticResource::NestedOutputRecords {
-                    cap
-                } else {
-                    10000
-                },
-            );
-            let mut s = session(&f, &c, l, 6, HtmlSemanticCancellation::new());
-            let r = s.query(std::slice::from_ref(&req));
-            if cap == exact {
-                assert_eq!(labels(&r.unwrap()), &[f.ids[1].clone(), f.ids[2].clone()]);
-            } else {
-                let e = r.unwrap_err();
-                assert!(
-                    matches!(e.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..}if *r==resource),
-                    "{e:?}"
-                );
-                assert_eq!(e.qualification().unwrap().limits(), l);
-                assert_eq!(s.query(&[]).unwrap_err(), e);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
+    // Two explicit labels are retained one id at a time. The outer scan's
+    // stack has grown to two records (the document's list and one label's own
+    // empty list) and keeps that capacity; for each label the first-id proof
+    // runs its own scan, which also reaches two records, so four records are
+    // retained at the second label. Each of the outer and two inner stacks
+    // grows by two records, so the bytes must cover the result record, both
+    // ids and six frames. The scans' step layout is private, so work is
+    // required to be charged without being pinned.
+    let r = assert_exact_and_one_short_caps(
+        "control labels",
+        &f.capture,
+        &c,
+        6,
+        HtmlSemanticLimits::new(10000000, 100, 10000, 0, 1000000, 10000),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(4),
+            nested_output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes()
+                    + 2 * std::mem::size_of::<HtmlCaptureSubjectId>()
+                    + 6 * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(labels(&r), &[f.ids[1].clone(), f.ids[2].clone()]);
     let mut s = session(&f, &c, limits(), 5, HtmlSemanticCancellation::new());
     let e = s
         .query(&[

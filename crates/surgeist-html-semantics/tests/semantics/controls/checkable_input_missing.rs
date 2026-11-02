@@ -1,16 +1,16 @@
 use crate::semantics::support::{
-    SCALAR_AND_SCRATCH_RESOURCES, builder, cap_resources,
-    semantic_limits_with_integer_digits as limits, session,
+    Charge, ExpectedUsage, SCALAR_AND_SCRATCH_RESOURCES, assert_exact_and_one_short_caps, builder,
+    cap_resources, result_record_bytes, semantic_limits_with_integer_digits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlControlFlag, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlInputControlState, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlInputControlState, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -539,43 +539,27 @@ fn exact_and_one_short_work_output_scratch_bytes_are_terminal_and_cleanup() {
         &[(a.clone(), Some(false)), (z.clone(), Some(false))],
         vec![],
     );
-    let usage = report(&c, &cx, &a, 5).usage();
-    assert_eq!(usage.nested_output_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, usage.work()),
-        (HtmlSemanticResource::OutputRecords, usage.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            usage.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            usage.allocated_bytes(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                5,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = ss.query(&[request(&a)]);
-            if cap == exact {
-                assert_eq!(fact(&result.unwrap()), &HtmlSemanticValue::Known(true));
-            } else {
-                let f = result.unwrap_err();
-                assert!(
-                    matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if r==&resource)
-                );
-                assert_eq!(f.qualification().unwrap().context(), cx.identity());
-                assert_eq!(ss.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    // The radio-group scan holds the document's child list while it examines
+    // members; the answer is a Boolean, so there is no nested storage. The
+    // scan's depth and visit layout are private, so scratch and work are
+    // required to be charged without being pinned.
+    let r = assert_exact_and_one_short_caps(
+        "radio group missing",
+        &c,
+        &cx,
+        5,
+        HtmlSemanticLimits::new(20000000, 100, 1000, 1000000, 1000000, 0),
+        &[request(&a)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(fact(&r), &HtmlSemanticValue::Known(true));
 }
 #[test]
 fn consulted_whole_type_and_name_caps_preserve_original_failure() {
