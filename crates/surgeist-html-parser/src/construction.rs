@@ -328,16 +328,16 @@ fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::contro
     }
 }
 /// Ends the session on `error` where it is met: latches the stop its class
-/// names now, and returns the error itself for an outcome, which keeps its own
-/// reason, or the stop for a fault. The stop and the reason both derive from
-/// the class, so a producer that must leave the session terminal at the point
-/// of the error cannot pair a reason with a different stop.
+/// names now. If that stop is the first one, an outcome is returned as itself,
+/// which keeps its own reason, and a fault as the invariant it latched. If
+/// another stop was already first, the first stop is returned for either, so
+/// the error's reason and the failure's first stop cannot disagree.
 fn end_session_on(control: &mut ParseControl, error: SessionError) -> SessionError {
     let class = session_class(&error);
-    let stop = class.latch(control);
+    let first = class.latch(control);
     match class {
-        SessionClass::Outcome(_) => error,
-        SessionClass::Fault(_) => SessionError::Stop(stop),
+        SessionClass::Outcome(own) if own == first => error,
+        SessionClass::Outcome(_) | SessionClass::Fault(_) => SessionError::Stop(first),
     }
 }
 /// The result of a non-stop error that effect work met, classified by
