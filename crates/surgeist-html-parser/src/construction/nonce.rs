@@ -20,10 +20,10 @@ impl SessionStorage {
         let empty = literal_string(c, b"")?;
         let (value, raw) = self.register_string_owned(c, empty, None)?;
         drop(value);
-        self.prepare_payload_slot_owned(c)?;
-        let slot = self.payloads.values.len();
-        self.payloads
-            .push_row(RetainedPayload::Nonce { node: None, raw })
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let slot = self
+            .payloads
+            .push_row(prepared, RetainedPayload::Nonce { node: None, raw })
             .map_err(|_| latch_registry_row(c))?;
         Ok(Some(slot))
     }

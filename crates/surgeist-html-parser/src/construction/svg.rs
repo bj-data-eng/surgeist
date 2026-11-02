@@ -92,14 +92,11 @@ impl SessionStorage {
         c: &mut ParseControl,
         state: SvgScriptState,
     ) -> Result<usize, SessionError> {
-        self.prepare_payload_slot_owned(c)?;
+        let prepared = self.prepare_payload_slot_owned(c)?;
         // Slot preparation already admits the scalar copy/write and entry.
-        // Retain it immediately: no fallible gap may strand that acquired entry.
-        let slot = self.payloads.values.len();
         self.payloads
-            .values
-            .push(RetainedPayload::SvgScript { node: None, state });
-        Ok(slot)
+            .push_row(prepared, RetainedPayload::SvgScript { node: None, state })
+            .map_err(|_| latch_registry_row(c))
     }
     /// Caller preadmits this fixed binding before actual native allocation.
     pub(super) fn bind_svg_slot(

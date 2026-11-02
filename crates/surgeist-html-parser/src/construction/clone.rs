@@ -400,19 +400,25 @@ impl SessionStorage {
             (Namespace::none(), None)
         };
         let (values, allocation) = c.new_vector()?;
-        if let Err(error) = self.prepare_payload_slot_owned(c) {
-            release_vector(c, values, allocation)?;
-            return Err(error);
-        }
-        let container = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::Attributes(Some(
-            AttributeStorage::Building {
-                values,
-                allocation,
-                original_len: 0,
-                reversed_pairs: 0,
-            },
-        )));
+        let admission = match self.prepare_payload_slot_owned(c) {
+            Ok(admission) => admission,
+            Err(error) => {
+                release_vector(c, values, allocation)?;
+                return Err(error);
+            }
+        };
+        let container = self
+            .payloads
+            .push_row(
+                admission,
+                RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                    values,
+                    allocation,
+                    original_len: 0,
+                    reversed_pairs: 0,
+                })),
+            )
+            .map_err(|_| latch_registry_row(c))?;
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
         else {
@@ -581,19 +587,25 @@ impl SessionStorage {
                 (None, None)
             };
             let (values, allocation) = c.new_vector()?;
-            if let Err(error) = self.prepare_payload_slot_owned(c) {
-                release_vector(c, values, allocation)?;
-                return Err(error);
-            }
-            let stage = self.payloads.values.len();
-            self.payloads.values.push(RetainedPayload::Attributes(Some(
-                AttributeStorage::Building {
-                    values,
-                    allocation,
-                    original_len: 1,
-                    reversed_pairs: 0,
-                },
-            )));
+            let admission = match self.prepare_payload_slot_owned(c) {
+                Ok(admission) => admission,
+                Err(error) => {
+                    release_vector(c, values, allocation)?;
+                    return Err(error);
+                }
+            };
+            let stage = self
+                .payloads
+                .push_row(
+                    admission,
+                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                        values,
+                        allocation,
+                        original_len: 1,
+                        reversed_pairs: 0,
+                    })),
+                )
+                .map_err(|_| latch_registry_row(c))?;
             let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                 values: actual,
                 allocation: ticket,
@@ -675,9 +687,9 @@ impl SessionStorage {
         c: &mut ParseControl,
         payload: RetainedPayload,
     ) -> Result<usize, SessionError> {
-        self.prepare_payload_slot_for(c, row_list(&payload))?;
+        let prepared = self.prepare_payload_slot_for(c, row_list(&payload))?;
         self.payloads
-            .push_row(payload)
+            .push_row(prepared, payload)
             .map_err(|_| latch_registry_row(c))
     }
     fn prepare_clone_metadata(
@@ -752,24 +764,23 @@ impl SessionStorage {
             // attribute exactly when the source has.
             let explicit_form =
                 state.kind.listed() && self.form_attribute(c, source, "form")?.is_some();
-            self.prepare_payload_slot_with(c, Some(KindList::FormAssociation), explicit_form)?;
+            let prepared =
+                self.prepare_payload_slot_with(c, Some(KindList::FormAssociation), explicit_form)?;
             let slot = self
                 .payloads
-                .push_row(RetainedPayload::FormAssociation {
-                    node: None,
-                    state: FormAssociationState {
-                        kind: state.kind,
-                        owner: None,
-                        parser_inserted: false,
-                        evidence: FormAssociationEvidence::Created,
+                .push_row(
+                    prepared,
+                    RetainedPayload::FormAssociation {
+                        node: None,
+                        state: FormAssociationState {
+                            kind: state.kind,
+                            owner: None,
+                            parser_inserted: false,
+                            evidence: FormAssociationEvidence::Created,
+                        },
                     },
-                })
+                )
                 .map_err(|_| latch_registry_row(c))?;
-            if explicit_form {
-                self.payloads
-                    .index_explicit_form(slot)
-                    .map_err(|_| latch_registry_row(c))?;
-            }
             result.association = Some(slot);
         }
         for (name, state) in [

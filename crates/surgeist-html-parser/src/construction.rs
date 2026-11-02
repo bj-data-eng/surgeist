@@ -539,6 +539,12 @@ struct PayloadStorage {
     /// `nonce`, `open` and `checked`, and a merge touches only html and body),
     /// so rows enter the list when they are registered.
     explicit_forms: Option<KindSlots>,
+    /// Auxiliary entries admitted for rows that are not appended yet: each
+    /// [`PreparedSlot`] adds its entries when it is issued and gives them back
+    /// when its row is appended. A slot that is dropped instead of appended
+    /// leaves its entries here, so the release that retires the registry still
+    /// returns them.
+    prepared_entries: u64,
     preexisting_units: usize,
     preexisting_attributes: usize,
     /// Registry rows below this slot were audited by an earlier creation-time
@@ -700,6 +706,19 @@ enum KindList {
     AssociationDocument,
 }
 const KIND_LISTS: usize = KindList::AssociationDocument as usize + 1;
+/// The admission of one registry row: its auxiliary entry, and the entries of
+/// the lists it joins, charged before the row exists. Only
+/// `SessionStorage::prepare_payload_slot*` issues one, and `PayloadStorage::push_row`
+/// consumes it by appending the row it admitted, so a row cannot be appended
+/// unadmitted. A slot that is dropped instead leaves its entries in
+/// [`PayloadStorage::prepared_entries`], which the release of the registry
+/// returns with the entries of the rows.
+#[must_use = "an admitted slot is consumed by appending its row with `push_row`"]
+struct PreparedSlot {
+    entries: u64,
+    list: Option<KindList>,
+    explicit_form: bool,
+}
 struct KindSlots {
     slots: Vec<usize>,
     allocation: VectorCapacity<usize>,
@@ -1352,25 +1371,23 @@ impl PayloadStorage {
             .as_ref()
             .map_or(&[], |kind| kind.slots.as_slice())
     }
-    /// Lists the `FormAssociation` row at `slot` as one of a listed control
-    /// with a `form` attribute. The entry was admitted with the row; a row
-    /// without an admitted entry is refused before anything is appended.
-    fn index_explicit_form(&mut self, slot: usize) -> Result<(), SessionError> {
-        let Some(kind) = self.explicit_forms.as_mut() else {
-            return Err(SessionError::registry_row());
-        };
-        if kind.slots.len() >= kind.slots.capacity() {
+    /// Appends the row `prepared` admitted. A row already bound to a record is
+    /// joined; rows of a registry-wide kind enter that kind's list, and a row
+    /// of a listed control with a `form` attribute enters the explicit-form
+    /// list, whose entries were admitted with the row. A row of another kind
+    /// than the one admitted, or a list slot that was not admitted, refuses the
+    /// row before anything is appended.
+    fn push_row(
+        &mut self,
+        prepared: PreparedSlot,
+        row: RetainedPayload,
+    ) -> Result<usize, SessionError> {
+        let list = row_list(&row);
+        if list != prepared.list
+            || prepared.explicit_form && list != Some(KindList::FormAssociation)
+        {
             return Err(SessionError::registry_row());
         }
-        kind.slots.push(slot);
-        Ok(())
-    }
-    /// Appends a row whose slot was admitted by `prepare_payload_slot*`. A row
-    /// already bound to a record is joined; rows of a registry-wide kind enter
-    /// that kind's list, whose slot was admitted with the row. A list slot that
-    /// was not admitted refuses the row before anything is appended.
-    fn push_row(&mut self, row: RetainedPayload) -> Result<usize, SessionError> {
-        let list = row_list(&row);
         if let Some(list) = list
             && self
                 .kind_slots
@@ -1379,6 +1396,18 @@ impl PayloadStorage {
         {
             return Err(SessionError::registry_row());
         }
+        if prepared.explicit_form
+            && self
+                .explicit_forms
+                .as_ref()
+                .is_none_or(|kind| kind.slots.len() >= kind.slots.capacity())
+        {
+            return Err(SessionError::registry_row());
+        }
+        let prepared_entries = self
+            .prepared_entries
+            .checked_sub(prepared.entries)
+            .ok_or_else(SessionError::registry_row)?;
         let slot = self.values.len();
         if matches!(
             row,
@@ -1392,8 +1421,14 @@ impl PayloadStorage {
                 .checked_add(1)
                 .ok_or_else(SessionError::registry_row)?;
         }
+        self.prepared_entries = prepared_entries;
         self.values.push(row);
         if let Some(kind) = list.and_then(|list| self.kind_slots.get_mut(list as usize)) {
+            kind.slots.push(slot);
+        }
+        if prepared.explicit_form
+            && let Some(kind) = self.explicit_forms.as_mut()
+        {
             kind.slots.push(slot);
         }
         self.join_row(slot)?;
@@ -1654,6 +1689,7 @@ impl PayloadStorage {
             node_joins_allocation,
             kind_slots,
             explicit_forms,
+            prepared_entries,
             ..
         } = self;
         let mut csp_storage = crate::meta_csp::Storage::ZERO;
@@ -1686,7 +1722,8 @@ impl PayloadStorage {
                 ),
             );
         }
-        let entries = values.len() as u64;
+        // Entries admitted for rows that were never appended belong to no row.
+        let entries = (values.len() as u64).saturating_add(prepared_entries);
         // Attribute containers own references to registered string backings.
         // Dispose containers first; reverse-pop then retains the real Vec until
         // its capacity ticket is consumed.
@@ -2232,6 +2269,7 @@ impl SessionStorage {
                 node_joins_allocation,
                 kind_slots,
                 explicit_forms: None,
+                prepared_entries: 0,
                 preexisting_units: 0,
                 preexisting_attributes: 0,
                 audited_rows: 0,
@@ -2263,24 +2301,30 @@ impl SessionStorage {
             HtmlNodeKind::Document(_)
         ) {
             let facts = (|| {
-                session.prepare_payload_slot_owned(control)?;
+                let prepared = session.prepare_payload_slot_owned(control)?;
                 session
                     .payloads
-                    .push_row(RetainedPayload::Document {
-                        node: Some(0),
-                        state: template::DocumentState::Ordinary { inert: None },
-                        class: crate::HtmlDocumentClass::Html,
-                        meta: meta::MetaHistory::offline(),
-                        interaction: dialog::InteractionHistory::new(),
-                    })
+                    .push_row(
+                        prepared,
+                        RetainedPayload::Document {
+                            node: Some(0),
+                            state: template::DocumentState::Ordinary { inert: None },
+                            class: crate::HtmlDocumentClass::Html,
+                            meta: meta::MetaHistory::offline(),
+                            interaction: dialog::InteractionHistory::new(),
+                        },
+                    )
                     .map_err(|_| latch_registry_row(control))?;
-                session.prepare_payload_slot_owned(control)?;
+                let prepared = session.prepare_payload_slot_owned(control)?;
                 session
                     .payloads
-                    .push_row(RetainedPayload::NodeDocument {
-                        node: Some(0),
-                        document: DocumentRef::Owned(0),
-                    })
+                    .push_row(
+                        prepared,
+                        RetainedPayload::NodeDocument {
+                            node: Some(0),
+                            document: DocumentRef::Owned(0),
+                        },
+                    )
                     .map_err(|_| latch_registry_row(control))?;
                 Ok::<_, SessionError>(())
             })();
@@ -2521,7 +2565,10 @@ impl SessionStorage {
         Ok(handle)
     }
 
-    fn prepare_payload_slot(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
+    fn prepare_payload_slot(
+        &mut self,
+        control: &mut ParseControl,
+    ) -> Result<PreparedSlot, SessionError> {
         self.require(control)?;
         self.prepare_payload_slot_owned(control)
     }
@@ -2530,7 +2577,7 @@ impl SessionStorage {
     fn prepare_payload_slot_owned(
         &mut self,
         control: &mut ParseControl,
-    ) -> Result<(), SessionError> {
+    ) -> Result<PreparedSlot, SessionError> {
         self.prepare_payload_slot_for(control, None)
     }
     /// Admits one registry row and, for a registry-wide kind, the entry of its
@@ -2539,19 +2586,8 @@ impl SessionStorage {
         &mut self,
         control: &mut ParseControl,
         list: Option<KindList>,
-    ) -> Result<(), SessionError> {
+    ) -> Result<PreparedSlot, SessionError> {
         self.prepare_payload_slot_with(control, list, false)
-    }
-    /// Returns the entry `prepare_payload_slot_owned` admitted when the row it
-    /// was for cannot be pushed. An entry no row holds is released by nothing
-    /// else.
-    fn unprepare_payload_slot(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
-        release_logical(
-            control,
-            &self.control,
-            HtmlParseResource::AuxiliaryEntries,
-            1,
-        )
     }
     /// As `prepare_payload_slot_for`, also admitting the entry of the
     /// explicit-form list when the row is of a listed control with a `form`
@@ -2561,7 +2597,7 @@ impl SessionStorage {
         control: &mut ParseControl,
         list: Option<KindList>,
         explicit_form: bool,
-    ) -> Result<(), SessionError> {
+    ) -> Result<PreparedSlot, SessionError> {
         control.require_identity(&self.control)?;
         control.reserve_vector_geometric(
             &mut self.payloads.values,
@@ -2599,14 +2635,23 @@ impl SessionStorage {
             mem::size_of::<RetainedPayload>() as u64,
         )?;
         control.charge(WorkCategory::RecordWrite, 1)?;
-        control.acquire(
-            HtmlParseResource::AuxiliaryEntries,
-            1u64.saturating_add(u64::from(list.is_some()))
-                .saturating_add(u64::from(explicit_form)),
-        )?;
+        let entries = 1u64
+            .saturating_add(u64::from(list.is_some()))
+            .saturating_add(u64::from(explicit_form));
+        let prepared_entries = self
+            .payloads
+            .prepared_entries
+            .checked_add(entries)
+            .ok_or_else(|| latch_registry_row(control))?;
+        control.acquire(HtmlParseResource::AuxiliaryEntries, entries)?;
+        self.payloads.prepared_entries = prepared_entries;
         #[cfg(test)]
         control.note_prepared_slot();
-        Ok(())
+        Ok(PreparedSlot {
+            entries,
+            list,
+            explicit_form,
+        })
     }
     fn register_raw(
         &mut self,
@@ -2624,18 +2669,26 @@ impl SessionStorage {
         } else {
             None
         };
-        if let Err(error) = self.prepare_payload_slot_owned(control) {
-            raw.release(control)?;
-            return Err(error);
-        }
+        let prepared = match self.prepare_payload_slot_owned(control) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                raw.release(control)?;
+                return Err(error);
+            }
+        };
         let (value, allocation) = raw.into_parts();
-        let index = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::String {
-            value,
-            allocation,
-            origins,
-            location: StringLocation::Detached,
-        });
+        let index = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::String {
+                    value,
+                    allocation,
+                    origins,
+                    location: StringLocation::Detached,
+                },
+            )
+            .map_err(|_| latch_registry_row(control))?;
         let Some(RetainedPayload::String {
             value,
             allocation,
@@ -2744,21 +2797,27 @@ impl SessionStorage {
             }
             let container = self.element_attribute_container(control, node.index)?;
             let (values, allocation) = control.new_vector()?;
-            if let Err(error) = self.prepare_payload_slot(control) {
-                release_vector(control, values, allocation)?;
-                return Err(error);
-            }
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            let prepared = match self.prepare_payload_slot(control) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    release_vector(control, values, allocation)?;
+                    return Err(error);
+                }
+            };
             let count = attributes.len();
-            let stage = self.payloads.values.len();
-            self.payloads.values.push(RetainedPayload::Attributes(Some(
-                AttributeStorage::Building {
-                    values,
-                    allocation,
-                    original_len: count,
-                    reversed_pairs: 0,
-                },
-            )));
+            let stage = self
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                        values,
+                        allocation,
+                        original_len: count,
+                        reversed_pairs: 0,
+                    })),
+                )
+                .map_err(|_| latch_registry_row(control))?;
+            control.charge(WorkCategory::RecordVisit, 1)?;
             let mut remaining = count;
             while let Some(attribute) = attributes.try_pop(control)? {
                 let (local, local_ticket) = match self.register_text(control, attribute.name) {
@@ -3693,18 +3752,26 @@ impl SessionStorage {
         value: FrozenUtf16,
         origins: Option<OriginGroupRef>,
     ) -> Result<(DocumentString, usize), SessionError> {
-        if let Err(error) = self.prepare_payload_slot_owned(control) {
-            value.release(control)?;
-            return Err(error);
-        }
+        let prepared = match self.prepare_payload_slot_owned(control) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                value.release(control)?;
+                return Err(error);
+            }
+        };
         let (value, allocation) = value.into_parts();
-        let index = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::String {
-            value,
-            allocation,
-            origins,
-            location: StringLocation::Detached,
-        });
+        let index = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::String {
+                    value,
+                    allocation,
+                    origins,
+                    location: StringLocation::Detached,
+                },
+            )
+            .map_err(|_| latch_registry_row(control))?;
         let Some(RetainedPayload::String {
             value,
             allocation,
@@ -3851,19 +3918,25 @@ impl SessionStorage {
             let (values, allocation) = control.new_vector()?;
             control.charge(WorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
-            if let Err(error) = self.prepare_payload_slot(control) {
-                release_vector(control, values, allocation)?;
-                return Err(error);
-            }
-            let container = self.payloads.values.len();
-            self.payloads.values.push(RetainedPayload::Attributes(Some(
-                AttributeStorage::Building {
-                    values,
-                    allocation,
-                    original_len,
-                    reversed_pairs: 0,
-                },
-            )));
+            let admission = match self.prepare_payload_slot(control) {
+                Ok(admission) => admission,
+                Err(error) => {
+                    release_vector(control, values, allocation)?;
+                    return Err(error);
+                }
+            };
+            let container = self
+                .payloads
+                .push_row(
+                    admission,
+                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                        values,
+                        allocation,
+                        original_len,
+                        reversed_pairs: 0,
+                    })),
+                )
+                .map_err(|_| latch_registry_row(control))?;
             // Names and values register as adjacent rows, last attribute first.
             let mut last_name_slot = None;
             while let Some(attribute) = attributes.try_pop(control)? {
@@ -4430,19 +4503,25 @@ impl SessionStorage {
         let result = (|| {
             name.release(control)?;
             let (values, allocation) = control.new_vector()?;
-            if let Err(error) = self.prepare_payload_slot(control) {
-                release_vector(control, values, allocation)?;
-                return Err(error);
-            }
-            let stage = self.payloads.values.len();
-            self.payloads.values.push(RetainedPayload::Attributes(Some(
-                AttributeStorage::Building {
-                    values,
-                    allocation,
-                    original_len: count,
-                    reversed_pairs: 0,
-                },
-            )));
+            let prepared = match self.prepare_payload_slot(control) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    release_vector(control, values, allocation)?;
+                    return Err(error);
+                }
+            };
+            let stage = self
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Attributes(Some(AttributeStorage::Building {
+                        values,
+                        allocation,
+                        original_len: count,
+                        reversed_pairs: 0,
+                    })),
+                )
+                .map_err(|_| latch_registry_row(control))?;
             let mut remaining = count;
             while !attributes.as_slice().is_empty() {
                 control.charge(WorkCategory::RecordVisit, 1)?;
@@ -6816,29 +6895,31 @@ impl ParserArenaSession {
             .fragment
             .as_ref()
             .is_some_and(|fragment| fragment.mode == crate::HtmlParserScriptingMode::Inert);
-        storage.prepare_payload_slot(control)?;
-        let script = storage.payloads.values.len();
+        let prepared = storage.prepare_payload_slot(control)?;
         payload_write::<Option<usize>>(control, 1)?;
-        storage
+        let script = storage
             .payloads
-            .push_row(RetainedPayload::Script {
-                node: None,
-                metadata: ScriptMetadata {
-                    parser_document: Some(DocumentRef::Owned(0)),
-                    preparation_document: None,
-                    flags: {
-                        let mut flags = HtmlScriptFlags::fresh();
-                        flags.mark_parser_inserted();
-                        if inert {
-                            flags.mark_already_started();
-                        }
-                        flags
+            .push_row(
+                prepared,
+                RetainedPayload::Script {
+                    node: None,
+                    metadata: ScriptMetadata {
+                        parser_document: Some(DocumentRef::Owned(0)),
+                        preparation_document: None,
+                        flags: {
+                            let mut flags = HtmlScriptFlags::fresh();
+                            flags.mark_parser_inserted();
+                            if inert {
+                                flags.mark_already_started();
+                            }
+                            flags
+                        },
+                        script_type: None,
+                        result: HtmlScriptResult::Uninitialized,
+                        steps_when_result_ready: None,
                     },
-                    script_type: None,
-                    result: HtmlScriptResult::Uninitialized,
-                    steps_when_result_ready: None,
                 },
-            })
+            )
             .map_err(|_| latch_registry_row(control))?;
         let node = self.allocate_for_creation(
             control,
@@ -7228,34 +7309,46 @@ impl ParserArenaSession {
         )?;
         let link_slot = if exact_ascii(control, Some(tag.name.value.text()), "link")? {
             storage.document_slot(control, 0)?;
-            storage.prepare_payload_slot(control)?;
+            let prepared = storage.prepare_payload_slot(control)?;
             payload_write::<(Option<usize>, Option<DocumentRef>)>(control, 1)?;
-            let slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::Link {
-                node: None,
-                parser_document: Some(DocumentRef::Owned(0)),
-            });
+            let slot = storage
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Link {
+                        node: None,
+                        parser_document: Some(DocumentRef::Owned(0)),
+                    },
+                )
+                .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
             None
         };
         let details_slot = if let Some(notification) = details_domain {
-            storage.prepare_payload_slot(control)?;
-            let slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::Details {
-                node: None,
-                notification,
-            });
+            let prepared = storage.prepare_payload_slot(control)?;
+            let slot = storage
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Details {
+                        node: None,
+                        notification,
+                    },
+                )
+                .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
             None
         };
         let select_slot = if let Some(state) = select_metadata {
-            storage.prepare_payload_slot(control)?;
-            let slot = storage.payloads.values.len();
-            storage
+            let prepared = storage.prepare_payload_slot(control)?;
+            let slot = storage
                 .payloads
-                .push_row(RetainedPayload::SelectFamily { node: None, state })
+                .push_row(
+                    prepared,
+                    RetainedPayload::SelectFamily { node: None, state },
+                )
                 .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
@@ -7266,28 +7359,38 @@ impl ParserArenaSession {
         let textarea_slot = if kind == Some(HtmlNativeFormAssociationKind::Textarea) {
             let empty = literal_string(control, b"")?;
             let raw = storage.register_raw(control, empty)?;
-            storage.prepare_payload_slot(control)?;
-            let slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::Textarea {
-                node: None,
-                state: TextareaState {
-                    raw,
-                    flags: HtmlTextareaFlags::default(),
-                },
-            });
+            let prepared = storage.prepare_payload_slot(control)?;
+            let slot = storage
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Textarea {
+                        node: None,
+                        state: TextareaState {
+                            raw,
+                            flags: HtmlTextareaFlags::default(),
+                        },
+                    },
+                )
+                .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
             None
         };
         let output_slot = if kind == Some(HtmlNativeFormAssociationKind::Output) {
-            storage.prepare_payload_slot(control)?;
-            let slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::Output {
-                node: None,
-                state: OutputState {
-                    default_value_override: OutputDefaultValueOverride::Null,
-                },
-            });
+            let prepared = storage.prepare_payload_slot(control)?;
+            let slot = storage
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Output {
+                        node: None,
+                        state: OutputState {
+                            default_value_override: OutputDefaultValueOverride::Null,
+                        },
+                    },
+                )
+                .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
             None
@@ -7295,23 +7398,25 @@ impl ParserArenaSession {
         let input_slot = if kind == Some(HtmlNativeFormAssociationKind::Input) {
             let empty = literal_string(control, b"")?;
             let raw = storage.register_raw(control, empty)?;
-            storage.prepare_payload_slot(control)?;
-            let slot = storage.payloads.values.len();
-            storage
+            let prepared = storage.prepare_payload_slot(control)?;
+            let slot = storage
                 .payloads
-                .push_row(RetainedPayload::Input {
-                    node: None,
-                    raw,
-                    complete: false,
-                    state: InputState {
-                        flags: crate::HtmlInputFlags::fresh(),
-                        cursor: 0,
-                        selected_files_empty: true,
-                        value_rewritten_during_creation: false,
-                        email_value_count: None,
-                        image: input_image::ImageState::NeverEntered,
+                .push_row(
+                    prepared,
+                    RetainedPayload::Input {
+                        node: None,
+                        raw,
+                        complete: false,
+                        state: InputState {
+                            flags: crate::HtmlInputFlags::fresh(),
+                            cursor: 0,
+                            selected_files_empty: true,
+                            value_rewritten_during_creation: false,
+                            email_value_count: None,
+                            image: input_image::ImageState::NeverEntered,
+                        },
                     },
-                })
+                )
                 .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
@@ -7320,23 +7425,31 @@ impl ParserArenaSession {
         let source_slot = if let Some((token, value_attribute)) = input_sources {
             let entries = if value_attribute.is_some() { 2 } else { 1 };
             control.acquire(HtmlParseResource::SourceMapEntries, entries)?;
-            if let Err(error) = storage.prepare_payload_slot(control) {
-                // The slot refusal is the error reported; a refused logical
-                // release has latched its own stop in the controller.
-                let _ = release_logical(
-                    control,
-                    &storage.control,
-                    HtmlParseResource::SourceMapEntries,
-                    entries,
-                );
-                return Err(error);
-            }
-            let slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::InputSource {
-                node: None,
-                token,
-                value_attribute,
-            });
+            let prepared = match storage.prepare_payload_slot(control) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    // The slot refusal is the error reported; a refused logical
+                    // release has latched its own stop in the controller.
+                    let _ = release_logical(
+                        control,
+                        &storage.control,
+                        HtmlParseResource::SourceMapEntries,
+                        entries,
+                    );
+                    return Err(error);
+                }
+            };
+            let slot = storage
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::InputSource {
+                        node: None,
+                        token,
+                        value_attribute,
+                    },
+                )
+                .map_err(|_| latch_registry_row(control))?;
             Some(slot)
         } else {
             None
@@ -7347,38 +7460,34 @@ impl ParserArenaSession {
             || kind == Some(HtmlNativeFormAssociationKind::Select);
         let slot = if let Some(kind) = kind {
             storage.require(control)?;
-            storage.prepare_payload_slot_with(
+            let prepared = storage.prepare_payload_slot_with(
                 control,
                 Some(KindList::FormAssociation),
                 explicit_form,
             )?;
-            let slot = storage.payloads.values.len();
-            storage
+            let slot = storage
                 .payloads
-                .push_row(RetainedPayload::FormAssociation {
-                    node: None,
-                    state: FormAssociationState {
-                        kind,
-                        owner: if reset_before_association {
-                            None
-                        } else {
-                            owner
-                        },
-                        parser_inserted: !reset_before_association && owner.is_some(),
-                        evidence: if !reset_before_association && owner.is_some() {
-                            FormAssociationEvidence::ParserAssociated
-                        } else {
-                            FormAssociationEvidence::Created
+                .push_row(
+                    prepared,
+                    RetainedPayload::FormAssociation {
+                        node: None,
+                        state: FormAssociationState {
+                            kind,
+                            owner: if reset_before_association {
+                                None
+                            } else {
+                                owner
+                            },
+                            parser_inserted: !reset_before_association && owner.is_some(),
+                            evidence: if !reset_before_association && owner.is_some() {
+                                FormAssociationEvidence::ParserAssociated
+                            } else {
+                                FormAssociationEvidence::Created
+                            },
                         },
                     },
-                })
+                )
                 .map_err(|_| latch_registry_row(control))?;
-            if explicit_form {
-                storage
-                    .payloads
-                    .index_explicit_form(slot)
-                    .map_err(|_| latch_registry_row(control))?;
-            }
             Some(slot)
         } else {
             None

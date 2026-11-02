@@ -74,14 +74,17 @@ impl ParserArenaSession {
         }
         c.charge(WorkCategory::ProviderCall, 1)?;
         payload_write::<HtmlParseBaseFacts>(c, 1)?;
-        storage.prepare_payload_slot_owned(c)?;
+        let prepared = storage.prepare_payload_slot_owned(c)?;
         storage
             .payloads
-            .push_row(RetainedPayload::BaseDocument {
-                node: 0,
-                facts: facts.clone(),
-                first: None,
-            })
+            .push_row(
+                prepared,
+                RetainedPayload::BaseDocument {
+                    node: 0,
+                    facts: facts.clone(),
+                    first: None,
+                },
+            )
             .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
@@ -133,13 +136,16 @@ impl SessionStorage {
         ) {
             return Ok(());
         }
-        self.prepare_payload_slot_for(c, Some(KindList::Base))?;
+        let prepared = self.prepare_payload_slot_for(c, Some(KindList::Base))?;
         self.payloads
-            .push_row(RetainedPayload::Base {
-                node: Some(node),
-                domain,
-                frozen: BaseValue::Unfrozen,
-            })
+            .push_row(
+                prepared,
+                RetainedPayload::Base {
+                    node: Some(node),
+                    domain,
+                    frozen: BaseValue::Unfrozen,
+                },
+            )
             .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }

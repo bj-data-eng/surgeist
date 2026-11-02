@@ -196,17 +196,20 @@ impl SessionStorage {
         }
         let document = document.try_clone(c)?;
         payload_write::<DocumentCapture>(c, 1)?;
-        self.prepare_payload_slot_for(c, Some(KindList::AssociationDocument))?;
-        let slot = self.payloads.values.len();
-        self.payloads
-            .push_row(RetainedPayload::AssociationDocument(DocumentCapture {
-                document,
-                count: 0,
-                obligations: 0,
-                last: None,
-                missing: None,
-                missing_at: None,
-            }))
+        let prepared = self.prepare_payload_slot_for(c, Some(KindList::AssociationDocument))?;
+        let slot = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::AssociationDocument(DocumentCapture {
+                    document,
+                    count: 0,
+                    obligations: 0,
+                    last: None,
+                    missing: None,
+                    missing_at: None,
+                }),
+            )
             .map_err(|_| latch_registry_row(c))?;
         Ok(slot)
     }
@@ -477,16 +480,19 @@ impl SessionStorage {
             list.release(c)?;
             return Ok(None);
         }
-        if let Err(error) = self.prepare_payload_slot_owned(c) {
-            list.release(c)?;
-            return Err(error);
-        }
-        let order = OrderRef {
-            slot: self.payloads.values.len(),
-            len: list.len(),
+        let prepared = match self.prepare_payload_slot_owned(c) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                list.release(c)?;
+                return Err(error);
+            }
         };
-        self.payloads.values.push(RetainedPayload::StyleOrder(list));
-        Ok(Some(order))
+        let len = list.len();
+        let slot = self
+            .payloads
+            .push_row(prepared, RetainedPayload::StyleOrder(list))
+            .map_err(|_| latch_registry_row(c))?;
+        Ok(Some(OrderRef { slot, len }))
     }
     /// Applies a style element's insertion or removal to the main tree's style
     /// order. A removal, or an insertion that is not after every listed style,
@@ -624,17 +630,21 @@ impl SessionStorage {
         usage.add(bytes, retained.utf16_extent(), 0, c)?;
         usage.acquire(c)?;
         let value = value.clone();
-        if let Err(error) = self.prepare_payload_slot_owned(c) {
-            drop(value);
-            usage.release(c, &self.control)?;
-            return Err(error);
-        }
-        let index = self.payloads.values.len();
-        self.payloads
-            .values
-            .push(RetainedPayload::AssociationCapturedContext(
-                CapturedContext { value, usage },
-            ));
+        let prepared = match self.prepare_payload_slot_owned(c) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                drop(value);
+                usage.release(c, &self.control)?;
+                return Err(error);
+            }
+        };
+        let index = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::AssociationCapturedContext(CapturedContext { value, usage }),
+            )
+            .map_err(|_| latch_registry_row(c))?;
         Ok(Some(index))
     }
     fn association_context(
@@ -929,16 +939,19 @@ impl SessionStorage {
                     values.release(c)?;
                     return Err(SessionError::Stop(stop));
                 }
-                if let Err(error) = self.prepare_payload_slot_owned(c) {
-                    // The error returned is the first; a refusal of the release
-                    // is latched behind it.
-                    let _ = release_occurrence(values, c);
-                    return Err(error);
-                }
-                let slot = self.payloads.values.len();
-                self.payloads
-                    .values
-                    .push(RetainedPayload::AssociationOccurrence(values));
+                let prepared = match self.prepare_payload_slot_owned(c) {
+                    Ok(prepared) => prepared,
+                    Err(error) => {
+                        // The error returned is the first; a refusal of the
+                        // release is latched behind it.
+                        let _ = release_occurrence(values, c);
+                        return Err(error);
+                    }
+                };
+                let slot = self
+                    .payloads
+                    .push_row(prepared, RetainedPayload::AssociationOccurrence(values))
+                    .map_err(|_| latch_registry_row(c))?;
                 if styled {
                     self.payloads
                         .join_latest(node, Join::StyleOccurrence, slot)

@@ -420,24 +420,30 @@ impl SessionStorage {
             HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
                 // Both finite facts are admitted before the native Document is
                 // installed. No fallible alias/binding gap follows allocation.
-                self.prepare_payload_slot_owned(c)?;
-                let fact = self.payloads.values.len();
-                self.payloads
-                    .push_row(RetainedPayload::Document {
-                        node: None,
-                        state: DocumentState::InertTemplate,
-                        class,
-                        meta: meta::MetaHistory::offline(),
-                        interaction: dialog::InteractionHistory::new(),
-                    })
+                let prepared = self.prepare_payload_slot_owned(c)?;
+                let fact = self
+                    .payloads
+                    .push_row(
+                        prepared,
+                        RetainedPayload::Document {
+                            node: None,
+                            state: DocumentState::InertTemplate,
+                            class,
+                            meta: meta::MetaHistory::offline(),
+                            interaction: dialog::InteractionHistory::new(),
+                        },
+                    )
                     .map_err(|_| latch_registry_row(c))?;
-                self.prepare_payload_slot_owned(c)?;
-                let binding = self.payloads.values.len();
-                self.payloads
-                    .push_row(RetainedPayload::NodeDocument {
-                        node: None,
-                        document: DocumentRef::Owned(self.construction.storage(c)?.len()),
-                    })
+                let prepared = self.prepare_payload_slot_owned(c)?;
+                let binding = self
+                    .payloads
+                    .push_row(
+                        prepared,
+                        RetainedPayload::NodeDocument {
+                            node: None,
+                            document: DocumentRef::Owned(self.construction.storage(c)?.len()),
+                        },
+                    )
                     .map_err(|_| latch_registry_row(c))?;
                 payload_write::<[Option<usize>; 2]>(c, 2)?;
                 payload_write::<DocumentState>(c, 1)?;
@@ -511,18 +517,21 @@ impl SessionStorage {
             if !template {
                 return Ok(None);
             }
-            self.prepare_payload_slot_owned(c)?;
-            let facts = self.payloads.values.len();
+            let prepared = self.prepare_payload_slot_owned(c)?;
             let records = self.construction.storage(c)?.len();
             let contents = successor(c, records)?;
-            self.payloads
-                .push_row(RetainedPayload::Template {
-                    node: None,
-                    state: TemplateMetadata::fresh(
-                        contents,
-                        HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
-                    ),
-                })
+            let facts = self
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Template {
+                        node: None,
+                        state: TemplateMetadata::fresh(
+                            contents,
+                            HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
+                        ),
+                    },
+                )
                 .map_err(|_| latch_registry_row(c))?;
             return Ok(Some(PreparedDocuments {
                 binding: None,
@@ -569,40 +578,49 @@ impl SessionStorage {
         } else {
             None
         };
-        self.prepare_payload_slot_owned(c)?;
-        let binding = self.payloads.values.len();
-        self.payloads
-            .push_row(RetainedPayload::NodeDocument {
-                node: None,
-                document,
-            })
-            .map_err(|_| latch_registry_row(c))?;
-        let contents_binding = if let Some(document) = contents_document {
-            self.prepare_payload_slot_owned(c)?;
-            let slot = self.payloads.values.len();
-            self.payloads
-                .push_row(RetainedPayload::NodeDocument {
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let binding = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::NodeDocument {
                     node: None,
                     document,
-                })
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
+        let contents_binding = if let Some(document) = contents_document {
+            let prepared = self.prepare_payload_slot_owned(c)?;
+            let slot = self
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::NodeDocument {
+                        node: None,
+                        document,
+                    },
+                )
                 .map_err(|_| latch_registry_row(c))?;
             Some(slot)
         } else {
             None
         };
         let facts = if template {
-            self.prepare_payload_slot_owned(c)?;
-            let slot = self.payloads.values.len();
+            let prepared = self.prepare_payload_slot_owned(c)?;
             let records = self.construction.storage(c)?.len();
             let contents = successor(c, records)?;
-            self.payloads
-                .push_row(RetainedPayload::Template {
-                    node: None,
-                    state: TemplateMetadata::fresh(
-                        contents,
-                        HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
-                    ),
-                })
+            let slot = self
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Template {
+                        node: None,
+                        state: TemplateMetadata::fresh(
+                            contents,
+                            HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
+                        ),
+                    },
+                )
                 .map_err(|_| latch_registry_row(c))?;
             Some(slot)
         } else {
@@ -876,14 +894,16 @@ impl ParserArenaSession {
         if Some(start) == end {
             return Ok(true);
         }
-        storage.prepare_payload_slot_owned(c)?;
-        let list = storage.payloads.values.len();
-        storage
+        let prepared = storage.prepare_payload_slot_owned(c)?;
+        let list = storage
             .payloads
-            .values
-            .push(RetainedPayload::WorkList(Some(OwnedVec::new(
-                HtmlParseResource::AuxiliaryEntries,
-            )?)));
+            .push_row(
+                prepared,
+                RetainedPayload::WorkList(Some(OwnedVec::new(
+                    HtmlParseResource::AuxiliaryEntries,
+                )?)),
+            )
+            .map_err(|_| latch_registry_row(c))?;
         let mut next = storage.next_sibling(c, start)?;
         while let Some(current) = next {
             if Some(current) == end {

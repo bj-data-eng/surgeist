@@ -9,6 +9,10 @@
 //! that slot is prepared, which is the first refusal of any step between the
 //! slot's admission and its row. Every such stop must leave every retained
 //! resource at zero after cleanup.
+use super::base::{BaseValue, ResponseDomain};
+use super::tests::storage_zero;
+use super::{KindList, RetainedPayload};
+use crate::construction::effects::tests::{graph, request};
 use crate::parser::control::{prepared_slots, stop_after_prepared_slot};
 use crate::parser::tree_builder::tests::limits;
 use crate::{
@@ -46,13 +50,13 @@ struct Stopped {
     at_stop: Option<crate::HtmlParseUsage>,
     after_cleanup: Option<crate::HtmlParseUsage>,
 }
-fn stopped(failure: &HtmlParseFailure) -> Stopped {
-    Stopped {
+fn stopped(failure: &HtmlParseFailure) -> Box<Stopped> {
+    Box::new(Stopped {
         stop: failure.first_stop(),
         cleanup_refused: failure.cleanup_error().is_some(),
         at_stop: failure.at_stop().cloned(),
         after_cleanup: failure.after_cleanup().cloned(),
-    }
+    })
 }
 
 /// Notes in `retained` what the stopped parse `stop` left, under `label`.
@@ -83,7 +87,7 @@ fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
 /// limit of the work, capacity and entries the parse had used by then, so the
 /// next step to charge any of them is refused. Returns what any stop left.
 fn retained_after_each_prepared_slot(
-    parse: &dyn Fn(HtmlParseLimits) -> Result<(), Stopped>,
+    parse: &dyn Fn(HtmlParseLimits) -> Result<(), Box<Stopped>>,
 ) -> Vec<String> {
     let unrestricted = limits(100);
     stop_after_prepared_slot(None);
@@ -133,7 +137,7 @@ fn retained_after_each_prepared_slot(
 }
 
 #[track_caller]
-fn assert_nothing_retained(parse: &dyn Fn(HtmlParseLimits) -> Result<(), Stopped>) {
+fn assert_nothing_retained(parse: &dyn Fn(HtmlParseLimits) -> Result<(), Box<Stopped>>) {
     let retained = retained_after_each_prepared_slot(parse);
     assert!(
         retained.is_empty(),
@@ -143,7 +147,7 @@ fn assert_nothing_retained(parse: &dyn Fn(HtmlParseLimits) -> Result<(), Stopped
     );
 }
 
-fn document(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Stopped> {
+fn document(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Box<Stopped>> {
     move |limits| {
         crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits)
             .parse()
@@ -187,7 +191,7 @@ fn fragment_context() -> HtmlFragmentContext {
     HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap()
 }
 
-fn fragment(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Stopped> {
+fn fragment(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Box<Stopped>> {
     move |limits| {
         crate::HtmlFragmentParseRequest::with_options(
             HtmlSource::utf8(source),
@@ -409,4 +413,38 @@ fn processed_policy_rows_leave_nothing_retained_when_the_parse_stops_after_their
         .map(drop)
         .map_err(|failure| stopped(failure.parse_failure()))
     });
+}
+
+#[test]
+fn a_slot_dropped_without_its_row_is_returned_by_the_release() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    // One slot of a plain row, one that also admits the entry of a list.
+    drop(storage.prepare_payload_slot_owned(&mut c).unwrap());
+    drop(
+        storage
+            .prepare_payload_slot_for(&mut c, Some(KindList::Base))
+            .unwrap(),
+    );
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_row_of_another_kind_than_its_slot_admitted_is_refused_and_still_released() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    let rows = storage.payloads.values.len();
+    let prepared = storage.prepare_payload_slot_owned(&mut c).unwrap();
+    let base = RetainedPayload::Base {
+        node: None,
+        domain: ResponseDomain::Unavailable,
+        frozen: BaseValue::Unfrozen,
+    };
+    assert!(storage.payloads.push_row(prepared, base).is_err());
+    assert_eq!(storage.payloads.values.len(), rows, "nothing was appended");
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
 }
