@@ -5989,3 +5989,6 @@ fn grid_intrinsic_track_constraints_override_finite_viewport_f32() {
 fn grid_intrinsic_track_constraints_override_finite_viewport_f64() {
     assert_grid_intrinsic_track_constraints::<f64>();
 }
+
+#[path = "tracks_intrinsic/native_flex_spans.rs"]
+mod native_flex_spans;
