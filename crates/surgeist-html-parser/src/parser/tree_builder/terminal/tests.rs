@@ -2325,6 +2325,36 @@ fn failed_extraction_cleanup_refusal_keeps_actual_evidence_for_retry_or_disposal
 }
 
 #[test]
+fn a_refused_evidence_take_leaves_the_flag_clear_so_a_retry_takes_it() {
+    let request = HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<div>A"),
+        super::super::tests::limits(100),
+    );
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    request.cancellation().cancel();
+    assert!(driver.step().is_err());
+    // Cancelled before any head stage, the session is the prologue's. Without
+    // it the take is refused before it reaches the session, so the evidence
+    // has not been taken.
+    assert!(driver.head.is_none() && driver.before.is_none());
+    let prologue = driver.prologue.take().unwrap();
+    let refused = driver.reclaim_failed().err().unwrap();
+    assert!(matches!(refused, StandaloneError::Consumed), "{refused:?}");
+    assert!(!driver.evidence_taken);
+    assert!(driver.failed_evidence.is_none());
+    driver.prologue = Some(prologue);
+    driver.reclaim_failed().unwrap();
+    assert!(driver.evidence_taken);
+    driver
+        .failed_evidence
+        .take()
+        .unwrap()
+        .release(&mut driver.control)
+        .unwrap();
+    super::super::tests::assert_released(&driver.control);
+}
+
+#[test]
 fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
     let limits = super::super::tests::limits(100)
         .into_builder()

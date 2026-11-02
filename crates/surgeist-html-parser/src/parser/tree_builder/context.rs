@@ -1362,6 +1362,34 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_evidence_take_leaves_the_fragment_flag_clear_so_a_retry_takes_it() {
+        let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
+        let mut driver = initialized_driver(&request);
+        request.cancellation().cancel();
+        assert!(driver.step().is_err());
+        // Without its stage state the take is refused before it reaches the
+        // session, so the evidence has not been taken.
+        let state = driver.head.as_mut().unwrap().state.take().unwrap();
+        let refused = driver.reclaim_failed().err().unwrap();
+        assert!(
+            matches!(refused, FragmentExecutionError::Consumed),
+            "{refused:?}"
+        );
+        assert!(!driver.evidence_taken);
+        assert!(driver.failed_evidence.is_none());
+        driver.head.as_mut().unwrap().state = Some(state);
+        driver.reclaim_failed().unwrap();
+        assert!(driver.evidence_taken);
+        driver
+            .failed_evidence
+            .take()
+            .unwrap()
+            .release(&mut driver.control)
+            .unwrap();
+        super::super::tests::assert_released(&driver.control);
+    }
+
+    #[test]
     fn initialization_context_reset_uses_real_stack_template_modes_and_head_pointer() {
         // A single root uses the captured context as the last node: td/th/head
         // do not acquire the modes of a real non-last stack element.

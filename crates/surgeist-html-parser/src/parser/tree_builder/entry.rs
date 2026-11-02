@@ -661,6 +661,21 @@ mod tests {
         assert_eq!(entry.at_stop(), Some(&first));
     }
     #[test]
+    fn a_refused_evidence_take_leaves_the_entry_flag_clear() {
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits());
+        let mut entry = OrdinaryDocumentEntry::new(&request);
+        assert!(entry.failure().is_none());
+        request.cancellation().cancel();
+        assert!(entry.take_driver().is_err());
+        // A session that was already released refuses the take, which is not
+        // an extraction that happened.
+        let driver = entry.driver.as_mut().unwrap();
+        let kernel = driver.prologue.as_mut().unwrap().kernel.as_mut().unwrap();
+        kernel.session.release(&mut driver.control).unwrap();
+        assert!(entry.cleanup_failure().is_err());
+        assert!(!entry.driver.as_ref().unwrap().evidence_taken);
+    }
+    #[test]
     fn cancellation_before_driver_take_retains_real_empty_evidence_then_disposes_it() {
         let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits());
         let mut entry = OrdinaryDocumentEntry::new(&request);
