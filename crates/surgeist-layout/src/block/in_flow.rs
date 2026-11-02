@@ -974,11 +974,13 @@ where
         let child_inline_demand = (logical_child_margin.inline_sum() + logical_child_size.inline)
             .max(border_inline_span + logical_child_margin.inline_end);
         intrinsic_inline_demand = intrinsic_inline_demand.max(child_inline_demand);
+        // Export normal baseline facts; relative movement belongs to visual
+        // placement, not to the baseline used by a parent's normal line.
         baselines
             .resolved_child(
                 output,
                 child_flow_axes,
-                location,
+                flow_location,
                 super::baseline_frame::BaselineFrame::Measured {
                     used_size: containing_size.map(LayoutScalar::to_f64),
                     axes: constants.flow_axes,
