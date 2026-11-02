@@ -22,10 +22,6 @@ fn exact_string(value: &DocumentString, expected: &str) -> bool {
         .eq(expected.encode_utf16())
 }
 
-fn html_namespace(namespace: Option<&DocumentString>) -> bool {
-    namespace.is_some_and(|uri| exact_string(uri, "http://www.w3.org/1999/xhtml"))
-}
-
 macro_rules! vocabulary {
     ($(#[$meta:meta])* $name:ident, $namespace:ident, [$($variant:ident => $local:literal),* $(,)?]) => {
         $(#[$meta])*
@@ -58,7 +54,7 @@ impl KnownHtmlElement {
     /// Unknown, foreign, uppercase, and malformed names return `None`. The raw
     /// name remains unchanged; this is recognition, not HTML parser case folding.
     pub fn from_name(name: &(impl crate::HtmlNameInput + ?Sized)) -> Option<Self> {
-        html_namespace(name.namespace_uri()).then(|| {
+        crate::values::is_html_namespace_uri(name.namespace_uri()).then(|| {
             Self::ALL
                 .iter()
                 .copied()

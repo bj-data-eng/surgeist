@@ -1352,12 +1352,7 @@ impl HtmlBooleanAttribute {
 }
 
 fn html_element_namespace(element: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
-    element.namespace_uri().is_some_and(|uri| {
-        uri.code_units()
-            .iter()
-            .copied()
-            .eq("http://www.w3.org/1999/xhtml".encode_utf16())
-    })
+    crate::values::is_html_namespace_uri(element.namespace_uri())
 }
 
 fn applies(
