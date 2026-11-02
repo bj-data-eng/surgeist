@@ -6,6 +6,41 @@
 use super::select::SelectMetadata;
 use super::*;
 
+#[cfg(test)]
+std::thread_local! {
+    /// How many effect drains on this thread, which is where a parse runs, pass
+    /// before one raises the armed error as its own work, and every drain
+    /// counted so far.
+    static EFFECT_FAULT: std::cell::Cell<(Option<(usize, SessionError)>, usize)> =
+        const { std::cell::Cell::new((None, 0)) };
+}
+/// Arranges for the effect drain after `passing` others on this thread to fail
+/// with `error`, as effect work that met a state it cannot continue from.
+#[cfg(test)]
+pub(crate) fn fault_effect_drain(passing: usize, error: SessionError) {
+    EFFECT_FAULT.set((Some((passing, error)), 0));
+}
+/// The armed error if no drain raised it, and how many drains ran. This clears
+/// the hook.
+#[cfg(test)]
+pub(crate) fn take_effect_fault() -> (Option<SessionError>, usize) {
+    let (armed, drains) = EFFECT_FAULT.take();
+    (armed.map(|(_, error)| error), drains)
+}
+#[cfg(test)]
+fn effect_fault_due() -> Option<SessionError> {
+    let (armed, drains) = EFFECT_FAULT.take();
+    let due = match armed {
+        Some((passing, error)) if passing == drains => Some(error),
+        other => {
+            EFFECT_FAULT.set((other, drains + 1));
+            return None;
+        }
+    };
+    EFFECT_FAULT.set((None, drains + 1));
+    due
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum IntrinsicTask {
     UpdateSelect(usize),
@@ -277,6 +312,10 @@ impl SessionStorage {
         service: &mut Option<&mut dyn crate::meta_csp::Service>,
     ) -> Result<(), SessionError> {
         let result = (|| {
+            #[cfg(test)]
+            if let Some(error) = effect_fault_due() {
+                return Err(error);
+            }
             loop {
                 c.require_identity(&self.control)?;
                 c.charge(WorkCategory::RecordVisit, 2)?;

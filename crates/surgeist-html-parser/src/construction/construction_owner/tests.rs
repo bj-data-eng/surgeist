@@ -614,3 +614,106 @@ fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row
     other.retire(&mut control).unwrap();
     drained(owner, &mut control);
 }
+
+/// Every refusal HTML's construction owner can return, with the error the
+/// session reports for it. The owner's error enum is open to later variants,
+/// which the compiler cannot make this crate classify, so this table is the
+/// inventory: a variant added to it needs a row here.
+///
+/// - Handle, placement and cycle refusals are document-shaped errors the
+///   callers classify themselves and latch nothing.
+/// - A shared payload that was aliased and a count that cannot be represented
+///   keep their own stops.
+/// - A ticket, layout or release that disagrees with what was charged is the
+///   charged-accounting fault, and an allocation that failed is a reached
+///   environment stop, not an invariant.
+/// - Every other refusal is the owner declining a request that the parser's
+///   sequencing guarantees valid.
+#[test]
+fn every_construction_owner_refusal_reports_what_it_violates() {
+    use HtmlConstructionError as E;
+    let invariant = |invariant| SessionError::Stop(ParseStop::InternalInvariant(invariant));
+    let mismatch = invariant(Invariant::CapacityMismatch);
+    let refusal = invariant(Invariant::ConstructionOwnerRefusal);
+    let allocation_failed = SessionError::Stop(ParseStop::AllocationFailed {
+        resource: HtmlParseResource::ManagedCapacityBytes,
+        layout_bytes: 0,
+    });
+    let exhausted = SessionError::Stop(ParseStop::RepresentationExhausted {
+        resource: HtmlParseResource::ManagedCapacityBytes,
+    });
+    for (error, expected, latched) in [
+        (E::ForeignBuilder, SessionError::ForeignNode, false),
+        (E::UnknownNode, SessionError::ForeignNode, false),
+        (E::RootMove, SessionError::RootMove, false),
+        (E::AssociationMove, SessionError::AssociationMove, false),
+        (
+            E::ParentCannotHaveChildren,
+            SessionError::NotContainer,
+            false,
+        ),
+        (
+            E::TemplateContentsRequired,
+            SessionError::TemplateContentsRequired,
+            false,
+        ),
+        (E::WrongSibling, SessionError::WrongSibling, false),
+        (E::ParentChildConflict, SessionError::WrongSibling, false),
+        (E::Cycle, SessionError::Cycle, false),
+        (
+            E::SharedAllocationAliased,
+            invariant(Invariant::SharedAllocationAliased),
+            true,
+        ),
+        (E::RepresentationExhausted, exhausted, true),
+        (E::CapacityMismatch, mismatch, true),
+        (E::ForeignAllocation, mismatch, true),
+        (
+            E::LimitExceeded {
+                resource: HtmlConstructionResource::Nodes,
+                limit: 1,
+                attempted: 2,
+            },
+            mismatch,
+            true,
+        ),
+        (
+            E::ReleaseUnderflow,
+            invariant(Invariant::ReleaseUnderflow),
+            true,
+        ),
+        (E::AllocationFailed, allocation_failed, true),
+        (E::ShadowHostMustBeElement, refusal, true),
+        (E::ShadowAlreadyAttached, refusal, true),
+        (E::WrongNodeKind, refusal, true),
+        (E::AssociationAlreadyOwned, refusal, true),
+        (E::InvalidTemplateAssociation, refusal, true),
+        (
+            E::DuplicateAttribute {
+                first: 0,
+                duplicate: 1,
+            },
+            refusal,
+            true,
+        ),
+        (E::AttributeNameMismatch, refusal, true),
+        (E::AttributeOrderMismatch, refusal, true),
+        (E::InvalidShadowAssociation, refusal, true),
+        (E::InvalidContentsReference, refusal, true),
+        (E::InvalidOutputRoot, refusal, true),
+        (E::OperationConsumed, refusal, true),
+        (E::OperationNotReady, refusal, true),
+    ] {
+        let mut c = crate::construction::tests::control();
+        assert_eq!(
+            construction_error(&mut c, error.clone()),
+            expected,
+            "{error:?}"
+        );
+        let stop = match expected {
+            SessionError::Stop(stop) => Some(stop),
+            _ => None,
+        };
+        assert_eq!(c.stop(), stop.filter(|_| latched), "{error:?}");
+    }
+}

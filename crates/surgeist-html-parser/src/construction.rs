@@ -101,7 +101,7 @@ mod svg;
 mod template;
 mod text_append;
 #[cfg(test)]
-mod text_append_tests;
+pub(crate) mod text_append_tests;
 mod tree_root;
 pub use completion::{ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState};
 use effects::ConstructionEffects;
@@ -186,23 +186,39 @@ impl SessionError {
         ))
     }
 }
+/// HTML's construction owner answered a step with an action or observation
+/// that the parser's sequencing does not expect, latched as the controller's
+/// first stop.
+fn latch_owner_refusal(control: &mut ParseControl) -> SessionError {
+    SessionError::Stop(
+        control.fail_invariant(crate::parser::control::Invariant::ConstructionOwnerRefusal),
+    )
+}
+/// A work plan that counts less than was already charged for it: no row is
+/// missing, the plan and the charge disagree.
+fn plan_below_charge(control: &mut ParseControl) -> SessionError {
+    SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch))
+}
 /// An impossible registry state, latched as the controller's first stop.
 fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))
 }
-/// The result of a non-stop error that effect work met, classified by the
-/// kind of fault it names. Every variant is listed, so a new one must be
-/// classified deliberately.
+/// The invariant that a non-stop error names when it is met where it cannot be
+/// a document outcome, classified by the kind of fault it reports. Every
+/// variant is listed, so a new one must be classified deliberately.
 ///
 /// - Outcomes of the document or a service that the driver classifies itself
-///   pass through unchanged and latch nothing.
+///   have no invariant: the caller passes them through unchanged.
 /// - An intrinsic operation that is still owed is the pending-effects stop.
 /// - A uniqueness check that failed is the aliased-allocation stop.
+/// - A placement the tree refuses, or a duplicated attribute, is the
+///   construction owner declining a request the parser's sequencing
+///   guarantees valid.
 /// - A retained row that is missing, of another kind, unjoined or out of
 ///   place is a registry row.
-fn latch_effect_fault(control: &mut ParseControl, error: SessionError) -> SessionError {
+fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::control::Invariant> {
     use crate::parser::control::Invariant;
-    let invariant = match error {
+    match error {
         SessionError::Stop(_)
         | SessionError::CspService
         | SessionError::CspProtocol(_)
@@ -212,20 +228,20 @@ fn latch_effect_fault(control: &mut ParseControl, error: SessionError) -> Sessio
         | SessionError::CompletionMetadataUnavailable
         | SessionError::CompletionIncomplete
         | SessionError::ContextFactUnavailable(_)
-        | SessionError::ContextReactionUnavailable => return error,
-        SessionError::PendingIntrinsicWork => Invariant::PendingFormEffects,
-        SessionError::AliasedPayload => Invariant::SharedAllocationAliased,
-        SessionError::NonceMetadataUnavailable
-        | SessionError::ForeignNode
-        | SessionError::RootMove
+        | SessionError::ContextReactionUnavailable => None,
+        SessionError::PendingIntrinsicWork => Some(Invariant::PendingFormEffects),
+        SessionError::AliasedPayload => Some(Invariant::SharedAllocationAliased),
+        SessionError::RootMove
         | SessionError::AssociationMove
         | SessionError::NotContainer
         | SessionError::TemplateContentsRequired
         | SessionError::WrongSibling
         | SessionError::Cycle
+        | SessionError::DuplicateAttribute => Some(Invariant::ConstructionOwnerRefusal),
+        SessionError::NonceMetadataUnavailable
+        | SessionError::ForeignNode
         | SessionError::Consumed
         | SessionError::WrongToken
-        | SessionError::DuplicateAttribute
         | SessionError::TemplateInsertionStateUnavailable
         | SessionError::NotDocument
         | SessionError::OriginSplitUnavailable
@@ -240,9 +256,52 @@ fn latch_effect_fault(control: &mut ParseControl, error: SessionError) -> Sessio
         | SessionError::TemplateMetadataUnavailable
         | SessionError::ProcessingInstructionMapUnavailable
         | SessionError::ContextUnavailable
-        | SessionError::CapturedDocument => Invariant::RegistryRow,
-    };
-    SessionError::Stop(control.fail_invariant(invariant))
+        | SessionError::CapturedDocument => Some(Invariant::RegistryRow),
+    }
+}
+/// The result of a non-stop error that effect work met, classified by
+/// [`session_fault_invariant`]. An outcome the driver classifies itself passes
+/// through unchanged and latches nothing.
+fn latch_effect_fault(control: &mut ParseControl, error: SessionError) -> SessionError {
+    match session_fault_invariant(&error) {
+        Some(invariant) => SessionError::Stop(control.fail_invariant(invariant)),
+        None => error,
+    }
+}
+/// What a non-stop error that ended a creation after its association metadata
+/// was registered becomes. A fault of the creation's own is a stop labelled by
+/// what it reports, as in effect work.
+///
+/// An outcome the driver classifies itself passes through unchanged, as the
+/// unavailable image-support fact does: the creation runs image update,
+/// associated-fact (`start_img_update` and `set_hyperlink`), nonce and
+/// context-fact work, whose outcomes come from the facts the caller supplied
+/// and so must keep the classification the driver gives them.
+///
+/// The outcomes of script, SVG-wrapper and completion work are different. The
+/// callees of the creation (`allocate_ordered_payload`,
+/// `allocate_html_payload_prepared`, `mark_document_parser_style` and
+/// `normalize_radio`, and what they call for attribute, input, select,
+/// details, nonce, meta, dialog, style and associated-state set-up) were read
+/// for calls into script preparation, SVG-wrapper or completion code, and
+/// none was found; the form-effect drain they reach only steps the id-change
+/// stage of the creation's own element. Such an outcome met here is a creation
+/// that returned something that belongs to another stage, which is what the
+/// creation label names.
+fn latch_creation_fault(control: &mut ParseControl, error: SessionError) -> SessionError {
+    use crate::parser::control::Invariant;
+    if let Some(invariant) = session_fault_invariant(&error) {
+        return SessionError::Stop(control.fail_invariant(invariant));
+    }
+    match error {
+        SessionError::ScriptMetadataUnavailable
+        | SessionError::SvgScriptMetadataUnavailable
+        | SessionError::CompletionMetadataUnavailable
+        | SessionError::CompletionIncomplete => {
+            SessionError::Stop(control.fail_invariant(Invariant::IncompleteFormAssociationCreation))
+        }
+        other => other,
+    }
 }
 /// The position after `cursor`. Every caller reaches it only after the work
 /// list yielded an entry at `cursor`, so `cursor` is below an in-memory length
@@ -485,6 +544,11 @@ struct SessionStorage {
     cancel_after_output_reset: Option<crate::HtmlParseCancellation>,
     #[cfg(test)]
     cancel_after_input_reset: Option<crate::HtmlParseCancellation>,
+    /// Takes the form-association row the next creation has registered and
+    /// not yet bound out of the registry, as a registry that lost the row
+    /// would, and keeps it with its slot for the test to put back.
+    #[cfg(test)]
+    lose_association_row: Option<Option<(usize, RetainedPayload)>>,
     #[cfg(test)]
     cancel_after_range_append: Option<(
         Option<surgeist_html::bounded::RangeScratchRole>,
@@ -2288,6 +2352,8 @@ impl SessionStorage {
             #[cfg(test)]
             cancel_after_input_reset: None,
             #[cfg(test)]
+            lose_association_row: None,
+            #[cfg(test)]
             cancel_after_range_append: None,
             #[cfg(test)]
             cancel_after_range_ingress: None,
@@ -2555,7 +2621,7 @@ impl SessionStorage {
         control.charge(WorkCategory::CopyByte, mem::size_of::<ParserNode>() as u64)?;
         control.charge(WorkCategory::RecordVisit, 3)?;
         let Some(handle) = self.construction.apply(control, command, &requests)? else {
-            return Err(latch_registry_row(control));
+            return Err(latch_owner_refusal(control));
         };
         let Ok(position) = self
             .construction
@@ -6166,7 +6232,7 @@ impl SessionStorage {
                         control.observe_tree_depth(usage.depth() as u64)?;
                         control.charge(WorkCategory::RecordVisit, 1)?;
                         let Some(view) = action.storage_view() else {
-                            return Err(latch_registry_row(control));
+                            return Err(latch_owner_refusal(control));
                         };
                         revoke_standalone = self.standalone_ineligibility.is_none()
                             && self.associated_document_parent_in(control, view, parent)?;
@@ -6520,6 +6586,8 @@ impl SessionStorage {
                 cancel_after_output_reset: _,
             #[cfg(test)]
                 cancel_after_input_reset: _,
+            #[cfg(test)]
+                lose_association_row: _,
             #[cfg(test)]
                 cancel_after_range_append: _,
             #[cfg(test)]
@@ -7635,6 +7703,13 @@ impl ParserArenaSession {
                     cancellation.cancel();
                 }
             }
+            #[cfg(test)]
+            if let Some(lost) = storage.lose_association_row.as_mut()
+                && let Some(slot) = slot
+                && let Some(row) = storage.payloads.values.get_mut(slot)
+            {
+                *lost = Some((slot, mem::replace(row, RetainedPayload::Retired)));
+            }
             if let Some(slot) = slot {
                 control.charge(WorkCategory::RecordVisit, 1)?;
                 payload_write::<Option<usize>>(control, 1)?;
@@ -7670,11 +7745,7 @@ impl ParserArenaSession {
             Ok(node)
         })();
         match result {
-            Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport)) => Err(
-                SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
-            ),
-            Err(_)
+            Err(error)
                 if slot.is_some()
                     || link_slot.is_some()
                     || matches!(
@@ -7682,11 +7753,7 @@ impl ParserArenaSession {
                         CreationProfile::Select(..) | CreationProfile::Details(..)
                     ) =>
             {
-                Err(control
-                    .fail_invariant(
-                        crate::parser::control::Invariant::IncompleteFormAssociationCreation,
-                    )
-                    .into())
+                Err(latch_creation_fault(control, error))
             }
             other => other,
         }
@@ -8822,6 +8889,8 @@ impl ParserArenaSession {
                 cancel_after_output_reset: _,
             #[cfg(test)]
                 cancel_after_input_reset: _,
+            #[cfg(test)]
+                lose_association_row: _,
             #[cfg(test)]
                 cancel_after_range_append: _,
             #[cfg(test)]
@@ -30602,6 +30671,44 @@ mod tests {
             session.release(&mut c).unwrap();
             storage_zero(&c);
         }
+    }
+
+    /// A creation that registered its form-association row and then finds the
+    /// row gone has lost a retained row. The row it names is what is violated,
+    /// not the stage the creation had reached.
+    #[test]
+    fn a_creation_that_loses_its_form_association_row_reports_the_registry_row() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head></head><input type=text>"),
+            limits(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, range) =
+            input_owner(&request);
+        session.active_mut().unwrap().lose_association_row = Some(None);
+        let result = session.allocate_input_for_creation(
+            &mut c,
+            &mut input,
+            CreationLocation {
+                intended_parent: &parent,
+                current_form: None,
+                context: CreationContext::Ordinary,
+            },
+            &range,
+            &capability,
+        );
+        let registry_row =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(result.err(), Some(SessionError::Stop(registry_row)));
+        assert_eq!(c.stop(), Some(registry_row));
+        // The row goes back where the registry expects it, so cleanup finds
+        // the registry as it left it.
+        let storage = session.active_mut().unwrap();
+        let (slot, row) = storage.lose_association_row.take().flatten().unwrap();
+        storage.payloads.values[slot] = row;
+        release_formatting_tag(&mut input, &mut c).unwrap();
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
     }
 
     #[test]

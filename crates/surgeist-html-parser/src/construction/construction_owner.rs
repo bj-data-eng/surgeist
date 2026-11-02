@@ -33,10 +33,31 @@ enum Bank {
     Wrapper,
 }
 
+/// The session error for a refusal from HTML's construction owner, with every
+/// variant of its error classified by what it violates.
+///
+/// - Handle, placement and cycle refusals are errors about the document's own
+///   shape; their callers classify them and nothing is latched here.
+/// - A payload that was aliased and a count that cannot be represented keep
+///   their own stops.
+/// - A ticket, layout or limit that disagrees with what the controller
+///   charged, and a release beyond what was held, are accounting faults. The
+///   parse controller admits every resource before the owner is asked, so a
+///   limit the owner reports is the owner's accounting disagreeing with it.
+/// - An allocation that failed is the environment refusing, a reached stop
+///   that never names an invariant. The sites that know the layout classify
+///   it themselves first, so none is known here.
+/// - Every other refusal is the owner declining a request that the parser's
+///   sequencing guarantees valid.
+///
+/// The owner's error enum is open to later variants, which the compiler cannot
+/// make this match classify; one this parser does not name reports the same
+/// fault as the others, and the inventory test lists each current variant.
 pub(super) fn construction_error(
     control: &mut ParseControl,
     error: HtmlConstructionError,
 ) -> SessionError {
+    use crate::parser::control::Invariant;
     match error {
         HtmlConstructionError::ForeignBuilder | HtmlConstructionError::UnknownNode => {
             SessionError::ForeignNode
@@ -49,15 +70,46 @@ pub(super) fn construction_error(
             SessionError::WrongSibling
         }
         HtmlConstructionError::Cycle => SessionError::Cycle,
-        HtmlConstructionError::SharedAllocationAliased => SessionError::Stop(
-            control.fail_invariant(crate::parser::control::Invariant::SharedAllocationAliased),
-        ),
+        HtmlConstructionError::SharedAllocationAliased => {
+            SessionError::Stop(control.fail_invariant(Invariant::SharedAllocationAliased))
+        }
         HtmlConstructionError::RepresentationExhausted => {
             SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
         }
-        _ => SessionError::Stop(
-            control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch),
-        ),
+        HtmlConstructionError::CapacityMismatch
+        | HtmlConstructionError::ForeignAllocation
+        | HtmlConstructionError::LimitExceeded { .. } => {
+            SessionError::Stop(control.fail_invariant(Invariant::CapacityMismatch))
+        }
+        HtmlConstructionError::ReleaseUnderflow => {
+            SessionError::Stop(control.fail_invariant(Invariant::ReleaseUnderflow))
+        }
+        // `layout_bytes: 0` means the layout is unknown here, not that none was
+        // requested. Every bounded producer of this error reports it with its
+        // real layout before it gets this far: the record and child reserves
+        // in `ConstructionOwner::perform_action_with_commit`, the name-decision
+        // and attribute-slot reserves in `attributes.rs`, and the candidate
+        // backing reserve in `text_append.rs`. This arm is only a failure a
+        // caller without a layout still has to report.
+        HtmlConstructionError::AllocationFailed => {
+            SessionError::Stop(control.construction_allocation_failed(0))
+        }
+        HtmlConstructionError::ShadowHostMustBeElement
+        | HtmlConstructionError::ShadowAlreadyAttached
+        | HtmlConstructionError::WrongNodeKind
+        | HtmlConstructionError::AssociationAlreadyOwned
+        | HtmlConstructionError::InvalidTemplateAssociation
+        | HtmlConstructionError::DuplicateAttribute { .. }
+        | HtmlConstructionError::AttributeNameMismatch
+        | HtmlConstructionError::AttributeOrderMismatch
+        | HtmlConstructionError::InvalidShadowAssociation
+        | HtmlConstructionError::InvalidContentsReference
+        | HtmlConstructionError::InvalidOutputRoot
+        | HtmlConstructionError::OperationConsumed
+        | HtmlConstructionError::OperationNotReady => {
+            SessionError::Stop(control.fail_invariant(Invariant::ConstructionOwnerRefusal))
+        }
+        _ => SessionError::Stop(control.fail_invariant(Invariant::ConstructionOwnerRefusal)),
     }
 }
 pub(super) struct PendingConstruction {
@@ -101,7 +153,7 @@ impl ConstructionOwner {
             .next_action()
             .map_err(|error| construction_error(control, error))?
         else {
-            return Err(latch_registry_row(control));
+            return Err(latch_owner_refusal(control));
         };
         let HtmlConstructionActionDescription::InitializeIdentity {
             payload_bytes,
@@ -109,11 +161,13 @@ impl ConstructionOwner {
             provider_calls,
         } = action.description()
         else {
-            return Err(latch_registry_row(control));
+            return Err(latch_owner_refusal(control));
         };
         control.prepare_construction_share(payload_bytes)?;
+        // The first call was charged above; a plan that counts none differs
+        // from the work already charged for it.
         let Some(further_calls) = provider_calls.checked_sub(1) else {
-            return Err(latch_registry_row(control));
+            return Err(plan_below_charge(control));
         };
         control.charge(WorkCategory::ProviderCall, further_calls as u64)?;
         control.admit_atomic_layout(initialized_bytes)?;
@@ -494,7 +548,7 @@ impl ConstructionOwner {
             }
             HtmlConstructionActionDescription::InitializeIdentity { .. } => {
                 // Identity belongs to the separate initialization owner.
-                return Err(latch_registry_row(control));
+                return Err(latch_owner_refusal(control));
             }
         }
         let performed = match reserved_capacity {
@@ -505,7 +559,7 @@ impl ConstructionOwner {
             Ok(observation) => {
                 if let Some(bank) = allocation {
                     let Some(snapshot) = observation.allocation() else {
-                        return Err(latch_registry_row(control));
+                        return Err(latch_owner_refusal(control));
                     };
                     let slot = self.allocation_slot(control, bank)?;
                     control.observe_construction_allocation(snapshot, slot, expected)?;

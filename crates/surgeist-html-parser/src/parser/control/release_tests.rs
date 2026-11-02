@@ -334,6 +334,42 @@ fn restoring_a_text_ticket_whose_capacity_differs_from_the_value_is_refused() {
     assert!(ticket.backing.is_none());
 }
 
+/// A growth recorded against another controller's ticket is a ticket under the
+/// wrong controller, which is the one fault the foreign-control label names.
+#[test]
+fn recording_growth_against_another_controllers_ticket_reports_foreign_control() {
+    let capacity = crate::construction::text_append_tests::observed_capacity();
+    let mut c = control();
+    let mut other = control();
+    let mut ticket = other.prepare_text_append_allocation().unwrap();
+    let before = c.usage().clone();
+    assert_eq!(
+        c.record_text_append_capacity(&mut ticket, capacity, capacity.capacity()),
+        Err(FOREIGN)
+    );
+    assert_eq!(c.stop(), Some(FOREIGN));
+    assert_eq!(c.usage(), &before, "nothing is recorded for the ticket");
+}
+
+/// A growth recorded against a ticket that is already bound to a backing is a
+/// ticket whose allocation state differs from what a pending append holds. The
+/// ticket belongs to this controller, so it is not a foreign-control fault.
+#[test]
+fn recording_growth_against_a_bound_ticket_reports_the_capacity_mismatch() {
+    let capacity = crate::construction::text_append_tests::observed_capacity();
+    let mut c = control();
+    let value = text(&[65]);
+    let mut ticket = ticket_for(&mut c, &value);
+    ticket.backing = Some(Arc::downgrade(value.shared_code_units()));
+    let before = c.usage().clone();
+    assert_eq!(
+        c.record_text_append_capacity(&mut ticket, capacity, capacity.capacity()),
+        Err(MISMATCH)
+    );
+    assert_eq!(c.stop(), Some(MISMATCH));
+    assert_eq!(c.usage(), &before, "nothing is recorded for the ticket");
+}
+
 #[test]
 fn retaining_a_failed_text_ticket_bound_to_other_backing_is_refused() {
     let mut c = control();
