@@ -5356,3 +5356,6 @@ mod minimum_edges;
 
 #[path = "scroll_composition/subgrid_lanes.rs"]
 mod subgrid_lanes;
+
+#[path = "scroll_composition/physical_margins.rs"]
+mod physical_margins;
