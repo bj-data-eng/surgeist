@@ -149,9 +149,29 @@ fn scope_keywords_select_their_states_and_everything_else_is_auto() {
 }
 
 #[test]
-fn scope_bound_is_two_units_per_raw_unit_plus_five_and_refuses_overflow() {
-    assert_eq!(th_scope_work_bound(0), Some(5));
-    assert_eq!(th_scope_work_bound(3), Some(11));
-    assert_eq!(th_scope_work_bound(8), Some(21));
-    assert_eq!(th_scope_work_bound(usize::MAX), None);
+fn scope_bound_is_the_hand_derived_worst_case_for_each_input_length() {
+    // The value header and the four keyword headers cost five for any input. A
+    // unit pair is read only against a keyword of the input's own length: `row`
+    // and `col` at 3, `rowgroup` and `colgroup` at 8. Each such pair differs at
+    // its first unit, so the worst input matches one keyword but for its last
+    // unit (n pairs) and costs one pair against the other: 5 + 3 + 1 and
+    // 5 + 8 + 1. Every other length, however long, costs five.
+    for (units, expected) in [
+        (0, 5),
+        (1, 5),
+        (2, 5),
+        (3, 9),
+        (4, 5),
+        (5, 5),
+        (6, 5),
+        (7, 5),
+        (8, 14),
+        (9, 5),
+        (10, 5),
+        (4096, 5),
+        (100_000, 5),
+        (usize::MAX, 5),
+    ] {
+        assert_eq!(th_scope_work_bound(units), Some(expected), "{units} units");
+    }
 }

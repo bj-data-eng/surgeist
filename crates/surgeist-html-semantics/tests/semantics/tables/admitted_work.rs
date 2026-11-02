@@ -78,11 +78,26 @@ fn span_reads_admit_the_owner_published_bound_for_each_rule() {
 
 #[test]
 fn scope_reads_admit_the_owner_published_bound_once_per_consulted_header() {
-    // Every one of the 2n - 1 headers is reached by another cell's scan.
+    // Every one of the 2n - 1 headers is reached by another cell's scan. Lengths
+    // 3 and 8 are the keyword lengths, where the owner's bound counts unit
+    // comparisons: 9 and 14 admitted reads, a difference of five per header.
     let n = 4;
-    let admitted = usage(n, LONG).work() - usage(n, SHORT).work();
-    let published = th_scope_work_bound(LONG).unwrap() - th_scope_work_bound(SHORT).unwrap();
-    assert_eq!(admitted, (2 * n - 1) * published);
+    let consulted = 2 * n - 1;
+    let admitted = usage(n, 8).work() - usage(n, 3).work();
+    assert_eq!(
+        admitted,
+        consulted * (th_scope_work_bound(8).unwrap() - th_scope_work_bound(3).unwrap())
+    );
+    assert_eq!(admitted, consulted * 5);
+}
+
+#[test]
+fn scope_reads_of_values_longer_than_any_keyword_cost_the_constant() {
+    // No keyword is that long, so no unit is ever compared: the owner admits
+    // five reads however long the value, and so does the query.
+    assert_eq!(th_scope_work_bound(LONG), th_scope_work_bound(4));
+    assert_eq!(usage(4, LONG).work(), usage(4, 4).work());
+    assert_eq!(usage(4, 100).work(), usage(4, 4).work());
 }
 
 #[test]

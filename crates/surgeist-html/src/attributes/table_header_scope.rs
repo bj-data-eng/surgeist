@@ -209,34 +209,50 @@ pub(crate) mod bounded_scope {
             }
         }
 
+        /// Work per input length, derived by hand from the keyword list
+        /// (`row`, `col`, `rowgroup`, `colgroup`) and the comparison rule: the
+        /// value header and four keyword headers cost 5 for every input. A unit
+        /// pair is read only against a keyword of the input's own length, so
+        /// only lengths 3 and 8 add any. In each of those two lengths the two
+        /// keywords differ at their first unit (`r` and `c`), so the worst input
+        /// agrees with one keyword in every unit but the last (n pairs against
+        /// it) and costs one first-unit pair against the other: 5 + 3 + 1 = 9
+        /// and 5 + 8 + 1 = 14.
+        fn hand_derived_worst(units: usize) -> usize {
+            match units {
+                3 => 9,
+                8 => 14,
+                _ => 5,
+            }
+        }
+
         #[test]
         fn work_never_exceeds_the_published_bound_and_the_bound_is_reached() {
+            assert!(!TH_SCOPE.exact_keywords);
             assert_eq!(counted(None), (HtmlTableHeaderScopeState::Auto, 1));
+            let mut worst = std::collections::BTreeMap::new();
             for units in corpus() {
                 let raw = DocumentString::from_utf16(units.clone());
                 let (_, work) = counted(Some(&raw));
                 let bound = th_scope_work_bound(units.len()).unwrap();
                 assert!(work <= bound, "{units:?}: {work} units, bound {bound}");
+                let entry = worst.entry(units.len()).or_insert(0);
+                *entry = work.max(*entry);
             }
-            // The bound is the sum below, not a loose multiple. An input of the
-            // keywords' common length that matches nothing reads: the value
-            // header, the four keyword headers and, for each of the two keywords
-            // of that length, its first unit pair.
-            let row = DocumentString::from("xxx");
-            assert_eq!(counted(Some(&row)).1, 1 + 4 + 2);
-            // `colgroup` fully matches the second eight-unit keyword after
-            // failing the first at its first unit: 1 + 4 + 1 + 8.
-            let colgroup = DocumentString::from("colgroup");
-            assert_eq!(counted(Some(&colgroup)).1, 1 + 4 + 1 + 8);
-            assert!(1 + 4 + 1 + 8 <= th_scope_work_bound(8).unwrap());
-            assert_eq!(th_scope_work_bound(0), Some(5));
-            assert_eq!(th_scope_work_bound(8), Some(21));
-        }
-
-        #[test]
-        fn unrepresentable_bounds_are_none() {
-            assert_eq!(th_scope_work_bound(usize::MAX), None);
-            assert_eq!(th_scope_work_bound(usize::MAX / 2), None);
+            // The bound is the worst case for its length, reached by some input
+            // in the corpus at every length it covers, including long values
+            // whose work is the constant five.
+            for (length, work) in worst {
+                assert_eq!(work, hand_derived_worst(length), "worst work at {length}");
+                assert_eq!(th_scope_work_bound(length), Some(work), "bound at {length}");
+            }
+            for length in [0_usize, 1, 2, 4, 5, 6, 7, 9, 10, 1000, 100_000, usize::MAX] {
+                assert_eq!(th_scope_work_bound(length), Some(5), "bound at {length}");
+            }
+            let long = DocumentString::from_utf16(vec![u16::from(b'r'); 100_000]);
+            assert_eq!(counted(Some(&long)).1, 5);
+            assert_eq!(th_scope_work_bound(3), Some(9));
+            assert_eq!(th_scope_work_bound(8), Some(14));
         }
     }
 }

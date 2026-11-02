@@ -111,9 +111,10 @@ pub(super) fn usage(n: usize, scope_units: usize) -> HtmlSemanticUsage {
 
 #[test]
 fn scope_work_grows_with_header_cells_not_header_and_cell_pairs() {
-    const SHORT: usize = 10;
-    const LONG: usize = 210;
-    // Only the scope reads depend on the scope length, so the difference
+    const SHORT: usize = 3;
+    const LONG: usize = 8;
+    // Only the scope reads depend on the scope length (and only up to the
+    // keyword lengths 3 and 8, where unit comparisons begin), so the difference
     // isolates what the query charged for reading scope states.
     let scope_work = |n: usize| usage(n, LONG).work() - usage(n, SHORT).work();
     let headers = |n: usize| 2 * n - 1;
