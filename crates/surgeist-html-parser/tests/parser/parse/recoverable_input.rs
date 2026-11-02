@@ -18,8 +18,9 @@ use crate::parser::support::{fragment_context, limits};
 use surgeist_html::*;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseDiagnosticKind,
-    HtmlParseDiagnosticLocationRole, HtmlParseReport, HtmlPrologueDiagnostic, HtmlSource,
-    HtmlTokenizerDiagnostic, HtmlTreeDiagnostic,
+    HtmlParseDiagnosticLocationRole, HtmlParseMetadataDocument, HtmlParseMetadataStep,
+    HtmlParseReport, HtmlPrologueDiagnostic, HtmlSource, HtmlTokenizerDiagnostic,
+    HtmlTreeDiagnostic,
 };
 
 /// Renders the children of `parent` as an indented tree. A template's contents
@@ -270,8 +271,10 @@ fn fragment_missing_end_tag_name_parses_as_if_the_markup_were_absent() {
 ///    start tag then inserts a'' into pre. At EOF the open template is a
 ///    parse error.
 /// 2. `<template><nobr><b><pre><nobr>`: the same run started by the nobr rule.
-/// 3. `<template><a><b><p>x</a>y`: the same run started by an end tag; the text
-///    "x" moves with p's children into a', and "y" then joins it.
+/// 3. `<template><a><b><p>x</a>y`: the same run started by an end tag. The text
+///    "x" moves with p's children into a'. The second pass of the algorithm
+///    finds a' as the current node with no furthest block and pops it, so "y"
+///    is inserted into p after a', not into a'.
 const TEMPLATE_RUNS: [(&str, &str, &[Expected]); 3] = [
     (
         "<template><a><i><pre><a>",
@@ -285,7 +288,7 @@ const TEMPLATE_RUNS: [(&str, &str, &[Expected]); 3] = [
     ),
     (
         "<template><a><b><p>x</a>y",
-        "<template>\n  content\n    <a>\n      <b>\n    <b>\n      <p>\n        <a>\n          \"xy\"\n",
+        "<template>\n  content\n    <a>\n      <b>\n    <b>\n      <p>\n        <a>\n          \"x\"\n        \"y\"\n",
         &[NOT_CURRENT, TEMPLATE_EOF],
     ),
 ];
@@ -327,4 +330,50 @@ fn fragment_adoption_agency_in_template_contents_follows_the_standard() {
             assert_diagnostics(&report, diagnostics, input);
         }
     }
+}
+
+#[test]
+fn adoption_agency_replacements_inserted_into_template_contents_belong_to_its_document() {
+    // DOM insert adopts a node into its new parent's node document. Step 13.6
+    // creates i' for the template element, whose node document is the main
+    // document, and step 14 inserts it into the template contents, whose
+    // node document is the template contents owner document. The element
+    // created there directly for the first `a` start tag already belongs to
+    // that document, and i' must join it, not stay in the main document.
+    let report = parse_document(HtmlSource::utf8("<!doctype html><template><a><i><pre><a>"));
+    let document = report.document().unwrap();
+    let element = |parent: HtmlNode<'_>, index: usize| {
+        document
+            .node(&parent.children().nth(index).unwrap())
+            .unwrap()
+    };
+    let html = element(document.root(), 1);
+    let template = element(element(html, 0), 0);
+    let contents = document
+        .node(&template.template_contents().unwrap())
+        .unwrap();
+    let (first_a, replacement_i) = (element(contents, 0).id(), element(contents, 1).id());
+    let mut owners = Vec::new();
+    let mut metadata = report.metadata();
+    loop {
+        match metadata.advance() {
+            HtmlParseMetadataStep::Record(record) => {
+                if let Some(HtmlParseMetadataDocument::Owned(owner)) = record.node_document() {
+                    owners.push((record.node().id(), owner.id()));
+                }
+            }
+            HtmlParseMetadataStep::Skipped => {}
+            HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+        }
+    }
+    let owner_of = |node: &HtmlNodeId| {
+        owners
+            .iter()
+            .find(|(candidate, _)| candidate == node)
+            .map(|(_, owner)| owner.clone())
+            .unwrap()
+    };
+    assert_ne!(owner_of(&first_a), owner_of(&html.id()));
+    assert_eq!(owner_of(&replacement_i), owner_of(&first_a));
 }
