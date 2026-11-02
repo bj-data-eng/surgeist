@@ -2025,6 +2025,122 @@ fn lexical_comment_doctype_pi_cdata_and_raw_recovery_keep_original_field_atoms()
 }
 
 #[test]
+fn lookahead_reports_input_stream_error_of_the_next_input_character_first() {
+    use DiagnosticCode::{
+        ControlCharacterInInputStream as Control, IncorrectlyOpenedComment as Incorrect,
+        InvalidCharacterSequenceAfterDoctypeName as AfterName,
+        NoncharacterInInputStream as Noncharacter,
+    };
+    // HTML877d 13.2.3.5 makes every control, noncharacter and surrogate in the
+    // input stream a parse error of the stream itself, and the markup
+    // declaration open state looks at the next few characters, but the pinned
+    // standard sets no relative order between input-stream and tokenizer
+    // errors. The rule tested is the smallest consistent with the retained
+    // html5lib corpus, the only cases that pair incorrectly-opened-comment with
+    // a stream error: test3.test case 80 (`<!` U+000B) expects the stream error
+    // first, test4.test cases 60-62 (`<!doc` plus U+0080, U+FDD1, U+1FFFF)
+    // expect it after (case 59 uses NUL, a tokenizer error, and does not
+    // discriminate). So only the stream error of the next input character
+    // precedes the mismatch; later characters report when consumed. The rows
+    // beyond the corpus follow that rule and are not corpus-derived.
+    for (input, expected) in [
+        ("<!\u{b}", vec![Control, Incorrect]),
+        ("<!\u{80}", vec![Control, Incorrect]),
+        ("<!\u{fffe}", vec![Noncharacter, Incorrect]),
+        ("<!\u{b}x", vec![Control, Incorrect]),
+        ("<!x\u{b}", vec![Incorrect, Control]),
+        ("<!-\u{b}", vec![Incorrect, Control]),
+        ("<![CDA\u{b}", vec![Incorrect, Control]),
+        ("<!DOCTYPE a \u{b}", vec![Control, AfterName]),
+        ("<!DOCTYPE a P\u{b}", vec![AfterName, Control]),
+    ] {
+        let source = HtmlSource::utf8(input);
+        assert_eq!(
+            collect(&source, State::Data, None, false).1,
+            expected,
+            "{input:?}"
+        );
+        let cuts: Vec<_> = (0..=source.len()).collect();
+        assert_eq!(
+            collect_progressive(&source, &cuts, false).1,
+            expected,
+            "{input:?} at every cut"
+        );
+    }
+}
+
+#[test]
+fn missing_end_tag_name_abandons_its_markup_occurrence() {
+    use crate::construction::provenance::{LexicalDisposition as D, LexicalKind as K};
+    // HTML877d end tag open state: U+003E is missing-end-tag-name, switches to
+    // the data state and emits no token. The `</>` is consumed markup that no
+    // token carries, so its occurrence ends Abandoned, wherever it sits and
+    // whatever follows it, never Draft and never literal recovery.
+    for (input, start) in [
+        ("</>", 0),
+        ("a</>", 1),
+        ("</>a", 0),
+        ("a</>b", 1),
+        ("x</><p>", 1),
+        ("</></>", 3),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        while let Some(event) = lexer.next(&mut c, false).unwrap() {
+            event.release(&mut c).unwrap();
+        }
+        let (occurrences, _, _) = lexer.evidence.lexical_observations();
+        let dispositions: Vec<_> = occurrences
+            .iter()
+            .map(|o| (o.kind, o.source.start(), o.source.end(), o.disposition))
+            .collect();
+        assert!(
+            dispositions.contains(&(K::Markup, start, start + 3, D::Abandoned)),
+            "{input:?}: {dispositions:?}"
+        );
+        assert!(
+            !dispositions.iter().any(|(.., d)| *d == D::Draft),
+            "{input:?}: {dispositions:?}"
+        );
+        lexer.release(&mut c).unwrap();
+        assert_storage_released(&c);
+    }
+}
+
+#[test]
+fn eof_in_a_processing_instruction_leaves_no_active_draft_for_the_head_handoff() {
+    // HTML877d processing instruction states: EOF is an
+    // eof-in-processing-instruction error that emits only end-of-file. The
+    // unfinished instruction's target and data drafts are discarded with it, so
+    // a document prologue that ends here can hand the tokenizer over.
+    for input in [
+        "<?a?", "<?a ", "<?a b", "<?a ?", "<?a b?", "<?a?x", "<?a?<?a?",
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokens = 0;
+        while let Some(event) = lexer.next(&mut c, false).unwrap() {
+            if matches!(&event, Event::Token(_)) {
+                tokens += 1;
+            }
+            event.release(&mut c).unwrap();
+        }
+        assert_eq!(tokens, 1, "{input:?}: only end-of-file is emitted");
+        assert_eq!(
+            lexer.lexer.validate_head_handoff(&source, &mut c),
+            Ok(()),
+            "{input:?}"
+        );
+        lexer.release(&mut c).unwrap();
+        assert_storage_released(&c);
+    }
+}
+
+#[test]
 fn lexical_cdata_chunk_coordinates_accumulate_exact_actual_output_units() {
     use crate::construction::provenance::{LexicalDisposition, LexicalKind, LexicalRole};
     let source = HtmlSource::utf8("<![CDATA[A🙂\r\nB]]>");

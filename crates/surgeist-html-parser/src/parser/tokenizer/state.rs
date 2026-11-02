@@ -249,7 +249,10 @@ impl Tokenizer<'_> {
                     self.set_state(TagName, c)?;
                 }
                 0x3E => {
+                    // HTML877d end tag open state: no token follows, so the
+                    // consumed `</>` ends its markup occurrence abandoned.
                     self.error(MissingEndTagName, c, evidence)?;
+                    self.abandon_lexical(c, evidence)?;
                     self.set_state(Data, c)?;
                 }
                 _ => {
@@ -1042,6 +1045,7 @@ impl Tokenizer<'_> {
             PiOpen | PiTarget | AfterPiTarget | PiData | PiQuestionable => {
                 self.error(EofInProcessingInstruction, c, evidence)?;
                 self.abandon_lexical(c, evidence)?;
+                self.discard_pi(c)?;
                 self.reconsume(Data, c)?;
             }
             MarkupDeclaration => return Err(c.fail_invariant(Invariant::TokenizerState)),

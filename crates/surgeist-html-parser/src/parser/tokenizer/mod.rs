@@ -759,18 +759,12 @@ impl<'source> Tokenizer<'source> {
                 self.current = ch.source().clone();
                 if let Some(record) = ch.preprocessing() {
                     if let super::input::PreprocessingRecord::Diagnostic(code) = record {
-                        let code = match code {
-                            super::input::InputDiagnostic::Surrogate => {
-                                DiagnosticCode::SurrogateInInputStream
-                            }
-                            super::input::InputDiagnostic::Noncharacter => {
-                                DiagnosticCode::NoncharacterInInputStream
-                            }
-                            super::input::InputDiagnostic::ControlCharacter => {
-                                DiagnosticCode::ControlCharacterInInputStream
-                            }
-                        };
-                        self.error_at(code, DiagnosticPhase::InputStream, c, evidence)?;
+                        self.error_at(
+                            Self::input_stream_code(code),
+                            DiagnosticPhase::InputStream,
+                            c,
+                            evidence,
+                        )?;
                     } else {
                         admit_record_write(size_of::<OriginKind>(), 1, c)?;
                         self.current_kind = OriginKind::Newline;
@@ -864,10 +858,34 @@ impl<'source> Tokenizer<'source> {
     ) -> Result<(), ParseStop> {
         self.error_at(code, DiagnosticPhase::Tokenizer, c, evidence)
     }
+    fn input_stream_code(diagnostic: super::input::InputDiagnostic) -> DiagnosticCode {
+        match diagnostic {
+            super::input::InputDiagnostic::Surrogate => DiagnosticCode::SurrogateInInputStream,
+            super::input::InputDiagnostic::Noncharacter => {
+                DiagnosticCode::NoncharacterInInputStream
+            }
+            super::input::InputDiagnostic::ControlCharacter => {
+                DiagnosticCode::ControlCharacterInInputStream
+            }
+        }
+    }
     fn error_at(
         &mut self,
         code: DiagnosticCode,
         phase: DiagnosticPhase,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), ParseStop> {
+        let source = self.current.clone();
+        self.error_at_source(code, phase, &source, c, evidence)
+    }
+    /// Reports at an explicit input frontier: the character a lookahead
+    /// examined is ahead of the last consumed one.
+    fn error_at_source(
+        &mut self,
+        code: DiagnosticCode,
+        phase: DiagnosticPhase,
+        source: &HtmlSourceRange,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
     ) -> Result<(), ParseStop> {
@@ -883,7 +901,7 @@ impl<'source> Tokenizer<'source> {
                 branch: code.name(),
             },
             crate::construction::evidence::DiagnosticLocationInput {
-                source: &self.current,
+                source,
                 role: crate::construction::evidence::DiagnosticLocationRole::InputFrontier,
                 token: None,
             },
@@ -1504,13 +1522,34 @@ impl<'source> Tokenizer<'source> {
         } else {
             AsciiComparison::Sensitive
         };
-        let matched = if self.cursor.is_progressive() {
+        let lookahead = if self.cursor.is_progressive() {
             self.cursor.poll_matches_ascii(bytes, comparison, c)?
-        } else if self.cursor.matches_ascii(bytes, comparison, c)? {
-            AsciiMatch::Matched
         } else {
-            AsciiMatch::Mismatched
+            let lookahead = self.cursor.matches_ascii(bytes, comparison, c)?;
+            super::input::Lookahead {
+                result: if lookahead.result {
+                    AsciiMatch::Matched
+                } else {
+                    AsciiMatch::Mismatched
+                },
+                examined: lookahead.examined,
+            }
         };
+        // Report the next input character's stream error before the mismatch
+        // is acted on. The pinned standard sets no relative order between
+        // input-stream and tokenizer errors; this is the smallest rule
+        // consistent with html5lib test3.test case 80 and test4.test cases
+        // 60-62 (see the tokenizer ordering test).
+        if let Some(examined) = lookahead.examined {
+            self.error_at_source(
+                Self::input_stream_code(examined.diagnostic),
+                DiagnosticPhase::InputStream,
+                &examined.source,
+                c,
+                evidence,
+            )?;
+        }
+        let matched = lookahead.result;
         if matched != AsciiMatch::Matched {
             return Ok(matched);
         }
@@ -1645,6 +1684,21 @@ impl<'source> Tokenizer<'source> {
             c,
             evidence,
         )
+    }
+    /// Drops the target and data drafts of an instruction that ends without a
+    /// token, once its lexical occurrence has retained their parts.
+    fn discard_pi(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        // Admit both removals before taking either nested owner.
+        admit_record_write(const { 2 * size_of::<Option<DraftText>>() }, 2, c)?;
+        let target = self.pi_target.take();
+        let data = self.pi_data.take();
+        if let Some(target) = target {
+            target.release(c)?;
+        }
+        if let Some(data) = data {
+            data.release(c)?;
+        }
+        Ok(())
     }
     fn create_doctype(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
         admit_record_write(size_of::<Option<DraftDoctype>>(), 1, c)?;

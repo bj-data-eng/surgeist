@@ -4970,6 +4970,28 @@ impl SessionStorage {
             .map_err(|error| construction_owner::construction_error(control, error))
     }
 
+    /// Qualifies the intended parent of an element being created. Creation
+    /// reads only the parent's node document and registry and never adds a
+    /// child, so a template element qualifies, unlike for [`Self::container`]:
+    /// the adoption agency algorithm creates replacements with the template
+    /// as the intended parent and later inserts them into its contents.
+    fn creation_parent(
+        &self,
+        control: &mut ParseControl,
+        index: usize,
+    ) -> Result<(), SessionError> {
+        control.charge(WorkCategory::RecordVisit, 1)?;
+        match self
+            .construction
+            .node_at(index)
+            .ok_or(SessionError::ForeignNode)?
+            .kind()
+        {
+            HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_) => Ok(()),
+            _ => Err(SessionError::NotContainer),
+        }
+    }
+
     /// Actual entry into an associated document leaves the closed ordinary
     /// producer inventory. This qualifies topology mutation, not preparation's
     /// source-ordered ordinary connectivity condition.
@@ -6466,7 +6488,7 @@ impl ParserArenaSession {
         self.validate_standalone_document(control)?;
         let storage = self.active()?;
         let parent = storage.index(control, intended_parent)?;
-        storage.container(control, parent)?;
+        storage.creation_parent(control, parent)?;
         if storage.associated_document_parent(control, parent)? {
             return Err(control
                 .stop_unsupported_standalone(StandaloneUnsupported::ScriptDocument)
