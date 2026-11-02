@@ -1268,8 +1268,12 @@ impl HtmlConstructionOperation {
                     .record_count
                     .checked_mul(size_of::<Record>())
                     .ok_or(HtmlConstructionError::RepresentationExhausted)?;
-                plan.copied_bytes = add(plan.copied_bytes, plan.initialized_bytes)?;
-                // Each record, and the histogram count of its depth.
+                // Each record, and the histogram count of its depth, one word.
+                let counts = plan
+                    .record_count
+                    .checked_mul(size_of::<usize>())
+                    .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+                plan.copied_bytes = add(add(plan.copied_bytes, plan.initialized_bytes)?, counts)?;
                 plan.record_writes = add(plan.record_writes, 2 * plan.record_count)?;
                 plan.references = 1 + usize::from(plan.template);
                 plan.reserve_required = add(self.arena().records.len(), plan.record_count)?;
