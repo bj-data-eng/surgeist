@@ -621,4 +621,44 @@ mod tests {
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
+
+    /// The stop for an owner call that the account cannot cover, with the
+    /// account an association was admitted to replaced by an empty one.
+    fn uncovered_owner_call() -> Option<ParseStop> {
+        let request = request("<body><div id=a>");
+        let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
+        c.admit_source(request.source()).unwrap();
+        let mut allow = |_: surgeist_html::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority = surgeist_html::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(17, &mut allow).unwrap();
+        let mut covered = Account::default();
+        let mut owner = HtmlCspOwner::new_with(&mut |a| covered.admit(&mut c, a)).unwrap();
+        let association = owner
+            .initial_document_with(&mut |a| covered.admit(&mut c, a))
+            .unwrap();
+        // An account that never held the association cannot be asked to
+        // transfer its storage into the request.
+        let mut short = Account::default();
+        let refused = owner.request_meta_insertion_with(
+            &association,
+            &profile,
+            "img-src 'none'".into(),
+            &mut |a| short.admit(&mut c, a),
+        );
+        assert!(refused.is_err());
+        c.stop()
+    }
+
+    /// An owner call the parser itself makes, that its own account cannot
+    /// cover, disagrees with what the parser charged. The processor is not
+    /// involved, so it is not a failed processing.
+    #[test]
+    fn an_owner_call_the_parser_account_cannot_cover_is_a_capacity_mismatch() {
+        assert_eq!(
+            uncovered_owner_call(),
+            Some(ParseStop::InternalInvariant(
+                crate::parser::control::Invariant::CapacityMismatch
+            ))
+        );
+    }
 }
