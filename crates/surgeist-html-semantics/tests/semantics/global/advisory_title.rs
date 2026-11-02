@@ -449,18 +449,25 @@ fn whole_selected_raw_cap_precedes_processing_and_ignores_unselected_values() {
 }
 
 #[test]
-fn literal_work_costs_cover_exact_normalization_and_boundary_reads() {
-    // Batch reserve1 + subject1 + namespace(1+28)=31. Own title lookup6,
-    // presence1 + raw length/admission1=39; normalization U+2N+finish1;
-    // record construction1 + batch slot1. Empty title:42; x:45;
-    // A CR LF B:52. Absent p:31+presence1+name length1+parent1+empty1+slot1=36.
-    // Absent link adds its four exact local-unit comparisons:39.
+fn documented_work_covers_exact_normalization_and_boundary_reads() {
+    // From the documented AdvisoryInformation work: the query prefix (reservation
+    // 1, lookup 1, namespace test 29) = 31. A present `title` costs the attribute
+    // scan (1 + 5 compared units), presence 1 and raw admission 1, then
+    // normalization (a read per raw unit, 2 per kept unit, closing 1), the
+    // record 1 and the result write 1.
+    let prefix = 1 + 1 + 29;
+    let present = |units: usize, kept: usize| prefix + 6 + 1 + 1 + units + 2 * kept + 1 + 1 + 1;
+    // An absent `title` on a parentless non-boundary element: presence 1, a
+    // boundary test of 1, the parent step 1, the empty answer 1 and the write 1.
+    // A `link` instead matches its four boundary units and ends without the
+    // parent step.
+    let absent = prefix + 1 + 1 + 1 + 1 + 1;
     for (local, title, work) in [
-        ("p", Some(""), 42),
-        ("p", Some("x"), 45),
-        ("p", Some("A\r\nB"), 52),
-        ("p", None, 36),
-        ("link", None, 39),
+        ("p", Some(""), present(0, 0)),
+        ("p", Some("x"), present(1, 1)),
+        ("p", Some("A\r\nB"), present(4, 3)),
+        ("p", None, absent),
+        ("link", None, prefix + 1 + (1 + 4) + 1 + 1),
     ] {
         let (c, id) = fixture(local, title.map(DocumentString::from), true);
         let cx = context(&c);
@@ -494,19 +501,28 @@ fn literal_work_costs_cover_exact_normalization_and_boundary_reads() {
 fn partial_normalization_stops_before_an_unadmitted_write_and_drops_local_storage() {
     let (c, id) = fixture("p", Some("AB".into()), false);
     let cx = context(&c);
-    // Own selection39, A read/reserve/write3, B read/reserve2=44;
-    // the B slot requires45 and must not execute. No scratch is introduced.
-    let mut s = session(&c, &cx, limits(44), 2, HtmlSemanticCancellation::new());
+    // From the documented work: prefix 31, own selection (scan 6, presence 1,
+    // admission 1), A (read 1, reservation 1, push 1) and B (read 1,
+    // reservation 1) = 44; the push of B requires 45 and must not execute. No
+    // scratch is introduced.
+    let before_b_push = 31 + 6 + 1 + 1 + 3 + 2;
+    let mut s = session(
+        &c,
+        &cx,
+        limits(before_b_push),
+        2,
+        HtmlSemanticCancellation::new(),
+    );
     let failure = s.query(&[request(&id)]).unwrap_err();
     assert_eq!(
         failure.kind(),
         &HtmlSemanticFailureKind::LimitExceeded {
             resource: HtmlSemanticResource::Work,
-            limit: 44,
-            required: 45
+            limit: before_b_push,
+            required: before_b_push + 1
         }
     );
-    assert_eq!(failure.usage().work(), 44);
+    assert_eq!(failure.usage().work(), before_b_push);
     assert_eq!(failure.usage().nested_output_records(), 2);
     assert_eq!(failure.usage().scratch_records(), 0);
     assert_eq!(s.query(&[]).unwrap_err(), failure);

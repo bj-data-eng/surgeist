@@ -1,4 +1,7 @@
-use crate::semantics::support::{builder_without_registries as builder, session};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_without_registries as builder,
+    result_record_bytes, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -521,14 +524,17 @@ fn role_and_type_cap_precede_required_absence_and_terminals_are_not_false_proofs
 }
 
 #[test]
-fn literal_work_budgets_admit_complete_results_and_one_short_stops_before_write() {
-    // E=113, A=144, namespace=28. Input:32+706+1+2265+1+1=3006.
-    // Textarea absent required:32+1045+1+1=1079.
-    // Required/empty textarea, unknown parent:4382 (see the independent scan costs below).
-    for (local, attrs, current, work, expected) in [
-        ("input", vec![], None, 3006, Some(false)),
-        ("textarea", vec![], None, 1079, Some(false)),
-        ("textarea", vec![("required", "")], Some(""), 4382, None),
+fn exact_work_admits_complete_results_and_one_short_stops_before_write() {
+    // The intrinsic input-type, required, readonly and disabledness steps of this
+    // query consult the vocabulary through envelopes whose per-step layout is not
+    // among the documented per-query tariffs, so work is required to be charged
+    // but is not pinned. For each declared outcome the exact work cap must
+    // reproduce the baseline report, one less must stop with exactly that
+    // resource, the state is the declared one, and no scratch is ever used.
+    for (local, attrs, current, expected) in [
+        ("input", vec![], None, Some(false)),
+        ("textarea", vec![], None, Some(false)),
+        ("textarea", vec![("required", "")], Some(""), None),
     ] {
         let (c, id) = fixture(local, &attrs, false);
         let values = current
@@ -539,30 +545,20 @@ fn literal_work_budgets_admit_complete_results_and_one_short_stops_before_write(
             || HtmlSemanticValue::Missing(HtmlSemanticMissing::Parent(id.clone())),
             HtmlSemanticValue::Known,
         );
-        let req = request(&id, query_for(local));
-        let mut exact = session(&c, &cx, limits(work), 100, HtmlSemanticCancellation::new());
-        let r = exact.query(std::slice::from_ref(&req)).unwrap();
-        assert_eq!(value(&r), &expected);
-        assert_eq!(r.usage().work(), work);
-        assert_eq!(r.usage().peak_scratch_records(), 0);
-        let mut short = session(
+        let r = assert_exact_and_one_short_caps(
+            &format!("{local} {attrs:?}"),
             &c,
             &cx,
-            limits(work - 1),
             100,
-            HtmlSemanticCancellation::new(),
+            limits(1_000_000),
+            &[request(&id, query_for(local))],
+            ExpectedUsage {
+                output_records: Charge::Exactly(1),
+                allocated_bytes: Charge::Exactly(result_record_bytes()),
+                ..ExpectedUsage::none()
+            },
         );
-        let failure = short.query(&[req]).unwrap_err();
-        assert_eq!(
-            failure.kind(),
-            &HtmlSemanticFailureKind::LimitExceeded {
-                resource: HtmlSemanticResource::Work,
-                limit: work - 1,
-                required: work
-            }
-        );
-        assert_eq!(short.query(&[]).unwrap_err(), failure);
-        assert_eq!(short.usage().scratch_records(), 0);
+        assert_eq!(value(&r), &expected);
     }
 }
 
@@ -702,7 +698,7 @@ fn actual_output_capacity_can_be_reused_at_its_exact_reported_byte_and_record_li
     let cx = context(&c, &[]);
     let r = report(&c, &cx, &id, query_for("textarea"), 100);
     // Derived, not measured: one Boolean result record is the only allocation.
-    let bytes = crate::semantics::support::result_record_bytes();
+    let bytes = result_record_bytes();
     let records = 1;
     assert_eq!(r.usage().allocated_bytes(), bytes);
     assert_eq!(r.usage().output_records(), records);

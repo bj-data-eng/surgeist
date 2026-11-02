@@ -222,6 +222,18 @@ use surgeist_html::bounded::{
 ///   `K(l)`, then text content. An output default override scans one record (1)
 ///   per supplied record up to the match; a text override then costs 1 and
 ///   returns the shared string without further allocation.
+/// - **AdvisoryInformation** (`advisory_information`). The query prefix, then
+///   for each HTML element on the path from the subject: the `title` attribute
+///   scan (1 per attribute plus one per compared unit of a length-matching
+///   name) and 1 for presence. A present attribute charges 1 (raw admission),
+///   its normalization (1 per raw unit read plus 2 per kept unit, a reservation
+///   and a push; a line feed after a carriage return is read but not kept), a
+///   closing 1 and 1 for the record. An absent attribute charges the boundary
+///   test (1, plus one per compared unit of `link` or `style` for a name of 4 or
+///   5 units, up to the first mismatch); a boundary ends the walk with the empty
+///   answer (1). Otherwise the walk steps to the parent (1) and, for an element
+///   parent, its lookup (1) and namespace test; no parent ends with the empty
+///   answer (1). Then the result write (1).
 /// - **Intrinsic envelope** (`admit_intrinsic`). One charge of
 ///   `3 * (element units + 1) * N + (attribute-name units + 1) *
 ///   KnownHtmlAttribute::ALL.len() + value units * keywords + 3 * (namespace

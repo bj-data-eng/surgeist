@@ -1,6 +1,6 @@
 use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, context, result_record_bytes,
-    semantic_limits_without_nested_output as limits, session,
+    semantic_limits_without_nested_output as limits, session, validated_work,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
@@ -624,22 +624,27 @@ fn exact_work_admits_completion_and_one_short_rejects_without_partial_batch() {
         matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: HtmlSemanticResource::Work, required, .. } if *required == work)
     );
     assert_eq!(short.query(&[]).unwrap_err(), failure);
-    // The 4-unit completion step is admitted before raw handle retention and
-    // follows the four unit reads: a cut 7 below the total lies inside it. This
-    // offset is the HTML owner's private completion layout, used only to place
-    // the stop; the ordering assertions below are what the test requires.
-    let mut before_ready = session(
-        &capture,
-        &cx,
-        HtmlSemanticLimits::new(work - 7, 1, 0, 0, 1000000, 0),
-        4,
-        HtmlSemanticCancellation::new(),
-    );
-    let failure = before_ready.query(&[request(&image)]).unwrap_err();
-    assert_eq!(failure.usage().work(), work - 10);
-    assert!(
-        matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: HtmlSemanticResource::Work, required, .. } if *required == work - 6)
-    );
+    // The distinction between stops before and after the HTML owner's completion
+    // step depends on its private layout, so it is not asserted. Instead every
+    // cap below the validated total, which includes every point before the
+    // result is ready, must stop with exactly Work, limit == cap and
+    // required > cap, without ever exceeding the cap.
+    for cap in 0..work {
+        let mut cut = session(
+            &capture,
+            &cx,
+            HtmlSemanticLimits::new(cap, 1, 0, 0, 1000000, 0),
+            4,
+            HtmlSemanticCancellation::new(),
+        );
+        let failure = cut.query(&[request(&image)]).unwrap_err();
+        assert!(
+            matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: HtmlSemanticResource::Work, limit, required } if *limit == cap && *required > cap),
+            "cap {cap}: {failure:?}"
+        );
+        assert!(failure.usage().work() <= cap);
+        assert_eq!(cut.query(&[]).unwrap_err(), failure);
+    }
 }
 
 #[test]
@@ -690,24 +695,38 @@ fn physical_output_and_scratch_boundaries_are_admitted_before_retention_and_clea
         }
     ));
     assert_eq!(zero.usage().scratch_records(), 0);
-    let mut late = session(
+    // The id and name walk reserves scratch before it finishes. Rather than a
+    // private offset, cut the validated total at every cap below it: each stop
+    // is exactly Work with limit == cap and required > cap, scratch is always
+    // released, the stop is sticky, and some cut falls after scratch was first
+    // reserved.
+    let total = validated_work(
+        "usemap id and name walk",
         &capture,
         &cx,
-        HtmlSemanticLimits::new(8 * KnownHtmlElement::ALL.len() + 200, 1, 10, 0, 1000000, 0),
         2,
-        HtmlSemanticCancellation::new(),
+        HtmlSemanticLimits::new(1000000, 1, 10, 0, 1000000, 0),
+        &[request(&image)],
     );
-    let failure = late.query(&[request(&image)]).unwrap_err();
-    assert!(matches!(
-        failure.kind(),
-        HtmlSemanticFailureKind::LimitExceeded {
-            resource: HtmlSemanticResource::Work,
-            ..
-        }
-    ));
-    assert!(late.usage().peak_scratch_records() > 0);
-    assert_eq!(late.usage().scratch_records(), 0);
-    assert_eq!(late.query(&[]).unwrap_err(), failure);
+    let mut reached_scratch = false;
+    for cap in 0..total {
+        let mut late = session(
+            &capture,
+            &cx,
+            HtmlSemanticLimits::new(cap, 1, 10, 0, 1000000, 0),
+            2,
+            HtmlSemanticCancellation::new(),
+        );
+        let failure = late.query(&[request(&image)]).unwrap_err();
+        assert!(
+            matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: HtmlSemanticResource::Work, limit, required } if *limit == cap && *required > cap),
+            "cap {cap}: {failure:?}"
+        );
+        reached_scratch |= late.usage().peak_scratch_records() > 0;
+        assert_eq!(late.usage().scratch_records(), 0);
+        assert_eq!(late.query(&[]).unwrap_err(), failure);
+    }
+    assert!(reached_scratch);
 }
 
 #[test]
@@ -914,7 +933,17 @@ fn late_raw_admission_failure_discards_the_whole_batch_and_preserves_qualificati
     assert!(
         matches!(failure.kind(), HtmlSemanticFailureKind::Attribute(error) if error.required() == 8)
     );
-    assert!(failure.usage().work() > 4 * KnownHtmlElement::ALL.len() + 124);
+    // The first request completed before the second failed, so the failure has
+    // charged more than that first request alone.
+    let first_work = validated_work(
+        "usemap first image request",
+        &capture,
+        &cx,
+        4,
+        limits(),
+        &[request(&first)],
+    );
+    assert!(failure.usage().work() > first_work);
     assert_eq!(
         failure.qualification().unwrap().capture(),
         capture.identity()
@@ -1076,69 +1105,54 @@ fn fixed_processing_with_gap(
 }
 
 #[test]
-fn resumed_lookup_has_literal_work_boundaries_and_releases_physical_scratch() {
+fn resumed_lookup_stops_at_every_work_cut_and_releases_physical_scratch() {
     let (capture, image, selected) = fixed_processing_with_gap("x");
     let cx = context(&capture);
-    // The unchanged outer/scanner/classification/retention envelope is 4V+112.
-    // Root walk4, document visit+descent5; image visit+empty descent4V+34;
-    // selected map recognition/id lookup+empty descent4V+45;
-    // gap recognition/unavailable children/first retention/resume4V+32;
-    // witness recognition/name proof4V+41; deferred-proof decision1.
-    // Each resume charges once per inspected frame, including empty-frame pops.
-    let work = 20 * KnownHtmlElement::ALL.len() + 274;
-    let mut exact = session(
+    // The id lookup, deferred gap and witness proof use the HTML owner's private
+    // step layout, so work is required to be charged but is not pinned. The exact
+    // cap must reproduce the report, whose scratch is the walk's frames.
+    let report = assert_exact_and_one_short_caps(
+        "usemap resumed lookup",
         &capture,
         &cx,
-        HtmlSemanticLimits::new(work, 1, 10, 0, 1000000, 0),
         2,
-        HtmlSemanticCancellation::new(),
+        HtmlSemanticLimits::new(1000000, 1, 10, 0, 1000000, 0),
+        &[request(&image)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::AtLeast(2),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + 2 * std::mem::size_of::<HtmlCapturedChildIds<'_>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
     );
-    let report = exact.query(&[request(&image)]).unwrap();
     assert_map(value(&report), &selected, HtmlUsemapMatch::Id);
-    assert_eq!(report.usage().work(), work);
     assert_eq!(report.usage().scratch_records(), 0);
-    assert!(report.usage().peak_scratch_records() >= 2);
-    assert_eq!(report.usage().nested_output_records(), 0);
     assert_eq!(
         report.usage().allocated_bytes(),
         report.usage().output_records() * std::mem::size_of::<HtmlSemanticResult>()
             + report.usage().peak_scratch_records()
                 * std::mem::size_of::<HtmlCapturedChildIds<'_>>()
     );
-    let mut short = session(
-        &capture,
-        &cx,
-        HtmlSemanticLimits::new(work - 1, 1, 10, 0, 1000000, 0),
-        2,
-        HtmlSemanticCancellation::new(),
-    );
-    let failure = short.query(&[request(&image)]).unwrap_err();
-    assert!(
-        matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded {
-        resource: HtmlSemanticResource::Work, required, ..
-    } if *required == work)
-    );
-    assert_eq!(short.usage().scratch_records(), 0);
-    assert_eq!(short.query(&[]).unwrap_err(), failure);
-
-    // Prefix through the unavailable gap costs 16V+228. Retaining the first
-    // Missing is admitted at +1; advancing its known ancestor iterator is +1.
-    let prefix = 16 * KnownHtmlElement::ALL.len() + 228;
-    for (limit, required) in [(prefix, prefix + 1), (prefix + 1, prefix + 2)] {
+    // Every cut below the validated total, including the cuts that fall before
+    // the deferred gap's first retention and before its resume, stops with
+    // exactly Work, limit == cap and required > cap, never exceeds the cap,
+    // releases scratch and is sticky.
+    for cap in 0..report.usage().work() {
         let mut owner = session(
             &capture,
             &cx,
-            HtmlSemanticLimits::new(limit, 1, 10, 0, 1000000, 0),
+            HtmlSemanticLimits::new(cap, 1, 10, 0, 1000000, 0),
             2,
             HtmlSemanticCancellation::new(),
         );
         let failure = owner.query(&[request(&image)]).unwrap_err();
         assert!(
-            matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded {
-            resource: HtmlSemanticResource::Work, required: actual, ..
-        } if *actual == required)
+            matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: HtmlSemanticResource::Work, limit, required } if *limit == cap && *required > cap),
+            "cap {cap}: {failure:?}"
         );
-        assert_eq!(failure.usage().work(), limit);
+        assert!(failure.usage().work() <= cap);
         assert_eq!(owner.usage().scratch_records(), 0);
         assert_eq!(owner.query(&[]).unwrap_err(), failure);
     }
@@ -1159,7 +1173,17 @@ fn a_terminal_raw_failure_after_a_deferred_gap_discards_the_batch_and_remains_st
         matches!(failure.kind(), HtmlSemanticFailureKind::Attribute(error)
         if error.required() == 8 && error.capacity() == 2)
     );
-    assert!(failure.usage().work() > 16 * KnownHtmlElement::ALL.len() + 229);
+    // The failure comes after the successful first request and the gap deferral,
+    // so it has charged more than that first request alone.
+    let first = validated_work(
+        "usemap document request",
+        &capture,
+        &cx,
+        2,
+        limits(),
+        &[request(document.subject())],
+    );
+    assert!(failure.usage().work() > first);
     assert_eq!(owner.usage().scratch_records(), 0);
     assert_eq!(
         failure.qualification().unwrap().capture(),
