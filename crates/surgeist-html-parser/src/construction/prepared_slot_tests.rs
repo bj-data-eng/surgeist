@@ -12,7 +12,9 @@
 use super::tests::storage_zero;
 use super::{KindList, RetainedPayload, StringLocation, literal_string};
 use crate::construction::effects::tests::{graph, request};
-use crate::parser::control::{PreparedSlotStopScope, prepared_slots, stop_after_prepared_slot};
+use crate::parser::control::{
+    PreparedSlotStopScope, prepared_slot_sites, prepared_slots, stop_after_prepared_slot,
+};
 use crate::parser::tree_builder::tests::limits;
 use crate::{
     HtmlParseBaseFacts, HtmlParseFailure, HtmlParseLimits, HtmlParseResource,
@@ -146,7 +148,7 @@ fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
 /// next step to charge any of them is refused. Returns what any stop left.
 fn retained_after_each_prepared_slot(
     parse: &dyn Fn(HtmlParseLimits) -> Result<(), Box<Stopped>>,
-) -> Vec<String> {
+) -> (Vec<String>, Vec<Site>) {
     let unrestricted = limits(100);
     let _scope = PreparedSlotStopScope::begin();
     if let Err(stop) = parse(unrestricted) {
@@ -157,6 +159,7 @@ fn retained_after_each_prepared_slot(
     }
     let slots = prepared_slots();
     assert!(slots > 0, "the document prepares payload slots");
+    let sites: Vec<Site> = prepared_slot_sites().into_iter().map(site).collect();
     let mut retained = Vec::new();
     let mut stops = 0;
     for slot in 0..slots {
@@ -191,18 +194,82 @@ fn retained_after_each_prepared_slot(
         }
     }
     assert!(stops > 0, "some stop is reached");
-    retained
+    (retained, sites)
 }
 
+/// The source file and the function that asked for a payload slot. The
+/// function, not the line, names the site, so an unrelated edit above it does
+/// not move it.
+#[derive(Debug, Eq, PartialEq)]
+struct Site {
+    file: String,
+    function: String,
+}
+/// The name `line` declares, when it begins a function.
+fn declared_function(line: &str) -> Option<String> {
+    let mut rest = line.trim_start();
+    if let Some(after) = rest.strip_prefix("pub") {
+        rest = after;
+        if rest.starts_with('(') {
+            rest = rest.split_once(')')?.1;
+        }
+        rest = rest.trim_start();
+    }
+    let name = rest.strip_prefix("fn ")?;
+    Some(
+        name.chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect(),
+    )
+}
+fn site(location: &std::panic::Location<'_>) -> Site {
+    let file = location.file().replace('\\', "/");
+    let relative = file
+        .split_once("/src/")
+        .map_or(file.as_str(), |(_, rest)| rest);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join(relative);
+    let source = std::fs::read_to_string(&path).expect("the file of a recorded site is readable");
+    let function = source
+        .lines()
+        .take(location.line() as usize)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .find_map(declared_function)
+        .expect("a recorded site is inside a function");
+    Site {
+        file: format!("src/{relative}"),
+        function,
+    }
+}
+
+/// Requires that stopping `parse` after each of its prepared payload slots
+/// leaves nothing retained, and that the slots it prepares include one asked
+/// for by each of `reaches`, as `(file, function)`: a document that stops
+/// reaching the site it is meant to cover would otherwise pass vacuously.
 #[track_caller]
-fn assert_nothing_retained(parse: &dyn Fn(HtmlParseLimits) -> Result<(), Box<Stopped>>) {
-    let retained = retained_after_each_prepared_slot(parse);
+fn assert_nothing_retained(
+    parse: &dyn Fn(HtmlParseLimits) -> Result<(), Box<Stopped>>,
+    reaches: &[(&str, &str)],
+) {
+    let (retained, sites) = retained_after_each_prepared_slot(parse);
     assert!(
         retained.is_empty(),
         "{} stops retained something, first: {:?}",
         retained.len(),
         &retained[..retained.len().min(8)]
     );
+    for (file, function) in reaches {
+        assert!(
+            sites
+                .iter()
+                .any(|site| site.file == *file && site.function == *function),
+            "no prepared slot was asked for by {function} in {file}; sites reached: {:?}",
+            sites
+        );
+    }
 }
 
 fn document(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Box<Stopped>> {
@@ -267,100 +334,192 @@ fn fragment(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Box<
 
 #[test]
 fn dialog_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document("<!doctype html><dialog open>d</dialog>"));
+    assert_nothing_retained(
+        &document("<!doctype html><dialog open>d</dialog>"),
+        &[("src/construction/dialog.rs", "initialize_dialog")],
+    );
 }
 
 #[test]
 fn style_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document("<!doctype html><style>a{}</style>"));
+    assert_nothing_retained(
+        &document("<!doctype html><style>a{}</style>"),
+        &[("src/construction/style.rs", "initialize_style")],
+    );
 }
 
 #[test]
-fn hyperlink_and_image_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><a href=x>l</a><img src=y><area href=z>",
-    ));
+fn hyperlink_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(
+        &document("<!doctype html><a href=x>l</a><area href=z>"),
+        &[("src/construction/associated.rs", "initial_associated_state")],
+    );
 }
 
 #[test]
-fn cloned_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><a href=x>1<p>2</a>3<b nonce=n>4<p>5</b>6",
-    ));
+fn image_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(
+        &document("<!doctype html><img src=y>"),
+        &[("src/construction/associated.rs", "initial_associated_state")],
+    );
+}
+
+#[test]
+fn reconstructed_formatting_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(
+        &document("<!doctype html><a href=x>1<p>2</a>3<b nonce=n>4<p>5</b>6"),
+        &[
+            ("src/construction/associated.rs", "initial_associated_state"),
+            ("src/construction.rs", "allocate_html_payload_prepared"),
+        ],
+    );
 }
 
 #[test]
 fn form_control_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><form id=f><input name=a form=f><textarea>t</textarea><output>o</output><select><option>x</option></select><button></button></form>",
-    ));
+    assert_nothing_retained(
+        &document(
+            "<!doctype html><form id=f><input name=a form=f><textarea>t</textarea><output>o</output><select><option>x</option></select><button></button></form>",
+        ),
+        &[
+            ("src/construction.rs", "allocate_ordered_payload"),
+            ("src/construction.rs", "register_raw"),
+        ],
+    );
 }
 
 #[test]
 fn template_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><template><p>t</p><template><b>n</b></template></template>",
-    ));
+    assert_nothing_retained(
+        &document("<!doctype html><template><p>t</p><template><b>n</b></template></template>"),
+        &[
+            (
+                "src/construction/template.rs",
+                "prepare_document_allocation",
+            ),
+            (
+                "src/construction/template.rs",
+                "appropriate_contents_document",
+            ),
+        ],
+    );
 }
 
 #[test]
 fn script_link_and_details_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><script>1</script><link rel=stylesheet href=s><details open><summary>s</summary></details>",
-    ));
+    assert_nothing_retained(
+        &document(
+            "<!doctype html><script>1</script><link rel=stylesheet href=s><details open><summary>s</summary></details>",
+        ),
+        &[
+            ("src/construction.rs", "allocate_disabled_parser_script"),
+            ("src/construction.rs", "allocate_for_creation"),
+        ],
+    );
 }
 
 #[test]
 fn text_select_and_style_order_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><textarea>a&amp;b</textarea><select><option>a</option><option selected>b</option></select><style>a{}</style><style>b{}</style>",
-    ));
+    assert_nothing_retained(
+        &document(
+            "<!doctype html><textarea>a&amp;b</textarea><select><option>a</option><option selected>b</option></select><style>a{}</style><style>b{}</style>",
+        ),
+        &[
+            ("src/construction/text_append.rs", "append_registered_text"),
+            (
+                "src/construction/pending_association.rs",
+                "retain_style_order",
+            ),
+            ("src/construction/effects.rs", "retain_work_list"),
+            ("src/construction.rs", "allocate_ordered_payload"),
+        ],
+    );
 }
 
 #[test]
 fn base_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document("<!doctype html><base target=T><p>X"));
+    assert_nothing_retained(
+        &document("<!doctype html><base target=T><p>X"),
+        &[("src/construction/base.rs", "register_base")],
+    );
 }
 
 #[test]
 fn meta_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><meta http-equiv=content-security-policy content=1><meta charset=utf-8>",
-    ));
+    assert_nothing_retained(
+        &document(
+            "<!doctype html><meta http-equiv=content-security-policy content=1><meta charset=utf-8>",
+        ),
+        &[("src/construction/meta.rs", "meta_missing")],
+    );
 }
 
 #[test]
 fn nonce_and_svg_script_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><p nonce=n>x</p><svg><script>1</script><g nonce=m></g></svg>",
-    ));
+    assert_nothing_retained(
+        &document("<!doctype html><p nonce=n>x</p><svg><script>1</script><g nonce=m></g></svg>"),
+        &[
+            ("src/construction/nonce.rs", "prepare_nonce"),
+            ("src/construction/svg.rs", "retain_svg_slot"),
+            ("src/construction/foreign.rs", "allocate_foreign_payload"),
+        ],
+    );
 }
 
 #[test]
 fn attribute_and_cause_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><p id=a class=b>x<p id=c></b><table><tr><td>x</table>",
-    ));
+    assert_nothing_retained(
+        &document("<!doctype html><p id=a class=b>x<p id=c></b><table><tr><td>x</table>"),
+        &[
+            ("src/construction/provenance.rs", "prepare_node_causes"),
+            ("src/construction.rs", "allocate_html_payload_prepared"),
+        ],
+    );
 }
 
 #[test]
 fn fragment_template_and_shadow_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot()
 {
-    assert_nothing_retained(&fragment(
-        "<template><p>t</p></template><div><template shadowrootmode=open><slot></slot></template></div>",
-    ));
+    assert_nothing_retained(
+        &fragment(
+            "<template><p>t</p></template><div><template shadowrootmode=open><slot></slot></template></div>",
+        ),
+        &[
+            ("src/construction/context.rs", "attach_declarative_shadow"),
+            (
+                "src/construction/template.rs",
+                "appropriate_contents_document",
+            ),
+        ],
+    );
 }
 
 #[test]
 fn fragment_association_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&fragment(
-        "<style media=screen>x{}</style><a href=x>l</a><script>1</script>",
-    ));
+    assert_nothing_retained(
+        &fragment("<style media=screen>x{}</style><a href=x>l</a><script>1</script>"),
+        &[
+            (
+                "src/construction/pending_association.rs",
+                "retain_style_order",
+            ),
+            ("src/construction/style.rs", "initialize_style"),
+            ("src/construction.rs", "allocate_disabled_parser_script"),
+            ("src/construction/associated.rs", "initial_associated_state"),
+        ],
+    );
 }
 
 #[test]
-fn fragment_cloned_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&fragment("<a href=x>1<p>2</a>3<form><input></form>"));
+fn fragment_reconstructed_formatting_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot()
+ {
+    assert_nothing_retained(
+        &fragment("<a href=x>1<p>2</a>3<form><input></form>"),
+        &[
+            ("src/construction.rs", "allocate_ordered_payload"),
+            ("src/construction.rs", "allocate_for_creation"),
+        ],
+    );
 }
 
 fn record(revision: &HtmlBaseFactsRevision, url: &str) -> HtmlBaseUrlRecord {
@@ -411,8 +570,9 @@ fn associated_input_rows_leave_nothing_retained_when_the_parse_stops_after_their
         HtmlBaseFactsLimits::new(20, 10_000, 100_000),
     )
     .unwrap();
-    assert_nothing_retained(&|limits| {
-        crate::HtmlDocumentParseRequest::offline(
+    assert_nothing_retained(
+        &|limits| {
+            crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(
                 "<!doctype html><a href=x></a><img src=x crossorigin=anonymous referrerpolicy=origin>",
             ),
@@ -424,7 +584,15 @@ fn associated_input_rows_leave_nothing_retained_when_the_parse_stops_after_their
         .parse()
         .map(drop)
         .map_err(|failure| stopped(&failure))
-    });
+        },
+        &[
+            (
+                "src/construction/associated.rs",
+                "install_associated_inputs",
+            ),
+            ("src/construction/base.rs", "install_document_base_facts"),
+        ],
+    );
 }
 
 /// A processor that attests every policy unchanged, so each reached Meta
@@ -457,11 +625,12 @@ impl HtmlMetaCspProcessor for Unchanged {
 
 #[test]
 fn processed_policy_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&|limits| {
-        let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
-        let profile = authority.profile_with(1, &mut allow).unwrap();
-        let mut processor = Unchanged { authority, profile };
-        crate::HtmlDocumentParseRequest::offline(
+    assert_nothing_retained(
+        &|limits| {
+            let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+            let profile = authority.profile_with(1, &mut allow).unwrap();
+            let mut processor = Unchanged { authority, profile };
+            crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(
                 "<!doctype html><meta http-equiv=content-security-policy content='='><style>a{}</style><meta http-equiv=content-security-policy content='='>",
             ),
@@ -470,7 +639,13 @@ fn processed_policy_rows_leave_nothing_retained_when_the_parse_stops_after_their
         .parse_with_meta_csp(&mut processor)
         .map(drop)
         .map_err(|failure| stopped(failure.parse_failure()))
-    });
+        },
+        &[
+            ("src/construction/csp.rs", "service_meta_csp"),
+            ("src/construction/csp.rs", "ensure_csp_policy"),
+            ("src/construction/csp.rs", "enable_meta_csp"),
+        ],
+    );
 }
 
 #[test]
@@ -526,14 +701,20 @@ fn an_armed_stop_does_not_outlive_a_sweep_that_unwinds() {
 
 #[test]
 fn processing_instruction_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document("<!doctype html><?target data?><p>x"));
+    assert_nothing_retained(
+        &document("<!doctype html><?target data?><p>x"),
+        &[("src/construction/pi.rs", "prepare_pi_map")],
+    );
 }
 
 #[test]
 fn merged_text_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
-    assert_nothing_retained(&document(
-        "<!doctype html><textarea>a&amp;b&lt;c</textarea><style>x&amp;y</style><p>a&amp;b</p>",
-    ));
+    assert_nothing_retained(
+        &document(
+            "<!doctype html><textarea>a&amp;b&lt;c</textarea><style>x&amp;y</style><p>a&amp;b</p>",
+        ),
+        &[("src/construction/text_append.rs", "append_registered_text")],
+    );
 }
 
 #[test]

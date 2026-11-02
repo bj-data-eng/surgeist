@@ -2599,6 +2599,7 @@ impl SessionStorage {
         Ok(handle)
     }
 
+    #[cfg_attr(test, track_caller)]
     fn prepare_payload_slot(
         &mut self,
         control: &mut ParseControl,
@@ -2608,6 +2609,7 @@ impl SessionStorage {
     }
     // Only the synchronous effects owner may admit a raw replacement while
     // public/session entry points are blocked by the retained effects phase.
+    #[cfg_attr(test, track_caller)]
     fn prepare_payload_slot_owned(
         &mut self,
         control: &mut ParseControl,
@@ -2616,6 +2618,7 @@ impl SessionStorage {
     }
     /// Admits one registry row and, for a registry-wide kind, the entry of its
     /// list; `push_row` then appends both.
+    #[cfg_attr(test, track_caller)]
     fn prepare_payload_slot_for(
         &mut self,
         control: &mut ParseControl,
@@ -2626,6 +2629,7 @@ impl SessionStorage {
     /// As `prepare_payload_slot_for`, also admitting the entry of the
     /// explicit-form list when the row is of a listed control with a `form`
     /// attribute. All reservations precede the one acquisition.
+    #[cfg_attr(test, track_caller)]
     fn prepare_payload_slot_with(
         &mut self,
         control: &mut ParseControl,
@@ -2680,7 +2684,7 @@ impl SessionStorage {
         control.acquire(HtmlParseResource::AuxiliaryEntries, entries)?;
         self.payloads.prepared_entries = prepared_entries;
         #[cfg(test)]
-        control.note_prepared_slot();
+        control.note_prepared_slot(std::panic::Location::caller());
         Ok(PreparedSlot {
             entries,
             list,

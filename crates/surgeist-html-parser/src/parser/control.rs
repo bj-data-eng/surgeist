@@ -326,6 +326,12 @@ thread_local! {
     static PREPARED_SLOT_STOP: std::cell::Cell<PreparedSlotStop> =
         const { std::cell::Cell::new(PreparedSlotStop { after: None, prepared: 0 }) };
 }
+// Where each payload slot the parse prepared was asked for, in order.
+#[cfg(test)]
+thread_local! {
+    static PREPARED_SLOT_SITES: std::cell::RefCell<Vec<&'static std::panic::Location<'static>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
 /// Makes the parse that runs next on this thread stop, as a cancellation, at the
 /// first checkpoint after it prepares its `index`th payload slot (counting
 /// from zero), and restarts the count [`prepared_slots`] reports. `None` stops
@@ -336,6 +342,13 @@ pub(crate) fn stop_after_prepared_slot(index: Option<usize>) {
         after: index,
         prepared: 0,
     });
+    PREPARED_SLOT_SITES.with_borrow_mut(Vec::clear);
+}
+/// The source location that asked for each payload slot the parse run since
+/// [`stop_after_prepared_slot`] prepared, in order.
+#[cfg(test)]
+pub(crate) fn prepared_slot_sites() -> Vec<&'static std::panic::Location<'static>> {
+    PREPARED_SLOT_SITES.with_borrow(Clone::clone)
 }
 /// How many payload slots the parse run since [`stop_after_prepared_slot`]
 /// prepared.
@@ -447,9 +460,11 @@ impl ParseControl {
             stop_armed: false,
         }
     }
-    /// Counts one prepared payload slot and arms the stop a test asked for.
+    /// Counts one prepared payload slot, records where it was asked for, and arms
+    /// the stop a test asked for.
     #[cfg(test)]
-    pub(crate) fn note_prepared_slot(&mut self) {
+    pub(crate) fn note_prepared_slot(&mut self, site: &'static std::panic::Location<'static>) {
+        PREPARED_SLOT_SITES.with_borrow_mut(|sites| sites.push(site));
         let mut hook = PREPARED_SLOT_STOP.get();
         self.stop_armed |= hook.after == Some(hook.prepared);
         hook.prepared = hook.prepared.saturating_add(1);
