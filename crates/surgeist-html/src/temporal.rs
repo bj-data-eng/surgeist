@@ -11,7 +11,9 @@
 //! range (step 2), the colon, the minute digits, the minute range (step 5), then
 //! the seconds grammar (step 7.3) before the seconds range (step 7.4), so
 //! `24:00:00..1` reports an hour range error rather than the later fraction
-//! syntax error.
+//! syntax error. Every other range (month, day, week, yearless month and day)
+//! likewise precedes the later steps and the trailing-input check, so
+//! `2021-W53X` reports a week range error.
 
 pub(crate) mod interpretation;
 
@@ -1243,14 +1245,15 @@ impl<'a> TemporalValidationCursor<'a> {
                         return;
                     }
                 }
-                if self.full && self.position != self.input.len() {
-                    self.fail(HtmlTemporalError::InvalidSyntax);
-                    return;
-                }
+                // §2.3.5.8 step 9 (week range) precedes step 10 (trailing input).
                 if self.format == TemporalInputFormat::Week
                     && (self.week == 0 || self.week > last_week_from_remainder(self.remainder))
                 {
                     self.fail(HtmlTemporalError::WeekOutOfRange);
+                    return;
+                }
+                if self.full && self.position != self.input.len() {
+                    self.fail(HtmlTemporalError::InvalidSyntax);
                     return;
                 }
                 let year = BorrowedYear {
@@ -2008,16 +2011,21 @@ impl<'a> Cursor<'a> {
         self.borrowed_date().map(BorrowedDate::ordinary)
     }
     /// A whole yearless date: optional `--`, month, `-`, day, then the end of
-    /// input (checked before the month and day ranges).
+    /// input. §2.3.5.3 checks the month range (step 3) before the hyphen and
+    /// the day range (step 7) before the trailing-input check.
     fn whole_yearless_date(&mut self) -> Result<HtmlYearlessDate, HtmlTemporalError> {
         if self.take(b'-') {
             self.expect(b'-')?;
         }
         let month = self.pair()?;
+        if !(1..=12).contains(&month) {
+            return Err(HtmlTemporalError::MonthOutOfRange);
+        }
         self.expect(b'-')?;
         let day = self.pair()?;
+        let date = HtmlYearlessDate::new(month, day)?;
         self.end()?;
-        HtmlYearlessDate::new(month, day)
+        Ok(date)
     }
     fn borrowed_time(
         &mut self,
