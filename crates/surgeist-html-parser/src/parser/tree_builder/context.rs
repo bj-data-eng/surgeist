@@ -4475,10 +4475,8 @@ pub(super) mod tests {
                         matches!(
                             error,
                             FragmentExecutionError::Head(head::HeadError::Kernel(
-                                KernelError::Session(SessionError::Stop(
-                                    ParseStop::UnsupportedStandaloneState(
-                                        crate::parser::control::StandaloneUnsupported::Provenance
-                                    )
+                                KernelError::Session(SessionError::ContextFactUnavailable(
+                                    HtmlCaptureFact::FragmentHost
                                 ))
                             ))
                         ),

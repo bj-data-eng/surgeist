@@ -237,7 +237,8 @@ impl SessionClass {
 /// Outcomes, with the stop each ends a parse as:
 /// - A stop is already latched by whoever raised it, and is its own.
 /// - The Meta CSP service and protocol outcomes are the stops their processing
-///   latches when it raises them.
+///   latches when it raises them. A processor that breaks the accounting of the
+///   service it was given is a failed processing.
 /// - Invalid associated facts are the associated-facts stop, as the creation
 ///   and Meta CSP producers latch it.
 /// - Script and SVG script metadata that effect work cannot find is the
@@ -255,12 +256,18 @@ impl SessionClass {
 ///   construction owner declining a request the parser's sequencing
 ///   guarantees valid.
 /// - A retained row that is missing, of another kind, unjoined or out of
-///   place is a registry row. Every remaining variant reports such a row: a
-///   metadata slot, node document, origin range, template or
-///   processing-instruction row, captured-document reference or fragment
-///   context node that the step raising it registered or validated earlier.
-///   Its content is not read from the document or from the facts the caller
-///   supplied, which are outcomes above, so these are engine conditions.
+///   place is a registry row. This is the whole of the rest of this side: every
+///   remaining variant reports a lookup or a bookkeeping check that fails on a
+///   handle, index or count the parser created itself (an arena node, a
+///   payload row of the wrong kind, storage already taken, a reference count
+///   other than one, a parent walk past its bound, a placement or association
+///   the construction owner refuses to a request the parser's sequencing
+///   guarantees valid). None of them reads what the caller supplied. Whatever
+///   the caller's capture does not establish is
+///   `ContextFactUnavailable(fact)`, a processor that breaks the accounting of
+///   the service it was given is `CspService`, and the facts a request
+///   supplies are `AssociatedFacts`. A raise site that would read caller
+///   input must not return a fault variant.
 pub(crate) fn session_class(error: &SessionError) -> SessionClass {
     use crate::parser::control::Invariant;
     match error {

@@ -280,6 +280,13 @@ impl<'c, 'a> Shared<'c, 'a> {
         }
     }
 }
+/// A processor that returned without a usable result while the account holds
+/// storage it admitted, or that released more than it held, broke the
+/// accounting contract of the service it was given: its processing failed.
+fn accounting_violation(c: &mut ParseControl) -> SessionError {
+    c.csp_processing_stop();
+    SessionError::CspService
+}
 struct Adapter<'a, P: HtmlMetaCspProcessor> {
     processor: &'a mut P,
     error: Option<P::Error>,
@@ -310,7 +317,10 @@ impl<P: HtmlMetaCspProcessor> Service for Adapter<'_, P> {
             Ok(HtmlMetaCspOutcome::Completed(p)) => Ok(Outcome::Completed(p)),
             Ok(HtmlMetaCspOutcome::Refused(e)) | Ok(HtmlMetaCspOutcome::Failed(e)) => {
                 // The provider's remaining aggregate travels with the real E.
-                self.storage = account.live.sub(before).ok_or(SessionError::WrongToken)?;
+                self.storage = account
+                    .live
+                    .sub(before)
+                    .ok_or_else(|| accounting_violation(c))?;
                 account.live = before;
                 self.error = Some(e);
                 self.kind = if refused {
@@ -324,30 +334,23 @@ impl<P: HtmlMetaCspProcessor> Service for Adapter<'_, P> {
             }
             Ok(HtmlMetaCspOutcome::Unavailable(u)) => {
                 if account.live != before {
-                    return Err(SessionError::WrongToken);
+                    return Err(accounting_violation(c));
                 }
                 Ok(Outcome::Unavailable(u))
             }
             Ok(HtmlMetaCspOutcome::Cancelled) => {
+                // Cancellation is what ended the processing, whatever storage
+                // the processor still holds.
                 self.kind = HtmlParseCspFailureKind::Cancelled;
-                if account.live != before {
-                    return Err(SessionError::WrongToken);
-                }
                 Err(c.cancelled_stop().into())
             }
             Err(HtmlCspError::Protocol(p)) => {
                 self.kind = HtmlParseCspFailureKind::Protocol(p);
-                if account.live != before {
-                    return Err(SessionError::WrongToken);
-                }
                 c.csp_protocol_stop(p);
                 Err(SessionError::CspProtocol(p))
             }
             Err(HtmlCspError::Interrupted(e)) => {
                 self.kind = HtmlParseCspFailureKind::Interrupted(e);
-                if account.live != before {
-                    return Err(SessionError::WrongToken);
-                }
                 Err(e.into())
             }
         }
