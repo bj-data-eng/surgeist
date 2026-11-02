@@ -1,15 +1,15 @@
 use crate::semantics::support::{
-    COLLECTION_RESOURCES, builder, cap_resources, context,
-    semantic_limits_with_integer_digits as limits, session,
+    COLLECTION_RESOURCES, Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder,
+    cap_resources, context, semantic_limits_with_integer_digits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlDetailsNameGroup,
-    HtmlSemanticCancellation, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlDetailsNameGroup, HtmlSemanticCancellation, HtmlSemanticDependencies, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult,
+    HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -436,43 +436,32 @@ fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLi
 fn exact_and_one_short_work_capacity_bytes_scratch_and_batch_output_are_sticky() {
     let (c, id, expected) = grouped();
     let cx = context(&c);
-    let u = query(&c, &id, HtmlSemanticQuery::DetailsNameGroup, 1).usage();
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                1,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = ss.query(&[request(&id, HtmlSemanticQuery::DetailsNameGroup)]);
-            if cap == exact {
-                assert_eq!(group(&result.unwrap()).members(), expected);
-            } else {
-                let f = result.unwrap_err();
-                assert!(
-                    matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{f:?}"
-                );
-                assert_eq!(ss.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    // The tree walk holds the root's, the svg wrapper's and the nested
+    // details' child lists at once: three iterator records. The three
+    // same-name members are retained one id at a time. The group's byte
+    // layout and the walk's visits are private, so work is required to be
+    // charged without being pinned and the bytes must cover the result
+    // record, the three ids and the three frames.
+    let r = assert_exact_and_one_short_caps(
+        "details name group",
+        &c,
+        &cx,
+        1,
+        limits(),
+        &[request(&id, HtmlSemanticQuery::DetailsNameGroup)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(3),
+            nested_output_records: Charge::Exactly(3),
+            allocated_bytes: Charge::AtLeast(
+                std::mem::size_of::<HtmlSemanticResult>()
+                    + 3 * std::mem::size_of::<HtmlCaptureSubjectId>()
+                    + 3 * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(group(&r).members(), expected);
 }
 #[test]
 fn repeated_queries_are_cumulative_and_late_batch_failures_never_return_a_prefix() {

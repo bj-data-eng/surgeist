@@ -1,5 +1,6 @@
 use crate::semantics::support::{
-    builder, context, scalar_limits as resource_limits, scalar_semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context,
+    scalar_limits as resource_limits, scalar_semantic_limits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -578,46 +579,41 @@ fn huge_unconsulted_attributes_and_text_succeed_at_zero_raw_scratch_and_nested_c
 fn exact_and_one_short_work_output_and_observed_bytes_preserve_qualified_first_stop() {
     let (c, id, owner) = simple();
     let cx = context(&c);
-    let u = report(&c, &id).usage();
-    assert_eq!(u.output_records(), 1);
-    assert_eq!(
-        u.allocated_bytes(),
-        std::mem::size_of::<HtmlSemanticResult>() * u.output_records()
+    let n = KnownHtmlElement::ALL.len();
+    let ns = "http://www.w3.org/1999/xhtml".len();
+    // Reservation (1), request lookup (1), dispatcher namespace test (29),
+    // footer lookup (1), namespace test (29) and "footer" recognition; the
+    // parent step (1), its lookup (1), "section" recognition and the scope
+    // charge (1); and the result write (1).
+    let work = 1
+        + 1
+        + (1 + ns)
+        + 1
+        + (1 + ns)
+        + (("footer".len() + 1) * n + ns)
+        + 1
+        + 1
+        + (("section".len() + 1) * n + ns)
+        + 1
+        + 1;
+    let r = assert_exact_and_one_short_caps(
+        "footer in section",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
     );
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        let req = request(&id);
-        let r = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact),
-            0,
-            HtmlSemanticCancellation::new(),
-        )
-        .query(std::slice::from_ref(&req))
-        .unwrap();
-        assert_eq!(
-            value(&r),
-            &HtmlSemanticValue::Known(HtmlFooterScope::Section(owner.clone()))
-        );
-        let mut s = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact - 1),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = s.query(std::slice::from_ref(&req)).unwrap_err();
-        assert!(
-            matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded {resource: actual, ..} if *actual == resource)
-        );
-        assert_eq!(s.query(&[]).unwrap_err(), f);
-        assert_eq!(s.usage().scratch_records(), 0);
-        assert_eq!(f.qualification().unwrap().capture(), c.identity());
-    }
+    assert_eq!(
+        value(&r),
+        &HtmlSemanticValue::Known(HtmlFooterScope::Section(owner))
+    );
 }
 
 #[test]
@@ -631,34 +627,23 @@ fn fallback_work_admission_is_exact_and_terminal_failure_is_not_null_or_missing(
     children(&mut b, &root, std::slice::from_ref(&body));
     let c = b.finish().unwrap();
     let id = c.subject_id(&footer).unwrap();
-    let exact = report(&c, &id).usage().work();
     let cx = context(&c);
-    let r = session(
+    // The document-body fallback walks the document and root children: a
+    // private step layout, so work is required to be charged but not pinned.
+    let r = assert_exact_and_one_short_caps(
+        "footer document-body fallback",
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, exact),
         0,
-        HtmlSemanticCancellation::new(),
-    )
-    .query(&[request(&id)])
-    .unwrap();
-    assert_eq!(value(&r), &body_scope(&c, &d, Some(&body)));
-    let mut s = session(
-        &c,
-        &cx,
-        resource_limits(HtmlSemanticResource::Work, exact - 1),
-        0,
-        HtmlSemanticCancellation::new(),
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
     );
-    let f = s.query(&[request(&id)]).unwrap_err();
-    assert!(matches!(
-        f.kind(),
-        HtmlSemanticFailureKind::LimitExceeded {
-            resource: HtmlSemanticResource::Work,
-            ..
-        }
-    ));
-    assert_eq!(s.query(&[request(&id)]).unwrap_err(), f);
+    assert_eq!(value(&r), &body_scope(&c, &d, Some(&body)));
 }
 
 #[test]

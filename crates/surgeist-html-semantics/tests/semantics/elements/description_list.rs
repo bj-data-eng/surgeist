@@ -1,6 +1,6 @@
 use crate::semantics::support::{
-    SCALAR_AND_NESTED_RESOURCES, builder, cap_resources, context,
-    semantic_limits_without_scratch as limits,
+    Charge, ExpectedUsage, SCALAR_AND_NESTED_RESOURCES, assert_exact_and_one_short_caps, builder,
+    cap_resources, context, semantic_limits_without_scratch as limits,
 };
 // The grouping algorithm consumes no attribute/text values, so zero is a
 // meaningful unrelated raw-input cap even for nodes with large contents.
@@ -488,53 +488,25 @@ fn capped(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
 fn exact_and_one_short_work_and_actual_vector_caps_are_atomic_and_sticky() {
     let (c, dl, ids) = sequence(&["dd", "dt", "dd", "dt"]);
     let cx = context(&c);
-    let observed = report(&c, &dl).usage();
-    assert_eq!(observed.scratch_records(), 0);
-    assert_eq!(observed.peak_scratch_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, observed.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            observed.output_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            observed.nested_output_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            observed.allocated_bytes(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut s = session(
-                &c,
-                &cx,
-                capped(resource, cap),
-                HtmlSemanticCancellation::new(),
-            );
-            let result = s.query(&[request(&dl)]);
-            if cap == exact {
-                shape(
-                    &result.unwrap(),
-                    &ids,
-                    &[&[], &[1], &[3]],
-                    &[&[0], &[2], &[]],
-                );
-            } else {
-                let failure = result.unwrap_err();
-                assert!(
-                    matches!(failure.kind(), HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r == resource),
-                    "{failure:?}"
-                );
-                assert_eq!(s.query(&[]).unwrap_err(), failure);
-                assert_eq!(s.usage(), failure.usage());
-                assert_eq!(s.usage().scratch_records(), 0);
-                assert_eq!(failure.qualification().unwrap().capture(), c.identity());
-            }
-        }
-    }
+    // The group walk keeps no iterator stack (no scratch). The group and
+    // term/description vectors are private layout, so nested records, bytes
+    // and work are required to be charged without being pinned beyond one
+    // result record.
+    let r = assert_exact_and_one_short_caps(
+        "description list groups",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&dl)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(std::mem::size_of::<HtmlSemanticResult>() + 1),
+            ..ExpectedUsage::none()
+        },
+    );
+    shape(&r, &ids, &[&[], &[1], &[3]], &[&[0], &[2], &[]]);
 }
 #[test]
 fn cancellation_before_entry_or_after_an_earlier_query_preserves_the_first_stop() {

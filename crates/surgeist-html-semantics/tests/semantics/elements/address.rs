@@ -1,6 +1,6 @@
 use crate::semantics::support::{
-    SCALAR_AND_SCRATCH_RESOURCES, builder, cap_resources, context,
-    semantic_limits_without_nested_output as limits, session,
+    Charge, ExpectedUsage, SCALAR_AND_SCRATCH_RESOURCES, assert_exact_and_one_short_caps, builder,
+    cap_resources, context, semantic_limits_without_nested_output as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -422,46 +422,27 @@ fn witness_stops_before_later_unavailable_branch_and_huge_name() {
 fn exact_and_one_short_work_scratch_bytes_and_batch_records_are_terminal() {
     let (c, id) = empty();
     let cx = context(&c);
-    let r = report(&c, &id);
-    let u = r.usage();
     // One vocabulary envelope, two namespace-unit passes, and eleven fixed
     // batch/node/iterator/reservation/result actions for this empty capture.
-    assert_eq!(u.work(), 8 * KnownHtmlElement::ALL.len() + 2 * 28 + 11);
-    assert_eq!(u.output_records(), 1);
-    assert_eq!(u.peak_scratch_records(), 1);
-    assert_eq!(u.nested_output_records(), 0);
-    assert_eq!(
-        u.allocated_bytes(),
-        std::mem::size_of::<HtmlSemanticResult>() + std::mem::size_of::<HtmlCapturedChildIds<'_>>()
+    let r = assert_exact_and_one_short_caps(
+        "address",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            work: Charge::Exactly(8 * KnownHtmlElement::ALL.len() + 2 * 28 + 11),
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                std::mem::size_of::<HtmlSemanticResult>()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'_>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
     );
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, 1),
-        (HtmlSemanticResource::ScratchRecords, 1),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        let mut s = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        assert_eq!(
-            value(&s.query(&[request(&id)]).unwrap()),
-            &HtmlSemanticValue::Known(false)
-        );
-        let selected = resource_limits(resource, exact - 1);
-        let mut short = session(&c, &cx, selected, 0, HtmlSemanticCancellation::new());
-        let f = short.query(&[request(&id)]).unwrap_err();
-        assert!(
-            matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded {resource:r,..} if *r==resource)
-        );
-        assert_eq!(f.qualification().unwrap().limits(), selected);
-        assert_eq!(short.usage().scratch_records(), 0);
-        assert_eq!(short.query(&[]).unwrap_err(), f);
-        assert_eq!(value(&r), &HtmlSemanticValue::Known(false));
-    }
+    assert_eq!(value(&r), &HtmlSemanticValue::Known(false));
 }
 
 #[test]
