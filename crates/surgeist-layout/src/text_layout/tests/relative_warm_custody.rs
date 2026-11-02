@@ -741,3 +741,5 @@ fn relative_atomic_real_inner_named_readback_recomputes_f32() {
 fn relative_atomic_real_inner_named_readback_recomputes_f64() {
     custody_inner_named_recompute::<f64>();
 }
+
+mod captured_percentage_basis;
