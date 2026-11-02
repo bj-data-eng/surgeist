@@ -38,3 +38,6 @@ mod subgrid_clamping_contracts;
 mod topology_placement;
 #[path = "grid_tests/tracks_intrinsic_tests.rs"]
 mod tracks_intrinsic;
+
+#[path = "grid_tests/baseline_contribution.rs"]
+mod baseline_contribution;

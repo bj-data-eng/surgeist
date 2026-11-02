@@ -929,7 +929,7 @@ impl<S: LayoutScalar> BaselinesOf<S> {
             ),
             last: Self::block_point(
                 flow_axes,
-                Some(Self::side_coordinate(flow_axes.line_over(), size)),
+                Some(Self::side_coordinate(flow_axes.line_under(), size)),
             ),
         }
     }
@@ -993,7 +993,7 @@ impl<S: LayoutScalar> BaselinesOf<S> {
         self.last_block_baseline(flow_axes).unwrap_or_else(|| {
             PhysicalBaseline::new(
                 flow_axes.block_axis(),
-                Self::side_coordinate(flow_axes.line_over(), size),
+                Self::side_coordinate(flow_axes.line_under(), size),
             )
         })
     }
@@ -1133,6 +1133,28 @@ mod baseline_tests {
                 expected_last
             );
 
+            // Align3 synthesis uses line-under for either baseline set.
+            // A genuinely supplied zero remains authority, not missing data.
+            let zero_last = match block_axis {
+                PhysicalAxis::Horizontal => Point::new(Some(S::ZERO), None),
+                PhysicalAxis::Vertical => Point::new(None, Some(S::ZERO)),
+            };
+            assert_eq!(
+                BaselinesOf {
+                    first: baselines.first,
+                    last: zero_last
+                }
+                .last_or_synthesize_block(flow_axes, size),
+                S::ZERO,
+            );
+            assert_eq!(
+                BaselinesOf::<S>::NONE.first_or_synthesize_block(flow_axes, size),
+                side_coordinate(flow_axes.line_under(), size),
+            );
+            assert_eq!(
+                BaselinesOf::<S>::NONE.last_or_synthesize_block(flow_axes, size),
+                side_coordinate(flow_axes.line_under(), size),
+            );
             let synthesized = BaselinesOf::synthesized(flow_axes, size);
             assert_eq!(
                 point_coordinate(synthesized.first, block_axis),
@@ -1140,7 +1162,7 @@ mod baseline_tests {
             );
             assert_eq!(
                 point_coordinate(synthesized.last, block_axis),
-                Some(side_coordinate(flow_axes.line_over(), size))
+                Some(side_coordinate(flow_axes.line_under(), size))
             );
             assert_eq!(point_coordinate(synthesized.first, non_block_axis), None);
             assert_eq!(point_coordinate(synthesized.last, non_block_axis), None);
