@@ -18,6 +18,38 @@ fn recovered(
     }
 }
 
+/// A rejected string reports the last alternative's (duration's) error: the
+/// ten author alternatives and the machine-readable-equivalent algorithm define
+/// no order of failures across alternatives (see `validate_time_element_value`).
+/// None of the rejected strings below is a duration. The author grammar (foundations
+/// capture lines 3280-3330) needs a leading `P` followed by `nD`/`T…` components,
+/// or digit runs each followed by a W, D, H, M or S unit character, so a string
+/// without that shape fails at its first unmatched character; the duration
+/// parsing rules (line 3350) fail the same way. `InvalidSyntax` is that failure.
+fn duration_syntax_failure() -> HtmlValueSyntaxError {
+    HtmlValueSyntaxError::Temporal(HtmlTemporalError::InvalidSyntax)
+}
+fn assert_rejected_author(
+    report: &HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>,
+    text: &str,
+) {
+    assert_eq!(
+        report.author(),
+        &HtmlValueAuthorState::Invalid(duration_syntax_failure()),
+        "{text}"
+    );
+}
+fn assert_rejected_recovery(
+    report: &HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>,
+    text: &str,
+) {
+    assert_eq!(
+        report.recovery(),
+        &HtmlValueRecoveryState::Failed(HtmlValueFailure::Syntax(duration_syntax_failure())),
+        "{text}"
+    );
+}
+
 #[test]
 fn ten_source_alternatives_produce_their_distinct_authored_and_processing_domains() {
     let cases = [
@@ -166,7 +198,9 @@ fn processing_year_has_no_author_only_four_digit_minimum() {
             author_valid
         );
         if !author_valid {
-            assert!(matches!(report.author(), HtmlValueAuthorState::Invalid(_)));
+            // A year needs four or more digits (elements capture line 6835),
+            // and the digit-only text is no duration either.
+            assert_rejected_author(&report, text);
         }
         let HtmlMachineReadableTime::Year(value) = recovered(&report) else {
             panic!("expected year")
@@ -179,14 +213,8 @@ fn processing_year_has_no_author_only_four_digit_minimum() {
 fn zero_whitespace_and_non_ascii_digits_do_not_produce_years() {
     for text in ["0", "0000", " 0001", "0001 ", "١٢٣٤", "１２３４"] {
         let report = read(text);
-        assert!(
-            matches!(report.author(), HtmlValueAuthorState::Invalid(_)),
-            "{text}"
-        );
-        assert!(
-            matches!(report.recovery(), HtmlValueRecoveryState::Failed(_)),
-            "{text}"
-        );
+        assert_rejected_author(&report, text);
+        assert_rejected_recovery(&report, text);
     }
 }
 
@@ -210,7 +238,7 @@ fn signed_four_digit_values_are_offsets_rather_than_years() {
 #[test]
 fn parsed_time_keeps_precision_unavailable_to_the_authored_time() {
     let report = read("14:54:00.00000001");
-    assert!(matches!(report.author(), HtmlValueAuthorState::Invalid(_)));
+    assert_rejected_author(&report, "14:54:00.00000001");
     let HtmlMachineReadableTime::Time(value) = recovered(&report) else {
         panic!("expected time")
     };
@@ -223,7 +251,7 @@ fn parsed_time_keeps_precision_unavailable_to_the_authored_time() {
 fn local_processing_is_not_narrowed_to_normalized_or_global_syntax() {
     for text in ["2011-11-18T14:54:00.0001", "2011-11-18 14:54:00.0001"] {
         let report = read(text);
-        assert!(matches!(report.author(), HtmlValueAuthorState::Invalid(_)));
+        assert_rejected_author(&report, text);
         let HtmlMachineReadableTime::LocalDateTime(value) = recovered(&report) else {
             panic!("expected local")
         };
@@ -235,7 +263,7 @@ fn local_processing_is_not_narrowed_to_normalized_or_global_syntax() {
 #[test]
 fn global_processing_retains_fraction_source_offset_and_exact_utc() {
     let report = read("0001-01-01 00:00:00.00000001+23:59");
-    assert!(matches!(report.author(), HtmlValueAuthorState::Invalid(_)));
+    assert_rejected_author(&report, "0001-01-01 00:00:00.00000001+23:59");
     let HtmlMachineReadableTime::GlobalDateTime(value) = recovered(&report) else {
         panic!("expected global")
     };
@@ -259,7 +287,7 @@ fn global_processing_retains_fraction_source_offset_and_exact_utc() {
 fn negative_zero_offset_recovery_does_not_certify_authored_syntax() {
     for text in ["-0000", "-00:00"] {
         let report = read(text);
-        assert!(matches!(report.author(), HtmlValueAuthorState::Invalid(_)));
+        assert_rejected_author(&report, text);
         let HtmlMachineReadableTime::TimeZoneOffset(value) = recovered(&report) else {
             panic!("expected offset")
         };
@@ -267,7 +295,7 @@ fn negative_zero_offset_recovery_does_not_certify_authored_syntax() {
         assert_eq!(report.raw(), Some(&DocumentString::from(text)));
     }
     let report = read("2000-02-29T12:34-0000");
-    assert!(matches!(report.author(), HtmlValueAuthorState::Invalid(_)));
+    assert_rejected_author(&report, "2000-02-29T12:34-0000");
     let HtmlMachineReadableTime::GlobalDateTime(value) = recovered(&report) else {
         panic!("expected global")
     };
@@ -291,10 +319,11 @@ fn duration_recovery_keeps_its_own_whitespace_and_exact_fraction_rules() {
             "{text}"
         );
         if !author_valid {
-            assert!(
-                matches!(report.author(), HtmlValueAuthorState::Invalid(_)),
-                "{text}"
-            );
+            // A fraction has one to three digits (foundations lines 3296 and 3312)
+            // and the components of the second form need different scales
+            // (line 3304); the
+            // duration alternative is the last one, so its error is reported.
+            assert_rejected_author(&report, text);
         }
         let HtmlMachineReadableTime::Duration(value) = recovered(&report) else {
             panic!("expected duration")
@@ -337,14 +366,8 @@ fn all_format_attempts_require_full_consumption_and_intrinsic_components() {
         "garbage",
     ] {
         let report = read(text);
-        assert!(
-            matches!(report.author(), HtmlValueAuthorState::Invalid(_)),
-            "{text}"
-        );
-        assert!(
-            matches!(report.recovery(), HtmlValueRecoveryState::Failed(_)),
-            "{text}"
-        );
+        assert_rejected_author(&report, text);
+        assert_rejected_recovery(&report, text);
         assert_eq!(report.raw(), Some(&DocumentString::from(text)));
     }
 }
