@@ -13,8 +13,7 @@ use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
     Boundary, DescriptorRecovery, NativeValueError, Value, comma_list, consume_remaining,
     declaration_position, drive_descriptors_into, expect_exhausted, fail, from_remaining, native,
-    parse_descriptor_checked, parse_descriptor_range, parse_descriptor_text, read_scope,
-    validate_root,
+    parse_descriptor_checked, parse_descriptor_range, read_scope, validate_root,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -320,7 +319,7 @@ impl BodyParser<'_> {
                 text.bang(),
                 owner,
                 name,
-                Boundary::Value,
+                Boundary::Unvalidated,
                 |input, components, numeric, range| {
                     let data = feature_data(
                         input,
@@ -356,7 +355,7 @@ impl BodyParser<'_> {
                 text.bang(),
                 owner,
                 name,
-                Boundary::ValidatedValue,
+                Boundary::Validated,
                 |input, components, numeric, range| {
                     let data = display_data(input, &components, numeric)?;
                     let origin = CssParsedOrigin::from_range(snapshot, range)
@@ -435,10 +434,10 @@ pub(super) fn parse_display_text(
     snapshot: &CssSourceSnapshot,
     range: std::ops::Range<usize>,
 ) -> Result<FontFeatureDisplayData, ParseError<'static, CssError>> {
-    parse_descriptor_text(
+    parse_descriptor_range(
         snapshot,
-        range.start,
-        range.end,
+        range.start..range.end,
+        None,
         "font-feature-values",
         "font-display",
         Boundary::ValidatedText,
@@ -496,13 +495,13 @@ pub(super) fn parse_feature_text(
     range: std::ops::Range<usize>,
     kind: CssFontFeatureValueKind,
 ) -> Result<FontFeatureValueData, ParseError<'static, CssError>> {
-    parse_descriptor_text(
+    parse_descriptor_range(
         snapshot,
-        range.start,
-        range.end,
+        range.start..range.end,
+        None,
         "font-feature-values",
         kind.as_str(),
-        Boundary::Text,
+        Boundary::Unvalidated,
         |input, components, numeric, _| {
             feature_data(
                 input,

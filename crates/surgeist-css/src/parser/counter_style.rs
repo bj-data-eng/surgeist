@@ -9,8 +9,7 @@ use super::block_units::{
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
     Boundary, Value, consume_remaining, drive_block_items, expect_exhausted, fail, from_component,
-    native, parse_descriptor_checked, parse_descriptor_range, parse_descriptor_text, read_scope,
-    validate_root,
+    native, parse_descriptor_checked, parse_descriptor_range, read_scope, validate_root,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -225,7 +224,7 @@ fn parse_occurrence(
         text.bang(),
         "counter-style",
         descriptor.as_str(),
-        Boundary::ValidatedValue,
+        Boundary::Validated,
         |input, components, numeric, range| {
             let value = parse_value_data(input, descriptor, &components, numeric)?;
             let value_origin = crate::source::CssParsedOrigin::from_range(source_snapshot, range)
@@ -534,17 +533,18 @@ fn parse_symbol_component<'i>(
     from_component(numeric, input, |input| parse_image(input, numeric)).map(CssCounterSymbol::Image)
 }
 
-/// The value of a counter-style descriptor from the text `range` of the source,
-/// the part of the text of a front that ends where its annotation begins.
+/// The value of a counter-style descriptor from the value text `range` of the
+/// source. The text is a value, not a declaration: a `!` in it is a delimiter
+/// that the descriptor's grammar judges.
 pub(super) fn parse_text_value(
     snapshot: &crate::source::CssSourceSnapshot,
     range: std::ops::Range<usize>,
     kind: CssCounterStyleDescriptorKind,
 ) -> Result<CounterStyleValueData, ParseError<'static, CssError>> {
-    parse_descriptor_text(
+    parse_descriptor_range(
         snapshot,
-        range.start,
-        range.end,
+        range.start..range.end,
+        None,
         "counter-style",
         kind.as_str(),
         Boundary::ValidatedText,

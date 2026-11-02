@@ -13,6 +13,9 @@ use surgeist_css::component::{
 };
 use surgeist_css::diagnostic::{CssErrorCode, CssEscapeFailure, CssRecoveryAction};
 use surgeist_css::rule::CssRule;
+use surgeist_css::rule::color_profile::{
+    CssColorProfileDescriptorKind, CssColorProfileDescriptorValue,
+};
 use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as CounterKind;
 use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValue as CounterValue;
 use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValueRef as CounterRef;
@@ -20,11 +23,17 @@ use surgeist_css::rule::counter_style::{
     CssCounterStyleDescriptorValue, CssCounterStyleRange, CssCounterStyleRangeBound,
     CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
 };
-use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceDescriptorKind,
+};
 use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as FeatureKind;
 use surgeist_css::rule::font_feature_values::{
     CssFontFeatureDisplayValue, CssFontFeatureValue, CssFontFeatureValuesItem,
 };
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue,
+};
+use surgeist_css::rule::page::{CssPageDescriptorKind, CssPageDescriptorValue};
 use surgeist_css::source::CssParsedOrigin;
 use surgeist_css::values::image::CssImageValue;
 use surgeist_css::{CssParseReport, CssParser};
@@ -966,7 +975,14 @@ fn boundary<T: std::fmt::Debug>(
         .unwrap();
     position(diagnostic.error().position(), offset, 0, offset as u32);
     if annotation {
-        assert!(diagnostic.error().code() == CssErrorCode::InvalidDeclarationAnnotation);
+        // The text is a value, not a declaration: it has no importance flag, and
+        // its `!` is a delimiter that the descriptor's grammar rejects
+        // (Syntax 3 sections 5.4.1 and 5.4.9).
+        assert_eq!(
+            diagnostic.error().code(),
+            CssErrorCode::InvalidDescriptorValue
+        );
+        assert_eq!(diagnostic.error().encountered().unwrap().authored(), "!");
     }
     rejected(report, source);
 }
@@ -1424,4 +1440,104 @@ fn real_mixed_font_rule_keeps_actual_names_positions_and_later_valid_definitions
         CssFontFeatureValue::parse(&CssParser::default(), "1.0", FeatureKind::Stylistic),
         "1.0",
     );
+}
+
+#[test]
+fn a_bang_in_descriptor_value_text_is_a_delimiter_the_grammar_judges() {
+    // Bare value text is a value (Syntax 3 section 5.4.1 parses it with
+    // section 5.4.9): a `!` anywhere in it is a delimiter token that no
+    // descriptor's grammar admits, so the rejection is the grammar's, at the `!`
+    // or at the first token it cannot read, never an importance annotation.
+    let parser = CssParser::default();
+    let cases: [(&str, &str); 6] = [
+        ("{value} !important", "{value} "),
+        ("{value}!important", "{value}"),
+        ("{value}!", "{value}"),
+        ("{value}/**/!/**/important", "{value}/**/"),
+        ("!{value}", ""),
+        ("{value} !important !important", "{value} "),
+    ];
+    let mut checked = 0;
+    for (value, kind) in [
+        ("a4", "page-size"),
+        ("crop", "page-marks"),
+        ("\"a\"", "counter-prefix"),
+        ("cyclic", "counter-system"),
+        ("swap", "font-display"),
+        ("1", "palette-base"),
+        ("perceptual", "profile-intent"),
+        // A value that defers to substitution is refused a root `!`:
+        // `<declaration-value>` excludes it.
+        ("env(x)", "page-size"),
+        ("env(x)", "counter-prefix"),
+        ("env(x)", "font-display"),
+        ("env(x)", "palette-base"),
+        ("env(x)", "profile-intent"),
+        ("normal", "face-width"),
+        ("env(x)", "face-width"),
+    ] {
+        for (template, before_bang) in cases {
+            let source = template.replace("{value}", value);
+            let offset = before_bang.replace("{value}", value).len();
+            let rejected_at = |code: CssErrorCode, at: usize| {
+                assert_eq!(
+                    code,
+                    CssErrorCode::InvalidDescriptorValue,
+                    "{kind} {source:?}"
+                );
+                assert_eq!(at, offset, "{kind} {source:?}");
+            };
+            macro_rules! judge {
+                ($report:expr) => {{
+                    let report = $report;
+                    assert!(report.syntax().is_none(), "{kind} {source:?}: {report:?}");
+                    let diagnostic = &report.diagnostics()[0];
+                    rejected_at(
+                        diagnostic.error().code(),
+                        diagnostic.error().position().byte_offset().value(),
+                    );
+                    checked += 1;
+                }};
+            }
+            match kind {
+                "page-size" => judge!(CssPageDescriptorValue::parse(
+                    &parser,
+                    &source,
+                    CssPageDescriptorKind::Size
+                )),
+                "page-marks" => judge!(CssPageDescriptorValue::parse(
+                    &parser,
+                    &source,
+                    CssPageDescriptorKind::Marks
+                )),
+                "counter-prefix" => judge!(CssCounterStyleDescriptorValue::parse(
+                    &parser,
+                    &source,
+                    CounterKind::Prefix
+                )),
+                "counter-system" => judge!(CssCounterStyleDescriptorValue::parse(
+                    &parser,
+                    &source,
+                    CounterKind::System
+                )),
+                "font-display" => judge!(CssFontFeatureDisplayValue::parse(&parser, &source)),
+                "face-width" => judge!(CssAuthoredFontFaceDescriptorValue::parse(
+                    &parser,
+                    &source,
+                    CssFontFaceDescriptorKind::FontWidth
+                )),
+                "palette-base" => judge!(CssFontPaletteDescriptorValue::parse(
+                    &parser,
+                    &source,
+                    CssFontPaletteDescriptorKind::BasePalette
+                )),
+                _ => judge!(CssColorProfileDescriptorValue::parse(
+                    &parser,
+                    &source,
+                    CssColorProfileDescriptorKind::RenderingIntent
+                )),
+            }
+        }
+    }
+    assert_eq!(checked, 84);
 }

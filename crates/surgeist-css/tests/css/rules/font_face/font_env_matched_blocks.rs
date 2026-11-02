@@ -280,6 +280,10 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
         ("env(choice)]", "]"),
         ("env(choice))", ")"),
     ] {
+        // Value text holds no importance flag: its root `!` is a delimiter that
+        // `<declaration-value>` excludes, rejected as the descriptor's value
+        // (Syntax 3 sections 5.4.1 and 5.4.9).
+        let face_front = invalid_descriptor("font-face", "font-width").at(token);
         let face_rejection = descriptor_rejected_at("font-face", "font-width", token);
         let face = CssAuthoredFontFaceDescriptorValue::parse(
             &CssParser::default(),
@@ -287,7 +291,7 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
             FaceKind::FontWidth,
         );
         assert!(face.syntax().is_none(), "{value}: {face:?}");
-        face_rejection.assert_first(&face);
+        face_front.assert_first(&face);
         for kind in PALETTE_KINDS {
             let palette = CssFontPaletteDescriptorValue::parse(&CssParser::default(), value, kind);
             assert!(
@@ -295,7 +299,11 @@ fn root_bangs_semicolons_and_unmatched_closers_are_not_rescued_by_valid_env() {
                 "{}:{value}: {palette:?}",
                 kind.as_str()
             );
-            descriptor_rejected_at("font-palette-values", kind.as_str(), token)
+            // Value text holds no importance flag: a root `!` is a delimiter
+            // that `<declaration-value>` excludes (Syntax 3 sections 5.4.1 and
+            // 5.4.9).
+            invalid_descriptor("font-palette-values", kind.as_str())
+                .at(token)
                 .assert_first(&palette);
         }
         // Component admission may itself reject unmatched closers. If it admits
