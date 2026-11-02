@@ -93,6 +93,8 @@ use provenance::{FieldCopy, OriginGroupRef};
 #[cfg(test)]
 mod no_panic_tests;
 #[cfg(test)]
+mod prepared_slot_tests;
+#[cfg(test)]
 mod read_fault_tests;
 mod select;
 mod svg;
@@ -2602,6 +2604,8 @@ impl SessionStorage {
             1u64.saturating_add(u64::from(list.is_some()))
                 .saturating_add(u64::from(explicit_form)),
         )?;
+        #[cfg(test)]
+        control.note_prepared_slot();
         Ok(())
     }
     fn register_raw(

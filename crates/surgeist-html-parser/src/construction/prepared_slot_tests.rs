@@ -1,0 +1,412 @@
+//! Construction admits one auxiliary entry for every registry row before the
+//! row exists. A parse that stops between that admission and the row's append
+//! must still leave nothing retained once cleanup has run, because cleanup
+//! releases entries only for the rows that exist.
+//!
+//! Each test parses one document that reaches a family of registry rows, and
+//! counts the payload slots it prepares. It then parses the document again
+//! once per prepared slot and stops the parse at the first checkpoint after
+//! that slot is prepared, which is the first refusal of any step between the
+//! slot's admission and its row. Every such stop must leave every retained
+//! resource at zero after cleanup.
+use crate::parser::control::{prepared_slots, stop_after_prepared_slot};
+use crate::parser::tree_builder::tests::limits;
+use crate::{
+    HtmlParseBaseFacts, HtmlParseFailure, HtmlParseLimits, HtmlParseResource,
+    HtmlParserScriptingMode, HtmlSource,
+};
+use std::convert::Infallible;
+use surgeist_html::*;
+use surgeist_html_semantics::*;
+
+/// Resources a stopped parse returns whatever it was doing.
+const RETAINED: [HtmlParseResource; 8] = [
+    HtmlParseResource::BufferedUtf16Units,
+    HtmlParseResource::TokenAttributes,
+    HtmlParseResource::AuxiliaryEntries,
+    HtmlParseResource::ManagedEdges,
+    HtmlParseResource::ManagedAttributes,
+    HtmlParseResource::ManagedUtf16Units,
+    HtmlParseResource::ContextEffects,
+    HtmlParseResource::OpenElements,
+];
+/// Resources that also hold the diagnostics a stopped parse keeps, so they
+/// return to zero only when it kept none.
+const RETAINED_WITHOUT_DIAGNOSTICS: [HtmlParseResource; 3] = [
+    HtmlParseResource::SourceMapEntries,
+    HtmlParseResource::SourceMapPayloadUnits,
+    HtmlParseResource::ManagedCapacityBytes,
+];
+
+/// What a stopped parse left once cleanup ran.
+#[derive(Debug)]
+struct Stopped {
+    stop: Option<crate::HtmlParseStop>,
+    cleanup_refused: bool,
+    at_stop: Option<crate::HtmlParseUsage>,
+    after_cleanup: Option<crate::HtmlParseUsage>,
+}
+fn stopped(failure: &HtmlParseFailure) -> Stopped {
+    Stopped {
+        stop: failure.first_stop(),
+        cleanup_refused: failure.cleanup_error().is_some(),
+        at_stop: failure.at_stop().cloned(),
+        after_cleanup: failure.after_cleanup().cloned(),
+    }
+}
+
+/// Notes in `retained` what the stopped parse `stop` left, under `label`.
+fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
+    if stop.cleanup_refused {
+        retained.push(format!("{label}: cleanup refused"));
+    }
+    let after = stop
+        .after_cleanup
+        .as_ref()
+        .expect("a stopped parse reports cleanup");
+    let kept_diagnostics = after.resource(HtmlParseResource::Diagnostics).current() != 0;
+    let checked = RETAINED.into_iter().chain(
+        RETAINED_WITHOUT_DIAGNOSTICS
+            .into_iter()
+            .filter(|_| !kept_diagnostics),
+    );
+    for resource in checked {
+        let current = after.resource(resource).current();
+        if current != 0 {
+            retained.push(format!("{label}: {resource:?}={current}"));
+        }
+    }
+}
+
+/// Parses once, then once more per payload slot that parse prepared, stopping
+/// each at the first checkpoint after its slot. Each stop is repeated as a
+/// limit of the work, capacity and entries the parse had used by then, so the
+/// next step to charge any of them is refused. Returns what any stop left.
+fn retained_after_each_prepared_slot(
+    parse: &dyn Fn(HtmlParseLimits) -> Result<(), Stopped>,
+) -> Vec<String> {
+    let unrestricted = limits(100);
+    stop_after_prepared_slot(None);
+    if let Err(stop) = parse(unrestricted) {
+        panic!(
+            "the unstopped parse completes, but stopped with {:?}",
+            stop.stop
+        );
+    }
+    let slots = prepared_slots();
+    assert!(slots > 0, "the document prepares payload slots");
+    let mut retained = Vec::new();
+    let mut stops = 0;
+    for slot in 0..slots {
+        stop_after_prepared_slot(Some(slot));
+        let stop = parse(unrestricted);
+        stop_after_prepared_slot(None);
+        let Err(stop) = stop else { continue };
+        stops += 1;
+        note_retained(&mut retained, &format!("after slot {slot}"), &stop);
+        let at_stop = stop.at_stop.expect("a stopped parse reports its usage");
+        for resource in [
+            HtmlParseResource::WorkCredits,
+            HtmlParseResource::ManagedCapacityBytes,
+            HtmlParseResource::AuxiliaryEntries,
+        ] {
+            let used = at_stop.resource(resource).current();
+            let builder = unrestricted.into_builder();
+            let capped = match resource {
+                HtmlParseResource::WorkCredits => builder.work_credits(used),
+                HtmlParseResource::ManagedCapacityBytes => builder.managed_capacity_bytes(used),
+                _ => builder.auxiliary_entries(used),
+            }
+            .finish()
+            .unwrap();
+            if let Err(stop) = parse(capped) {
+                note_retained(
+                    &mut retained,
+                    &format!("after slot {slot} with {resource:?} limited to {used}"),
+                    &stop,
+                );
+            }
+        }
+    }
+    assert!(stops > 0, "some stop is reached");
+    retained
+}
+
+#[track_caller]
+fn assert_nothing_retained(parse: &dyn Fn(HtmlParseLimits) -> Result<(), Stopped>) {
+    let retained = retained_after_each_prepared_slot(parse);
+    assert!(
+        retained.is_empty(),
+        "{} stops retained something, first: {:?}",
+        retained.len(),
+        &retained[..retained.len().min(8)]
+    );
+}
+
+fn document(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Stopped> {
+    move |limits| {
+        crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(source), limits)
+            .parse()
+            .map(drop)
+            .map_err(|failure| stopped(&failure))
+    }
+}
+
+fn fragment_context() -> HtmlFragmentContext {
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let document = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder
+        .establish_document_template_facts(
+            &document,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Absent,
+        )
+        .unwrap();
+    let div = builder
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::html(), None, "div"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder.establish_root(&div).unwrap();
+    builder.establish_no_shadow_root(&div).unwrap();
+    let capture: HtmlCapture = builder.finish().unwrap();
+    HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap()
+}
+
+fn fragment(source: &'static str) -> impl Fn(HtmlParseLimits) -> Result<(), Stopped> {
+    move |limits| {
+        crate::HtmlFragmentParseRequest::with_options(
+            HtmlSource::utf8(source),
+            fragment_context(),
+            limits,
+            HtmlParserScriptingMode::Inert,
+            true,
+        )
+        .unwrap()
+        .parse()
+        .map(drop)
+        .map_err(|failure| stopped(&failure))
+    }
+}
+
+#[test]
+fn dialog_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document("<!doctype html><dialog open>d</dialog>"));
+}
+
+#[test]
+fn style_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document("<!doctype html><style>a{}</style>"));
+}
+
+#[test]
+fn hyperlink_and_image_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><a href=x>l</a><img src=y><area href=z>",
+    ));
+}
+
+#[test]
+fn cloned_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><a href=x>1<p>2</a>3<b nonce=n>4<p>5</b>6",
+    ));
+}
+
+#[test]
+fn form_control_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><form id=f><input name=a form=f><textarea>t</textarea><output>o</output><select><option>x</option></select><button></button></form>",
+    ));
+}
+
+#[test]
+fn template_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><template><p>t</p><template><b>n</b></template></template>",
+    ));
+}
+
+#[test]
+fn script_link_and_details_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><script>1</script><link rel=stylesheet href=s><details open><summary>s</summary></details>",
+    ));
+}
+
+#[test]
+fn text_select_and_style_order_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><textarea>a&amp;b</textarea><select><option>a</option><option selected>b</option></select><style>a{}</style><style>b{}</style>",
+    ));
+}
+
+#[test]
+fn base_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document("<!doctype html><base target=T><p>X"));
+}
+
+#[test]
+fn meta_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><meta http-equiv=content-security-policy content=1><meta charset=utf-8>",
+    ));
+}
+
+#[test]
+fn nonce_and_svg_script_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><p nonce=n>x</p><svg><script>1</script><g nonce=m></g></svg>",
+    ));
+}
+
+#[test]
+fn attribute_and_cause_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><p id=a class=b>x<p id=c></b><table><tr><td>x</table>",
+    ));
+}
+
+#[test]
+fn fragment_template_and_shadow_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot()
+{
+    assert_nothing_retained(&fragment(
+        "<template><p>t</p></template><div><template shadowrootmode=open><slot></slot></template></div>",
+    ));
+}
+
+#[test]
+fn fragment_association_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&fragment(
+        "<style media=screen>x{}</style><a href=x>l</a><script>1</script>",
+    ));
+}
+
+#[test]
+fn fragment_cloned_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&fragment("<a href=x>1<p>2</a>3<form><input></form>"));
+}
+
+fn record(revision: &HtmlBaseFactsRevision, url: &str) -> HtmlBaseUrlRecord {
+    HtmlBaseUrlRecord::observed(
+        revision.clone(),
+        url.into(),
+        HtmlBaseUrlScheme::Other,
+        false,
+        None,
+    )
+    .unwrap()
+}
+
+#[test]
+fn associated_input_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    let revision = HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 2, 3);
+    let base = record(&revision, "https://example.test/");
+    let encoding = HtmlBaseEncoding::fresh();
+    let facts = HtmlEncodingUrlParseFacts::new(
+        base.clone(),
+        encoding.clone(),
+        revision.clone(),
+        ["x"]
+            .into_iter()
+            .map(|url| {
+                HtmlEncodingUrlParseObservation::new(
+                    url.into(),
+                    HtmlEncodingUrlParseOutcome::Parsed(record(
+                        &revision,
+                        &format!("https://example.test/{url}"),
+                    )),
+                )
+            })
+            .collect(),
+        HtmlBaseFactsLimits::new(20, 10_000, 100_000),
+    )
+    .unwrap();
+    let environment = HtmlParseBaseFacts::new(
+        HtmlBaseDocumentFacts::new(
+            revision,
+            Some(base),
+            HtmlAboutBaseUrl::KnownNull,
+            false,
+            Some(encoding),
+        )
+        .unwrap(),
+        vec![],
+        HtmlBaseFactsLimits::new(20, 10_000, 100_000),
+    )
+    .unwrap();
+    assert_nothing_retained(&|limits| {
+        crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(
+                "<!doctype html><a href=x></a><img src=x crossorigin=anonymous referrerpolicy=origin>",
+            ),
+            limits,
+        )
+        .with_base_facts(environment.clone())
+        .unwrap()
+        .with_encoding_url_facts(vec![facts.clone()])
+        .parse()
+        .map(drop)
+        .map_err(|failure| stopped(&failure))
+    });
+}
+
+/// A processor that attests every policy unchanged, so each reached Meta
+/// admits the rows of a processed policy without any native artifact.
+struct Unchanged {
+    authority: HtmlCspProcessorAuthority,
+    profile: HtmlCspProcessorProfile,
+}
+fn allow(_: HtmlCspLayout) -> Result<(), Infallible> {
+    Ok(())
+}
+impl HtmlMetaCspProcessor for Unchanged {
+    type Error = ();
+    fn profile(&self) -> &HtmlCspProcessorProfile {
+        &self.profile
+    }
+    fn prepare<E>(
+        &mut self,
+        request: &HtmlMetaCspRequest,
+        admit: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
+        _: &mut impl FnMut(HtmlCspStorage),
+    ) -> Result<HtmlMetaCspOutcome<()>, HtmlCspError<E>> {
+        self.profile
+            .validate_selected_with(request.qualification().processor(), admit)?;
+        self.authority
+            .attest_unchanged_with(request, admit)
+            .map(HtmlMetaCspOutcome::Completed)
+    }
+}
+
+#[test]
+fn processed_policy_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&|limits| {
+        let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let profile = authority.profile_with(1, &mut allow).unwrap();
+        let mut processor = Unchanged { authority, profile };
+        crate::HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(
+                "<!doctype html><meta http-equiv=content-security-policy content='='><style>a{}</style><meta http-equiv=content-security-policy content='='>",
+            ),
+            limits,
+        )
+        .parse_with_meta_csp(&mut processor)
+        .map(drop)
+        .map_err(|failure| stopped(failure.parse_failure()))
+    });
+}
