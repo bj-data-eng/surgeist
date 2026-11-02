@@ -278,3 +278,6 @@ fn captured_atomic_relative_left_keeps_following_text_f32() {
 fn captured_atomic_relative_left_keeps_following_text_f64() {
     fractional_atomic_left_preserves_following_text::<f64>();
 }
+
+#[path = "relative_canonical/visual_content.rs"]
+mod visual_content;
