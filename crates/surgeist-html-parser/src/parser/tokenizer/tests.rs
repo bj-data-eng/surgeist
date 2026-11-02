@@ -3579,21 +3579,68 @@ fn progressive_observe(
 }
 #[test]
 fn progressive_every_reference_split_preserves_literal_outputs_and_final_diagnostics() {
-    for (input, expected) in [
-        ("A&notin;B", "A∉B"),
-        ("&notit;", "¬it;"),
-        ("&#x1F642;", "🙂"),
-        ("&#65z", "Az"),
-        ("&#x;", "&#x;"),
-        ("&unknown;", "&unknown;"),
-        ("&NotEqualTilde;", "≂̸"),
-        ("&amp", "&"),
-        ("&", "&"),
-        ("&#99999999999999999999999;", "�"),
-    ] {
+    use DiagnosticCode::{
+        AbsenceOfDigitsInNumericCharacterReference, CharacterReferenceOutsideUnicodeRange,
+        MissingSemicolonAfterCharacterReference, UnknownNamedCharacterReference,
+    };
+    // Expected text and diagnostic codes are the pinned HTML Standard (877d6146487f)
+    // tokenizer outcomes, retained at
+    // references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md
+    // (13.2.5.77-13.2.5.84), not the tokenizer's own output.
+    let cases: [(&str, &str, &[DiagnosticCode]); 10] = [
+        // Named character reference state: "notin;" is a table identifier with
+        // its semicolon, so there is no parse error.
+        ("A&notin;B", "A∉B", &[]),
+        // Named character reference state, "If there is a match", step 1: the
+        // longest identifier is the legacy "not" without a semicolon, so
+        // missing-semicolon-after-character-reference; "it;" stays text. The
+        // standard's own example gives I'm &notit; -> I'm ¬it; with that error.
+        (
+            "&notit;",
+            "¬it;",
+            &[MissingSemicolonAfterCharacterReference],
+        ),
+        // Hexadecimal character reference state to numeric end state: U+1F642
+        // is in range and neither surrogate, noncharacter nor control.
+        ("&#x1F642;", "🙂", &[]),
+        // Decimal character reference state, "Anything else": the digits end
+        // without ";", so missing-semicolon-after-character-reference; the
+        // numeric end state then yields U+0041.
+        ("&#65z", "Az", &[MissingSemicolonAfterCharacterReference]),
+        // Hexadecimal character reference start state, "Anything else": ";"
+        // is no hex digit, so absence-of-digits-in-numeric-character-reference,
+        // and the consumed "&#x" flushes as text before the ";" is reconsumed.
+        (
+            "&#x;",
+            "&#x;",
+            &[AbsenceOfDigitsInNumericCharacterReference],
+        ),
+        // Named character reference state, "Otherwise" (no table identifier
+        // matches "unknown;"): the ambiguous ampersand state emits the
+        // alphanumerics and reports unknown-named-character-reference at ";".
+        ("&unknown;", "&unknown;", &[UnknownNamedCharacterReference]),
+        // "NotEqualTilde;" is a table identifier with a semicolon: no error.
+        ("&NotEqualTilde;", "≂̸", &[]),
+        // The legacy identifier "amp" matches without ";" at end of input:
+        // missing-semicolon-after-character-reference.
+        ("&amp", "&", &[MissingSemicolonAfterCharacterReference]),
+        // Character reference state, "Anything else": nothing follows "&", so
+        // it flushes as text with no parse error.
+        ("&", "&", &[]),
+        // Numeric character reference end state: a code greater than 0x10FFFF
+        // is character-reference-outside-unicode-range and becomes U+FFFD,
+        // which raises no further error.
+        (
+            "&#99999999999999999999999;",
+            "�",
+            &[CharacterReferenceOutsideUnicodeRange],
+        ),
+    ];
+    for (input, expected, codes) in cases {
         let source = HtmlSource::utf8(input);
         let complete = collect(&source, State::Data, None, false);
-        assert_eq!(joined(&complete.0), units(expected));
+        assert_eq!(joined(&complete.0), units(expected), "{input:?} whole");
+        assert_eq!(complete.1, codes, "{input:?} whole-input diagnostics");
         for cut in 0..=source.len() {
             let progressive = collect_progressive(&source, &[cut], false);
             assert_eq!(
@@ -3601,12 +3648,16 @@ fn progressive_every_reference_split_preserves_literal_outputs_and_final_diagnos
                 units(expected),
                 "{input:?} cut={cut}"
             );
-            assert_eq!(progressive.1, complete.1, "{input:?} cut={cut}");
+            assert_eq!(progressive.1, codes, "{input:?} cut={cut} diagnostics");
         }
         let progressive =
             collect_progressive(&source, &(0..=source.len()).collect::<Vec<_>>(), false);
-        assert_eq!(joined(&progressive.0), units(expected));
-        assert_eq!(progressive.1, complete.1);
+        assert_eq!(
+            joined(&progressive.0),
+            units(expected),
+            "{input:?} every cut"
+        );
+        assert_eq!(progressive.1, codes, "{input:?} every cut diagnostics");
     }
 }
 #[test]
