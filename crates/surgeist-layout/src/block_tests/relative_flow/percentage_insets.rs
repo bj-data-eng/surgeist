@@ -40,8 +40,8 @@ fn opposite(direction: Direction) -> Direction {
     }
 }
 
-fn percentage_horizontal_contexts<S: LayoutScalar>() {
-    for definite in [true, false] {
+fn percentage_horizontal_contexts<S: LayoutScalar>(definite_bases: &[bool]) {
+    for &definite in definite_bases {
         for display in [Display::Flex, Display::Grid, Display::Block] {
             for direction in [Direction::Ltr, Direction::Rtl] {
                 for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
@@ -138,9 +138,9 @@ fn percentage_horizontal_contexts<S: LayoutScalar>() {
     }
 }
 
-fn percentage_vertical_contexts<S: LayoutScalar>() {
+fn percentage_vertical_contexts<S: LayoutScalar>(definite_bases: &[bool]) {
     for mode in [WritingMode::VerticalLr, WritingMode::VerticalRl] {
-        for definite in [true, false] {
+        for &definite in definite_bases {
             for direction in [Direction::Ltr, Direction::Rtl] {
                 for display in [Display::Block, Display::Flex, Display::Grid] {
                     for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
@@ -333,8 +333,8 @@ fn final_inset_basis_does_not_settle_size_percentages<S: LayoutScalar>() {
     }
 }
 
-fn percentage_numeric_atomic<S: LayoutScalar>() {
-    for definite in [true, false] {
+fn percentage_numeric_atomic<S: LayoutScalar>(definite_bases: &[bool]) {
+    for &definite in definite_bases {
         let mut tree =
             three_boxes::<S>(Display::Block, Direction::Ltr, BoxSizing::BorderBox, false);
         let mut parent = root_style(Direction::Ltr);
@@ -375,19 +375,19 @@ fn percentage_numeric_atomic<S: LayoutScalar>() {
 
 #[test]
 fn percentage_insets_horizontal_containing_basis_f32() {
-    percentage_horizontal_contexts::<f32>();
+    percentage_horizontal_contexts::<f32>(&[true, false]);
 }
 #[test]
 fn percentage_insets_horizontal_containing_basis_f64() {
-    percentage_horizontal_contexts::<f64>();
+    percentage_horizontal_contexts::<f64>(&[true, false]);
 }
 #[test]
 fn percentage_insets_vertical_physical_basis_f32() {
-    percentage_vertical_contexts::<f32>();
+    percentage_vertical_contexts::<f32>(&[true, false]);
 }
 #[test]
 fn percentage_insets_vertical_physical_basis_f64() {
-    percentage_vertical_contexts::<f64>();
+    percentage_vertical_contexts::<f64>(&[true, false]);
 }
 #[test]
 fn percentage_inset_final_basis_keeps_size_indefinite_f32() {
@@ -399,9 +399,23 @@ fn percentage_inset_final_basis_keeps_size_indefinite_f64() {
 }
 #[test]
 fn percentage_insets_numeric_atomic_f32() {
-    percentage_numeric_atomic::<f32>();
+    percentage_numeric_atomic::<f32>(&[true, false]);
 }
 #[test]
 fn percentage_insets_numeric_atomic_f64() {
-    percentage_numeric_atomic::<f64>();
+    percentage_numeric_atomic::<f64>(&[true, false]);
+}
+
+// Isolate definite physical-axis behavior from final-auto settlement.
+#[test]
+fn definite_relative_inset_axes_f32() {
+    percentage_horizontal_contexts::<f32>(&[true]);
+    percentage_vertical_contexts::<f32>(&[true]);
+    percentage_numeric_atomic::<f32>(&[true]);
+}
+#[test]
+fn definite_relative_inset_axes_f64() {
+    percentage_horizontal_contexts::<f64>(&[true]);
+    percentage_vertical_contexts::<f64>(&[true]);
+    percentage_numeric_atomic::<f64>(&[true]);
 }
