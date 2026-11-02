@@ -689,7 +689,14 @@ impl SessionStorage {
         match result {
             Ok(()) => Ok(()),
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(integrity(c)),
+            // A row-level fault met inside the policy (an input or attribute
+            // row that is missing or of another kind) is classified like any
+            // other: only an outcome no policy step produces is a fault of the
+            // machine's own state.
+            Err(error) => Err(match session_fault_invariant(&error) {
+                Some(invariant) => SessionError::Stop(c.fail_invariant(invariant)),
+                None => integrity(c),
+            }),
         }
     }
     fn range_policy(
