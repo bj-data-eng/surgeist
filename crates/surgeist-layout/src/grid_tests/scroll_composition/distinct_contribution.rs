@@ -537,3 +537,175 @@ fit_contribution_case!(
     Overflow::Clip,
     40.0
 );
+
+// A spanning item preserves allocation to a track with a fixed minimum.
+fn mixed_span_nonaffected_fixed_min_base<S: LayoutScalar>() {
+    let mut tree = source::<S>(20.0, GrowthCap::MaxContent, Overflow::Hidden);
+    let mut root_style = tree.node_input(0).clone();
+    root_style.size.width = PreferredSizeOf::AUTO;
+    root_style.grid_template_columns = vec![
+        TrackComponentOf::minmax(
+            MinTrackSizingOf::AUTO,
+            MaxTrackSizingOf::px(S::from_f64(10.0)),
+        ),
+        TrackComponentOf::minmax(MinTrackSizingOf::px(S::ZERO), MaxTrackSizingOf::MAX_CONTENT),
+    ];
+    tree.source
+        .insert_input(0, LayoutInputOf::box_input(root_style));
+    let mut child_style = tree.node_input(1).clone();
+    child_style.grid_column = GridPlacement::try_lines(1, 3).unwrap();
+    child_style.grid_row = GridPlacement::try_lines(1, 2).unwrap();
+    tree.source
+        .insert_input(1, LayoutInputOf::box_input(child_style));
+    qualify_actual_native_queries(&tree);
+    let batch = compute_layout(
+        &tree,
+        0,
+        LayoutRootRequestOf::viewport(Size::new(
+            AvailableOf::MIN_CONTENT,
+            AvailableOf::definite(S::from_f64(10.0)),
+        ))
+        .unwrap(),
+    )
+    .expect("genuine spanning native Grid computes");
+    let root = fri08_c01_placement_output(&batch, 0);
+    let child = fri08_c01_placement_output(&batch, 1);
+    // Limited min-content target40: affected auto-min A grows to fixed limit10;
+    // then NON-affected B grows30 up to its infinite growth limit, before any
+    // beyond-limits pass. MIN_CONTENT does not later maximize these bases.
+    assert_eq!(root.size, Size::new(S::from_f64(40.0), S::from_f64(10.0)));
+    assert_eq!(child.size, root.size);
+    assert_eq!(root.location, Point::ZERO);
+    assert_eq!(child.location, Point::ZERO);
+    for output in [root, child] {
+        assert_eq!(
+            (output.border, output.padding, output.margin),
+            (Edges::ZERO, Edges::ZERO, Edges::ZERO)
+        );
+    }
+}
+#[test]
+fn mixed_span_nonaffected_fixed_min_base_f32() {
+    mixed_span_nonaffected_fixed_min_base::<f32>();
+}
+#[test]
+fn mixed_span_nonaffected_fixed_min_base_f64() {
+    mixed_span_nonaffected_fixed_min_base::<f64>();
+}
+
+fn mixed_span_visible_explicit_zero_minimum<S: LayoutScalar>(end_marker_in_a: bool) {
+    let mut tree = source::<S>(20.0, GrowthCap::MaxContent, Overflow::Visible);
+    let mut root_style = tree.node_input(0).clone();
+    root_style.size.width = PreferredSizeOf::AUTO;
+    root_style.grid_template_columns = vec![
+        TrackComponentOf::minmax(
+            MinTrackSizingOf::AUTO,
+            MaxTrackSizingOf::px(S::from_f64(10.0)),
+        ),
+        TrackComponentOf::minmax(MinTrackSizingOf::px(S::ZERO), MaxTrackSizingOf::MAX_CONTENT),
+    ];
+    tree.source
+        .insert_input(0, LayoutInputOf::box_input(root_style));
+    let mut child_style = tree.node_input(1).clone();
+    // Explicit minimum0, not computed-scrollability, supplies Minimum0.
+    child_style.min_size.width = MinSizeOf::px(S::ZERO);
+    child_style.grid_column = GridPlacement::try_lines(1, 3).unwrap();
+    child_style.grid_row = GridPlacement::try_lines(1, 2).unwrap();
+    tree.source
+        .insert_input(1, LayoutInputOf::box_input(child_style));
+    if end_marker_in_a {
+        tree.source.insert_children(0, [1, 2]);
+        tree.source.insert_children(2, []);
+        tree.source.insert_input(
+            2,
+            LayoutInputOf::box_input(NodeInputOf {
+                size: Size::new(PreferredSizeOf::px(S::ZERO), PreferredSizeOf::px(S::ZERO)),
+                grid_column: GridPlacement::try_lines(1, 2).unwrap(),
+                grid_row: GridPlacement::try_lines(1, 2).unwrap(),
+                justify_self: Some(AlignItems::End),
+                align_self: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            }),
+        );
+    }
+    // Same actual native leaf algorithm proves content40/80 independently of
+    // the Minimum constructor and independently of every Grid result.
+    qualify_actual_native_queries(&tree);
+    // Actual known BORDER allocation0, with real fixed opposite10 and zeroBP.
+    // This may lawfully use the leaf algorithm's complete-known-size shortcut;
+    // it is not a claimed callback response or a fabricated ComputeOutput.
+    let zero = crate::measurement::compute_tree_leaf(
+        &tree,
+        1,
+        ComputeInputOf::for_child(
+            RunMode::ComputeSize,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::new(Some(S::ZERO), Some(S::from_f64(10.0))),
+            Size::NONE,
+            ContainingLayoutContext::new(
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                ParentFormattingContext::Grid,
+            ),
+            Size::new(AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT),
+        ),
+        tree.node_input(1),
+    )
+    .expect("actual native known-border-zero query succeeds");
+    assert_eq!(zero.size, Size::new(S::ZERO, S::from_f64(10.0)));
+    // A complete-known query establishes the border allocation; its shortcut
+    // does not claim to have observed an intrinsic content extent.
+    assert_eq!(zero.baselines(), BaselinesOf::NONE);
+    assert_eq!(zero.named_baselines, NamedBaselinesOf::unknown());
+
+    let batch = compute_layout(
+        &tree,
+        0,
+        LayoutRootRequestOf::viewport(Size::new(
+            AvailableOf::MIN_CONTENT,
+            AvailableOf::definite(S::from_f64(10.0)),
+        ))
+        .unwrap(),
+    )
+    .expect("actual Visible spanning Grid computes without a clipping gate");
+    let root = fri08_c01_placement_output(&batch, 0);
+    let child = fri08_c01_placement_output(&batch, 1);
+    assert_eq!(root.size, Size::new(S::from_f64(40.0), S::from_f64(10.0)));
+    assert_eq!(child.size, root.size);
+    assert_eq!(root.location, Point::ZERO);
+    assert_eq!(child.location, Point::ZERO);
+    for output in [root, child] {
+        assert_eq!(
+            (output.border, output.padding, output.margin),
+            (Edges::ZERO, Edges::ZERO, Edges::ZERO)
+        );
+    }
+    if end_marker_in_a {
+        let marker = fri08_c01_placement_output(&batch, 2);
+        // The real zero item is in A, whose fixed maximum10 is identical with
+        // or without this zero single item. It must NOT be put in B, where a
+        // genuine zero would change absent infinity into a finite0 limit.
+        assert_eq!(marker.location, Point::new(S::from_f64(10.0), S::ZERO));
+        assert_eq!(marker.size, Size::ZERO);
+        assert_eq!(
+            (marker.border, marker.padding, marker.margin),
+            (Edges::ZERO, Edges::ZERO, Edges::ZERO)
+        );
+    }
+}
+#[test]
+fn mixed_span_visible_explicit_zero_minimum_f32() {
+    mixed_span_visible_explicit_zero_minimum::<f32>(false);
+}
+#[test]
+fn mixed_span_visible_explicit_zero_minimum_f64() {
+    mixed_span_visible_explicit_zero_minimum::<f64>(false);
+}
+#[test]
+fn mixed_span_visible_explicit_zero_minimum_a_end_f32() {
+    mixed_span_visible_explicit_zero_minimum::<f32>(true);
+}
+#[test]
+fn mixed_span_visible_explicit_zero_minimum_a_end_f64() {
+    mixed_span_visible_explicit_zero_minimum::<f64>(true);
+}
