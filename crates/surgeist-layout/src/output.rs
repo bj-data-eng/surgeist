@@ -929,7 +929,7 @@ impl<S: LayoutScalar> BaselinesOf<S> {
             ),
             last: Self::block_point(
                 flow_axes,
-                Some(Self::side_coordinate(flow_axes.line_over(), size)),
+                Some(Self::side_coordinate(flow_axes.line_under(), size)),
             ),
         }
     }
@@ -993,7 +993,7 @@ impl<S: LayoutScalar> BaselinesOf<S> {
         self.last_block_baseline(flow_axes).unwrap_or_else(|| {
             PhysicalBaseline::new(
                 flow_axes.block_axis(),
-                Self::side_coordinate(flow_axes.line_over(), size),
+                Self::side_coordinate(flow_axes.line_under(), size),
             )
         })
     }

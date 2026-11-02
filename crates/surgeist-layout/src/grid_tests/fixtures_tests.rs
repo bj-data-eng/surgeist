@@ -1913,28 +1913,22 @@ pub(super) fn fri08_c04_baseline_area_topology_tree<S: LayoutScalar>(
 pub(super) fn fri08_c04_baseline_physical_edge<S: LayoutScalar>(
     output: NodeOutputOf<S>,
     flow_axes: FlowAxes,
-    alignment: AlignItems,
 ) -> S {
-    let decreasing = flow_axes
-        .logical_axis_progression(LogicalAxis::Block)
-        .is_decreasing();
+    // These leaves supply no baseline coordinates. Align3 synthesizes either
+    // set at line-under, which need not be the flow's block-end edge.
     let (origin, extent) = match flow_axes.block_axis() {
         PhysicalAxis::Horizontal => (output.location.x, output.size.width),
         PhysicalAxis::Vertical => (output.location.y, output.size.height),
     };
-    match alignment {
-        AlignItems::Baseline if decreasing => origin,
-        AlignItems::Baseline => origin + extent,
-        AlignItems::LastBaseline if decreasing => origin + extent,
-        AlignItems::LastBaseline => origin,
-        _ => unreachable!("baseline edge helper requires a first/last role"),
+    match flow_axes.writing_mode() {
+        WritingMode::HorizontalTb | WritingMode::SidewaysLr => origin + extent,
+        WritingMode::VerticalRl | WritingMode::VerticalLr | WritingMode::SidewaysRl => origin,
     }
 }
 
 pub(super) fn fri08_c04_baseline_world_coordinate<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     case: Fri08C04BaselineFlowCase,
-    alignment: AlignItems,
 ) -> (S, S) {
     let nested = fri08_c01_placement_output(batch, 3);
     let direct_container = fri08_c01_placement_output(batch, 4);
@@ -1963,10 +1957,10 @@ pub(super) fn fri08_c04_baseline_world_coordinate<S: LayoutScalar>(
         PhysicalAxis::Vertical => descendant_container.location.y,
     };
     (
-        direct_origin + fri08_c04_baseline_physical_edge(direct_leaf, direct_axes, alignment),
+        direct_origin + fri08_c04_baseline_physical_edge(direct_leaf, direct_axes),
         nested_origin
             + descendant_origin
-            + fri08_c04_baseline_physical_edge(descendant_leaf, child_axes, alignment),
+            + fri08_c04_baseline_physical_edge(descendant_leaf, child_axes),
     )
 }
 

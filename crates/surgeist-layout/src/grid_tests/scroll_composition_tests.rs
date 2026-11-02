@@ -2198,7 +2198,7 @@ fn assert_fri08_c04_baseline_cache_and_failures_are_atomic<S: LayoutScalar>() {
         .expect("baseline atomic viewport");
     let cold = compute_layout(&tree, 1, request).expect("cold baseline composition succeeds");
     let cold_entries = cold.final_entries().to_vec();
-    let cold_coordinates = fri08_c04_baseline_world_coordinate(&cold, case, AlignItems::Baseline);
+    let cold_coordinates = fri08_c04_baseline_world_coordinate(&cold, case);
     cold.apply_to(&mut tree)
         .expect("baseline batch commit is infallible");
 
@@ -2207,7 +2207,7 @@ fn assert_fri08_c04_baseline_cache_and_failures_are_atomic<S: LayoutScalar>() {
     let warm = compute_layout(&tree, 1, request).expect("warm baseline composition succeeds");
     assert_eq!(warm.final_entries(), cold_entries);
     assert_eq!(
-        fri08_c04_baseline_world_coordinate(&warm, case, AlignItems::Baseline),
+        fri08_c04_baseline_world_coordinate(&warm, case),
         cold_coordinates
     );
     assert!(
@@ -2249,7 +2249,7 @@ fn assert_fri08_c04_baseline_cache_and_failures_are_atomic<S: LayoutScalar>() {
         .expect("baseline composition retries after provider failures");
     assert_eq!(retry.final_entries(), cold_entries);
     assert_eq!(
-        fri08_c04_baseline_world_coordinate(&retry, case, AlignItems::Baseline),
+        fri08_c04_baseline_world_coordinate(&retry, case),
         cold_coordinates
     );
 }
