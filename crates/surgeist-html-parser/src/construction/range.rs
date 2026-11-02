@@ -998,14 +998,62 @@ mod absent_owner_tests {
     use super::*;
     use crate::parser::control::Invariant;
 
-    /// The integrity fault of the range machine is the state of retained
-    /// staging rows and buffers, not a capacity that was charged.
+    /// The integrity fault of the range machine is the machine's own staged
+    /// buffers and numeric protocol, not a registry row that is missing.
     #[test]
-    fn a_range_machine_integrity_fault_reports_the_registry_row() {
-        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+    fn a_range_machine_integrity_fault_reports_the_range_machine_state() {
+        let state = ParseStop::InternalInvariant(Invariant::RangeMachineState);
         let mut c = crate::construction::tests::control();
-        assert_eq!(integrity(&mut c), SessionError::Stop(registry_row));
-        assert_eq!(c.stop(), Some(registry_row));
+        assert_eq!(integrity(&mut c), SessionError::Stop(state));
+        assert_eq!(c.stop(), Some(state));
+    }
+
+    /// A second range value installed while the first one's staging is still
+    /// held finds the machine in a state its sequencing excludes: installation
+    /// releases its staging before it returns.
+    #[test]
+    fn installing_a_range_value_over_held_staging_reports_the_range_machine_state() {
+        let state = ParseStop::InternalInvariant(Invariant::RangeMachineState);
+        // The default step's arithmetic alone exceeds the ordinary test budget.
+        let unbounded = crate::construction::tests::limits()
+            .into_builder()
+            .work_credits(u64::MAX)
+            .finish()
+            .unwrap();
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<body><input type=range value=50 step=any>"),
+            unbounded,
+        );
+        let (mut c, mut session, _proof, nodes) =
+            crate::construction::effects::tests::graph(&request);
+        let input = crate::construction::effects::tests::named(&nodes, "input", 0).index;
+        let storage = session.active_mut().unwrap();
+        let slot = storage
+            .payloads
+            .values
+            .iter()
+            .position(|row| {
+                matches!(row, RetainedPayload::Input { node: Some(owner), .. } if *owner == input)
+            })
+            .unwrap();
+        let raw = storage.input_raw_slot(&mut c, slot).unwrap();
+        assert!(storage.effects.range.is_none(), "installation released it");
+        storage.effects.range = Some(RangeStaging::new(&mut c, raw).unwrap());
+        assert_eq!(
+            storage.install_range_input_value(&mut c, input, slot, raw),
+            Err(SessionError::Stop(state))
+        );
+        assert_eq!(c.stop(), Some(state));
+        // The staging that was already held is still the registry's to release.
+        storage
+            .effects
+            .range
+            .take()
+            .unwrap()
+            .release(&mut c)
+            .unwrap();
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
     }
 
     /// Range work that finds no range owner has lost a retained owner; it is

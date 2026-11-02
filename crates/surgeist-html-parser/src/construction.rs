@@ -101,7 +101,7 @@ mod svg;
 mod template;
 mod text_append;
 #[cfg(test)]
-mod text_append_tests;
+pub(crate) mod text_append_tests;
 mod tree_root;
 pub use completion::{ConstructionCompletion, ConstructionReadiness, StandaloneDocumentState};
 use effects::ConstructionEffects;
@@ -485,6 +485,10 @@ struct SessionStorage {
     cancel_after_output_reset: Option<crate::HtmlParseCancellation>,
     #[cfg(test)]
     cancel_after_input_reset: Option<crate::HtmlParseCancellation>,
+    /// Retires the form-association row the next creation has registered and
+    /// not yet bound, as a registry that lost the row would.
+    #[cfg(test)]
+    lose_association_row: bool,
     #[cfg(test)]
     cancel_after_range_append: Option<(
         Option<surgeist_html::bounded::RangeScratchRole>,
@@ -2287,6 +2291,8 @@ impl SessionStorage {
             cancel_after_output_reset: None,
             #[cfg(test)]
             cancel_after_input_reset: None,
+            #[cfg(test)]
+            lose_association_row: false,
             #[cfg(test)]
             cancel_after_range_append: None,
             #[cfg(test)]
@@ -6521,6 +6527,8 @@ impl SessionStorage {
             #[cfg(test)]
                 cancel_after_input_reset: _,
             #[cfg(test)]
+                lose_association_row: _,
+            #[cfg(test)]
                 cancel_after_range_append: _,
             #[cfg(test)]
                 cancel_after_range_ingress: _,
@@ -7634,6 +7642,12 @@ impl ParserArenaSession {
                 if let Some(cancellation) = storage.cancel_after_output_reset.take() {
                     cancellation.cancel();
                 }
+            }
+            #[cfg(test)]
+            if mem::take(&mut storage.lose_association_row)
+                && let Some(row) = slot.and_then(|slot| storage.payloads.values.get_mut(slot))
+            {
+                *row = RetainedPayload::Retired;
             }
             if let Some(slot) = slot {
                 control.charge(WorkCategory::RecordVisit, 1)?;
@@ -8822,6 +8836,8 @@ impl ParserArenaSession {
                 cancel_after_output_reset: _,
             #[cfg(test)]
                 cancel_after_input_reset: _,
+            #[cfg(test)]
+                lose_association_row: _,
             #[cfg(test)]
                 cancel_after_range_append: _,
             #[cfg(test)]
@@ -30602,6 +30618,39 @@ mod tests {
             session.release(&mut c).unwrap();
             storage_zero(&c);
         }
+    }
+
+    /// A creation that registered its form-association row and then finds the
+    /// row gone has lost a retained row. The row it names is what is violated,
+    /// not the stage the creation had reached.
+    #[test]
+    fn a_creation_that_loses_its_form_association_row_reports_the_registry_row() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<html><head></head><input type=text>"),
+            limits(),
+        );
+        let (mut c, mut session, capability, lexer, parent, mut input, range) =
+            input_owner(&request);
+        session.active_mut().unwrap().lose_association_row = true;
+        let result = session.allocate_input_for_creation(
+            &mut c,
+            &mut input,
+            CreationLocation {
+                intended_parent: &parent,
+                current_form: None,
+                context: CreationContext::Ordinary,
+            },
+            &range,
+            &capability,
+        );
+        let registry_row =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow);
+        assert_eq!(result.err(), Some(SessionError::Stop(registry_row)));
+        assert_eq!(c.stop(), Some(registry_row));
+        release_formatting_tag(&mut input, &mut c).unwrap();
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
     }
 
     #[test]
