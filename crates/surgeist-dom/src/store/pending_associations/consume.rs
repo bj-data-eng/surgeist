@@ -293,6 +293,21 @@ fn qualify_order(
     Ok(())
 }
 
+/// A preferred-name change that the report seals carries its original name;
+/// one that does not is a defect of that report, never a name to guess.
+fn require_preferred_name<T>(
+    name: Option<T>,
+    contribution: crate::DomParsedHtmlAssociationId,
+    occurrence: surgeist_html_parser::HtmlParseAssociationOccurrenceId,
+) -> Result<T, DomParsedHtmlAssociationAdmissionError> {
+    name.ok_or(
+        DomParsedHtmlAssociationAdmissionError::MissingPreferredName {
+            contribution,
+            occurrence,
+        },
+    )
+}
+
 pub(super) fn decode_occurrence(
     meter: &Meter,
     row: &surgeist_html_parser::HtmlParseAssociationOccurrence<'_>,
@@ -310,9 +325,7 @@ pub(super) fn decode_occurrence(
         scratch.step(cancel)?;
         frames.push(HtmlParseHistoryFrame::default());
     }
-    let group = row
-        .preferred_name()
-        .expect("sealed ChangePreferred has its original name");
+    let group = require_preferred_name(row.preferred_name(), entry.id, row.id())?;
     let mut reader = history
         .cursor(group, &mut frames, None)
         .map_err(DomParsedHtmlAssociationAdmissionError::from)?;

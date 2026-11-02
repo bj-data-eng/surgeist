@@ -407,17 +407,20 @@ impl<'a> Source<'a> {
             c.limits.mapped_nodes as u64,
         )?;
         c.reserve(&mut self.captured_bindings, 1)?;
+        // The document is resolved from the subject before the subject moves
+        // into its binding, so nothing is read back from the pushed row.
+        let captured = capture
+            .capture()
+            .node(&subject)
+            .map_err(|_| Error::ForeignContext)?;
+        let document = captured.node_document();
+        let document_subject = (document.subject() != &subject).then(|| document.subject().clone());
         self.captured_bindings
             .push(DomParsedHtmlCapturedBinding { subject, node });
         #[cfg(test)]
         written.pushed::<DomParsedHtmlCapturedBinding>();
-        let captured = capture
-            .capture()
-            .node(self.captured_bindings.last().expect("just added").subject())
-            .map_err(|_| Error::ForeignContext)?;
-        let document = captured.node_document();
-        if document.subject() != self.captured_bindings.last().expect("just added").subject() {
-            self.add_captured(document.subject().clone(), c)?;
+        if let Some(document_subject) = document_subject {
+            self.add_captured(document_subject, c)?;
         }
         Ok(Key::Existing(node))
     }
@@ -1424,7 +1427,11 @@ impl Dom {
             #[cfg(test)]
             written.pushed::<DomParsedHtmlBinding>();
         }
-        debug_assert_eq!(root, source.rows[root_index].key.expect("allocated root"));
+        #[cfg(test)]
+        assert_eq!(
+            Some(root),
+            source.rows.get(root_index).and_then(|row| row.key)
+        );
         let captured_bindings = std::mem::take(&mut source.captured_bindings);
         drop(source);
         c.check()?;
