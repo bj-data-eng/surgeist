@@ -6091,12 +6091,15 @@ impl SessionStorage {
             }
             Ok::<_, SessionError>(())
         })();
-        self.end_reroot(reroot);
         if let Err(error) = result {
-            self.construction.abort_pending(control, pending)?;
+            let aborted = self.construction.abort_pending(control, pending);
+            self.end_reroot(reroot);
+            aborted?;
             return Err(error);
         }
-        self.construction.finish_pending(control, pending)?;
+        let finished = self.construction.finish_pending(control, pending);
+        self.end_reroot(reroot);
+        finished?;
         if form_effects.is_some() {
             self.effects.form = form_effects;
         }

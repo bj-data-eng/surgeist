@@ -10,7 +10,8 @@
 //! A cached root is exact while no topology change has altered the root of a
 //! record that holds it. Exactly two commands change a parent edge, `Insert`
 //! and `Detach`, and both are announced to [`SessionStorage::begin_reroot`]
-//! before they are committed and to [`SessionStorage::end_reroot`] after:
+//! before they are committed and to [`SessionStorage::end_reroot`] once the
+//! construction owner has finished them:
 //!
 //! * A record with no ordinary children is the only record whose root the
 //!   change alters, so its own cell is cleared and nothing else is touched.
@@ -26,15 +27,20 @@ use super::*;
 
 /// The root a record last found and the generation it found it in.
 #[derive(Clone, Copy, Default)]
-pub(super) struct TreeRootCell {
-    /// The root's record position plus one.
-    root: Option<NonZeroU32>,
-    stamp: Option<NonZeroU32>,
+pub(super) enum TreeRootCell {
+    #[default]
+    Empty,
+    Cached {
+        /// The root's record position plus one.
+        root: NonZeroU32,
+        stamp: NonZeroU32,
+    },
 }
 
 /// What a topology change does to the cached roots, decided before it is
 /// committed and finished after.
 #[derive(Clone, Copy)]
+#[must_use = "a change announced with begin_reroot must be finished with end_reroot"]
 pub(super) enum Reroot {
     /// The moved record has no ordinary children: only its own cell changes.
     Bare(usize),
@@ -48,11 +54,10 @@ impl PayloadStorage {
     /// The root cached for `node`, when its cell is current.
     fn cached_root(&self, node: usize) -> Option<usize> {
         let stamp = self.tree_stamp?;
-        let cell = self.node_joins.get(node)?.tree_root;
-        if cell.stamp != Some(stamp) {
-            return None;
+        match self.node_joins.get(node)?.tree_root {
+            TreeRootCell::Cached { root, stamp: held } if held == stamp => cell_slot(root),
+            _ => None,
         }
-        cell.root.and_then(cell_slot)
     }
     /// Climbs from `node` to its root or to the first record with a current
     /// cached root that is still a root, returning that root and the record
@@ -134,9 +139,9 @@ impl PayloadStorage {
             control.charge(WorkCategory::RecordVisit, 1)?;
             control.charge(WorkCategory::RecordWrite, 1)?;
             if let Some(cell) = self.node_joins.get_mut(at) {
-                cell.tree_root = TreeRootCell {
-                    root: Some(cell_root),
-                    stamp: Some(stamp),
+                cell.tree_root = TreeRootCell::Cached {
+                    root: cell_root,
+                    stamp,
                 };
             }
             if at == stop {
@@ -156,7 +161,7 @@ impl PayloadStorage {
     /// Makes the cell of `node` stale. The caller has charged the write.
     fn forget_tree_root(&mut self, node: usize) {
         if let Some(cell) = self.node_joins.get_mut(node) {
-            cell.tree_root.stamp = None;
+            cell.tree_root = TreeRootCell::Empty;
         }
     }
     /// Makes every cell stale, or disables the cache when no later generation
