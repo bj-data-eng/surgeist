@@ -385,6 +385,15 @@ anchoring Unchecked; the existing TableModel continues to own header
 associations. These local reports use ordinary allocation and admit the entire
 original UTF-16 value before applicability through the per-value cap.
 
+`bounded::th_scope_state` returns the same scope state without a report, and
+`bounded::th_scope_work_bound(n)` publishes its worst-case work for an n-unit raw
+value, computed from the keyword table. Every value costs five admitted reads
+(the value header and four keyword headers); unit comparisons occur only against
+a keyword of the value's own length. That adds at most four reads at length 3
+(`row` and `col`, nine in all) and nine at length 8 (`rowgroup` and `colgroup`,
+fourteen in all), and nothing at any other length, however long. The caller
+admits the raw length and charges the bound before the call.
+
 `textarea_wrap` retains Soft/Hard content state, raw spelling and lexical
 conformance separately; missing and invalid content select Soft. Hard leaves
 its cols-presence author requirement unchecked until `textarea_wrap_with_cols`
@@ -458,6 +467,14 @@ when actual col children are present, table formation uses their spans and
 ignores the group's own span. The [column clauses](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-colgroup-element)
 and existing captured table kernel own those contextual distinctions. These
 standalone reports provide neither a resolved group width nor an IDL getter.
+
+`bounded::HtmlTableSpanRule` is the allocation-free entry point for the four span
+rules (cell colspan and rowspan, col span, colgroup span). `content_value` returns
+the same content value the matching report reader selects, from the same cap and
+zero declarations, without a report or any clone of the raw value.
+`work_bound(n)` publishes the owner's bound for an n-unit raw value: at most
+`3n + 2` units, each a raw-unit inspection, a digit projection step, or one of two
+fixed reads. The caller admits the raw length and charges the bound before the call.
 
 `select_size` combines exact size content with the actual multiple attribute.
 Native size construction requires a positive integer. Processing preserves every

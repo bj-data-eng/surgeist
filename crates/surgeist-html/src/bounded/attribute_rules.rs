@@ -12,6 +12,7 @@ pub use crate::attributes::bounded_rules::{
     HtmlAttributeKeywordRead, WritingSuggestionsProcessing, crossorigin_processing_with,
     input_readonly_applies, referrerpolicy_processing_with, stylesheet_link_context_work_bound,
 };
+pub use crate::attributes::bounded_scope::{th_scope_state, th_scope_work_bound};
 pub use crate::attributes::hash_name::{HashNameScan, HashNameScanStep};
 pub use crate::attributes::image_values::{
     EmbeddedDimensionApplicability, EmbeddedDimensionContext, EmbeddedDimensionEvidenceNeeded,
@@ -23,4 +24,5 @@ pub use crate::attributes::meta_processing::{
     meta_referrer_policy_with, meta_refresh_syntax_with,
 };
 pub use crate::attributes::navigable_target::TargetRecovery;
+pub use crate::attributes::table_span::HtmlTableSpanRule;
 pub use crate::attributes::token_declarations::{IconSizeCursor, IconSizeShape};
