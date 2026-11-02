@@ -110,6 +110,20 @@ pub enum Invariant {
     /// bookkeeping that its algorithms keep consistent (staged buffers, range
     /// machine state, counts) contradicts its own sequencing.
     RegistryRow,
+    /// The range-input machine is in a state its own protocol excludes: a
+    /// staged scratch or output buffer is missing, mis-sized or not where the
+    /// step expects it, the machine or its numeric request is not the one the
+    /// step drives, or the number grammar or constraint policy returned a result
+    /// that the parser's well-formed requests cannot produce.
+    RangeMachineState,
+    /// HTML's construction owner refused a request that the parser's own
+    /// sequencing guarantees valid: a record of the wrong kind, a shadow,
+    /// template or contents association that is already held or malformed,
+    /// an attribute that is duplicated or out of order, an invalid output
+    /// root, or an operation that was already consumed or is not ready. The
+    /// owner's error enum is open, so an error this parser does not yet
+    /// classify reports the same fault.
+    ConstructionOwnerRefusal,
     /// The tree-builder drivers or algorithm are in a state their sequencing
     /// excludes: a driver, stage or prologue owner that the sequencing keeps in
     /// a slot is gone, the formatting list is invalid, script nesting or the
