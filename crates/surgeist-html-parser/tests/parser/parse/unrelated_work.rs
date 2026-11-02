@@ -345,3 +345,58 @@ fn text_adds_the_same_visits_whatever_elements_are_open_around_it() {
 fn a_comment_adds_the_same_visits_whatever_elements_are_open_around_it() {
     assert_visits_independent_of_depth("<span>", "<!--c-->");
 }
+
+/// The record visits `element` adds inside a table cell that follows `depth`
+/// open spans. The table cell is a scope boundary, so a check the pinned text
+/// makes with "in scope" ends at the cell and every walk that remains reaches
+/// beyond it only because the algorithm asks about an ancestor.
+fn visits_added_in_a_cell_at_depth(depth: usize, prefix: &str, element: &str) -> i64 {
+    let page = |inner: &str| {
+        format!(
+            "<!doctype html><body>{}{prefix}<table><tr><td>{inner}",
+            "<span>".repeat(depth)
+        )
+    };
+    work(page(element), HtmlParseWorkCategory::RecordVisit) as i64
+        - work(page(""), HtmlParseWorkCategory::RecordVisit) as i64
+}
+
+/// Requires `element` to add the same record visits in a cell after 50, 200
+/// and 800 open spans, with `prefix` opened between the spans and the cell.
+fn assert_cell_work_independent_of_depth(prefix: &str, element: &str) {
+    let measures = SIZES.map(|depth| visits_added_in_a_cell_at_depth(depth, prefix, element));
+    assert_flat_of(
+        "record visits in a table cell",
+        element,
+        "<span>",
+        measures,
+        0,
+    );
+}
+
+#[test]
+fn a_form_adds_the_same_visits_whatever_elements_are_open_around_its_cell() {
+    // Its end tag removes the form from the stack of open elements, which is
+    // the current node: finding it needs no look at the entries below.
+    assert_cell_work_independent_of_depth("", "<form></form>");
+}
+
+#[test]
+fn an_input_adds_the_same_visits_whatever_elements_are_open_around_its_cell() {
+    // "Has a select element in scope" ends at the cell; the nearest form
+    // ancestor is the form opened inside the spans.
+    assert_cell_work_independent_of_depth("<form>", "<input name=a>");
+}
+
+#[test]
+fn a_select_with_an_option_adds_the_same_visits_whatever_is_open_around_its_cell() {
+    assert_cell_work_independent_of_depth(
+        "<form>",
+        "<select><option>x</option></select>",
+    );
+}
+
+#[test]
+fn a_details_adds_the_same_visits_whatever_elements_are_open_around_its_cell() {
+    assert_cell_work_independent_of_depth("", "<details><summary>x</summary></details>");
+}
