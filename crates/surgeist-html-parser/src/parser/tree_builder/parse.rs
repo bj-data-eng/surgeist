@@ -1192,4 +1192,57 @@ mod tests {
         );
         assert_eq!(exact.cleanup_error(), None);
     }
+
+    /// The reason a stage error reports for an outcome is the one the first
+    /// stop agrees with: the outcome's own, or a stop that names it.
+    #[test]
+    fn a_stage_error_holding_an_outcome_reports_the_outcome_reason() {
+        use super::super::{KernelError, head::HeadError, prologue::PrologueError};
+        for (error, reason, _) in super::super::outcome_tests::outcomes() {
+            assert_eq!(session_reason(error), reason, "{error:?}");
+            let session = || KernelError::Session(error);
+            let ordinary = [
+                StandaloneError::Head(HeadError::Kernel(session())),
+                StandaloneError::Prologue(PrologueError::Kernel(session())),
+                StandaloneError::Head(HeadError::Prologue(PrologueError::Kernel(session()))),
+            ];
+            for stage in &ordinary {
+                assert_eq!(ordinary_reason(stage), reason, "{error:?}");
+            }
+            let fragment = [
+                FragmentExecutionError::Kernel(session()),
+                FragmentExecutionError::Head(HeadError::Kernel(session())),
+                FragmentExecutionError::Head(HeadError::Prologue(PrologueError::Kernel(session()))),
+            ];
+            for stage in &fragment {
+                assert_eq!(fragment_reason(stage), reason, "{error:?}");
+            }
+        }
+        // The completion stage's own error is the same completion state.
+        let completion = HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(
+            StandaloneUnsupported::Completion,
+        ));
+        assert_eq!(
+            ordinary_reason(&StandaloneError::Head(HeadError::IncompleteCompletion)),
+            completion
+        );
+        assert_eq!(
+            fragment_reason(&FragmentExecutionError::Head(
+                HeadError::IncompleteCompletion
+            )),
+            completion
+        );
+    }
+
+    /// A parser fault that reaches a stage is an engine condition.
+    #[test]
+    fn a_stage_error_holding_a_parser_fault_reports_an_engine_condition() {
+        use super::super::{KernelError, head::HeadError};
+        for (error, _) in super::super::outcome_tests::faults() {
+            let engine = HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tree);
+            assert_eq!(session_reason(error), engine, "{error:?}");
+            let stage = StandaloneError::Head(HeadError::Kernel(KernelError::Session(error)));
+            assert_eq!(ordinary_reason(&stage), engine, "{error:?}");
+        }
+    }
 }

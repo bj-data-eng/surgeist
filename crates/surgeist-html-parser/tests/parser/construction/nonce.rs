@@ -2,7 +2,8 @@ use crate::parser::support::limits;
 use surgeist_html::*;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseDestination,
-    HtmlParseFailureReason, HtmlParseMetadataStep, HtmlParseRawField, HtmlParseReport, HtmlSource,
+    HtmlParseFailureReason, HtmlParseMetadataStep, HtmlParseRawField, HtmlParseReport,
+    HtmlParseStop, HtmlParseUnsupportedState, HtmlSource,
 };
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -248,6 +249,12 @@ fn captured_connected_unknown_header_is_typed_failure_not_false() {
     assert_eq!(
         failure.reason(),
         HtmlParseFailureReason::MissingContextFact(HtmlCaptureFact::HeaderDeliveredCsp)
+    );
+    assert_eq!(
+        failure.first_stop(),
+        Some(HtmlParseStop::UnsupportedStandaloneState(
+            HtmlParseUnsupportedState::Provenance
+        ))
     );
     assert!(failure.after_cleanup().is_some());
 }

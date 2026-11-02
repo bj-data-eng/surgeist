@@ -829,13 +829,13 @@ pub(crate) fn initialized_driver(request: &HtmlFragmentParseRequest) -> ContextF
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::ownership::FragmentInitialization;
     use super::*;
     use crate::construction::native_view::NativeKind;
     use crate::*;
 
-    pub(super) fn request(
+    pub(in crate::parser::tree_builder) fn request(
         source: &str,
         context_name: &str,
         scripting: HtmlScriptingStatus,

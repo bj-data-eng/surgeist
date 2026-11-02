@@ -66,6 +66,8 @@ mod completion;
 pub(crate) mod context;
 mod details;
 mod effects;
+#[cfg(test)]
+pub(crate) use effects::{fault_effect_drain, take_effect_fault};
 pub(crate) mod fragment_document;
 #[cfg(test)]
 mod link_history;
