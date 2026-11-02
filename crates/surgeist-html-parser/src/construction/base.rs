@@ -404,7 +404,7 @@ impl SessionStorage {
             if let RetainedPayload::BaseDocument { node, first, .. } = payload {
                 self.document_slot(c, *node)?;
                 if self.first_base_href(c, *node, None)? != *first {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             if let RetainedPayload::Base {
@@ -420,7 +420,7 @@ impl SessionStorage {
                         ..
                     })
                 ) {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
             if let RetainedPayload::Base {
@@ -444,7 +444,7 @@ impl SessionStorage {
                 }
                 let slot = self
                     .base_document_slot(c, frozen.document)?
-                    .ok_or(SessionError::WrongToken)?;
+                    .ok_or_else(|| latch_registry_row(c))?;
                 let Some(RetainedPayload::BaseDocument { facts, .. }) =
                     self.payloads.values.get(slot)
                 else {
@@ -452,7 +452,7 @@ impl SessionStorage {
                 };
                 c.charge(WorkCategory::ProviderCall, 1)?;
                 if !facts.same_owner(&frozen.environment) {
-                    return Err(SessionError::WrongToken);
+                    return Err(latch_registry_row(c));
                 }
             }
         }

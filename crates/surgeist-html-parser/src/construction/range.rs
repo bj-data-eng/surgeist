@@ -268,10 +268,10 @@ impl SessionStorage {
     fn range_stage(&mut self, c: &mut ParseControl) -> Result<&mut RangeStaging, SessionError> {
         c.require_identity(&self.control)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        self.effects
-            .range
-            .as_mut()
-            .ok_or(SessionError::PendingIntrinsicWork)
+        match self.effects.range.as_mut() {
+            Some(stage) => Ok(stage),
+            None => Err(latch_registry_row(c)),
+        }
     }
     fn execute_range(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         loop {
@@ -289,11 +289,11 @@ impl SessionStorage {
                 .effects
                 .range
                 .as_ref()
-                .ok_or(SessionError::PendingIntrinsicWork)?;
+                .ok_or_else(|| latch_registry_row(c))?;
             let Some(request) = stage
                 .machine
                 .as_ref()
-                .ok_or(SessionError::PendingIntrinsicWork)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .request()
             else {
                 let expected = stage.machine.as_ref().and_then(Machine::headers);

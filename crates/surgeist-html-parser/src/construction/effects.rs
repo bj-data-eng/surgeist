@@ -287,8 +287,8 @@ impl SessionStorage {
                 if self.effects.current.is_some() {
                     c.admit_atomic_layout(mem::size_of::<EffectFrame>())?;
                     c.charge(WorkCategory::CopyByte, mem::size_of::<EffectFrame>() as u64)?;
-                    // The wrapper below reports a missing frame as the pending
-                    // effects invariant.
+                    // The wrapper below reports a missing frame as a registry
+                    // row.
                     let frame = self
                         .effects
                         .current

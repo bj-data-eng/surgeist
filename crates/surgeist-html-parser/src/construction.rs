@@ -187,17 +187,59 @@ impl SessionError {
 fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))
 }
-/// The invariant stop for a non-stop error that effect work met. Only an
-/// intrinsic operation that is still owed names pending effects; every other
-/// error says that a retained row the work needs is missing, of another kind,
-/// aliased or unjoined, which is a registry row.
+/// The result of a non-stop error that effect work met, classified by the
+/// kind of fault it names. Every variant is listed, so a new one must be
+/// classified deliberately.
+///
+/// - Outcomes of the document or a service that the driver classifies itself
+///   pass through unchanged and latch nothing.
+/// - An intrinsic operation that is still owed is the pending-effects stop.
+/// - A uniqueness check that failed is the aliased-allocation stop.
+/// - A retained row that is missing, of another kind, unjoined or out of
+///   place is a registry row.
 fn latch_effect_fault(control: &mut ParseControl, error: SessionError) -> SessionError {
-    match error {
-        SessionError::PendingIntrinsicWork => SessionError::Stop(
-            control.fail_invariant(crate::parser::control::Invariant::PendingFormEffects),
-        ),
-        _ => latch_registry_row(control),
-    }
+    use crate::parser::control::Invariant;
+    let invariant = match error {
+        SessionError::Stop(_)
+        | SessionError::CspService
+        | SessionError::CspProtocol(_)
+        | SessionError::AssociatedFacts
+        | SessionError::ScriptMetadataUnavailable
+        | SessionError::SvgScriptMetadataUnavailable
+        | SessionError::CompletionMetadataUnavailable
+        | SessionError::CompletionIncomplete
+        | SessionError::ContextFactUnavailable(_)
+        | SessionError::ContextReactionUnavailable => return error,
+        SessionError::PendingIntrinsicWork => Invariant::PendingFormEffects,
+        SessionError::AliasedPayload => Invariant::SharedAllocationAliased,
+        SessionError::NonceMetadataUnavailable
+        | SessionError::ForeignNode
+        | SessionError::RootMove
+        | SessionError::AssociationMove
+        | SessionError::NotContainer
+        | SessionError::TemplateContentsRequired
+        | SessionError::WrongSibling
+        | SessionError::Cycle
+        | SessionError::Consumed
+        | SessionError::WrongToken
+        | SessionError::DuplicateAttribute
+        | SessionError::TemplateInsertionStateUnavailable
+        | SessionError::NotDocument
+        | SessionError::OriginSplitUnavailable
+        | SessionError::AttributeStorageUnavailable
+        | SessionError::ImageFormMetadataUnavailable
+        | SessionError::FormAssociationMetadataUnavailable
+        | SessionError::TextareaMetadataUnavailable
+        | SessionError::OutputMetadataUnavailable
+        | SessionError::InputMetadataUnavailable
+        | SessionError::SelectMetadataUnavailable
+        | SessionError::NodeDocumentUnavailable
+        | SessionError::TemplateMetadataUnavailable
+        | SessionError::ProcessingInstructionMapUnavailable
+        | SessionError::ContextUnavailable
+        | SessionError::CapturedDocument => Invariant::RegistryRow,
+    };
+    SessionError::Stop(control.fail_invariant(invariant))
 }
 /// The position after `cursor`. Every caller reaches it only after the work
 /// list yielded an entry at `cursor`, so `cursor` is below an in-memory length

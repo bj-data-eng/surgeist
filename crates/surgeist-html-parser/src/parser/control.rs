@@ -94,9 +94,9 @@ pub enum Invariant {
     /// A shared allocation that must be uniquely held was aliased.
     SharedAllocationAliased,
     /// A construction session was used, or a frozen base was validated, while
-    /// an operation it owes was still pending: a form, radio, range, transfer or
-    /// task effect, an intrinsic operation not yet performed, or a base
-    /// response not yet returned.
+    /// an operation it owes was still pending: a form, radio, range, transfer,
+    /// SVG-wrapper or task effect, an open checkpoint, an intrinsic operation
+    /// not yet performed, or a base response not yet returned.
     PendingFormEffects,
     /// A creation that holds a form, link, select or details association
     /// failed with an error other than a stop.
