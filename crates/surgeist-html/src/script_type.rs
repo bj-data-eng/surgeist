@@ -48,9 +48,9 @@ pub enum HtmlScriptTypeWork {
     /// Actual inspected bytes, including UTF-16 operands and ASCII keywords.
     InspectByte(u64),
 }
-/// Borrowed ASCII-insensitive virtual-prefix/range matcher, also consumed by
-/// the construction owner's actual hidden-input comparison. Credits precede
-/// length comparison and each read; a completed result has no further work.
+/// Borrowed ASCII-insensitive virtual-prefix/range matcher consumed by
+/// [`HtmlScriptTypeCursor`]. Credits precede length comparison and each read;
+/// a completed result has no further work.
 pub(crate) struct ScriptTypeMatchCursor<'a> {
     prefix: &'static [u8],
     value: &'a DocumentString,
@@ -80,13 +80,14 @@ impl<'a> ScriptTypeMatchCursor<'a> {
             result: None,
         }
     }
-    pub(crate) fn required_work(&self) -> Option<HtmlScriptTypeWork> {
-        if self.result.is_some() {
-            None
+    /// The next admitted read, or the completed comparison result.
+    pub(crate) fn pending(&self) -> Result<HtmlScriptTypeWork, bool> {
+        if let Some(result) = self.result {
+            Err(result)
         } else if self.length_pending {
-            Some(HtmlScriptTypeWork::RecordVisit(1))
+            Ok(HtmlScriptTypeWork::RecordVisit(1))
         } else {
-            Some(HtmlScriptTypeWork::InspectByte(
+            Ok(HtmlScriptTypeWork::InspectByte(
                 if self.position < self.prefix.len() {
                     2
                 } else {
@@ -124,9 +125,6 @@ impl<'a> ScriptTypeMatchCursor<'a> {
             }
         }
     }
-    pub(crate) fn result(&self) -> Option<bool> {
-        self.result
-    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Mode {
@@ -139,14 +137,131 @@ enum Pass {
     TrimmedEssences,
     Keywords,
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Stage {
-    Initial,
+/// A scan stage; only the matching stage owns a matcher.
+enum Stage<'a> {
     Candidate,
-    Match,
+    Match(ScriptTypeMatchCursor<'a>),
     TrimStart,
     TrimEnd,
-    Done,
+}
+
+/// A classification over one established nonempty input.
+struct Scan<'a> {
+    value: &'a DocumentString,
+    prefix: &'static [u8],
+    /// Preparation of an explicit type retries essences after JS whitespace trim.
+    trims: bool,
+    pass: Pass,
+    stage: Stage<'a>,
+    candidate: usize,
+    start: usize,
+    end: usize,
+}
+
+impl<'a> Scan<'a> {
+    fn expected(&self) -> &'static [u8] {
+        match self.pass {
+            Pass::RawEssences | Pass::TrimmedEssences => ESSENCES[self.candidate],
+            Pass::Keywords => KEYWORDS[self.candidate].0,
+        }
+    }
+    // The zero-work transitions inspect only established cursor fields, not
+    // actual units. Scalar progress cannot substitute for an admitted matcher
+    // read. Err is the finished classification.
+    fn pending(&mut self) -> Result<HtmlScriptTypeWork, Option<HtmlScriptKind>> {
+        loop {
+            match &self.stage {
+                Stage::Match(matcher) => match matcher.pending() {
+                    Ok(work) => return Ok(work),
+                    Err(true) => {
+                        return Err(Some(if self.pass == Pass::Keywords {
+                            KEYWORDS[self.candidate].1
+                        } else {
+                            HtmlScriptKind::Classic
+                        }));
+                    }
+                    Err(false) => {
+                        self.candidate += 1;
+                        self.stage = Stage::Candidate;
+                    }
+                },
+                Stage::Candidate
+                    if self.pass != Pass::Keywords && self.candidate == ESSENCES.len() =>
+                {
+                    if self.pass == Pass::RawEssences && self.trims {
+                        self.stage = Stage::TrimStart;
+                    } else {
+                        self.pass = Pass::Keywords;
+                        self.candidate = 0;
+                        self.start = 0;
+                        self.end = self.value.len();
+                    }
+                }
+                Stage::Candidate
+                    if self.pass == Pass::Keywords && self.candidate == KEYWORDS.len() =>
+                {
+                    return Err(None);
+                }
+                Stage::Candidate => return Ok(HtmlScriptTypeWork::RecordVisit(1)),
+                Stage::TrimStart if self.start == self.end => self.stage = Stage::TrimEnd,
+                Stage::TrimEnd if self.start == self.end => {
+                    self.pass = Pass::TrimmedEssences;
+                    self.candidate = 0;
+                    self.stage = Stage::Candidate;
+                }
+                Stage::TrimStart | Stage::TrimEnd => {
+                    return Ok(HtmlScriptTypeWork::InspectByte(2));
+                }
+            }
+        }
+    }
+    /// Performs the action described by a successful `pending`.
+    fn advance(&mut self) {
+        match &mut self.stage {
+            Stage::Candidate => {
+                self.stage = Stage::Match(ScriptTypeMatchCursor::new(
+                    self.prefix,
+                    self.value,
+                    self.start,
+                    self.end,
+                    self.expected(),
+                ));
+            }
+            Stage::Match(matcher) => matcher.advance(),
+            Stage::TrimStart => {
+                if matches!(
+                    self.value.code_units()[self.start],
+                    0x09 | 0x0a | 0x0c | 0x0d | 0x20
+                ) {
+                    self.start += 1;
+                } else {
+                    self.stage = Stage::TrimEnd;
+                }
+            }
+            Stage::TrimEnd => {
+                if matches!(
+                    self.value.code_units()[self.end - 1],
+                    0x09 | 0x0a | 0x0c | 0x0d | 0x20
+                ) {
+                    self.end -= 1;
+                } else {
+                    self.pass = Pass::TrimmedEssences;
+                    self.candidate = 0;
+                    self.stage = Stage::Candidate;
+                }
+            }
+        }
+    }
+}
+
+enum State<'a> {
+    Initial {
+        explicit: Option<&'a DocumentString>,
+        language: Option<&'a DocumentString>,
+        mode: Mode,
+    },
+    Scan(Scan<'a>),
+    Done(Option<HtmlScriptKind>),
 }
 
 /// Stack-only borrowed cursor. Each `advance` follows its `required_work`
@@ -156,16 +271,7 @@ enum Stage {
 /// stripped matches for explicit preparation, then three exact keyword matches.
 /// A virtual language prefix never allocates a concatenated string.
 pub struct HtmlScriptTypeCursor<'a> {
-    explicit: Option<&'a DocumentString>,
-    language: Option<&'a DocumentString>,
-    mode: Mode,
-    pass: Pass,
-    stage: Stage,
-    candidate: usize,
-    start: usize,
-    end: usize,
-    matcher: Option<ScriptTypeMatchCursor<'a>>,
-    result: Option<HtmlScriptKind>,
+    state: State<'a>,
 }
 impl<'a> HtmlScriptTypeCursor<'a> {
     /// Classifies the current content type without preparation-only trimming.
@@ -185,172 +291,80 @@ impl<'a> HtmlScriptTypeCursor<'a> {
         mode: Mode,
     ) -> Self {
         Self {
-            explicit,
-            language,
-            mode,
-            pass: Pass::RawEssences,
-            stage: Stage::Initial,
-            candidate: 0,
-            start: 0,
-            end: 0,
-            matcher: None,
-            result: None,
+            state: State::Initial {
+                explicit,
+                language,
+                mode,
+            },
         }
     }
-    fn value(&self) -> &'a DocumentString {
-        self.explicit
-            .or(self.language)
-            .expect("initial stage selected a nonempty input")
-    }
-    fn prefix(&self) -> &'static [u8] {
-        if self.explicit.is_none() && self.mode == Mode::Preparation {
-            b"text/"
-        } else {
-            b""
-        }
-    }
-    fn expected(&self) -> &'static [u8] {
-        match self.pass {
-            Pass::RawEssences | Pass::TrimmedEssences => ESSENCES[self.candidate],
-            Pass::Keywords => KEYWORDS[self.candidate].0,
-        }
-    }
-    // These zero-work transitions inspect only established cursor fields, not
-    // actual units. Scalar progress cannot substitute for an admitted matcher read.
-    fn settle(&mut self) {
-        loop {
-            match self.stage {
-                Stage::Match => match self
-                    .matcher
-                    .as_ref()
-                    .expect("candidate installed matcher")
-                    .result()
-                {
-                    Some(true) => {
-                        self.result = Some(if self.pass == Pass::Keywords {
-                            KEYWORDS[self.candidate].1
-                        } else {
-                            HtmlScriptKind::Classic
-                        });
-                        self.stage = Stage::Done;
-                    }
-                    Some(false) => {
-                        self.candidate += 1;
-                        self.stage = Stage::Candidate;
-                    }
-                    None => break,
-                },
-                Stage::Candidate
-                    if self.pass != Pass::Keywords && self.candidate == ESSENCES.len() =>
-                {
-                    if self.pass == Pass::RawEssences
-                        && self.mode == Mode::Preparation
-                        && self.explicit.is_some()
-                    {
-                        self.stage = Stage::TrimStart;
-                    } else {
-                        self.pass = Pass::Keywords;
-                        self.candidate = 0;
-                        self.start = 0;
-                        self.end = self.value().len();
-                    }
-                }
-                Stage::Candidate
-                    if self.pass == Pass::Keywords && self.candidate == KEYWORDS.len() =>
-                {
-                    self.stage = Stage::Done
-                }
-                Stage::TrimStart if self.start == self.end => self.stage = Stage::TrimEnd,
-                Stage::TrimEnd if self.start == self.end => {
-                    self.pass = Pass::TrimmedEssences;
-                    self.candidate = 0;
-                    self.stage = Stage::Candidate;
-                }
-                _ => break,
-            }
+    fn pending(&mut self) -> Result<HtmlScriptTypeWork, Option<HtmlScriptKind>> {
+        match &mut self.state {
+            State::Initial { .. } => Ok(HtmlScriptTypeWork::RecordVisit(2)),
+            State::Scan(scan) => scan.pending().inspect_err(|&result| {
+                self.state = State::Done(result);
+            }),
+            State::Done(result) => Err(*result),
         }
     }
     /// Describes the next read; admit it before calling advance.
     pub fn required_work(&mut self) -> Option<HtmlScriptTypeWork> {
-        self.settle();
-        match self.stage {
-            Stage::Initial => Some(HtmlScriptTypeWork::RecordVisit(2)),
-            Stage::Candidate => Some(HtmlScriptTypeWork::RecordVisit(1)),
-            Stage::Match => self
-                .matcher
-                .as_ref()
-                .expect("candidate installed matcher")
-                .required_work(),
-            Stage::TrimStart | Stage::TrimEnd => Some(HtmlScriptTypeWork::InspectByte(2)),
-            Stage::Done => None,
-        }
+        self.pending().ok()
     }
     /// Performs one admitted action; a completed cursor remains completed.
     pub fn advance(&mut self) {
-        self.settle();
-        match self.stage {
-            Stage::Initial => {
-                if self.explicit.is_some_and(DocumentString::is_empty)
-                    || (self.explicit.is_none()
-                        && (self.mode == Mode::Content
-                            || self.language.is_none_or(DocumentString::is_empty)))
-                {
-                    self.result = Some(HtmlScriptKind::Classic);
-                    self.stage = Stage::Done;
-                } else {
-                    self.end = self.value().len();
-                    self.stage = Stage::Candidate;
-                }
+        if self.pending().is_err() {
+            return;
+        }
+        match &mut self.state {
+            State::Initial {
+                explicit,
+                language,
+                mode,
+            } => {
+                // An empty or absent selection is the Classic early return;
+                // otherwise the scanned value and its virtual prefix are fixed.
+                let input = match (*explicit, *language, *mode) {
+                    (Some(explicit), _, _) => {
+                        (!explicit.is_empty()).then_some((explicit, &b""[..]))
+                    }
+                    (None, Some(language), Mode::Preparation) => {
+                        (!language.is_empty()).then_some((language, &b"text/"[..]))
+                    }
+                    (None, _, _) => None,
+                };
+                self.state = match input {
+                    None => State::Done(Some(HtmlScriptKind::Classic)),
+                    Some((value, prefix)) => State::Scan(Scan {
+                        value,
+                        prefix,
+                        trims: explicit.is_some() && *mode == Mode::Preparation,
+                        pass: Pass::RawEssences,
+                        stage: Stage::Candidate,
+                        candidate: 0,
+                        start: 0,
+                        end: value.len(),
+                    }),
+                };
             }
-            Stage::Candidate => {
-                self.matcher = Some(ScriptTypeMatchCursor::new(
-                    self.prefix(),
-                    self.value(),
-                    self.start,
-                    self.end,
-                    self.expected(),
-                ));
-                self.stage = Stage::Match;
-            }
-            Stage::Match => self
-                .matcher
-                .as_mut()
-                .expect("candidate installed matcher")
-                .advance(),
-            Stage::TrimStart => {
-                if matches!(
-                    self.value().code_units()[self.start],
-                    0x09 | 0x0a | 0x0c | 0x0d | 0x20
-                ) {
-                    self.start += 1;
-                } else {
-                    self.stage = Stage::TrimEnd;
-                }
-            }
-            Stage::TrimEnd => {
-                if matches!(
-                    self.value().code_units()[self.end - 1],
-                    0x09 | 0x0a | 0x0c | 0x0d | 0x20
-                ) {
-                    self.end -= 1;
-                } else {
-                    self.pass = Pass::TrimmedEssences;
-                    self.candidate = 0;
-                    self.stage = Stage::Candidate;
-                }
-            }
-            Stage::Done => {}
+            State::Scan(scan) => scan.advance(),
+            State::Done(_) => {}
         }
     }
     /// Complete None is the preparation early-return branch, not missing evidence.
     pub fn result(&self) -> Option<Option<HtmlScriptKind>> {
-        (self.stage == Stage::Done).then_some(self.result)
+        match self.state {
+            State::Done(result) => Some(result),
+            _ => None,
+        }
     }
     pub(crate) fn finish_ordinary(mut self) -> Option<HtmlScriptKind> {
-        while self.required_work().is_some() {
-            self.advance();
+        loop {
+            match self.pending() {
+                Ok(_) => self.advance(),
+                Err(result) => return result,
+            }
         }
-        self.result().expect("all cursor actions completed")
     }
 }
 
@@ -365,14 +379,15 @@ mod tests {
         for (raw, expected) in [("HiDdEn", true), ("hiddEX", false), ("other", false)] {
             let value = DocumentString::from(raw);
             let mut cursor = ScriptTypeMatchCursor::new(b"", &value, 0, value.len(), b"hidden");
-            while let Some(work) = cursor.required_work() {
-                match work {
-                    HtmlScriptTypeWork::RecordVisit(count) => records += count,
-                    HtmlScriptTypeWork::InspectByte(count) => units += count,
+            let result = loop {
+                match cursor.pending() {
+                    Ok(HtmlScriptTypeWork::RecordVisit(count)) => records += count,
+                    Ok(HtmlScriptTypeWork::InspectByte(count)) => units += count,
+                    Err(result) => break result,
                 }
                 cursor.advance();
-            }
-            assert_eq!(cursor.result(), Some(expected));
+            };
+            assert_eq!(result, expected);
         }
         assert_eq!(records, 3);
         assert_eq!(units, 36);

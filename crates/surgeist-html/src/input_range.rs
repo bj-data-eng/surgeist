@@ -129,9 +129,13 @@ enum Phase {
         branch: HtmlInputRangeReplacement,
         then: Continue,
     },
-    Step,
-    ValueContent(HtmlInputNumericStep),
-    Lattice,
+    /// Carries the current value, absent until a finite or replacement value.
+    Step(Option<HtmlInputRangeNumber>),
+    ValueContent(HtmlInputNumericStep, Option<HtmlInputRangeNumber>),
+    Lattice {
+        current: HtmlInputRangeNumber,
+        step: HtmlInputRangeNumber,
+    },
     Complete,
 }
 
@@ -144,7 +148,6 @@ enum Phase {
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlInputRangeSanitizationCursor {
     constraints: HtmlInputNumericConstraints,
-    current: Option<HtmlInputRangeNumber>,
     replaced: bool,
     phase: Phase,
 }
@@ -164,16 +167,12 @@ impl HtmlInputRangeSanitizationCursor {
         .expect("literal Range always selects numeric constraints");
         let mut cursor = Self {
             constraints,
-            current: None,
             replaced: false,
             phase: Phase::Complete,
         };
         cursor.phase = match value {
-            HtmlInputRangeValue::Finite(value) => {
-                cursor.current = Some(value);
-                cursor.clamp(value)
-            }
-            HtmlInputRangeValue::ConversionFailed => Phase::Step,
+            HtmlInputRangeValue::Finite(value) => cursor.clamp(value),
+            HtmlInputRangeValue::ConversionFailed => Phase::Step(None),
             HtmlInputRangeValue::InvalidGrammar
                 if cursor.maximum().value() < cursor.minimum().value() =>
             {
@@ -219,14 +218,16 @@ impl HtmlInputRangeSanitizationCursor {
                 then: Continue::Step,
             }
         } else {
-            Phase::Step
+            Phase::Step(Some(value))
         }
     }
-    fn begin_lattice(&self) -> Phase {
-        if self.current.is_some() && self.constraints.allowed_step().is_some() {
-            Phase::Lattice
-        } else {
-            Phase::Complete
+    fn begin_lattice(&self, current: Option<HtmlInputRangeNumber>) -> Phase {
+        match (current, self.constraints.allowed_step()) {
+            (Some(current), Some(step)) => Phase::Lattice {
+                current,
+                step: step.into(),
+            },
+            _ => Phase::Complete,
         }
     }
     /// Actual bound origins are available before late step/base observations.
@@ -241,7 +242,7 @@ impl HtmlInputRangeSanitizationCursor {
     pub fn constraints(&self) -> Option<HtmlInputNumericConstraints> {
         matches!(
             self.phase,
-            Phase::Lattice
+            Phase::Lattice { .. }
                 | Phase::Replace {
                     branch: HtmlInputRangeReplacement::StepCorrection,
                     ..
@@ -262,18 +263,14 @@ impl HtmlInputRangeSanitizationCursor {
                 maximum: self.maximum(),
             },
             Phase::Replace { value, branch, .. } => A::Replace { value, branch },
-            Phase::Step => A::ReadStep,
-            Phase::ValueContent(_) => A::ReadValueContent,
-            Phase::Lattice => A::Lattice {
-                current: self.current.expect("finite current selected lattice"),
+            Phase::Step(_) => A::ReadStep,
+            Phase::ValueContent(..) => A::ReadValueContent,
+            Phase::Lattice { current, step } => A::Lattice {
+                current,
                 minimum: self.minimum(),
                 maximum: self.effective_maximum(),
                 base: self.constraints.step_base().into(),
-                step: self
-                    .constraints
-                    .allowed_step()
-                    .expect("allowed step selected lattice")
-                    .into(),
+                step,
             },
             Phase::Complete => A::Complete,
         }
@@ -305,28 +302,27 @@ impl HtmlInputRangeSanitizationCursor {
                 }
             }
             (Phase::Replace { value, then, .. }, R::Applied) => {
-                self.current = Some(value);
                 self.replaced = true;
                 match then {
                     Continue::Clamp => self.clamp(value),
-                    Continue::Step => Phase::Step,
+                    Continue::Step => Phase::Step(Some(value)),
                     Continue::Complete => Phase::Complete,
                 }
             }
-            (Phase::Step, R::Step(step)) => {
+            (Phase::Step(current), R::Step(step)) => {
                 if self.constraints.minimum_origin() == HtmlInputNumericBoundOrigin::Recovered {
                     self.constraints
                         .update_step_value(step, HtmlInputNumericContent::Absent);
-                    self.begin_lattice()
+                    self.begin_lattice(current)
                 } else {
-                    Phase::ValueContent(step)
+                    Phase::ValueContent(step, current)
                 }
             }
-            (Phase::ValueContent(step), R::ValueContent(value)) => {
+            (Phase::ValueContent(step, current), R::ValueContent(value)) => {
                 self.constraints.update_step_value(step, value);
-                self.begin_lattice()
+                self.begin_lattice(current)
             }
-            (Phase::Lattice, R::Lattice(selected)) => {
+            (Phase::Lattice { current, .. }, R::Lattice(selected)) => {
                 if let Some(value) = selected {
                     if value.value() < self.minimum().value()
                         || self
@@ -338,9 +334,7 @@ impl HtmlInputRangeSanitizationCursor {
                     // The existing lattice owner returns the exact current
                     // bits on numeric equality, including signed zero. A
                     // no-mismatch result therefore never canonicalizes -0.
-                    if value.value().to_bits()
-                        != self.current.expect("lattice has current").value().to_bits()
-                    {
+                    if value.value().to_bits() != current.value().to_bits() {
                         Phase::Replace {
                             value,
                             branch: HtmlInputRangeReplacement::StepCorrection,
