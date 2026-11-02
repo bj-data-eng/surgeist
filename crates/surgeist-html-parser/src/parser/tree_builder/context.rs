@@ -73,7 +73,8 @@ pub(crate) struct ContextFragmentDriver<'source> {
     control: ParseControl,
     head: Option<HeadStage<'source>>,
     failed_evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
-    /// Whether the failure evidence has been taken from the session.
+    /// Whether the failure evidence has been taken from the session. Set only
+    /// after the take succeeded, so a refused take can be retried.
     evidence_taken: bool,
 }
 
@@ -338,7 +339,6 @@ impl<'source> ContextFragmentDriver<'source> {
             .map(|(stop, usage)| (stop, usage.clone()))
             .ok_or(FragmentExecutionError::Consumed)?;
         if !self.evidence_taken {
-            self.evidence_taken = true;
             self.failed_evidence = self
                 .head
                 .as_mut()
@@ -350,6 +350,7 @@ impl<'source> ContextFragmentDriver<'source> {
                 .kernel
                 .session
                 .take_failed_evidence(&mut self.control)?;
+            self.evidence_taken = true;
         }
         self.release()?;
         Ok((stop, at_stop))
@@ -632,8 +633,8 @@ impl<'source> CompletedContextFragment<'source> {
             .map(|(stop, usage)| (stop, usage.clone()))
             .ok_or(FragmentExecutionError::Consumed)?;
         if !driver.evidence_taken {
-            driver.evidence_taken = true;
             driver.failed_evidence = frozen.take_stopped_evidence(&mut driver.control)?;
+            driver.evidence_taken = true;
         }
         if let Some(head) = &mut driver.head {
             head.release_frozen_execution(&mut driver.control)?;
@@ -1151,6 +1152,7 @@ mod tests {
             FragmentExecutionError::Head(HeadError::Prologue(PrologueError::MissingInput)),
             FragmentExecutionError::Head(HeadError::Prologue(PrologueError::AlreadyAtBeforeHead)),
             FragmentExecutionError::Head(HeadError::Prologue(PrologueError::PendingInput)),
+            FragmentExecutionError::Head(HeadError::Prologue(PrologueError::NotAtBeforeHead)),
         ];
         for error in &lost {
             assert!(error.invariant_fault(), "{error:?}");

@@ -865,7 +865,6 @@ impl<'source> StandaloneDocumentDriver<'source> {
         // Fixed snapshots and moves use the envelope admitted before first pull.
         // No checkpoint, allocation, variable copy or error append follows stop.
         if !self.evidence_taken {
-            self.evidence_taken = true;
             let session = if let Some(head) = &mut self.head {
                 &mut head
                     .state
@@ -890,6 +889,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
                 .take_failed_evidence(&mut self.control)
                 .map_err(KernelError::from)
                 .map_err(HeadError::from)?;
+            self.evidence_taken = true;
         }
         self.reclaim_parse_owners()?;
         Ok((stop, at_stop))

@@ -227,7 +227,6 @@ impl<'source> FragmentEntry<'source> {
         if driver.control.stop().is_none() {
             return Err(FragmentExecutionError::Consumed);
         }
-        driver.evidence_taken = true;
         // A refused partition preserves the actual evidence owner. Snapshot
         // presence is not evidence that that separate move already completed.
         if driver.failed_evidence.is_none() {
@@ -242,6 +241,7 @@ impl<'source> FragmentEntry<'source> {
                 driver.failed_evidence = session.take_failed_evidence(&mut driver.control)?;
             }
         }
+        driver.evidence_taken = true;
         if let Some(stage) = &mut driver.head {
             stage.release(&mut driver.control)?;
             driver.head = None;

@@ -325,7 +325,6 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             if driver.control.first_stop_usage().is_none() {
                 return Err(StandaloneError::latch_invariant(&mut driver.control));
             }
-            driver.evidence_taken = true;
             if let Some(prologue) = &mut driver.prologue
                 && let Some(kernel) = &mut prologue.kernel
             {
@@ -335,6 +334,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                     .map_err(super::KernelError::from)
                     .map_err(super::head::HeadError::from)?;
             }
+            driver.evidence_taken = true;
         }
         driver.reclaim_parse_owners()?;
         self.after_cleanup = Some(driver.control.usage().clone());

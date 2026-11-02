@@ -1134,7 +1134,8 @@ pub(crate) struct StandaloneDocumentDriver<'source> {
     head: Option<head::HeadStage<'source>>,
     lexical: Option<OwnedVec<super::tokenizer::token::Event>>,
     failed_evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
-    /// Whether the failure evidence has been taken from the session.
+    /// Whether the failure evidence has been taken from the session. Set only
+    /// after the take succeeded, so a refused take can be retried.
     evidence_taken: bool,
 }
 impl<'source> StandaloneDocumentDriver<'source> {

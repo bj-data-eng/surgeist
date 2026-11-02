@@ -50,6 +50,8 @@ pub(super) struct PrologueDiagnostic {
 pub(crate) enum PrologueError {
     Kernel(KernelError),
     AlreadyAtBeforeHead,
+    /// The before-head state was taken before the prologue reached it.
+    NotAtBeforeHead,
     PendingInput,
     MissingInput,
     Consumed,
@@ -64,6 +66,7 @@ impl PrologueError {
             Self::Consumed
             | Self::MissingInput
             | Self::AlreadyAtBeforeHead
+            | Self::NotAtBeforeHead
             | Self::PendingInput => true,
             Self::Kernel(KernelError::Consumed) => true,
             Self::Kernel(_) => false,
@@ -620,7 +623,7 @@ impl<'a> DocumentPrologue<'a> {
         self.require(c)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
         if self.mode != PrologueMode::BeforeHead {
-            return Err(PrologueError::PendingInput);
+            return Err(PrologueError::NotAtBeforeHead);
         }
         if self.whitespace.is_none() {
             return Err(PrologueError::Consumed);
@@ -747,6 +750,26 @@ mod completion_tests {
 #[cfg(test)]
 mod owner_loss_tests {
     use super::*;
+
+    #[test]
+    fn taking_before_head_before_the_prologue_reaches_it_is_an_order_fault() {
+        let source = HtmlSource::utf8("");
+        let mut c = ParseControl::new(
+            super::super::tests::limits(100),
+            crate::HtmlParseCancellation::new(),
+        );
+        c.admit_source(&source).unwrap();
+        let mut prologue = DocumentPrologue::new(&source, &mut c).unwrap();
+        assert_eq!(prologue.mode, PrologueMode::Initial);
+        // No token is pending, so the refusal is about the mode alone.
+        assert!(prologue.pending.is_none());
+        let error = prologue.take_before_head(&mut c).err().unwrap();
+        assert!(matches!(error, PrologueError::NotAtBeforeHead), "{error:?}");
+        assert!(error.invariant_fault());
+        assert!(prologue.kernel.is_some(), "the refusal took the kernel");
+        prologue.release(&mut c).unwrap();
+        super::super::tests::assert_released(&c);
+    }
 
     #[test]
     fn taking_before_head_without_the_whitespace_owner_keeps_every_owner() {

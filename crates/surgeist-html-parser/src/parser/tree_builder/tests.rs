@@ -19907,10 +19907,12 @@ fn only_invariant_faults_are_classified_as_invariant_faults() {
         StandaloneError::Head(HeadError::Prologue(PrologueError::MissingInput)),
         StandaloneError::Head(HeadError::Prologue(PrologueError::AlreadyAtBeforeHead)),
         StandaloneError::Head(HeadError::Prologue(PrologueError::PendingInput)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::NotAtBeforeHead)),
         StandaloneError::Prologue(PrologueError::Consumed),
         StandaloneError::Prologue(PrologueError::MissingInput),
         StandaloneError::Prologue(PrologueError::AlreadyAtBeforeHead),
         StandaloneError::Prologue(PrologueError::PendingInput),
+        StandaloneError::Prologue(PrologueError::NotAtBeforeHead),
         StandaloneError::Prologue(PrologueError::Kernel(KernelError::Consumed)),
     ];
     for error in &lost {
