@@ -1357,13 +1357,7 @@ pub(in crate::grid) fn ancestor_baseline_member<Node: Copy, S: LayoutScalar>(
             BaselineGroupKind::Minor => (
                 AncestorBaselineRole::Last,
                 baselines
-                    .last_block_baseline(input.child_flow_axes)
-                    .unwrap_or_else(|| {
-                        baselines.first_or_synthesize_block_baseline(
-                            input.child_flow_axes,
-                            input.output.size,
-                        )
-                    }),
+                    .last_or_synthesize_block_baseline(input.child_flow_axes, input.output.size),
                 input.ancestor_span.end.checked_sub(2)?,
                 input.end_adjustment,
                 input.start_adjustment,
