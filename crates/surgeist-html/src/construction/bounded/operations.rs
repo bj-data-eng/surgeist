@@ -1,7 +1,7 @@
 use super::*;
 mod depth;
 mod orders;
-use crate::{Attribute, bounded::HtmlValidatedAttributes};
+use crate::{Attribute, bounded::HtmlValidatedAttributes, values::HTML_NAMESPACE_URI};
 use depth::{DepthPlan, owning_parent};
 
 /// Closed generic changes; parser policy and source evidence are not operands.
@@ -1471,7 +1471,7 @@ impl HtmlConstructionOperation {
                     if name
                         .namespace()
                         .uri()
-                        .is_some_and(|uri| uri.len() == b"http://www.w3.org/1999/xhtml".len())
+                        .is_some_and(|uri| uri.len() == HTML_NAMESPACE_URI.len())
                     {
                         Phase::NamespaceUnit(0)
                     } else {
@@ -1480,7 +1480,7 @@ impl HtmlConstructionOperation {
                 )
             }
             Phase::NamespaceUnit(offset) => {
-                const HTML: &[u8] = b"http://www.w3.org/1999/xhtml";
+                const HTML: &[u8] = HTML_NAMESPACE_URI.as_bytes();
                 let uri = self
                     .name()
                     .expect("name comparison")

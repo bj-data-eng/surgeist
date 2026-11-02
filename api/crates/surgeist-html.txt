@@ -6634,6 +6634,7 @@ pub struct surgeist_html::Namespace
 impl surgeist_html::Namespace
 pub fn surgeist_html::Namespace::from_uri(uri: impl core::convert::Into<surgeist_html::DocumentString>) -> Self
 pub fn surgeist_html::Namespace::html() -> Self
+pub fn surgeist_html::Namespace::is_html(&self) -> bool
 pub fn surgeist_html::Namespace::mathml() -> Self
 pub fn surgeist_html::Namespace::none() -> Self
 pub fn surgeist_html::Namespace::svg() -> Self
