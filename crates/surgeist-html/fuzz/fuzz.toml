@@ -1,5 +1,5 @@
 schema = 1
-fixtures = ["seeds/document", "seeds/fragment", "seeds/native"]
+fixtures = ["seeds/document", "seeds/fragment", "seeds/native", "seeds/markup"]
 
 [[targets]]
 id = "surgeist-html::unicode-document"
@@ -39,6 +39,20 @@ format = { identity = "surgeist-html::native-authoring", revision = 1 }
 generator_identity = { identity = "surgeist-html::native-authoring", revision = 1 }
 encoding = "structured"
 limits = { bytes = 262144, nodes = 64, depth = 8, text_units = 8192, operations = 96 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 64
+
+[[targets]]
+id = "surgeist-html::markup-parse"
+owner = "surgeist-html"
+binary = "html-markup-worker"
+properties = ["surgeist-html::source-preservation", "surgeist-html::native-report", "surgeist-html::diagnostic-provenance", "surgeist-html::terminal-ownership", "surgeist-html::immutable-after-cancel", "surgeist-html::exact-markup-tree"]
+source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md", "crates/surgeist-html-parser/src/request.rs", "crates/surgeist-html-parser/src/source.rs", "crates/surgeist-html/fuzz/README.md#markup-recipes"]
+format = { identity = "surgeist-html::markup-parse", revision = 1 }
+generator_identity = { identity = "surgeist-html::markup-parse", revision = 1 }
+encoding = "structured"
+limits = { bytes = 262144, nodes = 64, depth = 8, text_units = 8192, operations = 8 }
 requirements = { features = [], capabilities = ["replay", "case-capture"] }
 min_evaluated = 1
 max_generation_rejections = 64

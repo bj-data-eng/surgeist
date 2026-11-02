@@ -136,6 +136,83 @@ The current framework backend reports RSS sampling unavailable and rejects a
 required hard memory limit; finite fixture/product limits imply neither RSS nor
 allocator-overhead bounds.
 
+## Markup recipes
+
+The `surgeist-html::markup-parse` target (worker
+[html-markup-worker](src/bin/markup.rs)) parses generated markup through the
+public document and fragment front doors and compares the result with a tree
+computed from the recipe alone. The [model](src/markup/model.rs),
+[serializer and expected tree](src/markup/tree.rs), [codec](src/markup/codec.rs),
+[generator](src/markup/generate.rs), [evaluator](src/markup/observe.rs) and
+[handwritten recipes](src/markup/seeds.rs) belong to HTML and use the shared
+engines, workers and reduction unchanged.
+
+Canonical `HMK1` is little endian: magic, mode (document or fragment), source
+(UTF-8 or exact UTF-16), document prologue or fragment context, document shell
+or declarative-shadow permission, body kind, a cancelled-before-parse flag, nineteen
+u64 parser caps (the same envelope as the Unicode targets), then the body with no
+trailing bytes. A body is either a balanced recipe or free-form token soup. Every
+tag, table index, piece and count is checked before use; isolated surrogates are
+accepted only in a UTF-16 source.
+
+**Balanced recipes.** A recipe is a tree of text, comments and elements from
+closed tables, in positions where tree construction only appends: flow content
+(`div`, `section`, `p`, `br`, `hr`, `template`), phrasing (`span`, `b`, `em`, `a`,
+with no nested paragraph or anchor), SVG (`svg`, `g`, `rect`, `circle`,
+`foreignObject` as an HTML integration point) and MathML (`math`, `mrow`, `mi`,
+`mn`). Text and attribute values are pieces: any UTF-16 unit but NUL, CR, `<`,
+`&` and the quotes, eight named references, numeric references (decimal or
+hex), CR, CRLF and NUL. Source spelling varies independently of the tree: tag and
+attribute-name case, quoting, bare and empty attributes, self-closing foreign
+elements, the document shell, and ten prologues (none included). The expected tree comes from the
+pinned HTML Standard: tokenizer references and the numeric end-state table
+(13.2.5.72-84), newline preprocessing (13.2.3.5), duplicate-attribute removal
+(13.2.5.33), SVG/MathML tag and attribute adjustments with their namespaces and
+prefixes (13.2.6.5), the compatibility mode of each prologue (13.2.6.4.1, a
+missing doctype identifier being the empty string), template contents, and
+declarative shadow roots (with permission the template contents become the
+host's shadow root; without it the template is an ordinary first child that keeps
+its attributes). The model's own serialization and expected trees are tested
+against handwritten values with no parser involved, and tests show the tree
+comparison reporting each kind of disagreement.
+
+Contexts: documents use an offline request; fragments use a captured context
+element in an ordinary no-quirks document, chosen from 24 (`div`, `section`,
+`template`, SVG `g` and `foreignObject` have balanced recipes; `table`, `tr`,
+`td`, `select`, `caption`, `colgroup`, `body`, `html`, `head`, `textarea`,
+`title`, `style`, `script`, MathML `mi` and `annotation-xml`, SVG `svg`,
+`frameset`, `plaintext` and `option` take token soup). The fragment algorithm
+runs with scripting inert and the case's declarative-shadow permission.
+
+**Token soup** concatenates 74 closed tokens (table, select, foreign, template,
+raw-text, formatting and malformed-markup openers, tokenizer-state openers and
+closers) with literal unit runs that include NUL, CR and isolated surrogates. It
+has no tree oracle; it checks the shared contracts below plus tree invariants
+every parse must hold (HTML names and attribute names folded, no empty text,
+unique attribute expanded names, every HTML template has contents).
+
+**Checks and classification.** Every parse shares the Unicode targets'
+source-binding, native traversal, typed diagnostic, D1 interval, late-cancel
+immutability and failed-parse ownership checks. A balanced recipe also compares
+its tree. Resource, allocation and representation stops, pre-cancellation and
+lowered caps are `ExpectedRejection` with terminal ownership checked; unsupported
+states are `Unsupported`; a source, report, ownership or tree disagreement is a
+property failure with a stable discriminator. Generation limits (4096 source
+units, 48 items, depth 6, four attributes per element) are generation rejections.
+
+Reduction removes items, unwraps elements, drops attributes or shadows, halves a
+text and, for soup, removes or halves segments; each proposal is revalidated and
+keeps mode, source encoding, caps and the cancellation flag.
+
+**Not covered here.** The balanced language excludes content whose tree depends
+on error recovery (tables, foster parenting, formatting-element misnesting,
+implied paragraph ends); the token lane reaches that recovery under the generic
+contracts only, and the Unicode literals state a few recovery trees. There is no
+progressive feed or chunk-partition target: the public parse front doors take one
+whole source, and the parser's feed operations are private, so their exclusion and
+their private tests are unchanged. No target runs scripting, image resources or
+an enabled-scripting fragment.
+
 ## Native authoring
 
 The separate `surgeist-html::native-authoring` target uses the actual public

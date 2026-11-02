@@ -63,6 +63,16 @@ fn source(case: &UnicodeCase) -> HtmlSource {
     }
 }
 pub(crate) fn context(missing: bool) -> Result<HtmlFragmentContext> {
+    context_for(Namespace::html(), "div", missing)
+}
+/// A captured context element of the given namespace and local name in an
+/// ordinary no-quirks HTML document with disabled (or, when `missing`,
+/// unavailable) scripting and a null registry.
+pub(crate) fn context_for(
+    namespace: Namespace,
+    local: &str,
+    missing: bool,
+) -> Result<HtmlFragmentContext> {
     let mut b = HtmlCaptureBuilder::new(
         HtmlCaptureLimits::new(2, 4, 0, 128, 8, 0, 0, 16_777_216),
         HtmlHostFactsRevision::fresh(),
@@ -113,7 +123,7 @@ pub(crate) fn context(missing: bool) -> Result<HtmlFragmentContext> {
     let e = b
         .add_element(
             &d,
-            QualifiedName::new(Namespace::html(), None, "div"),
+            QualifiedName::new(namespace, None, local),
             OrderedAttributes::default(),
             HtmlCapturedIsValue::Absent,
             HtmlCaptureRegistryInput::Null,

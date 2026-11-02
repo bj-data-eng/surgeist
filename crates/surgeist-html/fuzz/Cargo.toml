@@ -43,3 +43,9 @@ name = "html-native-worker"
 path = "src/bin/native.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "html-markup-worker"
+path = "src/bin/markup.rs"
+test = false
+doc = false
