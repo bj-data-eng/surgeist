@@ -728,15 +728,20 @@ fn individual_unavailable_slot_does_not_erase_other_known_slots() {
         )),
         &HtmlSemanticValue::Known(false)
     );
-    assert!(matches!(
+    // Without any control facts the input's current checkedness is unobserved
+    // state of exactly that input.
+    assert_eq!(
         flag(&query(
             &c,
             &context(&c, None, vec![]),
             &input,
             HtmlSemanticQuery::CurrentCheckedness
         )),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::ControlState {
+            subject: c.subject_id(&input).unwrap(),
+            flag: HtmlControlFlag::Checkedness,
+        })
+    );
 }
 
 #[test]
@@ -1135,15 +1140,19 @@ fn inapplicable_native_and_foreign_subjects_are_distinct_from_missing_current_st
         flag(&query(&c, &cx, &option, HtmlSemanticQuery::DirtyValueFlag)),
         &HtmlSemanticValue::Inapplicable
     );
-    assert!(matches!(
+    // The option is applicable but no selectedness fact was supplied for it.
+    assert_eq!(
         flag(&query(
             &c,
             &cx,
             &option,
             HtmlSemanticQuery::CurrentSelectedness
         )),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::ControlState {
+            subject: c.subject_id(&option).unwrap(),
+            flag: HtmlControlFlag::Selectedness,
+        })
+    );
 }
 
 #[test]

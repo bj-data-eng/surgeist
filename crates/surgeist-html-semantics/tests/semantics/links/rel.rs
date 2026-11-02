@@ -344,10 +344,14 @@ fn closed_supported_set_known_empty_and_missing_have_distinct_results() {
     );
     let cx = context(&c, HtmlRelExpectedRevisions::new(), None);
     let result = session(&c, &cx, 100).query(&[request(&c, &e)]).unwrap();
-    assert!(matches!(
+    // No supported-token fact was supplied for this link.
+    assert_eq!(
         read(&result, 0).supported_tokens(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::LinkRelationship {
+            subject: c.subject_id(&e).unwrap(),
+            fact: HtmlRelMissingFact::SupportedTokens,
+        })
+    );
     let input = HtmlRelFactsInput::new().with_supported_tokens(
         revision(2),
         vec![HtmlRelSupportedTokens::new(
@@ -511,6 +515,8 @@ fn noopener_ordered_dominance_and_actual_url_settings_facts_cover_all_roles() {
                 (HtmlSemanticFact::Noopener(HtmlSemanticValue::Known(actual)), Some(expected)) => {
                     assert_eq!(*actual, expected, "{role} {rel} {target}")
                 }
+                // Table rows with no expected value only require that the
+                // outcome is missing evidence; the rows share no single payload.
                 (HtmlSemanticFact::Noopener(HtmlSemanticValue::Missing(_)), None) => {}
                 other => panic!("{role} {rel} {target}: {other:?}"),
             };
@@ -1000,11 +1006,16 @@ fn author_bookmark_help_and_translation_follow_actual_tree_context() {
     let c = b.finish().unwrap();
     let cx = context(&c, HtmlRelExpectedRevisions::new(), None);
     let r = session(&c, &cx, 100).query(&[request(&c, &a)]).unwrap();
+    // Each meaning's association depends on the link's tree context, and the
+    // anchor's parent was never established, so that parent is the missing
+    // evidence of every meaning.
+    let missing =
+        HtmlSemanticValue::Missing(HtmlSemanticMissing::Parent(c.subject_id(&a).unwrap()));
     assert!(
         read(&r, 0)
             .meanings()
             .iter()
-            .all(|m| matches!(m.association(), HtmlSemanticValue::Missing(_)))
+            .all(|m| m.association() == &missing)
     );
 }
 

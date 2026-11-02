@@ -281,10 +281,12 @@ fn role_defaults_empty_match_and_forbidden_placement_remain_independent_of_css()
         value(&r).processing(),
         &HtmlMediaProcessing::Meta(HtmlMetaMediaProcessing::NoProcessingEffect)
     );
-    assert!(matches!(
+    // The meta has a media attribute but no supplied grammar attestation, so
+    // the missing evidence is the media grammar of exactly this meta.
+    assert_eq!(
         value(&r).grammar(),
-        HtmlMediaGrammarEvidence::Missing(_)
-    ));
+        &HtmlMediaGrammarEvidence::Missing(HtmlSemanticMissing::MediaGrammar(id))
+    );
 }
 
 fn revision() -> HtmlMediaContextRevision {

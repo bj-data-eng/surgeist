@@ -337,10 +337,14 @@ fn empty_for_has_missing_author_coverage_without_losing_ineligibility() {
     let t = element(&mut b, &d, "template", vec![attr("")]);
     let c = b.finish().unwrap();
     let r = run(&c, &c.subject_id(&t).unwrap());
-    assert!(matches!(
+    // Author coverage needs the template's tree, and its own parent was never
+    // established, so that parent is the missing evidence.
+    assert_eq!(
         known(&r).name_relation(),
-        HtmlTemplateForNameRelation::Missing(_)
-    ));
+        &HtmlTemplateForNameRelation::Missing(HtmlSemanticMissing::Parent(
+            c.subject_id(&t).unwrap()
+        ))
+    );
     assert_eq!(known(&r).selection(), &HtmlTemplateForSelection::EmptyName);
 }
 #[test]
@@ -387,10 +391,15 @@ fn unestablished_connection_does_not_turn_capture_membership_into_same_tree() {
     children(&mut b, &t, &[]);
     let c = b.finish().unwrap();
     let r = run(&c, &c.subject_id(&t).unwrap());
-    assert!(matches!(
+    // Both nodes belong to the capture, but the template's parent was never
+    // established, so whether the marker shares its tree is unknown: that parent
+    // is the missing evidence, not a same-tree match.
+    assert_eq!(
         known(&r).name_relation(),
-        HtmlTemplateForNameRelation::Missing(_)
-    ));
+        &HtmlTemplateForNameRelation::Missing(HtmlSemanticMissing::Parent(
+            c.subject_id(&t).unwrap()
+        ))
+    );
 }
 #[test]
 fn separate_fragment_marker_does_not_match_document_template() {

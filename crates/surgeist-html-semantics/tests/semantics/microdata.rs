@@ -869,7 +869,11 @@ fn local_eligibility_and_unknown_external_checks_are_independent() {
     assert_eq!(a.id_eligibility(), &HtmlMicrodataCondition::Violated(()));
     assert_eq!(a.ref_eligibility(), &HtmlMicrodataCondition::Violated(()));
     assert!(!a.types().local_author_conforming());
-    assert!(matches!(a.type_urls(), HtmlMicrodataCondition::Missing(_)));
+    // No URL parse fact was supplied for the itemtype tokens of this item.
+    assert_eq!(
+        a.type_urls(),
+        &HtmlMicrodataCondition::Missing(HtmlSemanticMissing::MicrodataFacts(id.clone()))
+    );
     assert_eq!(a.references(), &HtmlMicrodataCondition::Violated(0));
 }
 
@@ -897,7 +901,12 @@ fn facts_context(
 fn property_url_uses_qualified_historical_operation_not_current_parse() {
     let (c, id) = single("img", &[("itemprop", "p"), ("src", "relative")]);
     let r = run(&c, &context(&c), &id, HtmlSemanticQuery::MicrodataProperty);
-    assert!(matches!(prop(&r).value(), HtmlSemanticValue::Missing(_)));
+    // Without a qualified historical URL operation the current parse is not
+    // consulted, so the property's URL value is missing microdata facts.
+    assert_eq!(
+        prop(&r).value(),
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::MicrodataFacts(id.clone()))
+    );
     let rev = revision();
     let binding =
         HtmlMicrodataRawBinding::new(&c, id.clone(), HtmlMicrodataRawSource::Src, 8).unwrap();
@@ -1332,9 +1341,9 @@ fn influencing_first_id_unknown_before_match_prevents_later_choice() {
         cs(&mut b, &root, &[]);
         cs(&mut b, &p, &[]);
         let order = if unknown_first {
-            vec![root.clone(), unknown, p.clone()]
+            vec![root.clone(), unknown.clone(), p.clone()]
         } else {
-            vec![root.clone(), p.clone(), unknown]
+            vec![root.clone(), p.clone(), unknown.clone()]
         };
         cs(&mut b, &d, &order);
         let c = b.finish().unwrap();
@@ -1345,10 +1354,14 @@ fn influencing_first_id_unknown_before_match_prevents_later_choice() {
             HtmlSemanticQuery::MicrodataItem,
         );
         if unknown_first {
-            assert!(matches!(
+            // The unknown section may precede the referenced id, so its
+            // unestablished children are the missing evidence.
+            assert_eq!(
                 item(&r).properties(),
-                HtmlSemanticValue::Missing(_)
-            ));
+                &HtmlSemanticValue::Missing(HtmlSemanticMissing::OrderedChildren(
+                    c.subject_id(&unknown).unwrap()
+                ))
+            );
         } else {
             assert_eq!(known(item(&r).properties()).len(), 1);
         }
@@ -1618,10 +1631,13 @@ fn own_type_override_does_not_consult_unavailable_children_or_ancestry() {
             .count(),
         2
     );
-    assert!(matches!(
+    // The item's own children were never established.
+    assert_eq!(
         item(&r).properties(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::OrderedChildren(
+            c.subject_id(&n).unwrap()
+        ))
+    );
 }
 #[test]
 fn known_contribution_and_cycle_survive_unrelated_unknown_coverage() {
@@ -1651,8 +1667,9 @@ fn known_contribution_and_cycle_survive_unrelated_unknown_coverage() {
     let unknown = el(&mut b, &d, "span", &[]);
     cs(&mut b, &a, &[]);
     cs(&mut b, &z, &[]);
-    cs(&mut b, &d, &[a.clone(), z, unknown]);
+    cs(&mut b, &d, &[a.clone(), z, unknown.clone()]);
     let c = b.finish().unwrap();
+    let unknown = c.subject_id(&unknown).unwrap();
     let r = run(
         &c,
         &context(&c),
@@ -1663,10 +1680,11 @@ fn known_contribution_and_cycle_survive_unrelated_unknown_coverage() {
         document(&r).cycles(),
         HtmlMicrodataCondition::Violated(_)
     ));
-    assert!(matches!(
+    // Orphan coverage needs every element's children; the unknown span has none.
+    assert_eq!(
         document(&r).orphans(),
-        HtmlMicrodataCondition::Missing(_)
-    ));
+        &HtmlMicrodataCondition::Missing(HtmlSemanticMissing::OrderedChildren(unknown.clone()))
+    );
     let r = run(
         &c,
         &context(&c),
@@ -1677,10 +1695,12 @@ fn known_contribution_and_cycle_survive_unrelated_unknown_coverage() {
         author(&r).contribution(),
         &HtmlMicrodataCondition::Satisfied
     );
-    assert!(matches!(
+    // The receivers of a property scan the whole tree, which stops at the same
+    // unknown span.
+    assert_eq!(
         author(&r).receivers(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::OrderedChildren(unknown))
+    );
 }
 
 #[test]
@@ -1815,10 +1835,12 @@ fn unavailable_and_wrong_operation_url_facts_cannot_be_relabelled() {
         vec![],
         vec![],
     );
-    assert!(matches!(
+    // The supplied fact carries no result, so the value stays missing facts of
+    // exactly this property rather than being relabelled.
+    assert_eq!(
         prop(&run(&c, &cx, &id, HtmlSemanticQuery::MicrodataProperty)).value(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::MicrodataFacts(id))
+    );
 }
 #[test]
 fn work_prefix_cuts_leave_no_scratch_and_do_not_resume_after_stop() {
@@ -1969,7 +1991,7 @@ fn seeded_typing_is_known_while_full_path_coverage_remains_missing() {
     let unknown = el(&mut b, &d, "span", &[]);
     cs(&mut b, &root, &[]);
     cs(&mut b, &x, &[]);
-    cs(&mut b, &d, &[root, x.clone(), unknown]);
+    cs(&mut b, &d, &[root, x.clone(), unknown.clone()]);
     let c = b.finish().unwrap();
     let r = run(
         &c,
@@ -1981,10 +2003,13 @@ fn seeded_typing_is_known_while_full_path_coverage_remains_missing() {
         item(&r).type_context().typing(),
         &HtmlMicrodataTyping::Typed
     );
-    assert!(matches!(
+    // Finding every owner path scans the tree, which stops at the unknown span.
+    assert_eq!(
         item(&r).type_context().paths(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::OrderedChildren(
+            c.subject_id(&unknown).unwrap()
+        ))
+    );
 }
 #[test]
 fn missing_url_value_does_not_discard_a_complete_property_collection() {
@@ -2010,7 +2035,12 @@ fn missing_url_value_does_not_discard_a_complete_property_collection() {
     let props = known(item(&r).properties());
     assert_eq!(props.len(), 1);
     assert_eq!(props[0].subject(), &id);
-    assert!(matches!(props[0].value(), HtmlSemanticValue::Missing(_)));
+    // The relative URL has no qualified parse fact: that property's value is
+    // missing microdata facts while the collection stays complete.
+    assert_eq!(
+        props[0].value(),
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::MicrodataFacts(id.clone()))
+    );
     let r = run(
         &c,
         &context(&c),
