@@ -2,7 +2,6 @@ use super::*;
 
 use super::flexible::span_contribution_with_gutters;
 use crate::geometry::FlowAxes;
-use crate::scroll::UsedOverflowAxis;
 
 fn axis_margin_sum<S: LayoutScalar>(margin: Edges<S>, axis: GridAxisKind) -> S {
     match axis {
@@ -713,13 +712,8 @@ where
         else {
             continue;
         };
-        let contribution = grid_axis_intrinsic_contribution_size(
-            &child_style,
-            input.constants.flow_axes,
-            output.size,
-            output.content_size,
-            input.axis,
-        ) + axis_margin_sum(margin, input.axis)
+        let contribution = grid_axis_size(input.constants.flow_axes, output.size, input.axis)
+            + axis_margin_sum(margin, input.axis)
             + scalar_adjustment;
         let contribution_kind = IntrinsicSpanContribution::for_axis(
             axis_available(input.available, input.axis),
@@ -1089,14 +1083,9 @@ where
             ),
         )?;
         let output_size = sizing_flow_axes.logical_size(output.size);
-        let output_content_size = sizing_flow_axes.logical_size(output.content_size);
         if spans_percent_column {
-            let contribution = axis_content_contribution(
-                column_offsets[area.column],
-                output_size.inline,
-                output_content_size.inline,
-                grid_axis_used_overflow(&child_style, sizing_flow_axes, GridAxisKind::Column),
-            );
+            let contribution =
+                axis_border_contribution(column_offsets[area.column], output_size.inline);
             content_size.inline = content_size.inline.max(contribution);
             if accumulate_standalone_percent_columns
                 && area.column_end == area.column + 1
@@ -1106,12 +1095,7 @@ where
             }
         }
         if spans_percent_row {
-            let contribution = axis_content_contribution(
-                row_offsets[area.row],
-                output_size.block,
-                output_content_size.block,
-                grid_axis_used_overflow(&child_style, sizing_flow_axes, GridAxisKind::Row),
-            );
+            let contribution = axis_border_contribution(row_offsets[area.row], output_size.block);
             content_size.block = content_size.block.max(contribution);
             if accumulate_standalone_percent_rows
                 && area.row_end == area.row + 1
@@ -1151,21 +1135,11 @@ fn inherits_opposite_subgrid_axis<Node, S: LayoutScalar>(
     }
 }
 
-fn axis_content_contribution<S: LayoutScalar>(
-    location: S,
-    size: S,
-    content_size: S,
-    overflow: UsedOverflowAxis,
-) -> S {
-    let contribution_size = if overflow.value() == Overflow::Visible {
-        size.max(content_size)
-    } else {
-        size
-    };
-    if contribution_size <= S::ZERO {
+fn axis_border_contribution<S: LayoutScalar>(location: S, size: S) -> S {
+    if size <= S::ZERO {
         return S::ZERO;
     }
-    let max = (location + contribution_size).max(S::ZERO);
+    let max = (location + size).max(S::ZERO);
     let min = location.min(S::ZERO);
     max - min
 }

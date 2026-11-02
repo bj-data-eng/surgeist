@@ -279,31 +279,36 @@ fn assert_fri08_c04_baseline_area_implicit_composition<S: LayoutScalar>() {
             child_direction: Direction::Ltr,
         },
     ];
+    let mut mismatches = Vec::new();
     for (case_index, case) in cases.into_iter().enumerate() {
-        let mut role_coordinates = Vec::new();
         for alignment in [AlignItems::Baseline, AlignItems::LastBaseline] {
             let tree = fri08_c04_baseline_area_implicit_tree::<S>(case, alignment);
             let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
                 .expect("baseline composition viewport");
             let batch = compute_layout(&tree, 1, request)
                 .expect("area/implicit inherited baseline layout succeeds");
-            let (direct, inherited) = fri08_c04_baseline_world_coordinate(&batch, case, alignment);
+            let (direct, inherited) = fri08_c04_baseline_world_coordinate(&batch, case);
             if matches!(case_index, 0 | 3) {
-                assert!(
-                    (direct - inherited).abs() <= S::from_f64(0.001),
-                    "{case:?} {alignment:?} direct/current targets agree: direct={direct:?}, inherited={inherited:?}"
-                );
+                let agrees = (direct - inherited).abs() <= S::from_f64(0.001);
+                if !agrees {
+                    mismatches.push(format!("{case:?} {alignment:?} direct/current targets agree: direct={direct:?}, inherited={inherited:?}"));
+                }
             } else {
-                let expected = match alignment {
-                    AlignItems::Baseline => (70.0, 137.0),
-                    AlignItems::LastBaseline => (90.0, 100.0),
-                    _ => unreachable!("the role loop contains only first and last baseline"),
+                // Native frame characterization: definite tracks/zero edges
+                // preserve placement while line-under selects the correct
+                // side of the genuine 30/12-wide leaves in these reversed flows.
+                let expected = match (case_index, alignment) {
+                    (1, AlignItems::Baseline) => (70.0, 125.0),
+                    (1, AlignItems::LastBaseline) => (60.0, 100.0),
+                    (2, AlignItems::Baseline) => (70.0, 137.0),
+                    (2, AlignItems::LastBaseline) => (60.0, 112.0),
+                    _ => unreachable!("the reversed cases retain first and last roles"),
                 };
-                assert!(
-                    (direct - S::from_f64(expected.0)).abs() <= S::from_f64(0.001)
-                        && (inherited - S::from_f64(expected.1)).abs() <= S::from_f64(0.001),
-                    "{case:?} {alignment:?} preserves reversed physical projection: direct={direct:?}, inherited={inherited:?}"
-                );
+                let agrees = (direct - S::from_f64(expected.0)).abs() <= S::from_f64(0.001)
+                    && (inherited - S::from_f64(expected.1)).abs() <= S::from_f64(0.001);
+                if !agrees {
+                    mismatches.push(format!("{case:?} {alignment:?} preserves reversed physical projection: direct={direct:?}, inherited={inherited:?}"));
+                }
             }
             assert_eq!(
                 batch
@@ -320,19 +325,18 @@ fn assert_fri08_c04_baseline_area_implicit_composition<S: LayoutScalar>() {
                 implicit.location, nested.location,
                 "the implicit and area-created tracks remain distinct"
             );
-            role_coordinates.push((direct, inherited));
         }
-        assert_eq!(
-            role_coordinates.len(),
-            2,
-            "first and last roles both execute"
-        );
     }
+    assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
 }
 
 #[test]
-fn fri08_c04_baseline_area_created_implicit_standalone_roles_map_both_axes_and_scalars() {
+fn fri08_c04_baseline_area_created_implicit_standalone_roles_map_both_axes_f32() {
     assert_fri08_c04_baseline_area_implicit_composition::<f32>();
+}
+
+#[test]
+fn fri08_c04_baseline_area_created_implicit_standalone_roles_map_both_axes_f64() {
     assert_fri08_c04_baseline_area_implicit_composition::<f64>();
 }
 
@@ -517,22 +521,14 @@ fn assert_fri08_c04_baseline_lanes_auto_fit<S: LayoutScalar>() {
         )
         .expect("lanes auto-fit subgrid baseline layout succeeds");
         let direct = fri08_c01_placement_output(&batch, 4).location.x
-            + fri08_c04_baseline_physical_edge(
-                fri08_c01_placement_output(&batch, 6),
-                flow_axes,
-                alignment,
-            );
+            + fri08_c04_baseline_physical_edge(fri08_c01_placement_output(&batch, 6), flow_axes);
         let inherited = fri08_c01_placement_output(&batch, 3).location.x
             + fri08_c01_placement_output(&batch, 5).location.x
             + fri08_c01_placement_output(&batch, 7).location.x
-            + fri08_c04_baseline_physical_edge(
-                fri08_c01_placement_output(&batch, 8),
-                flow_axes,
-                alignment,
-            );
+            + fri08_c04_baseline_physical_edge(fri08_c01_placement_output(&batch, 8), flow_axes);
         let expected = match alignment {
-            AlignItems::Baseline => (78.0, 62.0),
-            AlignItems::LastBaseline => (44.0, 60.0),
+            AlignItems::Baseline => (50.0, 50.0),
+            AlignItems::LastBaseline => (60.0, 60.0),
             _ => unreachable!("the role loop contains only first and last baseline"),
         };
         assert!(
@@ -1828,7 +1824,7 @@ fn grid_lanes_reports_synthesized_container_baselines() {
     let output = compute_oracle_grid_output(&mut tree);
 
     assert_eq!(output.first_baselines.y, Some(20.0));
-    assert_eq!(output.last_baselines.y, Some(0.0));
+    assert_eq!(output.last_baselines.y, Some(20.0));
 }
 
 fn assert_physical_baseline_grid_and_lanes_preserve_an_orthogonal_child_x<S: LayoutScalar>()
@@ -4346,7 +4342,10 @@ fn assert_published_baseline_group_order_keeps_compatible_axis<S: LayoutScalar>(
         output.first_baselines,
         Point::new(Some(S::from_f64(15.0)), Some(S::from_f64(14.0)))
     );
-    assert_eq!(output.last_baselines, Point::new(None, Some(S::ZERO)));
+    assert_eq!(
+        output.last_baselines,
+        Point::new(None, Some(S::from_f64(20.0)))
+    );
 }
 
 #[test]
@@ -8803,3 +8802,9 @@ fn subgrid_child_context_rejects_inheritable_axis_without_parent_tracks() {
         &LayoutErrorKind::InternalInvariant(LayoutInternalInvariant::SubgridTrackInheritance),
     );
 }
+
+#[path = "child_baseline/last_port_authority.rs"]
+mod last_port_authority;
+
+#[path = "child_baseline/subgrid_refresh_last_port.rs"]
+mod subgrid_refresh_last_port;

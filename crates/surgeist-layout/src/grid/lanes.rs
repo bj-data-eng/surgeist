@@ -1609,26 +1609,8 @@ where
         intrinsic_contribution_margin(child_style, containing_flow_axes, constants.node_inner_size)
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
     let used_overflow = grid_axis_used_overflow(child_style, containing_flow_axes, axis);
-    let min_output_size = lane_axis_size(containing_flow_axes.logical_size(min_output.size), axis);
-    let min_content_size = lane_axis_size(
-        containing_flow_axes.logical_size(min_output.content_size),
-        axis,
-    );
-    let max_output_size = lane_axis_size(containing_flow_axes.logical_size(max_output.size), axis);
-    let max_content_size = lane_axis_size(
-        containing_flow_axes.logical_size(max_output.content_size),
-        axis,
-    );
-    let min_contribution = if used_overflow.value() == Overflow::Visible {
-        min_output_size.max(min_content_size)
-    } else {
-        min_output_size
-    };
-    let max_contribution = if used_overflow.value() == Overflow::Visible {
-        max_output_size.max(max_content_size)
-    } else {
-        max_output_size
-    };
+    let min_contribution = lane_axis_size(containing_flow_axes.logical_size(min_output.size), axis);
+    let max_contribution = lane_axis_size(containing_flow_axes.logical_size(max_output.size), axis);
     let padding = containing_flow_axes
         .zip_physical_edges_with_inline_extent(
             child_style.padding,
