@@ -8805,3 +8805,6 @@ fn subgrid_child_context_rejects_inheritable_axis_without_parent_tracks() {
 
 #[path = "child_baseline/last_port_authority.rs"]
 mod last_port_authority;
+
+#[path = "child_baseline/subgrid_refresh_last_port.rs"]
+mod subgrid_refresh_last_port;
