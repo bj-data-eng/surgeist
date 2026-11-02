@@ -149,8 +149,12 @@ impl<S: LayoutScalar> CanonicalScrollSourceBuilderOf<S> {
     ) -> Result<ScrollGeometryOf<S>, CanonicalScrollGeometryErrorOf<S>> {
         let content_size = match source {
             CanonicalRetainedScrollSourceOf::Existing(geometry) => {
+                // Canonical edge rounding can move the inner boxes without
+                // changing the outer extent. Retain only matching box facts.
                 if geometry.border_box().origin() == Point::ZERO
                     && geometry.border_box().size() == self.border_box_size
+                    && geometry.source.border == self.border
+                    && geometry.source.padding == self.padding
                 {
                     return Ok(*geometry);
                 }

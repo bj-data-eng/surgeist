@@ -840,7 +840,7 @@ fn same_text<S: l::LayoutScalar>(
 fn retained<S: l::LayoutScalar>(
     host: &Host<S>,
     cache: &[l::CacheOf<S>],
-    nodes: &[Option<l::NodeOutputOf<S>>],
+    nodes: &[Option<l::LayoutOutputEntryOf<u32, S>>],
     old: &l::CompletedLayoutBatchOf<u32, S>,
 ) {
     assert_eq!(host.published.caches, cache);
@@ -1060,7 +1060,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
     ) -> Option<l::ComputeOutputOf<S>> {
         l::LayoutTree::cache_get(&self.inner, node, input, context)
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         l::LayoutTree::unrounded_layout(&self.inner, node)
     }
     fn float_exclusion_interval(

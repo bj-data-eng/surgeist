@@ -508,8 +508,19 @@ fn transaction_batch() -> CompletedLayoutBatch<u32> {
         Size::splat(Available::definite(100.0)),
     );
     CompletedLayoutBatch::from_entries(
-        vec![LayoutOutputEntry::new(1, NodeOutput::new())],
-        vec![LayoutOutputEntry::new(1, NodeOutput::new())],
+        vec![crate::test_support::layout_tree::ordinary_unrounded_box(
+            1,
+            NodeOutput::new(),
+        )],
+        vec![LayoutOutputEntry::ordinary_canonical(
+            1,
+            crate::output::NormalGeometryOf::box_geometry(
+                Point::ZERO,
+                Size::ZERO,
+                ScrollRect::try_new(Point::ZERO, Size::ZERO).unwrap(),
+            ),
+            NodeOutput::new(),
+        )],
         vec![InlineFragmentOutputEntry::new(
             crate::InlineFragmentOwner::Node(1),
             fragment.clone(),
@@ -552,7 +563,10 @@ fn fri06_c01_batch_transaction_preparation_failure_mutates_nothing_and_keeps_dir
     let batch = transaction_batch();
     let mut sink = TransactionSink {
         fail_preparation: true,
-        unrounded: vec![LayoutOutputEntry::new(90, NodeOutput::new())],
+        unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
+            90,
+            NodeOutput::new(),
+        )],
         ..TransactionSink::default()
     };
     let before = sink.clone();
@@ -571,7 +585,10 @@ fn fri06_c01_batch_transaction_preparation_failure_mutates_nothing_and_keeps_dir
 fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation() {
     let batch = transaction_batch();
     let sink = TransactionSink {
-        unrounded: vec![LayoutOutputEntry::new(90, NodeOutput::new())],
+        unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
+            90,
+            NodeOutput::new(),
+        )],
         ..TransactionSink::default()
     };
     let before = sink.clone();

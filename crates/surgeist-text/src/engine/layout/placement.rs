@@ -56,9 +56,14 @@ pub(super) fn place(finalized: Vec<Arc<FinalizedLine>>) -> Result<PlacedLayout> 
             .map(|item| {
                 let (border, content, baseline) = match item.geometry {
                     super::data::FinalizedBoxGeometry::InFlow {
-                        box_geometry, rect, ..
+                        box_geometry,
+                        border_origin,
+                        ..
                     } => (
-                        rect,
+                        crate::Rect {
+                            origin: border_origin,
+                            size: box_geometry.border.size,
+                        },
                         crate::Rect::new(
                             item.slot.x + box_geometry.content.origin.x,
                             item.slot.y + box_geometry.content.origin.y,

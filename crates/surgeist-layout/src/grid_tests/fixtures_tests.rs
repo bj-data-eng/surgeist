@@ -202,7 +202,7 @@ pub(super) enum Fri08C06RInheritedAxes {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct GridTestRetainedState<S: LayoutScalar> {
-    pub(super) unrounded: HashMap<u32, NodeOutputOf<S>>,
+    pub(super) unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     pub(super) final_outputs: HashMap<u32, NodeOutputOf<S>>,
     pub(super) caches: HashMap<u32, CacheOf<S>>,
 }
@@ -216,7 +216,7 @@ impl<S: LayoutScalar> GridTestRetainedState<S> {
             prepared.caches.remove(node);
         }
         for entry in batch.unrounded_entries() {
-            prepared.unrounded.insert(entry.node(), entry.output());
+            prepared.unrounded.insert(entry.node(), *entry);
         }
         for entry in batch.final_entries() {
             prepared.final_outputs.insert(entry.node(), entry.output());
@@ -318,7 +318,10 @@ impl<S: LayoutScalar> LayoutTree for Fri08C06RAtomicTree<S> {
         output
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(
+        &self,
+        node: Self::Node,
+    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
@@ -1417,7 +1420,10 @@ impl<S: LayoutScalar> LayoutTree for Fri08C03NestedAtomicTree<S> {
         output
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(
+        &self,
+        node: Self::Node,
+    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
@@ -1532,7 +1538,10 @@ impl<S: LayoutScalar> LayoutTree for Fri08C04BaselineTree<S> {
         output
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(
+        &self,
+        node: Self::Node,
+    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }

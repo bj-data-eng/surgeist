@@ -12,7 +12,7 @@ use surgeist_text as t;
 #[derive(Clone)]
 struct Published<S: l::LayoutScalar> {
     caches: Vec<l::CacheOf<S>>,
-    unrounded: Vec<Option<l::NodeOutputOf<S>>>,
+    unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
     batch: Option<l::CompletedLayoutBatchOf<u32, S>>,
 }
 struct Host<S: l::LayoutScalar> {
@@ -61,7 +61,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         self.published.unrounded[node as usize]
     }
 }
@@ -82,7 +82,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
             next.caches[row.node() as usize].clear();
         }
         for row in batch.unrounded_entries() {
-            next.unrounded[row.node() as usize] = Some(row.output());
+            next.unrounded[row.node() as usize] = Some(*row);
         }
         for row in batch.cache_store_entries() {
             next.caches[row.node() as usize].store_with_context(

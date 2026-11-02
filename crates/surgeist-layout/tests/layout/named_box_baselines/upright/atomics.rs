@@ -361,6 +361,7 @@ fn qualify_parent_text(prepared: &t::PreparedText, atomic: t::PreparedAtomic) {
                 allocation: t::AtomicLineAllocation::InFlow {
                     fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
                     flow: t::AtomicFlowAllocation {
+                        normal_border_inline_size: 14.0,
                         advance: 14.0,
                         before_baseline: 4.0,
                         after_baseline: 2.0,

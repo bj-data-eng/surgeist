@@ -3565,18 +3565,20 @@ where
 
     Compute::set_unrounded(
         &mut tree.borrow_compute(),
-        0,
-        NodeOutputOf {
-            source_index: SourceIndex::ZERO,
-            location: Point::ZERO,
-            size: cold.size,
-            named_baselines: cold.named_baselines,
-            content_size: cold.content_size,
-            scroll_geometry: Some(geometry),
-            border: Edges::ZERO,
-            padding: Edges::ZERO,
-            margin: Edges::ZERO,
-        },
+        crate::test_support::layout_tree::ordinary_unrounded_box(
+            0,
+            NodeOutputOf {
+                source_index: SourceIndex::ZERO,
+                location: Point::ZERO,
+                size: cold.size,
+                named_baselines: cold.named_baselines,
+                content_size: cold.content_size,
+                scroll_geometry: Some(geometry),
+                border: Edges::ZERO,
+                padding: Edges::ZERO,
+                margin: Edges::ZERO,
+            },
+        ),
     );
     round_layout(&mut tree.borrow_compute(), 0)
         .expect("grid geometry rounds from canonical source");
@@ -3868,18 +3870,20 @@ where
 
     Compute::set_unrounded(
         &mut tree.borrow_compute(),
-        0,
-        NodeOutputOf {
-            source_index: SourceIndex::ZERO,
-            location: Point::ZERO,
-            size: cold.size,
-            named_baselines: cold.named_baselines,
-            content_size: cold.content_size,
-            scroll_geometry: cold.scroll_geometry,
-            border: Edges::ZERO,
-            padding: Edges::ZERO,
-            margin: Edges::ZERO,
-        },
+        crate::test_support::layout_tree::ordinary_unrounded_box(
+            0,
+            NodeOutputOf {
+                source_index: SourceIndex::ZERO,
+                location: Point::ZERO,
+                size: cold.size,
+                named_baselines: cold.named_baselines,
+                content_size: cold.content_size,
+                scroll_geometry: cold.scroll_geometry,
+                border: Edges::ZERO,
+                padding: Edges::ZERO,
+                margin: Edges::ZERO,
+            },
+        ),
     );
     round_layout(&mut tree.borrow_compute(), 0)
         .expect("subgrid geometry rounds from canonical source");
@@ -4770,7 +4774,20 @@ fn grid_content_box_compute_size_does_not_add_scrollbar_to_authored_size() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            Err(crate::test_support::layout_tree::missing_staged_unrounded(
+                node,
+            ))
+        }
+
+        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
         fn compute_child(
             &mut self,

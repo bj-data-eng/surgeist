@@ -4,9 +4,7 @@ use super::inline_run::{
     visible_inline_boundary_in_flow, visible_line_break_in_flow,
 };
 use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
-use super::sizing::{
-    maximum_size, minimum_size, preferred_size, resolve_auto_optional, resolve_length_or_zero,
-};
+use super::sizing::{maximum_size, minimum_size, preferred_size, resolve_length_or_zero};
 use super::*;
 
 /// Raw baseline or float work needed even by an otherwise definite size query.
@@ -52,7 +50,7 @@ pub(super) struct InFlowResult<Node, S: LayoutScalar> {
     pub(super) resolved_terminal_float_block_end: Option<S>,
     pub(super) contributions: BlockScrollContributions<S>,
     pub(super) baselines: super::baseline_frame::PendingBaselines,
-    pub(super) static_positions: Vec<(Node, Point<S>)>,
+    pub(super) static_positions: Vec<(Node, StaticPositionOf<S>)>,
     pub(super) pending_floats: Vec<PendingFloat<Node, S>>,
     pub(super) cursor_block: S,
     pub(super) top_margin: CollapsibleMarginOf<S>,
@@ -175,7 +173,7 @@ where
     if (set_layout || sizes_float_context)
         && let Some(inherited) = inherited
     {
-        float_exclusions.inherit_into_child(inherited, node);
+        float_exclusions.inherit_into_child(inherited);
     }
     let inherited_floats = float_exclusions.len();
     let content_box_size = Size::new(
@@ -279,12 +277,16 @@ where
                     InlineParticipantKindOf::Box(style) => {
                         if style.display == crate::Display::None {
                             if set_layout {
-                                tree.set_unrounded(
+                                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                                     child,
+                                    crate::output::NormalGeometryOf::metadata(
+                                        crate::Point::ZERO,
+                                        crate::Size::ZERO,
+                                    ),
                                     NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
                                         source_index,
                                     )),
-                                );
+                                ));
                                 tree.compute_child(
                                     child,
                                     ComputeInputOf::<S>::hidden_in_containing_pass(
@@ -346,12 +348,16 @@ where
                     InlineParticipantKindOf::LineBreak(line_break) => {
                         if line_break.display().is_none() {
                             if set_layout {
-                                tree.set_unrounded(
+                                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                                     child,
+                                    crate::output::NormalGeometryOf::metadata(
+                                        crate::Point::ZERO,
+                                        crate::Size::ZERO,
+                                    ),
                                     NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
                                         source_index,
                                     )),
-                                );
+                                ));
                             }
                             index += 1;
                             continue;
@@ -612,19 +618,7 @@ where
                     float_exclusions.clearance_block(preview_cursor_block, child_style.clear),
                 )
             };
-            let relative = relative_inset_offset(
-                constants
-                    .flow_axes
-                    .zip_physical_edges_with_inline_extent(
-                        *child_style.common.inset,
-                        node_inner_size,
-                        |length, basis| resolve_auto_optional(length, basis),
-                    )
-                    .transpose_with_node(tree, child)?,
-                constants.flow_axes,
-            );
-            let inherited = float_exclusions
-                .for_ordinary_child(child_logical_location, relative != Point::ZERO);
+            let inherited = float_exclusions.for_ordinary_child(child_logical_location);
             debug_assert_eq!(child_style.display.inner_display(), crate::Display::Block);
             let accepted = tree.compute_child_with_float_context(
                 child,
@@ -819,17 +813,18 @@ where
                 flow.items.push(item);
             }
         }
-        let inset_offset = relative_inset_offset(
-            constants
-                .flow_axes
-                .zip_physical_edges_with_inline_extent(
-                    *child_style.common.inset,
-                    node_inner_size,
-                    |length, basis| resolve_auto_optional(length, basis),
-                )
-                .transpose_with_node(tree, child)?,
-            constants.flow_axes,
-        );
+        let deferred_inset = super::relative::needs_basis(*child_style.common.inset);
+        let inset_offset = if deferred_inset {
+            Point::ZERO
+        } else {
+            super::relative::resolve(
+                tree,
+                child,
+                *child_style.common.inset,
+                super::relative::InsetReference::Measurement(node_inner_size),
+                constants.flow_axes,
+            )?
+        };
         let top_margin_set = output
             .block_margin_collapse
             .at(constants.flow_axes.block_start())
@@ -933,11 +928,18 @@ where
                 },
             )
             .map_err(|error| layout_child_geometry_error(node, child, error))?;
-            contributions
-                .include_in_flow_geometry(location, child_margin, scroll_geometry)
-                .map_err(|error| layout_child_geometry_error(node, child, error))?;
-            tree.set_unrounded(
+            if !deferred_inset {
+                contributions
+                    .include_in_flow_geometry(location, child_margin, scroll_geometry)
+                    .map_err(|error| layout_child_geometry_error(node, child, error))?;
+            }
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::box_geometry(
+                    flow_location,
+                    output.size,
+                    scroll_geometry.content_box(),
+                ),
                 NodeOutputOf::<S> {
                     source_index: crate::SourceIndex::new(source_index),
                     location,
@@ -950,7 +952,7 @@ where
                     ..NodeOutputOf::new()
                 }
                 .with_scroll_geometry(Some(scroll_geometry)),
-            );
+            ));
         }
 
         let child_block_end = if avoids_float_exclusions || child_style.clear != Clear::None {
@@ -974,11 +976,13 @@ where
         let child_inline_demand = (logical_child_margin.inline_sum() + logical_child_size.inline)
             .max(border_inline_span + logical_child_margin.inline_end);
         intrinsic_inline_demand = intrinsic_inline_demand.max(child_inline_demand);
+        // Export normal baseline facts; relative movement belongs to visual
+        // placement, not to the baseline used by a parent's normal line.
         baselines
             .resolved_child(
                 output,
                 child_flow_axes,
-                location,
+                flow_location,
                 super::baseline_frame::BaselineFrame::Measured {
                     used_size: containing_size.map(LayoutScalar::to_f64),
                     axes: constants.flow_axes,

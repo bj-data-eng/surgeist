@@ -124,8 +124,8 @@ mod tests {
     use crate::{
         AspectRatioOf, BidiLevel, BoxSizing, ComputeInputOf, ComputeOutputOf, ComputedOverflow,
         Direction, Edges, FlowAxes, InlineBreakOpportunity, LayoutInputOf, LayoutResultOf,
-        LengthAutoOf, LengthOf, LengthPercentageOf, MaxSizeOf, MinSizeOf, NodeOutputOf, Overflow,
-        Position, PreferredSizeOf, Size, WritingMode,
+        LengthAutoOf, LengthOf, LengthPercentageOf, MaxSizeOf, MinSizeOf, Overflow, Position,
+        PreferredSizeOf, Size, WritingMode,
     };
 
     struct ProjectionTree<'input, S: LayoutScalar> {
@@ -177,7 +177,25 @@ mod tests {
             self.layout_input.as_view()
         }
 
-        fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutputOf<S>) {}
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+            Self::Scalar,
+            Infallible,
+        > {
+            Err(crate::LayoutErrorOf::new(
+                crate::LayoutErrorSiteOf::Node(node),
+                crate::LayoutOperation::ChildLayout,
+                crate::LayoutErrorKindOf::InternalInvariant(
+                    crate::LayoutInternalInvariant::MissingStagedUnroundedOutput,
+                ),
+            ))
+        }
+
+        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, S>) {}
 
         fn compute_child(
             &mut self,

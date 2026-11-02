@@ -262,12 +262,14 @@ impl GridLayoutComparison {
 
         assert_size_close(output.size, self.container);
         tree.borrow_compute().set_unrounded(
-            1,
-            NodeOutput {
-                size: output.size,
-                content_size: output.content_size,
-                ..NodeOutput::new()
-            },
+            crate::test_support::layout_tree::ordinary_unrounded_box(
+                1,
+                NodeOutput {
+                    size: output.size,
+                    content_size: output.content_size,
+                    ..NodeOutput::new()
+                },
+            ),
         );
         for (index, expected) in scenario.item_rects.iter().enumerate() {
             let child = &self.children[index];
@@ -1011,10 +1013,18 @@ mod tests {
             .unrounded(4, output((1.0, 2.0), (13.0, 17.0)))
             .unrounded(7, output((3.0, 4.0), (19.0, 23.0)))
             .unrounded(8, output((5.0, 6.0), (29.0, 31.0)));
+        let final_output = output((3.0, 4.0), (19.0, 23.0));
         Round::set_final(
             &mut tree.borrow_compute(),
-            7,
-            output((3.0, 4.0), (19.0, 23.0)),
+            crate::LayoutOutputEntryOf::ordinary_canonical(
+                7,
+                crate::output::NormalGeometryOf::box_geometry(
+                    final_output.location,
+                    final_output.size,
+                    crate::ScrollRectOf::try_new(Point::ZERO, final_output.size).unwrap(),
+                ),
+                final_output,
+            ),
         );
         tree
     }

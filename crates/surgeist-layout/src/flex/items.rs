@@ -116,6 +116,7 @@ pub(super) struct FinalFlexItem<Node, S: LayoutScalar> {
     pub(super) align_self: AlignItems,
     pub(super) baseline: FlexItemBaseline<S>,
     pub(super) location: Point<S>,
+    pub(super) normal_location: Point<S>,
 }
 
 impl<Node, S: LayoutScalar> CollectedFlexItem<Node, S> {
@@ -829,10 +830,11 @@ where
     Tree: Compute<'input, M>,
 {
     for item in collected_items.iter().filter(|item| item.is_collapsed()) {
-        tree.set_unrounded(
+        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
             item.node,
+            crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
             NodeOutputOf::with_source_index(crate::SourceIndex::new(item.source_index)),
-        );
+        ));
     }
 
     let mut final_items = Vec::with_capacity(items.len());
@@ -892,6 +894,10 @@ where
                 let baseline = FlexItemBaseline::from_output(output, style.common.flow_axes);
                 Ok((output, baseline))
             })?;
+        let normal_location = constants.axes.point_from_main_cross(
+            item.normal_main_location(constants, output.size),
+            item.normal_cross_location(constants, output.size),
+        );
         let location = constants.axes.point_from_main_cross(
             item.final_main_location(constants, output.size),
             item.final_cross_location(constants, output.size),
@@ -913,8 +919,13 @@ where
         )
         .map_err(|error| layout_child_geometry_error(container_node, item.node, error))?;
         output = retain_flex_scroll_geometry(output, scroll_geometry);
-        tree.set_unrounded(
+        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
             item.node,
+            crate::output::NormalGeometryOf::box_geometry(
+                normal_location,
+                output.size,
+                scroll_geometry.content_box(),
+            ),
             NodeOutputOf::<Tree::Scalar> {
                 source_index: crate::SourceIndex::new(item.source_index),
                 location,
@@ -927,7 +938,7 @@ where
                 ..NodeOutputOf::new()
             }
             .with_scroll_geometry(Some(scroll_geometry)),
-        );
+        ));
         final_items.push(FinalFlexItem {
             _node: core::marker::PhantomData,
             source_index: crate::SourceIndex::new(item.source_index),
@@ -936,6 +947,7 @@ where
             align_self: item.align_self,
             baseline,
             location,
+            normal_location,
         });
     }
     Ok(final_items)

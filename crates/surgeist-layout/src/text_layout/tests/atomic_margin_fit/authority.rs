@@ -97,6 +97,7 @@ fn request(p: &text::PreparedText, specs: &[Spec], band: f64) -> text::LineSelec
                 occurrence: view.handle(),
                 allocation: text::AtomicLineAllocation::InFlow {
                     flow: text::AtomicFlowAllocation {
+                        normal_border_inline_size: spec.border,
                         advance: spec.advance,
                         before_baseline: 8.0,
                         after_baseline: 2.0,

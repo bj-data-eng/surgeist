@@ -1599,6 +1599,7 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
                                 fit: crate::AtomicFitAllocation::NativeOccupied,
                                 flow: AtomicFlowAllocation {
                                     advance: width,
+                                    normal_border_inline_size: width,
                                     before_baseline: 8.0,
                                     after_baseline: 2.0,
                                     occupied_start: 0.0,

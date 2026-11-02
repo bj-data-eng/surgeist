@@ -265,8 +265,18 @@ fn completed_batch_exposes_read_only_layout_and_cache_entries() {
     let cache_context = CacheKeyContext::new();
 
     let batch = CompletedLayoutBatch::from_entries(
-        vec![LayoutOutputEntry::new(7, unrounded)],
-        vec![LayoutOutputEntry::new(7, final_layout)],
+        vec![crate::test_support::layout_tree::ordinary_unrounded_box(
+            7, unrounded,
+        )],
+        vec![LayoutOutputEntry::ordinary_canonical(
+            7,
+            crate::output::NormalGeometryOf::box_geometry(
+                final_layout.location,
+                final_layout.size,
+                ScrollRect::try_new(Point::ZERO, final_layout.size).unwrap(),
+            ),
+            final_layout,
+        )],
         Vec::new(),
         Vec::new(),
         vec![LayoutCacheStoreEntry::new(

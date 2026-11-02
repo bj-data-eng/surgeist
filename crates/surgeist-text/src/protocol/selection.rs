@@ -936,6 +936,10 @@ fn validate_atomic(allocation: &AtomicAllocation) -> Result<()> {
     };
     for (field, value) in [
         ("atomic flow advance", flow.advance),
+        (
+            "atomic normal border inline size",
+            flow.normal_border_inline_size,
+        ),
         ("atomic before baseline", flow.before_baseline),
         ("atomic after baseline", flow.after_baseline),
         ("atomic occupied start", flow.occupied_start),
@@ -944,7 +948,7 @@ fn validate_atomic(allocation: &AtomicAllocation) -> Result<()> {
     ] {
         finite(field, value)?;
     }
-    if flow.occupied_start > flow.occupied_end {
+    if flow.normal_border_inline_size < 0.0 || flow.occupied_start > flow.occupied_end {
         return Err(protocol_error(ProtocolError::InvalidAtomicGeometry {
             occurrence: allocation.occurrence.index,
         }));
@@ -967,7 +971,7 @@ fn validate_atomic(allocation: &AtomicAllocation) -> Result<()> {
         }
     }
     if let super::AtomicFitAllocation::CssMarginBox(css) = fit
-        && !css.matches(flow, box_geometry)
+        && !css.matches(flow)
     {
         return Err(protocol_error(ProtocolError::InvalidAtomicGeometry {
             occurrence: allocation.occurrence.index,
@@ -1127,6 +1131,7 @@ pub(crate) fn standalone_atomics(
                         fit: crate::AtomicFitAllocation::NativeOccupied,
                         flow: AtomicFlowAllocation {
                             advance: size.width,
+                            normal_border_inline_size: size.width,
                             before_baseline: size.height,
                             after_baseline: 0.0,
                             occupied_start: 0.0,

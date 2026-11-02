@@ -229,6 +229,7 @@ fn allocation(parent: &Captured, kind: t::InlineBoxKind) -> t::AtomicAllocation 
                 // A Horizontal child exports no physical-x baseline. Physical
                 // synthesis uses its left/line-under edge: over6, under0.
                 flow: t::AtomicFlowAllocation {
+                    normal_border_inline_size: 14.0,
                     advance: 14.0,
                     before_baseline: 6.0,
                     after_baseline: 0.0,

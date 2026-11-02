@@ -354,6 +354,8 @@ pub enum LayoutInternalInvariant {
     InvalidAtomicReceiverBasis,
     MissingLeafMeasurementProvider,
     MissingStagedUnroundedOutput,
+    /// A staged output was consumed in a different geometry/readback phase.
+    InvalidOutputGeometryPhase,
     SubgridTrackInheritance,
     SubgridBaselineInheritance,
 }

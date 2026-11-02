@@ -399,6 +399,7 @@ fn with_atomic(p: &PreparedText, mut request: LineSelectionRequest) -> LineSelec
             fit: crate::AtomicFitAllocation::NativeOccupied,
             flow: AtomicFlowAllocation {
                 advance: size.width,
+                normal_border_inline_size: size.width,
                 before_baseline: before,
                 after_baseline: size.height - before,
                 occupied_start: 0.0,

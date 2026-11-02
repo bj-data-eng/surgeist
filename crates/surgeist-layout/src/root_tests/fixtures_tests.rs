@@ -1143,7 +1143,7 @@ pub(super) fn fri06_c02_expected_physical_rect<S: LayoutScalar>(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Fri06C02RetainedTextState<S: LayoutScalar> {
-    pub(super) unrounded_nodes: HashMap<u32, NodeOutputOf<S>>,
+    pub(super) unrounded_nodes: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     pub(super) final_nodes: HashMap<u32, NodeOutputOf<S>>,
     pub(super) unrounded_fragments: HashMap<u32, Vec<InlineFragmentOutputOf<S>>>,
     pub(super) final_fragments: HashMap<u32, Vec<InlineFragmentOutputOf<S>>>,
@@ -1515,7 +1515,10 @@ impl<S: LayoutScalar> LayoutTree for Fri06C02StatefulTextTree<S> {
         output
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(
+        &self,
+        node: Self::Node,
+    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded_nodes.get(&node).copied()
     }
 
@@ -1559,7 +1562,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri06C02StatefulTextTree<S> {
         }
         for entry in batch.unrounded_entries() {
             let node = entry.node();
-            prepared.unrounded_nodes.insert(node, entry.output());
+            prepared.unrounded_nodes.insert(node, *entry);
             if matches!(self.inputs.get(&node), Some(LayoutInputOf::InlineText(_))) {
                 prepared.unrounded_fragments.insert(node, Vec::new());
             }

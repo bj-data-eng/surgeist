@@ -1384,6 +1384,7 @@ fn check_atomic_tab_traversal(tabs: TabContext) {
                         fit: crate::AtomicFitAllocation::NativeOccupied,
                         flow: AtomicFlowAllocation {
                             advance: 15.0,
+                            normal_border_inline_size: 15.0,
                             before_baseline: 8.0,
                             after_baseline: 2.0,
                             occupied_start: 0.0,
@@ -1489,6 +1490,7 @@ fn finish_with_huge_atomic(p: &PreparedText, tabs: TabContext) -> crate::Result<
                 fit: crate::AtomicFitAllocation::NativeOccupied,
                 flow: AtomicFlowAllocation {
                     advance,
+                    normal_border_inline_size: advance,
                     before_baseline: 8.0,
                     after_baseline: 2.0,
                     occupied_start: 0.0,

@@ -369,7 +369,7 @@ pub(super) fn first_final_vertical_baseline<Node, S: LayoutScalar>(
         })
         .or_else(|| line_items.first())?;
     Some(item_physical_baseline(
-        item.location,
+        item.normal_location,
         item.output.size,
         item.baseline,
     ))
@@ -391,7 +391,7 @@ pub(super) fn last_final_vertical_baseline<Node, S: LayoutScalar>(
         })
         .or_else(|| line_items.last())?;
     Some(item_physical_baseline(
-        item.location,
+        item.normal_location,
         item.output.size,
         item.baseline,
     ))
@@ -603,6 +603,14 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
     }
 
     pub(super) fn final_main_location(&self, constants: &Constants<S>, output_size: Size<S>) -> S {
+        self.main_location(constants, output_size, self.relative_main_inset(constants))
+    }
+
+    pub(super) fn normal_main_location(&self, constants: &Constants<S>, output_size: Size<S>) -> S {
+        self.main_location(constants, output_size, S::ZERO)
+    }
+
+    fn main_location(&self, constants: &Constants<S>, output_size: Size<S>, relative: S) -> S {
         let container = constants
             .node_outer_size
             .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
@@ -611,7 +619,7 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
             constants.axes.main_start_edge(constants.content_box_inset),
             self.offset_main,
             constants.axes.main_size(output_size),
-            self.relative_main_inset(constants),
+            relative,
         )
     }
 
@@ -630,6 +638,18 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
     }
 
     pub(super) fn final_cross_location(&self, constants: &Constants<S>, output_size: Size<S>) -> S {
+        self.cross_location(constants, output_size, self.relative_cross_inset(constants))
+    }
+
+    pub(super) fn normal_cross_location(
+        &self,
+        constants: &Constants<S>,
+        output_size: Size<S>,
+    ) -> S {
+        self.cross_location(constants, output_size, S::ZERO)
+    }
+
+    fn cross_location(&self, constants: &Constants<S>, output_size: Size<S>, relative: S) -> S {
         let container = constants
             .node_outer_size
             .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
@@ -638,7 +658,7 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
             constants.axes.cross_start_edge(constants.content_box_inset),
             self.offset_cross,
             constants.axes.cross_size(output_size),
-            self.relative_cross_inset(constants),
+            relative,
         )
     }
 
@@ -686,6 +706,7 @@ mod final_baseline_selection_tests {
             align_self,
             baseline: FlexItemBaseline::from_output(output, default_flow_axes::<S>()),
             location: Point::new(S::ZERO, S::from_f64(location_y)),
+            normal_location: Point::new(S::ZERO, S::from_f64(location_y)),
         }
     }
 
