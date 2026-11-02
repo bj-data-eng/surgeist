@@ -20,3 +20,6 @@ mod requests;
 mod rounding;
 #[path = "root_tests/transaction_cache_tests.rs"]
 mod transaction_cache;
+
+#[path = "root_tests/orthogonal_intrinsic_width.rs"]
+mod orthogonal_intrinsic_width;
