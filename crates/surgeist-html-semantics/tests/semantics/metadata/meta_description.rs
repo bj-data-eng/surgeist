@@ -526,7 +526,7 @@ fn actual_work_and_capacities_accept_exact_and_reject_one_short_with_balanced_sc
     let (c, id) = single(Some("description"), Some("x"));
     let cx = context(&c);
     // The attribute checks and uniqueness walk of this query are not among the
-    // documented per-query tariffs, so work is required to be charged but is not
+    // semantic query work reference (docs/reference/html-operations.md), so work is required to be charged but is not
     // pinned.
     // The walk keeps the document's child list and the meta's own (empty)
     // list live together: two iterator records. One report record is

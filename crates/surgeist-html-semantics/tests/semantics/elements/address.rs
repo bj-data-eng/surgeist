@@ -429,7 +429,7 @@ fn witness_stops_before_later_unavailable_branch_and_huge_name() {
 fn exact_and_one_short_work_scratch_bytes_and_batch_records_are_terminal() {
     let (c, id) = empty();
     let cx = context(&c);
-    // The address witness search is not among the documented per-query tariffs,
+    // The address witness search is not among the semantic query work reference (docs/reference/html-operations.md),
     // so work is required to be charged but is not pinned; the helper still
     // proves the reported work is the least admitting cap.
     let r = assert_exact_and_one_short_caps(

@@ -812,6 +812,56 @@ fn actual_text_and_override_work_output_scratch_capacity_bytes_caps_are_exact() 
 }
 
 #[test]
+fn documented_work_distinguishes_childless_and_parent_nodes_in_descendant_text() {
+    // Reference: semantic query work, text content (descendant mode). The output
+    // holds a childless span, a comment, and a span holding one unit of text.
+    // Entering an element costs 1 and a frame (2) only when it has children; a
+    // comment costs only its iteration and lookup.
+    let (mut b, d) = builder();
+    let output = html(&mut b, &d, "output");
+    let empty = html(&mut b, &d, "span");
+    children(&mut b, &empty, &[]);
+    let comment = b.add_comment(&d, "c".into()).unwrap();
+    let parent = html(&mut b, &d, "span");
+    let inner = text(&mut b, &d, "b");
+    children(&mut b, &parent, &[inner]);
+    children(&mut b, &output, &[empty, comment, parent]);
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&output).unwrap();
+    let cx = context(&c, None);
+    let work = shared_prefix_work("output".len())
+        + 2 // frame for the output's children
+        + (1 + 1 + 1) // childless span: iteration, lookup, entered (no frame)
+        + (1 + 1) // comment: iteration, lookup
+        + (1 + 1 + 1 + 2) // parent span: iteration, lookup, entered, frame
+        + (1 + 1 + 3) // its text: iteration, lookup, one unit
+        + 2 // the parent span's exhausted frame
+        + 2 // the output's exhausted frame
+        + 1 // closing
+        + 1; // result write
+    let r = check_caps(
+        "descendant text node kinds",
+        &c,
+        &cx,
+        &id,
+        HtmlSemanticQuery::OutputValue,
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            // The output's frame stays live while the parent span's is pushed.
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes()
+                    + 2 * std::mem::size_of::<HtmlCapturedChildIds<'static>>()
+                    + 2,
+            ),
+        },
+    );
+    assert_eq!(value(&r).value().code_units(), [98]);
+}
+
+#[test]
 fn late_mixed_batch_failure_returns_no_prefix_and_releases_scratch() {
     let (c, id) = leaf("output", &["ABC".into()]);
     let cx = context(&c, None);

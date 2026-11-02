@@ -425,7 +425,7 @@ fn ignored_attributes_spans_text_and_member_descendants_need_no_raw_or_nested_bu
     assert_eq!(report.usage().nested_output_records(), 0);
     assert_eq!(report.usage().peak_scratch_records(), 0);
 }
-/// `K(l)` of the documented per-query work: the recognition charge of an HTML
+/// `K(l)` of the semantic query work reference (docs/reference/html-operations.md): the recognition charge of an HTML
 /// element whose local name has `l` units.
 fn known(l: usize) -> usize {
     (l + 1) * KnownHtmlElement::ALL.len() + "http://www.w3.org/1999/xhtml".len()

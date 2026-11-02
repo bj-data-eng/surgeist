@@ -592,7 +592,7 @@ fn exact_work_admits_completion_and_one_short_rejects_without_partial_batch() {
     let (capture, image) = no_tree(Some("abcd"));
     let cx = context(&capture);
     // The hash-name scanner and classification steps are the HTML owner's
-    // private layout and not among the documented per-query tariffs, so work is
+    // private layout and not among the semantic query work reference (docs/reference/html-operations.md), so work is
     // required to be charged but is not pinned.
     // The exact cap on every resource reproduces the baseline report; the one
     // result record is the only allocation and nothing is nested or scratch.

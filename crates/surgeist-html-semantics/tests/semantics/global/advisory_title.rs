@@ -450,7 +450,7 @@ fn whole_selected_raw_cap_precedes_processing_and_ignores_unselected_values() {
 
 #[test]
 fn documented_work_covers_exact_normalization_and_boundary_reads() {
-    // From the documented AdvisoryInformation work: the query prefix (reservation
+    // From the semantic query work reference (AdvisoryInformation): the query prefix (reservation
     // 1, lookup 1, namespace test 29) = 31. A present `title` costs the attribute
     // scan (1 + 5 compared units), presence 1 and raw admission 1, then
     // normalization (a read per raw unit, 2 per kept unit, closing 1), the
@@ -498,10 +498,85 @@ fn documented_work_covers_exact_normalization_and_boundary_reads() {
 }
 
 #[test]
+fn documented_work_covers_each_ancestor_step_including_a_non_element_parent() {
+    // Reference: semantic query work, AdvisoryInformation. The query prefix is
+    // 31 (reservation 1, lookup 1, namespace test 29). An absent `title` on a
+    // non-boundary element costs presence 1, boundary 1, parent step 1, parent
+    // lookup 1 and the unconditional 1 charged for any parent: 5.
+    let prefix = 1 + 1 + 29;
+    let climb = 1 + 1 + 1 + 1 + 1;
+    let work_of = |c: &HtmlCapture, id: &HtmlCaptureSubjectId, expected: usize| {
+        let r = session(
+            c,
+            &context(c),
+            limits(expected),
+            100,
+            HtmlSemanticCancellation::new(),
+        )
+        .query(&[request(id)])
+        .unwrap();
+        assert_eq!(r.usage().work(), expected);
+        let cx = context(c);
+        let mut short = session(
+            c,
+            &cx,
+            limits(expected - 1),
+            100,
+            HtmlSemanticCancellation::new(),
+        );
+        assert!(short.query(&[request(id)]).is_err());
+        r
+    };
+    // A document parent is not an element: it ends with the empty answer (1) and
+    // the write (1).
+    let (mut b, d) = builder();
+    let e = element(&mut b, &d, "p", vec![]);
+    b.establish_children(&d, std::slice::from_ref(&e)).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&e).unwrap();
+    let r = work_of(&c, &id, prefix + climb + 1 + 1);
+    assert_eq!(known(&r).source(), None);
+    // An HTML element parent costs its namespace test (29), then repeats: its
+    // `title` scan (6), presence 1, admission 1, normalization of "x" (read 1,
+    // reservation and push 2, closing 1), the record 1 and the write 1.
+    let (mut b, d) = builder();
+    let parent = element(&mut b, &d, "div", vec![attr("title", "x")]);
+    let e = element(&mut b, &d, "p", vec![]);
+    b.establish_children(&parent, std::slice::from_ref(&e))
+        .unwrap();
+    b.establish_root(&parent).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&e).unwrap();
+    let r = work_of(
+        &c,
+        &id,
+        prefix + climb + 29 + 6 + 1 + 1 + (1 + 2 + 1) + 1 + 1,
+    );
+    assert_eq!(known(&r).source(), Some(&c.subject_id(&parent).unwrap()));
+    // A non-HTML element parent fails its namespace test at the length check (1),
+    // skips the `title` scan, steps to its absent parent (1), and ends with the
+    // empty answer (1) and the write (1).
+    let (mut b, d) = builder();
+    let parent = expanded(
+        &mut b,
+        &d,
+        QualifiedName::new(Namespace::svg(), None, "g"),
+        vec![attr("title", "ignored")],
+    );
+    let e = element(&mut b, &d, "p", vec![]);
+    b.establish_children(&parent, std::slice::from_ref(&e))
+        .unwrap();
+    b.establish_root(&parent).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&e).unwrap();
+    let r = work_of(&c, &id, prefix + climb + 1 + 1 + 1 + 1);
+    assert_eq!(known(&r).source(), None);
+}
+#[test]
 fn partial_normalization_stops_before_an_unadmitted_write_and_drops_local_storage() {
     let (c, id) = fixture("p", Some("AB".into()), false);
     let cx = context(&c);
-    // From the documented work: prefix 31, own selection (scan 6, presence 1,
+    // From the semantic query work reference: prefix 31, own selection (scan 6, presence 1,
     // admission 1), A (read 1, reservation 1, push 1) and B (read 1,
     // reservation 1) = 44; the push of B requires 45 and must not execute. No
     // scratch is introduced.

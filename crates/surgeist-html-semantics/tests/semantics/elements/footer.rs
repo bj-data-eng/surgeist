@@ -617,6 +617,46 @@ fn exact_and_one_short_work_output_and_observed_bytes_preserve_qualified_first_s
 }
 
 #[test]
+fn documented_work_covers_a_non_element_ancestor_and_the_document_body_search() {
+    // Reference: semantic query work, FooterScope. The footer is the only child
+    // element of its document, so the only ancestor is the non-element document
+    // and the body search finds a sole element that is not `html`.
+    let (mut b, d) = builder();
+    let footer = html(&mut b, &d, "footer");
+    children(&mut b, &d, std::slice::from_ref(&footer));
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&footer).unwrap();
+    let cx = context(&c);
+    let n = KnownHtmlElement::ALL.len();
+    let k = ("footer".len() + 1) * n + 28;
+    let work = (1 + 1 + 29) // query prefix
+        + (1 + 29 + k) // lookup, namespace test, footer
+        + (1 + 1 + 1) // parent step to the document, its lookup (no K), step to none
+        + 1 // end of the ancestor walk
+        + (1 + 1) // body search: document lookup and 1
+        + (1 + 1 + 1) // the one child: loop charge, lookup, element
+        + 1 // exhausted child list
+        + (1 + k) // the child's lookup and K, not `html`
+        + 1 // before the document-body answer
+        + 1; // result write
+    let r = assert_exact_and_one_short_caps(
+        "footer under the document",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(value(&r), &body_scope(&c, &d, None));
+}
+
+#[test]
 fn fallback_work_admission_is_exact_and_terminal_failure_is_not_null_or_missing() {
     let (mut b, d) = builder();
     let root = html(&mut b, &d, "html");

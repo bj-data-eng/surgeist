@@ -403,6 +403,56 @@ fn full_collection_has_exact_one_short_work_output_scratch_nested_capacity_and_b
     assert_eq!(areas(&report).areas(), expected);
 }
 #[test]
+fn documented_work_covers_a_text_child_that_is_looked_up_but_not_entered() {
+    // Reference: semantic query work, MapAreas. A text child costs only its
+    // lookup and the resume that yields the next node: no recognition and no
+    // frame. The childless area then costs recognition, a retained id (2) and
+    // its frame (entered 1, reservation 1, push 1), and the three resume
+    // iterations pop the area's and the map's frames and find the stack empty.
+    let (mut b, d) = builder();
+    let m = html(&mut b, &d, "map", &[]);
+    let note = b.add_text(&d, "t".into()).unwrap();
+    let a = html(&mut b, &d, "area", &[]);
+    children(&mut b, &a, &[]);
+    children(&mut b, &m, &[note, a.clone()]);
+    b.establish_root(&m).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&m).unwrap();
+    let area = c.subject_id(&a).unwrap();
+    let cx = context(&c);
+    let n = KnownHtmlElement::ALL.len();
+    let k = |l: usize| (l + 1) * n + 28;
+    let work = (1 + 1 + 29) // query prefix
+        + (1 + 29 + k("map".len())) // lookup, namespace test, map
+        + (1 + 2 + 1) // entering the map: 1, frame, resume yielding the text
+        + (1 + 1) // text: lookup, resume yielding the area
+        + (1 + k("area".len()) + 2) // area: lookup, K, retained id
+        + (1 + 2 + 3) // entering the area: 1, frame, three resume iterations
+        + 1 // closing
+        + 1; // result write
+    let r = assert_exact_and_one_short_caps(
+        "map with a text child",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes()
+                    + std::mem::size_of::<HtmlCaptureSubjectId>()
+                    + 2 * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+        },
+    );
+    assert_eq!(areas(&r).areas(), [area]);
+}
+
+#[test]
 fn duplicate_queries_charge_cumulative_member_capacity_and_cannot_reuse_a_discarded_prefix() {
     let (c, m, _) = direct(2);
     let cx = context(&c);

@@ -429,7 +429,7 @@ fn repeats_and_duplicate_batch_charge_cumulatively_and_late_failure_is_atomic() 
         HtmlSemanticCancellation::new(),
     );
     let old = s.query(std::slice::from_ref(&req)).unwrap();
-    // Derived from the documented tariffs: one reservation plus one request, and
+    // Derived from the semantic query work reference: one reservation plus one request, and
     // a duplicate batch shares its single reservation between both requests.
     let single = 1 + caption_request_work();
     let batch = 1 + 2 * caption_request_work();
@@ -578,6 +578,38 @@ fn missing_is_query_local_and_does_not_prevent_a_later_known_caption() {
         &HtmlSemanticFact::TableCaption(HtmlSemanticValue::Known(Some(
             c.subject_id(&caption).unwrap()
         )))
+    );
+}
+
+#[test]
+fn documented_work_skips_non_element_children_at_lookup_cost_only() {
+    // Reference: semantic query work, TableCaption. A text child ahead of the
+    // caption costs its loop charge (1) and lookup (1), with no recognition.
+    let (mut b, d) = builder();
+    let table = html(&mut b, &d, "table", &[]);
+    let note = b.add_text(&d, "t".into()).unwrap();
+    let caption = html(&mut b, &d, "caption", &[]);
+    children(&mut b, &table, &[note, caption.clone()]);
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&table).unwrap();
+    let cx = context(&c);
+    let r = assert_exact_and_one_short_caps(
+        "table caption after a text child",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id, HtmlSemanticQuery::TableCaption)],
+        ExpectedUsage {
+            work: Charge::Exactly(1 + caption_request_work() + (1 + 1)),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(
+        value(&r),
+        &HtmlSemanticValue::Known(Some(c.subject_id(&caption).unwrap()))
     );
 }
 

@@ -527,7 +527,7 @@ fn role_and_type_cap_precede_required_absence_and_terminals_are_not_false_proofs
 fn exact_work_admits_complete_results_and_one_short_stops_before_write() {
     // The intrinsic input-type, required, readonly and disabledness steps of this
     // query consult the vocabulary through envelopes whose per-step layout is not
-    // among the documented per-query tariffs, so work is required to be charged
+    // among the semantic query work reference (docs/reference/html-operations.md), so work is required to be charged
     // but is not pinned. For each declared outcome the exact work cap must
     // reproduce the baseline report, one less must stop with exactly that
     // resource, the state is the declared one, and no scratch is ever used.

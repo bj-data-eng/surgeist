@@ -485,6 +485,49 @@ fn exact_one_short_work_output_actual_capacity_and_bytes_are_sticky_with_zero_sc
     assert_eq!(ids(&report), expected);
 }
 #[test]
+fn documented_work_skips_non_element_children_at_lookup_cost_only() {
+    // Reference: semantic query work, table walks. A text child is taken by the
+    // child iterator at 1 and a lookup (1) and skipped without recognition, in
+    // every pass. The direct tr is retained once, in the body pass.
+    let (mut b, d) = builder();
+    let table = html(&mut b, &d, "table", &[]);
+    let note = b.add_text(&d, "t".into()).unwrap();
+    let row = html(&mut b, &d, "tr", &[]);
+    children(&mut b, &table, &[note, row.clone()]);
+    let c = b.finish().unwrap();
+    let t = c.subject_id(&table).unwrap();
+    let cx = context(&c);
+    let n = KnownHtmlElement::ALL.len();
+    let ns = "http://www.w3.org/1999/xhtml".len();
+    let known = |l: usize| (l + 1) * n + ns;
+    // One pass: 1, listing the children (2), the text (2), the tr (2 + K(2)) and
+    // its 1, then the exhausted iterator (1).
+    let pass = 1 + 2 + 2 + (2 + known(2)) + 1 + 1;
+    let work = (1 + 1 + (1 + ns)) // query prefix
+        + (1 + (1 + ns) + known(5)) // lookup, namespace test, table
+        + 3 * pass
+        + 2 // the direct tr retained in the body pass
+        + 1; // result write
+    let r = assert_exact_and_one_short_caps(
+        "table rows after a text child",
+        &c,
+        &cx,
+        0,
+        semantic_limits_without_scratch(),
+        &[request(&t, HtmlSemanticQuery::TableRows)],
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes() + std::mem::size_of::<HtmlCaptureSubjectId>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(ids(&r), [c.subject_id(&row).unwrap()]);
+}
+#[test]
 fn repeated_queries_admit_cumulative_member_capacity_and_do_not_return_partial_batches() {
     let (c, t, _, _) = ordered();
     let cx = context(&c);

@@ -1005,6 +1005,80 @@ fn nested_text_temporaries_and_retained_id_capacity_have_exact_one_short_limits(
 }
 
 #[test]
+fn documented_work_covers_an_empty_datalist_and_non_element_children() {
+    // Reference: semantic query work, DatalistOptions. The query prefix, a lookup,
+    // the namespace test and `datalist` recognition come first for both shapes.
+    let n = KnownHtmlElement::ALL.len();
+    let k = |l: usize| (l + 1) * n + 28;
+    let head = (1 + 1 + 29) + (1 + 29 + k("datalist".len()));
+    let record = result_record_bytes();
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let id = std::mem::size_of::<HtmlCaptureSubjectId>();
+    // An empty datalist returns the empty collection after the entry (a lookup
+    // and 1): no frame, no closing charge. The result write follows.
+    let (mut b, d) = builder();
+    let dl = html(&mut b, &d, "datalist", &[]);
+    children(&mut b, &dl, &[]);
+    b.establish_root(&dl).unwrap();
+    let c = b.finish().unwrap();
+    let dl = c.subject_id(&dl).unwrap();
+    let cx = context(&c);
+    let r = check_caps(
+        "empty datalist",
+        &c,
+        &cx,
+        &dl,
+        HtmlSemanticQuery::DatalistOptions,
+        0,
+        ExpectedUsage {
+            work: Charge::Exactly(head + (1 + 1) + 1),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(record),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert!(collection(&r).options().is_empty());
+    // A text child costs only its iteration and lookup (no recognition, not
+    // entered); a childless option costs recognition, a retained id (2) and an
+    // entry without a frame.
+    let (mut b, d) = builder();
+    let dl = html(&mut b, &d, "datalist", &[]);
+    let note = b.add_text(&d, "t".into()).unwrap();
+    let option = html(&mut b, &d, "option", &[]);
+    children(&mut b, &option, &[]);
+    children(&mut b, &dl, &[note, option.clone()]);
+    b.establish_root(&dl).unwrap();
+    let c = b.finish().unwrap();
+    let dl = c.subject_id(&dl).unwrap();
+    let option = c.subject_id(&option).unwrap();
+    let cx = context(&c);
+    let work = head
+        + (1 + 1) // entry
+        + 2 // the datalist's frame
+        + (1 + 1) // text: iteration, lookup
+        + (1 + 1 + k("option".len()) + 2 + 1) // option: iteration, lookup, K, retained id, entered
+        + 2 // the datalist's exhausted frame
+        + 1 // closing
+        + 1; // result write
+    let r = check_caps(
+        "datalist with a text child",
+        &c,
+        &cx,
+        &dl,
+        HtmlSemanticQuery::DatalistOptions,
+        0,
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(record + id + frame),
+        },
+    );
+    assert_eq!(collection(&r).options(), [option]);
+}
+
+#[test]
 fn rejected_second_value_keeps_cumulative_capacity_and_no_batch_prefix() {
     let (c, dl, _) = text_options();
     let cx = context(&c);

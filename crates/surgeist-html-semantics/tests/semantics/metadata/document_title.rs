@@ -490,7 +490,7 @@ fn literal_child_text_and_two_stage_normalization_work_have_exact_one_short_limi
     let cx = context(&c);
     let record = std::mem::size_of::<HtmlSemanticResult>();
     let frame = std::mem::size_of::<HtmlCapturedChildIds<'_>>();
-    // Title text, from the documented per-query work: the query prefix (reservation
+    // Title text, from the semantic query work reference (docs/reference/html-operations.md): the query prefix (reservation
     // 1, lookup 1, namespace test 29), the local-name test (1 + 5 compared units
     // of `title`), direct-child text content (entry 2, loop charges 2, one child
     // lookup 1, three units at 3 each, closing 1) and the result write (1) = 53.
@@ -511,7 +511,7 @@ fn literal_child_text_and_two_stage_normalization_work_have_exact_one_short_limi
         },
     );
     // Document title: the root search, title search and two-stage normalization
-    // are not among the documented per-query tariffs, so work is required to be
+    // are not among the semantic query work reference (docs/reference/html-operations.md), so work is required to be
     // charged but is not pinned. The raw three units plus the one normalized unit
     // are nested; the document iterator frame is the single scratch record.
     assert_exact_and_one_short_caps(

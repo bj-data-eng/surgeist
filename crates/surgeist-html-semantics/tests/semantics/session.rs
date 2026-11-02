@@ -400,7 +400,7 @@ fn complete_batch_limits_and_first_terminal_failure_are_sticky() {
     let c = b.finish().unwrap();
     let cx = context(&c);
     let request = request(&c, &e, HtmlSemanticQuery::Disabledness);
-    // Derived from the documented per-query work for the disabledness of a
+    // Derived from the semantic query work reference (docs/reference/html-operations.md) for the disabledness of a
     // parentless attribute-free form control: the query prefix (reservation 1,
     // lookup 1, namespace test 29), "input" recognition, the form-disabled
     // lookup (1), the intrinsic envelope (three element searches over the
