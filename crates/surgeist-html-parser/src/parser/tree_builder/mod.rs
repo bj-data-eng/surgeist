@@ -368,7 +368,9 @@ impl LocationKernel {
         let len = self.stack()?.len();
         // An empty stack holds no match, which is the same refusal as below.
         let top = len.checked_sub(1).ok_or(KernelError::EmptyStack)?;
-        for index in 0..len {
+        // A node is on the stack at most once, so the search order changes no
+        // answer, and the nodes removed are the ones the parser has just opened.
+        for index in (0..len).rev() {
             let node = self.at(index, c)?;
             if self.session.same_node(c, &node, target)? {
                 self.session.qualify_stack_removal(c, &node, capability)?;
