@@ -492,3 +492,7 @@ fn genuine_global_pass_bridge_admits_scope_payloads_and_propagates_typed_work_re
     global_bridge(WORK);
     global_bridge(WORK + PASS_WORK);
 }
+
+#[cfg(test)]
+#[path = "percentage_basis_phase_refusal_tests.rs"]
+mod percentage_basis_phase_refusal_tests;

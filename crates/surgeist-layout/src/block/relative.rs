@@ -147,3 +147,7 @@ where
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "relative/percentage_basis_refusal_tests.rs"]
+mod percentage_basis_refusal_tests;
