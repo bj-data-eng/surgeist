@@ -283,50 +283,86 @@ asserted, because the adapter does not claim them.
 
 ## Finite campaign record
 
-Source `63e350fa50c5a29e8e608818a356e7f2436a9688` (a clean detached checkout
-outside the active worktree; the only later source change, `989be0ac5`, replaces
-`chunks_exact(2)` with the equivalent `as_chunks::<2>()` in the native decoder),
-Apple Silicon macOS, one Cargo job, memory policy `unbounded` (RSS sampling is
-unavailable, so no memory bound is claimed). The counts are attempts against the
-finished parser, builders and semantics adapter. They are not conformance
-percentages, performance baselines or resource guarantees, and `Sufficient`
-means only that the declared minimum number of evaluations ran.
+Campaigns ran against clean detached checkouts outside the active worktree, on
+Apple Silicon macOS, with one Cargo job and memory policy `unbounded` (RSS
+sampling is unavailable, so no memory bound is claimed). The counts are attempts
+against the finished parser, builders and semantics adapter. They are not
+conformance percentages, performance baselines or resource guarantees, and
+`Sufficient` means only that the declared minimum number of evaluations ran.
+Every row is a summary the framework printed; "Source" is the commit its run
+record names.
 
-Every row is a summary the framework printed. `check` uses
-`--toolchain 1.97.0 --memory-policy unbounded --case-ms 5000 --input-bytes 16384`.
-The "Limits" column lists the remaining options of that run.
+The earlier runs (first table) executed the harness at `63e350fa5`. Harness
+changes made after them, and therefore not exercised by them, are:
+`989be0ac5` (native decoder reads pairs with `as_chunks`), `846b593e5`
+(`Expect::Balanced` for balanced recipes and the restored literal tests),
+`72dab1fed` (soup credit per segment, at most 56 segments), `92a1b60ad`
+(completed-import usage check), `e7e208f77` (tests only) and `47a972d75`
+(a balanced-recipe stop must be on a lowered cap). The earlier runs thus used a
+looser harness than the final one; the final harness was exercised only by the
+short runs of the second table.
+
+`check` uses `--toolchain 1.97.0 --memory-policy unbounded --case-ms 5000
+--input-bytes 16384`; "Limits" lists the remaining options. For the `check` rows, cases,
+wall time and seed come from the retained run records; the `run` rows come from
+the campaign command lines.
+
+### Runs at `63e350fa5`
 
 | Command | Target | Seed | Limits | Evaluated | Summary status |
 | --- | --- | --- | --- | --- | --- |
-| `check` | native authoring | 1172 | cases 5000, wall 1,200,000 ms, entries 30000, bytes 2 GiB | 5000 | sufficient |
-| `check` | markup parse | 1172 | cases 5000, wall 1,500,000 ms, entries 30000, bytes 2 GiB | 5000 | sufficient |
-| `check` | capture import | 1172 | same as the previous row | 3466 | resource-stop |
-| `check` | capture import | 1172 | cases 5000, wall 1,500,000 ms, entries 100000, bytes 8 GiB | 2913 | resource-stop |
-| `check` | markup parse | 7001 | same as the previous row | 2729 | resource-stop |
-| `check` | capture import | 7001 | same | 2304 | resource-stop |
-| `check` | native authoring | 7001 | same | 2128 | resource-stop |
-| `check --regressions` on `seeds/markup`, `seeds/capture`, `seeds/native` | one each | n/a | cases 64 | 12, 16, 8 | sufficient |
+| `check` | native authoring | 1172 | cases 5000, wall 1,200,000 ms | 5000 | sufficient |
+| `check` | markup parse | 1172 | cases 5000, wall 1,500,000 ms | 5000 | sufficient |
+| `check` | capture import | 1172 | cases 5000, wall 1,500,000 ms | 3466 | resource-stop |
+| `check` | capture import | 1172 | cases 5000, wall 1,500,000 ms | 2913 | resource-stop |
+| `check` | markup parse | 7001 | cases 5000, wall 1,500,000 ms | 2729 | resource-stop |
+| `check` | capture import | 7001 | cases 5000, wall 1,500,000 ms | 2304 | resource-stop |
+| `check` | native authoring | 7001 | cases 5000, wall 1,500,000 ms | 2128 | resource-stop |
+| `check --regressions` on `seeds/markup`, `seeds/capture`, `seeds/native` | one each | 1 | cases 64, wall 600,000 ms | 12, 16, 8 | sufficient |
 | `run`, libFuzzer with AddressSanitizer and coverage level 4, `nightly-2026-09-01` | each of the three | 1172 | cases 3000, wall 900,000 ms | 3000 | sufficient |
 | `run`, same engine, 46 rounds each | each of the three | 7001 | cases 150000, wall 1,500,000 ms, round cases 10000, round 600,000 ms, retained entries 256 | 150000 | sufficient |
+
+The `check` rows after the first three also passed
+`--storage-entries 100000 --storage-bytes 8589934592`; the storage options of the
+first three rows are not in the run records and are not recorded. The `run` rows
+used `--build-ms 3000000 --input-bytes 16384 --storage-entries 100000
+--storage-bytes 8589934592`.
 
 The summaries for the `resource-stop` rows say only `resource-stop` and "finite
 fresh owner evaluations; no exhaustive correctness claim"; they do not name the
 bound that stopped the run, and no reason is claimed here. The retained run
 record of the native seed-7001 stop shows `cases 5000`, `wall_millis 1500000`
-and 2128 evaluated. A further `check` was cancelled by an
-interrupt I sent after 221 markup evaluations (seed 7001), and a first native
-`check` with the default 1,024-entry quota ended `resource-stop` with 0
-evaluated and the detail "artifact quota exhausted". The `run` rows used
-`--build-ms 3000000 --input-bytes 16384 --storage-entries 100000 --storage-bytes 8589934592`.
+and 2128 evaluated. A further `check` was cancelled by an interrupt after 221
+markup evaluations (seed 7001), and a first native `check` with the default
+1,024-entry quota ended `resource-stop` with 0 evaluated and the detail
+"artifact quota exhausted".
+
+### Runs at `47a972d758170de880ab9a414eb6c2049b0bb9b1`
+
+All six summaries printed `Sufficient`, `rejected=0` and `cleanup: complete`,
+and the run records name this commit as the build source. The `check` runs used
+`--cases 1000 --wall-ms 1500000 --seed 1172 --storage-entries 100000
+--storage-bytes 8589934592`; the regression runs used `--cases 64
+--wall-ms 600000`, with the work directory shared by all six.
+
+| Command | Target | Evaluated | Summary status |
+| --- | --- | --- | --- |
+| `check` | native authoring | 1000 | sufficient |
+| `check` | markup parse | 1000 | sufficient |
+| `check` | capture import | 1000 | sufficient |
+| `check --regressions` on `seeds/native` | native authoring | 8 | sufficient |
+| `check --regressions` on `seeds/markup` | markup parse | 12 | sufficient |
+| `check --regressions` on `seeds/capture` | capture import | 16 | sufficient |
+
+### Findings and commands
 
 No run printed a failure; the failure artifact directories were empty and every
-run that evaluated cases printed `cleanup: complete`. There is therefore no retained failure, replay
-or reduction and no regression case is bundled. The campaign summaries do not
-count rejections or unsupported outcomes separately.
+run that evaluated cases printed `cleanup: complete`. There is therefore no
+retained failure, replay or reduction and no regression case is bundled. The
+campaign summaries do not count rejections or unsupported outcomes separately.
 
-Commands as run (the `check` work directory was created by the first command and
-reused by the later `check` commands; a separate directory was likewise reused by
-the `run` commands; each `$src` is the clean checkout):
+Commands as run (each `$src` is a clean checkout, and each work directory was
+created by the tool and reused by the later commands of the same kind):
 
 ```sh
 cargo build --offline --locked -j 1 -p surgeist-fuzz --features execution --bin surgeist-fuzz
@@ -341,13 +377,9 @@ surgeist-fuzz run --source "$src" --work "$work2" --target surgeist-html::captur
   --round-cases 10000 --round-ms 600000 --retained-entries 256
 ```
 
-The work directory must be outside the source. A first attempt on a directory I
-had created empty failed with "campaign file operation: I/O failure"; the same
-command succeeded once the tool created the directory itself, and later commands
-reused that tool-created directory, so only that observation is recorded here.
-The default 4 KiB input ceiling and 1,024 stored entries are too small for these
-targets; the entry quota may not exceed 100,000 (the tool rejects more with
-"invalid bounded storage quotas").
+The work directory must be outside the source. The default 4 KiB input ceiling
+and 1,024 stored entries are too small for these targets; the entry quota may not
+exceed 100,000 (the tool rejects more with "invalid bounded storage quotas").
 
 Parser feed partitions have no public operation, so no target here exercises
 them. The parser's own private tests do, and this branch's source passes them:
