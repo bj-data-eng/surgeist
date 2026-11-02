@@ -136,6 +136,87 @@ The current framework backend reports RSS sampling unavailable and rejects a
 required hard memory limit; finite fixture/product limits imply neither RSS nor
 allocator-overhead bounds.
 
+## Native authoring
+
+The separate `surgeist-html::native-authoring` target uses the actual public
+append-only document/fragment builders, checked processing-instruction values,
+ordered attributes, template contents and declarative shadow attachment. Its
+worker is [html-native-worker](src/bin/native.rs); the concrete
+[consumer](src/native/mod.rs), [codec](src/native/codec.rs),
+[observer](src/native/observe.rs) and [literal recipes](src/native/seeds.rs)
+belong to HTML. It uses the same shared engines and worker protocol as the
+Unicode targets. No private parser, live mutation or semantic query is invoked.
+
+Revision 1 `HNA1` begins with four magic bytes, one root/mode byte (fragment,
+no-quirks, limited-quirks, quirks), one literal ID (0..7 or 255 for general),
+five little-endian u64 native caps and one command-count byte. Commands encode
+element, text, comment, strict PI, doctype, template-contents lookup or shadow
+attachment. Each names an earlier command handle (root is zero), or 255 for a
+real handle issued by a different builder. Raw names preserve namespace URI,
+optional prefix and local name; attributes preserve their order. Optional
+fields retain absent versus present-empty. Every string is a u16 length and
+exact little-endian UTF16 units. Known HTML names and two hidden keywords use
+closed tags and the public canonical producers. Unknown tags, forward handles,
+truncation, extra bytes, changed literal input and over-envelope fields/caps are
+format errors before allocating native values. A handle from a rejected command
+cannot be used: evaluation stops that dependency chain and checks the real
+admitted prefix, rather than substituting a root or invented node.
+
+The hard target policy is 64 KiB encoded input, 256 KiB precredited consumer
+buffers/wrapper allowance, 64 total native nodes including qualification probes,
+depth 8, 8192 aggregate name/value units, 128 attributes (eight per element),
+64 commands and 96 coarse recipe/observation-operation credits. Names, URIs and
+prefixes are at most 128 units; individual values/text are at most 512.
+Native limits default to `(64,128,128,8192,8)` for nodes, edges, attributes,
+units and depth and may be lowered to zero. Framework credit uses actual Rust
+slot sizes, at most two recipe and encoding buffers, four payload copies,
+bounded child/handle/identity slots, and a stated 576-byte wrapper allowance per
+possible node. Reservations check observed vector capacity before writes.
+The framing/field bounds prove a tighter 18,735-byte encoding buffer ceiling.
+These are consumer allocations and logical native limits, not all native arena
+allocation, allocator overhead, RSS, or a native work/cancellation controller.
+
+Eight [input seeds](seeds/native) independently specify exact payloads and
+ordered attributes, HTML/SVG/MathML/custom namespaces, absent/empty prefixes and
+doctype identifiers, isolated surrogates, template/shadow forward and reverse
+links, strict PI rejection, duplicate expanded attribute names, and real foreign
+IDs. Expected values and error classes are declared from the public construction
+contracts and pinned language rules, not sampled output goldens. Frozen results
+must preserve parent/child/association order and identity; cloning retains the
+same qualified IDs and another result rejects them. Rejected appends must leave
+admitted usage unchanged, and later independent valid appends are exercised.
+Native rejection is nonterminal, unlike the parse controller's first-stop model.
+
+Generation and evaluation:
+
+- One quarter of entropy selects literal recipes, and one quarter an exact UTF16
+  text append. The rest drives a bounded command generator over closed pools:
+  near-miss template spellings (`Template`, `TEMPLATE`, foreign `template`, a
+  prefixed HTML `template`), attribute names sharing or differing in namespace
+  and local name, reserved and malformed PI targets and data, leaf and template
+  parents, repeated shadow attachment, handles from another builder, isolated
+  surrogates and quotas lowered on one axis. Recipes over the consumer envelope
+  are generation rejections, not evaluations.
+- Before each command the evaluator states the contract's outcome from the
+  recipe alone and compares the builder's reply with it: attribute duplicates
+  (expanded name, never prefix), PI syntax, foreign handle, parent kind, then
+  the first exceeded resource in declaration order with its exact limit and
+  attempted count. The builder's usage must equal the recipe-derived usage after
+  every success and be unchanged after every refusal.
+- A predicted typed contract refusal is a verified positive result and the case
+  is `Evaluated`. A product resource refusal (a lowered quota, an allocation or
+  representation limit) is `ExpectedRejection`. A reply that differs from the
+  prediction is a property failure. A command naming a handle that an earlier
+  command did not produce stops only its own dependency chain.
+- Reduction removes command suffixes, removes one command that no later command
+  names (renumbering later handles, never repairing them) or halves one text or
+  comment payload, retaining mode, caps and UTF16 units. Literal oracles are not
+  reduced.
+
+Tests cover default workers, strict transport, quota boundaries, contract
+refusals, canonical replay/reduction, registry, and finite property and coverage
+driver parity.
+
 Remaining #1139 obligations include additional actual captured contexts/options,
 UTF8/UTF16 paired semantic projections with independently mapped coordinates,
 full metadata/history/reverse-query properties, native authoring/semantic operation

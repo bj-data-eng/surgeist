@@ -1,9 +1,11 @@
 //! HTML-owned concrete cases over public complete parse front doors.
 #![forbid(unsafe_code)]
 mod codec;
+mod native;
 mod observe;
 mod seeds;
 pub use codec::{Lane, ParseKind, UnicodeCase, UnicodeSource};
+pub use native::{NativeCase, NativeTarget};
 use surgeist_fuzz::{registry::FuzzManifest, *};
 
 pub(crate) fn error(detail: impl Into<String>) -> FuzzError {

@@ -37,3 +37,9 @@ name = "html-fragment-worker"
 path = "src/bin/fragment.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "html-native-worker"
+path = "src/bin/native.rs"
+test = false
+doc = false
