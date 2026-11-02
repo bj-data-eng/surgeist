@@ -1,13 +1,16 @@
-use crate::semantics::support::{builder, semantic_limits as limits, session};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, result_record_bytes,
+    semantic_limits as limits, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState, HtmlOptionReadback,
-    HtmlOptionReadbackOrigin, HtmlSelectValue, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticResource,
-    HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState,
+    HtmlOptionReadback, HtmlOptionReadbackOrigin, HtmlSelectValue, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -511,76 +514,55 @@ fn work_output_scratch_utf16_capacity_and_bytes_have_exact_one_short_limits() {
     let (c, o) = leaf_option(&[], &[" A  B C ".into()]);
     let cx = context(&c, &[]);
     let req = request(&o, HtmlSemanticQuery::OptionText);
-    let baseline = session(&c, &cx, limits(), 0, HtmlSemanticCancellation::new())
-        .query(std::slice::from_ref(&req))
-        .unwrap()
-        .usage();
-    assert!(baseline.nested_output_records() >= 5);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, baseline.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            baseline.output_records(),
-        ),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            baseline.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            baseline.nested_output_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            baseline.allocated_bytes(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let l = HtmlSemanticLimits::new(
-                if resource == HtmlSemanticResource::Work {
-                    cap
-                } else {
-                    limits().work()
-                },
-                if resource == HtmlSemanticResource::OutputRecords {
-                    cap
-                } else {
-                    100
-                },
-                if resource == HtmlSemanticResource::ScratchRecords {
-                    cap
-                } else {
-                    1000
-                },
-                0,
-                if resource == HtmlSemanticResource::AllocatedBytes {
-                    cap
-                } else {
-                    1000000
-                },
-                if resource == HtmlSemanticResource::NestedOutputRecords {
-                    cap
-                } else {
-                    100000
-                },
-            );
-            let mut ss = session(&c, &cx, l, 0, HtmlSemanticCancellation::new());
-            let r = ss.query(std::slice::from_ref(&req));
-            if cap == exact {
-                assert!(r.is_ok(), "{resource:?}: {r:?}");
-            } else {
-                let failure = r.unwrap_err();
-                assert!(
-                    matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{resource:?}: {failure:?}"
-                );
-                assert_eq!(failure.qualification().unwrap().capture(), c.identity());
-                assert_eq!(ss.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    let n = KnownHtmlElement::ALL.len();
+    let ns = "http://www.w3.org/1999/xhtml".len();
+    // Reservation (1), request lookup (1), dispatcher namespace test (29),
+    // readback lookup (1), namespace test (29) and "option" recognition; the
+    // text walk's lookup and visit (2) and its one frame (growth 1, push 1);
+    // the text child's loop charge (1), lookup (1) and eight unit reads (8);
+    // the three kept units cost a retained unit each plus one separator
+    // each for the last two, and every kept unit also grows the buffer:
+    // "A" = growth 1 + push 1, "B" = growth 1 + separator 1 + push 1 and
+    // "C" likewise (2 + 3 + 3 = 8); the exhausted text frame (loop charge 1,
+    // pop 1); the closing charge (1); and the result write (1).
+    let work = 1
+        + 1
+        + (1 + ns)
+        + 1
+        + (1 + ns)
+        + (("option".len() + 1) * n + ns)
+        + 2
+        + 2
+        + (1 + 1 + 8)
+        + 8
+        + 2
+        + 1
+        + 1;
+    // "A B C" is five units retained by exact growth of 1, 2 and 2; one frame
+    // is live for the walk.
+    let r = assert_exact_and_one_short_caps(
+        "option text",
+        &c,
+        &cx,
+        0,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 100000),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(5),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'static>>()
+                    + 5 * 2,
+            ),
+        },
+    );
+    assert_eq!(
+        option(r.results()[0].fact()).value().code_units(),
+        [65, 32, 66, 32, 67]
+    );
 }
 
 #[test]
