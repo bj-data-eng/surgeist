@@ -564,3 +564,72 @@ fn a_hidden_nonce_adds_the_same_visits_whatever_unrelated_elements_precede_it() 
         POOL_PROBE_SLACK,
     );
 }
+
+/// The record visits `inner` adds to a document whose head already holds a
+/// deciding element, after `depth` open spans in the body.
+fn visits_added_below_a_first(first: &str, depth: usize, cell: &str, inner: &str) -> i64 {
+    let page = |inner: &str| {
+        format!(
+            "<!doctype html><head>{first}</head><body>{}{cell}{inner}",
+            "<span>".repeat(depth)
+        )
+    };
+    record_visits(page(inner)) as i64 - record_visits(page("")) as i64
+}
+
+/// Requires the visits `inner` adds to grow with the open elements around it by
+/// at most `PER_LEVEL` for each one, exactly as far as the order comparison needs.
+///
+/// Placing a meta that may precede the deciding meta, or a style that may follow
+/// the last listed style, asks which of two elements comes first in tree order.
+/// The pinned algorithms define that order: the selection of a theme color and
+/// of a supported color scheme take their candidates "in tree order" (lines
+/// 1834 and 1876 of
+/// `references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md`),
+/// and two elements in different branches are ordered by their lowest common
+/// ancestor, so every level between the deeper element and that ancestor is
+/// looked at. The walk the pinned text describes looks at all of them and more;
+/// this comparison looks at each once.
+fn assert_order_comparison_costs_one_visit_per_level(first: &str, cell: &str, inner: &str) {
+    const PER_LEVEL: i64 = 1;
+    let depths = [50usize, 200, 800];
+    let measures = depths.map(|depth| visits_added_below_a_first(first, depth, cell, inner));
+    for (pair, window) in depths.windows(2).zip(measures.windows(2)) {
+        let levels = (pair[1] - pair[0]) as i64;
+        let grew = window[1] - window[0];
+        assert!(
+            grew <= PER_LEVEL * levels + POOL_PROBE_SLACK,
+            "{inner} added {measures:?} record visits after {depths:?} open spans: {grew} more \
+             for {levels} more levels"
+        );
+    }
+}
+
+#[test]
+fn a_second_theme_color_meta_costs_one_visit_per_open_level_to_order() {
+    assert_order_comparison_costs_one_visit_per_level(
+        "<meta name=theme-color content=red>",
+        "",
+        "<meta name=theme-color content=blue>",
+    );
+}
+
+#[test]
+fn a_second_style_costs_one_visit_per_open_level_to_order() {
+    assert_order_comparison_costs_one_visit_per_level(
+        "<style>a{}</style>",
+        "",
+        "<style>b{}</style>",
+    );
+}
+
+#[test]
+fn a_second_fostered_style_costs_one_visit_per_open_level_to_order() {
+    assert_order_comparison_costs_one_visit_per_level(
+        "<style>a{}</style>",
+        // A table cell ends the scope checks of the table start tag and of the
+        // fostered element, which would otherwise add their own level costs.
+        "<table><tr><td>",
+        "<table><b><style>b{}</style></b></table>",
+    );
+}

@@ -414,7 +414,7 @@ fn work_added_by_each_doubling_of_unselectable_color_scheme_metas_is_near_double
         |repeats| {
             format!(
                 "<!doctype html><head>{}",
-                "<meta name=color-scheme content=1>".repeat(repeats)
+                "<meta name=theme-color content=bogus>".repeat(repeats)
             )
         },
         &[
@@ -441,6 +441,74 @@ fn work_added_by_each_doubling_of_metas_behind_a_selected_theme_color_is_near_do
             ("total work", |work| work.total),
         ],
     );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_candidate_metas_in_a_moved_subtree_is_near_double() {
+    // `</b>` finds the formatting element `b` with the furthest block `p`, and
+    // the adoption agency algorithm moves `p` with every meta it holds. Each
+    // meta is a candidate for the theme color that selects nothing, and the
+    // one move decides the selection once, not once for each candidate.
+    assert_doublings_add_near_double(
+        [10, 20, 40, 80],
+        |repeats| {
+            format!(
+                "<!doctype html><b><p>{}</b>",
+                "<meta name=theme-color content=bogus>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_candidate_metas_in_a_nested_moved_subtree_is_near_double() {
+    // The same move after a second formatting element and a block, so that the
+    // subtree moved is not the first child of its new parent.
+    assert_doublings_add_near_double(
+        [10, 20, 40, 80],
+        |repeats| {
+            format!(
+                "<!doctype html><a><b><div>{}</a>",
+                "<meta name=theme-color content=bogus>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_children_in_a_moved_subtree_is_near_double() {
+    // Every child of the moved `p` is visited as the subtree is inserted, and
+    // stepping from one child to the next must not count from the first. The
+    // children are comments, the cheapest nodes, so that a term quadratic in
+    // them is a large share of the work: it raises the ratio of one doubling to
+    // the previous one from two to about 2.8 over these sizes, so this bound is
+    // tighter than the one the other tests share.
+    const BOUND_TENTHS: u64 = 22;
+    let sizes = [100usize, 200, 400, 800];
+    let measured: Vec<u64> = sizes
+        .iter()
+        .map(|&n| parse_work(format!("<!doctype html><b><p>{}</b>", "<!--c-->".repeat(n))).visited)
+        .collect();
+    for (pair, window) in sizes.windows(3).zip(measured.windows(3)) {
+        let (first, second) = (window[1] - window[0], window[2] - window[1]);
+        assert!(
+            second * 10 <= BOUND_TENTHS * first,
+            "record visits grew faster than linearly: doubling {} -> {} children added {first}, \
+             doubling {} -> {} added {second}",
+            pair[0],
+            pair[1],
+            pair[1],
+            pair[2],
+        );
+    }
 }
 
 #[test]
