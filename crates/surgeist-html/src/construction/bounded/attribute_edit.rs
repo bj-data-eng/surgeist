@@ -135,7 +135,6 @@ pub struct HtmlConstructionAttributeEdit {
     target: usize,
     target_checked: bool,
     phase: GroupPhase,
-    next: Option<GroupPhase>,
     failure: Option<HtmlConstructionError>,
     busy: bool,
     used: bool,
@@ -183,6 +182,8 @@ pub struct HtmlConstructionAttributeAction<'a> {
 }
 pub struct HtmlConstructionAttributeObservation<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
+    /// The phase this accepted observation resumes.
+    next: GroupPhase,
 }
 impl HtmlConstructionAttributeEdit {
     #[expect(
@@ -201,7 +202,6 @@ impl HtmlConstructionAttributeEdit {
             target: 0,
             target_checked: false,
             phase: GroupPhase::Target,
-            next: None,
             failure: None,
             busy: false,
             used: false,
@@ -289,7 +289,6 @@ impl HtmlConstructionAttributeEdit {
             name,
             prior_name: None,
             phase: CandidatePhase::Target(0),
-            next: None,
             found: false,
             complete: false,
             failure: None,
@@ -329,7 +328,6 @@ impl HtmlConstructionAttributeEdit {
             edit: self,
             input,
             phase: SlotPhase::Input,
-            next: None,
             failure: None,
             finished: false,
             usage,
@@ -465,9 +463,8 @@ impl<'a> HtmlConstructionAttributeAction<'a> {
         })();
         match result {
             Ok(next) => {
-                edit.next = Some(next);
                 edit.phase = GroupPhase::Observing;
-                Ok(HtmlConstructionAttributeObservation { edit })
+                Ok(HtmlConstructionAttributeObservation { edit, next })
             }
             Err(e) => {
                 edit.failure = Some(e.clone());
@@ -482,7 +479,7 @@ impl HtmlConstructionAttributeObservation<'_> {
         self.edit.plan.as_ref()
     }
     pub fn accept(self) {
-        self.edit.phase = self.edit.next.take().expect("pending group observation");
+        self.edit.phase = self.next;
     }
 }
 
@@ -503,7 +500,6 @@ pub struct HtmlConstructionAttributeCandidate<'e, 'n> {
     name: &'n DocumentString,
     prior_name: Option<&'n DocumentString>,
     phase: CandidatePhase,
-    next: Option<CandidatePhase>,
     found: bool,
     complete: bool,
     failure: Option<HtmlConstructionError>,
@@ -513,6 +509,8 @@ pub struct HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
 }
 pub struct HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n> {
     candidate: &'a mut HtmlConstructionAttributeCandidate<'e, 'n>,
+    /// The phase this accepted observation resumes.
+    next: CandidatePhase,
     allocation: bool,
 }
 impl Drop for HtmlConstructionAttributeCandidate<'_, '_> {
@@ -763,10 +761,10 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
         })();
         match result {
             Ok(next) => {
-                c.next = Some(next);
                 c.phase = CandidatePhase::Observing;
                 Ok(HtmlConstructionAttributeCandidateObservation {
                     candidate: c,
+                    next,
                     allocation,
                 })
             }
@@ -788,7 +786,7 @@ impl HtmlConstructionAttributeCandidateObservation<'_, '_, '_> {
         })
     }
     pub fn accept(self) {
-        self.candidate.phase = self.candidate.next.take().expect("candidate observation");
+        self.candidate.phase = self.next;
     }
 }
 
@@ -817,18 +815,23 @@ enum SlotPhase {
     NextName,
     NamedIdentity,
     SameName,
-    Compare { index: usize, name: NamePhase },
+    Compare {
+        index: usize,
+        name: NamePhase,
+    },
     Reserve,
     Layout,
     Unique,
-    Observing,
+    /// Awaiting acceptance; records whether acceptance resumes at `Ready`.
+    Observing {
+        resumes_ready: bool,
+    },
     Ready,
 }
 pub struct HtmlConstructionAttributeSlot<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
     input: SlotInput<'a>,
     phase: SlotPhase,
-    next: Option<SlotPhase>,
     failure: Option<HtmlConstructionError>,
     finished: bool,
     usage: HtmlConstructionUsage,
@@ -840,6 +843,8 @@ pub struct HtmlConstructionAttributeSlotAction<'a, 'e> {
 }
 pub struct HtmlConstructionAttributeSlotObservation<'a, 'e> {
     slot: &'a mut HtmlConstructionAttributeSlot<'e>,
+    /// The phase this accepted observation resumes.
+    next: SlotPhase,
     capacity: bool,
 }
 pub struct HtmlConstructionReadyAttributeSlot<'a> {
@@ -855,8 +860,13 @@ impl Drop for HtmlConstructionAttributeSlot<'_> {
 impl<'e> HtmlConstructionAttributeSlot<'e> {
     pub fn shared_attributes(&self) -> Result<&Arc<Vec<Attribute>>, HtmlConstructionError> {
         if self.failure.is_none()
-            && (matches!(self.phase, SlotPhase::Ready)
-                || matches!(self.next, Some(SlotPhase::Ready)))
+            && matches!(
+                self.phase,
+                SlotPhase::Ready
+                    | SlotPhase::Observing {
+                        resumes_ready: true
+                    }
+            )
         {
             return Err(HtmlConstructionError::OperationNotReady);
         }
@@ -872,7 +882,7 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
         if let Some(e) = &self.failure {
             return Err(e.clone());
         }
-        if matches!(self.phase, SlotPhase::Observing) {
+        if matches!(self.phase, SlotPhase::Observing { .. }) {
             return Err(HtmlConstructionError::OperationNotReady);
         }
         Ok((!matches!(self.phase, SlotPhase::Ready))
@@ -1028,7 +1038,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                     },
                 }
             }
-            SlotPhase::Observing | SlotPhase::Ready => unreachable!("pending slot action"),
+            SlotPhase::Observing { .. } | SlotPhase::Ready => unreachable!("pending slot action"),
         }
         .transitions::<SlotPhase>()
     }
@@ -1217,9 +1227,14 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
         })();
         match result {
             Ok(next) => {
-                s.next = Some(next);
-                s.phase = SlotPhase::Observing;
-                Ok(HtmlConstructionAttributeSlotObservation { slot: s, capacity })
+                s.phase = SlotPhase::Observing {
+                    resumes_ready: matches!(next, SlotPhase::Ready),
+                };
+                Ok(HtmlConstructionAttributeSlotObservation {
+                    slot: s,
+                    next,
+                    capacity,
+                })
             }
             Err(e) => {
                 s.failure = Some(e.clone());
@@ -1236,7 +1251,7 @@ impl HtmlConstructionAttributeSlotObservation<'_, '_> {
         self.capacity.then_some(self.slot.edit.capacity)
     }
     pub fn accept(self) {
-        self.slot.phase = self.slot.next.take().expect("slot observation");
+        self.slot.phase = self.next;
     }
 }
 impl HtmlConstructionReadyAttributeSlot<'_> {
@@ -1896,7 +1911,7 @@ mod tests {
         let mut pending = Some(edit.replace(0, &mut incoming).unwrap());
         while let Some(action) = pending.as_mut().unwrap().next_action().unwrap() {
             let observation = action.perform().unwrap();
-            if matches!(observation.slot.next, Some(SlotPhase::Ready)) {
+            if matches!(observation.next, SlotPhase::Ready) {
                 assert!(matches!(
                     observation.shared_attributes(),
                     Err(HtmlConstructionError::OperationNotReady)

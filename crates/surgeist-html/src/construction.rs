@@ -844,16 +844,12 @@ impl Builder {
         limits: HtmlConstructionLimits,
         kind: HtmlNodeKind,
     ) -> Result<Self, HtmlConstructionError> {
-        let mut initialization = Some(bounded::HtmlConstructionStorage::begin());
-        while let Some(action) = initialization
-            .as_mut()
-            .expect("initialization owner")
-            .next_action()?
-        {
+        let mut initialization = bounded::HtmlConstructionStorage::begin();
+        while let Some(action) = initialization.next_action()? {
             action.perform().accept();
         }
         let storage =
-            bounded::HtmlConstructionInitialization::try_ready(&mut initialization)?.commit();
+            bounded::HtmlConstructionInitialization::try_ready(&mut Some(initialization))?.commit();
         let mut builder = Self {
             storage: Some(storage),
             limits,
@@ -940,17 +936,11 @@ impl Builder {
         command: bounded::HtmlConstructionCommand,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
         let storage = self.storage.take().expect("native storage retained");
-        let mut operation = Some(
-            storage
-                .prepare(command)
-                .unwrap_or_else(|_| unreachable!("preparation retains all operands")),
-        );
+        let mut operation = storage
+            .prepare(command)
+            .unwrap_or_else(|_| unreachable!("preparation retains all operands"));
         let result = (|| {
-            while let Some(action) = operation
-                .as_mut()
-                .expect("pending native operation")
-                .next_action()?
-            {
+            while let Some(action) = operation.next_action()? {
                 action
                     .perform()
                     .map_err(|failure| failure.into_parts().0)?
@@ -959,15 +949,11 @@ impl Builder {
             Ok::<_, HtmlConstructionError>(())
         })();
         if let Err(error) = result {
-            let (storage, _, _) = operation
-                .take()
-                .expect("refused operation retained")
-                .abort()
-                .into_parts();
+            let (storage, _, _) = operation.abort().into_parts();
             self.storage = Some(storage);
             return Err(error);
         }
-        match bounded::HtmlConstructionOperation::try_ready(&mut operation)?.commit() {
+        match bounded::HtmlConstructionOperation::try_ready(&mut Some(operation))?.commit() {
             bounded::HtmlConstructionCommit::Changed { storage, created } => {
                 self.storage = Some(storage);
                 Ok(created)
@@ -1078,14 +1064,10 @@ impl Builder {
     fn finish(mut self) -> Arc<Arena> {
         let root = self.handle(0);
         let storage = self.storage.take().expect("native storage retained");
-        let mut operation = Some(
-            storage
-                .prepare_finish(root)
-                .unwrap_or_else(|_| unreachable!("native root exists")),
-        );
+        let mut operation = storage
+            .prepare_finish(root)
+            .unwrap_or_else(|_| unreachable!("native root exists"));
         while let Some(action) = operation
-            .as_mut()
-            .expect("native publication owner")
             .next_action()
             .expect("native construction invariants")
         {
@@ -1094,7 +1076,7 @@ impl Builder {
                 .expect("native construction publication")
                 .accept();
         }
-        match bounded::HtmlConstructionOperation::try_ready(&mut operation)
+        match bounded::HtmlConstructionOperation::try_ready(&mut Some(operation))
             .expect("native publication ready")
             .commit()
         {
