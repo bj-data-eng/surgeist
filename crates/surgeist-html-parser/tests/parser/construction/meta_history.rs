@@ -594,3 +594,40 @@ fn media_and_css_fact_absence_are_missing_operations_and_independent_fields_cont
         assert!(scheme(state).unwrap().result().is_ok());
     }
 }
+
+#[test]
+fn candidate_metas_in_a_subtree_the_adoption_agency_moves_select_in_tree_order() {
+    // Each document is the one parse that moves a subtree holding the three
+    // candidates. The first that selects a color or scheme in tree order wins,
+    // however the subtree arrived where it is.
+    for source in [
+        "<!doctype html><b><p><meta name=theme-color content=bogus><meta name=theme-color content=red><meta name=theme-color content=blue></b>",
+        "<!doctype html><a><b><div><meta name=theme-color content=bogus><meta name=theme-color content=red><meta name=theme-color content=blue></a>",
+        "<!doctype html><meta name=theme-color content=bogus><b><p><meta name=theme-color content=red><meta name=theme-color content=blue></b>",
+    ] {
+        let report = parse(source);
+        let states = rows(&report);
+        let theme = states[0]
+            .theme_color()
+            .unwrap_or_else(|_| panic!("{source}"));
+        assert_eq!(
+            theme.and_then(|color| color.srgb_bytes()),
+            Some([255, 0, 0]),
+            "{source}"
+        );
+    }
+    let report = parse(
+        "<!doctype html><b><p><meta name=color-scheme content=1><meta name=color-scheme content=dark><meta name=color-scheme content=light></b>",
+    );
+    let states = rows(&report);
+    let scheme = states[0].color_scheme().expect("a scheme is selected");
+    assert_eq!(
+        scheme
+            .source()
+            .source()
+            .original_utf16()
+            .unwrap()
+            .as_slice(),
+        "dark".encode_utf16().collect::<Vec<_>>()
+    );
+}

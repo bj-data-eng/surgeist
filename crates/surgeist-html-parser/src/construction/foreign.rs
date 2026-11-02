@@ -100,9 +100,10 @@ impl ParserArenaSession {
         let storage = self.active()?;
         let parent = storage.index(c, intended_parent)?;
         storage.container(c, parent)?;
-        if storage.associated_document_parent(c, parent)? {
+        if self.active_mut()?.associated_document_parent(c, parent)? {
             return Err(SessionError::AssociationMove);
         }
+        let storage = self.active()?;
         c.require_source_range(token_source)?;
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
         SessionStorage::check_html_tag(c, tag)?;

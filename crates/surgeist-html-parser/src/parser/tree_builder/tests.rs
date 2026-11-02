@@ -11030,6 +11030,8 @@ fn style_order_extensions_agree_with_the_tree_walk_over_varied_documents() {
         "<style>a{}</style><!--c--><style>b{}</style>t<style>c{}</style>",
         "<table><style>a{}</style><tr><td><style>b{}</style></table><style>c{}",
         "<table><b><style>a{}</style></b><tr><td>x</table><style>c{}",
+        // The fostered style comes before the style already in the table.
+        "<table><style>a{}</style><b><style>b{}</style></b></table><style>c{}",
         "<b><style>a{}</style><p>x</b><style>b{}</style>",
         "<b><p><style>a{}</style></b>x</p><style>b{}</style>",
         "<a>1<style>a{}</style><a>2<style>b{}</style></a></a><style>c{}",
