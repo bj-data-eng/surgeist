@@ -2025,6 +2025,9 @@ function capturedTextStyle(parent) {
       !['normal', ''].includes(style.unicodeBidi)) {
     throw new Error('Prepared text requires the exact unsynthesized pinned face and supported normal-bidi frame');
   }
+  if (style.writingMode !== 'horizontal-tb' && style.dominantBaseline !== 'auto') {
+    throw new Error('Vertical prepared text requires the default dominant baseline');
+  }
   const fontSize = parseCssPx(style.fontSize);
   const lineHeight = parseCssPx(style.lineHeight);
   const whitespace = { normal: 'collapse', nowrap: 'collapse', pre: 'preserve', 'pre-wrap': 'preserve', 'break-spaces': 'preserve-spaces' }[style.whiteSpace];

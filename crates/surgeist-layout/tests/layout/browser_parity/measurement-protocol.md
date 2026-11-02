@@ -21,6 +21,13 @@ container, alongside the pinned font context. The opt-in does not override a
 computed UA `isolate` value or authorize unrepresented isolation boundaries;
 the helper validates the actual normal-bidi context before capture.
 
+The vertical profile also requires computed `dominant-baseline: auto`. Its
+authenticated Mixed/Vertical preparation resolves Text's central baseline, so
+the reader requests `InlineBaselineContext::Named(Central)` on that paragraph
+container. Layout owns matching child baselines and synthesis from genuine
+absence. Raw physical alignment and other typographic contexts retain their
+separate operations; writing mode alone does not grant named-baseline authority.
+
 The capture records:
 
 - The exact font resource, face index, CSS descriptors, feature/variation and

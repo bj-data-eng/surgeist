@@ -2101,6 +2101,30 @@ impl TestTree {
                 }
             }
         };
+        if let Some(capture) = &node.prepared
+            && capture.prepared.orientation() == surgeist_text::LineOrientation::Vertical
+        {
+            // The closed CSS profile qualifies Mixed vertical typography and
+            // its default dominant baseline. Use Text's resolved name; raw
+            // Physical alignment would select a different atomic fallback.
+            if !matches!(
+                capture.prepared.analyzed_source().typography(),
+                surgeist_text::AnalysisTypography::Mixed
+            ) || capture.prepared.baseline_reference()
+                != Some(surgeist_text::FontBaseline::Central)
+            {
+                return Err(Error::new(
+                    "prepared vertical container lacks resolved Mixed central-baseline authority",
+                ));
+            }
+            let mut input = layout_input
+                .as_box()
+                .ok_or_else(|| Error::new("prepared paragraph requires its actual box container"))?
+                .clone();
+            input.inline_baseline_context =
+                layout::InlineBaselineContext::Named(layout::BaselineName::Central);
+            layout_input = layout::LayoutInput::box_input(input);
+        }
         if let Some(participation) = node.atomic_inline_participation {
             let Some(input) = layout_input.as_box() else {
                 return Err(Error::new("atomic placeholder must reference a box child"));
