@@ -5,6 +5,19 @@
 //! retains arbitrary decimal fractions and normalizes explicit offsets without
 //! substituting permissive parsing for author conformance. No host clock or time
 //! zone is consulted.
+//!
+//! A single-grammar entry point (one month, date, yearless date, time, local
+//! date-time, offset, global date-time, week or duration string) reports the
+//! failure of the first pinned parsing step that rejects the string. The
+//! ten-alternative time-element entry points are not single grammars: they
+//! return the first matching alternative, else the last alternative's error.
+//! Within a time component that order is the hour digits, the hour
+//! range (step 2), the colon, the minute digits, the minute range (step 5), then
+//! the seconds grammar (step 7.3) before the seconds range (step 7.4), so
+//! `24:00:00..1` reports an hour range error rather than the later fraction
+//! syntax error. Every other range (month, day, week, yearless month and day)
+//! likewise precedes the later steps and the trailing-input check, so
+//! `2021-W53X` reports a week range error.
 
 pub(crate) mod interpretation;
 
@@ -164,9 +177,23 @@ fn days_in_month(month: u8, leap: bool) -> u8 {
     }
 }
 
+/// Zero-based day within the 400-year Gregorian cycle that contains the date.
+/// `preceding_remainder` is `(year - 1) mod 400`, so a year divisible by 400
+/// passes 399, and `leap` is the date's own year. Only the within-year month
+/// visits iterate.
+/// This is the single day-counting rule; callers add whole preceding cycles of
+/// 146097 days when they need an absolute ordinal.
+fn day_within_cycle(preceding_remainder: u32, month: u8, day: u8, leap: bool) -> u32 {
+    let mut ordinal = u32::from(day) - 1;
+    for earlier in 1..month {
+        ordinal += u32::from(days_in_month(earlier, leap));
+    }
+    preceding_remainder * 365 + preceding_remainder / 4 - preceding_remainder / 100 + ordinal
+}
+
 // Shared by the UTC and input-coordinate owners. Gregorian 0001-01-01 has
-// ordinal zero. Only the within-year month visits are iterative; arbitrary
-// years are handled with one 400-year quotient/remainder.
+// ordinal zero. Arbitrary years are handled with one 400-year
+// quotient/remainder over the preceding year.
 fn gregorian_ordinal(date: &HtmlDate) -> HtmlNonNegativeInteger {
     let preceding = date
         .year()
@@ -175,11 +202,12 @@ fn gregorian_ordinal(date: &HtmlDate) -> HtmlNonNegativeInteger {
         .expect("HTML years are positive");
     let (cycles, remainder) =
         preceding.quotient_remainder(NonZeroU32::new(400).expect("400 is nonzero"));
-    let mut ordinal = u32::from(date.day()) - 1;
-    for month in 1..date.month() {
-        ordinal += u32::from(days_in_month(month, date.year().is_leap_year()));
-    }
-    let within_cycle = remainder * 365 + remainder / 4 - remainder / 100 + ordinal;
+    let within_cycle = day_within_cycle(
+        remainder,
+        date.month(),
+        date.day(),
+        date.year().is_leap_year(),
+    );
     cycles
         .multiplied_by(146097)
         .added_to(&u128::from(within_cycle).into())
@@ -1128,13 +1156,23 @@ impl<'a> TemporalValidationCursor<'a> {
                         self.week = self.pair;
                         self.step = TemporalScanStep::Finish;
                     }
+                    // §2.3.5.4 steps 2 and 5 reject an out-of-range hour or
+                    // minute before any later step can be reached.
                     TemporalPair::Hour => {
                         self.hour = self.pair;
-                        self.step = TemporalScanStep::Colon;
+                        if self.hour > 23 {
+                            self.fail(HtmlTemporalError::HourOutOfRange);
+                        } else {
+                            self.step = TemporalScanStep::Colon;
+                        }
                     }
                     TemporalPair::Minute => {
                         self.minute = self.pair;
-                        self.step = TemporalScanStep::TimeTail;
+                        if self.minute > 59 {
+                            self.fail(HtmlTemporalError::MinuteOutOfRange);
+                        } else {
+                            self.step = TemporalScanStep::TimeTail;
+                        }
                     }
                     TemporalPair::Second => {
                         self.second = self.pair;
@@ -1204,27 +1242,22 @@ impl<'a> TemporalValidationCursor<'a> {
                     self.format,
                     TemporalInputFormat::Time | TemporalInputFormat::LocalDateTime
                 ) {
-                    if self.hour > 23 {
-                        self.fail(HtmlTemporalError::HourOutOfRange);
-                        return;
-                    }
-                    if self.minute > 59 {
-                        self.fail(HtmlTemporalError::MinuteOutOfRange);
-                        return;
-                    }
+                    // Hour and minute were checked at their own steps; step 7.4
+                    // checks the seconds only after the step 7.3 grammar.
                     if self.second > 59 {
                         self.fail(HtmlTemporalError::SecondOutOfRange);
                         return;
                     }
                 }
-                if self.full && self.position != self.input.len() {
-                    self.fail(HtmlTemporalError::InvalidSyntax);
-                    return;
-                }
+                // §2.3.5.8 step 9 (week range) precedes step 10 (trailing input).
                 if self.format == TemporalInputFormat::Week
                     && (self.week == 0 || self.week > last_week_from_remainder(self.remainder))
                 {
                     self.fail(HtmlTemporalError::WeekOutOfRange);
+                    return;
+                }
+                if self.full && self.position != self.input.len() {
+                    self.fail(HtmlTemporalError::InvalidSyntax);
                     return;
                 }
                 let year = BorrowedYear {
@@ -1421,11 +1454,7 @@ impl<'a> BorrowedDate<'a> {
     pub(crate) fn within_cycle_days(self) -> u32 {
         let remainder = self.year().remainder_400();
         let preceding = u32::from(if remainder == 0 { 399 } else { remainder - 1 });
-        let mut ordinal = u32::from(self.day) - 1;
-        for month in 1..self.month() {
-            ordinal += u32::from(days_in_month(month, self.year().leap()));
-        }
-        preceding * 365 + preceding / 4 - preceding / 100 + ordinal
+        day_within_cycle(preceding, self.month(), self.day, self.year().leap())
     }
     pub(crate) fn assemble(self, year: HtmlYear) -> HtmlDate {
         HtmlDate {
@@ -1601,14 +1630,7 @@ pub(crate) fn recognize_time_alternative(
         TemporalAlternative::Month => BorrowedTemporalPlan::Month(cursor.borrowed_month()?),
         TemporalAlternative::Date => BorrowedTemporalPlan::Date(cursor.borrowed_date()?),
         TemporalAlternative::YearlessDate => {
-            if cursor.take(b'-') {
-                cursor.expect(b'-')?;
-            }
-            let month = cursor.pair()?;
-            cursor.expect(b'-')?;
-            let day = cursor.pair()?;
-            cursor.end()?;
-            BorrowedTemporalPlan::YearlessDate(HtmlYearlessDate::new(month, day)?)
+            BorrowedTemporalPlan::YearlessDate(cursor.whole_yearless_date()?)
         }
         TemporalAlternative::Time => BorrowedTemporalPlan::Time(cursor.borrowed_time(phase)?),
         TemporalAlternative::LocalDateTime => {
@@ -1992,6 +2014,23 @@ impl<'a> Cursor<'a> {
     fn date(&mut self) -> Result<HtmlDate, HtmlTemporalError> {
         self.borrowed_date().map(BorrowedDate::ordinary)
     }
+    /// A whole yearless date: optional `--`, month, `-`, day, then the end of
+    /// input. §2.3.5.3 checks the month range (step 3) before the hyphen and
+    /// the day range (step 7) before the trailing-input check.
+    fn whole_yearless_date(&mut self) -> Result<HtmlYearlessDate, HtmlTemporalError> {
+        if self.take(b'-') {
+            self.expect(b'-')?;
+        }
+        let month = self.pair()?;
+        if !(1..=12).contains(&month) {
+            return Err(HtmlTemporalError::MonthOutOfRange);
+        }
+        self.expect(b'-')?;
+        let day = self.pair()?;
+        let date = HtmlYearlessDate::new(month, day)?;
+        self.end()?;
+        Ok(date)
+    }
     fn borrowed_time(
         &mut self,
         phase: TemporalPhase,
@@ -2009,9 +2048,16 @@ impl<'a> Cursor<'a> {
             self.position += consumed;
             return Ok(plan);
         }
+        // §2.3.5.4 steps 2 and 5 check each range before the next step.
         let hour = self.pair()?;
+        if hour > 23 {
+            return Err(HtmlTemporalError::HourOutOfRange);
+        }
         self.expect(b':')?;
         let minute = self.pair()?;
+        if minute > 59 {
+            return Err(HtmlTemporalError::MinuteOutOfRange);
+        }
         let mut second_digits = &[0x30][..];
         let mut fraction_digits = &[][..];
         if self.take(b':') {
@@ -2043,13 +2089,7 @@ impl<'a> Cursor<'a> {
         } else {
             ((second_digits[0] - 0x30) * 10 + second_digits[1] - 0x30) as u8
         };
-        // Preserve the common native constructor's error order after grammar.
-        if hour > 23 {
-            return Err(HtmlTemporalError::HourOutOfRange);
-        }
-        if minute > 59 {
-            return Err(HtmlTemporalError::MinuteOutOfRange);
-        }
+        // Step 7.4 follows the step 7.3 seconds grammar.
         if second > 59 {
             return Err(HtmlTemporalError::SecondOutOfRange);
         }
@@ -2160,15 +2200,7 @@ pub(crate) fn validate_date(input: &DocumentString) -> Result<HtmlDate, HtmlTemp
 pub(crate) fn validate_yearless_date(
     input: &DocumentString,
 ) -> Result<HtmlYearlessDate, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    if cursor.take(b'-') {
-        cursor.expect(b'-')?;
-    }
-    let month = cursor.pair()?;
-    cursor.expect(b'-')?;
-    let day = cursor.pair()?;
-    cursor.end()?;
-    HtmlYearlessDate::new(month, day)
+    Cursor::new(input).whole_yearless_date()
 }
 pub(crate) fn validate_time(input: &DocumentString) -> Result<HtmlTime, HtmlTemporalError> {
     let mut cursor = Cursor::new(input);
@@ -2229,31 +2261,18 @@ pub(crate) fn validate_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemp
     Ok(plan.ordinary())
 }
 // The month/date/yearless/week processing algorithms have the same value
-// domains and full-consumption checks as their authored grammars (§2.3.5).
+// domains and full-consumption checks as their authored grammars (§2.3.5), so
+// each processing entry is the matching validator, as for weeks.
 pub(crate) fn parse_month(input: &DocumentString) -> Result<HtmlMonth, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    let value = cursor.month()?;
-    cursor.end()?;
-    Ok(value)
+    validate_month(input)
 }
 pub(crate) fn parse_date(input: &DocumentString) -> Result<HtmlDate, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    let value = cursor.date()?;
-    cursor.end()?;
-    Ok(value)
+    validate_date(input)
 }
 pub(crate) fn parse_yearless_date(
     input: &DocumentString,
 ) -> Result<HtmlYearlessDate, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    if cursor.take(b'-') {
-        cursor.expect(b'-')?;
-    }
-    let month = cursor.pair()?;
-    cursor.expect(b'-')?;
-    let day = cursor.pair()?;
-    cursor.end()?;
-    HtmlYearlessDate::new(month, day)
+    validate_yearless_date(input)
 }
 pub(crate) fn parse_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemporalError> {
     validate_week(input)
@@ -2392,6 +2411,15 @@ impl BorrowedTemporalPlan<'_> {
 }
 /// The ten author alternatives share allocation-free recognition with the
 /// controlled consumer; native materialization here uses ordinary allocation.
+///
+/// The first alternative that matches wins. When none matches, the error is
+/// that of the last alternative tried (duration), not the failure of a
+/// "first rejecting step": the datetime value "must match one of the following
+/// syntaxes" (elements capture line 6613) and the machine-readable-equivalent
+/// algorithm (§4.5.14, elements capture lines 6855-6877) returns the first
+/// success or, at step 11, "no machine-readable equivalent". Neither defines an
+/// order of failures across alternatives, so no alternative's error is
+/// privileged; each alternative's own error still follows its pinned steps.
 pub(crate) fn validate_time_element_value(
     input: &DocumentString,
 ) -> Result<HtmlTimeElementValue, HtmlTemporalError> {
@@ -2404,9 +2432,15 @@ pub(crate) fn validate_time_element_value(
     }
     Err(final_error)
 }
-/// Literal ordered machine-readable-equivalent algorithm in HTML §4.5.14.
-/// Recognition never allocates native digits for failed alternatives. Successful
-/// native materialization remains ordinary allocation, not session accounting.
+/// Literal ordered machine-readable-equivalent algorithm in HTML §4.5.14
+/// (elements capture lines 6855-6877). Recognition never allocates native
+/// digits for failed alternatives. Successful native materialization remains
+/// ordinary allocation, not session accounting.
+///
+/// As for [`validate_time_element_value`], a rejected string reports the last
+/// alternative's (duration's) error, because step 11 yields only "no
+/// machine-readable equivalent". The date-or-time algorithm (§2.3.5.10,
+/// foundations capture lines 3471-3495) is a separate single entry point.
 pub(crate) fn parse_time_element_value(
     input: &DocumentString,
 ) -> Result<HtmlMachineReadableTime, HtmlTemporalError> {
@@ -2565,8 +2599,24 @@ mod tests {
             ("24:60:60", HtmlTemporalError::HourOutOfRange),
             ("23:60:60", HtmlTemporalError::MinuteOutOfRange),
             ("23:59:60", HtmlTemporalError::SecondOutOfRange),
-            ("24:00:00..1", HtmlTemporalError::InvalidSyntax),
+            // §2.3.5.4 fails at step 2 (hour range) before the colon, minute,
+            // seconds and fraction steps can be reached.
+            ("24:00:00..1", HtmlTemporalError::HourOutOfRange),
             ("24:00x", HtmlTemporalError::HourOutOfRange),
+            ("24", HtmlTemporalError::HourOutOfRange),
+            ("24:xx", HtmlTemporalError::HourOutOfRange),
+            ("99:99:99.9.9", HtmlTemporalError::HourOutOfRange),
+            // Step 5 (minute range) precedes the step 7 seconds scan.
+            ("23:60", HtmlTemporalError::MinuteOutOfRange),
+            ("23:60:x", HtmlTemporalError::MinuteOutOfRange),
+            ("23:60:00..1", HtmlTemporalError::MinuteOutOfRange),
+            // Step 7.3 (seconds grammar) precedes step 7.4 (seconds range).
+            ("23:59:60..1", HtmlTemporalError::InvalidSyntax),
+            ("23:59:60.", HtmlTemporalError::InvalidSyntax),
+            ("23:59:60.0000", HtmlTemporalError::SecondOutOfRange),
+            // Steps 1, 3 and 4 fail before any range step applies.
+            ("2x:00", HtmlTemporalError::InvalidSyntax),
+            ("23:6x", HtmlTemporalError::InvalidSyntax),
             ("12:00:001", HtmlTemporalError::InvalidSyntax),
         ] {
             assert_eq!(
@@ -2669,15 +2719,24 @@ mod tests {
                 HtmlTemporalError::WeekOutOfRange
             );
         }
-        assert_eq!(
-            borrowed(
-                &DocumentString::from("2021-W53x"),
-                TemporalPhase::Recovery,
-                TemporalAlternative::Week
-            )
-            .unwrap_err(),
-            HtmlTemporalError::InvalidSyntax
-        );
+        // §2.3.5.8 checks the week range at step 9 and trailing input at step 10.
+        for (raw, error) in [
+            ("2021-W53x", HtmlTemporalError::WeekOutOfRange),
+            ("2020-W00x", HtmlTemporalError::WeekOutOfRange),
+            ("2020-W53x", HtmlTemporalError::InvalidSyntax),
+            ("2020-W5", HtmlTemporalError::InvalidSyntax),
+        ] {
+            assert_eq!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    TemporalPhase::Recovery,
+                    TemporalAlternative::Week
+                )
+                .unwrap_err(),
+                error,
+                "{raw}"
+            );
+        }
     }
     #[test]
     fn duration_cursor_preserves_components_calendar_state_and_exact_fractions() {
@@ -2804,6 +2863,247 @@ mod tests {
         assert_eq!(temporal_recognition_work_bound(usize::MAX), None);
         assert!(temporal_recognition_work_bound((usize::MAX - 256) / 16).is_some());
         assert!(temporal_recognition_work_bound((usize::MAX - 256) / 16 + 1).is_none());
+    }
+
+    #[test]
+    fn month_date_and_yearless_forms_validate_and_process_identically() {
+        let year = |value: u64| HtmlYear::new(value).unwrap();
+        let month_cases: [(&str, Result<HtmlMonth, HtmlTemporalError>); 8] = [
+            ("2024-02", Ok(HtmlMonth::new(year(2024), 2).unwrap())),
+            ("0001-12", Ok(HtmlMonth::new(year(1), 12).unwrap())),
+            ("2024-00", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("2024-13", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("0000-01", Err(HtmlTemporalError::ZeroYear)),
+            ("2024-2", Err(HtmlTemporalError::InvalidSyntax)),
+            ("2024-02-01", Err(HtmlTemporalError::InvalidSyntax)),
+            ("2024-02 ", Err(HtmlTemporalError::InvalidSyntax)),
+        ];
+        for (raw, expected) in month_cases {
+            let input = text(raw);
+            assert_eq!(validate_month(&input), expected, "validate {raw}");
+            assert_eq!(parse_month(&input), expected, "parse {raw}");
+            assert_eq!(
+                borrowed(&input, TemporalPhase::Author, TemporalAlternative::Month)
+                    .map(|plan| matches!(plan, BorrowedTemporalPlan::Month(_))),
+                expected.map(|_| true),
+                "borrowed {raw}"
+            );
+        }
+        let date_cases: [(&str, Result<HtmlDate, HtmlTemporalError>); 9] = [
+            ("2024-02-29", Ok(HtmlDate::new(year(2024), 2, 29).unwrap())),
+            ("2000-02-29", Ok(HtmlDate::new(year(2000), 2, 29).unwrap())),
+            ("2023-12-31", Ok(HtmlDate::new(year(2023), 12, 31).unwrap())),
+            ("2023-02-29", Err(HtmlTemporalError::DayOutOfRange)),
+            ("1900-02-29", Err(HtmlTemporalError::DayOutOfRange)),
+            ("2023-04-31", Err(HtmlTemporalError::DayOutOfRange)),
+            ("2023-01-00", Err(HtmlTemporalError::DayOutOfRange)),
+            ("2023-13-01", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("2023-01-011", Err(HtmlTemporalError::InvalidSyntax)),
+        ];
+        for (raw, expected) in date_cases {
+            let input = text(raw);
+            assert_eq!(validate_date(&input), expected, "validate {raw}");
+            assert_eq!(parse_date(&input), expected, "parse {raw}");
+            assert_eq!(
+                borrowed(&input, TemporalPhase::Author, TemporalAlternative::Date)
+                    .map(|plan| matches!(plan, BorrowedTemporalPlan::Date(_))),
+                expected.map(|_| true),
+                "borrowed {raw}"
+            );
+        }
+        let yearless_cases: [(&str, Result<HtmlYearlessDate, HtmlTemporalError>); 18] = [
+            ("02-29", Ok(HtmlYearlessDate::new(2, 29).unwrap())),
+            ("--02-29", Ok(HtmlYearlessDate::new(2, 29).unwrap())),
+            ("12-31", Ok(HtmlYearlessDate::new(12, 31).unwrap())),
+            ("02-30", Err(HtmlTemporalError::DayOutOfRange)),
+            ("04-31", Err(HtmlTemporalError::DayOutOfRange)),
+            ("01-00", Err(HtmlTemporalError::DayOutOfRange)),
+            ("13-01", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("00-01", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("-02-29", Err(HtmlTemporalError::InvalidSyntax)),
+            ("0229", Err(HtmlTemporalError::InvalidSyntax)),
+            ("02-29x", Err(HtmlTemporalError::InvalidSyntax)),
+            // §2.3.5.3 checks the month range at step 3, before the hyphen and
+            // day, and the day range at step 7, before trailing input.
+            ("13-01x", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("13", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("--00-xx", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("02-30x", Err(HtmlTemporalError::DayOutOfRange)),
+            ("04-31x", Err(HtmlTemporalError::DayOutOfRange)),
+            ("1", Err(HtmlTemporalError::InvalidSyntax)),
+            ("12-3", Err(HtmlTemporalError::InvalidSyntax)),
+        ];
+        for (raw, expected) in yearless_cases {
+            let input = text(raw);
+            assert_eq!(validate_yearless_date(&input), expected, "validate {raw}");
+            assert_eq!(parse_yearless_date(&input), expected, "parse {raw}");
+            for phase in [TemporalPhase::Author, TemporalPhase::Recovery] {
+                let plan = borrowed(&input, phase, TemporalAlternative::YearlessDate);
+                match (plan, expected) {
+                    (Ok(BorrowedTemporalPlan::YearlessDate(value)), Ok(want)) => {
+                        assert_eq!(value, want, "borrowed {raw}");
+                    }
+                    (Err(error), Err(want)) => assert_eq!(error, want, "borrowed {raw}"),
+                    (other, want) => panic!("{raw}: {other:?} against {want:?}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn pinned_parse_steps_report_each_range_before_later_steps_and_trailing_input() {
+        use HtmlTemporalError::*;
+        use TemporalAlternative as Alt;
+        // Each row follows the pinned algorithm for its alternative: HTML
+        // foundations 2.3.5.1 (months), 2.3.5.2 (dates), 2.3.5.5 (local
+        // date-times), 2.3.5.6 (offsets), 2.3.5.7 (global date-times) and
+        // 2.3.5.9 (durations). The outcome is the first step that fails.
+        let rows: &[(Alt, &str, Option<HtmlTemporalError>)] = &[
+            // Month: year (steps 1-2), hyphen (3), month digits (4), range (5).
+            (Alt::Month, "2024-02", None),
+            (Alt::Month, "0000", Some(ZeroYear)),
+            (Alt::Month, "0000-13", Some(ZeroYear)),
+            (Alt::Month, "2024-13x", Some(MonthOutOfRange)),
+            (Alt::Month, "2024-00", Some(MonthOutOfRange)),
+            (Alt::Month, "2024-1", Some(InvalidSyntax)),
+            (Alt::Month, "2024-02x", Some(InvalidSyntax)),
+            // Date: month component, hyphen (3), day digits (4), range (5).
+            (Alt::Date, "2024-13-99", Some(MonthOutOfRange)),
+            (Alt::Date, "2023-02-30x", Some(DayOutOfRange)),
+            (Alt::Date, "2023-02-00x", Some(DayOutOfRange)),
+            (Alt::Date, "2023-02", Some(InvalidSyntax)),
+            (Alt::Date, "2023-02-3", Some(InvalidSyntax)),
+            (Alt::Date, "2023-02-28x", Some(InvalidSyntax)),
+            // Local date and time: date (3), separator (4), time (5), end (6).
+            (Alt::LocalDateTime, "2023-02-30T24:00", Some(DayOutOfRange)),
+            (
+                Alt::LocalDateTime,
+                "2023-02-28T24:00:XX",
+                Some(HourOutOfRange),
+            ),
+            (
+                Alt::LocalDateTime,
+                "2023-02-28 23:60..",
+                Some(MinuteOutOfRange),
+            ),
+            (
+                Alt::LocalDateTime,
+                "2023-02-28T23:59:60x",
+                Some(SecondOutOfRange),
+            ),
+            (
+                Alt::LocalDateTime,
+                "2023-02-28T23:59:59x",
+                Some(InvalidSyntax),
+            ),
+            (Alt::LocalDateTime, "2023-02-28X23:59", Some(InvalidSyntax)),
+            // Offset component: the hour digits and colon (step 4) precede the
+            // hour range (5) and minute range (7); both report OffsetOutOfRange.
+            (Alt::TimeZoneOffset, "+24:00", Some(OffsetOutOfRange)),
+            (Alt::TimeZoneOffset, "-23:60", Some(OffsetOutOfRange)),
+            (Alt::TimeZoneOffset, "+2400", Some(OffsetOutOfRange)),
+            (Alt::TimeZoneOffset, "+24:6", Some(InvalidSyntax)),
+            (Alt::TimeZoneOffset, "+24", Some(InvalidSyntax)),
+            (Alt::TimeZoneOffset, "+12:00x", Some(InvalidSyntax)),
+            // Global: time (5), end (6), offset (7), end (8).
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T24:00Z",
+                Some(HourOutOfRange),
+            ),
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T23:59:60",
+                Some(SecondOutOfRange),
+            ),
+            (Alt::GlobalDateTime, "2023-02-28T23:59", Some(InvalidSyntax)),
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T23:59+24:00x",
+                Some(OffsetOutOfRange),
+            ),
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T23:59+2400x",
+                Some(OffsetOutOfRange),
+            ),
+            (
+                Alt::GlobalDateTime,
+                "2023-02-28T23:59Zx",
+                Some(InvalidSyntax),
+            ),
+        ];
+        for &(alternative, raw, expected) in rows {
+            for phase in [TemporalPhase::Author, TemporalPhase::Recovery] {
+                let got = borrowed(&text(raw), phase, alternative).map(|_| ());
+                assert_eq!(got.err(), expected, "{alternative:?} {phase:?} {raw}");
+            }
+        }
+        // Duration recovery (2.3.5.9): the nonzero-month check is step 10, after
+        // the component loop and the step 9 count check.
+        for (raw, expected) in [
+            ("1Y", Some(NonzeroCalendarDuration)),
+            ("P2M", Some(NonzeroCalendarDuration)),
+            ("1Yx", Some(InvalidSyntax)),
+            ("1Y1", Some(InvalidSyntax)),
+            ("0Y0M", None),
+            ("P", Some(InvalidSyntax)),
+            ("", Some(InvalidSyntax)),
+        ] {
+            let got = parse_duration(&text(raw)).map(|_| ());
+            assert_eq!(got.err(), expected, "duration {raw}");
+        }
+    }
+
+    #[test]
+    fn both_day_counts_agree_with_an_independent_calendar_walk() {
+        // Walk the proleptic Gregorian calendar from 0001-01-01 one day at a
+        // time, so the zero-based day index is the expected ordinal.
+        let leap = |year: u32| {
+            year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
+        };
+        let length = |year: u32, month: u8| match month {
+            2 if leap(year) => 29,
+            2 => 28,
+            4 | 6 | 9 | 11 => 30,
+            _ => 31,
+        };
+        let sampled =
+            |year: u32| matches!(year, 1..=3 | 99..=101 | 399..=403 | 799..=801 | 1199..=1202);
+        let mut index: u128 = 0;
+        let mut checked = 0;
+        for year in 1_u32..=1202 {
+            for month in 1_u8..=12 {
+                for day in 1..=length(year, month) {
+                    if sampled(year) {
+                        let date =
+                            HtmlDate::new(HtmlYear::new(u64::from(year)).unwrap(), month, day)
+                                .unwrap();
+                        assert_eq!(
+                            gregorian_ordinal(&date).to_u128().unwrap(),
+                            index,
+                            "{year:04}-{month:02}-{day:02}"
+                        );
+                        let input = text(&format!("{year:04}-{month:02}-{day:02}"));
+                        let BorrowedTemporalPlan::Date(plan) =
+                            borrowed(&input, TemporalPhase::Author, TemporalAlternative::Date)
+                                .unwrap()
+                        else {
+                            panic!("date")
+                        };
+                        let preceding_cycles = u128::from((year - 1) / 400);
+                        assert_eq!(
+                            u128::from(plan.within_cycle_days()),
+                            index - preceding_cycles * 146_097,
+                            "{year:04}-{month:02}-{day:02}"
+                        );
+                        checked += 1;
+                    }
+                    index += 1;
+                }
+            }
+        }
+        assert_eq!(checked, 18 * 365 + 3);
     }
 
     #[test]
@@ -3288,6 +3588,11 @@ mod tests {
             (
                 TemporalInputFormat::Week,
                 "2021-W53X",
+                HtmlTemporalError::WeekOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Week,
+                "2020-W53X",
                 HtmlTemporalError::InvalidSyntax,
             ),
             (
@@ -3298,7 +3603,37 @@ mod tests {
             (
                 TemporalInputFormat::Time,
                 "24:00:XX",
+                HtmlTemporalError::HourOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "24:00:00..1",
+                HtmlTemporalError::HourOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "24",
+                HtmlTemporalError::HourOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "23:60:XX",
+                HtmlTemporalError::MinuteOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "23:59:60.1234",
                 HtmlTemporalError::InvalidSyntax,
+            ),
+            (
+                TemporalInputFormat::LocalDateTime,
+                "2023-01-01T24:00:XX",
+                HtmlTemporalError::HourOutOfRange,
+            ),
+            (
+                TemporalInputFormat::LocalDateTime,
+                "2023-01-01T23:60:00..1",
+                HtmlTemporalError::MinuteOutOfRange,
             ),
             (
                 TemporalInputFormat::Time,

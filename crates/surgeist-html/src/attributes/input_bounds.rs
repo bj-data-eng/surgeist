@@ -843,7 +843,7 @@ impl HtmlInputStep {
     pub fn as_document_string(&self) -> DocumentString {
         self.number.map_or_else(
             || DocumentString::from(HtmlInputNumericStep::ANY_KEYWORD),
-            |number| number.as_document_string(),
+            |number| number.to_plain_decimal_string(),
         )
     }
     pub fn into_step_attribute(self) -> Attribute {
@@ -865,13 +865,13 @@ impl HtmlFloatingPointNumber {
     pub fn into_input_min_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Min.qualified_name(),
-            self.as_document_string(),
+            self.to_plain_decimal_string(),
         )
     }
     pub fn into_input_max_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Max.qualified_name(),
-            self.as_document_string(),
+            self.to_plain_decimal_string(),
         )
     }
 }
