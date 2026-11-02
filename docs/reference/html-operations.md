@@ -2095,9 +2095,13 @@ for a namespace with `u` units it is `(l + 1) * N + u`, and 0 units for no
 namespace. `D` is the 29 units of a matched HTML namespace test (1 plus 28
 compared units); a namespace test whose length differs from the expected length
 costs 1. The *query prefix* is the batch's one result reservation (1, charged
-once per non-empty batch), the request's subject lookup (1) and, for an
-query below, the HTML namespace test of the subject (`D` for an HTML subject).
-Each result write adds 1. A text subject answered `Inapplicable` by an
+once per non-empty batch), the request's subject lookup (1) and, for an element
+subject, the HTML namespace test of the subject (`D` when it is in the HTML
+namespace). Every query stated below pays that test. The author-context,
+media-rules, template-for, nonce, link-relationship and noopener queries, which
+handle foreign namespaces themselves, and the document-level feed, manifest and
+icon queries, which are dispatched before the subject is classified, do not, and
+none of them is stated here. Each result write adds 1. A text subject answered `Inapplicable` by an
 element-only query therefore costs the reservation, the lookup and the write: 3.
 
 - **Tree walk** (shared by the walks below; [code](../../crates/surgeist-html-semantics/src/semantics.rs)).
@@ -2113,7 +2117,8 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   elements are not entered. In descendant mode a node with at least one child
   costs one frame (reservation 1, push 1); each iteration costs 1, an exhausted
   frame costs a further 1 for the pop, and each yielded node costs a lookup (1).
-  Every element, document or fragment node also costs 1 to be entered, plus a
+  Every element node also costs 1 to be entered (a document or fragment cannot
+  be an ordinary child), plus a
   frame (2) only when it has children; a childless one costs just that 1. No
   vocabulary recognition is charged. Each text unit costs 3: a read (1), an exact
   one-record reservation (1) and a push (1). Closing charges 1.
@@ -2200,7 +2205,7 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   datalist with no children returns the empty collection there, without a frame
   or the closing charge. Otherwise a frame (2), then per iteration 1, a lookup (1)
   per yielded node, `K(l)` for an element, 2 for a retained `option` and, for
-  every element, document or fragment, 1 plus a frame (2) only when it has
+  every element, 1 plus a frame (2) only when it has
   children. An exhausted frame costs 2 and the closing charge 1.
 - **MapAreas** ([code](../../crates/surgeist-html-semantics/src/semantics/image_map.rs)).
   The query prefix, a lookup (1), `D`, `K(3)`, then the tree walk from the map:
@@ -2219,7 +2224,9 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   mismatch; a namespace that matches then adds the local-name comparison of
   `script` (1, plus one per compared unit when the length is 6). An element that
   is not an SVG `script` is entered: 1, plus a frame (2) only when it has
-  children. Other node kinds cost only their lookup. Closing charges 1.
+  children. Comments and processing instructions cost only their lookup. A
+  document or fragment cannot be an ordinary child, so its entry is not stated.
+  Closing charges 1.
 
 <a id="decoded-unicode-parsing"></a>
 

@@ -182,9 +182,9 @@ use surgeist_html::bounded::{
 /// A query that composes further owner steps (intrinsic envelopes, form
 /// association, option text) charges them under the same one-unit-per-visit
 /// rule. The stable per-query charges that tests pin are stated by request name
-/// in the handwritten
-/// [semantic query work reference](../../../docs/reference/html-operations.md#semantic-query-work);
-/// the work of any query not stated there is only required to be charged.
+/// in the handwritten reference documentation, `docs/reference/html-operations.md`
+/// (anchor `semantic-query-work`); the work of any query not stated there is only
+/// required to be charged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticLimits {
     work: usize,
