@@ -260,8 +260,11 @@ fn numeric_failure(c: &mut ParseControl, error: RangeNumericError) -> SessionErr
         _ => integrity(c),
     }
 }
+/// The range machine, its staged buffers or its numeric protocol is in a state
+/// the machine's own sequencing excludes. Faults of the registry rows around
+/// it (a missing stage, a missing attribute row) keep the registry-row label.
 fn integrity(c: &mut ParseControl) -> SessionError {
-    latch_registry_row(c)
+    SessionError::Stop(c.fail_invariant(crate::parser::control::Invariant::RangeMachineState))
 }
 impl SessionStorage {
     fn range_stage(&mut self, c: &mut ParseControl) -> Result<&mut RangeStaging, SessionError> {
@@ -292,7 +295,7 @@ impl SessionStorage {
             let Some(request) = stage
                 .machine
                 .as_ref()
-                .ok_or_else(|| latch_registry_row(c))?
+                .ok_or_else(|| integrity(c))?
                 .request()
             else {
                 let expected = stage.machine.as_ref().and_then(Machine::headers);
@@ -664,8 +667,12 @@ impl SessionStorage {
         }
         self.range_payload_edge(c, source)?;
         self.releasable_string(c, previous, false)?;
+        // The previous range operation is still owed: installation releases
+        // its staging before it returns, and a stop ends the parse.
         if self.effects.range.is_some() {
-            return Err(integrity(c));
+            return Err(c
+                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
+                .into());
         }
         payload_write::<Option<RangeStaging>>(c, 1)?;
         let stage = RangeStaging::new(c, source)?;
@@ -1009,11 +1016,13 @@ mod absent_owner_tests {
     }
 
     /// A second range value installed while the first one's staging is still
-    /// held finds the machine in a state its sequencing excludes: installation
-    /// releases its staging before it returns.
+    /// held starts a range operation while the previous one is still owed:
+    /// installation releases its staging before it returns, and a stop ends
+    /// the parse. It is the pending-operation fault the idle checks report for
+    /// the same staging, not a fault of the machine's own state.
     #[test]
-    fn installing_a_range_value_over_held_staging_reports_the_range_machine_state() {
-        let state = ParseStop::InternalInvariant(Invariant::RangeMachineState);
+    fn installing_a_range_value_over_held_staging_reports_the_pending_operation() {
+        let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
         // The default step's arithmetic alone exceeds the ordinary test budget.
         let unbounded = crate::construction::tests::limits()
             .into_builder()
@@ -1041,10 +1050,36 @@ mod absent_owner_tests {
         storage.effects.range = Some(RangeStaging::new(&mut c, raw).unwrap());
         assert_eq!(
             storage.install_range_input_value(&mut c, input, slot, raw),
+            Err(SessionError::Stop(pending))
+        );
+        assert_eq!(c.stop(), Some(pending));
+        // The staging that was already held is still the registry's to release.
+        storage
+            .effects
+            .range
+            .take()
+            .unwrap()
+            .release(&mut c)
+            .unwrap();
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
+    }
+
+    /// Staging that holds no machine has nothing to drive. The staging is
+    /// present, so no registry row is missing: the machine state inside it is.
+    #[test]
+    fn executing_staging_without_a_machine_reports_the_range_machine_state() {
+        let state = ParseStop::InternalInvariant(Invariant::RangeMachineState);
+        let mut c = crate::construction::tests::control();
+        let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+        let storage = session.active_mut().unwrap();
+        storage.effects.range = Some(RangeStaging::new(&mut c, 0).unwrap());
+        assert!(storage.effects.range.as_ref().unwrap().machine.is_none());
+        assert_eq!(
+            storage.execute_range(&mut c),
             Err(SessionError::Stop(state))
         );
         assert_eq!(c.stop(), Some(state));
-        // The staging that was already held is still the registry's to release.
         storage
             .effects
             .range
