@@ -1165,3 +1165,74 @@ fn finish_work_refusal_preserves_caller_additions_without_consuming_the_builder(
         Some(HtmlCapturedShadowRoot::Absent)
     );
 }
+
+/// Charged adapter work for importing a fragment of `children` empty elements,
+/// every node with its supplied fact, under allowances that never refuse.
+fn charged_work_for_wide_fragment(children: usize) -> usize {
+    let mut native = HtmlFragment::builder(HtmlConstructionLimits::new(
+        children + 8,
+        children + 8,
+        0,
+        64 * children + 256,
+        8,
+    ))
+    .unwrap();
+    let root_handle = native.root();
+    for _ in 0..children {
+        native
+            .append_element(&root_handle, name("p"), OrderedAttributes::default())
+            .unwrap();
+    }
+    let source = HtmlConstructionResult::Fragment(native.finish());
+    let revision = HtmlHostFactsRevision::fresh();
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(
+            children + 8,
+            8 * children + 64,
+            0,
+            64 * children + 256,
+            8,
+            4,
+            4,
+            1 << 20,
+        ),
+        revision.clone(),
+    );
+    let document = external_document(&mut builder);
+    let facts = facts(
+        &source,
+        revision,
+        HtmlConstructionCaptureDocument::Existing(document),
+    );
+    let imported = import(
+        builder,
+        source,
+        facts,
+        HtmlConstructionCaptureLimits::new(children + 8, 1 << 24, 1 << 40),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    assert_eq!(imported.usage().mapping_entries(), children + 1);
+    imported.usage().work()
+}
+#[test]
+fn charged_work_grows_linearly_with_the_number_of_imported_nodes() {
+    // Every node is reached once, read once and given one subject; a charge per
+    // node that does not depend on the other nodes costs at most a fixed amount
+    // plus a fixed multiple of the node count. Doubling the node count then at
+    // most doubles the charge (the growth of retained arrays is amortized, so a
+    // little slack is allowed); a charge that scans the earlier nodes for every
+    // node roughly quadruples it.
+    let sizes = [50, 100, 200, 400];
+    let work = sizes.map(charged_work_for_wide_fragment);
+    for (pair, work) in sizes.windows(2).zip(work.windows(2)) {
+        assert!(
+            work[1] * 2 <= work[0] * 5,
+            "{} children charged {} but {} children charged {}: more than 2.5 times",
+            pair[0],
+            work[0],
+            pair[1],
+            work[1]
+        );
+    }
+}
