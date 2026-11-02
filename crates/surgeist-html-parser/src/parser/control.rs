@@ -67,14 +67,17 @@ slots!(WorkCategory, WORK_COUNT, {
 pub enum Invariant {
     /// A source other than the one bound to the parse was presented.
     ForeignSource,
-    /// A storage-only accounting operation named a resource that is not storage.
+    /// A storage accounting operation named a resource it does not apply to:
+    /// one that is not storage, or not the one the operation accounts.
     NonStorageResource,
     /// A release returned more units than the parse currently holds.
     ReleaseUnderflow,
     /// A node release was requested for nodes, which are never reclaimed one by
     /// one.
     NonReclaimableNodes,
-    /// A buffer's actual capacity differs from the capacity that was charged.
+    /// A buffer, ticket or allocation differs from what was charged for it: its
+    /// capacity, layout, ownership or finalization state, or a byte extent that
+    /// no charged allocation could have.
     CapacityMismatch,
     /// Storage was requested for a zero-sized element type.
     ZeroSizedStorage,
@@ -102,8 +105,10 @@ pub enum Invariant {
     /// failed with an error other than a stop.
     IncompleteFormAssociationCreation,
     /// A construction registry row, record, child or payload that internal
-    /// state names is missing, out of range or of another kind, or a
-    /// construction owner that the registry keeps in a slot is not there.
+    /// state names is missing, out of range or of another kind, a construction
+    /// owner that the registry keeps in a slot is not there, or construction
+    /// bookkeeping that its algorithms keep consistent (staged buffers, range
+    /// machine state, counts) contradicts its own sequencing.
     RegistryRow,
     /// The tree-builder drivers or algorithm are in a state their sequencing
     /// excludes: a driver, stage or prologue owner that the sequencing keeps in
@@ -115,7 +120,8 @@ pub enum Invariant {
     /// The tokenizer is in a state its transitions exclude: a draft tag,
     /// attribute, comment, doctype or processing-instruction part that must
     /// exist is missing, its event queue is full, a source-boundary proof is
-    /// absent, or a character-reference table lookup is out of range.
+    /// absent, a character-reference table lookup is out of range, or the
+    /// lexical evidence it records is not in the state its sequencing requires.
     TokenizerState,
     /// CSS colour processing is in a state its own sequencing excludes: a
     /// digit or conversion bank is missing or out of range, a read ran past

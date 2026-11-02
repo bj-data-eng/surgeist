@@ -633,10 +633,10 @@ impl NativeProvenance {
                 .checked_mul(mem::size_of::<T>())
                 .and_then(|bytes| u64::try_from(bytes).ok())
             else {
-                return Err(c.fail_invariant(Invariant::ReleaseUnderflow));
+                return Err(c.fail_invariant(Invariant::CapacityMismatch));
             };
             let Ok(units) = u64::try_from(values.len()) else {
-                return Err(c.fail_invariant(Invariant::ReleaseUnderflow));
+                return Err(c.fail_invariant(Invariant::CapacityMismatch));
             };
             Ok((units, bytes))
         }
@@ -657,7 +657,7 @@ impl NativeProvenance {
             let (Some(units), Some(bytes)) =
                 (total.0.checked_add(units), total.1.checked_add(bytes))
             else {
-                return Err(c.fail_invariant(Invariant::ReleaseUnderflow));
+                return Err(c.fail_invariant(Invariant::CapacityMismatch));
             };
             total = (units, bytes);
         }

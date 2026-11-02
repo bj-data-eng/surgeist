@@ -261,8 +261,7 @@ fn numeric_failure(c: &mut ParseControl, error: RangeNumericError) -> SessionErr
     }
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
-    c.fail_invariant(crate::parser::control::Invariant::CapacityMismatch)
-        .into()
+    latch_registry_row(c)
 }
 impl SessionStorage {
     fn range_stage(&mut self, c: &mut ParseControl) -> Result<&mut RangeStaging, SessionError> {
