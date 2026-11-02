@@ -31,7 +31,7 @@ fn unsupported(state: StandaloneUnsupported) -> ParseStop {
 pub(super) fn outcomes() -> [(SessionError, HtmlParseFailureReason, ParseStop); 9] {
     use HtmlParseFailureReason as Reason;
     use StandaloneUnsupported as State;
-    let protocol = surgeist_html::HtmlCspProtocolError::WrongProcessor;
+    let protocol = crate::construction::csp_protocol_error();
     let script = unsupported(State::ScriptDocument);
     let completion = unsupported(State::Completion);
     let provenance = unsupported(State::Provenance);
@@ -240,7 +240,7 @@ fn a_parser_fault_in_any_ordinary_stage_error_latches_its_invariant() {
 /// stops compiling until it is listed here, and the classification test then
 /// holds it to the same rules.
 pub(super) fn every_session_error() -> Vec<SessionError> {
-    let protocol = surgeist_html::HtmlCspProtocolError::WrongProcessor;
+    let protocol = crate::construction::csp_protocol_error();
     let all = vec![
         SessionError::NonceMetadataUnavailable,
         SessionError::CspService,

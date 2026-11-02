@@ -619,27 +619,6 @@ fn creation_errors_map_to_the_fault_they_report() {
     }
 }
 
-/// A real CSP protocol error: an association presented to a different owner.
-fn csp_protocol_error() -> surgeist_html::HtmlCspProtocolError {
-    use surgeist_html::{HtmlCspError, HtmlCspOwner, HtmlCspProcessorAuthority};
-    let admit = &mut |_| Ok::<(), std::convert::Infallible>(());
-    let mut owner = HtmlCspOwner::new_with(admit).unwrap();
-    let mut other = HtmlCspOwner::new_with(admit).unwrap();
-    let association = owner.initial_document_with(admit).unwrap();
-    let profile = HtmlCspProcessorAuthority::new_with(admit)
-        .unwrap()
-        .profile_with(1, admit)
-        .unwrap();
-    let content = surgeist_html::DocumentString::from("default-src 'none'");
-    match other.request_meta_insertion_with(&association, &profile, content, admit) {
-        Err(rejected) => match rejected.error {
-            HtmlCspError::Protocol(error) => error,
-            HtmlCspError::Interrupted(never) => match never {},
-        },
-        Ok(_) => panic!("a foreign association was accepted"),
-    }
-}
-
 /// A producer that must leave the session terminal where it meets an error
 /// gets the stop its class names, and an error whose reason agrees with that
 /// stop: an outcome keeps its own reason, a fault is the stop it latched.
