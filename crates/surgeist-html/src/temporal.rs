@@ -171,9 +171,23 @@ fn days_in_month(month: u8, leap: bool) -> u8 {
     }
 }
 
+/// Zero-based day within the 400-year Gregorian cycle that contains the date.
+/// `preceding_remainder` is `(year - 1) mod 400`, so a year divisible by 400
+/// passes 399, and `leap` is the date's own year. Only the within-year month
+/// visits iterate.
+/// This is the single day-counting rule; callers add whole preceding cycles of
+/// 146097 days when they need an absolute ordinal.
+fn day_within_cycle(preceding_remainder: u32, month: u8, day: u8, leap: bool) -> u32 {
+    let mut ordinal = u32::from(day) - 1;
+    for earlier in 1..month {
+        ordinal += u32::from(days_in_month(earlier, leap));
+    }
+    preceding_remainder * 365 + preceding_remainder / 4 - preceding_remainder / 100 + ordinal
+}
+
 // Shared by the UTC and input-coordinate owners. Gregorian 0001-01-01 has
-// ordinal zero. Only the within-year month visits are iterative; arbitrary
-// years are handled with one 400-year quotient/remainder.
+// ordinal zero. Arbitrary years are handled with one 400-year
+// quotient/remainder over the preceding year.
 fn gregorian_ordinal(date: &HtmlDate) -> HtmlNonNegativeInteger {
     let preceding = date
         .year()
@@ -182,11 +196,12 @@ fn gregorian_ordinal(date: &HtmlDate) -> HtmlNonNegativeInteger {
         .expect("HTML years are positive");
     let (cycles, remainder) =
         preceding.quotient_remainder(NonZeroU32::new(400).expect("400 is nonzero"));
-    let mut ordinal = u32::from(date.day()) - 1;
-    for month in 1..date.month() {
-        ordinal += u32::from(days_in_month(month, date.year().is_leap_year()));
-    }
-    let within_cycle = remainder * 365 + remainder / 4 - remainder / 100 + ordinal;
+    let within_cycle = day_within_cycle(
+        remainder,
+        date.month(),
+        date.day(),
+        date.year().is_leap_year(),
+    );
     cycles
         .multiplied_by(146097)
         .added_to(&u128::from(within_cycle).into())
@@ -1432,11 +1447,7 @@ impl<'a> BorrowedDate<'a> {
     pub(crate) fn within_cycle_days(self) -> u32 {
         let remainder = self.year().remainder_400();
         let preceding = u32::from(if remainder == 0 { 399 } else { remainder - 1 });
-        let mut ordinal = u32::from(self.day) - 1;
-        for month in 1..self.month() {
-            ordinal += u32::from(days_in_month(month, self.year().leap()));
-        }
-        preceding * 365 + preceding / 4 - preceding / 100 + ordinal
+        day_within_cycle(preceding, self.month(), self.day, self.year().leap())
     }
     pub(crate) fn assemble(self, year: HtmlYear) -> HtmlDate {
         HtmlDate {
@@ -1612,14 +1623,7 @@ pub(crate) fn recognize_time_alternative(
         TemporalAlternative::Month => BorrowedTemporalPlan::Month(cursor.borrowed_month()?),
         TemporalAlternative::Date => BorrowedTemporalPlan::Date(cursor.borrowed_date()?),
         TemporalAlternative::YearlessDate => {
-            if cursor.take(b'-') {
-                cursor.expect(b'-')?;
-            }
-            let month = cursor.pair()?;
-            cursor.expect(b'-')?;
-            let day = cursor.pair()?;
-            cursor.end()?;
-            BorrowedTemporalPlan::YearlessDate(HtmlYearlessDate::new(month, day)?)
+            BorrowedTemporalPlan::YearlessDate(cursor.whole_yearless_date()?)
         }
         TemporalAlternative::Time => BorrowedTemporalPlan::Time(cursor.borrowed_time(phase)?),
         TemporalAlternative::LocalDateTime => {
@@ -2003,6 +2007,18 @@ impl<'a> Cursor<'a> {
     fn date(&mut self) -> Result<HtmlDate, HtmlTemporalError> {
         self.borrowed_date().map(BorrowedDate::ordinary)
     }
+    /// A whole yearless date: optional `--`, month, `-`, day, then the end of
+    /// input (checked before the month and day ranges).
+    fn whole_yearless_date(&mut self) -> Result<HtmlYearlessDate, HtmlTemporalError> {
+        if self.take(b'-') {
+            self.expect(b'-')?;
+        }
+        let month = self.pair()?;
+        self.expect(b'-')?;
+        let day = self.pair()?;
+        self.end()?;
+        HtmlYearlessDate::new(month, day)
+    }
     fn borrowed_time(
         &mut self,
         phase: TemporalPhase,
@@ -2172,15 +2188,7 @@ pub(crate) fn validate_date(input: &DocumentString) -> Result<HtmlDate, HtmlTemp
 pub(crate) fn validate_yearless_date(
     input: &DocumentString,
 ) -> Result<HtmlYearlessDate, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    if cursor.take(b'-') {
-        cursor.expect(b'-')?;
-    }
-    let month = cursor.pair()?;
-    cursor.expect(b'-')?;
-    let day = cursor.pair()?;
-    cursor.end()?;
-    HtmlYearlessDate::new(month, day)
+    Cursor::new(input).whole_yearless_date()
 }
 pub(crate) fn validate_time(input: &DocumentString) -> Result<HtmlTime, HtmlTemporalError> {
     let mut cursor = Cursor::new(input);
@@ -2241,31 +2249,18 @@ pub(crate) fn validate_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemp
     Ok(plan.ordinary())
 }
 // The month/date/yearless/week processing algorithms have the same value
-// domains and full-consumption checks as their authored grammars (§2.3.5).
+// domains and full-consumption checks as their authored grammars (§2.3.5), so
+// each processing entry is the matching validator, as for weeks.
 pub(crate) fn parse_month(input: &DocumentString) -> Result<HtmlMonth, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    let value = cursor.month()?;
-    cursor.end()?;
-    Ok(value)
+    validate_month(input)
 }
 pub(crate) fn parse_date(input: &DocumentString) -> Result<HtmlDate, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    let value = cursor.date()?;
-    cursor.end()?;
-    Ok(value)
+    validate_date(input)
 }
 pub(crate) fn parse_yearless_date(
     input: &DocumentString,
 ) -> Result<HtmlYearlessDate, HtmlTemporalError> {
-    let mut cursor = Cursor::new(input);
-    if cursor.take(b'-') {
-        cursor.expect(b'-')?;
-    }
-    let month = cursor.pair()?;
-    cursor.expect(b'-')?;
-    let day = cursor.pair()?;
-    cursor.end()?;
-    HtmlYearlessDate::new(month, day)
+    validate_yearless_date(input)
 }
 pub(crate) fn parse_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemporalError> {
     validate_week(input)
