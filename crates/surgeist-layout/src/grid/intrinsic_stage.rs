@@ -35,8 +35,54 @@ pub(super) fn has_layout_basis<S: LayoutScalar>(
             .all(|track| track.max.definite(None).is_some())
 }
 
-// One source-ordered track preparation, shared by completed layout and bounded
-// subgrid observations. A row-first frame is the mapped orthogonal order.
+// Intrinsic preparation and accepted final allocation have different authorities.
+#[derive(Clone, Copy)]
+pub(super) enum GridAxisTrackSpace<S: LayoutScalar> {
+    Intrinsic,
+    FinalUsed(S),
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct IntrinsicStageFrame<'a, S: LayoutScalar> {
+    pub(super) axis: GridAxisKind,
+    pub(super) stage: GridSizingStage,
+    pub(super) columns: Option<&'a [S]>,
+    pub(super) rows: Option<&'a [S]>,
+    pub(super) observed_axis: Option<&'a [S]>,
+}
+
+pub(super) struct GridAxisTrackInputs<S: LayoutScalar> {
+    pub(super) rows: Vec<GridIntrinsicContributionRow<S>>,
+    pub(super) base_floors: Vec<S>,
+    // The original MinContent floor backing remains separate from the
+    // all-purpose aggregate used by reduction. Only this basis can admit a
+    // source-defined min-content revisit.
+    pub(super) min_content_base_floors: Vec<S>,
+}
+
+pub(super) struct GridAxisTrackPreparation<S: LayoutScalar> {
+    pub(super) contributions: GridAxisTrackInputs<S>,
+    pub(super) phases: GridAxisTrackPhases<S>,
+    pub(super) available: AvailableOf<S>,
+}
+
+pub(super) struct GridAxisTrackReduction<S: LayoutScalar> {
+    pub(super) sizes: Vec<S>,
+    pub(super) phases: GridAxisTrackPhases<S>,
+    pub(super) available: AvailableOf<S>,
+}
+
+struct EvaluatedAxis<Node, S: LayoutScalar> {
+    contributions: GridAxisTrackInputs<S>,
+    receipts: Vec<GridContributionReceipt<Node, S>>,
+}
+
+type RoleResult<Node, S, M> = LayoutResultOf<Node, IntrinsicAxisContributions<Node, S>, S, M>;
+type StageResult<Node, S, M> = LayoutResultOf<Node, EvaluatedAxis<Node, S>, S, M>;
+type PreparedAxisResult<Node, S, M> =
+    LayoutResultOf<Node, (Vec<S>, GridAxisTrackPreparation<S>), S, M>;
+
+// A single source-ordered preparation serves full layout and bounded probes.
 pub(super) fn resolve_tracks<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
@@ -49,19 +95,20 @@ where
         style: input.style,
         constants: input.constants,
         sizing_flow_axes: input.sizing_flow_axes,
+        minimum_functions: input.minimum_functions,
+        track_basis: input.context.percent_basis,
         column_tracks: input.column_tracks,
         row_tracks: input.row_tracks,
         gap: input.context.gap,
         column_gutters: Some(&input.context.column_gutters),
         row_gutters: Some(&input.context.row_gutters),
-        percent_basis: LogicalSizeOf::new(None, None),
         lines: input.context.lines,
         named_columns: &input.context.topology.named_columns,
         named_rows: &input.context.topology.named_rows,
         area_facts: input.context.topology.area_facts.as_ref(),
         subgrid_report: input.subgrid_report,
         placements: input.placements,
-        query: IntrinsicGridQuery::complete(),
+        query: IntrinsicGridQuery::complete(GridContributionPurpose::Minimum),
     };
     let first = input.stage.first_axis;
     let second = match first {
@@ -70,13 +117,10 @@ where
     };
     let mut columns = None;
     let mut rows = None;
-    let mut column_min = Vec::new();
-    let mut column_max = Vec::new();
-    let mut row_min = Vec::new();
-    let mut row_max = Vec::new();
+    let mut column_preparation: Option<GridAxisTrackPreparation<Tree::Scalar>> = None;
+    let mut row_preparation: Option<GridAxisTrackPreparation<Tree::Scalar>> = None;
     let mut column_receipts = Vec::new();
     let mut row_receipts = Vec::new();
-
     for (phase, axis) in [
         (GridSizingPhase::InitialFirst, first),
         (GridSizingPhase::InitialSecond, second),
@@ -86,91 +130,94 @@ where
         if phase > input.stage.through {
             break;
         }
-        let stage = GridSizingStage {
-            through: phase,
-            ..input.stage
-        };
-        let minimum = evaluate_role(
+        let evaluated = evaluate_stage(
             tree,
             node,
             &input,
             grid,
-            IntrinsicRole {
+            IntrinsicStageFrame {
                 axis,
-                stage,
-                role: AvailableOf::MIN_CONTENT,
+                stage: GridSizingStage {
+                    through: phase,
+                    ..input.stage
+                },
                 columns: columns.as_deref(),
                 rows: rows.as_deref(),
-                lower_bound: None,
+                observed_axis: None,
             },
+            GridAxisTrackSpace::Intrinsic,
         )?;
-        let previous = match axis {
-            GridAxisKind::Column => &column_receipts,
-            GridAxisKind::Row => &row_receipts,
+        let (previous_receipts, previous) = match axis {
+            GridAxisKind::Column => (&column_receipts, column_preparation.as_ref()),
+            GridAxisKind::Row => (&row_receipts, row_preparation.as_ref()),
         };
-        if phase >= GridSizingPhase::RevisitFirst && &minimum.receipts == previous {
+        if phase >= GridSizingPhase::RevisitFirst
+            && same_min_content_receipts(&evaluated.receipts, previous_receipts)
+            && previous.is_some_and(|previous| {
+                same_min_content_inputs(&evaluated.contributions, &previous.contributions)
+            })
+        {
             continue;
         }
-        let maximum = evaluate_role(
-            tree,
+        let (sizes, preparation) = prepare_axis_track_inputs(
             node,
             &input,
-            grid,
-            IntrinsicRole {
-                axis,
-                stage,
-                role: AvailableOf::MAX_CONTENT,
-                columns: columns.as_deref(),
-                rows: rows.as_deref(),
-                lower_bound: Some(&minimum.sizes),
-            },
-        )?;
-        let (minimum, receipts) = minimum.into_resolved();
-        let (maximum, _) = maximum.into_resolved();
-        let sizes = resolve_axis(
-            &input,
             axis,
-            &minimum,
-            &maximum,
+            evaluated.contributions,
             axis_available(input.available, axis),
-        );
+            GridAxisTrackSpace::Intrinsic,
+        )?;
         match axis {
             GridAxisKind::Column => {
                 columns = Some(sizes);
-                column_min = minimum;
-                column_max = maximum;
-                column_receipts = receipts;
+                column_preparation = Some(preparation);
+                column_receipts = evaluated.receipts;
             }
             GridAxisKind::Row => {
                 rows = Some(sizes);
-                row_min = minimum;
-                row_max = maximum;
-                row_receipts = receipts;
+                row_preparation = Some(preparation);
+                row_receipts = evaluated.receipts;
             }
         }
     }
-
-    // These estimates are only present in an incomplete prepared frame. Their
-    // unresolved provenance is retained by the frame's stage; they are never
-    // published as a completed track allocation.
+    // An unissued incomplete axis remains None even when it needs an estimate.
     let columns = columns.unwrap_or_else(|| {
         initial_estimate(input.column_tracks, input.context.percent_basis.inline)
     });
     let rows = rows
         .unwrap_or_else(|| initial_estimate(input.row_tracks, input.context.percent_basis.block));
-    let row_intrinsic_sizes = if input.available.block == AvailableOf::MIN_CONTENT {
-        row_min
-    } else {
-        track_resolution_intrinsic_sizes(input.row_tracks, &row_min, &row_max)
-    };
     Ok(GridTrackResolution {
         sizing_phases: GridTrackSizingPhases { limit: input.stage },
         columns,
         rows,
-        column_min_intrinsic_sizes: column_min,
-        column_max_intrinsic_sizes: column_max,
-        row_intrinsic_sizes,
+        column_preparation,
+        row_preparation,
     })
+}
+
+fn same_min_content_receipts<Node: PartialEq, S: LayoutScalar>(
+    left: &[GridContributionReceipt<Node, S>],
+    right: &[GridContributionReceipt<Node, S>],
+) -> bool {
+    left.iter()
+        .filter(|receipt| receipt.purpose == GridContributionPurpose::MinContent)
+        .map(|receipt| (&receipt.source, receipt.axis, receipt.span, receipt.value))
+        .eq(right
+            .iter()
+            .filter(|receipt| receipt.purpose == GridContributionPurpose::MinContent)
+            .map(|receipt| (&receipt.source, receipt.axis, receipt.span, receipt.value)))
+}
+
+fn same_min_content_inputs<S: LayoutScalar>(
+    left: &GridAxisTrackInputs<S>,
+    right: &GridAxisTrackInputs<S>,
+) -> bool {
+    left.min_content_base_floors == right.min_content_base_floors
+        && left.rows.len() == right.rows.len()
+        && left.rows.iter().zip(&right.rows).all(|(left, right)| {
+            left.span == right.span
+                && left.contributions.min_content == right.contributions.min_content
+        })
 }
 
 fn initial_estimate<S: LayoutScalar>(tracks: &[TrackSizingOf<S>], basis: Option<S>) -> Vec<S> {
@@ -179,117 +226,407 @@ fn initial_estimate<S: LayoutScalar>(tracks: &[TrackSizingOf<S>], basis: Option<
         .map(|track| track.max.definite(basis).unwrap_or(S::ZERO))
         .collect()
 }
-
 fn axis_available<S: Copy>(available: LogicalSizeOf<S>, axis: GridAxisKind) -> S {
     match axis {
         GridAxisKind::Column => available.inline,
         GridAxisKind::Row => available.block,
     }
 }
-
-fn resolve_axis<S: LayoutScalar, Node>(
-    input: &GridTrackResolutionInput<'_, '_, Node, S>,
+fn axis_tracks<'a, Node, S: LayoutScalar>(
+    input: &GridTrackResolutionInput<'_, 'a, Node, S>,
     axis: GridAxisKind,
-    minimum: &[S],
-    maximum: &[S],
-    available: AvailableOf<S>,
-) -> Vec<S> {
-    let constants = input.constants;
-    let tracks = match axis {
+) -> &'a [TrackSizingOf<S>] {
+    match axis {
         GridAxisKind::Column => input.column_tracks,
         GridAxisKind::Row => input.row_tracks,
-    };
-    let flow = input.sizing_flow_axes;
-    let inner = axis_available(flow.logical_size(constants.node_inner_size), axis);
-    let available_inner = axis_available(flow.logical_size(constants.available_inner_size), axis);
-    let track_available = match available {
-        AvailableOf::Definite(_) if axis == GridAxisKind::Row && inner.is_none() => {
-            AvailableOf::MAX_CONTENT
-        }
-        AvailableOf::Definite(_) => available_inner.map_or(available, AvailableOf::Definite),
-        intrinsic => intrinsic,
-    };
-    let mixed = track_resolution_intrinsic_sizes(tracks, minimum, maximum);
-    let selected = if available == AvailableOf::MIN_CONTENT {
-        minimum
-    } else {
-        &mixed
-    };
-    let gap = axis_available(input.context.gap, axis);
-    let gutters = match axis {
-        GridAxisKind::Column => &input.context.column_gutters,
-        GridAxisKind::Row => &input.context.row_gutters,
-    };
-    let alignment = match axis {
+    }
+}
+fn axis_alignment<Node, S: LayoutScalar>(
+    input: &GridTrackResolutionInput<'_, '_, Node, S>,
+    axis: GridAxisKind,
+) -> AlignContent {
+    match axis {
         GridAxisKind::Column => input.style.justify_content,
         GridAxisKind::Row => input.style.align_content,
     }
-    .unwrap_or(AlignContent::Stretch);
-    let mut axis_input = AxisTrackInput {
-        tracks,
-        basis: axis_available(input.context.percent_basis, axis),
-        definite_size: inner,
-        available_size: track_available,
-        gap,
-        gutters: Some(gutters),
-        alignment,
-        stretch_empty_auto_to_available: axis_available(input.intrinsic_max_available, axis)
-            && inner.is_none()
-            && axis_available(flow.logical_size(constants.node_max_size), axis).is_some(),
-        min_intrinsic_sizes: minimum,
-        max_intrinsic_sizes: selected,
+    .unwrap_or(AlignContent::Stretch)
+}
+fn axis_gutters<'a, Node, S: LayoutScalar>(
+    input: &'a GridTrackResolutionInput<'_, '_, Node, S>,
+    axis: GridAxisKind,
+) -> &'a OrdinaryGridAxisGuttersOf<S> {
+    match axis {
+        GridAxisKind::Column => &input.context.column_gutters,
+        GridAxisKind::Row => &input.context.row_gutters,
+    }
+}
+fn effective_available<Node, S: LayoutScalar>(
+    input: &GridTrackResolutionInput<'_, '_, Node, S>,
+    axis: GridAxisKind,
+    available: AvailableOf<S>,
+) -> AvailableOf<S> {
+    let flow = input.sizing_flow_axes;
+    let inner = axis_available(flow.logical_size(input.constants.node_inner_size), axis);
+    if let Some(inner) = inner {
+        return AvailableOf::Definite(inner);
+    }
+    let available_inner = axis_available(
+        flow.logical_size(input.constants.available_inner_size),
+        axis,
+    );
+    match available {
+        AvailableOf::Definite(_) if axis == GridAxisKind::Row && inner.is_none() => {
+            AvailableOf::MAX_CONTENT
+        }
+        AvailableOf::Definite(_) => available_inner.map_or(available, |remaining| {
+            // Requested scrollbar insets can exceed an unallocated max/available
+            // outer extent. Track space saturates here; raw provisional facts
+            // stay intact until the allocated scroll box qualifies its inset.
+            // Nonfinite arithmetic must still reach typed numeric validation.
+            AvailableOf::Definite(if remaining.is_finite() {
+                remaining.max(S::ZERO)
+            } else {
+                remaining
+            })
+        }),
+        intrinsic => intrinsic,
+    }
+}
+
+pub(super) fn axis_track_available<Node, S: LayoutScalar>(
+    input: &GridTrackResolutionInput<'_, '_, Node, S>,
+    axis: GridAxisKind,
+) -> AvailableOf<S> {
+    effective_available(input, axis, axis_available(input.available, axis))
+}
+
+// Same-frame finishing only borrows the retained state. A receiver can supply
+// an actual final stretch extent without changing percentage/constraint facts.
+pub(super) fn finish_axis_track_preparation<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    input: &GridTrackResolutionInput<'_, '_, Node, S>,
+    axis: GridAxisKind,
+    preparation: &GridAxisTrackPreparation<S>,
+    stretch_size: Option<S>,
+) -> LayoutResultOf<Node, Vec<S>, S, M> {
+    finish_axis_track_phases(
+        node,
+        input,
+        axis,
+        &preparation.phases,
+        &preparation.contributions.rows,
+        preparation.available,
+        stretch_size,
+    )
+}
+pub(super) fn finish_axis_track_phases<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    input: &GridTrackResolutionInput<'_, '_, Node, S>,
+    axis: GridAxisKind,
+    phases: &GridAxisTrackPhases<S>,
+    items: &[GridIntrinsicContributionRow<S>],
+    available: AvailableOf<S>,
+    stretch_size: Option<S>,
+) -> LayoutResultOf<Node, Vec<S>, S, M> {
+    resolve_tracks_from_phases(ResolvedAxisTrackInput {
+        tracks: axis_tracks(input, axis),
+        phases,
+        items,
+        available,
+        stretch_size,
+        gap: axis_available(input.context.gap, axis),
+        alignment: axis_alignment(input, axis),
+        gutters: Some(axis_gutters(input, axis)),
+    })
+    .map_err(|error| grid_track_sizing_error(node, error))
+}
+
+// A genuine constraint change recomputes from retained normalized inputs. Any
+// changed basis/gutter/opposite frame instead needs fresh owning collection.
+pub(super) fn reduce_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    input: &GridTrackResolutionInput<'_, '_, Node, S>,
+    axis: GridAxisKind,
+    contributions: &GridAxisTrackInputs<S>,
+    mut available: AvailableOf<S>,
+    space: GridAxisTrackSpace<S>,
+) -> LayoutResultOf<Node, GridAxisTrackReduction<S>, S, M> {
+    if let GridAxisTrackSpace::FinalUsed(value) = space {
+        available = AvailableOf::Definite(value);
+    }
+    let tracks = axis_tracks(input, axis);
+    let gap = axis_available(input.context.gap, axis);
+    let gutters = axis_gutters(input, axis);
+    let basis = axis_available(input.context.percent_basis, axis);
+    let mut phases = resolve_grid_contribution_rows(
+        SpanningTrackContext {
+            tracks,
+            basis,
+            available,
+            gap,
+            gutters: Some(gutters),
+            base_floors: &contributions.base_floors,
+        },
+        &contributions.rows,
+    )
+    .map_err(|error| grid_track_sizing_error(node, error))?;
+    let flow = input.sizing_flow_axes;
+    let inner = axis_available(flow.logical_size(input.constants.node_inner_size), axis);
+    let stretch = match space {
+        GridAxisTrackSpace::Intrinsic => {
+            let stretch_enabled = axis_available(input.intrinsic_max_available, axis)
+                && inner.is_none()
+                && axis_available(flow.logical_size(input.constants.node_max_size), axis).is_some();
+            resolved_track_stretch_size(
+                tracks,
+                &phases,
+                inner,
+                available,
+                axis_alignment(input, axis),
+                stretch_enabled,
+            )
+            .map_err(|error| grid_track_sizing_error(node, error))?
+        }
+        GridAxisTrackSpace::FinalUsed(value) => Some(value),
     };
-    let mut sizes = resolve_axis_tracks(axis_input);
-    if inner.is_none()
-        && let Some(maximum) = axis_available(flow.logical_size(constants.node_max_size), axis)
+    let mut sizes = finish_axis_track_phases(
+        node,
+        input,
+        axis,
+        &phases,
+        &contributions.rows,
+        available,
+        stretch,
+    )?;
+    if matches!(space, GridAxisTrackSpace::Intrinsic)
+        && inner.is_none()
+        && let Some(maximum) =
+            axis_available(flow.logical_size(input.constants.node_max_size), axis)
     {
         let maximum = (maximum
             - axis_available(
-                flow.logical_size(constants.content_box_inset.sum_axes()),
+                flow.logical_size(input.constants.content_box_inset.sum_axes()),
                 axis,
             ))
         .max(S::ZERO);
-        if track_sum_with_gutters(&sizes, gap, Some(gutters)) > maximum {
-            axis_input.available_size = AvailableOf::Definite(maximum);
-            axis_input.stretch_empty_auto_to_available = false;
-            sizes = resolve_axis_tracks(axis_input);
+        if available != AvailableOf::Definite(maximum)
+            && track_sum_with_gutters(&sizes, gap, Some(gutters)) > maximum
+        {
+            available = AvailableOf::Definite(maximum);
+            let replacement = resolve_grid_contribution_rows(
+                SpanningTrackContext {
+                    tracks,
+                    basis,
+                    available,
+                    gap,
+                    gutters: Some(gutters),
+                    base_floors: &contributions.base_floors,
+                },
+                &contributions.rows,
+            )
+            .map_err(|error| grid_track_sizing_error(node, error))?;
+            let replacement_sizes = finish_axis_track_phases(
+                node,
+                input,
+                axis,
+                &replacement,
+                &contributions.rows,
+                available,
+                None,
+            )?;
+            phases = replacement;
+            sizes = replacement_sizes;
         }
     }
-    sizes
+    Ok(GridAxisTrackReduction {
+        sizes,
+        phases,
+        available,
+    })
 }
-
-struct IntrinsicRole<'a, S: LayoutScalar> {
+fn prepare_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    input: &GridTrackResolutionInput<'_, '_, Node, S>,
     axis: GridAxisKind,
-    stage: GridSizingStage,
-    role: AvailableOf<S>,
-    columns: Option<&'a [S]>,
-    rows: Option<&'a [S]>,
-    lower_bound: Option<&'a [S]>,
+    contributions: GridAxisTrackInputs<S>,
+    available: AvailableOf<S>,
+    space: GridAxisTrackSpace<S>,
+) -> PreparedAxisResult<Node, S, M> {
+    let reduced = reduce_axis_track_inputs(
+        node,
+        input,
+        axis,
+        &contributions,
+        match space {
+            GridAxisTrackSpace::Intrinsic => effective_available(input, axis, available),
+            GridAxisTrackSpace::FinalUsed(value) => AvailableOf::Definite(value),
+        },
+        space,
+    )?;
+    Ok((
+        reduced.sizes,
+        GridAxisTrackPreparation {
+            contributions,
+            phases: reduced.phases,
+            available: reduced.available,
+        },
+    ))
 }
 
-type RoleResult<Node, S, M> = LayoutResultOf<Node, IntrinsicAxisContributions<Node, S>, S, M>;
-
-// Each role starts without automatic bars. One actual tentative content frame
-// is then observed using the canonical intrinsic-add semantics. The child's
-// own finite scrollbar settlement is separate from the four parent stages.
-fn evaluate_role<'input, Tree, M>(
+pub(super) fn collect_axis_track_preparation<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
     input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
     grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
-    role_input: IntrinsicRole<'_, Tree::Scalar>,
-) -> RoleResult<Tree::Node, Tree::Scalar, M>
+    frame: IntrinsicStageFrame<'_, Tree::Scalar>,
+    space: GridAxisTrackSpace<Tree::Scalar>,
+) -> PreparedAxisResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let IntrinsicRole {
+    let evaluated = evaluate_stage(tree, node, input, grid, frame, space)?;
+    prepare_axis_track_inputs(
+        node,
+        input,
+        frame.axis,
+        evaluated.contributions,
+        axis_available(input.available, frame.axis),
+        space,
+    )
+}
+
+fn collect_purposes<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
+    grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
+    frame: IntrinsicStageFrame<'_, Tree::Scalar>,
+) -> StageResult<Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let minimum = evaluate_role(tree, node, grid, frame, GridContributionPurpose::Minimum)?;
+    let min_content = evaluate_role(tree, node, grid, frame, GridContributionPurpose::MinContent)?;
+    let max_content = evaluate_role(tree, node, grid, frame, GridContributionPurpose::MaxContent)?;
+    let group = GridAxisContributions::new(minimum, min_content, max_content);
+    let mut rows =
+        grid_contribution_rows(&group).map_err(|error| grid_track_sizing_error(node, error))?;
+    if input
+        .style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        && grid_axis_for_grid_lanes(input.style) == frame.axis
+    {
+        let lane_rows = lane_intrinsic_contribution_rows(
+            tree,
+            node,
+            LaneIntrinsicTrackSizeInput {
+                grid,
+                frame,
+                container_style: input.style,
+                constants: input.constants,
+                axis: frame.axis,
+                tracks: axis_tracks(input, frame.axis),
+                gap: axis_available(input.context.gap, frame.axis),
+                gutters: Some(axis_gutters(input, frame.axis)),
+                lines: input.context.lines,
+                placements: input.placements,
+                subgrid_report: input.subgrid_report,
+            },
+        )?
+        .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::InvalidIncidence))?;
+        rows.try_reserve(lane_rows.len())
+            .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
+        rows.extend(lane_rows);
+    }
+    let GridAxisContributions {
+        minimum,
+        min_content,
+        max_content,
+        base_floors,
+    } = group;
+    let min_content_base_floors = min_content.base_floors;
+    let mut receipts = minimum.receipts;
+    let additional = min_content
+        .receipts
+        .len()
+        .checked_add(max_content.receipts.len())
+        .ok_or_else(|| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
+    receipts
+        .try_reserve(additional)
+        .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
+    receipts.extend(min_content.receipts);
+    receipts.extend(max_content.receipts);
+    Ok(EvaluatedAxis {
+        contributions: GridAxisTrackInputs {
+            rows,
+            base_floors,
+            min_content_base_floors,
+        },
+        receipts,
+    })
+}
+
+fn evaluate_stage<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
+    grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
+    frame: IntrinsicStageFrame<'_, Tree::Scalar>,
+    space: GridAxisTrackSpace<Tree::Scalar>,
+) -> StageResult<Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let initial = collect_purposes(tree, node, input, grid, frame)?;
+    if frame.observed_axis.is_some()
+        || !grid
+            .subgrid_report
+            .items
+            .iter()
+            .any(|item| item_inherits_parent_axis(*item, frame.axis))
+    {
+        return Ok(initial);
+    }
+    let (tentative, _) = prepare_axis_track_inputs(
+        node,
+        input,
+        frame.axis,
+        initial.contributions,
+        axis_available(input.available, frame.axis),
+        space,
+    )?;
+    collect_purposes(
+        tree,
+        node,
+        input,
+        grid,
+        IntrinsicStageFrame {
+            observed_axis: Some(&tentative),
+            ..frame
+        },
+    )
+}
+
+// All adapters use the same genuine per-role opposite-axis/source preparation.
+pub(super) fn intrinsic_role_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
+    grid: IntrinsicGrid<'input, 'a, Node, S>,
+    frame: IntrinsicStageFrame<'a, S>,
+    purpose: GridContributionPurpose,
+) -> IntrinsicGrid<'input, 'a, Node, S> {
+    let IntrinsicStageFrame {
         axis,
         stage,
-        role,
         columns,
         rows,
-        lower_bound,
-    } = role_input;
+        observed_axis,
+    } = frame;
+    let role = match purpose {
+        GridContributionPurpose::Minimum | GridContributionPurpose::MinContent => {
+            AvailableOf::MIN_CONTENT
+        }
+        GridContributionPurpose::MaxContent => AvailableOf::MAX_CONTENT,
+    };
     let mut available = LogicalSizeOf::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT);
     match axis {
         GridAxisKind::Column => {
@@ -315,6 +652,7 @@ where
     }
     let estimated_grid = IntrinsicGrid {
         query: IntrinsicGridQuery {
+            purpose,
             stage,
             ..grid.query
         },
@@ -340,95 +678,47 @@ where
         GridAxisKind::Column | GridAxisKind::Row => {}
     }
     let available = grid.sizing_flow_axes.physical_size(available);
-    let grid = IntrinsicGrid {
+    IntrinsicGrid {
         query: IntrinsicGridQuery {
+            purpose,
             axis: Some(axis),
             stage,
             available,
-            columns,
-            rows,
-            observe_auto: false,
-        },
-        ..grid
-    };
-    let bounds = match axis {
-        GridAxisKind::Column => IntrinsicGridLowerBounds {
-            columns: lower_bound,
-            rows: None,
-        },
-        GridAxisKind::Row => IntrinsicGridLowerBounds {
-            columns: None,
-            rows: lower_bound,
-        },
-    };
-    let initial = intrinsic_track_sizes(tree, node, grid, available, bounds)?;
-    let mut contributions = initial.into_axis(axis);
-    if grid
-        .subgrid_report
-        .items
-        .iter()
-        .any(|item| item_inherits_parent_axis(*item, axis))
-    {
-        // Layout observes the role's converted axis output, while a later
-        // MAX distribution still borrows its unconverted MIN floors.
-        let observation_sizes = contributions.observation_sizes();
-        let tentative = resolve_axis(input, axis, &observation_sizes, &observation_sizes, role);
-        let query = IntrinsicGridQuery {
             columns: if axis == GridAxisKind::Column {
-                Some(&tentative)
+                observed_axis.or(columns)
             } else {
                 columns
             },
             rows: if axis == GridAxisKind::Row {
-                Some(&tentative)
+                observed_axis.or(rows)
             } else {
                 rows
             },
-            observe_auto: true,
-            ..grid.query
-        };
-        let observed = intrinsic_track_sizes(
-            tree,
-            node,
-            IntrinsicGrid { query, ..grid },
-            available,
-            bounds,
-        )?;
-        contributions = observed.into_axis(axis);
+            observe_auto: observed_axis.is_some(),
+        },
+        ..grid
     }
-    if input
-        .style
-        .display
-        .establishes_grid_lanes_formatting_context()
-        && grid_axis_for_grid_lanes(input.style) == axis
-    {
-        let tracks = match axis {
-            GridAxisKind::Column => input.column_tracks,
-            GridAxisKind::Row => input.row_tracks,
-        };
-        let lane_sizes = lane_intrinsic_track_sizes(
-            tree,
-            node,
-            LaneIntrinsicTrackSizeInput {
-                container_style: input.style,
-                constants: input.constants,
-                axis,
-                tracks,
-                gap: axis_available(input.context.gap, axis),
-                available: role,
-                available_basis: axis_available(input.context.percent_basis, axis),
-                gutters: Some(match axis {
-                    GridAxisKind::Column => &input.context.column_gutters,
-                    GridAxisKind::Row => &input.context.row_gutters,
-                }),
-                lines: input.context.lines,
-                placements: input.placements,
-                subgrid_report: input.subgrid_report,
-            },
-        )?;
-        merge_lane_intrinsic_lower_bounds(&mut contributions.sizes, lane_sizes);
-    }
-    Ok(contributions)
+}
+
+fn evaluate_role<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
+    frame: IntrinsicStageFrame<'_, Tree::Scalar>,
+    purpose: GridContributionPurpose,
+) -> RoleResult<Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let grid = intrinsic_role_grid(grid, frame, purpose);
+    intrinsic_track_sizes(
+        tree,
+        node,
+        grid,
+        grid.query.available,
+        IntrinsicGridLowerBounds::default(),
+    )
+    .map(|result| result.into_axis(frame.axis))
 }
 
 pub(super) enum GridIntrinsicProbeKind {
@@ -448,11 +738,12 @@ pub(super) struct IntrinsicSubgridSource<'input, Node, S: LayoutScalar> {
     content_box_size: Size<S>,
     columns: Vec<S>,
     rows: Vec<S>,
+    column_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
+    row_minimum_functions: Option<Vec<GridMinimumTrackFact<S>>>,
     gap: LogicalSizeOf<S>,
     named_columns: NamedGridLines,
     named_rows: NamedGridLines,
     area_facts: Option<GridAreaNameFacts>,
-    baseline_groups: GridBaselineGroups<S>,
     margin: Edges<Option<S>>,
     border: Edges<S>,
     padding: Edges<S>,
@@ -469,8 +760,20 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
         row_geometry: Option<&UsedGridAxisGeometryOf<S>>,
         parent_flow: crate::geometry::FlowAxes,
         stage: GridSizingStage,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, SubgridChildContextError<S>> {
+        let column_minimum_functions = source
+            .minimum_functions
+            .columns
+            .map(GridMinimumTrackFunctions::retain)
+            .transpose()
+            .map_err(SubgridChildContextError::MinimumFunctions)?;
+        let row_minimum_functions = source
+            .minimum_functions
+            .rows
+            .map(GridMinimumTrackFunctions::retain)
+            .transpose()
+            .map_err(SubgridChildContextError::MinimumFunctions)?;
+        Ok(Self {
             item: source.item,
             child_style: source.child_style.clone(),
             container: source
@@ -480,11 +783,12 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
             content_box_size: source.content_box_size,
             columns: source.columns.to_vec(),
             rows: source.rows.to_vec(),
+            column_minimum_functions,
+            row_minimum_functions,
             gap: source.gap,
             named_columns: source.parent_named_columns.clone(),
             named_rows: source.parent_named_rows.clone(),
             area_facts: source.parent_area_facts.cloned(),
-            baseline_groups: source.parent_baseline_groups.clone(),
             margin: source.margin,
             border: source.border,
             padding: source.padding,
@@ -492,7 +796,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
             row_geometry: row_geometry.cloned(),
             parent_flow,
             stage,
-        }
+        })
     }
 
     pub(super) fn measure<Tree, M>(
@@ -511,11 +815,20 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
             content_box_size: self.content_box_size,
             columns: &self.columns,
             rows: &self.rows,
+            minimum_functions: GridMinimumParentFunctions {
+                columns: self
+                    .column_minimum_functions
+                    .as_deref()
+                    .map(GridMinimumTrackFunctions::from_qualified),
+                rows: self
+                    .row_minimum_functions
+                    .as_deref()
+                    .map(GridMinimumTrackFunctions::from_qualified),
+            },
             gap: self.gap,
             parent_named_columns: &self.named_columns,
             parent_named_rows: &self.named_rows,
             parent_area_facts: self.area_facts.as_ref(),
-            parent_baseline_groups: &self.baseline_groups,
             margin: self.margin,
             border: self.border,
             padding: self.padding,

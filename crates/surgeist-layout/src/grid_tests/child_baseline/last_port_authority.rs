@@ -263,6 +263,7 @@ fn membership<S: LayoutScalar>(
         source: 1,
         axis: GridAxisKind::Row,
         ancestor_span: span,
+        alignment_context_reversed: false,
         alignment,
         block_auto_margins: false,
         synthesized_baseline_cycle: cycle,
@@ -324,11 +325,11 @@ fn intrinsic_member<S: LayoutScalar>(port: LastPort) {
         LastPort::Thirteen => (20.0, 20.0),
     };
     assert_eq!(
-        group.placement_offset(subject, s::<S>(40.0), s::<S>(20.0), S::ZERO),
+        group.placement_offset(subject, S::ZERO, s::<S>(40.0)),
         Some(s::<S>(subject_y))
     );
     assert_eq!(
-        group.placement_offset(anchor, s::<S>(40.0), s::<S>(20.0), S::ZERO),
+        group.placement_offset(anchor, S::ZERO, s::<S>(40.0)),
         Some(s::<S>(anchor_y))
     );
     let first = membership(measured, AlignItems::Baseline, axes, axes, span, false).unwrap();
@@ -361,6 +362,7 @@ fn axis_and_cycle<S: LayoutScalar>() {
             measured.baselines(),
             axes,
             &rows,
+            None,
         );
         assert_eq!(cycle, matches!(port, LastPort::Missing));
         let participation = baseline_participation(
@@ -385,6 +387,7 @@ fn axis_and_cycle<S: LayoutScalar>() {
             measured.baselines(),
             axes,
             &rows,
+            None,
         );
         assert!(
             !first_cycle,

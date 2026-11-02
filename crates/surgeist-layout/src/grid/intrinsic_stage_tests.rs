@@ -202,7 +202,13 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
             .definite_value()
             .map(crate::NonNegativeFiniteOf::get);
         let rows_known = available.height.definite_value().is_some();
-        if matches!(self.measurement, Measurement::RefuseResolvedWidth) && width.is_some() {
+        // A used-minimum query can legitimately supply its selected width.
+        // Refuse the later dependency on a finite width constraint while the
+        // provider still has to determine that width itself.
+        if matches!(self.measurement, Measurement::RefuseResolvedWidth)
+            && width.is_some()
+            && input.known_content_size().width.is_none()
+        {
             return Some(Err(ResolvedWidth));
         }
         let minimum = available.width == MeasurementAvailableOf::MIN_CONTENT;
@@ -299,6 +305,33 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
     }
 }
 
+fn assert_grid_axis_prefix_requests<S: LayoutScalar>(tree: &StageTree<S>) {
+    let requests = tree.requests.borrow();
+    assert!(
+        requests
+            .iter()
+            .any(|(_, input)| input.known().width.is_some()),
+        "the prefix includes the genuine selected-axis used-minimum query"
+    );
+    assert!(
+        requests
+            .iter()
+            .all(|(_, input)| input.known().width.is_some()
+                || !matches!(input.available().width, AvailableOf::Definite(_))),
+        "the grid-axis prefix must not borrow a later opposite width constraint"
+    );
+}
+
+fn assert_width_dependency<S: LayoutScalar>(tree: &StageTree<S>, start: usize) {
+    assert!(
+        tree.requests.borrow().iter().skip(start).any(|(_, input)| {
+            input.known().width.is_none()
+                && matches!(input.available().width, AvailableOf::Definite(_))
+        }),
+        "the actual operation must reach its unresolved-width dependency"
+    );
+}
+
 fn assert_cutoff<S: LayoutScalar>() {
     for tree in [
         StageTree::<S>::new(Measurement::RefuseResolvedWidth),
@@ -310,6 +343,8 @@ fn assert_cutoff<S: LayoutScalar>() {
             first.effective_gutter.is_none(),
             "an unresolved opposite axis is not an allocated scrollport"
         );
+        assert_grid_axis_prefix_requests(&tree);
+        let prefix_requests = tree.requests.borrow().len();
         let error = tree
             .observe(GridSizingPhase::InitialSecond)
             .err()
@@ -318,6 +353,7 @@ fn assert_cutoff<S: LayoutScalar>() {
             error.kind(),
             LayoutErrorKindOf::Measurement(ResolvedWidth)
         ));
+        assert_width_dependency(&tree, prefix_requests);
     }
 }
 
@@ -434,12 +470,15 @@ fn initial_maximum_track_estimate_is_span_specific_and_alignment_is_qualified() 
 
 fn assert_lanes_cutoff<S: LayoutScalar>(tree: StageTree<S>) {
     let first = tree.observe(GridSizingPhase::InitialFirst);
-    let second = tree.observe(GridSizingPhase::InitialSecond);
     assert_eq!(first.unwrap().output.size.width, S::from_f64(40.0));
+    assert_grid_axis_prefix_requests(&tree);
+    let prefix_requests = tree.requests.borrow().len();
+    let second = tree.observe(GridSizingPhase::InitialSecond);
     assert!(matches!(
         second.err().expect("later stage refuses").kind(),
         LayoutErrorKindOf::Measurement(ResolvedWidth)
     ));
+    assert_width_dependency(&tree, prefix_requests);
 }
 
 #[test]
@@ -538,11 +577,13 @@ fn assert_lanes_oriented_dependency<S: LayoutScalar>() {
                 .unwrap();
             assert_eq!(prefix.output.size.width, S::from_f64(40.0));
             assert!(prefix.effective_gutter.is_none());
+            assert_grid_axis_prefix_requests(&tree);
             for (first_axis, through) in [
                 (grid_axis, GridSizingPhase::InitialSecond),
                 (stacking_axis, GridSizingPhase::InitialFirst),
                 (grid_axis, GridSizingPhase::Complete),
             ] {
+                let prefix_requests = tree.requests.borrow().len();
                 let error = tree.observe_at(first_axis, through).err().expect(
                     "actual stacking-size and completed operations reach the host dependency",
                 );
@@ -550,6 +591,7 @@ fn assert_lanes_oriented_dependency<S: LayoutScalar>() {
                     error.kind(),
                     LayoutErrorKindOf::Measurement(ResolvedWidth)
                 ));
+                assert_width_dependency(&tree, prefix_requests);
             }
         }
     }
@@ -575,6 +617,7 @@ fn assert_lanes_required_work<S: LayoutScalar>() {
         error.kind(),
         LayoutErrorKindOf::Measurement(ResolvedWidth)
     ));
+    assert_width_dependency(&tree, 0);
 
     let mut tree = lanes_cutoff_tree::<S>(false);
     tree.measurement = Measurement::MaximumOnlyChanges;
@@ -600,10 +643,114 @@ fn assert_lanes_required_work<S: LayoutScalar>() {
         error.kind(),
         LayoutErrorKindOf::Measurement(ResolvedWidth)
     ));
+    assert_width_dependency(&refusing, 0);
 }
 
 #[test]
 fn lanes_cutoff_preserves_qualified_auto_stacking_size_and_full_layout_work() {
     assert_lanes_required_work::<f32>();
     assert_lanes_required_work::<f64>();
+}
+
+fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
+    let n = S::from_f64;
+    // Requested scrollbars15 exceed the unallocated max outer2x4. The raw
+    // provisional inset is preserved, but actual track space must saturate0.
+    // The size-authored control already has an allocated saturated scroll box.
+    for explicit_size in [false, true] {
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(0, [1])
+            .children(1, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: if explicit_size {
+                        Size::new(PreferredSizeOf::px(n(2.0)), PreferredSizeOf::px(n(4.0)))
+                    } else {
+                        Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO)
+                    },
+                    max_size: Size::new(crate::MaxSizeOf::px(n(2.0)), crate::MaxSizeOf::px(n(4.0))),
+                    overflow: crate::ComputedOverflow::try_new(Overflow::Scroll, Overflow::Scroll)
+                        .unwrap(),
+                    scrollbar_width: crate::ScrollbarWidthOf::try_new(n(15.0)).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    ..NodeInputOf::default()
+                },
+            );
+        assert!(!tree.has_leaf_measurement(0) && !tree.has_leaf_measurement(1));
+        let batch = crate::compute_layout(
+            &tree,
+            0,
+            crate::LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
+        )
+        .expect("finite max-size/scrollbar geometry completes");
+        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            let root = entries
+                .iter()
+                .find(|entry| entry.node() == 0)
+                .unwrap()
+                .output();
+            let child = entries
+                .iter()
+                .find(|entry| entry.node() == 1)
+                .unwrap()
+                .output();
+            assert_eq!(root.size, Size::new(n(2.0), n(4.0)));
+            assert_eq!(child.size, Size::ZERO);
+        }
+    }
+    // Saturation of finite provisional residuals must not weaken the checked
+    // consumer's nonfinite contract, even for a genuine zero-item track.
+    let tracks = [TrackSizingOf::<S>::AUTO];
+    let rows = [GridIntrinsicContributionRow {
+        span: GridTrackSpan::new(1, 2),
+        contributions: GridTrackContributions {
+            minimum: S::ZERO,
+            min_content: S::ZERO,
+            max_content: S::ZERO,
+        },
+    }];
+    let phases = resolve_grid_contribution_rows(
+        SpanningTrackContext {
+            tracks: &tracks,
+            basis: None,
+            available: AvailableOf::Definite(S::ZERO),
+            gap: S::ZERO,
+            gutters: None,
+            base_floors: &[],
+        },
+        &rows,
+    )
+    .unwrap();
+    for value in [S::INFINITY, -S::INFINITY, S::NAN] {
+        assert!(matches!(
+            resolve_tracks_from_phases(ResolvedAxisTrackInput {
+                tracks: &tracks,
+                phases: &phases,
+                items: &rows,
+                available: AvailableOf::Definite(value),
+                stretch_size: None,
+                gap: S::ZERO,
+                alignment: AlignContent::Start,
+                gutters: None,
+            }),
+            Err(SpanningContributionError::InvalidNumeric { .. })
+        ));
+    }
+}
+
+#[test]
+fn scrollbar_maximum_track_space_f32() {
+    assert_scrollbar_maximum_track_space::<f32>();
+}
+#[test]
+fn scrollbar_maximum_track_space_f64() {
+    assert_scrollbar_maximum_track_space::<f64>();
 }

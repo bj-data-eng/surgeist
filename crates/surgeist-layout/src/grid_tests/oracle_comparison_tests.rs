@@ -6658,13 +6658,25 @@ mod root_layout_oracle {
 
     #[test]
     fn subgrid_traversal_percent_gap_uses_definite_content_box_basis() {
+        // The own cyclic 20% gap contributes 0 intrinsically. Against parent
+        // gap 10, each internal side subtracts 5 from the genuine 40px leaf.
         let expected_columns = TrackSizingSlice::definite_columns(100.0, 10.0)
             .track(GridTrack::auto())
             .track(GridTrack::auto())
             .track(GridTrack::auto())
-            .item(intrinsic_item(GridArea::new(2, 1, 1, 1), 50.0))
+            .item(intrinsic_item(GridArea::new(2, 1, 1, 1), 30.0))
             .solve();
+        assert_eq!(
+            expected_columns
+                .final_tracks
+                .iter()
+                .map(|track| track.size)
+                .collect::<Vec<_>>(),
+            [0.0, 30.0, 0.0]
+        );
 
+        // Parent tracks 30 + two 10px gutters give the subgrid 50px. Its
+        // performed own gap is 20% of 50=10, with no backward track resizing.
         GridLayoutComparison::new()
             .container(Size::new(100.0, 20.0))
             .columns(vec![
@@ -6678,9 +6690,13 @@ mod root_layout_oracle {
             .node(
                 GridLayoutNode::subgrid(GridArea::new(1, 1, 3, 1))
                     .gap(Size::new(Length::percent(0.2), Length::ZERO))
+                    .expect_layout(Point::new(0.0, 0.0), Size::new(50.0, 20.0))
+                    .expect_final_layout(Point::new(0.0, 0.0), Size::new(50.0, 20.0))
                     .child(
                         GridLayoutNode::item(GridArea::new(2, 1, 1, 1))
-                            .measurement(Size::new(40.0, 10.0)),
+                            .measurement(Size::new(40.0, 10.0))
+                            .expect_layout(Point::new(10.0, 0.0), Size::new(40.0, 10.0))
+                            .expect_final_layout(Point::new(10.0, 0.0), Size::new(40.0, 10.0)),
                     ),
             )
             .assert_layout();

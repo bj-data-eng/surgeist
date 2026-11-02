@@ -72,17 +72,15 @@ fn canonical_test_geometry<S: LayoutScalar>(
 
 #[test]
 fn fri05_c01_node_input_private_used_overflow_phase_is_exact_through_scroll_consumers() {
-    for (computed, clips, exposes_range, gutter, replaced) in [
+    for (computed, exposes_range, gutter, replaced) in [
         (
             Overflow::Visible,
-            false,
             false,
             UsedOverflowGutter::None,
             Overflow::Visible,
         ),
         (
             Overflow::Clip,
-            true,
             false,
             UsedOverflowGutter::None,
             Overflow::Clip,
@@ -90,20 +88,17 @@ fn fri05_c01_node_input_private_used_overflow_phase_is_exact_through_scroll_cons
         (
             Overflow::Hidden,
             true,
-            true,
             UsedOverflowGutter::StableOnly,
             Overflow::Clip,
         ),
         (
             Overflow::Scroll,
             true,
-            true,
             UsedOverflowGutter::Forced,
             Overflow::Scroll,
         ),
         (
             Overflow::Auto,
-            true,
             true,
             UsedOverflowGutter::Conditional,
             Overflow::Auto,
@@ -116,7 +111,6 @@ fn fri05_c01_node_input_private_used_overflow_phase_is_exact_through_scroll_cons
 
         for axis in [ordinary.x(), ordinary.y()] {
             assert_eq!(axis.value(), computed);
-            assert_eq!(axis.clips_contents(), clips);
             assert_eq!(axis.exposes_scroll_range(), exposes_range);
             assert_eq!(axis.gutter_classification(), gutter);
         }

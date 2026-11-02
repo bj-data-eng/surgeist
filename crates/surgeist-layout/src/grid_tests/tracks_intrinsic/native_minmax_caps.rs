@@ -160,11 +160,16 @@ fn assert_caps<S: LayoutScalar>(
         let batch =
             compute_layout(&tree, 0, request).expect("the native capped-span grid completes");
         for entries in [batch.unrounded_entries(), batch.final_entries()] {
-            assert_eq!(output(entries, 0).size, Size::new(n(root_width), n(20.0)));
+            assert_eq!(
+                output(entries, 0).size,
+                Size::new(n(root_width), n(20.0)),
+                "normalized={normalize_first} {overflow:?} {constraint:?} root"
+            );
             assert_eq!(output(entries, 1).location, Point::ZERO);
             assert_eq!(
                 output(entries, 1).size,
-                Size::new(n(100.0 + second), n(10.0))
+                Size::new(n(100.0 + second), n(10.0)),
+                "normalized={normalize_first} {overflow:?} {constraint:?} spanning body"
             );
             assert_eq!(output(entries, 2).location, Point::new(n(100.0), n(10.0)));
             assert_eq!(output(entries, 2).size, Size::new(n(second), n(10.0)));

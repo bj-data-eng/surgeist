@@ -85,7 +85,7 @@ fn preserve_row_margins<S: LayoutScalar>() {
                     2,
                     NodeInputOf {
                         writing_mode,
-                        margin: margin.clone(),
+                        margin,
                         size: flow.physical_size(LogicalSizeOf::new(
                             PreferredSizeOf::px(n(30.0)),
                             PreferredSizeOf::AUTO,

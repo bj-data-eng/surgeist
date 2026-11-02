@@ -14,9 +14,15 @@ fn budget_box<S: LayoutScalar>(
     output
 }
 
-fn assert_native_equal_flex_budget<S: LayoutScalar>(count: usize, share: S, feasible_sum: S) {
+fn assert_native_equal_flex_budget<S: LayoutScalar>(
+    count: usize,
+    share: S,
+    feasible_sum: S,
+    published_edges: &[S],
+) {
     let zero = S::ZERO;
     let one = S::from_f64(1.0);
+    assert_eq!(published_edges.len(), count + 1);
     let last_node = u32::try_from(count).expect("bounded native fixture");
     let track = TrackComponentOf::minmax(
         MinTrackSizingOf::px(zero),
@@ -131,14 +137,15 @@ fn assert_native_equal_flex_budget<S: LayoutScalar>(count: usize, share: S, feas
             "the actual ordered endpoint remains in the budget"
         );
 
-        // Static zero-edge boxes publish the ordinary rounded corners; no
-        // adjustment of rounded output can excuse overspending unrounded tracks.
+        // Declared edges follow the existing scalar publication policy:
+        // represented addition of0.5, then floor. Its near-half tie is
+        // qualified independently below; the unrounded budget remains exact.
         let final_box = budget_box(batch.final_entries(), node);
         assert_eq!(final_box.source_index, SourceIndex::new(index));
-        assert_eq!(final_box.location, Point::new(cursor.round(), zero));
+        assert_eq!(final_box.location, Point::new(published_edges[index], zero));
         assert_eq!(
             final_box.size,
-            Size::new(right.round() - cursor.round(), one)
+            Size::new(published_edges[index + 1] - published_edges[index], one)
         );
         cursor = right;
     }
@@ -161,7 +168,25 @@ fn native_ten_equal_flex_tracks_conserve_the_f32_budget_before_rounding() {
     assert!(next_sum > 1.0);
     // Adjacent positive IEEE shares are ordered. The next share is the nominal
     // quotient and already overspends, so feasible is greatest at/below nominal.
-    assert_native_equal_flex_budget::<f32>(10, feasible, feasible_sum);
+    let fifth = (0..5).fold(0.0_f32, |sum, _| sum + feasible);
+    assert_eq!(fifth.to_bits(), 0x3eff_ffff);
+    assert!(fifth < 0.5);
+    let previous_one = f32::from_bits(0x3f7f_ffff);
+    assert_eq!(
+        f64::from(fifth) + 0.5,
+        (f64::from(previous_one) + 1.0) / 2.0,
+        "the exact addition is halfway between adjacent represented values below/at1",
+    );
+    assert_eq!((fifth + 0.5_f32).to_bits(), 0x3f80_0000);
+    assert_eq!(fifth.round(), 0.0);
+    // The native positive-coordinate policy first adds0.5 in f32. At this
+    // tie the addition rounds to even1, so the fifth published edge is1.
+    assert_native_equal_flex_budget::<f32>(
+        10,
+        feasible,
+        feasible_sum,
+        &[0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    );
 }
 
 #[test]
@@ -176,5 +201,10 @@ fn native_nine_equal_flex_tracks_conserve_the_f64_budget_before_rounding() {
     assert!(feasible_sum <= 1.0);
     assert_eq!(next_sum.to_bits(), 0x3ff0_0000_0000_0001);
     assert!(next_sum > 1.0);
-    assert_native_equal_flex_budget::<f64>(9, feasible, feasible_sum);
+    assert_native_equal_flex_budget::<f64>(
+        9,
+        feasible,
+        feasible_sum,
+        &[0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    );
 }

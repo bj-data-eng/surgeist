@@ -9,17 +9,11 @@ use crate::{
 
 pub(super) trait GridOverflowFacts {
     fn computed_overflow(&self) -> ComputedOverflow;
-
-    fn item_is_replaced(&self) -> bool;
 }
 
 impl<T: GridOverflowFacts + ?Sized> GridOverflowFacts for &T {
     fn computed_overflow(&self) -> ComputedOverflow {
         (*self).computed_overflow()
-    }
-
-    fn item_is_replaced(&self) -> bool {
-        (*self).item_is_replaced()
     }
 }
 
@@ -27,19 +21,11 @@ impl<S: LayoutScalar> GridOverflowFacts for NodeInputOf<S> {
     fn computed_overflow(&self) -> ComputedOverflow {
         self.overflow
     }
-
-    fn item_is_replaced(&self) -> bool {
-        self.item_is_replaced
-    }
 }
 
 impl<S: LayoutScalar> GridOverflowFacts for GridContainerProjection<'_, S> {
     fn computed_overflow(&self) -> ComputedOverflow {
         self.overflow
-    }
-
-    fn item_is_replaced(&self) -> bool {
-        self.item_is_replaced
     }
 }
 
@@ -376,10 +362,6 @@ impl<'input, S: LayoutScalar> GridChildInput<'input, S> {
 impl<'input, S: LayoutScalar> GridOverflowFacts for GridItemProjection<'input, S> {
     fn computed_overflow(&self) -> ComputedOverflow {
         self.overflow
-    }
-
-    fn item_is_replaced(&self) -> bool {
-        self.item_is_replaced
     }
 }
 

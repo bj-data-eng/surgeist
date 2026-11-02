@@ -1,6 +1,6 @@
 use super::fixtures::{
-    derive_inherited_placement, empty_subgrid_track, fri08_c02_auto_fit_output,
-    fri08_c02_auto_fit_repeat, inherited_placement_group, vertical_baseline_measure,
+    empty_subgrid_track, fri08_c02_auto_fit_output, fri08_c02_auto_fit_repeat,
+    vertical_baseline_measure,
 };
 use super::*;
 
@@ -240,43 +240,6 @@ fn ltr_inline_column_composed_target_remains_x265() {
 fn vertical_auto_rows_composed_target_remains_x308() {
     assert_fri06_c12_t08_ordinary_fixture_geometry(
         "tests/layout/browser_parity/xml/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first__border_box_ltr.xml",
-    );
-}
-
-#[test]
-fn vertical_auto_rows_current_grid_first_moves_x126_to_x121_while_last_stays_x30() {
-    let first_group =
-        inherited_placement_group(GridAxisKind::Row, AncestorBaselineRole::First, 3, 28.0);
-    let first = derive_inherited_placement(
-        &first_group,
-        GridAxisKind::Row,
-        AncestorBaselineRole::First,
-        3,
-        false,
-        0.0,
-        10.0,
-    )
-    .unwrap();
-    let last_group =
-        inherited_placement_group(GridAxisKind::Row, AncestorBaselineRole::Last, 3, 10.0);
-    let last = derive_inherited_placement(
-        &last_group,
-        GridAxisKind::Row,
-        AncestorBaselineRole::Last,
-        3,
-        false,
-        0.0,
-        10.0,
-    )
-    .unwrap();
-    assert_eq!(
-        (
-            first.translated_target(),
-            126.0 - first.accumulated_gutter_translation(),
-            last.translated_target(),
-            30.0 - last.accumulated_gutter_translation(),
-        ),
-        (33.0, 121.0, 10.0, 30.0),
     );
 }
 

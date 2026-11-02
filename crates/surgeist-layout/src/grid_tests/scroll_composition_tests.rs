@@ -17,7 +17,7 @@ use super::fixtures::{
     fri08_c04_baseline_area_implicit_tree, fri08_c04_baseline_world_coordinate,
     fri08_c04_standalone_nested_tree, fri08_c06r_assert_cold_warm, invalid_numeric_lp,
     subgrid_axis_report, subgrid_child_parent_context_with_geometry, subgrid_eligibility,
-    subgrid_track, subgrid_track_of, tagged_group, traversal_leaf,
+    subgrid_track, subgrid_track_of, traversal_leaf,
 };
 use super::*;
 
@@ -2472,7 +2472,7 @@ fn fri08_c04_overflow_ordinary_intrinsic_inline_size<S: LayoutScalar>(
         .inline
 }
 
-fn assert_fri08_c04_overflow_ordinary_intrinsic_phases<S: LayoutScalar>() {
+fn assert_fri08_c04_overflow_ordinary_intrinsic_allocations<S: LayoutScalar>() {
     let scalar = S::from_f64;
     for writing_mode in [WritingMode::HorizontalTb, WritingMode::VerticalRl] {
         for direction in [Direction::Ltr, Direction::Rtl] {
@@ -2483,11 +2483,10 @@ fn assert_fri08_c04_overflow_ordinary_intrinsic_phases<S: LayoutScalar>() {
                 Overflow::Scroll,
                 Overflow::Auto,
             ] {
-                let expected_maximum = if matches!(overflow, Overflow::Visible | Overflow::Clip) {
-                    scalar(50.0)
-                } else {
-                    S::ZERO
-                };
+                // Grid 2 §12.5 uses limited min-content for Auto track minima
+                // under either intrinsic constraint; a zero used item minimum
+                // does not erase its positive intrinsic contributions.
+                let expected_maximum = scalar(50.0);
                 assert_eq!(
                     fri08_c04_overflow_ordinary_intrinsic_inline_size::<S>(
                         writing_mode,
@@ -2496,13 +2495,9 @@ fn assert_fri08_c04_overflow_ordinary_intrinsic_phases<S: LayoutScalar>() {
                         AvailableOf::MAX_CONTENT,
                     ),
                     expected_maximum,
-                    "{writing_mode:?} {direction:?} {overflow:?} ordinary automatic minimum"
+                    "{writing_mode:?} {direction:?} {overflow:?} max-content track allocation"
                 );
-                let expected_minimum = if overflow == Overflow::Visible {
-                    scalar(50.0)
-                } else {
-                    S::ZERO
-                };
+                let expected_minimum = scalar(50.0);
                 assert_eq!(
                     fri08_c04_overflow_ordinary_intrinsic_inline_size::<S>(
                         writing_mode,
@@ -2511,7 +2506,7 @@ fn assert_fri08_c04_overflow_ordinary_intrinsic_phases<S: LayoutScalar>() {
                         AvailableOf::MIN_CONTENT,
                     ),
                     expected_minimum,
-                    "{writing_mode:?} {direction:?} {overflow:?} automatic minimum"
+                    "{writing_mode:?} {direction:?} {overflow:?} min-content track allocation"
                 );
             }
         }
@@ -2519,9 +2514,9 @@ fn assert_fri08_c04_overflow_ordinary_intrinsic_phases<S: LayoutScalar>() {
 }
 
 #[test]
-fn fri08_c04_overflow_ordinary_auto_minimum_and_max_content_eligibility_are_distinct() {
-    assert_fri08_c04_overflow_ordinary_intrinsic_phases::<f32>();
-    assert_fri08_c04_overflow_ordinary_intrinsic_phases::<f64>();
+fn fri08_c04_overflow_ordinary_auto_tracks_preserve_intrinsic_allocations() {
+    assert_fri08_c04_overflow_ordinary_intrinsic_allocations::<f32>();
+    assert_fri08_c04_overflow_ordinary_intrinsic_allocations::<f64>();
 }
 
 fn fri08_c04_overflow_hidden_subgrid_batch<S: LayoutScalar>(
@@ -2750,8 +2745,33 @@ fn fri08_c02_auto_fit_inherited_context(reversed: bool) -> GridParentContext<f32
         vec![false, true, false, false],
         10.0,
     );
+    let mut parent_column_functions = Vec::new();
+    let mut parent_row_functions = Vec::new();
+    extend_auto_tracks(
+        &mut parent_column_functions,
+        &parent_style.grid_auto_columns,
+        None,
+        10.0,
+        4,
+    )
+    .unwrap();
+    extend_auto_tracks(
+        &mut parent_row_functions,
+        &parent_style.grid_auto_rows,
+        None,
+        0.0,
+        1,
+    )
+    .unwrap();
     subgrid_child_parent_context_with_geometry(
         SubgridChildParentContextInput {
+            minimum_functions: GridMinimumParentFunctions {
+                columns: Some(GridMinimumTrackFunctions::new(
+                    &parent_column_functions,
+                    None,
+                )),
+                rows: Some(GridMinimumTrackFunctions::new(&parent_row_functions, None)),
+            },
             item,
             child_style: &child_style,
             area: GridArea {
@@ -2768,15 +2788,6 @@ fn fri08_c02_auto_fit_inherited_context(reversed: bool) -> GridParentContext<f32
             parent_named_columns: &NamedGridLines::new(GridAxisKind::Column, 4),
             parent_named_rows: &NamedGridLines::new(GridAxisKind::Row, 1),
             parent_area_facts: None,
-            parent_baseline_groups: &GridBaselineGroups {
-                columns: vec![
-                    tagged_group(PhysicalAxis::Horizontal, Some(7.0), Some(3.0)),
-                    TrackBaselineGroup::default(),
-                    tagged_group(PhysicalAxis::Horizontal, Some(11.0), Some(5.0)),
-                    tagged_group(PhysicalAxis::Horizontal, Some(13.0), Some(6.0)),
-                ],
-                rows: vec![TrackBaselineGroup::default()],
-            },
             margin: Edges::all(Some(0.0)),
             border: Edges::ZERO,
             padding: Edges::ZERO,
@@ -2804,20 +2815,6 @@ fn fri08_c02_auto_fit_inherited_subgrid_slices_and_reverses_geometry_with_baseli
                 &[false, true, false, false]
             }
         );
-        let inherited_baselines = columns
-            .major_baselines
-            .iter()
-            .filter_map(|baseline| baseline.map(|baseline| baseline.coordinate()))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            inherited_baselines,
-            if reversed {
-                vec![13.0, 11.0, 7.0]
-            } else {
-                vec![7.0, 11.0, 13.0]
-            }
-        );
-
         let mut tree = OracleTree::new()
             .children(1, [2])
             .style(
@@ -2868,6 +2865,8 @@ fn fri08_c02_auto_fit_inherited_subgrid_slices_and_reverses_geometry_with_baseli
             140.0
         );
         assert!(output.scroll_geometry.is_some());
+        // This vertical First comes from the performed child measurement;
+        // the inherited columns supply collapsed geometry, not parent ports.
         assert_eq!(output.first_baselines.y, Some(7.0));
     }
 }
@@ -2992,7 +2991,7 @@ fn fri08_c02_auto_fit_public_decreasing_subgrid_preserves_baseline_location_and_
         .style(
             3,
             NodeInput {
-                writing_mode: WritingMode::VerticalLr,
+                writing_mode: WritingMode::SidewaysLr,
                 size: Size::new(PreferredSize::px(17.0), PreferredSize::px(10.0)),
                 grid_column: GridPlacement::try_line(1).expect("single subgrid column"),
                 grid_row: GridPlacement::try_line(1).expect("single inherited row"),
@@ -3003,7 +3002,7 @@ fn fri08_c02_auto_fit_public_decreasing_subgrid_preserves_baseline_location_and_
         .style(
             4,
             NodeInput {
-                writing_mode: WritingMode::VerticalLr,
+                writing_mode: WritingMode::SidewaysLr,
                 size: Size::new(PreferredSize::px(10.0), PreferredSize::px(10.0)),
                 grid_column: GridPlacement::try_line(1).expect("single subgrid column"),
                 grid_row: GridPlacement::try_line(1).expect("single inherited row"),
@@ -3043,6 +3042,44 @@ fn fri08_c02_auto_fit_public_decreasing_subgrid_preserves_baseline_location_and_
         .physical_range()
         .x();
 
+    // SidewaysLr retains an increasing physical block axis but its line-under
+    // side is Right. These genuine empty native bodies therefore select
+    // First ports17 and10; sharing that point requires x_peer-x_target=7.
+    let child_flow = FlowAxes::new(WritingMode::SidewaysLr, Direction::Ltr);
+    for (node, actual, expected_width) in [(3, baseline_target, 17.0), (4, baseline_peer, 10.0)] {
+        let input = LayoutTree::node_input(&tree, node);
+        assert_eq!(input.writing_mode, WritingMode::SidewaysLr);
+        assert_eq!(input.direction, Direction::Ltr);
+        assert_eq!(
+            input.size,
+            Size::new(PreferredSize::px(expected_width), PreferredSize::px(10.0))
+        );
+        assert_eq!(input.align_self, Some(AlignItems::Baseline));
+        assert_eq!(Traverse::child_count(&tree, node), 0);
+        assert!(!LayoutTree::has_leaf_measurement(&tree, node));
+        assert_eq!(actual.size, Size::new(expected_width, 10.0));
+        let mut found_performed_body = false;
+        for receipt in batch.cache_store_entries() {
+            if receipt.node() == node
+                && receipt.input().run_mode() == RunMode::PerformLayout
+                && receipt.output().size == actual.size
+            {
+                assert_eq!(
+                    receipt
+                        .output()
+                        .baselines()
+                        .first_or_synthesize_block(child_flow, actual.size),
+                    expected_width,
+                    "node{node} has its genuine selected First at its right border",
+                );
+                found_performed_body = true;
+            }
+        }
+        assert!(
+            found_performed_body,
+            "node{node} has a matching performed native body receipt"
+        );
+    }
     assert_eq!((subgrid.location.x, subgrid.size.width), (75.0, 40.0));
     assert_eq!(baseline_peer.location.x - baseline_target.location.x, 7.0);
     assert_eq!((overflow.minimum(), overflow.maximum()), (-20.0, 0.0));
@@ -3221,7 +3258,7 @@ fn fri05_c05_grid_sizing_tree(
     item_size: Size<PreferredSize>,
     grid_auto_flow: GridAutoFlow,
 ) -> OracleTree {
-    OracleTree::new()
+    let mut tree = OracleTree::new()
         .children(0, [1])
         .children(1, [])
         .style(
@@ -3244,11 +3281,26 @@ fn fri05_c05_grid_sizing_tree(
                 size: item_size,
                 ..NodeInput::default()
             },
-        )
-        .measure(
+        );
+    // Minimum queries retain a known zero and any already prepared opposite size.
+    for known in [
+        Size::new(Some(0.0), None),
+        Size::new(None, Some(0.0)),
+        Size::new(Some(0.0), Some(30.0)),
+        Size::new(Some(20.0), Some(0.0)),
+    ] {
+        let border = Size::new(known.width.unwrap_or(20.0), known.height.unwrap_or(30.0));
+        tree = tree.measure_when(
             1,
-            ComputeOutput::from_sizes(Size::new(20.0, 30.0), Size::new(80.0, 90.0)),
-        )
+            OracleMeasurement::new(ComputeOutput::from_sizes(border, Size::new(80.0, 90.0)))
+                .run_mode(RunMode::ComputeSize)
+                .known(known),
+        );
+    }
+    tree.measure(
+        1,
+        ComputeOutput::from_sizes(Size::new(20.0, 30.0), Size::new(80.0, 90.0)),
+    )
 }
 
 #[test]
@@ -4094,13 +4146,12 @@ fn fri08_c08_t05_impossible_state_standalone_nested_lanes_intrinsic_scroll_and_o
     let traversal = traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[true]),
         root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
             node: 1_u32,
             style: default_grid_item_projection(&default_input),
             axis: SubgridTraversalAxis::Standalone,
             reversed: false,
             span_in_parent: GridTrackSpan::new(1, 2),
-            available_inline_size: None,
-            available_inline_size_is_known: false,
             align_self: AlignItems::Stretch,
             standalone_parent_context: None,
             margins: SubgridAxisEdges::default(),
@@ -4247,48 +4298,68 @@ fn fri05_c05_grid_auto_minimum_computed_scrollability_reaches_grid_and_lanes_fro
                         )
                         .expect("grid automatic-minimum case computes");
 
+                        for input in tree.inputs(1) {
+                            let known = input.known();
+                            if input.run_mode() == RunMode::ComputeSize
+                                && (known.width == Some(0.0) || known.height == Some(0.0))
+                            {
+                                assert!(
+                                    [
+                                        Size::new(Some(0.0), None),
+                                        Size::new(None, Some(0.0)),
+                                        Size::new(Some(0.0), Some(30.0)),
+                                        Size::new(Some(20.0), Some(0.0)),
+                                    ]
+                                    .contains(&known),
+                                    "known-zero query needs an exact faithful fixture response: {input:?}"
+                                );
+                            }
+                        }
+
                         let layout_input = tree
                             .inputs(1)
                             .iter()
                             .find(|input| input.run_mode() == RunMode::PerformLayout)
                             .expect("grid item receives final layout input");
-                        // The provider certifies queried border20x30, not
-                        // intrinsic80x90 authority from its overflow packet.
-                        // Clip remains non-scrollable, just like Visible.
+                        // Auto tracks retain positive intrinsic growth even when
+                        // the used item automatic minimum is zero.
                         let item_size = Size::new(Some(20.0), Some(30.0));
-                        let zero = Size::new(Some(0.0), Some(0.0));
-                        let expected_known = if display == Display::Grid {
-                            match overflow {
-                                Overflow::Visible | Overflow::Clip => item_size,
-                                Overflow::Hidden | Overflow::Scroll | Overflow::Auto => zero,
-                            }
-                        } else {
-                            let flow_axes = FlowAxes::new(writing_mode, direction);
-                            let grid_axis = grid_axis_for_lanes(grid_auto_flow);
-                            let physical_axis = match grid_axis.logical_axis() {
-                                LogicalAxis::Inline => flow_axes.inline_axis(),
-                                LogicalAxis::Block => flow_axes.block_axis(),
-                            };
-                            let selected = match (physical_axis, overflow) {
-                                (PhysicalAxis::Horizontal, Overflow::Visible | Overflow::Clip) => {
-                                    item_size.width
-                                }
-                                (PhysicalAxis::Vertical, Overflow::Visible | Overflow::Clip) => {
-                                    item_size.height
-                                }
-                                (_, Overflow::Hidden | Overflow::Scroll | Overflow::Auto) => {
-                                    Some(0.0)
-                                }
-                            };
-                            match physical_axis {
-                                PhysicalAxis::Horizontal => Size::new(selected, item_size.height),
-                                PhysicalAxis::Vertical => Size::new(item_size.width, selected),
-                            }
+                        let flow_axes = FlowAxes::new(writing_mode, direction);
+                        let grid_axis = grid_axis_for_lanes(grid_auto_flow);
+                        let grid_physical_axis = match grid_axis.logical_axis() {
+                            LogicalAxis::Inline => flow_axes.inline_axis(),
+                            LogicalAxis::Block => flow_axes.block_axis(),
                         };
+                        for axis in [PhysicalAxis::Horizontal, PhysicalAxis::Vertical] {
+                            if display == Display::GridLanes && axis != grid_physical_axis {
+                                continue;
+                            }
+                            let has_zero_minimum_query = tree.inputs(1).iter().any(|input| {
+                                let (known, available) = match axis {
+                                    PhysicalAxis::Horizontal => {
+                                        (input.known().width, input.available().width)
+                                    }
+                                    PhysicalAxis::Vertical => {
+                                        (input.known().height, input.available().height)
+                                    }
+                                };
+                                input.run_mode() == RunMode::ComputeSize
+                                    && known == Some(0.0)
+                                    && available == Available::MIN_CONTENT
+                            });
+                            assert_eq!(
+                                has_zero_minimum_query,
+                                matches!(
+                                    overflow,
+                                    Overflow::Hidden | Overflow::Scroll | Overflow::Auto
+                                ),
+                                "{display:?} {writing_mode:?} {direction:?} {grid_auto_flow:?} {overflow:?} {axis:?} used automatic minimum query"
+                            );
+                        }
                         assert_eq!(
                             layout_input.known(),
-                            expected_known,
-                            "{display:?} {writing_mode:?} {direction:?} {grid_auto_flow:?} {overflow:?} automatic minimum"
+                            item_size,
+                            "{display:?} {writing_mode:?} {direction:?} {grid_auto_flow:?} {overflow:?} final track allocation"
                         );
                     }
                 }
@@ -4652,22 +4723,22 @@ fn owner_to_current_placement_map_rejects_out_of_range_composition() {
         PhysicalProgression::Increasing,
         2,
     );
-    let result = identity.compose(owner_placement_boundary!(
-        1,
-        2,
-        GridTrackSpan::new(1, 3),
-        false,
-        PhysicalProgression::Increasing,
-        PhysicalProgression::Increasing,
-        &[0.0, 40.0],
-        &[30.0, 80.0],
-        &[0.0, 40.0],
-        &[30.0, 80.0],
-        10.0,
-        10.0,
-        0.0,
-        0.0,
-    ));
+    let result = identity.compose(OwnerToCurrentPlacementBoundaryInput {
+        parent_grid: 1,
+        current_grid: 2,
+        parent_axis: GridAxisKind::Row,
+        current_axis: GridAxisKind::Row,
+        physical_axis: PhysicalAxis::Vertical,
+        parent_progression: PhysicalProgression::Increasing,
+        current_progression: PhysicalProgression::Increasing,
+        parent_span: GridTrackSpan::new(1, 3),
+        reversed: false,
+        parent_first_frame_origins: &[0.0, -40.0],
+        parent_last_frame_origins: &[30.0, 80.0],
+        current_first_frame_origins: &[0.0, -40.0],
+        current_last_frame_origins: &[30.0, 80.0],
+        inherited: true,
+    });
     assert_eq!(
         result,
         Err(InheritedCurrentGridBaselinePlacementError::SpanOutOfRange),

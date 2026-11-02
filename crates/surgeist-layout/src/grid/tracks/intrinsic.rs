@@ -4,10 +4,8 @@ use super::subgrid_intrinsic::{
 };
 use super::*;
 
-use super::flexible::span_contribution_with_gutters;
 use crate::SizingCalculationOf;
-use crate::geometry::FlowAxes;
-use crate::scroll::UsedOverflowAxis;
+use crate::geometry::{FlowAxes, PhysicalProgression};
 
 fn resolve_track_calculation_optional<S: LayoutScalar>(
     calculation: &SizingCalculationOf<S>,
@@ -16,8 +14,42 @@ fn resolve_track_calculation_optional<S: LayoutScalar>(
     super::ordinary::resolution_optional(resolve_track_calculation(calculation, basis))
 }
 
+pub(in crate::grid) fn grid_track_sizing_error<Node, S: LayoutScalar, M>(
+    node: Node,
+    error: SpanningContributionError<S>,
+) -> LayoutErrorOf<Node, S, M> {
+    match error {
+        SpanningContributionError::InvalidNumeric { value } => {
+            crate::error::value_resolution_error(
+                node,
+                LengthResolutionStatus::InvalidNumeric { value },
+            )
+        }
+        SpanningContributionError::Allocation => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::Allocation,
+        ),
+        SpanningContributionError::InvalidIncidence
+        | SpanningContributionError::MissingContribution { .. }
+        | SpanningContributionError::DuplicateContribution { .. } => LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::InvalidGridTrackSizing),
+        ),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::grid) enum GridContributionPurpose {
+    Minimum,
+    MinContent,
+    MaxContent,
+}
+
 #[derive(Clone, Copy)]
 pub(in crate::grid) struct IntrinsicGridQuery<'a, S: LayoutScalar> {
+    pub(in crate::grid) purpose: GridContributionPurpose,
     pub(in crate::grid) axis: Option<GridAxisKind>,
     pub(in crate::grid) stage: GridSizingStage,
     pub(in crate::grid) available: Size<AvailableOf<S>>,
@@ -27,8 +59,9 @@ pub(in crate::grid) struct IntrinsicGridQuery<'a, S: LayoutScalar> {
 }
 
 impl<S: LayoutScalar> IntrinsicGridQuery<'_, S> {
-    pub(in crate::grid) const fn complete() -> Self {
+    pub(in crate::grid) const fn complete(purpose: GridContributionPurpose) -> Self {
         Self {
+            purpose,
             axis: None,
             stage: GridSizingStage::COMPLETE,
             available: Size::splat(AvailableOf::MAX_CONTENT),
@@ -45,6 +78,7 @@ impl<S: LayoutScalar> IntrinsicGridQuery<'_, S> {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::grid) struct GridContributionReceipt<Node, S: LayoutScalar> {
+    pub(in crate::grid) purpose: GridContributionPurpose,
     pub(in crate::grid) source: Node,
     pub(in crate::grid) axis: GridAxisKind,
     pub(in crate::grid) span: GridTrackSpan,
@@ -52,19 +86,62 @@ pub(in crate::grid) struct GridContributionReceipt<Node, S: LayoutScalar> {
 }
 
 pub(in crate::grid) struct IntrinsicTrackSizes<Node, S: LayoutScalar> {
+    pub(in crate::grid) purpose: GridContributionPurpose,
     pub(in crate::grid) columns: Vec<S>,
     pub(in crate::grid) rows: Vec<S>,
+    pub(in crate::grid) column_base_floors: Vec<S>,
+    pub(in crate::grid) row_base_floors: Vec<S>,
     pub(in crate::grid) column_receipts: Vec<GridContributionReceipt<Node, S>>,
     pub(in crate::grid) row_receipts: Vec<GridContributionReceipt<Node, S>>,
-    row_envelope_deltas: Vec<S>,
 }
 
-// Distribution floors precede the baseline envelope's coordinate conversion.
-// A MAX role may borrow raw MIN floors; it cannot borrow converted output.
+// Actual item contributions have already been normalized into the owning
+// Grid frame, including their purpose-specific baseline shims. Track allocation
+// consumes these facts without a second baseline redistribution.
 pub(in crate::grid) struct IntrinsicAxisContributions<Node, S: LayoutScalar> {
+    pub(in crate::grid) purpose: GridContributionPurpose,
     pub(in crate::grid) sizes: Vec<S>,
+    pub(in crate::grid) base_floors: Vec<S>,
     pub(in crate::grid) receipts: Vec<GridContributionReceipt<Node, S>>,
-    envelope_deltas: Vec<S>,
+}
+
+pub(in crate::grid) struct GridAxisContributions<Node, S: LayoutScalar> {
+    pub(in crate::grid) minimum: IntrinsicAxisContributions<Node, S>,
+    pub(in crate::grid) min_content: IntrinsicAxisContributions<Node, S>,
+    pub(in crate::grid) max_content: IntrinsicAxisContributions<Node, S>,
+    pub(in crate::grid) base_floors: Vec<S>,
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::grid) struct GridTrackContributions<S: LayoutScalar> {
+    pub(in crate::grid) minimum: S,
+    pub(in crate::grid) min_content: S,
+    pub(in crate::grid) max_content: S,
+}
+
+impl<Node, S: LayoutScalar> GridAxisContributions<Node, S> {
+    pub(in crate::grid) fn new(
+        mut minimum: IntrinsicAxisContributions<Node, S>,
+        min_content: IntrinsicAxisContributions<Node, S>,
+        max_content: IntrinsicAxisContributions<Node, S>,
+    ) -> Self {
+        let count = minimum.sizes.len();
+        let mut base_floors = core::mem::take(&mut minimum.base_floors);
+        debug_assert!(base_floors.is_empty() || base_floors.len() == count);
+        base_floors.resize(count, S::ZERO);
+        for floors in [&min_content.base_floors, &max_content.base_floors] {
+            debug_assert!(floors.is_empty() || floors.len() == count);
+            for (floor, contribution_floor) in base_floors.iter_mut().zip(floors) {
+                *floor = floor.max(*contribution_floor);
+            }
+        }
+        Self {
+            minimum,
+            min_content,
+            max_content,
+            base_floors,
+        }
+    }
 }
 
 impl<Node, S: LayoutScalar> IntrinsicTrackSizes<Node, S> {
@@ -73,38 +150,35 @@ impl<Node, S: LayoutScalar> IntrinsicTrackSizes<Node, S> {
         axis: GridAxisKind,
     ) -> IntrinsicAxisContributions<Node, S> {
         match axis {
-            GridAxisKind::Column => IntrinsicAxisContributions {
-                sizes: self.columns,
-                receipts: self.column_receipts,
-                envelope_deltas: Vec::new(),
-            },
+            GridAxisKind::Column => IntrinsicAxisContributions::column(
+                self.purpose,
+                self.columns,
+                self.column_receipts,
+                self.column_base_floors,
+            ),
             GridAxisKind::Row => IntrinsicAxisContributions {
+                purpose: self.purpose,
                 sizes: self.rows,
+                base_floors: self.row_base_floors,
                 receipts: self.row_receipts,
-                envelope_deltas: self.row_envelope_deltas,
             },
         }
     }
 }
 
 impl<Node, S: LayoutScalar> IntrinsicAxisContributions<Node, S> {
-    pub(in crate::grid) fn observation_sizes(&self) -> Vec<S> {
-        let mut sizes = self.sizes.clone();
-        apply_intrinsic_envelope(&mut sizes, &self.envelope_deltas);
-        sizes
-    }
-
-    pub(in crate::grid) fn into_resolved(
-        mut self,
-    ) -> (Vec<S>, Vec<GridContributionReceipt<Node, S>>) {
-        apply_intrinsic_envelope(&mut self.sizes, &self.envelope_deltas);
-        (self.sizes, self.receipts)
-    }
-}
-
-fn apply_intrinsic_envelope<S: LayoutScalar>(sizes: &mut [S], deltas: &[S]) {
-    for (size, delta) in sizes.iter_mut().zip(deltas) {
-        *size = (*size + *delta).max(S::ZERO);
+    pub(in crate::grid) fn column(
+        purpose: GridContributionPurpose,
+        sizes: Vec<S>,
+        receipts: Vec<GridContributionReceipt<Node, S>>,
+        base_floors: Vec<S>,
+    ) -> Self {
+        Self {
+            purpose,
+            sizes,
+            receipts,
+            base_floors,
+        }
     }
 }
 
@@ -113,12 +187,13 @@ pub(in crate::grid) struct IntrinsicGrid<'input, 'a, Node, S: LayoutScalar = Sca
     pub(in crate::grid) style: &'a GridContainerProjection<'a, S>,
     pub(in crate::grid) constants: &'a Constants<S>,
     pub(in crate::grid) sizing_flow_axes: FlowAxes,
+    pub(in crate::grid) minimum_functions: GridMinimumParentFunctions<'a, S>,
+    pub(in crate::grid) track_basis: LogicalSizeOf<Option<S>>,
     pub(in crate::grid) column_tracks: &'a [TrackSizingOf<S>],
     pub(in crate::grid) row_tracks: &'a [TrackSizingOf<S>],
     pub(in crate::grid) gap: LogicalSizeOf<S>,
     pub(in crate::grid) column_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
     pub(in crate::grid) row_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
-    pub(in crate::grid) percent_basis: LogicalSizeOf<Option<S>>,
     pub(in crate::grid) lines: GridLines,
     pub(in crate::grid) named_columns: &'a NamedGridLines,
     pub(in crate::grid) named_rows: &'a NamedGridLines,
@@ -234,12 +309,34 @@ pub(in crate::grid) enum AncestorBaselineRole {
     Last,
 }
 
+impl AncestorBaselineRole {
+    pub(in crate::grid) const fn opposite(self) -> Self {
+        match self {
+            Self::First => Self::Last,
+            Self::Last => Self::First,
+        }
+    }
+
+    pub(in crate::grid) fn in_progression(
+        self,
+        subject: PhysicalProgression,
+        containing: PhysicalProgression,
+    ) -> Self {
+        if subject == containing {
+            self
+        } else {
+            self.opposite()
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::grid) enum BaselineOwnerEdge {
     Start,
     End,
 }
 
+/// One finite signed distance from the selected owner-track edge.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::grid) struct AncestorBaselineTarget<S: LayoutScalar = Scalar> {
     role: AncestorBaselineRole,
@@ -249,30 +346,27 @@ pub(in crate::grid) struct AncestorBaselineTarget<S: LayoutScalar = Scalar> {
 }
 
 impl<S: LayoutScalar> AncestorBaselineTarget<S> {
-    fn from_member<Node>(member: AncestorBaselineMember<Node, S>, target: S) -> Self {
+    fn from_member<Node: Copy>(member: AncestorBaselineMember<Node, S>) -> Self {
+        let role = member.role();
         Self {
-            role: member.role,
+            role,
             selected_ancestor_track: member.selected_track,
-            selected_owner_edge: match member.role {
+            selected_owner_edge: match role {
                 AncestorBaselineRole::First => BaselineOwnerEdge::Start,
                 AncestorBaselineRole::Last => BaselineOwnerEdge::End,
             },
-            finite_owner_logical_target: target,
+            finite_owner_logical_target: member.containing_logical_distance,
         }
     }
-
     pub(in crate::grid) const fn role(self) -> AncestorBaselineRole {
         self.role
     }
-
     pub(in crate::grid) const fn selected_ancestor_track(self) -> usize {
         self.selected_ancestor_track
     }
-
     pub(in crate::grid) const fn selected_owner_edge(self) -> BaselineOwnerEdge {
         self.selected_owner_edge
     }
-
     pub(in crate::grid) const fn finite_owner_logical_target(self) -> S {
         self.finite_owner_logical_target
     }
@@ -300,7 +394,6 @@ pub(super) struct FlattenedScalarContribution<Node, S: LayoutScalar = Scalar> {
     pub(super) source: Node,
     axis: GridAxisKind,
     pub(super) ancestor_span: GridTrackSpan,
-    pub(super) contribution_kind: IntrinsicSpanContribution,
     pub(super) contribution: S,
 }
 
@@ -309,40 +402,112 @@ impl<Node, S: LayoutScalar> FlattenedScalarContribution<Node, S> {
         source: Node,
         axis: GridAxisKind,
         ancestor_span: GridTrackSpan,
-        contribution_kind: IntrinsicSpanContribution,
         contribution: S,
     ) -> Self {
         Self {
             source,
             axis,
             ancestor_span,
-            contribution_kind,
             contribution,
         }
     }
 }
 
+/// The selected body set and alignment-context track are independent of the
+/// owner-edge cohort. In particular, reversing a cohort never selects another
+/// body port or another track in a spanning item's alignment context.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(in crate::grid) struct AncestorBaselineMember<Node, S: LayoutScalar = Scalar> {
     source: Node,
     axis: GridAxisKind,
-    physical_axis: crate::geometry::PhysicalAxis,
+    physical_axis: PhysicalAxis,
     ancestor_span: GridTrackSpan,
     selected_track: usize,
-    role: AncestorBaselineRole,
+    selected_port: AncestorBaselineRole,
+    subject_progression: PhysicalProgression,
+    containing_progression: PhysicalProgression,
+    alignment_context_reversed: bool,
     containing_logical_distance: S,
-    ancestor_adjustment: S,
-    opposite_containing_logical_distance: S,
-    opposite_ancestor_adjustment: S,
+    border_logical_baseline: S,
 }
 
-impl<Node, S: LayoutScalar> AncestorBaselineMember<Node, S> {
-    pub(in crate::grid) fn role(self) -> AncestorBaselineRole {
-        self.role
-    }
+pub(in crate::grid) struct FinalBaselineProjectionInput<S: LayoutScalar> {
+    pub(in crate::grid) axis: GridAxisKind,
+    pub(in crate::grid) span: GridTrackSpan,
+    pub(in crate::grid) reversed: bool,
+    pub(in crate::grid) progression: PhysicalProgression,
+    pub(in crate::grid) point: S,
+    pub(in crate::grid) selected_start: S,
+    pub(in crate::grid) selected_end: S,
+    pub(in crate::grid) extent: S,
+    pub(in crate::grid) physical_port: S,
+}
 
-    pub(in crate::grid) fn selected_track(self) -> usize {
+impl<Node: Copy, S: LayoutScalar> AncestorBaselineMember<Node, S> {
+    pub(in crate::grid) fn role(self) -> AncestorBaselineRole {
+        self.selected_port
+            .in_progression(self.subject_progression, self.containing_progression)
+    }
+    pub(in crate::grid) const fn selected_track(self) -> usize {
         self.selected_track
+    }
+    pub(in crate::grid) const fn selected_port(self) -> AncestorBaselineRole {
+        self.selected_port
+    }
+    pub(in crate::grid) const fn subject_progression(self) -> PhysicalProgression {
+        self.subject_progression
+    }
+    pub(in crate::grid) const fn containing_progression(self) -> PhysicalProgression {
+        self.containing_progression
+    }
+    pub(in crate::grid) const fn axis(self) -> GridAxisKind {
+        self.axis
+    }
+    pub(in crate::grid) const fn span(self) -> GridTrackSpan {
+        self.ancestor_span
+    }
+    pub(in crate::grid) const fn context_reversed(self) -> bool {
+        self.alignment_context_reversed
+    }
+    pub(in crate::grid) const fn distance(self) -> S {
+        self.containing_logical_distance
+    }
+    pub(in crate::grid) fn project_final(
+        self,
+        input: FinalBaselineProjectionInput<S>,
+    ) -> Result<Self, InheritedCurrentGridBaselinePlacementError> {
+        let selected_track =
+            if (self.selected_port == AncestorBaselineRole::First) != input.reversed {
+                input.span.start.checked_sub(1)
+            } else {
+                input.span.end.checked_sub(2)
+            }
+            .ok_or(InheritedCurrentGridBaselinePlacementError::SelectedTrackOutOfRange)?;
+        let role = self
+            .selected_port
+            .in_progression(self.subject_progression, input.progression);
+        let distance = match role {
+            AncestorBaselineRole::First => input.point - input.selected_start,
+            AncestorBaselineRole::Last => input.selected_end - input.point,
+        };
+        let border_port = if input.progression.is_decreasing() {
+            input.extent - input.physical_port
+        } else {
+            input.physical_port
+        };
+        if !distance.is_finite() || !border_port.is_finite() {
+            return Err(InheritedCurrentGridBaselinePlacementError::NonFinite);
+        }
+        Ok(Self {
+            axis: input.axis,
+            ancestor_span: input.span,
+            selected_track,
+            containing_progression: input.progression,
+            alignment_context_reversed: input.reversed,
+            containing_logical_distance: distance,
+            border_logical_baseline: border_port,
+            ..self
+        })
     }
 }
 
@@ -350,32 +515,29 @@ impl<Node, S: LayoutScalar> AncestorBaselineMember<Node, S> {
 pub(in crate::grid) struct AncestorBaselineGroup<Node, S: LayoutScalar = Scalar> {
     owner: Node,
     axis: GridAxisKind,
-    physical_axis: crate::geometry::PhysicalAxis,
+    physical_axis: PhysicalAxis,
     targets: Vec<TrackAncestorBaselineTargets<S>>,
-    reversed_targets: Vec<TrackAncestorBaselineTargets<S>>,
-    reversed_major_translation: Vec<S>,
-    reversed_minor_translation: Vec<S>,
 }
 
 impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
     pub(in crate::grid) fn reduce(
         owner: Node,
         axis: GridAxisKind,
-        physical_axis: crate::geometry::PhysicalAxis,
+        physical_axis: PhysicalAxis,
         track_count: usize,
         members: impl IntoIterator<Item = AncestorBaselineMember<Node, S>>,
     ) -> Self {
         let mut targets = vec![TrackAncestorBaselineTargets::default(); track_count];
-        let mut reversed_targets = vec![TrackAncestorBaselineTargets::default(); track_count];
-        let mut reversed_major_translation = vec![S::ZERO; track_count];
-        let mut reversed_minor_translation = vec![S::ZERO; track_count];
         for member in members {
             if member.axis != axis || member.physical_axis != physical_axis {
                 continue;
             }
-            let expected_track = match member.role {
-                AncestorBaselineRole::First => member.ancestor_span.start.checked_sub(1),
-                AncestorBaselineRole::Last => member.ancestor_span.end.checked_sub(2),
+            let use_start = (member.selected_port == AncestorBaselineRole::First)
+                != member.alignment_context_reversed;
+            let expected_track = if use_start {
+                member.ancestor_span.start.checked_sub(1)
+            } else {
+                member.ancestor_span.end.checked_sub(2)
             };
             if expected_track != Some(member.selected_track) {
                 continue;
@@ -383,45 +545,10 @@ impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
             let Some(track) = targets.get_mut(member.selected_track) else {
                 continue;
             };
-            let target =
-                AncestorBaselineTarget::from_member(member, member.containing_logical_distance);
-            match member.role {
+            let target = AncestorBaselineTarget::from_member(member);
+            match member.role() {
                 AncestorBaselineRole::First => reduce_complete_target(&mut track.first, target),
                 AncestorBaselineRole::Last => reduce_complete_target(&mut track.last, target),
-            }
-            let Some(reversed_track) = reversed_targets.get_mut(member.selected_track) else {
-                continue;
-            };
-            let reversed_target = AncestorBaselineTarget::from_member(
-                member,
-                member.opposite_containing_logical_distance,
-            );
-            let replace_reversed = match member.role {
-                AncestorBaselineRole::First => reversed_track.first,
-                AncestorBaselineRole::Last => reversed_track.last,
-            }
-            .is_none_or(|current| {
-                reversed_target.finite_owner_logical_target > current.finite_owner_logical_target
-            });
-            match member.role {
-                AncestorBaselineRole::First => {
-                    reduce_complete_target(&mut reversed_track.first, reversed_target)
-                }
-                AncestorBaselineRole::Last => {
-                    reduce_complete_target(&mut reversed_track.last, reversed_target)
-                }
-            };
-            if replace_reversed {
-                match member.role {
-                    AncestorBaselineRole::First => {
-                        reversed_major_translation[member.selected_track] =
-                            member.opposite_ancestor_adjustment;
-                    }
-                    AncestorBaselineRole::Last => {
-                        reversed_minor_translation[member.selected_track] =
-                            member.opposite_ancestor_adjustment;
-                    }
-                }
             }
         }
         Self {
@@ -429,9 +556,6 @@ impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
             axis,
             physical_axis,
             targets,
-            reversed_targets,
-            reversed_major_translation,
-            reversed_minor_translation,
         }
     }
 
@@ -439,140 +563,71 @@ impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
         &self,
         member: AncestorBaselineMember<Node, S>,
     ) -> BaselineShim<S> {
-        let Some(shared) = self.target_for(member) else {
+        let Some(target) = self.target_for(member) else {
             return BaselineShim::default();
         };
-        let group = match member.role {
-            AncestorBaselineRole::First => BaselineGroupKind::Major,
-            AncestorBaselineRole::Last => BaselineGroupKind::Minor,
-        };
-        let baseline =
-            PhysicalBaseline::new(self.physical_axis, member.containing_logical_distance);
-        let shared = PhysicalBaseline::new(self.physical_axis, shared);
-        let track = match member.role {
-            AncestorBaselineRole::First => TrackBaselineGroup {
-                first: Some(shared),
-                last: None,
+        let amount = (target - member.containing_logical_distance).max(S::ZERO);
+        match member.role() {
+            AncestorBaselineRole::First => BaselineShim {
+                before: amount,
+                after: S::ZERO,
             },
-            AncestorBaselineRole::Last => TrackBaselineGroup {
-                first: None,
-                last: Some(shared),
+            AncestorBaselineRole::Last => BaselineShim {
+                before: S::ZERO,
+                after: amount,
             },
-        };
-        baseline_shim_for_intrinsic_contribution(
-            BaselineParticipation {
-                participates: true,
-                group: Some(group),
-                synthesized: false,
-                fallback_alignment: None,
-            },
-            BaselineGeometry {
-                available_span_size: S::ZERO,
-                margin_box_size: S::ZERO,
-                major_baseline: baseline,
-                minor_baseline: baseline,
-            },
-            track,
-            self.physical_axis,
-        )
+        }
     }
-
     pub(in crate::grid) fn target_for(&self, member: AncestorBaselineMember<Node, S>) -> Option<S> {
         if member.axis != self.axis || member.physical_axis != self.physical_axis {
             return None;
         }
-        self.target_record(member.role, member.selected_track)
+        self.target_record(member.role(), member.selected_track)
             .map(AncestorBaselineTarget::finite_owner_logical_target)
     }
-
     pub(in crate::grid) fn placement_offset(
         &self,
         member: AncestorBaselineMember<Node, S>,
-        available_span_size: S,
-        margin_box_size: S,
-        start_margin: S,
+        selected_track_start: S,
+        selected_track_end: S,
     ) -> Option<S> {
-        let shared = self.target_for(member)?;
         Some(self.placement_offset_for_target(
             member,
-            shared,
-            available_span_size,
-            margin_box_size,
-            start_margin,
+            self.target_for(member)?,
+            selected_track_start,
+            selected_track_end,
         ))
     }
-
     pub(in crate::grid) fn placement_offset_for_target(
         &self,
         member: AncestorBaselineMember<Node, S>,
-        shared: S,
-        available_span_size: S,
-        margin_box_size: S,
-        start_margin: S,
+        target: S,
+        selected_track_start: S,
+        selected_track_end: S,
     ) -> S {
-        match member.role {
-            AncestorBaselineRole::First => {
-                shared - member.containing_logical_distance + start_margin
-            }
-            AncestorBaselineRole::Last => {
-                available_span_size
-                    - (shared - member.containing_logical_distance)
-                    - margin_box_size
-                    + start_margin
-            }
-        }
+        let point = match member.role() {
+            AncestorBaselineRole::First => selected_track_start + target,
+            AncestorBaselineRole::Last => selected_track_end - target,
+        };
+        point - member.border_logical_baseline
     }
-
-    pub(in crate::grid) fn synthesized_opposite_placement_offset(
-        &self,
-        member: AncestorBaselineMember<Node, S>,
-        opposite_member: AncestorBaselineMember<Node, S>,
-        available_span_size: S,
-        start_margin: S,
-        end_margin: S,
-    ) -> Option<S> {
-        let opposite_target = self
-            .target_record(
-                match member.role {
-                    AncestorBaselineRole::First => AncestorBaselineRole::Last,
-                    AncestorBaselineRole::Last => AncestorBaselineRole::First,
-                },
-                member.selected_track,
-            )?
-            .finite_owner_logical_target();
-        match member.role {
-            AncestorBaselineRole::First => Some(
-                available_span_size - opposite_target + opposite_member.containing_logical_distance,
-            ),
-            AncestorBaselineRole::Last => Some(
-                opposite_target - opposite_member.containing_logical_distance + start_margin
-                    - end_margin,
-            ),
-        }
-    }
-
     pub(in crate::grid) const fn axis(&self) -> GridAxisKind {
         self.axis
     }
-
     pub(in crate::grid) const fn owner(&self) -> Node {
         self.owner
     }
-
-    pub(in crate::grid) const fn physical_axis(&self) -> crate::geometry::PhysicalAxis {
+    pub(in crate::grid) const fn physical_axis(&self) -> PhysicalAxis {
         self.physical_axis
     }
-
     pub(in crate::grid) fn track_count(&self) -> usize {
         self.targets.len()
     }
-
     pub(in crate::grid) fn has_any_target(&self) -> bool {
         self.targets
             .iter()
-            .any(|targets| targets.first.is_some() || targets.last.is_some())
+            .any(|track| track.first.is_some() || track.last.is_some())
     }
-
     pub(in crate::grid) fn target_record(
         &self,
         role: AncestorBaselineRole,
@@ -584,55 +639,18 @@ impl<Node: Copy, S: LayoutScalar> AncestorBaselineGroup<Node, S> {
             AncestorBaselineRole::Last => track.last,
         }
     }
-
-    pub(in crate::grid) fn target_record_for_progression(
-        &self,
-        role: AncestorBaselineRole,
-        selected_track: usize,
-        opposite_progression: bool,
-    ) -> Option<AncestorBaselineTarget<S>> {
-        let targets = if opposite_progression {
-            &self.reversed_targets
-        } else {
-            &self.targets
-        };
-        let track = targets.get(selected_track)?;
-        match role {
-            AncestorBaselineRole::First => track.first,
-            AncestorBaselineRole::Last => track.last,
-        }
-    }
-
     pub(in crate::grid) fn track_groups(&self) -> Vec<TrackBaselineGroup<S>> {
         self.targets
             .iter()
-            .map(|targets| TrackBaselineGroup {
-                first: targets.first.map(|target| {
+            .map(|track| TrackBaselineGroup {
+                first: track.first.map(|target| {
                     PhysicalBaseline::new(self.physical_axis, target.finite_owner_logical_target)
                 }),
-                last: targets.last.map(|target| {
+                last: track.last.map(|target| {
                     PhysicalBaseline::new(self.physical_axis, target.finite_owner_logical_target)
                 }),
             })
             .collect()
-    }
-
-    pub(in crate::grid) fn target_records_for_child_view(
-        &self,
-        reversed: bool,
-    ) -> impl Iterator<Item = TrackAncestorBaselineTargets<S>> + '_ {
-        if reversed {
-            self.reversed_targets.iter().copied()
-        } else {
-            self.targets.iter().copied()
-        }
-    }
-
-    pub(in crate::grid) fn reversed_child_view_translations(&self) -> (&[S], &[S]) {
-        (
-            &self.reversed_major_translation,
-            &self.reversed_minor_translation,
-        )
     }
 }
 
@@ -642,7 +660,6 @@ pub(super) struct RowIntrinsicContribution<Node, S: LayoutScalar = Scalar> {
     pub(super) start: usize,
     pub(super) end: usize,
     pub(super) contributes_to_row_size: bool,
-    pub(super) contribution_kind: IntrinsicSpanContribution,
     pub(super) contribution: S,
     pub(super) baseline_member: Option<AncestorBaselineMember<Node, S>>,
 }
@@ -677,19 +694,20 @@ where
     let constants = grid.constants;
     let column_tracks = grid.column_tracks;
     let row_tracks = grid.row_tracks;
-    let logical_available = grid.sizing_flow_axes.logical_size(available);
     let column_count = column_tracks.len();
     let row_count = row_tracks.len();
-    let mut columns: Vec<Tree::Scalar> = lower_bounds
+    let mut column_base_floors: Vec<Tree::Scalar> = lower_bounds
         .columns
         .map(|bounds| bounds.iter().copied().take(column_count).collect())
         .unwrap_or_else(|| vec![Tree::Scalar::ZERO; column_count]);
-    columns.resize(column_count, Tree::Scalar::ZERO);
-    let mut rows: Vec<Tree::Scalar> = lower_bounds
+    column_base_floors.resize(column_count, Tree::Scalar::ZERO);
+    let mut row_base_floors: Vec<Tree::Scalar> = lower_bounds
         .rows
         .map(|bounds| bounds.iter().copied().take(row_count).collect())
         .unwrap_or_else(|| vec![Tree::Scalar::ZERO; row_count]);
-    rows.resize(row_count, Tree::Scalar::ZERO);
+    row_base_floors.resize(row_count, Tree::Scalar::ZERO);
+    let mut columns = vec![Tree::Scalar::ZERO; column_count];
+    let mut rows = vec![Tree::Scalar::ZERO; row_count];
     let mut row_contributions = Vec::new();
     let mut column_receipts = Vec::new();
     let mut row_receipts = Vec::new();
@@ -730,6 +748,7 @@ where
         apply_subgrid_intrinsic_contributions(
             tree,
             SubgridIntrinsicContributionInput {
+                grid,
                 owner: node,
                 constants,
                 container_style: style,
@@ -737,9 +756,7 @@ where
                 axis: GridAxisKind::Column,
                 tracks: column_tracks,
                 sizes: &mut columns,
-                percent_basis: grid.percent_basis.inline,
-                gap: grid.gap.inline,
-                gutters: grid.column_gutters,
+                base_floors: &mut column_base_floors,
                 column_gutters: grid.column_gutters,
                 row_gutters: grid.row_gutters,
                 container_gap: grid.gap,
@@ -773,6 +790,7 @@ where
         apply_subgrid_intrinsic_contributions(
             tree,
             SubgridIntrinsicContributionInput {
+                grid,
                 owner: node,
                 constants,
                 container_style: style,
@@ -780,9 +798,7 @@ where
                 axis: GridAxisKind::Row,
                 tracks: row_tracks,
                 sizes: &mut rows,
-                percent_basis: grid.percent_basis.block,
-                gap: grid.gap.block,
-                gutters: grid.row_gutters,
+                base_floors: &mut row_base_floors,
                 column_gutters: grid.column_gutters,
                 row_gutters: grid.row_gutters,
                 container_gap: grid.gap,
@@ -807,7 +823,6 @@ where
         )
     };
     row_receipts.extend(row_subgrid_contributions.receipts.iter().copied());
-    let row_baseline_views = row_subgrid_contributions.baseline_views;
     row_contributions.extend(row_subgrid_contributions.row_contributions);
 
     for (index, (child, area)) in children.into_iter().zip(placed_areas).enumerate() {
@@ -855,14 +870,11 @@ where
             .is_some_and(|item| item_inherits_parent_axis(*item, GridAxisKind::Row));
         let contributes_column = grid.query.includes(GridAxisKind::Column)
             && !inherited_column_subgrid
-            && (!scroll_container_auto_minimum_zero_for_grid_axis(
-                child_style,
-                grid.sizing_flow_axes,
-                GridAxisKind::Column,
-            ) || (inherited_row_subgrid
-                && logical_available.inline == AvailableOf::MAX_CONTENT))
-            && column_span_tracks
-                .is_some_and(|tracks| tracks.iter().any(track_accepts_intrinsic_contribution));
+            && column_span_tracks.is_some_and(|tracks| {
+                tracks.iter().any(|track| {
+                    track_accepts_intrinsic_contribution(track, grid.track_basis.inline)
+                })
+            });
         let align_self = child_style
             .align_self
             .or(style.align_items)
@@ -873,14 +885,11 @@ where
             .unwrap_or(AlignItems::Stretch);
         let contributes_row = grid.query.includes(GridAxisKind::Row)
             && !inherited_row_subgrid
-            && (!scroll_container_auto_minimum_zero_for_grid_axis(
-                child_style,
-                grid.sizing_flow_axes,
-                GridAxisKind::Row,
-            ) || (inherited_column_subgrid
-                && logical_available.block == AvailableOf::MAX_CONTENT))
-            && row_span_tracks
-                .is_some_and(|tracks| tracks.iter().any(track_accepts_intrinsic_contribution));
+            && row_span_tracks.is_some_and(|tracks| {
+                tracks.iter().any(|track| {
+                    track_accepts_intrinsic_contribution(track, grid.track_basis.block)
+                })
+            });
         let row_baseline_candidate = grid.query.includes(GridAxisKind::Row)
             && !inherited_row_subgrid
             && row_span_tracks.is_some()
@@ -889,54 +898,43 @@ where
             continue;
         }
 
-        let spans_min_content_column = column_tracks
-            .get(column_start..column_end)
-            .is_some_and(|tracks| tracks.iter().any(track_accepts_min_content_span_priority));
-        let output = if logical_available.inline == AvailableOf::MIN_CONTENT
-            && grid_axis_used_overflow(&child_style, grid.sizing_flow_axes, GridAxisKind::Column)
-                .clips_contents()
-            && !spans_min_content_column
-        {
-            ComputeOutputOf::HIDDEN
-        } else {
-            compute_intrinsic_grid_child(
-                tree,
-                child,
-                IntrinsicGridChildInput {
-                    child_style,
-                    child_container: grid.placements.nested_container_input(index),
-                    grid,
-                    area,
-                    columns: grid.query.columns.unwrap_or(&columns),
-                    rows: grid.query.rows.unwrap_or(&rows),
-                    subgrid_item: grid.subgrid_report.items.get(index).copied(),
-                    input: ComputeInputOf::for_child(
-                        if matches!(align_self, AlignItems::Baseline | AlignItems::LastBaseline)
-                            || matches!(
-                                justify_self,
-                                AlignItems::Baseline | AlignItems::LastBaseline
-                            )
-                        {
-                            RunMode::PerformLayout
-                        } else {
-                            RunMode::ComputeSize
-                        },
-                        SizingMode::InherentSize,
-                        RequestedAxis::Both,
-                        Size::NONE,
-                        Size::new(
-                            constants.node_inner_size.width,
-                            constants.node_inner_size.height,
-                        ),
-                        crate::ContainingLayoutContext::new(
-                            grid.constants.flow_axes,
-                            crate::ParentFormattingContext::Grid,
-                        ),
-                        available,
+        let output = compute_intrinsic_grid_child(
+            tree,
+            child,
+            IntrinsicGridChildInput {
+                child_style,
+                child_container: grid.placements.nested_container_input(index),
+                grid,
+                area,
+                columns: grid.query.columns.unwrap_or(&columns),
+                rows: grid.query.rows.unwrap_or(&rows),
+                subgrid_item: grid.subgrid_report.items.get(index).copied(),
+                input: ComputeInputOf::for_child(
+                    if matches!(align_self, AlignItems::Baseline | AlignItems::LastBaseline)
+                        || matches!(
+                            justify_self,
+                            AlignItems::Baseline | AlignItems::LastBaseline
+                        )
+                    {
+                        RunMode::PerformLayout
+                    } else {
+                        RunMode::ComputeSize
+                    },
+                    SizingMode::InherentSize,
+                    RequestedAxis::Both,
+                    Size::NONE,
+                    Size::new(
+                        constants.node_inner_size.width,
+                        constants.node_inner_size.height,
                     ),
-                },
-            )?
-        };
+                    crate::ContainingLayoutContext::new(
+                        grid.constants.flow_axes,
+                        crate::ParentFormattingContext::Grid,
+                    ),
+                    available,
+                ),
+            },
+        )?;
         let margin = intrinsic_contribution_margin(
             child_style,
             constants.flow_axes,
@@ -953,7 +951,8 @@ where
             let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
             let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
                 child_style,
-                constants,
+                constants.flow_axes,
+                constants.node_inner_size,
                 child_flow_axes,
             )
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
@@ -961,6 +960,7 @@ where
                 source: child,
                 axis: GridAxisKind::Column,
                 ancestor_span: GridTrackSpan::new(column_start + 1, column_end + 1),
+                alignment_context_reversed: false,
                 alignment: justify_self,
                 block_auto_margins,
                 synthesized_baseline_cycle: column_span_tracks.is_some_and(|tracks| {
@@ -969,6 +969,7 @@ where
                         output.baselines(),
                         child_flow_axes,
                         tracks,
+                        grid.track_basis.inline,
                     )
                 }),
                 output,
@@ -989,61 +990,23 @@ where
                 + column_baseline_shim.before
                 + column_baseline_shim.after;
             column_receipts.push(GridContributionReceipt {
+                purpose: grid.query.purpose,
                 source: child,
                 axis: GridAxisKind::Column,
                 span: GridTrackSpan::new(column_start + 1, column_end + 1),
                 value: column_contribution,
             });
-            let contribution_kind = IntrinsicSpanContribution::for_axis(
-                logical_available.inline,
-                grid_axis_used_overflow(&child_style, grid.sizing_flow_axes, GridAxisKind::Column),
-            );
             if column_end == column_start + 1 {
                 columns[column_start] = columns[column_start].max(column_contribution);
-            } else if logical_available.inline == AvailableOf::MIN_CONTENT
-                && column_span_tracks.is_some_and(|tracks| {
-                    tracks.iter().any(track_has_percent_sizing)
-                        && tracks
-                            .iter()
-                            .all(|track| track_flex_factor(track).is_none())
-                })
-            {
-                distribute_min_content_span_with_percent(
-                    &mut columns[column_start..column_end],
-                    &column_tracks[column_start..column_end],
-                    grid_axis_used_overflow(
-                        &child_style,
-                        grid.sizing_flow_axes,
-                        GridAxisKind::Column,
-                    ),
-                    grid.percent_basis.inline,
-                    column_contribution,
-                );
-            } else {
-                distribute_intrinsic_span(
-                    &mut columns[column_start..column_end],
-                    &column_tracks[column_start..column_end],
-                    contribution_kind,
-                    grid.percent_basis.inline,
-                    span_contribution_with_gutters(
-                        column_contribution,
-                        column_start,
-                        column_end,
-                        grid.gap.inline,
-                        grid.column_gutters,
-                    ),
-                );
             }
         }
+
         if contributes_row || row_baseline_candidate {
-            let contribution_kind = IntrinsicSpanContribution::for_axis(
-                logical_available.block,
-                grid_axis_used_overflow(&child_style, grid.sizing_flow_axes, GridAxisKind::Row),
-            );
             let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
             let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
                 child_style,
-                constants,
+                constants.flow_axes,
+                constants.node_inner_size,
                 child_flow_axes,
             )
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
@@ -1051,6 +1014,7 @@ where
                 source: child,
                 axis: GridAxisKind::Row,
                 ancestor_span: GridTrackSpan::new(row_start + 1, row_end + 1),
+                alignment_context_reversed: false,
                 alignment: align_self,
                 block_auto_margins,
                 synthesized_baseline_cycle: row_span_tracks.is_some_and(|tracks| {
@@ -1059,6 +1023,7 @@ where
                         output.baselines(),
                         child_flow_axes,
                         tracks,
+                        grid.track_basis.block,
                     )
                 }),
                 output,
@@ -1073,7 +1038,6 @@ where
                 start: row_start,
                 end: row_end,
                 contributes_to_row_size: contributes_row,
-                contribution_kind,
                 contribution: row_contribution_size + logical_margin.block_sum(),
                 baseline_member,
             });
@@ -1086,22 +1050,22 @@ where
         row_count,
         constants.flow_axes.block_axis(),
     );
-    let row_baseline_shims =
-        intrinsic_baseline_shim_census(&row_contributions, &row_baseline_groups, row_count);
     for item in row_contributions {
         if !item.contributes_to_row_size {
             continue;
         }
-        let shim = if row_tracks
-            .get(item.start..item.end)
-            .is_some_and(|tracks| tracks.iter().any(track_accepts_intrinsic_contribution))
-        {
+        let shim = if row_tracks.get(item.start..item.end).is_some_and(|tracks| {
+            tracks
+                .iter()
+                .any(|track| track_accepts_intrinsic_contribution(track, grid.track_basis.block))
+        }) {
             row_baseline_shim(item, &row_baseline_groups)
         } else {
             BaselineShim::default()
         };
         let contribution = item.contribution + shim.before + shim.after;
         row_receipts.push(GridContributionReceipt {
+            purpose: grid.query.purpose,
             source: item.source,
             axis: GridAxisKind::Row,
             span: GridTrackSpan::new(item.start + 1, item.end + 1),
@@ -1109,36 +1073,17 @@ where
         });
         if item.end == item.start + 1 {
             rows[item.start] = rows[item.start].max(contribution);
-        } else {
-            // Raw descendant and baseline contributions meet here before the
-            // canonical span owner removes gutters and fixed minimum occupancy.
-            apply_ordinary_intrinsic_contribution(
-                &mut rows,
-                OrdinaryIntrinsicContributionInput {
-                    tracks: row_tracks,
-                    start: item.start,
-                    end: item.end,
-                    kind: item.contribution_kind,
-                    percent_basis: grid.percent_basis.block,
-                    contribution,
-                    gap: grid.gap.block,
-                    gutters: grid.row_gutters,
-                },
-            );
         }
     }
-    let row_envelope_deltas = intrinsic_baseline_envelope_deltas(
-        &rows,
-        &row_baseline_shims,
-        &row_baseline_views,
-        constants.flow_axes,
-    );
+
     Ok(IntrinsicTrackSizes {
+        purpose: grid.query.purpose,
         columns,
         rows,
+        column_base_floors,
+        row_base_floors,
         column_receipts,
         row_receipts,
-        row_envelope_deltas,
     })
 }
 
@@ -1169,140 +1114,11 @@ fn row_baseline_shim<Node: Copy, S: LayoutScalar>(
     group.intrinsic_shim(member)
 }
 
-fn intrinsic_baseline_envelope_deltas<S: LayoutScalar>(
-    track_sizes: &[S],
-    shims: &[BaselineShim<S>],
-    views: &[SubgridBaselineViewTransform<S>],
-    containing_flow_axes: FlowAxes,
-) -> Vec<S> {
-    let mut deltas = vec![S::ZERO; track_sizes.len()];
-    if !containing_flow_axes
-        .logical_axis_progression(LogicalAxis::Block)
-        .is_decreasing()
-    {
-        return deltas;
-    }
-    for transform in views {
-        if !transform.root {
-            continue;
-        }
-        let Some(span_len) = transform.parent_span.checked_len() else {
-            continue;
-        };
-        let Some(last_local_index) = span_len.checked_sub(1).filter(|index| *index > 0) else {
-            continue;
-        };
-        let first_ancestor_index = if transform.reversed {
-            transform.parent_span.end.saturating_sub(2)
-        } else {
-            transform.parent_span.start.saturating_sub(1)
-        };
-        let Some(first_shim) = shims.get(first_ancestor_index).copied() else {
-            continue;
-        };
-        let first_envelope = first_shim.before + first_shim.after;
-        for local_index in 1..=last_local_index {
-            let ancestor_index = if transform.reversed {
-                transform.parent_span.end.saturating_sub(local_index + 2)
-            } else {
-                transform.parent_span.start.saturating_sub(1) + local_index
-            };
-            let Some(source_size) = track_sizes.get(ancestor_index).copied() else {
-                continue;
-            };
-            if first_ancestor_index >= track_sizes.len() {
-                continue;
-            }
-            let Some(shim) = shims.get(ancestor_index).copied() else {
-                continue;
-            };
-            let half_gap = (transform.subgrid_gap - transform.parent_gap) / S::from_f64(2.0);
-            let transfer = (shim.after - first_envelope + half_gap)
-                .max(S::ZERO)
-                .min(source_size);
-            deltas[ancestor_index] = deltas[ancestor_index] - transfer;
-            deltas[first_ancestor_index] = deltas[first_ancestor_index] + transfer;
-        }
-    }
-    deltas
-}
-
-fn intrinsic_baseline_shim_census<Node: Copy, S: LayoutScalar>(
-    contributions: &[RowIntrinsicContribution<Node, S>],
-    group: &AncestorBaselineGroup<Node, S>,
-    track_count: usize,
-) -> Vec<BaselineShim<S>> {
-    let mut shims: Vec<BaselineShim<S>> = vec![BaselineShim::default(); track_count];
-    for contribution in contributions {
-        let shim = row_baseline_shim(*contribution, group);
-        if let Some(first) = shims.get_mut(contribution.start) {
-            first.before = first.before.max(shim.before);
-        }
-        if let Some(last_index) = contribution.end.checked_sub(1)
-            && let Some(last) = shims.get_mut(last_index)
-        {
-            last.after = last.after.max(shim.after);
-        }
-    }
-    shims
-}
-
-fn intrinsic_downward_minor_translations<S: LayoutScalar>(
-    shims: &[BaselineShim<S>],
-    views: &[SubgridBaselineViewTransform<S>],
-    track_count: usize,
-    containing_flow_axes: FlowAxes,
-) -> Vec<S> {
-    let mut translations = vec![S::ZERO; track_count];
-    if !containing_flow_axes
-        .logical_axis_progression(LogicalAxis::Block)
-        .is_decreasing()
-    {
-        return translations;
-    }
-    for transform in views {
-        if !transform.root {
-            continue;
-        }
-        let Some(span_len) = transform.parent_span.checked_len() else {
-            continue;
-        };
-        let Some(last_local_index) = span_len.checked_sub(1).filter(|index| *index > 0) else {
-            continue;
-        };
-        let last_ancestor_index = if transform.reversed {
-            transform
-                .parent_span
-                .end
-                .saturating_sub(last_local_index + 2)
-        } else {
-            transform.parent_span.start.saturating_sub(1) + last_local_index
-        };
-        let Some(last) = shims.get(last_ancestor_index) else {
-            continue;
-        };
-        for local_index in 0..=last_local_index {
-            let ancestor_index = if transform.reversed {
-                transform.parent_span.end.saturating_sub(local_index + 2)
-            } else {
-                transform.parent_span.start.saturating_sub(1) + local_index
-            };
-            let Some((shim, current)) = shims
-                .get(ancestor_index)
-                .zip(translations.get_mut(ancestor_index))
-            else {
-                continue;
-            };
-            *current = current.max((last.after - shim.after).max(S::ZERO));
-        }
-    }
-    translations
-}
-
 pub(in crate::grid) struct AncestorBaselineMemberInput<Node, S: LayoutScalar = Scalar> {
     pub(in crate::grid) source: Node,
     pub(in crate::grid) axis: GridAxisKind,
     pub(in crate::grid) ancestor_span: GridTrackSpan,
+    pub(in crate::grid) alignment_context_reversed: bool,
     pub(in crate::grid) alignment: AlignItems,
     pub(in crate::grid) block_auto_margins: bool,
     pub(in crate::grid) synthesized_baseline_cycle: bool,
@@ -1334,353 +1150,62 @@ pub(in crate::grid) fn ancestor_baseline_member<Node: Copy, S: LayoutScalar>(
         return None;
     }
 
-    let (role, baseline, selected_track, ancestor_adjustment, opposite_ancestor_adjustment) =
-        match participation.group? {
-            BaselineGroupKind::Major => (
-                AncestorBaselineRole::First,
-                baselines
-                    .first_or_synthesize_block_baseline(input.child_flow_axes, input.output.size),
-                input.ancestor_span.start.checked_sub(1)?,
-                input.start_adjustment,
-                input.end_adjustment,
-            ),
-            BaselineGroupKind::Minor => (
-                AncestorBaselineRole::Last,
-                baselines
-                    .last_or_synthesize_block_baseline(input.child_flow_axes, input.output.size),
-                input.ancestor_span.end.checked_sub(2)?,
-                input.end_adjustment,
-                input.start_adjustment,
-            ),
-        };
+    let (selected_port, baseline) = match participation.group? {
+        BaselineGroupKind::Major => (
+            AncestorBaselineRole::First,
+            baselines.first_or_synthesize_block_baseline(input.child_flow_axes, input.output.size),
+        ),
+        BaselineGroupKind::Minor => (
+            AncestorBaselineRole::Last,
+            baselines.last_or_synthesize_block_baseline(input.child_flow_axes, input.output.size),
+        ),
+    };
+    let use_start =
+        (selected_port == AncestorBaselineRole::First) != input.alignment_context_reversed;
+    let selected_track = if use_start {
+        input.ancestor_span.start.checked_sub(1)?
+    } else {
+        input.ancestor_span.end.checked_sub(2)?
+    };
     let physical_coordinate = baseline.coordinate_on(physical_axis)?;
     let physical_extent = grid_axis_size(input.containing_flow_axes, input.output.size, input.axis);
+    let subject_progression = input
+        .child_flow_axes
+        .physical_axis_progression(physical_axis);
+    let containing_progression = input
+        .containing_flow_axes
+        .physical_axis_progression(physical_axis);
+    let role = selected_port.in_progression(subject_progression, containing_progression);
+    let border_logical_baseline = if containing_progression.is_decreasing() {
+        physical_extent - physical_coordinate
+    } else {
+        physical_coordinate
+    };
     let logical_margin = input.containing_flow_axes.logical_edges(input.margin);
     let (start_margin, end_margin) = match input.axis {
         GridAxisKind::Column => (logical_margin.inline_start, logical_margin.inline_end),
         GridAxisKind::Row => (logical_margin.block_start, logical_margin.block_end),
     };
-    let decreasing = input
-        .containing_flow_axes
-        .physical_axis_progression(physical_axis)
-        .is_decreasing();
     let containing_logical_distance = match role {
         AncestorBaselineRole::First => {
-            start_margin
-                + if decreasing {
-                    physical_extent - physical_coordinate
-                } else {
-                    physical_coordinate
-                }
+            input.start_adjustment + start_margin + border_logical_baseline
         }
         AncestorBaselineRole::Last => {
-            end_margin
-                + if decreasing {
-                    physical_coordinate
-                } else {
-                    physical_extent - physical_coordinate
-                }
+            input.end_adjustment + end_margin + physical_extent - border_logical_baseline
         }
-    } + ancestor_adjustment;
-    let opposite_containing_logical_distance = match role {
-        AncestorBaselineRole::First => {
-            end_margin
-                + if decreasing {
-                    physical_coordinate
-                } else {
-                    physical_extent - physical_coordinate
-                }
-        }
-        AncestorBaselineRole::Last => {
-            start_margin
-                + if decreasing {
-                    physical_extent - physical_coordinate
-                } else {
-                    physical_coordinate
-                }
-        }
-    } + opposite_ancestor_adjustment;
-
+    };
     Some(AncestorBaselineMember {
         source: input.source,
         axis: input.axis,
         physical_axis,
         ancestor_span: input.ancestor_span,
         selected_track,
-        role,
+        selected_port,
+        subject_progression,
+        containing_progression,
+        alignment_context_reversed: input.alignment_context_reversed,
         containing_logical_distance,
-        ancestor_adjustment,
-        opposite_containing_logical_distance,
-        opposite_ancestor_adjustment,
-    })
-}
-
-pub(in crate::grid) struct FinalAncestorBaselineGroupInput<
-    'input,
-    'a,
-    Node,
-    S: LayoutScalar = Scalar,
-> {
-    pub(in crate::grid) owner: Node,
-    pub(in crate::grid) constants: &'a Constants<S>,
-    pub(in crate::grid) axis: GridAxisKind,
-    pub(in crate::grid) track_count: usize,
-    pub(in crate::grid) gap: LogicalSizeOf<S>,
-    pub(in crate::grid) available: Size<AvailableOf<S>>,
-    pub(in crate::grid) children: &'a [Node],
-    pub(in crate::grid) placed_areas: &'a [Option<GridArea<S>>],
-    pub(in crate::grid) placements: &'a GridPlacementContext<'input, Node, S>,
-    pub(in crate::grid) subgrid_report: &'a GridSubgridReport<Node>,
-    pub(in crate::grid) named_columns: &'a NamedGridLines,
-    pub(in crate::grid) named_rows: &'a NamedGridLines,
-    pub(in crate::grid) area_facts: Option<&'a GridAreaNameFacts>,
-    pub(in crate::grid) column_sizes: &'a [S],
-    pub(in crate::grid) row_sizes: &'a [S],
-    pub(in crate::grid) column_geometry: &'a UsedGridAxisGeometryOf<S>,
-    pub(in crate::grid) row_geometry: &'a UsedGridAxisGeometryOf<S>,
-    pub(in crate::grid) intrinsic_min_track_facts: Option<&'a [bool]>,
-    pub(in crate::grid) direct_members: Vec<AncestorBaselineMember<Node, S>>,
-}
-
-pub(in crate::grid) struct FinalAncestorBaselineGroup<Node, S: LayoutScalar = Scalar> {
-    pub(in crate::grid) group: AncestorBaselineGroup<Node, S>,
-    pub(in crate::grid) downward_major_translation: Vec<S>,
-    pub(in crate::grid) downward_minor_translation: Vec<S>,
-}
-
-type FinalAncestorBaselineGroupLayoutResult<Tree, M> = LayoutResultOf<
-    <Tree as Traverse>::Node,
-    FinalAncestorBaselineGroup<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
-    <Tree as Traverse>::Scalar,
-    M,
->;
-
-pub(in crate::grid) fn ancestor_baseline_group_for_final_placement<'input, Tree, M>(
-    tree: &mut Tree,
-    input: FinalAncestorBaselineGroupInput<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
-) -> FinalAncestorBaselineGroupLayoutResult<Tree, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let physical_axis = grid_axis_physical_axis(input.constants.flow_axes, input.axis);
-    let mut members = input.direct_members;
-    if input.track_count == 0 || input.subgrid_report.items.is_empty() {
-        return Ok(FinalAncestorBaselineGroup {
-            group: AncestorBaselineGroup::reduce(
-                input.owner,
-                input.axis,
-                physical_axis,
-                input.track_count,
-                members,
-            ),
-            downward_major_translation: vec![Tree::Scalar::ZERO; input.track_count],
-            downward_minor_translation: vec![Tree::Scalar::ZERO; input.track_count],
-        });
-    }
-
-    let fallback_track_facts = vec![false; input.track_count];
-    let track_facts = input
-        .intrinsic_min_track_facts
-        .unwrap_or(&fallback_track_facts);
-    let column_gutters = input.column_geometry.sizing_gutters();
-    let row_gutters = input.row_geometry.sizing_gutters();
-    let Ok(report) = collect_grid_subgrid_intrinsic_traversal(
-        tree,
-        GridSubgridIntrinsicTraversalInput {
-            axis: input.axis,
-            containing_flow_axes: input.constants.flow_axes,
-            children: input.children,
-            placed_areas: input.placed_areas,
-            subgrid_report: input.subgrid_report,
-            placements: input.placements,
-            named_columns: input.named_columns,
-            named_rows: input.named_rows,
-            area_facts: input.area_facts,
-            parent_gap: Size::new(input.gap.inline, input.gap.block),
-            column_gutters: Some(&column_gutters),
-            row_gutters: Some(&row_gutters),
-            column_sizes: input.column_sizes,
-            row_sizes: input.row_sizes,
-            container_size: input.constants.node_inner_size,
-            intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(track_facts),
-            query: IntrinsicGridQuery::complete(),
-        },
-    )?
-    else {
-        return Ok(FinalAncestorBaselineGroup {
-            group: AncestorBaselineGroup::reduce(
-                input.owner,
-                input.axis,
-                physical_axis,
-                input.track_count,
-                members,
-            ),
-            downward_major_translation: vec![Tree::Scalar::ZERO; input.track_count],
-            downward_minor_translation: vec![Tree::Scalar::ZERO; input.track_count],
-        });
-    };
-
-    let baseline_views = report.baseline_views;
-    for leaf in report.leaves {
-        let child_style = &leaf.style;
-        if !is_in_flow_grid_child(child_style)
-            || !matches!(
-                leaf.align_self,
-                AlignItems::Baseline | AlignItems::LastBaseline
-            )
-        {
-            continue;
-        }
-        let start = leaf.ancestor_span.start.saturating_sub(1);
-        let end = leaf.ancestor_span.end.saturating_sub(1);
-        if start >= end || end > input.track_count {
-            continue;
-        }
-
-        let row_available_inline_size = (input.axis == GridAxisKind::Row
-            && child_style.size.width.is_auto())
-        .then_some(leaf.available_inline_size)
-        .flatten()
-        .filter(|width| *width > Tree::Scalar::ZERO);
-        let known_inline =
-            row_available_inline_size.filter(|_| leaf.available_inline_size_is_known);
-        let available = if let Some(width) = row_available_inline_size {
-            Size::new(AvailableOf::Definite(width), input.available.height)
-        } else {
-            input.available
-        };
-        let child_input = ComputeInputOf::for_child(
-            RunMode::PerformLayout,
-            SizingMode::InherentSize,
-            RequestedAxis::Both,
-            Size::new(known_inline, None),
-            input.constants.node_inner_size,
-            crate::ContainingLayoutContext::new(
-                input.constants.flow_axes,
-                crate::ParentFormattingContext::Grid,
-            ),
-            available,
-        );
-        let output = if let Some(parent_context) = &leaf.standalone_parent_context
-            && tree.child_count(leaf.node) > 0
-        {
-            parent_context.measure(tree, child_input)?
-        } else {
-            tree.compute_child(leaf.node, child_input)?
-        };
-        let margin = intrinsic_contribution_margin(
-            child_style,
-            input.constants.flow_axes,
-            input.constants.node_inner_size,
-        )
-        .map_err(|status| crate::error::value_resolution_error(leaf.node, status))?;
-        let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
-        let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
-            child_style,
-            input.constants,
-            child_flow_axes,
-        )
-        .map_err(|status| crate::error::value_resolution_error(leaf.node, status))?;
-        let synthesized_baseline_cycle = leaf.ancestor_span.end
-            > leaf.ancestor_span.start.saturating_add(1)
-            && match leaf.align_self {
-                AlignItems::Baseline => output.baselines().first_block(child_flow_axes).is_none(),
-                AlignItems::LastBaseline => {
-                    output.baselines().last_block(child_flow_axes).is_none()
-                }
-                _ => false,
-            };
-        let Some(adjustments) =
-            leaf.ancestor_baseline_adjustments(input.constants.flow_axes, input.axis)
-        else {
-            continue;
-        };
-        if let Some(member) = ancestor_baseline_member(AncestorBaselineMemberInput {
-            source: leaf.node,
-            axis: input.axis,
-            ancestor_span: leaf.ancestor_span,
-            alignment: leaf.align_self,
-            block_auto_margins,
-            synthesized_baseline_cycle,
-            output,
-            margin,
-            child_flow_axes,
-            containing_flow_axes: input.constants.flow_axes,
-            start_adjustment: adjustments.start,
-            end_adjustment: adjustments.end,
-        }) {
-            members.push(member);
-        }
-    }
-
-    let group = AncestorBaselineGroup::reduce(
-        input.owner,
-        input.axis,
-        physical_axis,
-        input.track_count,
-        members.iter().copied(),
-    );
-    let (downward_major_translation, downward_minor_translation) = if input.axis
-        == GridAxisKind::Row
-        && input
-            .intrinsic_min_track_facts
-            .is_some_and(|facts| facts.iter().any(|fact| *fact))
-    {
-        let mut shims: Vec<BaselineShim<Tree::Scalar>> =
-            vec![BaselineShim::default(); input.track_count];
-        for member in members {
-            let shim = group.intrinsic_shim(member);
-            if let Some(track) = shims.get_mut(member.selected_track) {
-                track.before = track.before.max(shim.before);
-                track.after = track.after.max(shim.after);
-            }
-        }
-        let mut descendant_tracks = vec![false; input.track_count];
-        for view in baseline_views.iter().filter(|view| !view.root) {
-            let start = view.parent_span.start.saturating_sub(1);
-            let end = view
-                .parent_span
-                .end
-                .saturating_sub(1)
-                .min(input.track_count);
-            if let Some(tracks) = descendant_tracks.get_mut(start..end) {
-                tracks.fill(true);
-            }
-        }
-        let mut major = shims
-            .iter()
-            .zip(&descendant_tracks)
-            .map(|(shim, descendant)| {
-                descendant
-                    .then_some(shim.before)
-                    .unwrap_or(Tree::Scalar::ZERO)
-            })
-            .collect::<Vec<_>>();
-        if let Some(first) = major.first_mut() {
-            *first = Tree::Scalar::ZERO;
-        }
-        let mut minor = intrinsic_downward_minor_translations(
-            &shims,
-            &baseline_views,
-            input.track_count,
-            input.constants.flow_axes,
-        );
-        for (translation, descendant) in minor.iter_mut().zip(descendant_tracks) {
-            if !descendant {
-                *translation = Tree::Scalar::ZERO;
-            }
-        }
-        (major, minor)
-    } else {
-        (
-            vec![Tree::Scalar::ZERO; input.track_count],
-            vec![Tree::Scalar::ZERO; input.track_count],
-        )
-    };
-    Ok(FinalAncestorBaselineGroup {
-        group,
-        downward_major_translation,
-        downward_minor_translation,
+        border_logical_baseline,
     })
 }
 
@@ -1712,50 +1237,23 @@ pub(in crate::grid) fn baseline_geometry_for_intrinsic_contribution<S: LayoutSca
 
 pub(super) fn block_auto_margins_for_intrinsic_contribution<'input, S: LayoutScalar>(
     style: &GridItemProjection<'input, S>,
-    constants: &Constants<S>,
+    containing_flow_axes: FlowAxes,
+    parent_size: Size<Option<S>>,
     child_flow_axes: FlowAxes,
 ) -> Result<bool, LengthResolutionStatus<S>> {
-    let margin = constants.flow_axes.zip_physical_edges_with_inline_extent(
+    let margin = containing_flow_axes.zip_physical_edges_with_inline_extent(
         style.margin,
-        constants.node_inner_size,
+        parent_size,
         |length, basis| resolve_auto_optional(length, basis),
     );
     Ok(child_flow_axes.line_over_edge(margin)?.is_none()
         || child_flow_axes.line_under_edge(margin)?.is_none())
 }
 
-pub(super) fn scroll_container_auto_minimum_zero_for_grid_axis<'input, S: LayoutScalar>(
-    style: &GridItemProjection<'input, S>,
-    flow_axes: FlowAxes,
-    axis: GridAxisKind,
-) -> bool {
-    grid_axis_computed_overflow(style, flow_axes, axis).is_scrollable()
-        && grid_axis_size(
-            flow_axes,
-            Size::new(&style.size.width, &style.size.height),
-            axis,
-        )
-        .is_auto()
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::grid) enum IntrinsicSpanContribution {
     MinContent { prioritize_min_tracks: bool },
     MaxContent,
-}
-
-impl IntrinsicSpanContribution {
-    pub(in crate::grid) const fn for_axis<S: LayoutScalar>(
-        available: AvailableOf<S>,
-        overflow: UsedOverflowAxis,
-    ) -> Self {
-        match available {
-            AvailableOf::MaxContent | AvailableOf::Definite(_) => Self::MaxContent,
-            AvailableOf::MinContent => Self::MinContent {
-                prioritize_min_tracks: overflow.clips_contents(),
-            },
-        }
-    }
 }
 
 pub(in crate::grid) fn distribute_intrinsic_span<S: LayoutScalar>(
@@ -1871,27 +1369,6 @@ pub(in crate::grid) fn distribute_intrinsic_extra<S: LayoutScalar>(
     }
 }
 
-pub(in crate::grid) fn distribute_min_content_span_with_percent<S: LayoutScalar>(
-    sizes: &mut [S],
-    tracks: &[TrackSizingOf<S>],
-    overflow: UsedOverflowAxis,
-    percent_basis: Option<S>,
-    min_content_contribution: S,
-) {
-    let fixed_space = intrinsic_span_minimum_floor_space(tracks);
-    let percent_space = track_basis_dependent_space(tracks, percent_basis.unwrap_or(S::ZERO));
-    let extra = (min_content_contribution - fixed_space - percent_space).max(S::ZERO);
-    let indexes = tracks
-        .iter()
-        .enumerate()
-        .filter_map(|(index, track)| {
-            let accepts = track_accepts_percent_min_content_span(track, overflow, percent_basis);
-            accepts.then_some(index)
-        })
-        .collect::<Vec<_>>();
-    distribute_intrinsic_extra(sizes, &indexes, extra, indexes.len());
-}
-
 pub(in crate::grid) fn intrinsic_span_distribution_indexes<S: LayoutScalar>(
     tracks: &[TrackSizingOf<S>],
     kind: IntrinsicSpanContribution,
@@ -1937,7 +1414,7 @@ pub(in crate::grid) fn intrinsic_span_distribution_indexes<S: LayoutScalar>(
     tracks
         .iter()
         .enumerate()
-        .filter_map(|(index, track)| track_accepts_intrinsic_contribution(track).then_some(index))
+        .filter_map(|(index, track)| track_has_intrinsic_sizing_function(track).then_some(index))
         .collect::<Vec<_>>()
 }
 
@@ -1975,7 +1452,7 @@ pub(in crate::grid) fn intrinsic_span_distribution_count<S: LayoutScalar>(
         let count = tracks
             .iter()
             .filter(|track| {
-                track_accepts_intrinsic_contribution(track) || track_has_percent_sizing(track)
+                track_has_intrinsic_sizing_function(track) || track_has_percent_sizing(track)
             })
             .count();
         return count.max(distribution_count).max(1);
@@ -2005,7 +1482,7 @@ pub(in crate::grid) fn intrinsic_span_definite_track_space<S: LayoutScalar>(
     tracks
         .iter()
         .filter(|track| {
-            !track_accepts_intrinsic_contribution(track)
+            !track_has_intrinsic_sizing_function(track)
                 && track_flex_factor(track).is_none()
                 && !track_has_percent_sizing(track)
         })
@@ -2035,29 +1512,35 @@ pub(in crate::grid) fn track_min_floor_space<S: LayoutScalar>(track: &TrackSizin
         })
         .flatten()
         .or_else(|| {
-            (!track_accepts_intrinsic_contribution(track))
+            (!track_has_intrinsic_sizing_function(track))
                 .then(|| track_base_size(track, None, S::ZERO))
         })
         .unwrap_or(S::ZERO)
 }
 
-pub(in crate::grid) fn track_accepts_intrinsic_contribution<S: LayoutScalar>(
+pub(in crate::grid) fn track_has_intrinsic_sizing_function<S: LayoutScalar>(
     track: &TrackSizingOf<S>,
 ) -> bool {
     track.min.is_intrinsic() || track.max.is_intrinsic()
 }
 
-pub(in crate::grid) fn track_has_definite_min_floor<S: LayoutScalar>(
+// Qualification is tied to the actual sizing-owner basis. A real missing
+// percentage basis is Auto here; raw standalone distribution stays separate.
+pub(in crate::grid) fn track_minimum_is_intrinsic<S: LayoutScalar>(
     track: &TrackSizingOf<S>,
+    basis: Option<S>,
 ) -> bool {
-    match &track.min {
-        MinTrackSizingOf::Calculation(calculation) => {
-            resolve_track_calculation_optional(calculation, None).is_some()
-        }
-        MinTrackSizingOf::Auto | MinTrackSizingOf::MinContent | MinTrackSizingOf::MaxContent => {
-            false
-        }
-    }
+    track.min.is_intrinsic()
+        || matches!(&track.min, MinTrackSizingOf::Calculation(value) if track_calculation_is_cyclic_auto(value, basis))
+}
+
+pub(in crate::grid) fn track_accepts_intrinsic_contribution<S: LayoutScalar>(
+    track: &TrackSizingOf<S>,
+    basis: Option<S>,
+) -> bool {
+    track_minimum_is_intrinsic(track, basis)
+        || track.max.is_intrinsic()
+        || matches!(&track.max, MaxTrackSizingOf::Calculation(value) if track_calculation_is_cyclic_auto(value, basis))
 }
 
 pub(in crate::grid) fn track_accepts_min_content_span_priority<S: LayoutScalar>(
@@ -2085,25 +1568,6 @@ pub(in crate::grid) fn track_accepts_auto_span_priority<S: LayoutScalar>(
     track: &TrackSizingOf<S>,
 ) -> bool {
     matches!(track.min, MinTrackSizingOf::Auto) || matches!(track.max, MaxTrackSizingOf::Auto)
-}
-
-pub(in crate::grid) fn track_accepts_percent_min_content_span<S: LayoutScalar>(
-    track: &TrackSizingOf<S>,
-    overflow: UsedOverflowAxis,
-    percent_basis: Option<S>,
-) -> bool {
-    if percent_basis.is_none() && track_has_percent_sizing(track) {
-        return true;
-    }
-    if track_has_definite_min_floor(track) {
-        return false;
-    }
-    if overflow.clips_contents() {
-        track_accepts_min_content_span_priority(track)
-            || track_accepts_max_content_span_priority(track)
-    } else {
-        track_accepts_intrinsic_contribution(track)
-    }
 }
 
 pub(in crate::grid) fn intrinsic_contribution_margin<'input, S: LayoutScalar>(

@@ -24,23 +24,6 @@ pub(super) fn default_grid_item_projection<'input, S: LayoutScalar>(
     grid_item_projection!(input)
 }
 
-pub(super) fn single_grid_placement_context<'input, S: LayoutScalar>(
-    child: u32,
-    style: &'input NodeInputOf<S>,
-) -> GridPlacementContext<'input, u32, S> {
-    GridPlacementContext::new_with_child_inputs(
-        vec![child],
-        vec![ResolvedGridItemPlacement {
-            column: GridPlacement::AUTO,
-            row: GridPlacement::AUTO,
-            absolute_column: GridPlacement::AUTO,
-            absolute_row: GridPlacement::AUTO,
-            in_flow: true,
-        }],
-        vec![grid_child_input!(style)],
-    )
-}
-
 pub(super) fn subgrid_axis_report<S: LayoutScalar>(
     parent_style: &NodeInputOf<S>,
     child_style: &NodeInputOf<S>,
@@ -99,11 +82,11 @@ pub(super) struct SubgridChildParentContextInput<'input, Node, S: LayoutScalar =
     pub(super) content_box_size: Size<S>,
     pub(super) columns: &'input [S],
     pub(super) rows: &'input [S],
+    pub(super) minimum_functions: GridMinimumParentFunctions<'input, S>,
     pub(super) gap: LogicalSizeOf<S>,
     pub(super) parent_named_columns: &'input NamedGridLines,
     pub(super) parent_named_rows: &'input NamedGridLines,
     pub(super) parent_area_facts: Option<&'input GridAreaNameFacts>,
-    pub(super) parent_baseline_groups: &'input GridBaselineGroups<S>,
     pub(super) margin: Edges<Option<S>>,
     pub(super) border: Edges<S>,
     pub(super) padding: Edges<S>,
@@ -131,11 +114,11 @@ pub(super) fn with_projected_subgrid_child_input<'input, Node: Copy, S: LayoutSc
         content_box_size: input.content_box_size,
         columns: input.columns,
         rows: input.rows,
+        minimum_functions: input.minimum_functions,
         gap: input.gap,
         parent_named_columns: input.parent_named_columns,
         parent_named_rows: input.parent_named_rows,
         parent_area_facts: input.parent_area_facts,
-        parent_baseline_groups: input.parent_baseline_groups,
         margin: input.margin,
         border: input.border,
         padding: input.padding,
@@ -1040,7 +1023,6 @@ pub(super) fn fri08_c03_intrinsic_projected_item<S: LayoutScalar>(
     id: &'static str,
     span: usize,
     candidate_starts: Option<Vec<usize>>,
-    baseline_role: LaneIntrinsicBaselineRole,
     edges: LaneIntrinsicEdgeFactsOf<S>,
     contribution: LaneContributionFactsOf<S>,
 ) -> ProjectedLaneIntrinsicItemOf<S> {
@@ -1050,8 +1032,7 @@ pub(super) fn fri08_c03_intrinsic_projected_item<S: LayoutScalar>(
             span: LaneTrackSpanLength::new(span).expect("intrinsic span is nonzero"),
         },
         candidate_starts,
-        contribution,
-        baseline_role,
+        contribution: contribution.into(),
         edges,
         contribution_kind: IntrinsicSpanContribution::MinContent {
             prioritize_min_tracks: false,
@@ -2731,6 +2712,7 @@ pub(super) fn inherited_placement_member(
     ancestor_baseline_member(AncestorBaselineMemberInput {
         source,
         axis,
+        alignment_context_reversed: false,
         ancestor_span: GridTrackSpan::new(selected_track + 1, selected_track + 2),
         alignment: match role {
             AncestorBaselineRole::First => AlignItems::Baseline,
@@ -2787,125 +2769,167 @@ pub(super) fn inherited_placement_group(
     )
 }
 
-macro_rules! owner_placement_boundary {
-    (
-        $parent_grid:expr,
-        $current_grid:expr,
-        $parent_span:expr,
-        $reversed:expr,
-        $parent_progression:expr,
-        $current_progression:expr,
-        $parent_first_frame_origins:expr,
-        $parent_last_frame_origins:expr,
-        $current_first_frame_origins:expr,
-        $current_last_frame_origins:expr,
-        $parent_gap:expr,
-        $current_gap:expr,
-        $start_mbp:expr,
-        $end_mbp:expr $(,)?
-    ) => {
-        OwnerToCurrentPlacementBoundaryInput {
-            parent_grid: $parent_grid,
-            current_grid: $current_grid,
-            parent_axis: GridAxisKind::Row,
-            current_axis: GridAxisKind::Row,
-            physical_axis: PhysicalAxis::Vertical,
-            parent_progression: $parent_progression,
-            current_progression: $current_progression,
-            parent_span: $parent_span,
-            reversed: $reversed,
-            parent_first_frame_origins: $parent_first_frame_origins,
-            parent_last_frame_origins: $parent_last_frame_origins,
-            current_first_frame_origins: $current_first_frame_origins,
-            current_last_frame_origins: $current_last_frame_origins,
-            parent_boundary_gutters: &vec![
-                $parent_gap;
-                ($parent_first_frame_origins).len().saturating_sub(1)
-            ],
-            current_boundary_gutters: &vec![
-                $current_gap;
-                ($current_first_frame_origins).len().saturating_sub(1)
-            ],
-            parent_gap: $parent_gap,
-            current_gap: $current_gap,
-            start_mbp: $start_mbp,
-            end_mbp: $end_mbp,
-            inherited: true,
+/// Actual parent/current used geometry for checked baseline transport tests.
+/// The canonical inheritance owner chooses current geometry; tests independently
+/// compare the transported point in physical parent coordinates.
+pub(super) struct InheritedPlacementFrames {
+    pub(super) parent: UsedGridAxisGeometryOf<f32>,
+    pub(super) current: UsedGridAxisGeometryOf<f32>,
+    pub(super) parent_span: GridTrackSpan,
+    pub(super) reversed: bool,
+    pub(super) start_mbp: f32,
+    pub(super) owner_progression: PhysicalProgression,
+    pub(super) physical_axis: PhysicalAxis,
+}
+
+pub(super) fn inherited_placement_frames(
+    axis: GridAxisKind,
+    owner_flow: FlowAxes,
+    input: SubgridTrackInheritanceInput<'_, f32>,
+) -> InheritedPlacementFrames {
+    let parent = UsedGridAxisGeometryOf::new(
+        input.parent_tracks.to_vec(),
+        vec![false; input.parent_tracks.len()],
+        input.parent_gap,
+    );
+    let parent_span = GridTrackSpan::new(input.parent_span.start - 1, input.parent_span.end - 1);
+    let reversed = input.reversed;
+    let start_mbp = input.start_mbp;
+    let inherited = inherit_subgrid_tracks(input).expect("authored test geometry inherits");
+    let (tracks, gap) = inherited_subgrid_layout_tracks(axis, &inherited);
+    let current = UsedGridAxisGeometryOf::new(tracks.clone(), vec![false; tracks.len()], gap);
+    let physical_axis = grid_axis_physical_axis(owner_flow, axis);
+    InheritedPlacementFrames {
+        parent,
+        current,
+        parent_span,
+        reversed,
+        start_mbp,
+        owner_progression: owner_flow.physical_axis_progression(physical_axis),
+        physical_axis,
+    }
+}
+
+fn placement_current_progression(frames: &InheritedPlacementFrames) -> PhysicalProgression {
+    match (frames.owner_progression, frames.reversed) {
+        (PhysicalProgression::Increasing, false) | (PhysicalProgression::Decreasing, true) => {
+            PhysicalProgression::Increasing
         }
-    };
+        (PhysicalProgression::Decreasing, false) | (PhysicalProgression::Increasing, true) => {
+            PhysicalProgression::Decreasing
+        }
+    }
 }
 
 pub(super) fn inherited_placement_mapping(
     axis: GridAxisKind,
-    reversed: bool,
-    parent_span: GridTrackSpan,
-    parent_gap: f32,
-    current_gap: f32,
+    frames: &InheritedPlacementFrames,
 ) -> CheckedOwnerToCurrentPlacementMap<u32, f32> {
-    let physical_axis = match axis {
-        GridAxisKind::Column => PhysicalAxis::Horizontal,
-        GridAxisKind::Row => PhysicalAxis::Vertical,
+    let physical_axis = frames.physical_axis;
+    let parent_starts = (0..frames.parent.sizes().len())
+        .map(|i| frames.parent.line_offset(i).unwrap())
+        .collect::<Vec<_>>();
+    let parent_ends = parent_starts
+        .iter()
+        .zip(frames.parent.sizes())
+        .map(|(start, size)| *start + *size)
+        .collect::<Vec<_>>();
+    let local_starts = (0..frames.current.sizes().len())
+        .map(|i| frames.current.line_offset(i).unwrap())
+        .collect::<Vec<_>>();
+    let local_ends = local_starts
+        .iter()
+        .zip(frames.current.sizes())
+        .map(|(start, size)| *start + *size)
+        .collect::<Vec<_>>();
+    // The private map consumes signed edge-distance origins. Express them
+    // directly from authored used geometry; no extra gutter hint is involved.
+    let origins = if frames.reversed {
+        let content_start = parent_ends[frames.parent_span.end - 1] - frames.start_mbp;
+        (
+            parent_ends.clone(),
+            parent_starts
+                .iter()
+                .map(|start| -*start)
+                .collect::<Vec<_>>(),
+            local_starts
+                .iter()
+                .map(|start| content_start - *start)
+                .collect::<Vec<_>>(),
+            local_ends
+                .iter()
+                .map(|end| -(content_start - *end))
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        let content_start = parent_starts[frames.parent_span.start] + frames.start_mbp;
+        (
+            parent_starts
+                .iter()
+                .map(|start| -*start)
+                .collect::<Vec<_>>(),
+            parent_ends.clone(),
+            local_starts
+                .iter()
+                .map(|start| -(content_start + *start))
+                .collect::<Vec<_>>(),
+            local_ends
+                .iter()
+                .map(|end| content_start + *end)
+                .collect::<Vec<_>>(),
+        )
     };
-    let identity = CheckedOwnerToCurrentPlacementMap::identity(
+    CheckedOwnerToCurrentPlacementMap::identity(
         1_u32,
         axis,
         physical_axis,
-        PhysicalProgression::Increasing,
-        4,
-    );
-    let current_count = parent_span.checked_len().unwrap_or(0);
-    let parent_origins = vec![0.0; 4];
-    let current_origins = vec![0.0; current_count];
-    let parent_boundary_gutters = vec![parent_gap; 3];
-    let current_boundary_gutters = vec![current_gap; current_count.saturating_sub(1)];
-    identity
-        .compose(OwnerToCurrentPlacementBoundaryInput {
-            parent_grid: 1,
-            current_grid: 7,
-            parent_axis: axis,
-            current_axis: axis,
-            physical_axis,
-            parent_progression: PhysicalProgression::Increasing,
-            current_progression: PhysicalProgression::Increasing,
-            parent_span,
-            reversed,
-            parent_first_frame_origins: &parent_origins,
-            parent_last_frame_origins: &parent_origins,
-            current_first_frame_origins: &current_origins,
-            current_last_frame_origins: &current_origins,
-            parent_boundary_gutters: &parent_boundary_gutters,
-            current_boundary_gutters: &current_boundary_gutters,
-            parent_gap,
-            current_gap,
-            start_mbp: 0.0,
-            end_mbp: 0.0,
-            inherited: true,
-        })
-        .expect("placement fixture map composes")
+        frames.owner_progression,
+        frames.parent.sizes().len(),
+    )
+    .compose(OwnerToCurrentPlacementBoundaryInput {
+        parent_grid: 1,
+        current_grid: 7,
+        parent_axis: axis,
+        current_axis: axis,
+        physical_axis,
+        parent_progression: frames.owner_progression,
+        current_progression: placement_current_progression(frames),
+        parent_span: frames.parent_span,
+        reversed: frames.reversed,
+        parent_first_frame_origins: &origins.0,
+        parent_last_frame_origins: &origins.1,
+        current_first_frame_origins: &origins.2,
+        current_last_frame_origins: &origins.3,
+        inherited: true,
+    })
+    .expect("actual test frames compose")
 }
 
 pub(super) fn inherited_placement_witness(
     axis: GridAxisKind,
-    role: AncestorBaselineRole,
+    selected_port: AncestorBaselineRole,
     selected_local_track: usize,
+    subject_progression: PhysicalProgression,
+    containing_progression: PhysicalProgression,
 ) -> CurrentGridDirectWitness<u32> {
     CurrentGridDirectWitness::new(
         7,
         11,
         axis,
         GridTrackSpan::new(selected_local_track, selected_local_track + 1),
-        role,
+        selected_port,
+        subject_progression,
+        containing_progression,
     )
 }
 
 pub(super) fn derive_inherited_placement(
     group: &AncestorBaselineGroup<u32>,
     axis: GridAxisKind,
-    role: AncestorBaselineRole,
+    selected_port: AncestorBaselineRole,
     selected_local_track: usize,
-    reversed: bool,
-    parent_gap: f32,
-    current_gap: f32,
+    subject_progression: PhysicalProgression,
+    frames: &InheritedPlacementFrames,
 ) -> Result<
     InheritedCurrentGridBaselinePlacement<u32, f32>,
     InheritedCurrentGridBaselinePlacementError,
@@ -2914,18 +2938,15 @@ pub(super) fn derive_inherited_placement(
         group,
         InheritedCurrentGridBaselinePlacementInput {
             axis,
-            physical_axis: match axis {
-                GridAxisKind::Column => PhysicalAxis::Horizontal,
-                GridAxisKind::Row => PhysicalAxis::Vertical,
-            },
-            mapping: inherited_placement_mapping(
+            physical_axis: frames.physical_axis,
+            mapping: inherited_placement_mapping(axis, frames),
+            direct_witness: inherited_placement_witness(
                 axis,
-                reversed,
-                GridTrackSpan::new(0, 4),
-                parent_gap,
-                current_gap,
+                selected_port,
+                selected_local_track,
+                subject_progression,
+                placement_current_progression(frames),
             ),
-            direct_witness: inherited_placement_witness(axis, role, selected_local_track),
             current_grid: 7,
             item: 11,
         },
@@ -3086,17 +3107,6 @@ pub(super) fn tagged_baseline<S: LayoutScalar>(
         .expect("the tagged physical baseline is present")
 }
 
-pub(super) fn tagged_group<S: LayoutScalar>(
-    axis: PhysicalAxis,
-    first: Option<S>,
-    last: Option<S>,
-) -> TrackBaselineGroup<S> {
-    TrackBaselineGroup {
-        first: first.map(|coordinate| tagged_baseline(axis, coordinate)),
-        last: last.map(|coordinate| tagged_baseline(axis, coordinate)),
-    }
-}
-
 pub(super) fn traversal_leaf<'input>(
     default_input: &'input NodeInput,
     node: u32,
@@ -3104,11 +3114,10 @@ pub(super) fn traversal_leaf<'input>(
     end: usize,
 ) -> SubgridTraversalChild<'input, u32> {
     SubgridTraversalChild::Leaf(SubgridTraversalLeaf {
+        min_frame: None,
         node,
         style: default_grid_item_projection(default_input),
         span_in_parent: GridTrackSpan::new(start, end),
-        available_inline_size: None,
-        available_inline_size_is_known: false,
         align_self: AlignItems::Stretch,
     })
 }

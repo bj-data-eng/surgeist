@@ -1,34 +1,17 @@
 use super::*;
 
-use super::flexible::span_contribution_with_gutters;
 use crate::geometry::FlowAxes;
 
-fn axis_margin_sum<S: LayoutScalar>(margin: Edges<S>, axis: GridAxisKind) -> S {
-    match axis {
-        GridAxisKind::Column => margin.horizontal_sum(),
-        GridAxisKind::Row => margin.vertical_sum(),
-    }
-}
-
-fn axis_available<S: LayoutScalar>(
-    available: Size<AvailableOf<S>>,
-    axis: GridAxisKind,
-) -> AvailableOf<S> {
-    match axis {
-        GridAxisKind::Column => available.width,
-        GridAxisKind::Row => available.height,
-    }
-}
-
-pub(super) struct IntrinsicGridChildInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
-    pub(super) child_style: &'a GridItemProjection<'input, S>,
-    pub(super) child_container: Option<&'a GridContainerInput<'input, S>>,
-    pub(super) grid: IntrinsicGrid<'input, 'a, Node, S>,
-    pub(super) area: GridArea<S>,
-    pub(super) columns: &'a [S],
-    pub(super) rows: &'a [S],
-    pub(super) subgrid_item: Option<SubgridItemReport<Node>>,
-    pub(super) input: ComputeInputOf<S>,
+#[derive(Clone, Copy)]
+pub(in crate::grid) struct IntrinsicGridChildInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+    pub(in crate::grid) child_style: &'a GridItemProjection<'input, S>,
+    pub(in crate::grid) child_container: Option<&'a GridContainerInput<'input, S>>,
+    pub(in crate::grid) grid: IntrinsicGrid<'input, 'a, Node, S>,
+    pub(in crate::grid) area: GridArea<S>,
+    pub(in crate::grid) columns: &'a [S],
+    pub(in crate::grid) rows: &'a [S],
+    pub(in crate::grid) subgrid_item: Option<SubgridItemReport<Node>>,
+    pub(in crate::grid) input: ComputeInputOf<S>,
 }
 
 pub(super) fn compute_intrinsic_grid_child<'input, Tree, M>(
@@ -39,7 +22,135 @@ pub(super) fn compute_intrinsic_grid_child<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let input = intrinsic_stage_child_input::<Tree, M>(child, &args)?;
+    let prepared = intrinsic_stage_child_input::<Tree, M>(child, &args)?;
+    if args.grid.query.purpose != GridContributionPurpose::Minimum {
+        return compute_prepared_intrinsic_grid_child(tree, child, args, prepared);
+    }
+    let axis = args
+        .grid
+        .query
+        .axis
+        .expect("minimum collection names its queried axis");
+    let grid = args.grid;
+    let (
+        start,
+        end,
+        opposite_start,
+        opposite_end,
+        opposite_axis,
+        gap,
+        opposite_gap,
+        gutters,
+        opposite_gutters,
+    ) = match axis {
+        GridAxisKind::Column => (
+            args.area.column,
+            args.area.column_end,
+            args.area.row,
+            args.area.row_end,
+            GridAxisKind::Row,
+            grid.gap.inline,
+            grid.gap.block,
+            grid.column_gutters,
+            grid.row_gutters,
+        ),
+        GridAxisKind::Row => (
+            args.area.row,
+            args.area.row_end,
+            args.area.column,
+            args.area.column_end,
+            GridAxisKind::Column,
+            grid.gap.block,
+            grid.gap.inline,
+            grid.row_gutters,
+            grid.column_gutters,
+        ),
+    };
+    let missing_functions = || {
+        LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(child),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::SubgridTrackInheritance),
+        )
+    };
+    let functions = grid
+        .minimum_functions
+        .for_axis(axis)
+        .and_then(|functions| functions.mapped_span(start, end, false))
+        .ok_or_else(missing_functions)?;
+    let span_gutter = gutters.map_or_else(
+        || gap * Tree::Scalar::from_usize(end.saturating_sub(start + 1)),
+        |gutters| gutters.span_gap_total(start, end),
+    );
+    let opposite_fixed_max_span = if grid
+        .style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        && axis == grid_axis_for_grid_lanes(grid.style)
+    {
+        // The opposite Lane stacking axis has no Grid track maximum span.
+        None
+    } else {
+        let opposite_functions = grid
+            .minimum_functions
+            .for_axis(opposite_axis)
+            .and_then(|functions| functions.mapped_span(opposite_start, opposite_end, false))
+            .ok_or_else(missing_functions)?;
+        let opposite_span_gutter = opposite_gutters.map_or_else(
+            || {
+                opposite_gap
+                    * Tree::Scalar::from_usize(opposite_end.saturating_sub(opposite_start + 1))
+            },
+            |gutters| gutters.span_gap_total(opposite_start, opposite_end),
+        );
+        opposite_functions
+            .span_facts(opposite_span_gutter)
+            .map_err(|error| sizing_resolution_error(child, error))?
+            .fixed_max_span()
+    };
+    let subgrid_requests = args
+        .child_container
+        .map_or(Size::new(false, false), |container| {
+            let projection = container.projection();
+            let requests = |tracks: &[TrackComponentOf<Tree::Scalar>]| {
+                tracks
+                    .iter()
+                    .any(|track| matches!(track, TrackComponentOf::Subgrid(_)))
+            };
+            Size::new(
+                requests(projection.grid_template_columns),
+                requests(projection.grid_template_rows),
+            )
+        });
+    compute_grid_minimum_contribution(
+        child,
+        GridMinimumContext {
+            item: args.child_style,
+            flow_axes: grid.sizing_flow_axes,
+            axis,
+            prepared,
+            span: functions
+                .span_facts(span_gutter)
+                .map_err(|error| sizing_resolution_error(child, error))?,
+            opposite_fixed_max_span,
+            subgrid_requests,
+            algorithm: sizing_algorithm_for_grid_display(grid.style.display),
+        },
+        |input| compute_prepared_intrinsic_grid_child(tree, child, args, input),
+    )
+}
+
+// The real child/subgrid query is shared by content suggestions and the final
+// used-minimum query; neither route synthesizes a measured output.
+pub(in crate::grid) fn compute_prepared_intrinsic_grid_child<'input, Tree, M>(
+    tree: &mut Tree,
+    child: Tree::Node,
+    args: IntrinsicGridChildInput<'input, '_, Tree::Node, Tree::Scalar>,
+    input: ComputeInputOf<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
     let IntrinsicGridChildInput {
         child_style,
         child_container,
@@ -139,11 +250,8 @@ where
     let content_box_size =
         (physical_area_size - margin.sum_axes() - padding.sum_axes() - border.sum_axes())
             .max(Size::ZERO);
-    let baseline_groups = GridBaselineGroups {
-        rows: vec![TrackBaselineGroup::default(); grid.row_tracks.len()],
-        columns: vec![TrackBaselineGroup::default(); grid.column_tracks.len()],
-    };
     let child_context_input = SubgridChildParentContextInput {
+        minimum_functions: grid.minimum_functions,
         item: subgrid_item,
         child_style,
         child_container_style: Some(child_container_style),
@@ -155,7 +263,6 @@ where
         parent_named_columns: grid.named_columns,
         parent_named_rows: grid.named_rows,
         parent_area_facts: grid.area_facts,
-        parent_baseline_groups: &baseline_groups,
         margin: sizing.unresolved_margin,
         border,
         padding,
@@ -206,7 +313,7 @@ where
 
 // A prepared opposite track span is a per-item containing area, not the
 // aggregate container availability. The queried dimension stays intrinsic.
-fn intrinsic_stage_child_input<'input, Tree, M>(
+pub(in crate::grid) fn intrinsic_stage_child_input<'input, Tree, M>(
     child: Tree::Node,
     args: &IntrinsicGridChildInput<'input, '_, Tree::Node, Tree::Scalar>,
 ) -> LayoutResultOf<Tree::Node, ComputeInputOf<Tree::Scalar>, Tree::Scalar, M>
@@ -214,6 +321,22 @@ where
     Tree: Compute<'input, M>,
 {
     let grid = args.grid;
+    if grid
+        .style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        && grid.query.axis == Some(grid_axis_for_grid_lanes(grid.style))
+    {
+        return prepare_grid_lanes_intrinsic_child_input(
+            args.child_style,
+            grid.sizing_flow_axes,
+            grid_axis_for_grid_lanes(grid.style),
+            grid.query,
+            args.input,
+        )
+        .map_err(|error| sizing_resolution_error(child, error));
+    }
+
     let (opposite, estimate) = match grid.query.axis {
         Some(GridAxisKind::Row) if grid.query.columns.is_some() => (GridAxisKind::Column, None),
         Some(GridAxisKind::Column) if grid.query.rows.is_some() => (GridAxisKind::Row, None),
@@ -486,6 +609,7 @@ fn apply_resolved_intrinsic_subgrid_area_constraints<S: LayoutScalar>(
 }
 
 pub(super) struct SubgridIntrinsicContributionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+    pub(super) grid: IntrinsicGrid<'input, 'a, Node, S>,
     pub(super) owner: Node,
     pub(super) constants: &'a Constants<S>,
     pub(super) container_style: &'a GridContainerProjection<'a, S>,
@@ -493,9 +617,7 @@ pub(super) struct SubgridIntrinsicContributionInput<'input, 'a, Node, S: LayoutS
     pub(super) axis: GridAxisKind,
     pub(super) tracks: &'a [TrackSizingOf<S>],
     pub(super) sizes: &'a mut [S],
-    pub(super) percent_basis: Option<S>,
-    pub(super) gap: S,
-    pub(super) gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
+    pub(super) base_floors: &'a mut [S],
     pub(super) column_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
     pub(super) row_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
     pub(super) container_gap: LogicalSizeOf<S>,
@@ -514,7 +636,6 @@ pub(super) struct SubgridIntrinsicContributionInput<'input, 'a, Node, S: LayoutS
 pub(super) struct SubgridIntrinsicContributionReport<Node, S: LayoutScalar = Scalar> {
     pub(super) row_contributions: Vec<RowIntrinsicContribution<Node, S>>,
     pub(super) ancestor_baseline_group: AncestorBaselineGroup<Node, S>,
-    pub(super) baseline_views: Vec<SubgridBaselineViewTransform<S>>,
     pub(super) receipts: Vec<GridContributionReceipt<Node, S>>,
 }
 
@@ -522,7 +643,6 @@ impl<Node: Copy, S: LayoutScalar> SubgridIntrinsicContributionReport<Node, S> {
     pub(super) fn empty(owner: Node, axis: GridAxisKind, count: usize, flow: FlowAxes) -> Self {
         Self {
             row_contributions: Vec::new(),
-            baseline_views: Vec::new(),
             receipts: Vec::new(),
             ancestor_baseline_group: AncestorBaselineGroup::reduce(
                 owner,
@@ -548,7 +668,6 @@ where
     if input.tracks.is_empty() || input.subgrid_report.items.is_empty() {
         return Ok(SubgridIntrinsicContributionReport {
             row_contributions: Vec::new(),
-            baseline_views: Vec::new(),
             receipts: Vec::new(),
             ancestor_baseline_group: AncestorBaselineGroup::reduce(
                 input.owner,
@@ -564,11 +683,20 @@ where
     let intrinsic_min_track_facts = input
         .tracks
         .iter()
-        .map(|track| track.min.is_intrinsic())
+        .map(|track| {
+            track_minimum_is_intrinsic(
+                track,
+                match input.axis {
+                    GridAxisKind::Column => input.grid.track_basis.inline,
+                    GridAxisKind::Row => input.grid.track_basis.block,
+                },
+            )
+        })
         .collect::<Vec<_>>();
     let Ok(report) = collect_grid_subgrid_intrinsic_traversal(
         tree,
         GridSubgridIntrinsicTraversalInput {
+            grid: input.grid,
             axis: input.axis,
             containing_flow_axes: input.constants.flow_axes,
             children: input.children,
@@ -591,7 +719,6 @@ where
     else {
         return Ok(SubgridIntrinsicContributionReport {
             row_contributions: Vec::new(),
-            baseline_views: Vec::new(),
             receipts: Vec::new(),
             ancestor_baseline_group: AncestorBaselineGroup::reduce(
                 input.owner,
@@ -605,12 +732,11 @@ where
     };
 
     for (index, lower_bound) in report.edge_lower_bounds.into_iter().enumerate() {
-        if let Some(size) = input.sizes.get_mut(index) {
+        if let Some(size) = input.base_floors.get_mut(index) {
             *size = size.max(lower_bound);
         }
     }
 
-    let baseline_views = report.baseline_views;
     let mut leaves = report.leaves;
     leaves.sort_by_key(|leaf| {
         leaf.ancestor_span
@@ -631,43 +757,33 @@ where
         ) {
             continue;
         }
-        if axis_available(input.available, input.axis) != AvailableOf::MAX_CONTENT
-            && scroll_container_auto_minimum_zero(
-                &child_style,
-                input.constants.flow_axes,
-                input.axis,
-            )
-        {
-            continue;
-        }
         let start = leaf.ancestor_span.start - 1;
         let end = leaf.ancestor_span.end - 1;
         let Some(span_tracks) = input.tracks.get(start..end) else {
             continue;
         };
-        if !span_tracks.iter().any(track_accepts_intrinsic_contribution) {
+        if !span_tracks.iter().any(|track| {
+            track_accepts_intrinsic_contribution(
+                track,
+                match input.axis {
+                    GridAxisKind::Column => input.grid.track_basis.inline,
+                    GridAxisKind::Row => input.grid.track_basis.block,
+                },
+            )
+        }) {
             continue;
         }
 
-        let row_available_inline_size = (input.axis == GridAxisKind::Row
-            && child_style.size.width.is_auto())
-        .then_some(leaf.available_inline_size)
-        .flatten()
-        .filter(|width| *width > Tree::Scalar::ZERO);
-        if input.axis == GridAxisKind::Row
-            && child_style.size.width.is_auto()
-            && row_available_inline_size.is_none()
-        {
-            continue;
-        }
-        let row_known_inline_size =
-            row_available_inline_size.filter(|_| leaf.available_inline_size_is_known);
-        let available = if let Some(width) = row_available_inline_size {
-            Size::new(AvailableOf::Definite(width), input.available.height)
-        } else {
-            input.available
-        };
-        let child_input = ComputeInputOf::for_child(
+        let frame = leaf.min_frame.ok_or_else(|| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(leaf.node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::InternalInvariant(
+                    LayoutInternalInvariant::SubgridTrackInheritance,
+                ),
+            )
+        })?;
+        let child_input = frame.prepared().with_run_mode(
             if input.axis == GridAxisKind::Row
                 && matches!(
                     leaf.align_self,
@@ -678,58 +794,65 @@ where
             } else {
                 RunMode::ComputeSize
             },
-            SizingMode::InherentSize,
-            RequestedAxis::Both,
-            Size::new(row_known_inline_size, None),
-            Size::new(
-                input.constants.node_inner_size.width,
-                input.constants.node_inner_size.height,
-            ),
-            crate::ContainingLayoutContext::new(
-                input.constants.flow_axes,
-                crate::ParentFormattingContext::Grid,
-            ),
-            available,
         );
-        let output = if let Some(parent_context) = &leaf.standalone_parent_context
-            && tree.child_count(leaf.node) > 0
-        {
-            parent_context.measure(tree, child_input)?
+        let child_input_projection = GridChildInput::from_node(tree.node_input(leaf.node));
+        let subgrid_requests = Size::new(
+            child_input_projection.subgrid_requested(GridAxisKind::Column),
+            child_input_projection.subgrid_requested(GridAxisKind::Row),
+        );
+        let mut query = |input| {
+            if let Some(parent_context) = &leaf.standalone_parent_context
+                && tree.child_count(leaf.node) > 0
+            {
+                parent_context.measure(tree, input)
+            } else {
+                tree.compute_child(leaf.node, input)
+            }
+        };
+        let output = if input.query.purpose == GridContributionPurpose::Minimum {
+            compute_grid_minimum_contribution(
+                leaf.node,
+                GridMinimumContext {
+                    item: &child_style,
+                    flow_axes: frame.flow_axes,
+                    axis: frame.axis,
+                    prepared: child_input,
+                    span: frame.span,
+                    opposite_fixed_max_span: frame.opposite_fixed_max_span,
+                    subgrid_requests,
+                    algorithm: frame.algorithm,
+                },
+                query,
+            )?
         } else {
-            tree.compute_child(leaf.node, child_input)?
+            query(child_input)?
         };
         let margin = intrinsic_contribution_margin(
             &child_style,
-            input.constants.flow_axes,
-            input.constants.node_inner_size,
+            child_input.containing_flow_axes(),
+            child_input.parent(),
         )
         .map_err(|status| crate::error::value_resolution_error(leaf.node, status))?;
         let Some(scalar_adjustment) = leaf.scalar_adjustment() else {
             continue;
         };
-        let Some(baseline_adjustments) =
-            leaf.ancestor_baseline_adjustments(input.constants.flow_axes, input.axis)
-        else {
+        let Some(baseline_adjustments) = leaf.ancestor_baseline_adjustments() else {
             continue;
         };
         let contribution = grid_axis_size(input.constants.flow_axes, output.size, input.axis)
-            + axis_margin_sum(margin, input.axis)
+            + grid_axis_size(input.constants.flow_axes, margin.sum_axes(), input.axis)
             + scalar_adjustment;
-        let contribution_kind = IntrinsicSpanContribution::for_axis(
-            axis_available(input.available, input.axis),
-            grid_axis_used_overflow(&child_style, input.constants.flow_axes, input.axis),
-        );
         let flattened = FlattenedScalarContribution::new(
             leaf.node,
             input.axis,
             leaf.ancestor_span,
-            contribution_kind,
             contribution,
         );
         let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
         let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
             &child_style,
-            input.constants,
+            child_input.containing_flow_axes(),
+            child_input.parent(),
             child_flow_axes,
         )
         .map_err(|status| crate::error::value_resolution_error(leaf.node, status))?;
@@ -737,6 +860,7 @@ where
             source: leaf.node,
             axis: input.axis,
             ancestor_span: leaf.ancestor_span,
+            alignment_context_reversed: leaf.alignment_context_reversed,
             alignment: leaf.align_self,
             block_auto_margins,
             synthesized_baseline_cycle: synthesized_baseline_would_cycle(
@@ -744,6 +868,10 @@ where
                 output.baselines(),
                 child_flow_axes,
                 span_tracks,
+                match input.axis {
+                    GridAxisKind::Column => input.grid.track_basis.inline,
+                    GridAxisKind::Row => input.grid.track_basis.block,
+                },
             ),
             output,
             margin,
@@ -755,7 +883,7 @@ where
         if let Some(member) = member {
             ancestor_baseline_members.push(member);
         }
-        flattened_contributions.push((flattened, member, child_style));
+        flattened_contributions.push((flattened, member));
     }
 
     if input.axis == GridAxisKind::Column {
@@ -790,20 +918,30 @@ where
             let Some(span_tracks) = input.tracks.get(start..end) else {
                 continue;
             };
-            let output = tree.compute_child(
+            let output = compute_intrinsic_grid_child(
+                tree,
                 child,
-                ComputeInputOf::for_child(
-                    RunMode::PerformLayout,
-                    SizingMode::InherentSize,
-                    RequestedAxis::Both,
-                    Size::NONE,
-                    input.constants.node_inner_size,
-                    crate::ContainingLayoutContext::new(
-                        input.constants.flow_axes,
-                        crate::ParentFormattingContext::Grid,
+                IntrinsicGridChildInput {
+                    child_style,
+                    child_container: input.placements.nested_container_input(index),
+                    grid: input.grid,
+                    area,
+                    columns: input.column_sizes,
+                    rows: input.row_sizes,
+                    subgrid_item: input.subgrid_report.items.get(index).copied(),
+                    input: ComputeInputOf::for_child(
+                        RunMode::PerformLayout,
+                        SizingMode::InherentSize,
+                        RequestedAxis::Both,
+                        Size::NONE,
+                        input.constants.node_inner_size,
+                        crate::ContainingLayoutContext::new(
+                            input.constants.flow_axes,
+                            crate::ParentFormattingContext::Grid,
+                        ),
+                        input.available,
                     ),
-                    input.available,
-                ),
+                },
             )?;
             let margin = intrinsic_contribution_margin(
                 child_style,
@@ -814,7 +952,8 @@ where
             let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
             let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
                 child_style,
-                input.constants,
+                input.constants.flow_axes,
+                input.constants.node_inner_size,
                 child_flow_axes,
             )
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
@@ -822,6 +961,7 @@ where
                 source: child,
                 axis: GridAxisKind::Column,
                 ancestor_span: GridTrackSpan::new(start + 1, end + 1),
+                alignment_context_reversed: false,
                 alignment,
                 block_auto_margins,
                 synthesized_baseline_cycle: synthesized_baseline_would_cycle(
@@ -829,6 +969,7 @@ where
                     output.baselines(),
                     child_flow_axes,
                     span_tracks,
+                    input.grid.track_basis.inline,
                 ),
                 output,
                 margin,
@@ -851,71 +992,43 @@ where
     );
     let mut row_contributions = Vec::new();
     let mut receipts = Vec::new();
-    for (flattened, member, child_style) in flattened_contributions {
+    for (flattened, member) in flattened_contributions {
         let start = flattened.ancestor_span.start - 1;
         let end = flattened.ancestor_span.end - 1;
-        let Some(span_tracks) = input.tracks.get(start..end) else {
+        if input.tracks.get(start..end).is_none() {
             continue;
-        };
+        }
         let shim = member.map_or(BaselineShim::default(), |member| {
             ancestor_baseline_group.intrinsic_shim(member)
         });
         let contribution = flattened.contribution + shim.before + shim.after;
-        receipts.push(GridContributionReceipt {
-            source: flattened.source,
-            axis: input.axis,
-            span: flattened.ancestor_span,
-            value: contribution,
-        });
+        if input.axis == GridAxisKind::Column {
+            receipts.push(GridContributionReceipt {
+                purpose: input.query.purpose,
+                source: flattened.source,
+                axis: input.axis,
+                span: flattened.ancestor_span,
+                value: contribution,
+            });
+        }
         if input.axis == GridAxisKind::Row {
             row_contributions.push(RowIntrinsicContribution {
                 source: flattened.source,
                 start,
                 end,
                 contributes_to_row_size: true,
-                contribution_kind: flattened.contribution_kind,
                 contribution: flattened.contribution,
                 baseline_member: member,
             });
         } else if end == start + 1 {
             input.sizes[start] = input.sizes[start].max(contribution);
-        } else if axis_available(input.available, input.axis) == AvailableOf::MIN_CONTENT
-            && span_tracks.iter().any(track_has_percent_sizing)
-            && span_tracks
-                .iter()
-                .all(|track| track_flex_factor(track).is_none())
-        {
-            distribute_min_content_span_with_percent(
-                &mut input.sizes[start..end],
-                span_tracks,
-                grid_axis_used_overflow(&child_style, input.constants.flow_axes, input.axis),
-                input.percent_basis,
-                contribution,
-            );
-        } else {
-            distribute_intrinsic_span(
-                &mut input.sizes[start..end],
-                span_tracks,
-                flattened.contribution_kind,
-                input.percent_basis,
-                span_contribution_with_gutters(contribution, start, end, input.gap, input.gutters),
-            );
         }
     }
     Ok(SubgridIntrinsicContributionReport {
         row_contributions,
         ancestor_baseline_group,
-        baseline_views,
         receipts,
     })
-}
-
-fn scroll_container_auto_minimum_zero<'input, S: LayoutScalar>(
-    style: &GridItemProjection<'input, S>,
-    flow_axes: FlowAxes,
-    axis: GridAxisKind,
-) -> bool {
-    scroll_container_auto_minimum_zero_for_grid_axis(style, flow_axes, axis)
 }
 
 fn subgrid_leaf_size_depends_on_queried_axis<'input, S: LayoutScalar>(
@@ -947,201 +1060,6 @@ where
             };
             report.can_inherit() && report.mapping.parent_axis == parent_axis
         })
-}
-
-#[derive(Clone, Copy)]
-pub(in crate::grid) struct PercentTrackContent<'input, 'a, Node, S: LayoutScalar = Scalar> {
-    pub(in crate::grid) style: &'a GridContainerProjection<'a, S>,
-    pub(in crate::grid) constants: &'a Constants<S>,
-    pub(in crate::grid) sizing_flow_axes: FlowAxes,
-    pub(in crate::grid) parent_context: &'a GridParentContext<S, Node>,
-    pub(in crate::grid) column_tracks: &'a [TrackSizingOf<S>],
-    pub(in crate::grid) row_tracks: &'a [TrackSizingOf<S>],
-    pub(in crate::grid) columns: &'a [S],
-    pub(in crate::grid) rows: &'a [S],
-    pub(in crate::grid) gap: LogicalSizeOf<S>,
-    pub(in crate::grid) column_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
-    pub(in crate::grid) row_gutters: Option<&'a OrdinaryGridAxisGuttersOf<S>>,
-    pub(in crate::grid) lines: GridLines,
-    pub(in crate::grid) placements: &'a GridPlacementContext<'input, Node, S>,
-    pub(in crate::grid) stage: GridSizingStage,
-}
-
-pub(in crate::grid) fn cyclic_percent_track_content_size<'input, Tree, M>(
-    tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
-    input: PercentTrackContent<'input, '_, <Tree as Traverse>::Node, Tree::Scalar>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, Size<Tree::Scalar>, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let PercentTrackContent {
-        style,
-        constants,
-        sizing_flow_axes,
-        parent_context,
-        column_tracks,
-        row_tracks,
-        columns,
-        rows,
-        gap,
-        column_gutters,
-        row_gutters,
-        lines,
-        placements,
-        stage,
-    } = input;
-
-    let logical_node_inner_size = sizing_flow_axes.logical_size(constants.node_inner_size);
-    if logical_node_inner_size.inline.is_some() && logical_node_inner_size.block.is_some() {
-        return Ok(Size::ZERO);
-    }
-
-    let children = tree.children(node).collect::<Vec<_>>();
-    let column_geometry = column_gutters
-        .map(|gutters| UsedGridAxisGeometryOf::from_sizing_gutters(columns.to_vec(), gutters));
-    let row_geometry = row_gutters
-        .map(|gutters| UsedGridAxisGeometryOf::from_sizing_gutters(rows.to_vec(), gutters));
-    let placed_areas = resolve_grid_child_areas_with_geometry(
-        ResolveGridChildAreasInput {
-            children: &children,
-            placements,
-            style,
-            columns,
-            rows,
-            gap,
-            lines,
-        },
-        column_geometry.as_ref(),
-        row_geometry.as_ref(),
-    );
-    let column_offsets = column_gutters.map_or_else(
-        || offsets(columns, Tree::Scalar::ZERO, gap.inline),
-        |gutters| {
-            UsedGridAxisGeometryOf::from_sizing_gutters(columns.to_vec(), gutters)
-                .line_offsets()
-                .to_vec()
-        },
-    );
-    let row_offsets = row_gutters.map_or_else(
-        || offsets(rows, Tree::Scalar::ZERO, gap.block),
-        |gutters| {
-            UsedGridAxisGeometryOf::from_sizing_gutters(rows.to_vec(), gutters)
-                .line_offsets()
-                .to_vec()
-        },
-    );
-    let mut content_size = LogicalSizeOf::new(Tree::Scalar::ZERO, Tree::Scalar::ZERO);
-    let accumulate_standalone_percent_columns =
-        inherits_opposite_subgrid_axis(parent_context, GridAxisKind::Column);
-    let accumulate_standalone_percent_rows =
-        inherits_opposite_subgrid_axis(parent_context, GridAxisKind::Row);
-    let mut column_content: Vec<Tree::Scalar> = vec![Tree::Scalar::ZERO; columns.len()];
-    let mut row_content: Vec<Tree::Scalar> = vec![Tree::Scalar::ZERO; rows.len()];
-    for (index, (child, area)) in children.into_iter().zip(placed_areas).enumerate() {
-        let child_style = placements.item_input(index);
-        if !is_in_flow_grid_child(child_style) {
-            continue;
-        }
-        let Some(area) = area else {
-            continue;
-        };
-        if area.row >= rows.len() || area.column >= columns.len() {
-            continue;
-        }
-
-        let column_span = &column_tracks[area.column..area.column_end.min(column_tracks.len())];
-        let row_span = &row_tracks[area.row..area.row_end.min(row_tracks.len())];
-        let spans_percent_column = stage.has_resolved_axis(GridAxisKind::Column)
-            && logical_node_inner_size.inline.is_none()
-            && { column_span.iter().any(track_has_percent_sizing) }
-            && !column_span.iter().any(track_accepts_intrinsic_contribution);
-        let spans_percent_row = stage.has_resolved_axis(GridAxisKind::Row)
-            && logical_node_inner_size.block.is_none()
-            && { row_span.iter().any(track_has_percent_sizing) }
-            && !row_span.iter().any(track_accepts_intrinsic_contribution);
-        if !spans_percent_column && !spans_percent_row {
-            continue;
-        }
-
-        let output = tree.compute_child(
-            child,
-            ComputeInputOf::for_child(
-                RunMode::ComputeSize,
-                SizingMode::InherentSize,
-                RequestedAxis::Both,
-                Size::NONE,
-                Size::new(
-                    constants.node_inner_size.width,
-                    constants.node_inner_size.height,
-                ),
-                crate::ContainingLayoutContext::new(
-                    constants.flow_axes,
-                    crate::ParentFormattingContext::Grid,
-                ),
-                Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
-            ),
-        )?;
-        let output_size = sizing_flow_axes.logical_size(output.size);
-        if spans_percent_column {
-            let contribution =
-                axis_border_contribution(column_offsets[area.column], output_size.inline);
-            content_size.inline = content_size.inline.max(contribution);
-            if accumulate_standalone_percent_columns
-                && area.column_end == area.column + 1
-                && let Some(size) = column_content.get_mut(area.column)
-            {
-                *size = (*size).max(contribution);
-            }
-        }
-        if spans_percent_row {
-            let contribution = axis_border_contribution(row_offsets[area.row], output_size.block);
-            content_size.block = content_size.block.max(contribution);
-            if accumulate_standalone_percent_rows
-                && area.row_end == area.row + 1
-                && let Some(size) = row_content.get_mut(area.row)
-            {
-                *size = (*size).max(contribution);
-            }
-        }
-    }
-
-    if accumulate_standalone_percent_columns {
-        content_size.inline = content_size.inline.max(track_sum_with_gutters(
-            &column_content,
-            gap.inline,
-            column_gutters,
-        ));
-    }
-    if accumulate_standalone_percent_rows {
-        content_size.block =
-            content_size
-                .block
-                .max(track_sum_with_gutters(&row_content, gap.block, row_gutters));
-    }
-
-    Ok(sizing_flow_axes.physical_size(content_size))
-}
-
-fn inherits_opposite_subgrid_axis<Node, S: LayoutScalar>(
-    parent_context: &GridParentContext<S, Node>,
-    axis: GridAxisKind,
-) -> bool {
-    // Additive standalone percent sizing is only for grids that actually inherit
-    // the opposite subgrid axis; raw fallback `subgrid` declarations stay ordinary grids.
-    match axis {
-        GridAxisKind::Column => parent_context.rows.is_some(),
-        GridAxisKind::Row => parent_context.columns.is_some(),
-    }
-}
-
-fn axis_border_contribution<S: LayoutScalar>(location: S, size: S) -> S {
-    if size <= S::ZERO {
-        return S::ZERO;
-    }
-    let max = (location + size).max(S::ZERO);
-    let min = location.min(S::ZERO);
-    max - min
 }
 
 #[cfg(test)]
@@ -1475,12 +1393,16 @@ mod tests {
                     style: &parent_projection,
                     constants: &constants,
                     sizing_flow_axes: constants.flow_axes,
+                    track_basis: constants.flow_axes.logical_size(constants.node_inner_size),
+                    minimum_functions: GridMinimumParentFunctions {
+                        columns: None,
+                        rows: None,
+                    },
                     column_tracks: &[TrackSizing::px(200.0)],
                     row_tracks: &[TrackSizing::px(100.0)],
                     gap: LogicalSizeOf::new(0.0, 0.0),
                     column_gutters: None,
                     row_gutters: None,
-                    percent_basis: LogicalSizeOf::new(None, None),
                     lines: GridLines {
                         column_explicit_start: 0,
                         column_explicit_count: 1,
@@ -1492,7 +1414,7 @@ mod tests {
                     area_facts: None,
                     subgrid_report: &subgrid_report,
                     placements: &placements,
-                    query: IntrinsicGridQuery::complete(),
+                    query: IntrinsicGridQuery::complete(GridContributionPurpose::MaxContent),
                 },
                 area,
                 columns: &columns,
@@ -1592,12 +1514,16 @@ mod tests {
                     style: &parent_projection,
                     constants: &constants,
                     sizing_flow_axes: constants.flow_axes,
+                    track_basis: constants.flow_axes.logical_size(constants.node_inner_size),
+                    minimum_functions: GridMinimumParentFunctions {
+                        columns: None,
+                        rows: None,
+                    },
                     column_tracks: &[TrackSizing::px(100.0), TrackSizing::px(100.0)],
                     row_tracks: &[TrackSizing::px(100.0)],
                     gap: LogicalSizeOf::new(0.0, 0.0),
                     column_gutters: None,
                     row_gutters: None,
-                    percent_basis: LogicalSizeOf::new(None, None),
                     lines: GridLines {
                         column_explicit_start: 0,
                         column_explicit_count: 2,
@@ -1609,7 +1535,7 @@ mod tests {
                     area_facts: None,
                     subgrid_report: &subgrid_report,
                     placements: &placements,
-                    query: IntrinsicGridQuery::complete(),
+                    query: IntrinsicGridQuery::complete(GridContributionPurpose::MaxContent),
                 },
                 area,
                 columns: &columns,

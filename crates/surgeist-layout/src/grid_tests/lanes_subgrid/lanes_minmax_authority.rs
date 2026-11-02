@@ -57,6 +57,8 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                 AvailableOf::MAX_CONTENT,
             );
             let max_available = Size::splat(AvailableOf::<S>::MAX_CONTENT);
+            let minimum_known = physical_pair(mode, axis, Some(S::ZERO), None);
+            let minimum_response = response::<S>(mode, axis, 0.0, 80.0);
             let min_response = response::<S>(mode, axis, 20.0, 80.0);
             let max_response = response::<S>(mode, axis, 30.0, 90.0);
             assert_ne!(min_response.size, max_response.size);
@@ -112,7 +114,15 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                         ..NodeInputOf::default()
                     },
                 )
-                // No wildcard measurement may shadow either actual query.
+                // Each real role has an exact query; no wildcard shadows a response.
+                .measure_when(
+                    1,
+                    OracleMeasurementOf::new(minimum_response)
+                        .run_mode(RunMode::ComputeSize)
+                        .known(minimum_known)
+                        .parent(Size::NONE)
+                        .available(min_available),
+                )
                 .measure_when(
                     1,
                     OracleMeasurementOf::new(min_response)
@@ -165,50 +175,126 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                 let container_input = compute.node_input(0);
                 let container_style = grid_container_projection!(container_input);
                 let subgrid_report = collect_subgrid_report(&container_style, &placements);
-                lane_intrinsic_track_sizes(
+                let column_tracks = expand_track_components(
+                    &container_input.grid_template_columns,
+                    None,
+                    S::ZERO,
+                    None,
+                )
+                .unwrap();
+                let row_tracks = expand_track_components(
+                    &container_input.grid_template_rows,
+                    None,
+                    S::ZERO,
+                    None,
+                )
+                .unwrap();
+                let tracks = match axis {
+                    GridAxisKind::Column => column_tracks.as_slice(),
+                    GridAxisKind::Row => row_tracks.as_slice(),
+                };
+                let lines = GridLines {
+                    column_explicit_start: 0,
+                    column_explicit_count: 1,
+                    row_explicit_start: 0,
+                    row_explicit_count: 1,
+                };
+                let named_columns =
+                    named::NamedGridLines::new(GridAxisKind::Column, column_tracks.len());
+                let named_rows = named::NamedGridLines::new(GridAxisKind::Row, row_tracks.len());
+                let grid = IntrinsicGrid {
+                    style: &container_style,
+                    constants: &constants,
+                    sizing_flow_axes: constants.flow_axes,
+                    track_basis: constants.flow_axes.logical_size(constants.node_inner_size),
+                    minimum_functions: GridMinimumParentFunctions {
+                        columns: Some(GridMinimumTrackFunctions::new(&column_tracks, None)),
+                        rows: Some(GridMinimumTrackFunctions::new(&row_tracks, None)),
+                    },
+                    column_tracks: &column_tracks,
+                    row_tracks: &row_tracks,
+                    gap: LogicalSizeOf::new(S::ZERO, S::ZERO),
+                    column_gutters: None,
+                    row_gutters: None,
+                    lines,
+                    named_columns: &named_columns,
+                    named_rows: &named_rows,
+                    area_facts: None,
+                    subgrid_report: &subgrid_report,
+                    placements: &placements,
+                    query: IntrinsicGridQuery::complete(GridContributionPurpose::Minimum),
+                };
+                let rows = lane_intrinsic_contribution_rows(
                     &mut compute,
                     0,
                     LaneIntrinsicTrackSizeInput {
+                        grid,
+                        frame: intrinsic_stage::IntrinsicStageFrame {
+                            axis,
+                            stage: GridSizingStage {
+                                first_axis: axis,
+                                through: GridSizingPhase::InitialFirst,
+                            },
+                            columns: None,
+                            rows: None,
+                            observed_axis: None,
+                        },
                         container_style: &container_style,
                         constants: &constants,
                         axis,
-                        tracks: &[track],
+                        tracks,
                         gap: S::ZERO,
-                        available: AvailableOf::MIN_CONTENT,
-                        available_basis: None,
                         gutters: None,
-                        lines: GridLines {
-                            column_explicit_start: 0,
-                            column_explicit_count: 1,
-                            row_explicit_start: 0,
-                            row_explicit_count: 1,
-                        },
+                        lines,
                         placements: &placements,
                         subgrid_report: &subgrid_report,
                     },
                 )
                 .expect("actual native intrinsic query succeeds")
-                .expect("one real child occupies its declared one-track span")
+                .expect("one real child occupies its declared one-track span");
+                resolve_grid_contribution_rows(
+                    SpanningTrackContext {
+                        tracks,
+                        basis: None,
+                        available: AvailableOf::MIN_CONTENT,
+                        gap: S::ZERO,
+                        gutters: None,
+                        base_floors: &[],
+                    },
+                    &rows,
+                )
+                .expect("actual native rows resolve")
+                .base_sizes
             };
 
             let requests = tree.inputs(1);
             assert!(
                 requests
                     .iter()
-                    .any(|input| input.available() == min_available),
+                    .any(|input| input.available() == min_available && input.known() == Size::NONE),
                 "{axis:?} {overflow:?} {demand:?} {mode:?} {direction:?}: genuine MIN_CONTENT query must reach the provider"
             );
             assert!(
                 requests
                     .iter()
-                    .any(|input| input.available() == max_available),
+                    .any(|input| input.available() == max_available && input.known() == Size::NONE),
                 "{axis:?} {overflow:?} {demand:?} {mode:?} {direction:?}: genuine MAX_CONTENT query must reach the provider"
+            );
+            assert!(
+                requests
+                    .iter()
+                    .any(|input| input.available() == min_available
+                        && input.known() == minimum_known),
+                "the real Minimum query retains its resolved zero border"
             );
             for input in requests {
                 assert_eq!(input.run_mode(), RunMode::ComputeSize);
                 assert_eq!(input.sizing_mode(), SizingMode::InherentSize);
                 assert_eq!(input.requested_axis(), RequestedAxis::Both);
-                assert_eq!(input.known(), Size::NONE);
+                assert!(input.known() == Size::NONE || input.known() == minimum_known);
+                if input.known() == minimum_known {
+                    assert_eq!(input.available(), min_available);
+                }
                 assert_eq!(input.parent(), Size::NONE);
                 assert!(input.available() == min_available || input.available() == max_available);
             }

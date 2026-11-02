@@ -1253,3 +1253,209 @@ fn spanning_native_last_retains_selected_column_f32() {
 fn spanning_native_last_retains_selected_column_f64() {
     spanning_selected_context_track::<f64>(SelectedPort::Last);
 }
+
+fn negative_nested_margins_preserve_shared_physical_ports<S: LayoutScalar>() {
+    let mode = WritingMode::VerticalRl;
+    let axes = FlowAxes::new(mode, Direction::Ltr);
+    let mut tree = configured_tree::<S>(mode, mode, mode, 20.0, 50.0);
+    for (node, start, end) in [(1, -25.0, -40.0), (2, -15.0, -30.0)] {
+        let mut input = LayoutTree::node_input(&tree, node).clone();
+        input.margin = block_edges(
+            mode,
+            LengthAutoOf::px(value(start)),
+            LengthAutoOf::px(value(end)),
+            LengthAutoOf::ZERO,
+        );
+        tree.insert_input(node, LayoutInputOf::box_input(input));
+    }
+    for node in [10, 11, 12, 13, 14, 15, 20, 21, 22, 23, 24, 25] {
+        let mut input = LayoutTree::node_input(&tree, node).clone();
+        input.margin = block_edges(
+            mode,
+            LengthAutoOf::px(value(-3.0)),
+            LengthAutoOf::px(value(5.0)),
+            LengthAutoOf::ZERO,
+        );
+        tree.insert_input(node, LayoutInputOf::box_input(input));
+    }
+    let batch = completed(&tree);
+    for (node, start, end, padding_start, padding_end) in
+        [(1, -25.0, -40.0, 10.0, 20.0), (2, -15.0, -30.0, 5.0, 10.0)]
+    {
+        let actual = normal_box(&batch, node);
+        assert_eq!(
+            actual.margin,
+            block_edges(mode, value(start), value(end), S::ZERO)
+        );
+        assert_eq!(actual.border, Edges::all(value(5.0)));
+        assert_eq!(
+            actual.padding,
+            block_edges(mode, value(padding_start), value(padding_end), S::ZERO)
+        );
+    }
+    let mut points = Vec::new();
+    for (owner, member, selected) in [
+        (20, 10, SelectedPort::First),
+        (21, 11, SelectedPort::Last),
+        (22, 12, SelectedPort::First),
+        (23, 13, SelectedPort::Last),
+        (24, 14, SelectedPort::First),
+        (25, 15, SelectedPort::Last),
+    ] {
+        let owner_block = match selected {
+            SelectedPort::First => 50.0,
+            SelectedPort::Last => 100.0,
+        };
+        for (node, inline, block) in [(owner, 20.0, owner_block), (member, 40.0, 50.0)] {
+            let input = LayoutTree::node_input(&tree, node);
+            assert_eq!(input.writing_mode, mode);
+            assert_eq!(input.align_self, Some(alignment(selected)));
+            assert_eq!(Traverse::child_count(&tree, node), 0);
+            assert!(!LayoutTree::has_leaf_measurement(&tree, node));
+            let actual = normal_box(&batch, node);
+            assert_eq!(actual.size, physical_size(mode, inline, block));
+            assert_eq!(
+                actual.margin,
+                block_edges(mode, value(-3.0), value(5.0), S::ZERO)
+            );
+            assert_eq!(actual.border, Edges::all(value(5.0)));
+            assert_eq!(actual.padding, Edges::ZERO);
+        }
+        let owner_port = selected_port(&batch, owner, axes, selected);
+        let member_port = selected_port(&batch, member, axes, selected);
+        assert_eq!(owner_port, S::ZERO);
+        assert_eq!(member_port, S::ZERO);
+        let owner_origin = absolute_origin(&tree, &batch, owner);
+        let member_origin = absolute_origin(&tree, &batch, member);
+        points.push((
+            owner,
+            member,
+            selected,
+            owner_origin.x + owner_port,
+            member_origin.x + member_port,
+        ));
+    }
+    // Signed margins change the real ancestor origins and the winning distances;
+    // they do not change which compatible native ports share a physical point.
+    for (owner, member, selected, owner_point, member_point) in points {
+        assert_eq!(
+            owner_point, member_point,
+            "negative wrapper/own margins: owner{owner} and member{member}/{selected:?}"
+        );
+    }
+}
+
+#[test]
+fn negative_nested_margins_keep_native_first_and_last_aligned_f32() {
+    negative_nested_margins_preserve_shared_physical_ports::<f32>();
+}
+#[test]
+fn negative_nested_margins_keep_native_first_and_last_aligned_f64() {
+    negative_nested_margins_preserve_shared_physical_ports::<f64>();
+}
+
+fn negative_outer_demands_keep_signed_native_targets<S: LayoutScalar>() {
+    let mode = WritingMode::VerticalRl;
+    let axes = FlowAxes::new(mode, Direction::Ltr);
+    let mut tree = PublicLayoutTreeOf::<S>::new()
+        .children(0, [20, 21, 22, 23])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Grid,
+                writing_mode: mode,
+                direction: Direction::Ltr,
+                box_sizing: BoxSizing::BorderBox,
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(value(40.0))),
+                grid_template_columns: vec![TrackComponentOf::px(value(20.0)); 2],
+                grid_template_rows: vec![TrackComponentOf::AUTO; 2],
+                align_content: Some(AlignContent::Start),
+                ..NodeInputOf::default()
+            },
+        );
+    for (node, row, column, block, selected) in [
+        (20, 1, 1, 50.0, SelectedPort::First),
+        (21, 1, 2, 20.0, SelectedPort::First),
+        (22, 2, 1, 100.0, SelectedPort::Last),
+        (23, 2, 2, 20.0, SelectedPort::Last),
+    ] {
+        let mut input = fixed_box(mode, row, column, 20.0, block, selected);
+        input.margin = block_edges(
+            mode,
+            LengthAutoOf::px(value(-100.0)),
+            LengthAutoOf::px(value(-100.0)),
+            LengthAutoOf::ZERO,
+        );
+        input.border = Edges::all(LengthOf::ZERO);
+        tree = tree.children(node, []).style(node, input);
+    }
+    let batch = completed(&tree);
+    let root_box = normal_box(&batch, 0);
+    assert_eq!(root_box.location, Point::ZERO);
+    assert_eq!(root_box.size, physical_size(mode, 40.0, 0.0));
+    assert_eq!(root_box.content_box_size(), root_box.size);
+    assert_eq!(
+        (root_box.margin, root_box.border, root_box.padding),
+        (Edges::ZERO, Edges::ZERO, Edges::ZERO)
+    );
+    let mut points = Vec::new();
+    for (node, row, column, block, selected) in [
+        (20, 1, 1, 50.0, SelectedPort::First),
+        (21, 1, 2, 20.0, SelectedPort::First),
+        (22, 2, 1, 100.0, SelectedPort::Last),
+        (23, 2, 2, 20.0, SelectedPort::Last),
+    ] {
+        let input = LayoutTree::node_input(&tree, node);
+        assert_eq!(input.writing_mode, mode);
+        assert_eq!(input.align_self, Some(alignment(selected)));
+        assert_eq!(
+            input.grid_row,
+            GridPlacement::try_lines(row, row + 1).unwrap()
+        );
+        assert_eq!(
+            input.grid_column,
+            GridPlacement::try_lines(column, column + 1).unwrap()
+        );
+        assert_eq!(Traverse::child_count(&tree, node), 0);
+        assert!(!LayoutTree::has_leaf_measurement(&tree, node));
+        let actual = normal_box(&batch, node);
+        assert_eq!(actual.size, physical_size(mode, 20.0, block));
+        assert_eq!(
+            actual.margin,
+            block_edges(mode, value(-100.0), value(-100.0), S::ZERO)
+        );
+        assert_eq!((actual.border, actual.padding), (Edges::ZERO, Edges::ZERO));
+        let port = selected_port(&batch, node, axes, selected);
+        assert_eq!(
+            port,
+            S::ZERO,
+            "the native empty VRL body has its selected physical port at zero"
+        );
+        let origin = absolute_origin(&tree, &batch, node);
+        points.push((node, selected, origin.x + port));
+    }
+    // Each nonnegative outer demand is max(block-200, 0)=0, so both Auto
+    // rows and the root have block extent0. Signed targets remain independent:
+    // First=max(50-100,20-100)=-50; Last=max(-100+0,-100+0)=-100.
+    // VRL therefore places the First point at0-(-50)=50 and Last at0-100=-100.
+    for (node, selected, point) in points {
+        let expected = match selected {
+            SelectedPort::First => 50.0,
+            SelectedPort::Last => -100.0,
+        };
+        assert_eq!(
+            point,
+            value(expected),
+            "node{node}/{selected:?} retains its signed target"
+        );
+    }
+}
+
+#[test]
+fn negative_outer_demands_preserve_signed_first_and_last_targets_f32() {
+    negative_outer_demands_keep_signed_native_targets::<f32>();
+}
+#[test]
+fn negative_outer_demands_preserve_signed_first_and_last_targets_f64() {
+    negative_outer_demands_keep_signed_native_targets::<f64>();
+}
