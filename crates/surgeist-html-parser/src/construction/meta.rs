@@ -1641,19 +1641,6 @@ mod tests {
         Vec<ParserNode>,
         LexerFixture<'static>,
     ) {
-        detached_metas_with_edges(source, 1_000_000)
-    }
-    /// As [`detached_metas`], with room for `edges` parent-child edges.
-    fn detached_metas_with_edges(
-        source: &str,
-        edges: u64,
-    ) -> (
-        ParseControl,
-        ParserArenaSession,
-        ParserNode,
-        Vec<ParserNode>,
-        LexerFixture<'static>,
-    ) {
         let source: &'static crate::HtmlSource =
             Box::leak(Box::new(crate::HtmlSource::utf8(source)));
         // The walk oracle reads every candidate after every change.
@@ -1669,7 +1656,7 @@ mod tests {
             .source_map_entries(1_000_000)
             .source_map_payload_units(1_000_000)
             .managed_nodes(1_000_000)
-            .managed_edges(edges)
+            .managed_edges(1_000_000)
             .auxiliary_entries(100_000_000)
             .finish()
             .unwrap();
@@ -1845,55 +1832,6 @@ mod tests {
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
-    }
-
-    #[test]
-    fn a_refused_insertion_ends_its_announcement_and_leaves_exact_roots() {
-        // One edge is allowed: the span goes into the div, and the div's move
-        // under the root is refused after the announcement that its subtree may
-        // change root, and it stays detached. The refusal latches the stop, so
-        // the cache is read without a charge: no cell may hold a root other than
-        // the one a full climb finds, and the new generation the announcement
-        // started leaves none holding any.
-        let (mut c, mut session, root, nodes, lexer) = detached_metas_with_edges("<div><span>", 1);
-        let [div, span] = &nodes[..] else {
-            panic!("two elements")
-        };
-        put(&mut session, &mut c, div, span, None);
-        let storage = session.active_mut().unwrap();
-        let view = storage.construction.storage(&mut c).unwrap();
-        for node in [div, span] {
-            assert_eq!(
-                storage
-                    .payloads
-                    .tree_root(&mut c, view, node.index)
-                    .unwrap(),
-                div.index
-            );
-        }
-        let refused = storage.insert(&mut c, &root, div, None, InsertionCause::NonParser);
-        assert!(matches!(
-            refused,
-            Err(SessionError::Stop(ParseStop::LimitExceeded {
-                resource: HtmlParseResource::ManagedEdges,
-                ..
-            }))
-        ));
-        let view = storage.construction.test_storage();
-        for node in [div, span] {
-            assert_eq!(
-                storage.payloads.cached_root(node.index),
-                None,
-                "record {}",
-                node.index
-            );
-            assert_eq!(
-                PayloadStorage::full_climb_root(view, node.index),
-                Some(div.index)
-            );
-        }
-        lexer.release(&mut c).unwrap();
-        session.release(&mut c).unwrap();
     }
 
     #[test]

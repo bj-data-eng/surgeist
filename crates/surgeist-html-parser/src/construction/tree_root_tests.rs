@@ -102,3 +102,51 @@ fn a_cache_that_cannot_name_another_generation_is_off_and_stays_exact() {
     }
     session.release(&mut c).unwrap();
 }
+
+#[test]
+fn a_refused_insertion_ends_its_announcement_and_leaves_exact_roots() {
+    // A tree no deeper than the limit allows. The div, holding the span, is
+    // detached and its roots are cached, then its move under the deepest
+    // element is refused for the depth it would add, after the announcement
+    // that its subtree may change root. The refusal latches the stop, so the
+    // cache is read without a charge: no cell may hold a root other than the
+    // one a full climb finds, the generation the announcement started leaves
+    // none holding any, and the announcement was counted at both ends.
+    let limits = super::super::tests::limits()
+        .into_builder()
+        .tree_depth(5)
+        .finish()
+        .unwrap();
+    let request = crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(SOURCE), limits);
+    let (mut c, mut session, proof, nodes) = graph(&request);
+    let [div, span, i] = ["div", "span", "i"].map(|name| named(&nodes, name, 0));
+    session.remove(&mut c, &div, Some(&proof)).unwrap();
+    for node in [&div, &span] {
+        assert_eq!(root_of(&mut session, &mut c, node), div.index);
+    }
+    let storage = session.active_mut().unwrap();
+    let before = storage.payloads.topology_changes.unwrap();
+    let refused = storage.insert(&mut c, &i, &div, None, InsertionCause::NonParser);
+    assert!(matches!(
+        refused,
+        Err(SessionError::Stop(ParseStop::LimitExceeded {
+            resource: HtmlParseResource::TreeDepth,
+            ..
+        }))
+    ));
+    assert_eq!(storage.payloads.topology_changes, Some(before + 2));
+    let view = storage.construction.test_storage();
+    for node in [&div, &span] {
+        assert_eq!(
+            storage.payloads.cached_root(node.index),
+            None,
+            "record {}",
+            node.index
+        );
+        assert_eq!(
+            PayloadStorage::full_climb_root(view, node.index),
+            Some(div.index)
+        );
+    }
+    session.release(&mut c).unwrap();
+}

@@ -52,7 +52,7 @@ pub(super) enum Reroot {
 
 impl PayloadStorage {
     /// The root cached for `node`, when its cell is current.
-    pub(super) fn cached_root(&self, node: usize) -> Option<usize> {
+    fn cached_root(&self, node: usize) -> Option<usize> {
         let stamp = self.tree_stamp?;
         match self.node_joins.get(node)?.tree_root {
             TreeRootCell::Cached { root, stamp: held } if held == stamp => cell_slot(root),
@@ -102,10 +102,7 @@ impl PayloadStorage {
     /// The root found by following parent edges all the way, uncharged: the
     /// oracle every cached answer is compared with in test builds.
     #[cfg(test)]
-    pub(super) fn full_climb_root(
-        storage: &bounded::HtmlConstructionStorage,
-        node: usize,
-    ) -> Option<usize> {
+    fn full_climb_root(storage: &bounded::HtmlConstructionStorage, node: usize) -> Option<usize> {
         let mut at = node;
         for _ in 0..=storage.len() {
             match storage.node_at(at)?.parent() {
