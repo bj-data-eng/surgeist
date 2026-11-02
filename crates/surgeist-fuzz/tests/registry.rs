@@ -50,12 +50,15 @@ impl Drop for Fixture {
     }
 }
 fn target() -> TargetDescriptor {
+    target_citing(&["https://example.org/requirements"])
+}
+fn target_citing(references: &[&str]) -> TargetDescriptor {
     TargetDescriptor::new(TargetDescriptorSpec {
         id: TargetId::new("surgeist-example::bytes").unwrap(),
         owner: "surgeist-example".into(),
         binary: "example-target".into(),
         properties: vec![PropertyId::new("surgeist-example::length").unwrap()],
-        source_references: vec!["https://example.org/requirements".into()],
+        source_references: references.iter().map(|r| (*r).to_owned()).collect(),
         format: CaseFormat::new("surgeist-example::bytes", 1).unwrap(),
         generator_identity: GeneratorIdentity::new("surgeist-example::bytes", 1).unwrap(),
         encoding: InputEncoding::RawBytes,
@@ -67,9 +70,12 @@ fn target() -> TargetDescriptor {
     .unwrap()
 }
 fn declaration() -> FuzzManifest {
+    declaration_citing(&["https://example.org/requirements"])
+}
+fn declaration_citing(references: &[&str]) -> FuzzManifest {
     FuzzManifest {
         schema: 1,
-        targets: vec![target()],
+        targets: vec![target_citing(references)],
         fixtures: vec![RelativePath::new("seeds").unwrap()],
     }
 }
@@ -159,4 +165,56 @@ fn unregistered_workspace_is_valid_empty_discovery() {
     m["packages"][1]["metadata"] = serde_json::json!({});
     assert_eq!(f.discover(&m).unwrap().targets().count(), 0);
     assert!(TargetRegistry::from_metadata_json(Path::new("/missing"), b"{}").is_err());
+}
+
+#[test]
+fn source_reference_to_existing_workspace_file_is_accepted_with_or_without_fragment() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.root.join("owner/src")).unwrap();
+    fs::write(f.root.join("owner/src/lib.rs"), b"").unwrap();
+    f.descriptor(declaration_citing(&[
+        "owner/src/lib.rs",
+        "owner/src/lib.rs#anchor",
+        "https://example.org/requirements#section",
+    ]));
+    assert_eq!(f.discover(&f.metadata()).unwrap().targets().count(), 1);
+}
+#[test]
+fn source_reference_to_missing_workspace_file_is_rejected() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.root.join("owner/src")).unwrap();
+    fs::write(f.root.join("owner/src/lib.rs"), b"").unwrap();
+    for stale in [
+        "owner/src/gone.rs",
+        "owner/src/gone.rs#anchor",
+        "free-form note",
+    ] {
+        f.descriptor(declaration_citing(&["owner/src/lib.rs", stale]));
+        assert!(f.discover(&f.metadata()).is_err(), "{stale:?} was accepted");
+    }
+}
+#[test]
+fn source_reference_naming_a_directory_is_rejected() {
+    let f = Fixture::new();
+    f.descriptor(declaration_citing(&["owner/fuzz/seeds"]));
+    assert!(f.discover(&f.metadata()).is_err());
+}
+#[test]
+fn source_reference_cannot_leave_the_workspace() {
+    let f = Fixture::new();
+    f.descriptor(declaration_citing(&["../outside.rs"]));
+    assert!(f.discover(&f.metadata()).is_err());
+}
+#[cfg(unix)]
+#[test]
+fn symlinked_source_reference_cannot_escape_workspace() {
+    let f = Fixture::new();
+    let outside =
+        std::env::temp_dir().join(format!("surgeist-registry-outside-{}", std::process::id()));
+    fs::write(&outside, b"").unwrap();
+    std::os::unix::fs::symlink(&outside, f.root.join("owner/link.rs")).unwrap();
+    f.descriptor(declaration_citing(&["owner/link.rs"]));
+    let accepted = f.discover(&f.metadata()).is_ok();
+    fs::remove_file(&outside).unwrap();
+    assert!(!accepted);
 }
