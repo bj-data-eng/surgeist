@@ -5998,3 +5998,6 @@ mod native_flex_budget;
 
 #[path = "tracks_intrinsic/native_minmax_caps.rs"]
 mod native_minmax_caps;
+
+#[path = "tracks_intrinsic/native_cyclic_subgrid_gap.rs"]
+mod native_cyclic_subgrid_gap;
