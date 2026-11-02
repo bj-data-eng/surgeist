@@ -8,8 +8,14 @@
   </input>
   <expectations>
     <node x="0" y="0" width="80" height="0">
-      <node x="55" y="0" width="20" height="0"/>
-      <node x="25" y="0" width="20" height="0"/>
+      <node>
+        <browser-control source_index="0" terminal_visual_slot="0" previous_line="absent" next_line="later"/>
+        <browser-br-font-band x="55" y="0" width="20" height="0"/>
+      </node>
+      <node>
+        <browser-control source_index="1" terminal_visual_slot="0" previous_line="earlier" next_line="absent"/>
+        <browser-br-font-band x="25" y="0" width="20" height="0"/>
+      </node>
     </node>
   </expectations>
 </test>

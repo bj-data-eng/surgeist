@@ -1,17 +1,29 @@
 <test name="block_br_vertical_lr_inline_block_metrics__content_box_rtl" measurement-version="2" use-rounding="true">
   <viewport width="max-content" height="max-content"/>
   <input>
-    <div source-tag="div" display="block" box-sizing="content-box" direction="ltr" writing-mode="vertical-lr" font-size="20px" line-height="30px" width="80px">
+    <div source-tag="div" layout-ready-inline-root="true" display="block" box-sizing="content-box" direction="ltr" writing-mode="vertical-lr" font-size="20px" line-height="30px" width="80px">
+      <prepared-paragraph capture="{&quot;font&quot;:{&quot;id&quot;:&quot;ahem-ttf-f0a92cd0&quot;,&quot;sha256&quot;:&quot;f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc&quot;,&quot;faceIndex&quot;:0,&quot;family&quot;:&quot;SurgeistParityAhem&quot;,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;features&quot;:&quot;normal&quot;,&quot;variations&quot;:&quot;normal&quot;,&quot;synthesis&quot;:&quot;none&quot;,&quot;loaded&quot;:true},&quot;direction&quot;:&quot;ltr&quot;,&quot;writingMode&quot;:&quot;vertical-lr&quot;,&quot;baseStyle&quot;:{&quot;fontSize&quot;:20.0,&quot;lineHeight&quot;:30.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;},&quot;origins&quot;:[{&quot;child&quot;:0,&quot;units&quot;:[10,32,32],&quot;start&quot;:0,&quot;end&quot;:3,&quot;style&quot;:{&quot;fontSize&quot;:20.0,&quot;lineHeight&quot;:30.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;}},{&quot;child&quot;:4,&quot;units&quot;:[10],&quot;start&quot;:3,&quot;end&quot;:4,&quot;style&quot;:{&quot;fontSize&quot;:20.0,&quot;lineHeight&quot;:30.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;}}],&quot;connections&quot;:[{&quot;preceding&quot;:0,&quot;following&quot;:1,&quot;kind&quot;:&quot;continuous&quot;,&quot;precedingWrap&quot;:&quot;word&quot;,&quot;followingWrap&quot;:&quot;word&quot;,&quot;ancestorWrap&quot;:&quot;word&quot;}],&quot;atomics&quot;:[{&quot;child&quot;:1,&quot;at&quot;:3,&quot;kind&quot;:&quot;in-flow&quot;,&quot;width&quot;:30.0,&quot;height&quot;:30.0,&quot;precedingWrap&quot;:&quot;word&quot;,&quot;followingWrap&quot;:&quot;word&quot;,&quot;ancestorWrap&quot;:&quot;word&quot;},{&quot;child&quot;:3,&quot;at&quot;:3,&quot;kind&quot;:&quot;in-flow&quot;,&quot;width&quot;:30.0,&quot;height&quot;:16.0,&quot;precedingWrap&quot;:&quot;word&quot;,&quot;followingWrap&quot;:&quot;word&quot;,&quot;ancestorWrap&quot;:&quot;word&quot;}],&quot;controls&quot;:[{&quot;child&quot;:2,&quot;at&quot;:3,&quot;kind&quot;:&quot;forced-break&quot;}],&quot;order&quot;:[{&quot;kind&quot;:&quot;origin&quot;,&quot;index&quot;:0,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;atomic&quot;,&quot;index&quot;:0,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;control&quot;,&quot;index&quot;:0,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;atomic&quot;,&quot;index&quot;:1,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;origin&quot;,&quot;index&quot;:1,&quot;affinity&quot;:&quot;before&quot;}]}"/>
+      <text layout-input="prepared-text" occurrence="0"/>
       <div source-tag="span" display="inline-block" box-sizing="content-box" direction="ltr" writing-mode="vertical-lr" font-size="20px" line-height="30px" width="30px" height="30px"/>
-      <div source-tag="br" display="inline" box-sizing="content-box" direction="ltr" writing-mode="vertical-lr" font-size="20px" line-height="30px" inline-baseline="15px" inline-line-height="30px"/>
+      <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="ltr" writing-mode="vertical-lr" font-size="20px" line-height="30px"/>
       <div source-tag="span" display="inline-block" box-sizing="content-box" direction="ltr" writing-mode="vertical-lr" font-size="20px" line-height="30px" width="30px" height="16px"/>
+      <text layout-input="prepared-text" occurrence="1"/>
     </div>
   </input>
   <expectations>
     <node x="0" y="0" width="80" height="30">
+      <node>
+        <range-fragments/>
+      </node>
       <node x="0" y="0" width="30" height="30"/>
-      <node x="5" y="30" width="20" height="0"/>
+      <node>
+        <browser-control source_index="2" terminal_visual_slot="unobserved" previous_line="same" next_line="later"/>
+        <browser-br-font-band x="5" y="30" width="20" height="0"/>
+      </node>
       <node x="30" y="0" width="30" height="16"/>
+      <node>
+        <range-fragments/>
+      </node>
     </node>
   </expectations>
 </test>

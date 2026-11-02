@@ -198,9 +198,14 @@ line-name fixtures `subgrid_line_names_004_b_to_b_minus_1` and
 fixtures, so any future failures should report their concrete mismatch or
 validation kind.
 
-The native prepared-source subset has 16 executed variants: 14 match and the two
-RTL continuity variants retain an executed zero-width PDI Range observation
-difference. Exact Range projection remains unresolved under #1450/#850; the
+The Text-migration accounting records four executed historical successors and
+twelve additional native representatives: 14 match, and the two RTL continuity
+variants retain an executed zero-width PDI Range observation difference.
+Exact Range projection remains unresolved under #1450/#850; the
 strict runner still reports those differences. See the
 [protocol determination](measurement-protocol.md#executed-range-observation-difference)
 and [complete accounting](prepared-text-accounting.json).
+Those 16 cases exclude the additional atomic/BR metric families. Their
+explicit BR font-band requests retain measured geometry independently of native
+input participation; an unsupported band observation is not a parity pass. See
+the [prepared-input and observation contract](measurement-protocol.md#authentic-prepared-text-input).

@@ -2150,6 +2150,39 @@ fn filtered_parity_fixtures(
 }
 
 #[test]
+fn original_br_metric_fixtures_complete_ordinary_checks_before_font_band_refusal() {
+    let fixtures = support::fixture_files("xml")
+        .expect("fixtures should load")
+        .into_iter()
+        .filter(|fixture| {
+            fixture
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("block_br_"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(fixtures.len(), 24, "all six original metric families");
+    let mut failures = Vec::new();
+    for fixture in fixtures {
+        let golden = support::Golden::parse_file(&fixture).expect("fixture should parse");
+        match support::assert_surgeist_matches(&golden) {
+            Ok(()) => panic!(
+                "{} unexpectedly claims native font-band support",
+                fixture.display()
+            ),
+            Err(error)
+                if error
+                    .to_string()
+                    .contains("unsupported browser BR font-band observation") => {}
+            Err(error) => failures.push(format!(
+                "{} failed before band qualification: {error}",
+                fixture.display()
+            )),
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
 fn runs_all_checked_in_browser_parity_xml() {
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
     assert!(

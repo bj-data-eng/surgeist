@@ -303,6 +303,7 @@ pub struct Expectation {
     pub fragments: Option<Vec<InlineFragmentExpectation>>,
     pub range_rectangles: Option<Vec<InlineRangeRectangleExpectation>>,
     pub browser_control: Option<BrowserControlExpectation>,
+    pub browser_br_font_band: Option<BrowserBrFontBand>,
     pub children: Vec<Expectation>,
 }
 
@@ -343,6 +344,16 @@ pub struct BrowserControlExpectation {
     pub terminal_visual_slot: Option<usize>,
     pub previous_line: BrowserNeighborLine,
     pub next_line: BrowserNeighborLine,
+}
+
+/// Selected browser font-band geometry, in the original parent-local frame.
+/// This is an observation request, not a native control rectangle or layout input.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BrowserBrFontBand {
+    pub x: Scalar,
+    pub y: Scalar,
+    pub width: Scalar,
+    pub height: Scalar,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -599,6 +610,7 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
             "only one prepared paragraph capture is allowed per container",
         ));
     }
+    let style = StyleAttrs { attrs };
     let prepared = captures
         .first()
         .map(|capture| {
@@ -615,6 +627,7 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
                 required_attr(*capture, "capture")?,
                 children.len(),
             )?;
+            capture.validate_container(&style, &children)?;
             for (index, (child, origin)) in capture.origins.iter().enumerate() {
                 if children[*child].prepared_occurrence != Some(index)
                     || children[*child].inline_text.is_some()
@@ -644,7 +657,7 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
         prepared_control: None,
         prepared,
         kind,
-        style: StyleAttrs { attrs },
+        style,
         text,
         children,
         inline_text: None,
@@ -1299,6 +1312,7 @@ fn parse_expectation(xml: roxmltree::Node<'_, '_>) -> Result<Expectation, Error>
     let mut fragments = None;
     let mut range_rectangles = None;
     let mut browser_control = None;
+    let mut browser_br_font_band = None;
     let mut children = Vec::new();
     for child in xml.children().filter(roxmltree::Node::is_element) {
         match child.tag_name().name() {
@@ -1331,6 +1345,12 @@ fn parse_expectation(xml: roxmltree::Node<'_, '_>) -> Result<Expectation, Error>
                     "expected at most one `<browser-control>` child on `<node>`",
                 ));
             }
+            "browser-br-font-band" if browser_br_font_band.is_none() => {
+                browser_br_font_band = Some(parse_browser_br_font_band(child)?);
+            }
+            "browser-br-font-band" => {
+                return Err(Error::new("duplicate browser BR font-band observation"));
+            }
             tag => {
                 return Err(Error::new(format!(
                     "unsupported expectation child `<{tag}>`"
@@ -1358,9 +1378,19 @@ fn parse_expectation(xml: roxmltree::Node<'_, '_>) -> Result<Expectation, Error>
         fragments,
         range_rectangles,
         browser_control,
+        browser_br_font_band,
         children,
     };
     validate_observation_expectation_category(&expectation)?;
+    if expectation.browser_br_font_band.is_some()
+        && xml.children().any(|child| {
+            child.is_text() && child.text().is_some_and(|text| !text.trim().is_empty())
+        })
+    {
+        return Err(Error::new(
+            "browser BR font-band node has unexpected text payload",
+        ));
+    }
     if (expectation.range_rectangles.is_some() || expectation.browser_control.is_some())
         && let Some(attribute) = xml.attributes().find(|attribute| {
             !["x", "y", "width", "height", "scroll_width", "scroll_height"]
@@ -1376,6 +1406,22 @@ fn parse_expectation(xml: roxmltree::Node<'_, '_>) -> Result<Expectation, Error>
 }
 
 fn validate_observation_expectation_category(expectation: &Expectation) -> Result<(), Error> {
+    if expectation.browser_br_font_band.is_some() && expectation.browser_control.is_none() {
+        return Err(Error::new(
+            "browser BR font-band requires its browser-control identity and relations",
+        ));
+    }
+    if let Some(band) = expectation.browser_br_font_band
+        && ([band.x, band.y, band.width, band.height]
+            .iter()
+            .any(|value| !value.is_finite())
+            || band.width < 0.0
+            || band.height < 0.0)
+    {
+        return Err(Error::new(
+            "browser BR font-band requires finite coordinates and nonnegative sizes",
+        ));
+    }
     if expectation.range_rectangles.is_none() && expectation.browser_control.is_none() {
         return Ok(());
     }
@@ -1418,6 +1464,36 @@ fn validate_observation_expectation_category(expectation: &Expectation) -> Resul
         }));
     }
     Ok(())
+}
+
+fn parse_browser_br_font_band(xml: roxmltree::Node<'_, '_>) -> Result<BrowserBrFontBand, Error> {
+    const KEYS: [&str; 4] = ["x", "y", "width", "height"];
+    if xml.tag_name().namespace().is_some()
+        || xml.attributes().len() != KEYS.len()
+        || xml
+            .attributes()
+            .any(|attribute| attribute.namespace().is_some() || !KEYS.contains(&attribute.name()))
+    {
+        return Err(Error::new(
+            "browser-br-font-band requires exactly x, y, width and height",
+        ));
+    }
+    validate_fragment_payload(xml, None)?;
+    let coordinate = |name, nonnegative| {
+        let value = parse_number(required_attr(xml, name)?)?;
+        if !value.is_finite() || nonnegative && value < 0.0 {
+            return Err(Error::new(format!(
+                "invalid {name} on browser-br-font-band"
+            )));
+        }
+        Ok(value)
+    };
+    Ok(BrowserBrFontBand {
+        x: coordinate("x", false)?,
+        y: coordinate("y", false)?,
+        width: coordinate("width", true)?,
+        height: coordinate("height", true)?,
+    })
 }
 
 fn parse_browser_control_expectation(
@@ -1958,7 +2034,7 @@ impl TestTree {
         let resolved_line_height = line_height.resolve(font_size);
         let mut layout_input = if let Some(origin) = &node.prepared_origin {
             layout::LayoutInput::inline_text(layout::TextParticipation::new(origin.clone()))
-        } else if node.prepared_control.is_some() {
+        } else if let Some(control) = &node.prepared_control {
             if let Some(kind) = node.inline_boundary {
                 let flow = inherited.containing_flow.ok_or_else(|| {
                     Error::new("captured neutral boundary requires a containing flow")
@@ -1982,8 +2058,15 @@ impl TestTree {
                     .with_direction(flow.direction())
                     .with_writing_mode(flow.writing_mode()),
                 )
+            } else if matches!(
+                control.view().kind(),
+                surgeist_text::ParagraphControlKind::ForcedBreak
+            ) {
+                layout::LayoutInput::text_control(layout::TextControlParticipation::new(
+                    control.clone(),
+                ))
             } else {
-                to_layout_input_in_flow(&node.style, inherited.containing_flow)?
+                return Err(Error::new("unsupported captured semantic control role"));
             }
         } else {
             match (node.inline_boundary, &node.inline_text) {
@@ -2018,6 +2101,30 @@ impl TestTree {
                 }
             }
         };
+        if let Some(capture) = &node.prepared
+            && capture.prepared.orientation() == surgeist_text::LineOrientation::Vertical
+        {
+            // The closed CSS profile qualifies Mixed vertical typography and
+            // its default dominant baseline. Use Text's resolved name; raw
+            // Physical alignment would select a different atomic fallback.
+            if !matches!(
+                capture.prepared.analyzed_source().typography(),
+                surgeist_text::AnalysisTypography::Mixed
+            ) || capture.prepared.baseline_reference()
+                != Some(surgeist_text::FontBaseline::Central)
+            {
+                return Err(Error::new(
+                    "prepared vertical container lacks resolved Mixed central-baseline authority",
+                ));
+            }
+            let mut input = layout_input
+                .as_box()
+                .ok_or_else(|| Error::new("prepared paragraph requires its actual box container"))?
+                .clone();
+            input.inline_baseline_context =
+                layout::InlineBaselineContext::Named(layout::BaselineName::Central);
+            layout_input = layout::LayoutInput::box_input(input);
+        }
         if let Some(participation) = node.atomic_inline_participation {
             let Some(input) = layout_input.as_box() else {
                 return Err(Error::new("atomic placeholder must reference a box child"));
@@ -2739,6 +2846,7 @@ fn compare_expectation_with_endpoint_accounting(
         )));
     }
     let mut result = ComparisonResult::default();
+    let mut unsupported_band = None;
     for pending in std::mem::take(&mut comparison_state.pending_browser_controls) {
         if let Some(field) = compare_browser_control_expectation(
             tree,
@@ -2750,6 +2858,23 @@ fn compare_expectation_with_endpoint_accounting(
         )? {
             result.record_endpoint_unobservable(field);
         }
+        if let Some(band) = pending.band {
+            validate_browser_br_band_source(
+                tree,
+                pending.node,
+                pending.context.as_ref(),
+                &pending.path,
+            )?;
+            if unsupported_band.is_none() {
+                unsupported_band = Some((pending.path, band));
+            }
+        }
+    }
+    if let Some((path, band)) = unsupported_band {
+        return Err(Error::new(format!(
+            "{path}: unsupported browser BR font-band observation (x={}, y={}, width={}, height={}): native control points and line metrics do not provide a font band",
+            band.x, band.y, band.width, band.height
+        )));
     }
     Ok(result)
 }
@@ -2812,6 +2937,7 @@ struct PendingBrowserControl {
     node: usize,
     path: String,
     expected: BrowserControlExpectation,
+    band: Option<BrowserBrFontBand>,
     context: Option<OwnedBrowserControlContext>,
 }
 
@@ -2905,6 +3031,7 @@ fn compare_expectation_in_source_order(
                 node,
                 path: path.to_string(),
                 expected: expected_browser_control,
+                band: expected.browser_br_font_band,
                 context: browser_control_context.map(OwnedBrowserControlContext::from),
             });
     }
@@ -3513,6 +3640,62 @@ fn range_rectangle_ancestor_translation(
     Ok(translation)
 }
 
+fn validate_browser_br_band_source(
+    tree: &TestTree,
+    node: usize,
+    context: Option<&OwnedBrowserControlContext>,
+    path: &str,
+) -> Result<(), Error> {
+    let context = context.ok_or_else(|| {
+        Error::new(format!(
+            "{path}: BR font-band requires an actual source-child association"
+        ))
+    })?;
+    let parent = tree.box_node_input(context.parent);
+    let axes = layout::FlowAxes::new(parent.writing_mode, parent.direction);
+    let actual = match &tree.nodes[node].layout_input {
+        layout::LayoutInput::LineBreak(input) => {
+            input.display() == layout::LineBreakDisplay::Break
+                && layout::FlowAxes::new(input.writing_mode(), input.direction()) == axes
+        }
+        layout::LayoutInput::TextControl(_) => semantic_br_flow(tree, node) == Some(axes),
+        _ => false,
+    };
+    if !tree.nodes[node].is_br_source
+        || context.siblings.get(context.source_index) != Some(&node)
+        || !actual
+    {
+        return Err(Error::new(format!(
+            "{path}: BR font-band source mismatch, expected an authentic visible inline BR in its actual parent frame"
+        )));
+    }
+    Ok(())
+}
+
+fn semantic_br_flow(tree: &TestTree, node: usize) -> Option<layout::FlowAxes> {
+    let native = tree.nodes.get(node)?;
+    let layout::LayoutInput::TextControl(input) = &native.layout_input else {
+        return None;
+    };
+    let parent = native.parent?;
+    if !native.is_br_source
+        || !matches!(
+            input.occurrence().view().kind(),
+            surgeist_text::ParagraphControlKind::ForcedBreak
+        )
+        || !tree.paragraphs.iter().any(|paragraph| {
+            paragraph.container == parent
+                && paragraph.controls.iter().any(|binding| {
+                    binding.node == node && &binding.occurrence == input.occurrence()
+                })
+        })
+    {
+        return None;
+    }
+    let parent = tree.box_node_input(parent);
+    Some(layout::FlowAxes::new(parent.writing_mode, parent.direction))
+}
+
 fn compare_browser_control_expectation(
     tree: &TestTree,
     node: usize,
@@ -3582,8 +3765,15 @@ fn compare_browser_control_expectation(
         return Ok(None);
     }
 
-    let line_break = match tree.nodes[node].layout_input {
-        layout::LayoutInput::LineBreak(line_break) => line_break,
+    let flow = match &tree.nodes[node].layout_input {
+        layout::LayoutInput::LineBreak(line_break) => {
+            layout::FlowAxes::new(line_break.writing_mode(), line_break.direction())
+        }
+        layout::LayoutInput::TextControl(_) => semantic_br_flow(tree, node).ok_or_else(|| {
+            Error::new(format!(
+                "{path}: browser control source mismatch, expected an issued forced-break BR"
+            ))
+        })?,
         _ => {
             return Err(Error::new(format!(
                 "{path}: browser control source mismatch, expected a line break"
@@ -3596,7 +3786,6 @@ fn compare_browser_control_expectation(
         )));
     }
 
-    let flow = layout::FlowAxes::new(line_break.writing_mode(), line_break.direction());
     let control_interval = output_block_interval(tree.nodes[node].unrounded, flow);
     let actual_slot = context.siblings[..context.source_index]
         .iter()
@@ -3605,7 +3794,7 @@ fn compare_browser_control_expectation(
             !matches!(
                 tree.nodes[**sibling].layout_input,
                 layout::LayoutInput::LineBreak(_)
-            )
+            ) && semantic_br_flow(tree, **sibling).is_none()
         })
         .filter(|sibling| {
             tree.nodes[**sibling].unrounded_present
@@ -3702,10 +3891,14 @@ fn endpoint_is_unobservable(observation: EndpointObservability<'_>) -> bool {
     let (Some(previous), Some(next)) = (previous, next) else {
         return false;
     };
-    let layout::LayoutInput::LineBreak(line_break) = tree.nodes[node].layout_input else {
-        return false;
+    let visible_break = match &tree.nodes[node].layout_input {
+        layout::LayoutInput::LineBreak(line_break) => {
+            line_break.display() == layout::LineBreakDisplay::Break
+        }
+        layout::LayoutInput::TextControl(_) => semantic_br_flow(tree, node).is_some(),
+        _ => false,
     };
-    if line_break.display() != layout::LineBreakDisplay::Break
+    if !visible_break
         || tree.nodes[node].unrounded.size != layout::Size::ZERO
         || !tree.nodes[previous].unrounded_present
         || !tree.nodes[next].unrounded_present
@@ -7334,6 +7527,7 @@ mod tests {
                 fragments: None,
                 range_rectangles: None,
                 browser_control: None,
+                browser_br_font_band: None,
                 children: Vec::new(),
             }
         }
@@ -7402,6 +7596,7 @@ mod tests {
             fragments: None,
             range_rectangles: None,
             browser_control: None,
+            browser_br_font_band: None,
             children: vec![Expectation {
                 x: Some(99.0),
                 y: None,
@@ -7411,6 +7606,7 @@ mod tests {
                 fragments: None,
                 range_rectangles: None,
                 browser_control: None,
+                browser_br_font_band: None,
                 children: Vec::new(),
             }],
         };
@@ -7435,6 +7631,7 @@ mod tests {
             fragments: None,
             range_rectangles: None,
             browser_control: None,
+            browser_br_font_band: None,
             children: Vec::new(),
         };
         let mut tree = line_break_tree(layout::LineBreakInput::new());
@@ -7482,6 +7679,7 @@ mod tests {
                 advance: 10.0,
             }]),
             browser_control: None,
+            browser_br_font_band: None,
             children: Vec::new(),
         }];
         golden
@@ -7517,6 +7715,7 @@ mod tests {
                 advance: 9.640625,
             }]),
             browser_control: None,
+            browser_br_font_band: None,
             children: Vec::new(),
         }];
 
@@ -8230,6 +8429,7 @@ mod tests {
                     fragments: None,
                     range_rectangles: None,
                     browser_control: None,
+                    browser_br_font_band: None,
                     children: Vec::new(),
                 }),
                 _ => unreachable!(),
@@ -8411,6 +8611,7 @@ mod tests {
                     .then_some(fragments),
                 range_rectangles: None,
                 browser_control: None,
+                browser_br_font_band: None,
                 children: tree.nodes[node]
                     .children
                     .iter()
@@ -11616,5 +11817,79 @@ mod tests {
             provider_error.to_string(),
             "fixture shape provider failure for query band `0..10`"
         );
+    }
+
+    #[test]
+    fn browser_br_font_band_parser_retains_selected_coordinates_as_a_distinct_category() {
+        let golden = Golden::parse(&fri06_c06_fragment_xml(
+            r#"<browser-control source_index="0" terminal_visual_slot="0" previous_line="absent" next_line="absent"/><browser-br-font-band x="-3.25" y="5.5" width="0" height="20.25"/>"#
+        )).unwrap();
+        assert_eq!(
+            golden.expectations.browser_br_font_band,
+            Some(BrowserBrFontBand {
+                x: -3.25,
+                y: 5.5,
+                width: 0.0,
+                height: 20.25
+            })
+        );
+        assert!(golden.expectations.x.is_none());
+        assert!(golden.expectations.y.is_none());
+        assert!(golden.expectations.width.is_none());
+        assert!(golden.expectations.height.is_none());
+    }
+
+    #[test]
+    fn browser_br_font_band_parser_rejects_malformed_or_mixed_observation_categories() {
+        let control = r#"<browser-control source_index="0" terminal_visual_slot="0" previous_line="absent" next_line="absent"/>"#;
+        for band in [
+            r#"<browser-br-font-band x="0" y="0" width="0"/>"#,
+            r#"<browser-br-font-band x="0" y="0" width="0" height="20" extra="1"/>"#,
+            r#"<browser-br-font-band x="0" x="1" y="0" width="0" height="20"/>"#,
+            r#"<browser-br-font-band x="NaN" y="0" width="0" height="20"/>"#,
+            r#"<browser-br-font-band x="0" y="inf" width="0" height="20"/>"#,
+            r#"<browser-br-font-band x="0" y="0" width="-1" height="20"/>"#,
+            r#"<browser-br-font-band x="0" y="0" width="0" height="-1"/>"#,
+            r#"<browser-br-font-band x="0" y="0" width="0" height="20">unexpected</browser-br-font-band>"#,
+            r#"<browser-br-font-band x="0" y="0" width="0" height="20"><node/></browser-br-font-band>"#,
+        ] {
+            assert!(Golden::parse(&fri06_c06_fragment_xml(&format!("{control}{band}"))).is_err());
+        }
+        let band = r#"<browser-br-font-band x="0" y="0" width="0" height="20"/>"#;
+        for content in [
+            band.to_string(),
+            format!("{control}{band}{band}"),
+            format!("{control}{band}<fragments/>"),
+            format!("{control}{band}<range-fragments/>"),
+            format!("{control}{band}<node/>"),
+            format!("{control}{band}unexpected"),
+        ] {
+            assert!(Golden::parse(&fri06_c06_fragment_xml(&content)).is_err());
+        }
+        for attrs in [
+            r#"x="0""#,
+            r#"y="0""#,
+            r#"width="0""#,
+            r#"height="20""#,
+            r#"scroll_width="0" scroll_height="20""#,
+        ] {
+            let xml = fri06_c06_fragment_xml(&format!("{control}{band}"))
+                .replace("<node>", &format!("<node {attrs}>"));
+            assert!(Golden::parse(&xml).is_err());
+        }
+    }
+
+    #[test]
+    fn authentic_structural_br_band_is_an_unsupported_observation_after_real_layout() {
+        let golden = Golden::parse(r#"<test name="structural-br-band" use-rounding="false"><viewport width="120px" height="120px"/><input><div display="block" width="120px"><div source-tag="br" display="inline"/></div></input><expectations><node><node><browser-control source_index="0" terminal_visual_slot="0" previous_line="absent" next_line="absent"/><browser-br-font-band x="0" y="0" width="0" height="16"/></node></node></expectations></test>"#).unwrap();
+        let error = assert_surgeist_matches(&golden).unwrap_err().to_string();
+        assert!(
+            error.contains("unsupported browser BR font-band observation"),
+            "{error}"
+        );
+        assert!(error.contains("x=0, y=0, width=0, height=16"));
+        let mut relations = golden.clone();
+        relations.expectations.children[0].browser_br_font_band = None;
+        assert_surgeist_matches(&relations).unwrap();
     }
 }
