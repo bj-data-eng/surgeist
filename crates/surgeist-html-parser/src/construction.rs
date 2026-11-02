@@ -194,6 +194,11 @@ fn latch_owner_refusal(control: &mut ParseControl) -> SessionError {
         control.fail_invariant(crate::parser::control::Invariant::ConstructionOwnerRefusal),
     )
 }
+/// A work plan that counts less than was already charged for it: no row is
+/// missing, the plan and the charge disagree.
+fn plan_below_charge(control: &mut ParseControl) -> SessionError {
+    SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch))
+}
 /// An impossible registry state, latched as the controller's first stop.
 fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))

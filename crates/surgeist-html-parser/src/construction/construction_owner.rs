@@ -167,7 +167,7 @@ impl ConstructionOwner {
         // The first call was charged above; a plan that counts none differs
         // from the work already charged for it.
         let Some(further_calls) = provider_calls.checked_sub(1) else {
-            return Err(super::text_append::plan_below_charge(control));
+            return Err(plan_below_charge(control));
         };
         control.charge(WorkCategory::ProviderCall, further_calls as u64)?;
         control.admit_atomic_layout(initialized_bytes)?;
