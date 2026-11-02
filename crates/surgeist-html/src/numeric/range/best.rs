@@ -3,7 +3,7 @@
 use super::*;
 use std::cmp::Ordering;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Phase {
     Start,
     Build,
@@ -21,7 +21,7 @@ enum Phase {
     Emit,
     Done,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ActiveHelper {
     None,
     Build(RangeDyadicCursor),
@@ -29,7 +29,7 @@ enum ActiveHelper {
     Compare(RangeScaledComparisonCursor),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BestFiniteNumberCursor {
     io: Io,
     bits: u64,
@@ -596,12 +596,12 @@ mod exclusive_tests {
                     c.io.request = None;
                 }
             }
-            let snapshot = format!("{c:?}");
+            let snapshot = c;
             assert_eq!(
                 c.reply(RangeNumericReply::Ack),
                 Err(RangeNumericError::Integrity)
             );
-            assert_eq!(format!("{c:?}"), snapshot);
+            assert_eq!(c, snapshot);
         }
     }
 }

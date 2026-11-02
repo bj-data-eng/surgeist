@@ -110,7 +110,7 @@ pub struct RangeNumericHeaders {
 }
 
 /// Only the enclosing authoritative grammar owner can issue these headers.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RangeDecimalParts {
     pub(super) negative: bool,
     pub(super) integer_start: usize,
@@ -122,7 +122,7 @@ pub struct RangeDecimalParts {
     pub(super) exponent_negative: bool,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Io {
     headers: RangeNumericHeaders,
     request: Option<RangeNumericRequest>,
@@ -245,7 +245,7 @@ impl Io {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProductPhase {
     Start,
     Clear,
@@ -260,7 +260,7 @@ enum ProductPhase {
 }
 /// Exact distinct-role decimal coefficient times a fixed u64 mantissa.
 /// d*M+carry < 10*M < 2^68; each digit and carry is a separate request.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RangeMantissaProductCursor {
     io: Io,
     source: RangeScratchRole,
@@ -401,7 +401,7 @@ impl RangeMantissaProductCursor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BuildPhase {
     Start,
     Clear,
@@ -457,7 +457,7 @@ fn decimal_dyadic_ordering(
 }
 /// Builds M*2^E as exact coefficient*10^scale. The scalar inventory is a
 /// u64 seed, u16 cell/carry, bounded exponent/pass/index and fixed headers.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RangeDyadicCursor {
     io: Io,
     role: RangeScratchRole,
@@ -668,7 +668,7 @@ impl RangeDyadicCursor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RangeScaledComparisonCursor {
     io: Io,
     left: RangeScratchRole,
@@ -798,7 +798,7 @@ impl RangeScaledComparisonCursor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RangePowerTenCutCursor {
     io: Io,
     role: RangeScratchRole,
@@ -1937,7 +1937,7 @@ mod tests {
         while let Some(q) = c.request() {
             let kind = c.active_kind();
             seen[usize::from(kind)] = true;
-            let snapshot = format!("{c:?}");
+            let snapshot = c;
             assert_eq!(
                 c.reply(RangeNumericReply::OutputReserved {
                     actual_capacity: 0,
@@ -1945,7 +1945,7 @@ mod tests {
                 }),
                 Err(RangeNumericError::Integrity)
             );
-            assert_eq!(format!("{c:?}"), snapshot);
+            assert_eq!(c, snapshot);
             let r = d.fulfill(q);
             c.reply(r).unwrap();
             assert_eq!(c.headers(), d.headers());
@@ -1962,12 +1962,12 @@ mod tests {
         assert_eq!(c.active_kind(), 0);
         assert_eq!(c.cache_key(), Some(-57));
         assert_eq!(c.result(), Some(Ok(0x3fb9_9999_9999_999a)));
-        let snapshot = format!("{c:?}");
+        let snapshot = c;
         assert_eq!(
             c.reply(RangeNumericReply::Ack),
             Err(RangeNumericError::Integrity)
         );
-        assert_eq!(format!("{c:?}"), snapshot);
+        assert_eq!(c, snapshot);
     }
     #[test]
     fn best_exclusive_helpers_preserve_shortest_result_and_reject_in_each_variant() {
@@ -1992,12 +1992,12 @@ mod tests {
             let mut c = BestFiniteNumberCursor::new(value, d.headers()).unwrap();
             while let Some(q) = c.request() {
                 seen[usize::from(c.active_kind())] = true;
-                let snapshot = format!("{c:?}");
+                let snapshot = c;
                 assert_eq!(
                     c.reply(RangeNumericReply::Unit(0)),
                     Err(RangeNumericError::Integrity)
                 );
-                assert_eq!(format!("{c:?}"), snapshot);
+                assert_eq!(c, snapshot);
                 let r = d.fulfill(q);
                 c.reply(r).unwrap();
                 assert_eq!(c.headers(), d.headers());
@@ -2006,12 +2006,12 @@ mod tests {
             assert_eq!(c.selected(), Some(selected));
             assert_eq!(c.result(), Some(text.len()));
             assert_eq!(String::from_utf16(&d.output).unwrap(), text);
-            let snapshot = format!("{c:?}");
+            let snapshot = c;
             assert_eq!(
                 c.reply(RangeNumericReply::Ack),
                 Err(RangeNumericError::Integrity)
             );
-            assert_eq!(format!("{c:?}"), snapshot);
+            assert_eq!(c, snapshot);
         }
         assert_eq!(seen, [true; 4]);
     }
@@ -2144,32 +2144,32 @@ mod tests {
             if c.active_kind() == 4 {
                 read |= matches!(q, RangeNumericRequest::ReadCells { .. });
                 scalar |= q == RangeNumericRequest::ScalarStep;
-                let snapshot = format!("{c:?}");
+                let snapshot = c;
                 let headers = c.headers();
                 assert_eq!(
                     c.reply(RangeNumericReply::Unit(0)),
                     Err(RangeNumericError::Integrity)
                 );
-                assert_eq!(format!("{c:?}"), snapshot);
+                assert_eq!(c, snapshot);
                 assert_eq!(c.headers(), headers);
                 if let RangeNumericRequest::ReadCells { .. } = q {
                     assert_eq!(
                         c.reply(RangeNumericReply::Cells([Some(10), None, None])),
                         Err(RangeNumericError::Integrity)
                     );
-                    assert_eq!(format!("{c:?}"), snapshot);
+                    assert_eq!(c, snapshot);
                 }
             }
             c.reply(d.fulfill(q)).unwrap();
         }
         assert!(read && scalar);
         assert_eq!(c.result(), Some(Ok(0x4340_0000_0000_0000)));
-        let snapshot = format!("{c:?}");
+        let snapshot = c;
         assert_eq!(
             c.reply(RangeNumericReply::Ack),
             Err(RangeNumericError::Integrity)
         );
-        assert_eq!(format!("{c:?}"), snapshot);
+        assert_eq!(c, snapshot);
     }
     #[test]
     fn small_decimal_zero_high_cell_is_integrity_not_search_fallback() {
@@ -2197,12 +2197,12 @@ mod tests {
                 ],
             })
         );
-        let snapshot = format!("{c:?}");
+        let snapshot = c;
         assert_eq!(
             c.reply(RangeNumericReply::Cells([Some(0), None, None])),
             Err(RangeNumericError::Integrity)
         );
-        assert_eq!(format!("{c:?}"), snapshot);
+        assert_eq!(c, snapshot);
         assert_eq!(c.active_kind(), 4);
         assert_eq!(c.cache_key(), None);
         assert_eq!(d.scratch[0], [0, 5]);

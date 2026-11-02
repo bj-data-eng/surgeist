@@ -3,7 +3,7 @@ use super::*;
 use std::cmp::Ordering;
 
 const INFINITY: u64 = 0x7ff0_0000_0000_0000;
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Phase {
     Start,
     Mantissa,
@@ -24,7 +24,7 @@ enum Phase {
     Done,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ActiveHelper {
     None,
     Small(SmallDecimalCursor),
@@ -40,7 +40,7 @@ enum ActiveHelper {
 // (numerator/denominator/quotient/remainder), phase and optional result.
 // Read consumes one admitted cell; Next advances one index; Power multiplies at most once;
 // Exponent, Scale, Quotient, Round and Finish each require their own ScalarStep.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SmallPhase {
     Read,
     Next,
@@ -52,12 +52,12 @@ enum SmallPhase {
     Finish,
     Done,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SmallResult {
     Bits(u64),
     Decline,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct SmallDecimalCursor {
     io: Io,
     phase: SmallPhase,
@@ -255,7 +255,7 @@ impl SmallDecimalCursor {
 /// digit/ordinal counters; the two 63-bit search endpoints; raw-exponent cache
 /// key/extent; one active small-ratio, dyadic build, product or comparison receiver.
 /// No source borrow, collection, or storage ticket.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FiniteDecimalIngressCursor {
     io: Io,
     parts: RangeDecimalParts,
@@ -744,12 +744,12 @@ mod exclusive_tests {
                     c.io.request = None;
                 }
             }
-            let snapshot = format!("{c:?}");
+            let snapshot = c;
             assert_eq!(
                 c.reply(RangeNumericReply::Ack),
                 Err(RangeNumericError::Integrity)
             );
-            assert_eq!(format!("{c:?}"), snapshot);
+            assert_eq!(c, snapshot);
         }
     }
 }
@@ -797,12 +797,12 @@ mod small_tests {
                     s.phase = SmallPhase::Quotient;
                 }
             }
-            let snapshot = format!("{c:?}");
+            let snapshot = c;
             assert_eq!(
                 c.reply(RangeNumericReply::Cells([Some(1), None, None])),
                 Err(RangeNumericError::Integrity)
             );
-            assert_eq!(format!("{c:?}"), snapshot);
+            assert_eq!(c, snapshot);
         }
     }
     #[test]
