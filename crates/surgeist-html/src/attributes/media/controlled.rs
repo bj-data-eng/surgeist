@@ -61,8 +61,12 @@ pub fn media_field_matches(
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlMediaInterpretationError {
+pub struct HtmlMediaInterpretationError {
+    kind: HtmlMediaInterpretationErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlMediaInterpretationErrorKind {
     Consumed,
     NotReady,
     Stopped,
@@ -72,10 +76,121 @@ pub enum HtmlMediaInterpretationError {
     WrongField,
     RepresentationExhausted,
 }
+
+impl HtmlMediaInterpretationErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlMediaInterpretationError {
+        HtmlMediaInterpretationError { kind: self }
+    }
+}
+
+impl From<HtmlMediaInterpretationErrorKind> for HtmlMediaInterpretationError {
+    fn from(kind: HtmlMediaInterpretationErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlMediaInterpretationError {
+    /// Whether the cause is: media interpretation was already consumed.
+    pub fn is_consumed(&self) -> bool {
+        matches!(self.kind, HtmlMediaInterpretationErrorKind::Consumed)
+    }
+    /// Whether the cause is: media interpretation has an unfinished step.
+    pub fn is_not_ready(&self) -> bool {
+        matches!(self.kind, HtmlMediaInterpretationErrorKind::NotReady)
+    }
+    /// Whether the cause is: media interpretation was stopped.
+    pub fn is_stopped(&self) -> bool {
+        matches!(self.kind, HtmlMediaInterpretationErrorKind::Stopped)
+    }
+    /// Whether the cause is: media interpretation step was requested out of order.
+    pub fn is_wrong_phase(&self) -> bool {
+        matches!(self.kind, HtmlMediaInterpretationErrorKind::WrongPhase)
+    }
+    /// Whether the cause is: media interpretation already has its name attribute.
+    pub fn is_name_already_supplied(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMediaInterpretationErrorKind::NameAlreadySupplied
+        )
+    }
+    /// Whether the cause is: media interpretation has no name attribute yet.
+    pub fn is_name_not_supplied(&self) -> bool {
+        matches!(self.kind, HtmlMediaInterpretationErrorKind::NameNotSupplied)
+    }
+    /// Whether the cause is: attribute is not the field this interpretation expects.
+    pub fn is_wrong_field(&self) -> bool {
+        matches!(self.kind, HtmlMediaInterpretationErrorKind::WrongField)
+    }
+    /// Whether the cause is: media interpretation size cannot be represented on this platform.
+    pub fn is_representation_exhausted(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMediaInterpretationErrorKind::RepresentationExhausted
+        )
+    }
+}
+
+impl std::fmt::Display for HtmlMediaInterpretationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlMediaInterpretationErrorKind::Consumed => {
+                f.write_str("media interpretation was already consumed")
+            }
+            HtmlMediaInterpretationErrorKind::NotReady => {
+                f.write_str("media interpretation has an unfinished step")
+            }
+            HtmlMediaInterpretationErrorKind::Stopped => {
+                f.write_str("media interpretation was stopped")
+            }
+            HtmlMediaInterpretationErrorKind::WrongPhase => {
+                f.write_str("media interpretation step was requested out of order")
+            }
+            HtmlMediaInterpretationErrorKind::NameAlreadySupplied => {
+                f.write_str("media interpretation already has its name attribute")
+            }
+            HtmlMediaInterpretationErrorKind::NameNotSupplied => {
+                f.write_str("media interpretation has no name attribute yet")
+            }
+            HtmlMediaInterpretationErrorKind::WrongField => {
+                f.write_str("attribute is not the field this interpretation expects")
+            }
+            HtmlMediaInterpretationErrorKind::RepresentationExhausted => {
+                f.write_str("media interpretation size cannot be represented on this platform")
+            }
+        }
+    }
+}
+
+impl std::error::Error for HtmlMediaInterpretationError {}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum HtmlMediaActionError<E> {
     Admission(E),
     Protocol(HtmlMediaInterpretationError),
+}
+impl<E> From<HtmlMediaInterpretationError> for HtmlMediaActionError<E> {
+    fn from(error: HtmlMediaInterpretationError) -> Self {
+        Self::Protocol(error)
+    }
+}
+impl<E> std::fmt::Display for HtmlMediaActionError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Admission(_) => "media interpretation was refused by the caller's admission",
+            Self::Protocol(_) => "media interpretation protocol was violated",
+        })
+    }
+}
+impl<E: std::fmt::Debug + std::error::Error + 'static> std::error::Error
+    for HtmlMediaActionError<E>
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Admission(error) => Some(error),
+            Self::Protocol(error) => Some(error),
+        }
+    }
 }
 #[derive(Clone, Copy)]
 enum Name<'raw, A: HtmlAttributeInput> {
@@ -129,11 +244,11 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     }
     fn require(&self, valid: bool) -> Result<(), HtmlMediaInterpretationError> {
         if self.stopped {
-            Err(HtmlMediaInterpretationError::Stopped)
+            Err(HtmlMediaInterpretationErrorKind::Stopped.error())
         } else if valid && self.report.is_none() {
             Ok(())
         } else {
-            Err(HtmlMediaInterpretationError::WrongPhase)
+            Err(HtmlMediaInterpretationErrorKind::WrongPhase.error())
         }
     }
     fn execute<E>(
@@ -151,8 +266,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         &mut self,
         admit: impl FnOnce(Option<&'raw A>) -> Result<(), E>,
     ) -> Result<(), HtmlMediaActionError<E>> {
-        self.require(!self.media_admitted)
-            .map_err(HtmlMediaActionError::Protocol)?;
+        self.require(!self.media_admitted)?;
         let raw = self.raw;
         self.execute(|| admit(raw))?;
         self.media_admitted = true;
@@ -165,7 +279,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     ) -> Result<(), HtmlMediaInterpretationError> {
         self.require(self.value.is_none())?;
         if !matches!(self.name, Name::NotSupplied) {
-            return Err(HtmlMediaInterpretationError::NameAlreadySupplied);
+            return Err(HtmlMediaInterpretationErrorKind::NameAlreadySupplied.error());
         }
         self.name = match name {
             Some(a) => Name::Present(a),
@@ -190,7 +304,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             .as_ref()
             .is_some_and(|m| m.field != HtmlMediaField::Name)
         {
-            return Err(HtmlMediaInterpretationError::WrongField);
+            return Err(HtmlMediaInterpretationErrorKind::WrongField.error());
         }
         self.supply(name.map(|m| m.attribute), Some(true))
     }
@@ -200,8 +314,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     ) -> Result<(), HtmlMediaActionError<E>> {
         self.require(
             self.media_admitted && !self.name_admitted && !matches!(self.name, Name::NotSupplied),
-        )
-        .map_err(HtmlMediaActionError::Protocol)?;
+        )?;
         let name = self.name_attribute();
         self.execute(|| admit(name))?;
         self.name_admitted = true;
@@ -211,8 +324,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         &mut self,
         mut admit: impl FnMut(usize) -> Result<(), E>,
     ) -> Result<(), HtmlMediaActionError<E>> {
-        self.require(self.media_admitted && self.html_namespace.is_none())
-            .map_err(HtmlMediaActionError::Protocol)?;
+        self.require(self.media_admitted && self.html_namespace.is_none())?;
         self.execute(|| admit(1))?;
         let expected = crate::values::HTML_NAMESPACE_URI.as_bytes();
         let result = if let Some(uri) = self.element.namespace_uri() {
@@ -244,8 +356,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         &mut self,
         mut admit: impl FnMut(usize) -> Result<(), E>,
     ) -> Result<(), HtmlMediaActionError<E>> {
-        self.require(self.html_namespace.is_some() && self.role.is_none())
-            .map_err(HtmlMediaActionError::Protocol)?;
+        self.require(self.html_namespace.is_some() && self.role.is_none())?;
         self.execute(|| admit(1))?;
         let units = self.element.local_name().len();
         let work = units
@@ -255,7 +366,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         let Some(work) = work else {
             self.stop();
             return Err(HtmlMediaActionError::Protocol(
-                HtmlMediaInterpretationError::RepresentationExhausted,
+                HtmlMediaInterpretationErrorKind::RepresentationExhausted.error(),
             ));
         };
         let remaining = work
@@ -269,16 +380,17 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     }
     pub fn is_html_namespace(&self) -> Result<bool, HtmlMediaInterpretationError> {
         if self.stopped {
-            return Err(HtmlMediaInterpretationError::Stopped);
+            return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
         }
         self.html_namespace
-            .ok_or(HtmlMediaInterpretationError::NotReady)
+            .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
     pub fn role(&self) -> Result<Option<HtmlMediaElementRole>, HtmlMediaInterpretationError> {
         if self.stopped {
-            return Err(HtmlMediaInterpretationError::Stopped);
+            return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
         }
-        self.role.ok_or(HtmlMediaInterpretationError::NotReady)
+        self.role
+            .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
     pub fn begin_value(&mut self) -> Result<(), HtmlMediaInterpretationError> {
         self.require(
@@ -293,12 +405,12 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     }
     pub fn value_action(&self) -> Result<HtmlMediaCursorAction, HtmlMediaInterpretationError> {
         if self.stopped {
-            return Err(HtmlMediaInterpretationError::Stopped);
+            return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
         }
         self.value
             .as_ref()
             .map(HtmlMediaValueCursor::next_action)
-            .ok_or(HtmlMediaInterpretationError::NotReady)
+            .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
     pub fn advance_value<E>(
         &mut self,
@@ -306,18 +418,18 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     ) -> Result<(), HtmlMediaActionError<E>> {
         if self.stopped {
             return Err(HtmlMediaActionError::Protocol(
-                HtmlMediaInterpretationError::Stopped,
+                HtmlMediaInterpretationErrorKind::Stopped.error(),
             ));
         }
         let Some(cursor) = self.value.as_mut() else {
             return Err(HtmlMediaActionError::Protocol(
-                HtmlMediaInterpretationError::NotReady,
+                HtmlMediaInterpretationErrorKind::NotReady.error(),
             ));
         };
         let action = cursor.next_action();
         if action == HtmlMediaCursorAction::Complete || self.report.is_some() {
             return Err(HtmlMediaActionError::Protocol(
-                HtmlMediaInterpretationError::WrongPhase,
+                HtmlMediaInterpretationErrorKind::WrongPhase.error(),
             ));
         }
         if let Err(error) = admit(if action == HtmlMediaCursorAction::Finish {
@@ -333,12 +445,12 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     }
     pub fn value(&self) -> Result<HtmlMediaValue, HtmlMediaInterpretationError> {
         if self.stopped {
-            return Err(HtmlMediaInterpretationError::Stopped);
+            return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
         }
         self.value
             .as_ref()
             .and_then(HtmlMediaValueCursor::result)
-            .ok_or(HtmlMediaInterpretationError::NotReady)
+            .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
     pub fn begin_theme_color<E>(
         &mut self,
@@ -348,11 +460,10 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             self.value().is_ok()
                 && self.theme.is_none()
                 && self.role == Some(Some(HtmlMediaElementRole::Meta)),
-        )
-        .map_err(HtmlMediaActionError::Protocol)?;
+        )?;
         if matches!(self.name, Name::NotSupplied) {
             return Err(HtmlMediaActionError::Protocol(
-                HtmlMediaInterpretationError::NameNotSupplied,
+                HtmlMediaInterpretationErrorKind::NameNotSupplied.error(),
             ));
         }
         self.execute(|| admit(1))?;
@@ -363,12 +474,12 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     }
     pub fn theme_color_complete(&self) -> Result<bool, HtmlMediaInterpretationError> {
         if self.stopped {
-            return Err(HtmlMediaInterpretationError::Stopped);
+            return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
         }
         self.theme
             .as_ref()
             .map(ThemeColorNameCursor::is_complete)
-            .ok_or(HtmlMediaInterpretationError::NotReady)
+            .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
     pub fn advance_theme_color<E>(
         &mut self,
@@ -376,17 +487,17 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     ) -> Result<(), HtmlMediaActionError<E>> {
         if self.stopped {
             return Err(HtmlMediaActionError::Protocol(
-                HtmlMediaInterpretationError::Stopped,
+                HtmlMediaInterpretationErrorKind::Stopped.error(),
             ));
         }
         let Some(cursor) = self.theme.as_mut() else {
             return Err(HtmlMediaActionError::Protocol(
-                HtmlMediaInterpretationError::WrongPhase,
+                HtmlMediaInterpretationErrorKind::WrongPhase.error(),
             ));
         };
         if cursor.is_complete() || self.report.is_some() {
             return Err(HtmlMediaActionError::Protocol(
-                HtmlMediaInterpretationError::WrongPhase,
+                HtmlMediaInterpretationErrorKind::WrongPhase.error(),
             ));
         }
         if let Err(error) = admit(1) {
@@ -398,14 +509,14 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     }
     pub fn theme_color(&self) -> Result<bool, HtmlMediaInterpretationError> {
         if self.stopped {
-            return Err(HtmlMediaInterpretationError::Stopped);
+            return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
         }
         let cursor = self
             .theme
             .as_ref()
-            .ok_or(HtmlMediaInterpretationError::NotReady)?;
+            .ok_or(HtmlMediaInterpretationErrorKind::NotReady)?;
         if !cursor.is_complete() {
-            return Err(HtmlMediaInterpretationError::NotReady);
+            return Err(HtmlMediaInterpretationErrorKind::NotReady.error());
         }
         Ok(cursor.result())
     }
@@ -449,8 +560,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         &mut self,
         admit: impl FnOnce() -> Result<(), E>,
     ) -> Result<(), HtmlMediaActionError<E>> {
-        self.require(self.value().is_ok())
-            .map_err(HtmlMediaActionError::Protocol)?;
+        self.require(self.value().is_ok())?;
         let applicability = self
             .applicability
             .unwrap_or_else(|| self.compute_applicability());
@@ -463,18 +573,16 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         } else if matches!(self.name, Name::NotSupplied) {
             HtmlMediaPlacementObservation::Unchecked
         } else {
-            HtmlMediaPlacementObservation::Known(
-                if self.theme_color().map_err(HtmlMediaActionError::Protocol)? {
-                    HtmlMetaMediaPlacement::AllowedForThemeColor
-                } else {
-                    HtmlMetaMediaPlacement::Forbidden
-                },
-            )
+            HtmlMediaPlacementObservation::Known(if self.theme_color()? {
+                HtmlMetaMediaPlacement::AllowedForThemeColor
+            } else {
+                HtmlMetaMediaPlacement::Forbidden
+            })
         };
         let role = self.role.ok_or(HtmlMediaActionError::Protocol(
-            HtmlMediaInterpretationError::NotReady,
+            HtmlMediaInterpretationErrorKind::NotReady.error(),
         ))?;
-        let value = self.value().map_err(HtmlMediaActionError::Protocol)?;
+        let value = self.value()?;
         self.execute(admit)?;
         self.applicability = Some(applicability);
         self.report = Some(HtmlMediaAttributeReport {
@@ -509,12 +617,12 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     ) -> Result<HtmlMediaAttributeReport, HtmlMediaInterpretationError> {
         let owner = slot
             .as_ref()
-            .ok_or(HtmlMediaInterpretationError::Consumed)?;
+            .ok_or(HtmlMediaInterpretationErrorKind::Consumed)?;
         if owner.stopped {
-            return Err(HtmlMediaInterpretationError::Stopped);
+            return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
         }
         if owner.report.is_none() {
-            return Err(HtmlMediaInterpretationError::NotReady);
+            return Err(HtmlMediaInterpretationErrorKind::NotReady.error());
         }
         Ok(slot
             .take()

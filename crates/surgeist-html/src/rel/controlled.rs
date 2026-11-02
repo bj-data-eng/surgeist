@@ -88,8 +88,12 @@ impl<'raw> RelInputs<'raw> {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlRelInterpretationError {
+pub struct HtmlRelInterpretationError {
+    kind: HtmlRelInterpretationErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlRelInterpretationErrorKind {
     Consumed,
     NotReady,
     Stopped,
@@ -105,10 +109,173 @@ pub enum HtmlRelInterpretationError {
     RepresentationExhausted,
     AllocationFailed,
 }
+
+impl HtmlRelInterpretationErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlRelInterpretationError {
+        HtmlRelInterpretationError { kind: self }
+    }
+}
+
+impl From<HtmlRelInterpretationErrorKind> for HtmlRelInterpretationError {
+    fn from(kind: HtmlRelInterpretationErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlRelInterpretationError {
+    /// Whether the cause is: rel interpretation was already consumed.
+    pub fn is_consumed(&self) -> bool {
+        matches!(self.kind, HtmlRelInterpretationErrorKind::Consumed)
+    }
+    /// Whether the cause is: rel interpretation has an unfinished step.
+    pub fn is_not_ready(&self) -> bool {
+        matches!(self.kind, HtmlRelInterpretationErrorKind::NotReady)
+    }
+    /// Whether the cause is: rel interpretation was stopped.
+    pub fn is_stopped(&self) -> bool {
+        matches!(self.kind, HtmlRelInterpretationErrorKind::Stopped)
+    }
+    /// Whether the cause is: rel interpretation step was requested out of order.
+    pub fn is_wrong_phase(&self) -> bool {
+        matches!(self.kind, HtmlRelInterpretationErrorKind::WrongPhase)
+    }
+    /// Whether the cause is: rel refinement names an occurrence that does not exist.
+    pub fn is_unknown_occurrence(&self) -> bool {
+        matches!(self.kind, HtmlRelInterpretationErrorKind::UnknownOccurrence)
+    }
+    /// Whether the cause is: rel refinement does not match the source token.
+    pub fn is_wrong_source(&self) -> bool {
+        matches!(self.kind, HtmlRelInterpretationErrorKind::WrongSource)
+    }
+    /// Whether the cause is: rel refinement does not match the token spelling.
+    pub fn is_wrong_spelling(&self) -> bool {
+        matches!(self.kind, HtmlRelInterpretationErrorKind::WrongSpelling)
+    }
+    /// Whether the cause is: rel token was refined more than once.
+    pub fn is_repeated_refinement(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlRelInterpretationErrorKind::RepeatedRefinement
+        )
+    }
+    /// Whether the cause is: rel refinements were not given in token order.
+    pub fn is_out_of_order_refinement(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlRelInterpretationErrorKind::OutOfOrderRefinement
+        )
+    }
+    /// Whether the cause is: rel extension effect is not valid for its keyword.
+    pub fn is_invalid_extension_effect(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlRelInterpretationErrorKind::InvalidExtensionEffect
+        )
+    }
+    /// Whether the cause is: rel storage reservation was not performed.
+    pub fn is_reservation_not_performed(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlRelInterpretationErrorKind::ReservationNotPerformed
+        )
+    }
+    /// Whether the cause is: rel storage reservation was already attempted.
+    pub fn is_reservation_already_attempted(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlRelInterpretationErrorKind::ReservationAlreadyAttempted
+        )
+    }
+    /// Whether the cause is: rel interpretation size cannot be represented on this platform.
+    pub fn is_representation_exhausted(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlRelInterpretationErrorKind::RepresentationExhausted
+        )
+    }
+    /// Whether the cause is: reserving rel interpretation storage failed.
+    pub fn is_allocation_failed(&self) -> bool {
+        matches!(self.kind, HtmlRelInterpretationErrorKind::AllocationFailed)
+    }
+}
+
+impl std::fmt::Display for HtmlRelInterpretationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlRelInterpretationErrorKind::Consumed => {
+                f.write_str("rel interpretation was already consumed")
+            }
+            HtmlRelInterpretationErrorKind::NotReady => {
+                f.write_str("rel interpretation has an unfinished step")
+            }
+            HtmlRelInterpretationErrorKind::Stopped => {
+                f.write_str("rel interpretation was stopped")
+            }
+            HtmlRelInterpretationErrorKind::WrongPhase => {
+                f.write_str("rel interpretation step was requested out of order")
+            }
+            HtmlRelInterpretationErrorKind::UnknownOccurrence => {
+                f.write_str("rel refinement names an occurrence that does not exist")
+            }
+            HtmlRelInterpretationErrorKind::WrongSource => {
+                f.write_str("rel refinement does not match the source token")
+            }
+            HtmlRelInterpretationErrorKind::WrongSpelling => {
+                f.write_str("rel refinement does not match the token spelling")
+            }
+            HtmlRelInterpretationErrorKind::RepeatedRefinement => {
+                f.write_str("rel token was refined more than once")
+            }
+            HtmlRelInterpretationErrorKind::OutOfOrderRefinement => {
+                f.write_str("rel refinements were not given in token order")
+            }
+            HtmlRelInterpretationErrorKind::InvalidExtensionEffect => {
+                f.write_str("rel extension effect is not valid for its keyword")
+            }
+            HtmlRelInterpretationErrorKind::ReservationNotPerformed => {
+                f.write_str("rel storage reservation was not performed")
+            }
+            HtmlRelInterpretationErrorKind::ReservationAlreadyAttempted => {
+                f.write_str("rel storage reservation was already attempted")
+            }
+            HtmlRelInterpretationErrorKind::RepresentationExhausted => {
+                f.write_str("rel interpretation size cannot be represented on this platform")
+            }
+            HtmlRelInterpretationErrorKind::AllocationFailed => {
+                f.write_str("reserving rel interpretation storage failed")
+            }
+        }
+    }
+}
+
+impl std::error::Error for HtmlRelInterpretationError {}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum HtmlRelActionError<E> {
     Admission(E),
     Protocol(HtmlRelInterpretationError),
+}
+impl<E> From<HtmlRelInterpretationError> for HtmlRelActionError<E> {
+    fn from(error: HtmlRelInterpretationError) -> Self {
+        Self::Protocol(error)
+    }
+}
+impl<E> std::fmt::Display for HtmlRelActionError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Admission(_) => "rel interpretation was refused by the caller's admission",
+            Self::Protocol(_) => "rel interpretation protocol was violated",
+        })
+    }
+}
+impl<E: std::fmt::Debug + std::error::Error + 'static> std::error::Error for HtmlRelActionError<E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Admission(error) => Some(error),
+            Self::Protocol(error) => Some(error),
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlRelRefinement {
@@ -152,19 +319,19 @@ impl HtmlRelReservation<'_> {
     }
     pub fn try_reserve(&mut self) -> Result<(), HtmlRelInterpretationError> {
         if self.attempted {
-            return Err(HtmlRelInterpretationError::ReservationAlreadyAttempted);
+            return Err(HtmlRelInterpretationErrorKind::ReservationAlreadyAttempted.error());
         }
         self.attempted = true;
         let needed = self
             .len()
             .checked_add(1)
-            .ok_or(HtmlRelInterpretationError::RepresentationExhausted)?;
+            .ok_or(HtmlRelInterpretationErrorKind::RepresentationExhausted)?;
         if needed > self.capacity() {
             match &mut self.storage {
                 ReservationStorage::Occurrences(v) => v.try_reserve_exact(1),
                 ReservationStorage::Data(v) => v.try_reserve_exact(1),
             }
-            .map_err(|_| HtmlRelInterpretationError::AllocationFailed)?;
+            .map_err(|_| HtmlRelInterpretationErrorKind::AllocationFailed)?;
         }
         self.completed = true;
         Ok(())
@@ -192,7 +359,7 @@ impl<M: HtmlRelMeter> Meter<'_, M> {
             .map_err(HtmlRelActionError::Admission)?;
         if !guard.completed {
             return Err(HtmlRelActionError::Protocol(
-                HtmlRelInterpretationError::ReservationNotPerformed,
+                HtmlRelInterpretationErrorKind::ReservationNotPerformed.error(),
             ));
         }
         Ok(())
@@ -241,19 +408,18 @@ impl<'raw> HtmlRelInterpretation<'raw> {
     }
     fn require(&self, test: impl FnOnce(Phase) -> bool) -> Result<(), HtmlRelInterpretationError> {
         if matches!(self.phase, Phase::Stopped) {
-            Err(HtmlRelInterpretationError::Stopped)
+            Err(HtmlRelInterpretationErrorKind::Stopped.error())
         } else if test(self.phase) {
             Ok(())
         } else {
-            Err(HtmlRelInterpretationError::WrongPhase)
+            Err(HtmlRelInterpretationErrorKind::WrongPhase.error())
         }
     }
     pub fn interpret<M: HtmlRelMeter>(
         &mut self,
         meter: &mut M,
     ) -> Result<(), HtmlRelActionError<M::Error>> {
-        self.require(|p| matches!(p, Phase::Initial))
-            .map_err(HtmlRelActionError::Protocol)?;
+        self.require(|p| matches!(p, Phase::Initial))?;
         let result = super::interpret(
             &self.inputs,
             &mut self.occurrences,
@@ -293,14 +459,13 @@ impl<'raw> HtmlRelInterpretation<'raw> {
         refinement: HtmlRelRefinement,
         meter: &mut M,
     ) -> Result<(), HtmlRelActionError<M::Error>> {
-        use HtmlRelInterpretationError as E;
-        self.require(|p| matches!(p, Phase::Refining))
-            .map_err(HtmlRelActionError::Protocol)?;
+        use HtmlRelInterpretationErrorKind as E;
+        self.require(|p| matches!(p, Phase::Refining))?;
         let token = self
             .report
             .occurrences()
             .get(index)
-            .ok_or(HtmlRelActionError::Protocol(E::UnknownOccurrence))?;
+            .ok_or(HtmlRelActionError::Protocol(E::UnknownOccurrence.error()))?;
         let refusal = if token.source != HtmlRelOccurrenceSource::Rel {
             Some(E::WrongSource)
         } else if token.spelling != HtmlRelSpelling::Unknown {
@@ -324,7 +489,7 @@ impl<'raw> HtmlRelInterpretation<'raw> {
             None
         };
         if let Some(error) = refusal {
-            return Err(HtmlRelActionError::Protocol(error));
+            return Err(HtmlRelActionError::Protocol(error.error()));
         }
         if let Err(error) = meter.work(4) {
             self.stop();
@@ -351,8 +516,7 @@ impl<'raw> HtmlRelInterpretation<'raw> {
         &mut self,
         meter: &mut M,
     ) -> Result<(), HtmlRelActionError<M::Error>> {
-        self.require(|p| matches!(p, Phase::Refining))
-            .map_err(HtmlRelActionError::Protocol)?;
+        self.require(|p| matches!(p, Phase::Refining))?;
         let result = super::refresh(&mut self.report, &self.inputs, &mut Meter(meter));
         self.phase = if result.is_ok() {
             Phase::Refreshed
@@ -370,11 +534,13 @@ impl<'raw> HtmlRelInterpretation<'raw> {
     pub fn try_finish(
         slot: &mut Option<Self>,
     ) -> Result<HtmlRelReport, HtmlRelInterpretationError> {
-        let owner = slot.as_ref().ok_or(HtmlRelInterpretationError::Consumed)?;
+        let owner = slot
+            .as_ref()
+            .ok_or(HtmlRelInterpretationErrorKind::Consumed)?;
         match owner.phase {
             Phase::Interpreted | Phase::Refreshed => Ok(slot.take().expect("checked owner").report),
-            Phase::Stopped => Err(HtmlRelInterpretationError::Stopped),
-            _ => Err(HtmlRelInterpretationError::NotReady),
+            Phase::Stopped => Err(HtmlRelInterpretationErrorKind::Stopped.error()),
+            _ => Err(HtmlRelInterpretationErrorKind::NotReady.error()),
         }
     }
 }

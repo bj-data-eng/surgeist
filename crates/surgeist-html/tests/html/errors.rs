@@ -7,6 +7,7 @@
 
 use std::error::Error;
 
+use std::convert::Infallible;
 use surgeist_html::bounded::{
     AutocompleteMaterializationError, FloatingPointAllocationError, IntegerRecoveryError,
     IntegerUnitStepError, NumericMaterializationError, NumericParseError, RangeNumericError,
@@ -22,16 +23,23 @@ use surgeist_html::{
     HtmlMeterNumberRole, HtmlMicrodataTokenListError, HtmlNavigableTargetError,
     HtmlNonNegativeInteger, HtmlNonNegativeRational, HtmlNumericAttributeConformanceError,
     HtmlOrderedTokenSet, HtmlProcessingInstructionError, HtmlProgressNumberAuthorError,
-    HtmlRationalError, HtmlSpaceToken, HtmlSrcsetAuthorViolation, HtmlSrcsetContextViolation,
-    HtmlSrcsetDensityError, HtmlSrcsetInterpretationError, HtmlSrcsetParseError,
-    HtmlSrcsetUrlTokenError, HtmlTemporalError, HtmlTokenComparison, HtmlTokenDeclarationError,
-    HtmlTokenError, HtmlUtf8EncodingLabel, HtmlValueAdmissionError, HtmlValueFailure,
-    HtmlValueInterpreter, HtmlValueRepresentationError, HtmlValueSyntaxError,
+    HtmlRationalError, HtmlSandboxValueError, HtmlSpaceToken, HtmlSrcsetAuthorViolation,
+    HtmlSrcsetContextViolation, HtmlSrcsetDensityError, HtmlSrcsetInterpretationError,
+    HtmlSrcsetParseError, HtmlSrcsetUrlTokenError, HtmlTemporalError, HtmlTokenComparison,
+    HtmlTokenDeclarationError, HtmlTokenError, HtmlUtf8EncodingLabel, HtmlValueAdmissionError,
+    HtmlValueFailure, HtmlValueInterpreter, HtmlValueRepresentationError, HtmlValueSyntaxError,
     input_filename_setter,
 };
+
+use surgeist_html::bounded::{
+    HtmlMediaActionError, HtmlMediaInterpretation, HtmlMicrodataTokenActionError,
+    HtmlMicrodataTokenInterpretation, HtmlRelActionError, HtmlRelInterpretation,
+    HtmlTimeElementInterpretation,
+};
 use surgeist_html::{
-    HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument, HtmlDocumentMode, HtmlFragment,
-    Namespace, OrderedAttributes, QualifiedName,
+    Attribute, HtmlConstructionLimits, HtmlConstructionResource, HtmlCspError, HtmlCspOwner,
+    HtmlCspProcessorAuthority, HtmlDocument, HtmlDocumentMode, HtmlFragment, Namespace,
+    OrderedAttributes, QualifiedName,
 };
 
 /// The admission error of a three-unit value against a two-unit capacity.
@@ -1055,4 +1063,137 @@ fn construction_limit_refusals_report_the_resource_limit_and_attempted_total() {
     ] {
         assert_eq!(resource.to_string(), text);
     }
+}
+
+#[test]
+fn consumed_interpretations_report_which_interpretation_was_consumed() {
+    let mut rel: Option<HtmlRelInterpretation<'static>> = None;
+    let error = HtmlRelInterpretation::try_finish(&mut rel).expect_err("empty slot");
+    assert!(error.is_consumed());
+    assert!(!error.is_not_ready());
+    assert_eq!(message(&error), "rel interpretation was already consumed");
+
+    let mut media: Option<HtmlMediaInterpretation<'static, QualifiedName, Attribute>> = None;
+    let error = HtmlMediaInterpretation::try_finish(&mut media).expect_err("empty slot");
+    assert!(error.is_consumed());
+    assert_eq!(message(&error), "media interpretation was already consumed");
+
+    let mut microdata: Option<HtmlMicrodataTokenInterpretation<'static>> = None;
+    let error =
+        HtmlMicrodataTokenInterpretation::try_finish(&mut microdata).expect_err("empty slot");
+    assert!(error.is_consumed());
+    assert_eq!(
+        message(&error),
+        "microdata token interpretation was already consumed"
+    );
+
+    let mut time: Option<HtmlTimeElementInterpretation<'static>> = None;
+    let error = HtmlTimeElementInterpretation::try_finish(&mut time).expect_err("empty slot");
+    assert!(error.is_consumed());
+    assert!(error.processing_failure().is_none());
+    assert_eq!(
+        message(&error),
+        "time-element interpretation was already consumed"
+    );
+}
+
+#[test]
+fn csp_protocol_errors_state_the_misused_input() {
+    let mut owner =
+        HtmlCspOwner::new_with(&mut |_| Ok::<(), Infallible>(())).expect("owner admitted");
+    let mut other =
+        HtmlCspOwner::new_with(&mut |_| Ok::<(), Infallible>(())).expect("owner admitted");
+    let association = owner
+        .initial_document_with(&mut |_| Ok::<(), Infallible>(()))
+        .expect("initial document");
+    let content = DocumentString::from("default-src 'none'");
+    let profile = HtmlCspProcessorAuthority::new_with(&mut |_| Ok::<(), Infallible>(()))
+        .expect("authority")
+        .profile_with(1, &mut |_| Ok::<(), Infallible>(()))
+        .expect("profile");
+    let refused = other
+        .request_meta_insertion_with(&association, &profile, content, &mut |_| {
+            Ok::<(), Infallible>(())
+        })
+        .expect_err("association belongs to another owner");
+    assert!(matches!(refused.error, HtmlCspError::Protocol(ref error)
+        if error.is_foreign_owner()
+            && message(error) == "policy state belongs to a different CSP owner"));
+}
+
+#[test]
+fn owned_causes_convert_into_their_wrapping_error() {
+    let admission = refused_admission();
+    assert_eq!(
+        HtmlSrcsetInterpretationError::from(admission),
+        HtmlSrcsetInterpretationError::RawAdmission(admission)
+    );
+    assert_eq!(
+        AutocompleteMaterializationError::from(admission),
+        AutocompleteMaterializationError::RawAdmission(admission)
+    );
+    assert_eq!(
+        IntegerRecoveryError::from(NumericParseError::Negative),
+        IntegerRecoveryError::Syntax(NumericParseError::Negative)
+    );
+    let allocation = IntegerUnitStepError::AllocationFailed { requested: 1 };
+    assert_eq!(
+        IntegerRecoveryError::from(allocation),
+        IntegerRecoveryError::Allocation(allocation)
+    );
+    assert_eq!(
+        HtmlAutocompleteSectionError::from(HtmlTokenError::EmptySpaceToken),
+        HtmlAutocompleteSectionError::Token(HtmlTokenError::EmptySpaceToken)
+    );
+    let duplicate = duplicate_token();
+    assert_eq!(
+        HtmlTokenDeclarationError::from(duplicate.clone()),
+        HtmlTokenDeclarationError::Duplicate(duplicate.clone())
+    );
+    assert_eq!(
+        HtmlSandboxValueError::from(duplicate.clone()),
+        HtmlSandboxValueError::Duplicate(duplicate.clone())
+    );
+    assert_eq!(
+        HtmlMicrodataTokenListError::from(duplicate.clone()),
+        HtmlMicrodataTokenListError::Duplicate(duplicate)
+    );
+}
+
+#[test]
+fn action_errors_distinguish_the_callers_refusal_from_protocol_misuse() {
+    let admission = refused_admission();
+    let mut rel: Option<HtmlRelInterpretation<'static>> = None;
+    let protocol = HtmlRelInterpretation::try_finish(&mut rel).expect_err("empty slot");
+
+    let refused: HtmlRelActionError<HtmlValueAdmissionError> =
+        HtmlRelActionError::Admission(admission);
+    assert_eq!(
+        message(&refused),
+        "rel interpretation was refused by the caller's admission"
+    );
+    assert_eq!(cause(&refused), Some(admission.to_string()));
+
+    let misused: HtmlRelActionError<HtmlValueAdmissionError> = protocol.into();
+    assert_eq!(
+        message(&misused),
+        "rel interpretation protocol was violated"
+    );
+    assert_eq!(
+        cause(&misused).as_deref(),
+        Some("rel interpretation was already consumed")
+    );
+
+    let refused: HtmlMediaActionError<HtmlValueAdmissionError> =
+        HtmlMediaActionError::Admission(admission);
+    assert_eq!(
+        message(&refused),
+        "media interpretation was refused by the caller's admission"
+    );
+    let refused: HtmlMicrodataTokenActionError<HtmlValueAdmissionError> =
+        HtmlMicrodataTokenActionError::Admission(admission);
+    assert_eq!(
+        message(&refused),
+        "microdata token interpretation was refused by the caller's admission"
+    );
 }

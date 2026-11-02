@@ -91,6 +91,11 @@ impl std::fmt::Display for HtmlMicrodataTokenListError {
         }
     }
 }
+impl From<crate::HtmlDuplicateTokenError> for HtmlMicrodataTokenListError {
+    fn from(error: crate::HtmlDuplicateTokenError) -> Self {
+        Self::Duplicate(error)
+    }
+}
 impl std::error::Error for HtmlMicrodataTokenListError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
@@ -114,8 +119,7 @@ impl HtmlMicrodataTokenList {
             return Err(HtmlMicrodataTokenListError::Empty);
         }
         let tokens =
-            crate::HtmlUnorderedTokenSet::new(crate::HtmlTokenComparison::CaseSensitive, tokens)
-                .map_err(HtmlMicrodataTokenListError::Duplicate)?;
+            crate::HtmlUnorderedTokenSet::new(crate::HtmlTokenComparison::CaseSensitive, tokens)?;
         Ok(Self { kind, tokens })
     }
     /// Ordinary allocation, literal single-space separators, no URL validation.
@@ -174,8 +178,12 @@ use crate::tokens::{SpaceTokenCursor, SpaceTokenStep};
 
 /// A protocol refusal leaves the interpretation and its operands in place.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlMicrodataTokenInterpretationError {
+pub struct HtmlMicrodataTokenInterpretationError {
+    kind: HtmlMicrodataTokenInterpretationErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlMicrodataTokenInterpretationErrorKind {
     Consumed,
     NotReady,
     Stopped,
@@ -185,11 +193,131 @@ pub enum HtmlMicrodataTokenInterpretationError {
     AllocationFailed,
 }
 
+impl HtmlMicrodataTokenInterpretationErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlMicrodataTokenInterpretationError {
+        HtmlMicrodataTokenInterpretationError { kind: self }
+    }
+}
+
+impl From<HtmlMicrodataTokenInterpretationErrorKind> for HtmlMicrodataTokenInterpretationError {
+    fn from(kind: HtmlMicrodataTokenInterpretationErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlMicrodataTokenInterpretationError {
+    /// Whether the cause is: microdata token interpretation was already consumed.
+    pub fn is_consumed(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMicrodataTokenInterpretationErrorKind::Consumed
+        )
+    }
+    /// Whether the cause is: microdata token interpretation has an unfinished step.
+    pub fn is_not_ready(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMicrodataTokenInterpretationErrorKind::NotReady
+        )
+    }
+    /// Whether the cause is: microdata token interpretation was stopped.
+    pub fn is_stopped(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMicrodataTokenInterpretationErrorKind::Stopped
+        )
+    }
+    /// Whether the cause is: microdata token storage reservation was not performed.
+    pub fn is_reservation_not_performed(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMicrodataTokenInterpretationErrorKind::ReservationNotPerformed
+        )
+    }
+    /// Whether the cause is: microdata token storage reservation was already attempted.
+    pub fn is_reservation_already_attempted(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMicrodataTokenInterpretationErrorKind::ReservationAlreadyAttempted
+        )
+    }
+    /// Whether the cause is: microdata token interpretation size cannot be represented on this platform.
+    pub fn is_representation_exhausted(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMicrodataTokenInterpretationErrorKind::RepresentationExhausted
+        )
+    }
+    /// Whether the cause is: reserving microdata token storage failed.
+    pub fn is_allocation_failed(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMicrodataTokenInterpretationErrorKind::AllocationFailed
+        )
+    }
+}
+
+impl std::fmt::Display for HtmlMicrodataTokenInterpretationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlMicrodataTokenInterpretationErrorKind::Consumed => {
+                f.write_str("microdata token interpretation was already consumed")
+            }
+            HtmlMicrodataTokenInterpretationErrorKind::NotReady => {
+                f.write_str("microdata token interpretation has an unfinished step")
+            }
+            HtmlMicrodataTokenInterpretationErrorKind::Stopped => {
+                f.write_str("microdata token interpretation was stopped")
+            }
+            HtmlMicrodataTokenInterpretationErrorKind::ReservationNotPerformed => {
+                f.write_str("microdata token storage reservation was not performed")
+            }
+            HtmlMicrodataTokenInterpretationErrorKind::ReservationAlreadyAttempted => {
+                f.write_str("microdata token storage reservation was already attempted")
+            }
+            HtmlMicrodataTokenInterpretationErrorKind::RepresentationExhausted => f.write_str(
+                "microdata token interpretation size cannot be represented on this platform",
+            ),
+            HtmlMicrodataTokenInterpretationErrorKind::AllocationFailed => {
+                f.write_str("reserving microdata token storage failed")
+            }
+        }
+    }
+}
+
+impl std::error::Error for HtmlMicrodataTokenInterpretationError {}
+
 /// Execution preserves the caller's original admission error.
 #[derive(Debug, Eq, PartialEq)]
 pub enum HtmlMicrodataTokenActionError<E> {
     Admission(E),
     Protocol(HtmlMicrodataTokenInterpretationError),
+}
+impl<E> From<HtmlMicrodataTokenInterpretationError> for HtmlMicrodataTokenActionError<E> {
+    fn from(error: HtmlMicrodataTokenInterpretationError) -> Self {
+        Self::Protocol(error)
+    }
+}
+impl<E> std::fmt::Display for HtmlMicrodataTokenActionError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Admission(_) => {
+                "microdata token interpretation was refused by the caller's admission"
+            }
+            Self::Protocol(_) => "microdata token interpretation protocol was violated",
+        })
+    }
+}
+impl<E: std::fmt::Debug + std::error::Error + 'static> std::error::Error
+    for HtmlMicrodataTokenActionError<E>
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Admission(error) => Some(error),
+            Self::Protocol(error) => Some(error),
+        }
+    }
 }
 
 /// The only reservation allowed by a pending token is one additional record.
@@ -214,18 +342,20 @@ impl HtmlMicrodataTokenReservation<'_> {
     /// Performs this guard's fixed request at most once, on its actual vector.
     pub fn try_reserve(&mut self) -> Result<(), HtmlMicrodataTokenInterpretationError> {
         if self.attempted {
-            return Err(HtmlMicrodataTokenInterpretationError::ReservationAlreadyAttempted);
+            return Err(
+                HtmlMicrodataTokenInterpretationErrorKind::ReservationAlreadyAttempted.error(),
+            );
         }
         self.attempted = true;
         let needed = self
             .values
             .len()
             .checked_add(1)
-            .ok_or(HtmlMicrodataTokenInterpretationError::RepresentationExhausted)?;
+            .ok_or(HtmlMicrodataTokenInterpretationErrorKind::RepresentationExhausted)?;
         if needed > self.values.capacity() {
             self.values
                 .try_reserve_exact(1)
-                .map_err(|_| HtmlMicrodataTokenInterpretationError::AllocationFailed)?;
+                .map_err(|_| HtmlMicrodataTokenInterpretationErrorKind::AllocationFailed)?;
         }
         self.completed = true;
         Ok(())
@@ -319,7 +449,7 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
     ) -> Result<Option<HtmlMicrodataTokenAction<'_, 'raw>>, HtmlMicrodataTokenInterpretationError>
     {
         match self.phase {
-            Phase::Stopped => Err(HtmlMicrodataTokenInterpretationError::Stopped),
+            Phase::Stopped => Err(HtmlMicrodataTokenInterpretationErrorKind::Stopped.error()),
             Phase::Ready => Ok(None),
             _ => Ok(Some(HtmlMicrodataTokenAction { owner: self })),
         }
@@ -329,15 +459,15 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
     ) -> Result<HtmlMicrodataTokenReport, HtmlMicrodataTokenInterpretationError> {
         let owner = slot
             .as_ref()
-            .ok_or(HtmlMicrodataTokenInterpretationError::Consumed)?;
+            .ok_or(HtmlMicrodataTokenInterpretationErrorKind::Consumed)?;
         match owner.phase {
             Phase::Ready => Ok(slot
                 .take()
                 .expect("checked owner")
                 .report
                 .expect("assembled report")),
-            Phase::Stopped => Err(HtmlMicrodataTokenInterpretationError::Stopped),
-            _ => Err(HtmlMicrodataTokenInterpretationError::NotReady),
+            Phase::Stopped => Err(HtmlMicrodataTokenInterpretationErrorKind::Stopped.error()),
+            _ => Err(HtmlMicrodataTokenInterpretationErrorKind::NotReady.error()),
         }
     }
     fn next_prior(&mut self, index: usize) {
@@ -389,7 +519,7 @@ impl HtmlMicrodataTokenAction<'_, '_> {
                     o.phase = Phase::Stopped;
                 }
                 return Err(HtmlMicrodataTokenActionError::Protocol(
-                    HtmlMicrodataTokenInterpretationError::ReservationNotPerformed,
+                    HtmlMicrodataTokenInterpretationErrorKind::ReservationNotPerformed.error(),
                 ));
             }
             o.phase = Phase::Commit;

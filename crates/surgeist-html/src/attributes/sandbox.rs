@@ -273,8 +273,7 @@ impl HtmlSandboxValue {
                 bits |= keyword.bit();
                 keyword.token()
             }),
-        )
-        .map_err(HtmlSandboxValueError::Duplicate)?;
+        )?;
         if let Some(redundancy) = redundancies(bits).into_iter().flatten().next() {
             return Err(HtmlSandboxValueError::Redundant(redundancy));
         }
@@ -309,6 +308,11 @@ impl fmt::Display for HtmlSandboxValueError {
             Self::Duplicate(error) => error.fmt(f),
             Self::Redundant(error) => write!(f, "redundant sandbox keywords: {error:?}"),
         }
+    }
+}
+impl From<HtmlDuplicateTokenError> for HtmlSandboxValueError {
+    fn from(error: HtmlDuplicateTokenError) -> Self {
+        Self::Duplicate(error)
     }
 }
 impl Error for HtmlSandboxValueError {

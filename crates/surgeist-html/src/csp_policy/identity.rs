@@ -55,10 +55,10 @@ impl HtmlCspProcessorProfile {
     }
     pub(super) fn require(&self, actual: &Self) -> Result<(), HtmlCspProtocolError> {
         if self.issuer != actual.issuer {
-            return Err(HtmlCspProtocolError::WrongProcessor);
+            return Err(HtmlCspProtocolErrorKind::WrongProcessor.error());
         }
         if self.version != actual.version {
-            return Err(HtmlCspProtocolError::WrongProfile);
+            return Err(HtmlCspProtocolErrorKind::WrongProfile.error());
         }
         Ok(())
     }

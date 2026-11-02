@@ -4,7 +4,6 @@ use std::sync::Arc;
 use surgeist_html::{DocumentString, HtmlMicrodataTokenKind, bounded::*};
 
 type Owner<'a> = HtmlMicrodataTokenInterpretation<'a>;
-type Error = HtmlMicrodataTokenInterpretationError;
 #[derive(Default)]
 struct Meter {
     work: Vec<usize>,
@@ -33,7 +32,7 @@ impl HtmlMicrodataTokenMeter for Meter {
         guard.try_reserve().unwrap();
         self.reservations
             .push((len, guard.capacity(), guard.record_size()));
-        assert_eq!(guard.try_reserve(), Err(Error::ReservationAlreadyAttempted));
+        assert!(matches!(guard.try_reserve(), Err(ref e) if e.is_reservation_already_attempted()));
         if self.fail_after_reserve {
             return Err("post reserve cancelled");
         }
@@ -54,7 +53,7 @@ fn original_utf16_ranges_first_duplicates_and_itemprop_suppression_are_retained(
     // Infra ASCII whitespace only; non-ASCII space and isolated surrogates stay exact.
     let raw = DocumentString::from_utf16([32, 97, 9, 65, 10, 97, 12, 120, 46, 58, 0xd800, 0xa0]);
     let mut owner = Some(Owner::new(HtmlMicrodataTokenKind::ItemProp, Some(&raw)));
-    assert_eq!(Owner::try_finish(&mut owner).unwrap_err(), Error::NotReady);
+    assert!(Owner::try_finish(&mut owner).unwrap_err().is_not_ready());
     let mut meter = Meter::default();
     drive(owner.as_mut().unwrap(), &mut meter);
     let report = Owner::try_finish(&mut owner).unwrap();
@@ -88,7 +87,7 @@ fn original_utf16_ranges_first_duplicates_and_itemprop_suppression_are_retained(
         raw.shared_code_units()
     ));
     assert!(!report.local_author_conforming());
-    assert_eq!(Owner::try_finish(&mut owner).unwrap_err(), Error::Consumed);
+    assert!(Owner::try_finish(&mut owner).unwrap_err().is_consumed());
 }
 #[test]
 fn single_token_includes_separate_loop_header_eof_done_and_report_admissions() {
@@ -149,10 +148,10 @@ fn callback_error_at_every_work_checkpoint_stops_without_report_or_repeated_work
                 break;
             }
         }
-        assert_eq!(Owner::try_finish(&mut owner).unwrap_err(), Error::Stopped);
+        assert!(Owner::try_finish(&mut owner).unwrap_err().is_stopped());
         assert!(matches!(
             owner.as_mut().unwrap().next_action(),
-            Err(Error::Stopped)
+            Err(ref error) if error.is_stopped()
         ));
         assert_eq!(meter.work.len(), stop);
         assert!(std::ptr::eq(owner.take().unwrap().abort().1.unwrap(), &raw));
@@ -169,17 +168,14 @@ fn unexecuted_reservation_refuses_and_can_be_retried_but_post_reserve_error_stop
     loop {
         let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
         if action.kind() == HtmlMicrodataTokenActionKind::Reserve {
-            assert_eq!(
-                action.advance(&mut meter),
-                Err(HtmlMicrodataTokenActionError::Protocol(
-                    Error::ReservationNotPerformed
-                ))
+            assert!(
+                matches!(action.advance(&mut meter), Err(HtmlMicrodataTokenActionError::Protocol(ref e)) if e.is_reservation_not_performed())
             );
             break;
         }
         action.advance(&mut meter).unwrap();
     }
-    assert_eq!(Owner::try_finish(&mut owner).unwrap_err(), Error::NotReady);
+    assert!(Owner::try_finish(&mut owner).unwrap_err().is_not_ready());
     meter.skip_reserve = false;
     meter.fail_after_reserve = true;
     assert_eq!(
@@ -195,7 +191,7 @@ fn unexecuted_reservation_refuses_and_can_be_retried_but_post_reserve_error_stop
         ))
     );
     assert!(meter.reservations[0].1 >= 1);
-    assert_eq!(Owner::try_finish(&mut owner).unwrap_err(), Error::Stopped);
+    assert!(Owner::try_finish(&mut owner).unwrap_err().is_stopped());
     assert_eq!(Arc::strong_count(raw.shared_code_units()), 1);
     assert!(std::ptr::eq(owner.take().unwrap().abort().1.unwrap(), &raw));
 }
@@ -205,6 +201,6 @@ fn explicit_between_action_stop_prevents_publication_even_after_assembly() {
     let mut owner = Some(Owner::new(HtmlMicrodataTokenKind::ItemRef, Some(&raw)));
     drive(owner.as_mut().unwrap(), &mut Meter::default());
     owner.as_mut().unwrap().stop();
-    assert_eq!(Owner::try_finish(&mut owner).unwrap_err(), Error::Stopped);
+    assert!(Owner::try_finish(&mut owner).unwrap_err().is_stopped());
     assert!(std::ptr::eq(owner.take().unwrap().abort().1.unwrap(), &raw));
 }

@@ -8,20 +8,94 @@ use crate::{HtmlValueAdmissionError, HtmlValueInterpreter, HtmlValueReport};
 
 /// A refused owner transition or latched processing failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlTimeElementInterpretationError {
+pub struct HtmlTimeElementInterpretationError {
+    kind: HtmlTimeElementInterpretationErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlTimeElementInterpretationErrorKind {
     NotReady,
     Consumed,
     RepresentationExhausted,
     Processing(NumericMaterializationError),
     InvalidRecognizedPlan,
 }
-impl std::fmt::Display for HtmlTimeElementInterpretationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "time-element interpretation: {self:?}")
+
+impl HtmlTimeElementInterpretationErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlTimeElementInterpretationError {
+        HtmlTimeElementInterpretationError { kind: self }
     }
 }
-impl std::error::Error for HtmlTimeElementInterpretationError {}
+
+impl From<HtmlTimeElementInterpretationErrorKind> for HtmlTimeElementInterpretationError {
+    fn from(kind: HtmlTimeElementInterpretationErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlTimeElementInterpretationError {
+    /// Whether the cause is: time-element interpretation has an unfinished step.
+    pub fn is_not_ready(&self) -> bool {
+        matches!(self.kind, HtmlTimeElementInterpretationErrorKind::NotReady)
+    }
+    /// Whether the cause is: time-element interpretation was already consumed.
+    pub fn is_consumed(&self) -> bool {
+        matches!(self.kind, HtmlTimeElementInterpretationErrorKind::Consumed)
+    }
+    /// Whether the cause is: time-element interpretation size cannot be represented on this platform.
+    pub fn is_representation_exhausted(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlTimeElementInterpretationErrorKind::RepresentationExhausted
+        )
+    }
+    /// Whether the cause is: recognized time-element plan does not match its value.
+    pub fn is_invalid_recognized_plan(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan
+        )
+    }
+    /// The value-processing failure that stopped the interpretation, if that was the cause.
+    pub fn processing_failure(&self) -> Option<NumericMaterializationError> {
+        match self.kind {
+            HtmlTimeElementInterpretationErrorKind::Processing(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for HtmlTimeElementInterpretationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlTimeElementInterpretationErrorKind::NotReady => {
+                f.write_str("time-element interpretation has an unfinished step")
+            }
+            HtmlTimeElementInterpretationErrorKind::Consumed => {
+                f.write_str("time-element interpretation was already consumed")
+            }
+            HtmlTimeElementInterpretationErrorKind::RepresentationExhausted => f.write_str(
+                "time-element interpretation size cannot be represented on this platform",
+            ),
+            HtmlTimeElementInterpretationErrorKind::Processing(_) => {
+                f.write_str("time-element value processing failed")
+            }
+            HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan => {
+                f.write_str("recognized time-element plan does not match its value")
+            }
+        }
+    }
+}
+
+impl std::error::Error for HtmlTimeElementInterpretationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match &self.kind {
+            HtmlTimeElementInterpretationErrorKind::Processing(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 /// The next operation's role; no borrowed temporal plan crosses this boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -238,8 +312,9 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             return Ok(None);
         }
         let Some(layout) = self.layout() else {
-            self.failure = Some(HtmlTimeElementInterpretationError::RepresentationExhausted);
-            return Err(HtmlTimeElementInterpretationError::RepresentationExhausted);
+            self.failure =
+                Some(HtmlTimeElementInterpretationErrorKind::RepresentationExhausted.error());
+            return Err(HtmlTimeElementInterpretationErrorKind::RepresentationExhausted.error());
         };
         Ok(Some(HtmlTimeElementInterpretationAction {
             owner: self,
@@ -255,12 +330,12 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
     > {
         let current = owner
             .as_ref()
-            .ok_or(HtmlTimeElementInterpretationError::Consumed)?;
+            .ok_or(HtmlTimeElementInterpretationErrorKind::Consumed)?;
         if let Some(error) = current.failure {
             return Err(error);
         }
         if !matches!(current.stage, Stage::Done) {
-            return Err(HtmlTimeElementInterpretationError::NotReady);
+            return Err(HtmlTimeElementInterpretationErrorKind::NotReady.error());
         }
         Ok(owner
             .take()
@@ -811,7 +886,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                     .as_mut()
                     .expect("duration cursor")
                     .next_component()
-                    .map_err(|_| HtmlTimeElementInterpretationError::InvalidRecognizedPlan)?;
+                    .map_err(|_| HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan)?;
                 let Some(component) = self.component else {
                     let BorrowedTemporalPlan::Duration(p) = self.plan() else {
                         unreachable!("duration plan")
@@ -918,7 +993,7 @@ fn materialized<T>(
         }
         Err(error) => {
             *observed = error.capacity_bytes;
-            Err(HtmlTimeElementInterpretationError::Processing(error.kind))
+            Err(HtmlTimeElementInterpretationErrorKind::Processing(error.kind).error())
         }
     }
 }

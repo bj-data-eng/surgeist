@@ -43,6 +43,11 @@ impl fmt::Display for HtmlTokenDeclarationError {
         }
     }
 }
+impl From<HtmlDuplicateTokenError> for HtmlTokenDeclarationError {
+    fn from(error: HtmlDuplicateTokenError) -> Self {
+        Self::Duplicate(error)
+    }
+}
 impl Error for HtmlTokenDeclarationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
@@ -71,8 +76,7 @@ impl HtmlAccessKeys {
     pub fn new(
         tokens: impl IntoIterator<Item = HtmlSpaceToken>,
     ) -> Result<Self, HtmlTokenDeclarationError> {
-        let tokens = HtmlOrderedTokenSet::new(HtmlTokenComparison::CaseSensitive, tokens)
-            .map_err(HtmlTokenDeclarationError::Duplicate)?;
+        let tokens = HtmlOrderedTokenSet::new(HtmlTokenComparison::CaseSensitive, tokens)?;
         for (token_index, token) in tokens.tokens().iter().enumerate() {
             if !single_code_point(token) {
                 return Err(HtmlTokenDeclarationError::AccessKeyLength { token_index });

@@ -187,6 +187,11 @@ impl fmt::Display for AutocompleteMaterializationError {
         }
     }
 }
+impl From<HtmlValueAdmissionError> for AutocompleteMaterializationError {
+    fn from(error: HtmlValueAdmissionError) -> Self {
+        Self::RawAdmission(error)
+    }
+}
 impl Error for AutocompleteMaterializationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
@@ -597,6 +602,11 @@ impl fmt::Display for HtmlAutocompleteSectionError {
         })
     }
 }
+impl From<HtmlTokenError> for HtmlAutocompleteSectionError {
+    fn from(error: HtmlTokenError) -> Self {
+        Self::Token(error)
+    }
+}
 impl Error for HtmlAutocompleteSectionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
@@ -617,7 +627,7 @@ fn section_prefix(value: &DocumentString) -> bool {
 impl HtmlAutocompleteSection {
     /// Requires the section- prefix and one space token, with no suffix grammar.
     pub fn new(value: impl Into<DocumentString>) -> Result<Self, HtmlAutocompleteSectionError> {
-        let token = HtmlSpaceToken::new(value).map_err(HtmlAutocompleteSectionError::Token)?;
+        let token = HtmlSpaceToken::new(value)?;
         if !section_prefix(token.value()) {
             return Err(HtmlAutocompleteSectionError::MissingSectionPrefix);
         }
@@ -1386,8 +1396,7 @@ impl HtmlValueInterpreter {
         state: Option<HtmlInputType>,
         storage: &mut Materialization,
     ) -> Result<HtmlAutocompleteReport, AutocompleteMaterializationError> {
-        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))
-            .map_err(AutocompleteMaterializationError::RawAdmission)?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut input = report(RULE, element, raw);
         if let Some(state) = state {
             input.supplied_context = SuppliedContext::Input(state);
