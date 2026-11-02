@@ -519,6 +519,7 @@ fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_aliased_allocation()
 fn effect_work_errors_map_to_their_precise_invariant() {
     let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
     let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
+    let refusal = ParseStop::InternalInvariant(Invariant::ConstructionOwnerRefusal);
     for (error, expected) in [
         (SessionError::PendingIntrinsicWork, pending),
         (SessionError::AliasedPayload, aliased),
@@ -529,6 +530,15 @@ fn effect_work_errors_map_to_their_precise_invariant() {
         (SessionError::NodeDocumentUnavailable, registry_row()),
         (SessionError::SelectMetadataUnavailable, registry_row()),
         (SessionError::NonceMetadataUnavailable, registry_row()),
+        // A placement the tree refuses is effect work asking the owner for
+        // something the parser's sequencing guarantees valid.
+        (SessionError::RootMove, refusal),
+        (SessionError::AssociationMove, refusal),
+        (SessionError::NotContainer, refusal),
+        (SessionError::TemplateContentsRequired, refusal),
+        (SessionError::WrongSibling, refusal),
+        (SessionError::Cycle, refusal),
+        (SessionError::DuplicateAttribute, refusal),
     ] {
         let mut c = control();
         assert_eq!(
@@ -546,9 +556,86 @@ fn effect_work_errors_map_to_their_precise_invariant() {
         SessionError::CompletionMetadataUnavailable,
         SessionError::CompletionIncomplete,
         SessionError::ContextReactionUnavailable,
+        SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
+        SessionError::CspProtocol(csp_protocol_error()),
+        // A stop is already latched by whoever raised it; mapping adds none.
+        SessionError::Stop(ParseStop::Cancelled),
     ] {
         let mut c = control();
         assert_eq!(latch_effect_fault(&mut c, error), error, "{error:?}");
         assert_eq!(c.stop(), None, "{error:?}");
+    }
+}
+
+/// A creation that registered association metadata cannot continue past a
+/// non-stop error. A fault of the creation's own becomes a stop labelled by
+/// what it reports, as effect work does. An outcome the driver classifies
+/// itself passes through unchanged, as the unavailable image-support fact does:
+/// the creation steps include image, associated-fact and nonce work whose
+/// outcomes come from the caller's facts, so none of them is an invariant. The
+/// outcomes of script and completion work, which no creation step runs, keep
+/// the incomplete-creation label. The forced-state counterpart is in the
+/// construction tests.
+#[test]
+fn creation_errors_map_to_the_fault_they_report() {
+    let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
+    let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
+    let incomplete = ParseStop::InternalInvariant(Invariant::IncompleteFormAssociationCreation);
+    for (error, expected) in [
+        (SessionError::PendingIntrinsicWork, pending),
+        (SessionError::AliasedPayload, aliased),
+        (SessionError::WrongToken, registry_row()),
+        (SessionError::Consumed, registry_row()),
+        (
+            SessionError::FormAssociationMetadataUnavailable,
+            registry_row(),
+        ),
+        (SessionError::InputMetadataUnavailable, registry_row()),
+        (SessionError::ScriptMetadataUnavailable, incomplete),
+        (SessionError::SvgScriptMetadataUnavailable, incomplete),
+        (SessionError::CompletionMetadataUnavailable, incomplete),
+        (SessionError::CompletionIncomplete, incomplete),
+    ] {
+        let mut c = control();
+        assert_eq!(
+            latch_creation_fault(&mut c, error),
+            SessionError::Stop(expected),
+            "{error:?}"
+        );
+        assert_eq!(c.stop(), Some(expected), "{error:?}");
+    }
+    for error in [
+        SessionError::CspService,
+        SessionError::CspProtocol(csp_protocol_error()),
+        SessionError::AssociatedFacts,
+        SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
+        SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::BrowsingContextConnection),
+        SessionError::ContextReactionUnavailable,
+        SessionError::Stop(ParseStop::Cancelled),
+    ] {
+        let mut c = control();
+        assert_eq!(latch_creation_fault(&mut c, error), error, "{error:?}");
+        assert_eq!(c.stop(), None, "{error:?}");
+    }
+}
+
+/// A real CSP protocol error: an association presented to a different owner.
+fn csp_protocol_error() -> surgeist_html::HtmlCspProtocolError {
+    use surgeist_html::{HtmlCspError, HtmlCspOwner, HtmlCspProcessorAuthority};
+    let admit = &mut |_| Ok::<(), std::convert::Infallible>(());
+    let mut owner = HtmlCspOwner::new_with(admit).unwrap();
+    let mut other = HtmlCspOwner::new_with(admit).unwrap();
+    let association = owner.initial_document_with(admit).unwrap();
+    let profile = HtmlCspProcessorAuthority::new_with(admit)
+        .unwrap()
+        .profile_with(1, admit)
+        .unwrap();
+    let content = surgeist_html::DocumentString::from("default-src 'none'");
+    match other.request_meta_insertion_with(&association, &profile, content, admit) {
+        Err(rejected) => match rejected.error {
+            HtmlCspError::Protocol(error) => error,
+            HtmlCspError::Interrupted(never) => match never {},
+        },
+        Ok(_) => panic!("a foreign association was accepted"),
     }
 }

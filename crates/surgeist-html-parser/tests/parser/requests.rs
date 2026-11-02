@@ -1,9 +1,9 @@
 use crate::parser::support::{bank, record, revision};
 use surgeist_html::*;
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlParseLimitsBuilder,
-    HtmlParseLimitsError, HtmlParseRequestError, HtmlParseResource, HtmlSource,
-    HtmlSourceCoordinates,
+    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseFailureReason, HtmlParseLimits,
+    HtmlParseLimitsBuilder, HtmlParseLimitsError, HtmlParseRequestError, HtmlParseResource,
+    HtmlSource, HtmlSourceCoordinates,
 };
 use surgeist_html_semantics::HtmlBaseEncoding;
 use surgeist_html_semantics::HtmlCaptureDocumentId;
@@ -621,4 +621,27 @@ fn request_input_bank_is_absent_until_a_builder_supplies_it() {
     assert!(!facts[0].same_owner(&first));
     assert_eq!(replaced.encoding_url_contexts(), Some(&[][..]));
     assert!(replaced.encoding_url_context_capacity().unwrap() >= 3);
+}
+
+/// A form-associated creation that needs the unavailable image-support fact
+/// ends the parse with that fact named, and the parse cleans up after itself.
+/// An input whose image source needs the image environment is created through
+/// the form-associated creation path, which holds an association row while it
+/// asks for the fact.
+#[test]
+fn an_input_image_source_with_unavailable_image_support_names_the_missing_fact() {
+    let (capture, _document, element) = image_support_capture(HtmlImageSupport::Unavailable);
+    let context = HtmlFragmentContext::element(&capture, &element).unwrap();
+    let request = HtmlFragmentParseRequest::new(
+        HtmlSource::utf8("<input type=image src=a>"),
+        context,
+        crate::parser::support::limits(),
+    )
+    .unwrap();
+    let failure = request.parse().unwrap_err();
+    assert_eq!(
+        failure.reason(),
+        HtmlParseFailureReason::MissingContextFact(HtmlCaptureFact::ImageSupport)
+    );
+    assert_eq!(failure.cleanup_error(), None);
 }

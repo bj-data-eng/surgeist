@@ -148,8 +148,14 @@ impl ParseControl {
         value: Capacity,
         expected_capacity: usize,
     ) -> Result<(), ParseStop> {
-        if !Arc::ptr_eq(&allocation.owner, &self.identity) || allocation.backing.is_some() {
+        if !Arc::ptr_eq(&allocation.owner, &self.identity) {
             return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+        }
+        // Growth is recorded while the ticket is pending; a ticket already
+        // bound to a backing is in another allocation state than the one this
+        // controller charged, whoever holds it.
+        if allocation.backing.is_some() {
+            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
         }
         const UNIT_BYTES: u64 = size_of::<u16>() as u64;
         let Some(old) = (allocation.vector_capacity as u64).checked_mul(UNIT_BYTES) else {

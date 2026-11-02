@@ -17,7 +17,9 @@ fn admit_work(
         .provider_calls
         .checked_sub(usize::from(wrapper_prepared))
     else {
-        return Err(latch_registry_row(control));
+        // The wrapper's call was charged when it was prepared; a plan that
+        // counts fewer differs from the work already charged for it.
+        return Err(plan_below_charge(control));
     };
     control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
     control.charge(WorkCategory::InspectByte, work.inspected_bytes as u64)?;
@@ -415,7 +417,7 @@ impl SessionStorage {
                                 .map_err(|_| latch_registry_row(control))?,
                         );
                         let Some(view) = action.storage_view() else {
-                            return Err(latch_registry_row(control));
+                            return Err(latch_owner_refusal(control));
                         };
                         children_changed = self.textarea_slot(control, parent)?.is_some()
                             || Self::html_local_in(control, view, parent, "script")?
@@ -453,7 +455,7 @@ impl SessionStorage {
                                 return Err(latch_registry_row(control));
                             };
                             let Some(capacity) = observation.capacity() else {
-                                return Err(latch_registry_row(control));
+                                return Err(latch_owner_refusal(control));
                             };
                             control.record_text_append_capacity(
                                 allocation,
@@ -462,7 +464,7 @@ impl SessionStorage {
                             )?;
                             if matches!(description, Description::InitializeBacking(_)) {
                                 let Some(backing) = observation.backing() else {
-                                    return Err(latch_registry_row(control));
+                                    return Err(latch_owner_refusal(control));
                                 };
                                 control.bind_text_append_pending(allocation, backing)?;
                             }
@@ -489,7 +491,7 @@ impl SessionStorage {
                                 return Err(latch_registry_row(control));
                             };
                             let Some(capacity) = owner.capacity() else {
-                                return Err(latch_registry_row(control));
+                                return Err(latch_owner_refusal(control));
                             };
                             control.record_text_append_capacity(allocation, capacity, expected)?;
                         }
@@ -621,4 +623,30 @@ struct StoppedAppend {
     pending: Option<DocumentStringAllocation>,
     original: Option<DocumentStringAllocation>,
     discarded: Option<DocumentString>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wrapper's provider call was charged when it was prepared. A work
+    /// plan that counts none has nothing for that charge to be part of, so the
+    /// plan differs from the work already charged for it. No row is missing.
+    #[test]
+    fn a_work_plan_below_the_prepaid_provider_call_reports_the_capacity_mismatch() {
+        let mismatch =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::CapacityMismatch);
+        let mut c = crate::construction::tests::control();
+        let before = c.usage().clone();
+        assert_eq!(
+            admit_work(&mut c, Work::default(), true),
+            Err(SessionError::Stop(mismatch))
+        );
+        assert_eq!(c.stop(), Some(mismatch));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            before.resource(HtmlParseResource::WorkCredits).current,
+            "no provider call is charged for the refused plan"
+        );
+    }
 }

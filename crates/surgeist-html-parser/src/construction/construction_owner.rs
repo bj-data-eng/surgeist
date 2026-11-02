@@ -33,36 +33,266 @@ enum Bank {
     Wrapper,
 }
 
+/// The session error for a refusal from HTML's construction owner, with every
+/// variant of its error classified by what it violates.
+///
+/// - Handle, placement and cycle refusals are errors about the document's own
+///   shape; their callers classify them and nothing is latched here.
+/// - A payload that was aliased and a count that cannot be represented keep
+///   their own stops.
+/// - A ticket, layout or limit that disagrees with what the controller
+///   charged, and a release beyond what was held, are accounting faults. The
+///   parse controller admits every resource before the owner is asked, so a
+///   limit the owner reports is the owner's accounting disagreeing with it.
+/// - An allocation that failed is the environment refusing, a reached stop
+///   that never names an invariant. The sites that know the layout classify
+///   it themselves first, so none is known here.
+/// - Every other refusal is the owner declining a request that the parser's
+///   sequencing guarantees valid.
+///
+/// The owner keeps its error's cause private and open to later causes, so the
+/// compiler cannot make this crate classify a new one. [`classify`] names each
+/// current cause through the owner's predicates, [`disposition`] maps every
+/// named fault exhaustively, and a cause neither names reports the same fault
+/// as the declined requests. The inventory tests cover every current cause.
+/// What the construction owner's error violates, one fault per cause it can
+/// report today, plus the cause this parser does not yet name.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OwnerFault {
+    ForeignBuilder,
+    ParentCannotHaveChildren,
+    TemplateContentsRequired,
+    ShadowHostMustBeElement,
+    ShadowAlreadyAttached,
+    UnknownNode,
+    WrongNodeKind,
+    RootMove,
+    AssociationMove,
+    WrongSibling,
+    Cycle,
+    AssociationAlreadyOwned,
+    InvalidTemplateAssociation,
+    DuplicateAttribute,
+    AttributeNameMismatch,
+    AttributeOrderMismatch,
+    InvalidShadowAssociation,
+    InvalidContentsReference,
+    ParentChildConflict,
+    InvalidOutputRoot,
+    OperationConsumed,
+    OperationNotReady,
+    ForeignAllocation,
+    CapacityMismatch,
+    SharedAllocationAliased,
+    ReleaseUnderflow,
+    LimitExceeded,
+    RepresentationExhausted,
+    AllocationFailed,
+    /// A cause that the owner added after this parser classified its causes.
+    Unlisted,
+}
+
+/// The owner's cause predicates, each with the fault it names.
+const OWNER_CAUSES: [(fn(&HtmlConstructionError) -> bool, OwnerFault); 29] = [
+    (
+        HtmlConstructionError::is_foreign_builder,
+        OwnerFault::ForeignBuilder,
+    ),
+    (
+        HtmlConstructionError::is_parent_cannot_have_children,
+        OwnerFault::ParentCannotHaveChildren,
+    ),
+    (
+        HtmlConstructionError::is_template_contents_required,
+        OwnerFault::TemplateContentsRequired,
+    ),
+    (
+        HtmlConstructionError::is_shadow_host_must_be_element,
+        OwnerFault::ShadowHostMustBeElement,
+    ),
+    (
+        HtmlConstructionError::is_shadow_already_attached,
+        OwnerFault::ShadowAlreadyAttached,
+    ),
+    (
+        HtmlConstructionError::is_unknown_node,
+        OwnerFault::UnknownNode,
+    ),
+    (
+        HtmlConstructionError::is_wrong_node_kind,
+        OwnerFault::WrongNodeKind,
+    ),
+    (HtmlConstructionError::is_root_move, OwnerFault::RootMove),
+    (
+        HtmlConstructionError::is_association_move,
+        OwnerFault::AssociationMove,
+    ),
+    (
+        HtmlConstructionError::is_wrong_sibling,
+        OwnerFault::WrongSibling,
+    ),
+    (HtmlConstructionError::is_cycle, OwnerFault::Cycle),
+    (
+        HtmlConstructionError::is_association_already_owned,
+        OwnerFault::AssociationAlreadyOwned,
+    ),
+    (
+        HtmlConstructionError::is_invalid_template_association,
+        OwnerFault::InvalidTemplateAssociation,
+    ),
+    (
+        HtmlConstructionError::is_duplicate_attribute,
+        OwnerFault::DuplicateAttribute,
+    ),
+    (
+        HtmlConstructionError::is_attribute_name_mismatch,
+        OwnerFault::AttributeNameMismatch,
+    ),
+    (
+        HtmlConstructionError::is_attribute_order_mismatch,
+        OwnerFault::AttributeOrderMismatch,
+    ),
+    (
+        HtmlConstructionError::is_invalid_shadow_association,
+        OwnerFault::InvalidShadowAssociation,
+    ),
+    (
+        HtmlConstructionError::is_invalid_contents_reference,
+        OwnerFault::InvalidContentsReference,
+    ),
+    (
+        HtmlConstructionError::is_parent_child_conflict,
+        OwnerFault::ParentChildConflict,
+    ),
+    (
+        HtmlConstructionError::is_invalid_output_root,
+        OwnerFault::InvalidOutputRoot,
+    ),
+    (
+        HtmlConstructionError::is_operation_consumed,
+        OwnerFault::OperationConsumed,
+    ),
+    (
+        HtmlConstructionError::is_operation_not_ready,
+        OwnerFault::OperationNotReady,
+    ),
+    (
+        HtmlConstructionError::is_foreign_allocation,
+        OwnerFault::ForeignAllocation,
+    ),
+    (
+        HtmlConstructionError::is_capacity_mismatch,
+        OwnerFault::CapacityMismatch,
+    ),
+    (
+        HtmlConstructionError::is_shared_allocation_aliased,
+        OwnerFault::SharedAllocationAliased,
+    ),
+    (
+        HtmlConstructionError::is_release_underflow,
+        OwnerFault::ReleaseUnderflow,
+    ),
+    (
+        HtmlConstructionError::is_limit_exceeded,
+        OwnerFault::LimitExceeded,
+    ),
+    (
+        HtmlConstructionError::is_representation_exhausted,
+        OwnerFault::RepresentationExhausted,
+    ),
+    (
+        HtmlConstructionError::is_allocation_failed,
+        OwnerFault::AllocationFailed,
+    ),
+];
+
+/// Names the fault of an owner error through the owner's predicates.
+fn classify(error: &HtmlConstructionError) -> OwnerFault {
+    OWNER_CAUSES
+        .iter()
+        .find(|(recognizes, _)| recognizes(error))
+        .map_or(OwnerFault::Unlisted, |&(_, fault)| fault)
+}
+
+/// How a fault is reported to the session.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Disposition {
+    /// A document-shaped error the caller classifies; nothing is latched.
+    Session(SessionError),
+    /// A reached invariant stop.
+    Invariant(crate::parser::control::Invariant),
+    /// A count that cannot be represented.
+    Representation,
+    /// An allocation whose layout is unknown here.
+    AllocationFailed,
+}
+
+/// Maps every fault to its report. A new fault needs a row here to compile.
+fn disposition(fault: OwnerFault) -> Disposition {
+    use crate::parser::control::Invariant;
+    use Disposition::{AllocationFailed, Invariant as Stop, Representation, Session};
+    match fault {
+        OwnerFault::ForeignBuilder | OwnerFault::UnknownNode => Session(SessionError::ForeignNode),
+        OwnerFault::RootMove => Session(SessionError::RootMove),
+        OwnerFault::AssociationMove => Session(SessionError::AssociationMove),
+        OwnerFault::ParentCannotHaveChildren => Session(SessionError::NotContainer),
+        OwnerFault::TemplateContentsRequired => Session(SessionError::TemplateContentsRequired),
+        OwnerFault::WrongSibling | OwnerFault::ParentChildConflict => {
+            Session(SessionError::WrongSibling)
+        }
+        OwnerFault::Cycle => Session(SessionError::Cycle),
+        OwnerFault::SharedAllocationAliased => Stop(Invariant::SharedAllocationAliased),
+        OwnerFault::RepresentationExhausted => Representation,
+        OwnerFault::CapacityMismatch
+        | OwnerFault::ForeignAllocation
+        | OwnerFault::LimitExceeded => Stop(Invariant::CapacityMismatch),
+        OwnerFault::ReleaseUnderflow => Stop(Invariant::ReleaseUnderflow),
+        // `layout_bytes: 0` means the layout is unknown here, not that none was
+        // requested. Every bounded producer of this error reports it with its
+        // real layout before it gets this far: the record and child reserves
+        // in `ConstructionOwner::perform_action_with_commit`, the name-decision
+        // and attribute-slot reserves in `attributes.rs`, and the candidate
+        // backing reserve in `text_append.rs`. This is only a failure a
+        // caller without a layout still has to report.
+        OwnerFault::AllocationFailed => AllocationFailed,
+        OwnerFault::ShadowHostMustBeElement
+        | OwnerFault::ShadowAlreadyAttached
+        | OwnerFault::WrongNodeKind
+        | OwnerFault::AssociationAlreadyOwned
+        | OwnerFault::InvalidTemplateAssociation
+        | OwnerFault::DuplicateAttribute
+        | OwnerFault::AttributeNameMismatch
+        | OwnerFault::AttributeOrderMismatch
+        | OwnerFault::InvalidShadowAssociation
+        | OwnerFault::InvalidContentsReference
+        | OwnerFault::InvalidOutputRoot
+        | OwnerFault::OperationConsumed
+        | OwnerFault::OperationNotReady
+        | OwnerFault::Unlisted => Stop(Invariant::ConstructionOwnerRefusal),
+    }
+}
+
 pub(super) fn construction_error(
     control: &mut ParseControl,
     error: HtmlConstructionError,
 ) -> SessionError {
-    if error.is_foreign_builder() || error.is_unknown_node() {
-        SessionError::ForeignNode
-    } else if error.is_root_move() {
-        SessionError::RootMove
-    } else if error.is_association_move() {
-        SessionError::AssociationMove
-    } else if error.is_parent_cannot_have_children() {
-        SessionError::NotContainer
-    } else if error.is_template_contents_required() {
-        SessionError::TemplateContentsRequired
-    } else if error.is_wrong_sibling() || error.is_parent_child_conflict() {
-        SessionError::WrongSibling
-    } else if error.is_cycle() {
-        SessionError::Cycle
-    } else if error.is_shared_allocation_aliased() {
-        SessionError::Stop(
-            control.fail_invariant(crate::parser::control::Invariant::SharedAllocationAliased),
-        )
-    } else if error.is_representation_exhausted() {
-        SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
-    } else {
-        SessionError::Stop(
-            control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch),
-        )
+    report(control, disposition(classify(&error)))
+}
+
+/// Reports a disposition to the session, latching a stop where it names one.
+fn report(control: &mut ParseControl, disposition: Disposition) -> SessionError {
+    match disposition {
+        Disposition::Session(error) => error,
+        Disposition::Invariant(invariant) => SessionError::Stop(control.fail_invariant(invariant)),
+        Disposition::Representation => {
+            SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
+        }
+        Disposition::AllocationFailed => {
+            SessionError::Stop(control.construction_allocation_failed(0))
+        }
     }
 }
+
 pub(super) struct PendingConstruction {
     operation: Option<HtmlConstructionOperation>,
     before_edges: usize,
@@ -104,7 +334,7 @@ impl ConstructionOwner {
             .next_action()
             .map_err(|error| construction_error(control, error))?
         else {
-            return Err(latch_registry_row(control));
+            return Err(latch_owner_refusal(control));
         };
         let HtmlConstructionActionDescription::InitializeIdentity {
             payload_bytes,
@@ -112,11 +342,13 @@ impl ConstructionOwner {
             provider_calls,
         } = action.description()
         else {
-            return Err(latch_registry_row(control));
+            return Err(latch_owner_refusal(control));
         };
         control.prepare_construction_share(payload_bytes)?;
+        // The first call was charged above; a plan that counts none differs
+        // from the work already charged for it.
         let Some(further_calls) = provider_calls.checked_sub(1) else {
-            return Err(latch_registry_row(control));
+            return Err(plan_below_charge(control));
         };
         control.charge(WorkCategory::ProviderCall, further_calls as u64)?;
         control.admit_atomic_layout(initialized_bytes)?;
@@ -497,7 +729,7 @@ impl ConstructionOwner {
             }
             HtmlConstructionActionDescription::InitializeIdentity { .. } => {
                 // Identity belongs to the separate initialization owner.
-                return Err(latch_registry_row(control));
+                return Err(latch_owner_refusal(control));
             }
         }
         let performed = match reserved_capacity {
@@ -508,7 +740,7 @@ impl ConstructionOwner {
             Ok(observation) => {
                 if let Some(bank) = allocation {
                     let Some(snapshot) = observation.allocation() else {
-                        return Err(latch_registry_row(control));
+                        return Err(latch_owner_refusal(control));
                     };
                     let slot = self.allocation_slot(control, bank)?;
                     control.observe_construction_allocation(snapshot, slot, expected)?;
