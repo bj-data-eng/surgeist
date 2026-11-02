@@ -959,7 +959,22 @@ impl HtmlConstructionOperation {
                         }
                         _ => return Err(HtmlConstructionError::WrongNodeKind),
                     }
-                    plan.copied_bytes = add(plan.copied_bytes, size_of::<HtmlNodeKind>())?;
+                    // A name replacement assigns the name, and clears the link
+                    // history unless the new name keeps it; every other payload
+                    // assigns the record's kind.
+                    let (writes, bytes) = match content {
+                        HtmlConstructionContent::ElementName(_) => {
+                            let history = usize::from(!plan.link);
+                            (
+                                1 + history,
+                                size_of::<QualifiedName>()
+                                    + history * size_of::<Option<crate::HtmlLinkFlags>>(),
+                            )
+                        }
+                        _ => (1, size_of::<HtmlNodeKind>()),
+                    };
+                    plan.record_writes = add(plan.record_writes, writes)?;
+                    plan.copied_bytes = add(plan.copied_bytes, bytes)?;
                 }
                 Command::ReplaceAttributes { attributes, .. } => {
                     let HtmlNodeKind::Element(old) = &arena.records[a].kind else {
@@ -967,6 +982,8 @@ impl HtmlConstructionOperation {
                     };
                     plan.new_attributes = attributes.as_slice().len();
                     plan.old_attributes = old.attributes().len();
+                    // The element's attribute collection is the one assignment.
+                    plan.record_writes = add(plan.record_writes, 1)?;
                     plan.copied_bytes = add(plan.copied_bytes, size_of::<OrderedAttributes>())?;
                 }
                 Command::AttachShadow { .. } => {
@@ -1226,11 +1243,12 @@ impl HtmlConstructionOperation {
                     )?;
                 }
                 Command::SetDocumentMode { .. } => {
-                    plan.copied_bytes = add(plan.copied_bytes, size_of::<HtmlDocumentMode>())?;
+                    plan.copied_bytes = add(plan.copied_bytes, size_of::<HtmlNodeKind>())?;
                     plan.record_writes += 1;
                 }
                 Command::SetLinkFlags { .. } => {
-                    plan.copied_bytes = add(plan.copied_bytes, size_of::<crate::HtmlLinkFlags>())?;
+                    plan.copied_bytes =
+                        add(plan.copied_bytes, size_of::<Option<crate::HtmlLinkFlags>>())?;
                     plan.record_writes += 1;
                 }
                 _ => {}
@@ -1915,6 +1933,12 @@ impl HtmlConstructionReadyOperation {
         }
         if !plan.no_op {
             let arena = &mut storage.arena;
+            // A reservation and a transfer check assign nothing, not even the
+            // unchanged usage, and describe no write.
+            let assigns_usage = !matches!(
+                command,
+                Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. }
+            );
             // Depths move while the edges are the ones planning walked.
             plan.commit_depths(arena);
             match command {
@@ -2046,7 +2070,9 @@ impl HtmlConstructionReadyOperation {
                 }
                 Command::Publish { .. } => unreachable!("publication handled separately"),
             }
-            arena.usage = plan.usage;
+            if assigns_usage {
+                arena.usage = plan.usage;
+            }
         }
         HtmlConstructionCommit::Changed {
             storage,
