@@ -1164,14 +1164,26 @@ impl SessionStorage {
     /// selections of a theme color and of a color scheme take their candidates
     /// "in tree order"), and two records in different branches are ordered by
     /// the children of their lowest common ancestor, so the levels between each
-    /// record and that ancestor are looked at. Siblings cost two looks. Other
-    /// records climb in step, testing each level against the levels the other
-    /// has passed, so the climb stops at the lowest common ancestor and costs
-    /// two looks for each level between the farther record and it; a record
-    /// that reaches the root first stops, and the other goes on alone for one
-    /// look a level. Climbs that meet only beyond [`CHAIN`] levels of each
-    /// record are done again by their depths, two looks for each level to the
-    /// root.
+    /// record and that ancestor are looked at. A look is one read of a record's
+    /// parent. With `a` and `b` the levels from the two records up to their
+    /// lowest common ancestor:
+    ///
+    /// * Siblings cost 2 looks.
+    /// * When the ancestor is within 24 levels of both records, they climb in
+    ///   step, testing each level against the other's, and the climb ends at
+    ///   it: 2 looks for each of the greater of `a` and `b`, plus the 2 looks
+    ///   at the parents.
+    /// * When one record reaches the root first, at depth `s`, it stops, and
+    ///   the other goes on alone: `s` looks in step on each side, then 1 look
+    ///   for each level the other still climbs to the ancestor, so about
+    ///   `s + b` for the other's `b` levels. A shallow record against a deep
+    ///   one costs about the depth of the deep one.
+    /// * When neither record has reached the root or the ancestor after 24
+    ///   levels, the climb is done again by depths: 48 looks wasted, then both
+    ///   records are climbed to the root (their two depths), the deeper is
+    ///   lifted to the other's depth and both climb to the ancestor. Two deep
+    ///   records whose ancestor is far up cost about 4 looks for each level of
+    ///   their depth, 2 to learn the depths and 2 to meet.
     pub(super) fn precedes(
         &self,
         c: &mut ParseControl,
