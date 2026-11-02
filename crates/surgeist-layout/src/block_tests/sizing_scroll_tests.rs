@@ -2332,7 +2332,9 @@ impl<'input> Compute<'input> for CalcLeafTreeCompute<'input> {
         crate::LayoutInputViewOf::Box(self.node_input(node))
     }
 
-    fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
+    fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        let node = entry.node();
+        let layout = entry.output();
         self.layouts.insert(node, layout);
     }
 
@@ -2630,7 +2632,9 @@ impl<'input> Compute<'input> for Fri05C03BlockPassTreeCompute<'input> {
         crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
-    fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
+    fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        let node = entry.node();
+        let layout = entry.output();
         self.layouts.push((node, layout));
     }
 

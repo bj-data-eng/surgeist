@@ -65,7 +65,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for TriangleHost<S> {
         l::LayoutTree::cache_get(&self.inner, node, input, context)
     }
 
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         l::LayoutTree::unrounded_layout(&self.inner, node)
     }
 

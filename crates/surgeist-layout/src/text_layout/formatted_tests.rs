@@ -290,6 +290,8 @@ fn a_summary_receipt_cannot_authenticate_different_geometry_or_canonical_frames(
     state.frames = Arc::from([super::super::state::CanonicalFrame {
         node: 0,
         origin: crate::Point::new(1.0, 0.0),
+        normal_origin: crate::Point::new(1.0, 0.0),
+        normal: crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
         output: crate::NodeOutputOf::new(),
     }]);
     assert!(!state.cache_matches(0, &input(), context, output));

@@ -849,7 +849,7 @@ enum Fri07C02CollapsedOutputMeasureError {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Fri07C02CollapsedOutputRetained<S: LayoutScalar> {
-    unrounded: HashMap<u32, NodeOutputOf<S>>,
+    unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     final_outputs: HashMap<u32, NodeOutputOf<S>>,
     caches: HashMap<u32, CacheOf<S>>,
 }
@@ -990,7 +990,10 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CollapsedOutputTree<S> {
         output
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(
+        &self,
+        node: Self::Node,
+    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
@@ -1010,7 +1013,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C02CollapsedOutputTree<S>
             prepared.caches.remove(node);
         }
         for entry in batch.unrounded_entries() {
-            prepared.unrounded.insert(entry.node(), entry.output());
+            prepared.unrounded.insert(entry.node(), *entry);
         }
         for entry in batch.final_entries() {
             prepared.final_outputs.insert(entry.node(), entry.output());

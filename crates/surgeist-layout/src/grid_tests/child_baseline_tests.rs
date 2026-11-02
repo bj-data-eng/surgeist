@@ -1726,7 +1726,9 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            let node = entry.node();
+            let layout = entry.output();
             self.layouts.insert(node, layout);
         }
 
@@ -2652,7 +2654,9 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            let node = entry.node();
+            let layout = entry.output();
             self.layouts.insert(node, layout);
         }
 
@@ -4394,14 +4398,15 @@ fn column_subgrid_baseline_alignment_does_not_grow_auto_parent_row_twice() {
         ),
     )
     .unwrap();
-    tree.borrow_compute().set_unrounded(
-        1,
-        NodeOutput {
-            size: output.size,
-            content_size: output.content_size,
-            ..NodeOutput::new()
-        },
-    );
+    tree.borrow_compute()
+        .set_unrounded(crate::test_support::layout_tree::ordinary_unrounded_box(
+            1,
+            NodeOutput {
+                size: output.size,
+                content_size: output.content_size,
+                ..NodeOutput::new()
+            },
+        ));
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     assert_eq!(output.size, Size::new(45.0, 30.0));

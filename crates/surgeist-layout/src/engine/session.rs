@@ -10,8 +10,7 @@ use crate::scroll::SettledAutoScrollbarState;
 use crate::{
     CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputEntryOf,
     InlineFragmentOutputOf, LayoutCacheClearEntry, LayoutCacheStoreEntryOf, LayoutInputViewOf,
-    LayoutOutputEntryOf, LayoutScalar, LayoutTree, NodeInputOf, NodeOutputOf, RunMode, Size,
-    Traverse,
+    LayoutOutputEntryOf, LayoutScalar, LayoutTree, NodeInputOf, RunMode, Size, Traverse,
 };
 
 type SessionResult<Tree, T> = LayoutResultOf<
@@ -98,7 +97,6 @@ pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
     stores: Vec<LayoutCacheStoreEntryOf<Node, S>>,
     clears: Vec<LayoutCacheClearEntry<Node>>,
     pending: Vec<crate::text_layout::state::PendingParagraph<Node>>,
-    atomic_origins: Vec<(Node, crate::Point<f64>)>,
     absolute_baselines: Vec<(Node, f64)>,
     scope_fragments: Vec<crate::text_layout::state::ScopeFragmentGroup<Node, S>>,
 }
@@ -296,14 +294,14 @@ where
         &self,
         root: Tree::Node,
     ) -> SessionResult<Tree, CanonicalFrames<Tree>> {
-        let mut pending = vec![(root, crate::Point::<f64>::ZERO)];
+        use crate::output::{AtomicReadbackPhase, GeometryStateOf};
+        let mut pending = vec![(root, crate::Point::<f64>::ZERO, crate::Point::<f64>::ZERO)];
         let mut frames = Vec::new();
-        while let Some((node, parent_origin)) = pending.pop() {
-            let output = self
+        while let Some((node, parent_visual, parent_normal)) = pending.pop() {
+            let entry = self
                 .final_entries
                 .iter()
                 .find(|entry| entry.node() == node)
-                .map(LayoutOutputEntryOf::output)
                 .ok_or_else(|| {
                     LayoutErrorOf::new(
                         LayoutErrorSiteOf::Node(node),
@@ -313,35 +311,66 @@ where
                         ),
                     )
                 })?;
-            let origin = crate::Point::new(
-                parent_origin.x + output.location.x.to_f64(),
-                parent_origin.y + output.location.y.to_f64(),
-            );
-            for (base, delta, value) in [
-                (parent_origin.x, output.location.x.to_f64(), origin.x),
-                (parent_origin.y, output.location.y.to_f64(), origin.y),
-            ] {
-                let reason = if !value.is_finite() {
-                    Some(crate::LayoutTextNumericError::NonFinite)
-                } else if delta != 0.0 && value == base {
-                    Some(crate::LayoutTextNumericError::NonZeroLost)
-                } else {
-                    None
-                };
-                if let Some(reason) = reason {
+            let output = entry.output();
+            let (normal, atomic_origins) = match entry.geometry_state() {
+                GeometryStateOf::OrdinaryCanonical { normal } => (normal, None),
+                GeometryStateOf::CanonicalAtomic {
+                    normal,
+                    normal_origin,
+                    visual_origin,
+                    readback: AtomicReadbackPhase::Finalized,
+                    ..
+                } => (normal, Some((normal_origin, visual_origin))),
+                _ => {
                     return Err(LayoutErrorOf::new(
                         LayoutErrorSiteOf::Node(node),
                         LayoutOperation::TextPlacement,
-                        LayoutErrorKindOf::TextNumeric {
-                            value: if value.is_finite() { delta } else { value },
-                            reason,
-                        },
+                        LayoutErrorKindOf::InternalInvariant(
+                            LayoutInternalInvariant::InvalidOutputGeometryPhase,
+                        ),
                     ));
                 }
-            }
+            };
+            let origin_sum = |parent: crate::Point<f64>, location: crate::Point<Tree::Scalar>| {
+                let mut result = parent;
+                for (base, delta, target) in [
+                    (parent.x, location.x.to_f64(), &mut result.x),
+                    (parent.y, location.y.to_f64(), &mut result.y),
+                ] {
+                    let value = base + delta;
+                    let reason = if !value.is_finite() {
+                        Some(crate::LayoutTextNumericError::NonFinite)
+                    } else if delta != 0.0 && value == base {
+                        Some(crate::LayoutTextNumericError::NonZeroLost)
+                    } else {
+                        None
+                    };
+                    if let Some(reason) = reason {
+                        return Err(LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::TextPlacement,
+                            LayoutErrorKindOf::TextNumeric {
+                                value: if value.is_finite() { delta } else { value },
+                                reason,
+                            },
+                        ));
+                    }
+                    *target = value;
+                }
+                Ok(result)
+            };
+            let (normal_origin, origin) = match atomic_origins {
+                Some(origins) => origins,
+                None => (
+                    origin_sum(parent_normal, normal.location)?,
+                    origin_sum(parent_visual, output.location)?,
+                ),
+            };
             frames.push(crate::text_layout::state::CanonicalFrame {
                 node,
                 origin,
+                normal_origin,
+                normal,
                 output,
             });
             pending.extend(
@@ -350,7 +379,7 @@ where
                     .collect::<Vec<_>>()
                     .into_iter()
                     .rev()
-                    .map(|child| (child, origin)),
+                    .map(|child| (child, origin, normal_origin)),
             );
         }
         Ok(frames)
@@ -435,7 +464,6 @@ where
             text.pending.clear();
             text.boxes.clear();
             text.scope_fragments.clear();
-            text.atomic_origins.clear();
             text.absolute_baselines.clear();
         }
         self.native_inline_runs.clear();
@@ -627,15 +655,35 @@ where
                 continue;
             }
             visited.push(node);
-            let Some(output) = self.tree.unrounded_layout(node) else {
+            let Some(entry) = self.tree.unrounded_layout(node) else {
                 return false;
             };
-            restored.push((node, output));
+            if entry.node() != node || !entry.geometry_state().is_unrounded() {
+                return false;
+            }
+            if let crate::output::GeometryStateOf::CanonicalAtomic {
+                normal,
+                normal_origin,
+                visual_origin,
+                ..
+            } = entry.geometry_state()
+            {
+                let current = self.text.as_ref().and_then(|text| text.frame(node));
+                if current.is_none_or(|frame| {
+                    frame.normal != normal
+                        || frame.normal_origin != normal_origin
+                        || frame.origin != visual_origin
+                        || frame.output.size != entry.output().size
+                }) {
+                    return false;
+                }
+            }
+            restored.push(entry);
             let children = self.tree.children(node).collect::<Vec<_>>();
             pending.extend(children.into_iter().rev());
         }
-        for (node, output) in restored {
-            self.set_unrounded(node, output);
+        for entry in restored {
+            self.set_unrounded(entry);
         }
         true
     }
@@ -792,7 +840,8 @@ where
         self.text.as_mut()
     }
 
-    fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>) {
+    fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        let node = entry.node();
         if let Some(index) = self
             .unrounded_entries
             .iter()
@@ -800,8 +849,7 @@ where
         {
             self.unrounded_entries.remove(index);
         }
-        self.unrounded_entries
-            .push(LayoutOutputEntryOf::new(node, layout));
+        self.unrounded_entries.push(entry);
     }
 
     fn publish_native_inline_run(
@@ -1084,22 +1132,12 @@ where
             std::sync::Arc::from([])
         };
         let output = probe.compute_child(node, input)?;
-        let (pending, atomic_origins, absolute_baselines, scope_fragments, formatted, boxes) =
+        let (pending, absolute_baselines, scope_fragments, formatted, boxes) =
             probe.text.map_or_else(
-                || {
-                    (
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        None,
-                        Vec::new(),
-                    )
-                },
+                || (Vec::new(), Vec::new(), Vec::new(), None, Vec::new()),
                 |text| {
                     (
                         text.pending,
-                        text.atomic_origins,
                         text.absolute_baselines,
                         text.scope_fragments,
                         text.formatted,
@@ -1130,7 +1168,6 @@ where
             stores: probe.cache_store_entries,
             clears: probe.cache_clear_entries,
             pending,
-            atomic_origins,
             absolute_baselines,
             scope_fragments,
         }))
@@ -1187,7 +1224,7 @@ where
             groups.accept(accepted);
         }
         for entry in &packet.entries {
-            self.set_unrounded(entry.node(), entry.output());
+            self.set_unrounded(*entry);
         }
         for group in &packet.fragments {
             self.set_unrounded_inline_fragment_state(group.node, group.fragments.clone());
@@ -1250,7 +1287,6 @@ where
             for paragraph in &packet.pending {
                 text.record(paragraph.clone());
             }
-            text.record_atomic_origins(packet.atomic_origins.clone());
             for &(node, baseline) in &packet.absolute_baselines {
                 text.record_absolute_baseline(node, baseline);
             }
@@ -1281,24 +1317,20 @@ where
         })
     }
 
-    fn canonical_text_atomic_origin(&self, node: Self::Node) -> Option<crate::Point<f64>> {
-        self.text
-            .as_ref()?
-            .atomic_origins
-            .iter()
-            .find_map(|(subject, origin)| (*subject == node).then_some(*origin))
-    }
-
     fn unrounded(
         &self,
         node: Self::Node,
-    ) -> LayoutResultOf<Self::Node, NodeOutputOf<Self::Scalar>, Self::Scalar, Tree::MeasureError>
-    {
+    ) -> LayoutResultOf<
+        Self::Node,
+        LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+        Self::Scalar,
+        Tree::MeasureError,
+    > {
         self.unrounded_entries
             .iter()
             .rev()
             .find(|entry| entry.node() == node)
-            .map(LayoutOutputEntryOf::output)
+            .copied()
             .ok_or_else(|| {
                 LayoutErrorOf::new(
                     LayoutErrorSiteOf::Node(node),
@@ -1310,7 +1342,8 @@ where
             })
     }
 
-    fn set_final(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>) {
+    fn set_final(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        let node = entry.node();
         if let Some(index) = self
             .final_entries
             .iter()
@@ -1318,8 +1351,7 @@ where
         {
             self.final_entries.remove(index);
         }
-        self.final_entries
-            .push(LayoutOutputEntryOf::new(node, layout));
+        self.final_entries.push(entry);
     }
 
     fn unrounded_inline_fragment_state(
@@ -1471,6 +1503,9 @@ where
             .push(LayoutCacheClearEntry::new(node));
     }
 }
+
+#[cfg(test)]
+use crate::NodeOutputOf;
 
 #[cfg(test)]
 #[path = "formatted_session_tests.rs"]
@@ -1678,8 +1713,19 @@ mod tests {
         };
         let mut session = ComputeSession::new(&tree, Vec::new());
         for node in [2, 4, 5, 3, 1, 0] {
-            Compute::set_unrounded(&mut session, node, NodeOutputOf::new());
-            Round::set_final(&mut session, node, NodeOutputOf::new());
+            let normal = crate::output::NormalGeometryOf::box_geometry(
+                Point::ZERO,
+                Size::ZERO,
+                ScrollRectOf::try_new(Point::ZERO, Size::ZERO).unwrap(),
+            );
+            Compute::set_unrounded(
+                &mut session,
+                LayoutOutputEntryOf::ordinary_unrounded(node, normal, NodeOutputOf::new()),
+            );
+            Round::set_final(
+                &mut session,
+                LayoutOutputEntryOf::ordinary_canonical(node, normal, NodeOutputOf::new()),
+            );
         }
 
         let batch = session.complete_for_root(0);
@@ -1769,7 +1815,14 @@ mod tests {
             let mut session = ComputeSession::with_flow(&capture, Vec::new());
             let mut output = NodeOutputOf::new();
             output.location = Point::new(S::from_f64(0.25), S::from_f64(0.5));
-            Compute::set_unrounded(&mut session, 1, output);
+            Compute::set_unrounded(
+                &mut session,
+                LayoutOutputEntryOf::ordinary_unrounded(
+                    1,
+                    crate::output::NormalGeometryOf::metadata(output.location, output.size),
+                    output,
+                ),
+            );
             Compute::set_unrounded_inline_fragment_state(&mut session, 1, Some(fragments.clone()));
             round_layout(&mut session, 1).unwrap();
             assert_eq!(session.final_entries[0].output(), output);
@@ -1805,7 +1858,7 @@ mod grid_overflow_observation_tests {
 
     #[derive(Clone, Debug, Default, PartialEq)]
     struct ObservationRetainedState<S: LayoutScalar> {
-        unrounded: HashMap<u32, NodeOutputOf<S>>,
+        unrounded: HashMap<u32, LayoutOutputEntryOf<u32, S>>,
         final_outputs: HashMap<u32, NodeOutputOf<S>>,
         caches: HashMap<u32, CacheOf<S>>,
     }
@@ -1819,7 +1872,7 @@ mod grid_overflow_observation_tests {
                 prepared.caches.remove(node);
             }
             for entry in batch.unrounded_entries() {
-                prepared.unrounded.insert(entry.node(), entry.output());
+                prepared.unrounded.insert(entry.node(), *entry);
             }
             for entry in batch.final_entries() {
                 prepared.final_outputs.insert(entry.node(), entry.output());
@@ -2012,7 +2065,7 @@ mod grid_overflow_observation_tests {
                 .push((node, *input, output.is_some()));
             output
         }
-        fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+        fn unrounded_layout(&self, node: u32) -> Option<LayoutOutputEntryOf<u32, S>> {
             self.retained.unrounded.get(&node).copied()
         }
     }

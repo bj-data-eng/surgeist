@@ -1969,6 +1969,7 @@ struct TestNode {
     cache: layout::Cache,
     unrounded: layout::NodeOutput,
     unrounded_present: bool,
+    unrounded_entry: Option<layout::LayoutOutputEntry<usize>>,
     final_layout: layout::NodeOutput,
     final_layout_present: bool,
     unrounded_inline_fragments: Option<Vec<layout::InlineFragmentOutput>>,
@@ -2172,6 +2173,7 @@ impl TestTree {
             cache: layout::Cache::new(),
             unrounded: layout::NodeOutput::new(),
             unrounded_present: false,
+            unrounded_entry: None,
             final_layout: layout::NodeOutput::new(),
             final_layout_present: false,
             unrounded_inline_fragments: None,
@@ -2286,6 +2288,7 @@ impl TestTree {
             cache: layout::Cache::new(),
             unrounded: layout::NodeOutput::new(),
             unrounded_present: false,
+            unrounded_entry: None,
             final_layout: layout::NodeOutput::new(),
             final_layout_present: false,
             unrounded_inline_fragments: None,
@@ -2325,6 +2328,7 @@ impl TestTree {
             cache: layout::Cache::new(),
             unrounded: layout::NodeOutput::new(),
             unrounded_present: false,
+            unrounded_entry: None,
             final_layout: layout::NodeOutput::new(),
             final_layout_present: false,
             unrounded_inline_fragments: None,
@@ -2619,10 +2623,12 @@ impl layout::LayoutTree for TestTree {
         self.nodes[node].cache.get_with_context(input, context)
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<layout::NodeOutput> {
-        self.nodes[node]
-            .unrounded_present
-            .then_some(self.nodes[node].unrounded)
+    fn unrounded_layout(&self, node: Self::Node) -> Option<layout::LayoutOutputEntry<usize>> {
+        if self.nodes[node].unrounded_present {
+            self.nodes[node].unrounded_entry
+        } else {
+            None
+        }
     }
 
     fn float_exclusion_interval(
@@ -2714,6 +2720,7 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
             let state = &mut prepared[*node];
             state.cache.clear();
             state.unrounded_present = false;
+            state.unrounded_entry = None;
             state.final_layout_present = false;
             state.unrounded_inline_fragments = None;
             state.final_inline_fragments = None;
@@ -2724,6 +2731,7 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
         for entry in batch.unrounded_entries() {
             let state = &mut prepared[entry.node()];
             state.unrounded = entry.output();
+            state.unrounded_entry = Some(*entry);
             state.unrounded_present = true;
             if matches!(state.layout_input, layout::LayoutInput::InlineText(_)) {
                 state.unrounded_inline_fragments = Some(Vec::new());
@@ -7461,6 +7469,7 @@ mod tests {
                 cache: layout::Cache::new(),
                 unrounded: layout::NodeOutput::new(),
                 unrounded_present: true,
+                unrounded_entry: None,
                 final_layout: layout::NodeOutput::new(),
                 final_layout_present: true,
                 unrounded_inline_fragments: None,
@@ -7509,6 +7518,7 @@ mod tests {
                 cache: layout::Cache::new(),
                 unrounded: output,
                 unrounded_present: true,
+                unrounded_entry: None,
                 final_layout: output,
                 final_layout_present: true,
                 unrounded_inline_fragments: None,
@@ -10425,6 +10435,7 @@ mod tests {
                 cache: layout::Cache::new(),
                 unrounded: layout::NodeOutput::new(),
                 unrounded_present: false,
+                unrounded_entry: None,
                 final_layout: layout::NodeOutput::new(),
                 final_layout_present: false,
                 unrounded_inline_fragments: None,

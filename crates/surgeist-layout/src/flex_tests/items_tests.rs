@@ -1509,7 +1509,7 @@ fn flex_compute_size_short_circuits_when_container_size_is_definite() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
+        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
         fn compute_child(
             &mut self,
@@ -1960,7 +1960,7 @@ fn flex_compute_size_uses_definite_min_max_without_measuring_children() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
+        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
         fn compute_child(
             &mut self,

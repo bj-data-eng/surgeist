@@ -18,26 +18,40 @@ use crate::{
     RequestedAxis, RunMode, Size, SizingAlgorithm, SizingMode, Traverse,
 };
 
+/// Genuine pre-relative flow ports for one accepted absolute occurrence.
+/// Native flow can supply equal ports; Text supplies both actual frames.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct StaticPositionOf<S: LayoutScalar> {
+    pub(crate) normal: Point<S>,
+    pub(crate) visual: Point<S>,
+}
+
 pub(super) fn absolute_static_position<S: LayoutScalar>(
     cursor_block: S,
     constants: &Constants<S>,
     containing_size: Size<S>,
-) -> Point<S> {
-    constants.flow_axes.physical_point(
+) -> StaticPositionOf<S> {
+    let point = constants.flow_axes.physical_point(
         LogicalPointOf::new(
             constants.logical_content_box_inset().inline_start,
             cursor_block,
         ),
         LogicalSizeOf::new(S::ZERO, S::ZERO),
         containing_size,
-    )
+    );
+    // This ordinary producer precedes relative ancestry/corner projection in
+    // either channel. Neither port is a recovery from a missing Text port.
+    StaticPositionOf {
+        normal: point,
+        visual: point,
+    }
 }
 
 pub(super) fn layout_absolute_children<'input, Tree, S, M>(
     tree: &mut Tree,
     container_node: <Tree as Traverse>::Node,
     children: &[<Tree as Traverse>::Node],
-    static_positions: &[(<Tree as Traverse>::Node, Point<S>)],
+    static_positions: &[(<Tree as Traverse>::Node, StaticPositionOf<S>)],
     container: Size<S>,
     constants: &Constants<S>,
     contributions: &mut ScrollContributionAccumulatorOf<S>,
@@ -221,40 +235,44 @@ where
         let static_x_direction =
             static_axis_direction(constants.flow_axes, PhysicalAxis::Horizontal);
         let static_y_direction = static_axis_direction(constants.flow_axes, PhysicalAxis::Vertical);
-        let location = Point::new(
-            AbsoluteAxis {
-                start: inset.left,
-                end: inset.right,
-                direction: if inset.left.is_none() && inset.right.is_none() {
-                    static_x_direction
-                } else {
-                    constants.direction
-                },
-                area_start: area_offset.x,
-                area_size: area_size.width,
-                size: final_size.width,
-                margin_start: margin.left,
-                margin_end: margin.right,
-                static_position: static_position.x,
-            }
-            .location(),
-            AbsoluteAxis {
-                start: inset.top,
-                end: inset.bottom,
-                direction: if inset.top.is_none() && inset.bottom.is_none() {
-                    static_y_direction
-                } else {
-                    Direction::Ltr
-                },
-                area_start: area_offset.y,
-                area_size: area_size.height,
-                size: final_size.height,
-                margin_start: margin.top,
-                margin_end: margin.bottom,
-                static_position: static_position.y,
-            }
-            .location(),
-        );
+        let locate = |point: Point<S>| {
+            Point::new(
+                AbsoluteAxis {
+                    start: inset.left,
+                    end: inset.right,
+                    direction: if inset.left.is_none() && inset.right.is_none() {
+                        static_x_direction
+                    } else {
+                        constants.direction
+                    },
+                    area_start: area_offset.x,
+                    area_size: area_size.width,
+                    size: final_size.width,
+                    margin_start: margin.left,
+                    margin_end: margin.right,
+                    static_position: point.x,
+                }
+                .location(),
+                AbsoluteAxis {
+                    start: inset.top,
+                    end: inset.bottom,
+                    direction: if inset.top.is_none() && inset.bottom.is_none() {
+                        static_y_direction
+                    } else {
+                        Direction::Ltr
+                    },
+                    area_start: area_offset.y,
+                    area_size: area_size.height,
+                    size: final_size.height,
+                    margin_start: margin.top,
+                    margin_end: margin.bottom,
+                    static_position: point.y,
+                }
+                .location(),
+            )
+        };
+        let normal_location = locate(static_position.normal);
+        let location = locate(static_position.visual);
         let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
             tree,
             child,
@@ -289,8 +307,13 @@ where
                 .to_f64();
             state.record_absolute_baseline(child, selected);
         }
-        tree.set_unrounded(
+        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
             child,
+            crate::output::NormalGeometryOf::box_geometry(
+                normal_location,
+                final_size,
+                scroll_geometry.content_box(),
+            ),
             NodeOutputOf::<S> {
                 source_index: crate::SourceIndex::new(source_index),
                 location,
@@ -303,7 +326,7 @@ where
                 ..NodeOutputOf::new()
             }
             .with_scroll_geometry(Some(scroll_geometry)),
-        );
+        ));
     }
 
     Ok(())

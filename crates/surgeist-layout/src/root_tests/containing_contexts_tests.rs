@@ -393,7 +393,7 @@ impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C07DirectTree<'input,
         self.0.layout_input(node)
     }
 
-    fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutputOf<S>) {}
+    fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
     fn compute_child(
         &mut self,
@@ -5620,7 +5620,9 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<S>) {
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            let node = entry.node();
+            let layout = entry.output();
             self.layouts.insert(node, layout);
         }
 

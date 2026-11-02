@@ -127,7 +127,7 @@ impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C03FixedSizeTreeCompu
         }
     }
 
-    fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutputOf<S>) {}
+    fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
     fn compute_child(
         &mut self,

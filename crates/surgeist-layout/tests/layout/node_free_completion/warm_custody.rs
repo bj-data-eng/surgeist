@@ -4,7 +4,7 @@ use super::*;
 struct WarmRoot<'a, S: l::LayoutScalar> {
     actual: &'a Root<S>,
     cache: l::CacheOf<S>,
-    unrounded: Option<l::NodeOutputOf<S>>,
+    unrounded: Option<l::LayoutOutputEntryOf<u32, S>>,
 }
 impl<S: l::LayoutScalar> l::Traverse for WarmRoot<'_, S> {
     type Node = u32;
@@ -40,7 +40,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for WarmRoot<'_, S> {
         assert_eq!(node, 0);
         self.cache.get_with_context(input, context)
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         assert_eq!(node, 0);
         self.unrounded
     }
@@ -97,12 +97,11 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
             .store_with_context(row.input(), row.context(), row.output());
     }
     host.unrounded = Some(
-        native
+        *native
             .unrounded_entries()
             .iter()
             .find(|row| row.node() == 0)
-            .unwrap()
-            .output(),
+            .unwrap(),
     );
     assert!(!host.cache.is_empty());
     assert!(

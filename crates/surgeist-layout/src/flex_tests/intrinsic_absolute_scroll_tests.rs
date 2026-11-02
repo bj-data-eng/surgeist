@@ -966,7 +966,7 @@ enum Fri07C01CompositionMeasureError {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Fri07C01CompositionRetained<S: LayoutScalar> {
-    unrounded: HashMap<u32, NodeOutputOf<S>>,
+    unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     final_outputs: HashMap<u32, NodeOutputOf<S>>,
     caches: HashMap<u32, CacheOf<S>>,
 }
@@ -1129,7 +1129,10 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01CompositionTree<S> {
         output
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(
+        &self,
+        node: Self::Node,
+    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
@@ -1149,7 +1152,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C01CompositionTree<S> {
             prepared.caches.remove(node);
         }
         for entry in batch.unrounded_entries() {
-            prepared.unrounded.insert(entry.node(), entry.output());
+            prepared.unrounded.insert(entry.node(), *entry);
         }
         for entry in batch.final_entries() {
             prepared.final_outputs.insert(entry.node(), entry.output());
@@ -1570,7 +1573,10 @@ impl<S: LayoutScalar> LayoutTree for Fri07C03ComposedTree<S> {
         output
     }
 
-    fn unrounded_layout(&self, node: Self::Node) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(
+        &self,
+        node: Self::Node,
+    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, S>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
@@ -1590,7 +1596,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C03ComposedTree<S> {
             prepared.caches.remove(node);
         }
         for entry in batch.unrounded_entries() {
-            prepared.unrounded.insert(entry.node(), entry.output());
+            prepared.unrounded.insert(entry.node(), *entry);
         }
         for entry in batch.final_entries() {
             prepared.final_outputs.insert(entry.node(), entry.output());
@@ -5302,15 +5308,16 @@ fn fri05_c04_flex_origin_output(
     let unrounded = output
         .scroll_geometry
         .expect("performed flex layout has geometry");
-    tree.borrow_compute().set_unrounded(
-        0,
-        NodeOutput {
-            size: output.size,
-            content_size: output.content_size,
-            ..NodeOutput::new()
-        }
-        .with_scroll_geometry(Some(unrounded)),
-    );
+    tree.borrow_compute()
+        .set_unrounded(crate::test_support::layout_tree::ordinary_unrounded_box(
+            0,
+            NodeOutput {
+                size: output.size,
+                content_size: output.content_size,
+                ..NodeOutput::new()
+            }
+            .with_scroll_geometry(Some(unrounded)),
+        ));
     crate::round_layout(&mut tree.borrow_compute(), 0).expect("canonical flex geometry rounds");
     let rounded = tree
         .final_layout(0)
@@ -5464,7 +5471,9 @@ impl<'input> Compute<'input> for Fri05C04FlexAutoPassTreeCompute<'input> {
         crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
-    fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
+    fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        let node = entry.node();
+        let layout = entry.output();
         self.layouts.push((node, layout));
     }
 

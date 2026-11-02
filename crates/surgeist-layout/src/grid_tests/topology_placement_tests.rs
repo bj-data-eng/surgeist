@@ -211,8 +211,19 @@ fn assert_fri08_c08_t03_retained_state_prepares_and_commits<S: LayoutScalar>() {
         ..NodeOutputOf::default()
     };
     let seed = CompletedLayoutBatchOf::from_entries(
-        vec![LayoutOutputEntryOf::new(9, seed_unrounded)],
-        vec![LayoutOutputEntryOf::new(9, seed_final)],
+        vec![crate::test_support::layout_tree::ordinary_unrounded_box(
+            9,
+            seed_unrounded,
+        )],
+        vec![LayoutOutputEntryOf::ordinary_canonical(
+            9,
+            crate::output::NormalGeometryOf::box_geometry(
+                seed_final.location,
+                seed_final.size,
+                ScrollRectOf::try_new(Point::ZERO, seed_final.size).unwrap(),
+            ),
+            seed_final,
+        )],
         Vec::new(),
         Vec::new(),
         vec![
@@ -238,8 +249,19 @@ fn assert_fri08_c08_t03_retained_state_prepares_and_commits<S: LayoutScalar>() {
         ..NodeOutputOf::default()
     };
     let replacement = CompletedLayoutBatchOf::from_entries(
-        vec![LayoutOutputEntryOf::new(12, replacement_unrounded)],
-        vec![LayoutOutputEntryOf::new(12, replacement_final)],
+        vec![crate::test_support::layout_tree::ordinary_unrounded_box(
+            12,
+            replacement_unrounded,
+        )],
+        vec![LayoutOutputEntryOf::ordinary_canonical(
+            12,
+            crate::output::NormalGeometryOf::box_geometry(
+                replacement_final.location,
+                replacement_final.size,
+                ScrollRectOf::try_new(Point::ZERO, replacement_final.size).unwrap(),
+            ),
+            replacement_final,
+        )],
         Vec::new(),
         Vec::new(),
         vec![LayoutCacheStoreEntryOf::new(
@@ -258,7 +280,10 @@ fn assert_fri08_c08_t03_retained_state_prepares_and_commits<S: LayoutScalar>() {
     assert!(!prepared.unrounded.contains_key(&9));
     assert!(!prepared.final_outputs.contains_key(&9));
     assert!(!prepared.caches.contains_key(&9));
-    assert_eq!(prepared.unrounded.get(&12), Some(&replacement_unrounded));
+    assert_eq!(
+        prepared.unrounded.get(&12).map(|entry| entry.output()),
+        Some(replacement_unrounded)
+    );
     assert_eq!(prepared.final_outputs.get(&12), Some(&replacement_final));
     assert_eq!(
         prepared.caches[&10].get_with_context(&cleared_input, CacheKeyContext::new()),
@@ -277,8 +302,8 @@ fn assert_fri08_c08_t03_retained_state_prepares_and_commits<S: LayoutScalar>() {
 
     tree.commit_layout_batch(prepared);
     assert_eq!(
-        tree.retained.unrounded.get(&12),
-        Some(&replacement_unrounded)
+        tree.retained.unrounded.get(&12).map(|entry| entry.output()),
+        Some(replacement_unrounded)
     );
     assert_eq!(
         tree.retained.final_outputs.get(&12),
@@ -2495,7 +2520,7 @@ fn grid_compute_size_applies_aspect_ratio_to_max_size() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
+        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
         fn compute_child(
             &mut self,
@@ -2635,7 +2660,7 @@ fn grid_content_size_mode_ignores_authored_size() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
+        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
         fn compute_child(
             &mut self,

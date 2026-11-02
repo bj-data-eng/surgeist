@@ -3810,7 +3810,9 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            let node = entry.node();
+            let layout = entry.output();
             self.layouts.insert(node, layout);
         }
 
@@ -4009,7 +4011,9 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            let node = entry.node();
+            let layout = entry.output();
             self.layouts.insert(node, layout);
         }
 
@@ -4404,7 +4408,11 @@ fn grid_spanning_item_reserves_percent_track_from_max_content_size() {
     let mut root_layout = NodeOutput::new();
     root_layout.size = output.size;
     root_layout.content_size = output.content_size;
-    tree.borrow_compute().set_unrounded(1, root_layout);
+    tree.borrow_compute()
+        .set_unrounded(crate::test_support::layout_tree::ordinary_unrounded_box(
+            1,
+            root_layout,
+        ));
 
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
     assert_eq!(
@@ -4547,7 +4555,11 @@ fn grid_spanning_item_counts_definite_minmax_floors_when_reserving_percent_track
     let mut root_layout = NodeOutput::new();
     root_layout.size = output.size;
     root_layout.content_size = output.content_size;
-    tree.borrow_compute().set_unrounded(1, root_layout);
+    tree.borrow_compute()
+        .set_unrounded(crate::test_support::layout_tree::ordinary_unrounded_box(
+            1,
+            root_layout,
+        ));
 
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
     let widths = (3..=15)

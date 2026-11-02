@@ -476,7 +476,9 @@ pub(crate) enum FinalizedBoxGeometry {
         fit: crate::AtomicFitAllocation,
         box_geometry: crate::protocol::AtomicBoxAllocation,
         alignment: crate::protocol::LineBoxAlignment,
-        rect: Rect,
+        // Finalization checks the translated border once. Its size remains the
+        // visual border size above; retaining that extent again is redundant.
+        border_origin: crate::Point,
     },
     OutOfFlow,
 }

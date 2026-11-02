@@ -78,8 +78,16 @@ fn run_in_band<S: LayoutScalar>(
                 Direction::Ltr,
             ),
             frame: super::super::run::Frame::Canonical {
-                origin: Point::ZERO,
-                size,
+                normal: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size,
+                    content_insets: crate::Edges::ZERO,
+                },
+                visual: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size,
+                    content_insets: crate::Edges::ZERO,
+                },
             },
             containing_size: size,
             content_insets: crate::Edges::ZERO,

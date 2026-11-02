@@ -5,7 +5,7 @@ use std::cell::Cell;
 #[derive(Clone)]
 struct Published<S: l::LayoutScalar> {
     caches: Vec<l::CacheOf<S>>,
-    unrounded: Vec<Option<l::NodeOutputOf<S>>>,
+    unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
     final_output: Vec<Option<l::NodeOutputOf<S>>>,
 }
 struct CachedNumeric<S: l::LayoutScalar> {
@@ -56,7 +56,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for CachedNumeric<S> {
         }
         answer
     }
-    fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<l::LayoutOutputEntryOf<u32, S>> {
         self.published.unrounded[node as usize]
     }
 }
@@ -78,7 +78,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for CachedNumeric<S> {
             next.caches[entry.node() as usize].clear();
         }
         for entry in batch.unrounded_entries() {
-            next.unrounded[entry.node() as usize] = Some(entry.output());
+            next.unrounded[entry.node() as usize] = Some(*entry);
         }
         for entry in batch.final_entries() {
             next.final_output[entry.node() as usize] = Some(entry.output());

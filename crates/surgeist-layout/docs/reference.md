@@ -58,6 +58,14 @@ Sources: [engine](../src/engine/mod.rs), [measurement](../src/measurement.rs),
   and `ResolvedWrapEdges`; [source admission](../src/inline_wrapping/source.rs).
 - Cache and failure contracts: `CacheOf`, `LayoutResultOf`, and `LayoutErrorOf`.
 
+Completed batches retain opaque `LayoutOutputEntryOf` values for both unrounded
+and final publication. A warm host returns the original unrounded entry through
+`LayoutTree::unrounded_layout`; storing only its visual `NodeOutputOf` or returning
+a final entry does not supply that custody. Layout checks the node, geometry
+phase, existing compute/cache context and any required actual canonical atomic
+frame before reuse. Unusable custody causes recomputation. Normal geometry and
+readback phase remain private; hosts do not construct or recover them.
+
 ### Node input
 
 Source: [node input](../src/node_input/mod.rs) and its domain modules.
@@ -815,8 +823,18 @@ incoming native floats outside the paragraph binding remain Layout constraints.
 Physical Text baseline
 coordinates alone do not satisfy a named font-baseline request.
 
-Canonical frames, line allocations, ordered spacing allocations and float bands
-govern same-invocation retries.
+Separate actual normal and visual canonical frames, line allocations, ordered
+spacing allocations and float bands govern same-invocation retries. Normal
+frames retain normal border and content-box facts, including used padding and
+gutters, before relative visual offsets. Fitting, normal line height and exported
+operational baselines use that frame. Visual NodeOutput and placed Text geometry
+use the actual visual frame. Ordinary rounding retains both ancestry channels;
+a canonical Text atomic retains its measured and canonical normal geometry and
+its visual canonical box without snapping either canonical box again. Named
+and scroll readback finalize once before the complete final entry is installed.
+Positioned Text occurrences retain both actual static ports from the same
+accepted selection; normal placement facts use the normal port, while physical
+publication uses its visual port.
 An unchanged selection reuses its exact finalized line, including rigid
 translation; a repeated conflicting basis refuses rather than looping.
 The common physical line anchor uses nearest-CSS-pixel rounding while retaining
@@ -866,8 +884,23 @@ that result once, then compare against the full preindent band while preserving
 raw occupied and rendered geometry. Block intrinsic inline demand follows the
 accepted line report; actual border/content/scroll extents remain independent.
 Native opaque requirements retain their
-own authority even beside a CSS margin box. Relative offsets place the physical box without being added
-to its signed flow advance; changed canonical box edges still reenter fitting.
+own authority even beside a CSS margin box. The adapter supplies
+`AtomicFlowAllocation::normal_border_inline_size` from the actual normal
+canonical border extent in Text's local inline axis. CSS fitting uses that fact
+with the normal advance and occupied bounds; the separate visual box may have
+a different pixel extent. Relative offsets and relative ancestry affect actual
+visual placement without changing normal flow, fitting, line height or exported
+normal baselines through pixel phase. Changed normal canonical facts still
+participate in the existing feedback loop.
+
+The coupled entry is a by-value private state on the existing output owner.
+Its largest geometry state determines every entry's storage cost, including
+ordinary rows. Unrounded/final arrays, retained frames, cache restoration and
+float packets carry the actual types and capacities; they do not maintain a
+second atomic-origin authority. Existing Native geometry storage keeps its
+Native resource responsibility. Feature-owned Text buffers and Layout scope
+copies retain their actual
+[scope resource accounting](../../surgeist-text/docs/scope-alignment.md#bound-each-transaction).
 
 Named Central alignment uses the existing child first/last resolver and its
 Absent synthesis, Unknown refusal and axis checks. Numeric participants retain

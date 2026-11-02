@@ -2023,7 +2023,7 @@ fn collapsed_space_and_explicit_zwsp_keep_actual_source_seams() {
 #[derive(Clone)]
 struct Retained<S: LayoutScalar> {
     caches: HashMap<u32, CacheOf<S>>,
-    outputs: HashMap<u32, NodeOutputOf<S>>,
+    outputs: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     fragments: Vec<InlineFragmentOutputEntryOf<u32, S>>,
 }
 
@@ -2089,7 +2089,7 @@ impl<S: LayoutScalar> LayoutTree for CachedTree<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
         self.retained.outputs.get(&node).copied()
     }
 }
@@ -2112,7 +2112,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedTree<S> {
                 .store_with_context(entry.input(), entry.context(), entry.output());
         }
         for entry in batch.unrounded_entries() {
-            next.outputs.insert(entry.node(), entry.output());
+            next.outputs.insert(entry.node(), *entry);
         }
         next.fragments = batch.final_inline_fragments().to_vec();
         Ok(next)

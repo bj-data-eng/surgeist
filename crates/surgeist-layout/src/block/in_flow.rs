@@ -52,7 +52,7 @@ pub(super) struct InFlowResult<Node, S: LayoutScalar> {
     pub(super) resolved_terminal_float_block_end: Option<S>,
     pub(super) contributions: BlockScrollContributions<S>,
     pub(super) baselines: super::baseline_frame::PendingBaselines,
-    pub(super) static_positions: Vec<(Node, Point<S>)>,
+    pub(super) static_positions: Vec<(Node, StaticPositionOf<S>)>,
     pub(super) pending_floats: Vec<PendingFloat<Node, S>>,
     pub(super) cursor_block: S,
     pub(super) top_margin: CollapsibleMarginOf<S>,
@@ -175,7 +175,7 @@ where
     if (set_layout || sizes_float_context)
         && let Some(inherited) = inherited
     {
-        float_exclusions.inherit_into_child(inherited, node);
+        float_exclusions.inherit_into_child(inherited);
     }
     let inherited_floats = float_exclusions.len();
     let content_box_size = Size::new(
@@ -279,12 +279,16 @@ where
                     InlineParticipantKindOf::Box(style) => {
                         if style.display == crate::Display::None {
                             if set_layout {
-                                tree.set_unrounded(
+                                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                                     child,
+                                    crate::output::NormalGeometryOf::metadata(
+                                        crate::Point::ZERO,
+                                        crate::Size::ZERO,
+                                    ),
                                     NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
                                         source_index,
                                     )),
-                                );
+                                ));
                                 tree.compute_child(
                                     child,
                                     ComputeInputOf::<S>::hidden_in_containing_pass(
@@ -346,12 +350,16 @@ where
                     InlineParticipantKindOf::LineBreak(line_break) => {
                         if line_break.display().is_none() {
                             if set_layout {
-                                tree.set_unrounded(
+                                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                                     child,
+                                    crate::output::NormalGeometryOf::metadata(
+                                        crate::Point::ZERO,
+                                        crate::Size::ZERO,
+                                    ),
                                     NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
                                         source_index,
                                     )),
-                                );
+                                ));
                             }
                             index += 1;
                             continue;
@@ -612,18 +620,7 @@ where
                     float_exclusions.clearance_block(preview_cursor_block, child_style.clear),
                 )
             };
-            let relative = relative_inset_offset(
-                child_style
-                    .common
-                    .inset
-                    .zip_size(node_inner_size, |length, basis| {
-                        resolve_auto_optional(length, basis)
-                    })
-                    .transpose_with_node(tree, child)?,
-                constants.flow_axes,
-            );
-            let inherited = float_exclusions
-                .for_ordinary_child(child_logical_location, relative != Point::ZERO);
+            let inherited = float_exclusions.for_ordinary_child(child_logical_location);
             debug_assert_eq!(child_style.display.inner_display(), crate::Display::Block);
             let accepted = tree.compute_child_with_float_context(
                 child,
@@ -934,8 +931,13 @@ where
             contributions
                 .include_in_flow_geometry(location, child_margin, scroll_geometry)
                 .map_err(|error| layout_child_geometry_error(node, child, error))?;
-            tree.set_unrounded(
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::box_geometry(
+                    flow_location,
+                    output.size,
+                    scroll_geometry.content_box(),
+                ),
                 NodeOutputOf::<S> {
                     source_index: crate::SourceIndex::new(source_index),
                     location,
@@ -948,7 +950,7 @@ where
                     ..NodeOutputOf::new()
                 }
                 .with_scroll_geometry(Some(scroll_geometry)),
-            );
+            ));
         }
 
         let child_block_end = if avoids_float_exclusions || child_style.clear != Clear::None {

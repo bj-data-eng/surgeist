@@ -41,6 +41,7 @@ mod input;
 mod scroll;
 mod sizing;
 
+pub(crate) use absolute::StaticPositionOf;
 use absolute::layout_absolute_children;
 pub(crate) use input::BlockChildProjection;
 use input::{BlockContainerProjection, block_container_projection, with_block_scroll_projections};

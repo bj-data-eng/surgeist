@@ -221,8 +221,13 @@ where
             .map_err(|error| layout_child_geometry_error(node, child, error))?;
             let output = retain_flex_scroll_geometry(output, scroll_geometry);
 
-            tree.set_unrounded(
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::box_geometry(
+                    location,
+                    final_size,
+                    scroll_geometry.content_box(),
+                ),
                 NodeOutputOf::<Tree::Scalar> {
                     source_index: crate::SourceIndex::new(source_index),
                     location,
@@ -235,7 +240,7 @@ where
                     ..NodeOutputOf::new()
                 }
                 .with_scroll_geometry(Some(scroll_geometry)),
-            );
+            ));
             Ok(Some(FlexChildContribution {
                 source_index: crate::SourceIndex::new(source_index),
                 location,
@@ -269,10 +274,11 @@ where
                 return Ok(());
             }
 
-            tree.set_unrounded(
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
                 NodeOutputOf::with_source_index(crate::SourceIndex::new(source_index)),
-            );
+            ));
             tree.compute_child(
                 child,
                 ComputeInputOf::hidden_in_containing_pass(

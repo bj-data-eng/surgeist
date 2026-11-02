@@ -5358,7 +5358,9 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
             self.inputs[&node].as_view()
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            let node = entry.node();
+            let layout = entry.output();
             self.layouts.insert(node, layout);
         }
 
@@ -5564,7 +5566,9 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             self.inputs[&node].as_view()
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            let node = entry.node();
+            let layout = entry.output();
             self.layouts.insert(node, layout);
         }
 

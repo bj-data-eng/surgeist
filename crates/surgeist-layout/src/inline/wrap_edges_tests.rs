@@ -730,7 +730,7 @@ fn internal_atomic_formatting_context_is_opaque_to_outer_forced_propagation() {
 #[derive(Clone)]
 struct Retained<S: LayoutScalar> {
     caches: std::collections::HashMap<u32, crate::CacheOf<S>>,
-    outputs: std::collections::HashMap<u32, NodeOutputOf<S>>,
+    outputs: std::collections::HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
 }
 struct Cached<S: LayoutScalar> {
     tree: PublicLayoutTreeOf<S>,
@@ -790,7 +790,7 @@ impl<S: LayoutScalar> crate::LayoutTree for Cached<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
         self.retained.outputs.get(&node).copied()
     }
 }
@@ -813,7 +813,7 @@ impl<S: LayoutScalar> crate::LayoutBatchSink<u32, S> for Cached<S> {
             );
         }
         for e in batch.unrounded_entries() {
-            next.outputs.insert(e.node(), e.output());
+            next.outputs.insert(e.node(), *e);
         }
         Ok(next)
     }
