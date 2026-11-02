@@ -843,3 +843,6 @@ reversed_case!(relative_flow_vertical_rl_grid_f32, f32, Display::Grid);
 reversed_case!(relative_flow_vertical_rl_grid_f64, f64, Display::Grid);
 reversed_case!(relative_flow_vertical_rl_block_f32, f32, Display::Block);
 reversed_case!(relative_flow_vertical_rl_block_f64, f64, Display::Block);
+
+#[path = "relative_flow/percentage_insets.rs"]
+mod percentage_insets;
