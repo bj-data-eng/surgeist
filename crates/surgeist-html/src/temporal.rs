@@ -5,6 +5,13 @@
 //! retains arbitrary decimal fractions and normalizes explicit offsets without
 //! substituting permissive parsing for author conformance. No host clock or time
 //! zone is consulted.
+//!
+//! A rejected string reports the failure of the first pinned parsing step that
+//! rejects it. Within a time component that order is the hour digits, the hour
+//! range (step 2), the colon, the minute digits, the minute range (step 5), then
+//! the seconds grammar (step 7.3) before the seconds range (step 7.4), so
+//! `24:00:00..1` reports an hour range error rather than the later fraction
+//! syntax error.
 
 pub(crate) mod interpretation;
 
@@ -1128,13 +1135,23 @@ impl<'a> TemporalValidationCursor<'a> {
                         self.week = self.pair;
                         self.step = TemporalScanStep::Finish;
                     }
+                    // §2.3.5.4 steps 2 and 5 reject an out-of-range hour or
+                    // minute before any later step can be reached.
                     TemporalPair::Hour => {
                         self.hour = self.pair;
-                        self.step = TemporalScanStep::Colon;
+                        if self.hour > 23 {
+                            self.fail(HtmlTemporalError::HourOutOfRange);
+                        } else {
+                            self.step = TemporalScanStep::Colon;
+                        }
                     }
                     TemporalPair::Minute => {
                         self.minute = self.pair;
-                        self.step = TemporalScanStep::TimeTail;
+                        if self.minute > 59 {
+                            self.fail(HtmlTemporalError::MinuteOutOfRange);
+                        } else {
+                            self.step = TemporalScanStep::TimeTail;
+                        }
                     }
                     TemporalPair::Second => {
                         self.second = self.pair;
@@ -1204,14 +1221,8 @@ impl<'a> TemporalValidationCursor<'a> {
                     self.format,
                     TemporalInputFormat::Time | TemporalInputFormat::LocalDateTime
                 ) {
-                    if self.hour > 23 {
-                        self.fail(HtmlTemporalError::HourOutOfRange);
-                        return;
-                    }
-                    if self.minute > 59 {
-                        self.fail(HtmlTemporalError::MinuteOutOfRange);
-                        return;
-                    }
+                    // Hour and minute were checked at their own steps; step 7.4
+                    // checks the seconds only after the step 7.3 grammar.
                     if self.second > 59 {
                         self.fail(HtmlTemporalError::SecondOutOfRange);
                         return;
@@ -2009,9 +2020,16 @@ impl<'a> Cursor<'a> {
             self.position += consumed;
             return Ok(plan);
         }
+        // §2.3.5.4 steps 2 and 5 check each range before the next step.
         let hour = self.pair()?;
+        if hour > 23 {
+            return Err(HtmlTemporalError::HourOutOfRange);
+        }
         self.expect(b':')?;
         let minute = self.pair()?;
+        if minute > 59 {
+            return Err(HtmlTemporalError::MinuteOutOfRange);
+        }
         let mut second_digits = &[0x30][..];
         let mut fraction_digits = &[][..];
         if self.take(b':') {
@@ -2043,13 +2061,7 @@ impl<'a> Cursor<'a> {
         } else {
             ((second_digits[0] - 0x30) * 10 + second_digits[1] - 0x30) as u8
         };
-        // Preserve the common native constructor's error order after grammar.
-        if hour > 23 {
-            return Err(HtmlTemporalError::HourOutOfRange);
-        }
-        if minute > 59 {
-            return Err(HtmlTemporalError::MinuteOutOfRange);
-        }
+        // Step 7.4 follows the step 7.3 seconds grammar.
         if second > 59 {
             return Err(HtmlTemporalError::SecondOutOfRange);
         }
