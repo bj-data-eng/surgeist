@@ -2835,6 +2835,133 @@ mod tests {
     }
 
     #[test]
+    fn month_date_and_yearless_forms_validate_and_process_identically() {
+        let year = |value: u64| HtmlYear::new(value).unwrap();
+        let month_cases: [(&str, Result<HtmlMonth, HtmlTemporalError>); 8] = [
+            ("2024-02", Ok(HtmlMonth::new(year(2024), 2).unwrap())),
+            ("0001-12", Ok(HtmlMonth::new(year(1), 12).unwrap())),
+            ("2024-00", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("2024-13", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("0000-01", Err(HtmlTemporalError::ZeroYear)),
+            ("2024-2", Err(HtmlTemporalError::InvalidSyntax)),
+            ("2024-02-01", Err(HtmlTemporalError::InvalidSyntax)),
+            ("2024-02 ", Err(HtmlTemporalError::InvalidSyntax)),
+        ];
+        for (raw, expected) in month_cases {
+            let input = text(raw);
+            assert_eq!(validate_month(&input), expected, "validate {raw}");
+            assert_eq!(parse_month(&input), expected, "parse {raw}");
+            assert_eq!(
+                borrowed(&input, TemporalPhase::Author, TemporalAlternative::Month)
+                    .map(|plan| matches!(plan, BorrowedTemporalPlan::Month(_))),
+                expected.map(|_| true),
+                "borrowed {raw}"
+            );
+        }
+        let date_cases: [(&str, Result<HtmlDate, HtmlTemporalError>); 9] = [
+            ("2024-02-29", Ok(HtmlDate::new(year(2024), 2, 29).unwrap())),
+            ("2000-02-29", Ok(HtmlDate::new(year(2000), 2, 29).unwrap())),
+            ("2023-12-31", Ok(HtmlDate::new(year(2023), 12, 31).unwrap())),
+            ("2023-02-29", Err(HtmlTemporalError::DayOutOfRange)),
+            ("1900-02-29", Err(HtmlTemporalError::DayOutOfRange)),
+            ("2023-04-31", Err(HtmlTemporalError::DayOutOfRange)),
+            ("2023-01-00", Err(HtmlTemporalError::DayOutOfRange)),
+            ("2023-13-01", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("2023-01-011", Err(HtmlTemporalError::InvalidSyntax)),
+        ];
+        for (raw, expected) in date_cases {
+            let input = text(raw);
+            assert_eq!(validate_date(&input), expected, "validate {raw}");
+            assert_eq!(parse_date(&input), expected, "parse {raw}");
+            assert_eq!(
+                borrowed(&input, TemporalPhase::Author, TemporalAlternative::Date)
+                    .map(|plan| matches!(plan, BorrowedTemporalPlan::Date(_))),
+                expected.map(|_| true),
+                "borrowed {raw}"
+            );
+        }
+        let yearless_cases: [(&str, Result<HtmlYearlessDate, HtmlTemporalError>); 12] = [
+            ("02-29", Ok(HtmlYearlessDate::new(2, 29).unwrap())),
+            ("--02-29", Ok(HtmlYearlessDate::new(2, 29).unwrap())),
+            ("12-31", Ok(HtmlYearlessDate::new(12, 31).unwrap())),
+            ("02-30", Err(HtmlTemporalError::DayOutOfRange)),
+            ("04-31", Err(HtmlTemporalError::DayOutOfRange)),
+            ("01-00", Err(HtmlTemporalError::DayOutOfRange)),
+            ("13-01", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("00-01", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("-02-29", Err(HtmlTemporalError::InvalidSyntax)),
+            ("0229", Err(HtmlTemporalError::InvalidSyntax)),
+            ("02-29x", Err(HtmlTemporalError::InvalidSyntax)),
+            // Trailing input is rejected before the month or day range applies.
+            ("13-01x", Err(HtmlTemporalError::InvalidSyntax)),
+        ];
+        for (raw, expected) in yearless_cases {
+            let input = text(raw);
+            assert_eq!(validate_yearless_date(&input), expected, "validate {raw}");
+            assert_eq!(parse_yearless_date(&input), expected, "parse {raw}");
+            for phase in [TemporalPhase::Author, TemporalPhase::Recovery] {
+                let plan = borrowed(&input, phase, TemporalAlternative::YearlessDate);
+                match (plan, expected) {
+                    (Ok(BorrowedTemporalPlan::YearlessDate(value)), Ok(want)) => {
+                        assert_eq!(value, want, "borrowed {raw}");
+                    }
+                    (Err(error), Err(want)) => assert_eq!(error, want, "borrowed {raw}"),
+                    (other, want) => panic!("{raw}: {other:?} against {want:?}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn both_day_counts_agree_with_an_independent_calendar_walk() {
+        // Walk the proleptic Gregorian calendar from 0001-01-01 one day at a
+        // time, so the zero-based day index is the expected ordinal.
+        let leap = |year: u32| year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        let length = |year: u32, month: u8| match month {
+            2 if leap(year) => 29,
+            2 => 28,
+            4 | 6 | 9 | 11 => 30,
+            _ => 31,
+        };
+        let sampled =
+            |year: u32| matches!(year, 1..=3 | 99..=101 | 399..=403 | 799..=801 | 1199..=1202);
+        let mut index: u128 = 0;
+        let mut checked = 0;
+        for year in 1_u32..=1202 {
+            for month in 1_u8..=12 {
+                for day in 1..=length(year, month) {
+                    if sampled(year) {
+                        let date =
+                            HtmlDate::new(HtmlYear::new(u64::from(year)).unwrap(), month, day)
+                                .unwrap();
+                        assert_eq!(
+                            gregorian_ordinal(&date).to_u128().unwrap(),
+                            index,
+                            "{year:04}-{month:02}-{day:02}"
+                        );
+                        let input = text(&format!("{year:04}-{month:02}-{day:02}"));
+                        let BorrowedTemporalPlan::Date(plan) =
+                            borrowed(&input, TemporalPhase::Author, TemporalAlternative::Date)
+                                .unwrap()
+                        else {
+                            panic!("date")
+                        };
+                        let preceding_cycles = u128::from((year - 1) / 400);
+                        assert_eq!(
+                            u128::from(plan.within_cycle_days()),
+                            index - preceding_cycles * 146_097,
+                            "{year:04}-{month:02}-{day:02}"
+                        );
+                        checked += 1;
+                    }
+                    index += 1;
+                }
+            }
+        }
+        assert_eq!(checked, 18 * 365 + 3);
+    }
+
+    #[test]
     fn shared_ordinal_uses_the_gregorian_origin_and_complete_cycles() {
         for (year, month, day, expected) in [
             (1, 1, 1, "0"),
