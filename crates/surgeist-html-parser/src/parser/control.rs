@@ -110,12 +110,26 @@ pub enum Invariant {
     /// fails for a fault of its own reports what that fault violates instead: a
     /// missing row, an aliased allocation, a pending operation.
     IncompleteFormAssociationCreation,
-    /// A construction registry row, record, child or payload that internal
-    /// state names is missing, out of range or of another kind, a construction
-    /// owner that the registry keeps in a slot is not there, or a position or
-    /// count that the registry's own sequencing keeps in range is not. The
-    /// range-input machine's own state and HTML's construction owner refusing
-    /// a request are reported separately.
+    /// A construction registry row or retained step is not in the state that
+    /// internal sequencing leaves it, in one of these ways:
+    ///
+    /// - a row, record, child or payload that internal state names is missing,
+    ///   out of range or of another kind, or a node handle does not resolve;
+    /// - a join or binding between rows and records cannot be made or
+    ///   disagrees, or a new row cannot be registered;
+    /// - a position, count or text extent is outside what it indexes, or
+    ///   registry arithmetic over one overflows;
+    /// - an owner, lease, pool, ticket, attribute edit, pending operation,
+    ///   terminal slot or finalization state that is kept in a slot is absent,
+    ///   or is occupied when the step needs it free;
+    /// - a retained step lacks the value its stage consumes: the form-owner
+    ///   reset's owner or stage, the stage of an attribute bank, a text-run
+    ///   scan's run kind, a recognition cursor's result, or an image-source
+    ///   guard.
+    ///
+    /// The range-input machine, HTML's construction owner refusing a request
+    /// or answering unexpectedly, and a work plan that disagrees with what was
+    /// charged are reported separately.
     RegistryRow,
     /// The range-input machine is in a state its own protocol excludes: a
     /// staged scratch or output buffer is missing, mis-sized or not where the
