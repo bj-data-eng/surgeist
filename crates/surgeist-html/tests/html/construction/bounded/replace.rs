@@ -420,8 +420,10 @@ fn renaming_a_link_to_the_same_expanded_name_keeps_its_link_history() {
 
 #[test]
 fn renaming_a_link_away_from_the_html_link_expanded_name_drops_its_link_history() {
-    // Link history requires an actual HTML link expanded name
-    // (`CreateElement::link_flags`); no other element may carry it.
+    // Contract: `docs/reference/html-crate-contracts.md`, operation table,
+    // `ReplaceContent` row (line 492): link history survives only while the
+    // new name is an HTML `link` expanded name, and is otherwise cleared. It
+    // follows `CreateElement::link_flags`, which no other element may carry.
     for (namespace, local) in [
         (Namespace::html(), "div"),
         (Namespace::svg(), "link"),
@@ -450,10 +452,13 @@ fn renaming_a_non_link_to_a_link_starts_without_link_history() {
 
 #[test]
 fn renaming_a_template_keeps_its_contents_only_while_it_stays_a_template() {
-    // Template contents exist for a template element and no other
-    // (HTML "The template element": each template element has an associated
-    // DocumentFragment; references/html-language-elements-interactive-scripting
-    // --877d6146487f--05bb1d85cc89.md, "template contents").
+    // Contract: `docs/reference/html-crate-contracts.md`, operation table,
+    // `ReplaceContent` row (line 492): a new element name keeps the record's
+    // template-ness or the operation is refused with
+    // `InvalidTemplateAssociation`. The rule is the pinned HTML one that each
+    // template element, and no other, has template contents
+    // (references/html-language-elements-interactive-scripting--877d6146487f
+    // --05bb1d85cc89.md, "template contents").
     let (owner, template) = create(storage(), element("template"));
     let contents = owner
         .node(&template)
@@ -497,6 +502,8 @@ fn renaming_a_template_keeps_its_contents_only_while_it_stays_a_template() {
 
 #[test]
 fn renaming_a_non_template_to_a_template_is_refused_because_it_has_no_contents() {
+    // Contract: the `ReplaceContent` row of the operation table (line 492); a
+    // template element must have template contents and this record has none.
     let (owner, plain) = create(storage(), element("div"));
     let usage = counters(&owner);
     let owner = refuse(
