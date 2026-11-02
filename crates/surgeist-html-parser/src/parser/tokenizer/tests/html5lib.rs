@@ -19,22 +19,17 @@
 
 use super::*;
 
-/// Why one bundled case is not asserted to match.
+/// Why one bundled case is not asserted to match: the pinned HTML edition
+/// defines different output. The case must still diverge from the corpus, and
+/// every run, in each listed initial state and both encodings, must equal the
+/// tokens (rendered as [`show_tokens`]) and ordered error codes derived from
+/// the pinned edition, so a stale record, a panic or any unrelated divergence
+/// fails.
 #[derive(Clone, Copy, Debug)]
-enum Exclusion {
-    /// The pinned HTML edition defines different output. The case must still
-    /// diverge from the corpus, and every run, in each listed initial state
-    /// and both encodings, must equal the tokens (rendered as
-    /// [`show_tokens`]) and ordered error codes derived from the pinned
-    /// edition, so a stale record, a panic or any unrelated divergence fails.
-    Spec {
-        reason: &'static str,
-        tokens: &'static str,
-        errors: &'static [&'static str],
-    },
-    /// A tracked divergence without a fix yet. Its output is not asserted
-    /// either way, but a panic still fails.
-    Defect(&'static str),
+struct Exclusion {
+    reason: &'static str,
+    tokens: &'static str,
+    errors: &'static [&'static str],
 }
 
 /// HTML877d tag open state: `<?` sets the temporary buffer to empty and enters
@@ -48,7 +43,7 @@ enum Exclusion {
 /// and `_` to whitespace, `?` or `>`; EOF in the target state also emits only
 /// end-of-file.
 const fn pi(tokens: &'static str, errors: &'static [&'static str]) -> Exclusion {
-    Exclusion::Spec {
+    Exclusion {
         reason: "HTML877d tag open state: U+003F enters processing-instruction open state",
         tokens,
         errors,
@@ -76,13 +71,6 @@ const EXCLUSIONS: &[(&str, usize, Exclusion)] = &[
     // `>` ends the target; after-target reconsumes it in PI data, which emits.
     ("test2.test", 32, pi(r#"Pi("namespace", "")"#, &[])),
     ("test2.test", 33, pi(r#"Pi("foo--", "")"#, &[])),
-    (
-        "test3.test",
-        80,
-        Exclusion::Defect(
-            "#1345: control-character-in-input-stream for the character after `<!` is reported after incorrectly-opened-comment; the corpus reports it first",
-        ),
-    ),
     ("test3.test", 1159, pi("", EOF_IN_PI)),
     (
         "test3.test",
@@ -673,10 +661,11 @@ fn replay(file: &str, raw: &str, count: usize) {
         match exclusion {
             None if divergences.is_empty() => {}
             None => failures.push(format!("{}\n  {}", context(), divergences.join("\n  "))),
-            Some(Exclusion::Spec { reason, .. }) if divergences.is_empty() => failures.push(
-                format!("{} now matches; stale spec exclusion: {reason}", context()),
-            ),
-            Some(Exclusion::Spec {
+            Some(Exclusion { reason, .. }) if divergences.is_empty() => failures.push(format!(
+                "{} now matches; stale spec exclusion: {reason}",
+                context()
+            )),
+            Some(Exclusion {
                 reason,
                 tokens,
                 errors,
@@ -694,17 +683,6 @@ fn replay(file: &str, raw: &str, count: usize) {
                         context(),
                         differences.join("\n  ")
                     ));
-                }
-            }
-            Some(Exclusion::Defect(_)) => {
-                for run in &runs {
-                    if let Err(panic) = &run.outcome {
-                        failures.push(format!(
-                            "{} {}: actual tokenizer panicked: {panic}",
-                            context(),
-                            run.label
-                        ));
-                    }
                 }
             }
         }
@@ -756,7 +734,7 @@ bundled! {
 fn exclusions_name_only_bundled_files_once_with_reasons() {
     for (i, (file, ordinal, exclusion)) in EXCLUSIONS.iter().enumerate() {
         assert!(BUNDLED.contains(file), "{file}");
-        let (Exclusion::Spec { reason, .. } | Exclusion::Defect(reason)) = exclusion;
+        let Exclusion { reason, .. } = exclusion;
         assert!(!reason.is_empty(), "{file}/{ordinal} has no reason");
         assert!(
             !EXCLUSIONS[..i]

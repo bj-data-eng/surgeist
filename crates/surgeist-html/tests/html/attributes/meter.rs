@@ -908,7 +908,7 @@ fn native_finite_numbers_use_existing_serialization_through_the_same_checked_bou
         -f64::MAX,
     ] {
         let number = HtmlFloatingPointNumber::try_from(value).unwrap();
-        let syntax = number.as_document_string();
+        let syntax = number.to_plain_decimal_string();
         let proof = HtmlMeterAttributes::from_syntax(
             syntax.clone(),
             Some(syntax.clone()),
