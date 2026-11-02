@@ -633,3 +633,28 @@ fn a_second_fostered_style_costs_one_visit_per_open_level_to_order() {
         "<table><b><style>b{}</style></b></table>",
     );
 }
+
+#[test]
+fn a_second_meta_in_a_nearby_branch_costs_nothing_for_the_open_levels_above_it() {
+    // The deciding meta and the second one lie in sibling branches of the last
+    // of `depth` open divs. Their lowest common ancestor is two levels above
+    // each, so ordering them looks at those levels and no other, however deep
+    // the divs are. (The `p` and `section` start tags make their own scope
+    // checks, which both documents share.)
+    let depths = [50usize, 200, 800];
+    let visits = |depth: usize| {
+        let page = |inner: &str| {
+            format!(
+                "<!doctype html><body>{}<p><meta name=theme-color content=red></p><section>{inner}",
+                "<div>".repeat(depth)
+            )
+        };
+        record_visits(page("<meta name=theme-color content=blue>")) as i64
+            - record_visits(page("")) as i64
+    };
+    let measures = depths.map(visits);
+    assert!(
+        measures[2] - measures[0] <= POOL_PROBE_SLACK,
+        "a second meta added {measures:?} record visits after {depths:?} open divs"
+    );
+}

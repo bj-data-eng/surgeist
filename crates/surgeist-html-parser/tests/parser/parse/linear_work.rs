@@ -414,7 +414,7 @@ fn work_added_by_each_doubling_of_unselectable_color_scheme_metas_is_near_double
         |repeats| {
             format!(
                 "<!doctype html><head>{}",
-                "<meta name=theme-color content=bogus>".repeat(repeats)
+                "<meta name=color-scheme content=1>".repeat(repeats)
             )
         },
         &[
