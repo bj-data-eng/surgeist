@@ -443,6 +443,58 @@ fn work_added_by_each_doubling_of_metas_behind_a_selected_theme_color_is_near_do
     );
 }
 
+#[test]
+fn work_added_by_each_doubling_of_one_selects_selected_options_is_near_four_times() {
+    // Each selected option updates the select's selectedcontent, which reads
+    // the select's descendants and its list of options: work proportional to
+    // the select's size, so n selected options cost quadratically. Reading the
+    // children of one parent must itself be linear in them, so the quadratic
+    // total is the whole growth: a ratio of four per doubling, never more.
+    const BOUND: u64 = 5;
+    let sizes = [50usize, 100, 200, 400];
+    let measured: Vec<u64> = sizes
+        .iter()
+        .map(|&n| {
+            parse_work(format!(
+                "<!doctype html><select><selectedcontent></selectedcontent>{}",
+                "<option selected>x</option>".repeat(n)
+            ))
+            .visited
+        })
+        .collect();
+    for (pair, window) in sizes.windows(3).zip(measured.windows(3)) {
+        let (first, second) = (window[1] - window[0], window[2] - window[1]);
+        assert!(
+            second < BOUND * first,
+            "record visits grew faster than quadratically: doubling {} -> {} options added \
+             {first}, doubling {} -> {} added {second}",
+            pair[0],
+            pair[1],
+            pair[1],
+            pair[2],
+        );
+    }
+}
+
+#[test]
+fn work_added_by_each_doubling_of_styles_fostered_before_their_table_is_near_double() {
+    // Each style sits in an element fostered before the table, so none of them
+    // is the last node of the tree, but each follows the styles before it.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><body><table>{}",
+                "<b><style>a{}</style></b>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
 /// One layer of nested declarative shadow roots: a host whose template becomes
 /// its shadow root, and the template and host still open.
 const SHADOW_LAYER: &str = "<div><template shadowrootmode=open><p>x</p>";

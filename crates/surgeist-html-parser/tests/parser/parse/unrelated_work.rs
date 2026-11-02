@@ -10,7 +10,19 @@
 //! any filler size, whatever the filler's fanout adds to both documents. It is
 //! exactly equal for most elements; `POOL_PROBE_SLACK` explains the rest.
 
-use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseWorkCategory, HtmlSource};
+use surgeist_html::{
+    HtmlBrowsingContextPresence, HtmlDocumentMode, HtmlHeaderDeliveredCsp,
+    HtmlNonceDocumentEnvironment, HtmlParserScriptingMode, Namespace, OrderedAttributes,
+    QualifiedName,
+};
+use surgeist_html_parser::{
+    HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseWorkCategory, HtmlSource,
+};
+use surgeist_html_semantics::{
+    HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureTemplateCacheInput,
+    HtmlCapturedIsValue, HtmlDocumentClass, HtmlFragmentContext, HtmlHostFactsRevision,
+    HtmlScriptingStatus, HtmlTemplateDocumentRole,
+};
 
 use super::linear_work::roomy_limits;
 
@@ -410,13 +422,134 @@ fn an_input_adds_the_same_visits_whatever_elements_are_open_around_its_cell() {
 
 #[test]
 fn a_select_with_an_option_adds_the_same_visits_whatever_is_open_around_its_cell() {
-    assert_cell_work_independent_of_depth(
-        "<form>",
-        "<select><option>x</option></select>",
-    );
+    assert_cell_work_independent_of_depth("<form>", "<select><option>x</option></select>");
 }
 
 #[test]
 fn a_details_adds_the_same_visits_whatever_elements_are_open_around_its_cell() {
     assert_cell_work_independent_of_depth("", "<details><summary>x</summary></details>");
+}
+
+/// The visits `element` adds to a document in which `filler` copies of `unit`
+/// precede it, so that the difference is the work of the one element.
+fn visits_added_by_selected_option_after(unit: &str, count: usize) -> i64 {
+    let page = |options: usize| {
+        format!(
+            "<!doctype html><body><div>{}</div><select><selectedcontent></selectedcontent>{}</select>",
+            unit.repeat(count),
+            "<option selected>x</option>".repeat(options)
+        )
+    };
+    record_visits(page(2)) as i64 - record_visits(page(1)) as i64
+}
+
+#[test]
+fn a_selected_option_adds_the_same_selectedcontent_visits_whatever_unrelated_elements_precede_it() {
+    // Updating the select's selectedcontent reads the select's descendants and
+    // its options; nothing outside the select is read.
+    let measures = SIZES.map(|count| visits_added_by_selected_option_after(SPAN, count));
+    assert_flat_of(
+        "record visits",
+        "a second selected option",
+        SPAN,
+        measures,
+        POOL_PROBE_SLACK,
+    );
+}
+
+#[test]
+fn a_style_inside_a_fostered_element_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
+    // The element is fostered before its table, so the style is not the last
+    // node of the tree; it still follows every style before it.
+    assert_independent_of_unrelated_within(
+        SPAN,
+        "<table><b><style>a{}</style></b></table>",
+        POOL_PROBE_SLACK,
+    );
+}
+
+/// A `div` in a connected document that has a header-delivered policy, the
+/// context in which a nonce is hidden from the tree once its element is inserted.
+fn connected_div_context() -> HtmlFragmentContext {
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let document = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder
+        .establish_document_template_facts(
+            &document,
+            HtmlDocumentClass::Html,
+            HtmlTemplateDocumentRole::Ordinary,
+            HtmlCaptureTemplateCacheInput::Absent,
+        )
+        .unwrap();
+    builder
+        .establish_document_nonce_environment(
+            &document,
+            HtmlNonceDocumentEnvironment::new(
+                HtmlBrowsingContextPresence::Present,
+                HtmlHeaderDeliveredCsp::Present,
+            ),
+        )
+        .unwrap();
+    let div = builder
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::html(), None, "div"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder
+        .establish_children(&document, std::slice::from_ref(&div))
+        .unwrap();
+    builder.establish_no_shadow_root(&div).unwrap();
+    let capture = builder.finish().unwrap();
+    HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap()
+}
+
+fn connected_fragment_visits(raw: String) -> i64 {
+    let request = HtmlFragmentParseRequest::with_options(
+        HtmlSource::utf8(raw),
+        connected_div_context(),
+        roomy_limits(),
+        HtmlParserScriptingMode::Inert,
+        true,
+    )
+    .unwrap();
+    let report = request
+        .parse()
+        .unwrap_or_else(|_| panic!("the fragment parses within roomy limits"));
+    report.usage().work(HtmlParseWorkCategory::RecordVisit) as i64
+}
+
+#[test]
+fn a_hidden_nonce_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
+    // The nonce of an element in a shadow root of a connected host is hidden
+    // when the element is inserted. Both elements are the same but for that
+    // attribute, so the difference between them is the work of hiding it.
+    const HIDDEN: &str = "<div><template shadowrootmode=open><p nonce=A></p></template></div>";
+    const PLAIN: &str = "<div><template shadowrootmode=open><p></p></template></div>";
+    let excess = |filler: usize| {
+        let page = |element: &str| format!("{}{element}", SPAN.repeat(filler));
+        let added = |element: &str| {
+            connected_fragment_visits(page(element)) - connected_fragment_visits(page(""))
+        };
+        added(HIDDEN) - added(PLAIN)
+    };
+    assert_flat_of(
+        "record visits over an element without a nonce",
+        "a hidden nonce",
+        SPAN,
+        SIZES.map(excess),
+        POOL_PROBE_SLACK,
+    );
 }
