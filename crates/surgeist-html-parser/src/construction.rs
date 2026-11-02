@@ -2532,6 +2532,17 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         self.prepare_payload_slot_with(control, list, false)
     }
+    /// Returns the entry `prepare_payload_slot_owned` admitted when the row it
+    /// was for cannot be pushed. An entry no row holds is released by nothing
+    /// else.
+    fn unprepare_payload_slot(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
+        release_logical(
+            control,
+            &self.control,
+            HtmlParseResource::AuxiliaryEntries,
+            1,
+        )
+    }
     /// As `prepare_payload_slot_for`, also admitting the entry of the
     /// explicit-form list when the row is of a listed control with a `form`
     /// attribute. All reservations precede the one acquisition.
