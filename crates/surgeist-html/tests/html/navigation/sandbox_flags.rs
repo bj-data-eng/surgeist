@@ -274,23 +274,44 @@ fn exact_admission_succeeds_and_each_one_short_refusal_returns_the_original_erro
         }),
         Ok(flags)
     );
-    // Empty present input still admits its header before any token step, so a
-    // refusal at the first admission is returned unchanged, and an unrestricted
-    // run yields the all-restrictions value: it never bypasses the caller.
+    // Empty present input still consults the caller (the declared header,
+    // terminal token step and final projection admissions), so it never
+    // bypasses it. Inject a refusal at each admission it reaches, advancing the
+    // refusal point until a run completes: every refusal comes back unchanged
+    // with nothing after it, and the completed run is the all-restrictions value.
     let empty = DocumentString::from("");
-    let mut first = true;
-    assert_eq!(
-        HtmlSandboxFlags::parse_with(&empty, || {
-            assert!(first, "no admission follows a refusal");
-            first = false;
-            Err(Stop::Cancelled)
-        }),
-        Err(Stop::Cancelled)
-    );
-    restrictions_except(
-        HtmlSandboxFlags::parse_with(&empty, || Ok::<_, Infallible>(())).unwrap(),
-        &[],
-    );
+    let mut refusals = 0;
+    let completed = loop {
+        let limit = refusals;
+        let mut spent = 0;
+        let mut refused = false;
+        let result = HtmlSandboxFlags::parse_with(&empty, || {
+            assert!(!refused, "no admission follows a refusal");
+            if spent == limit {
+                refused = true;
+                return Err(Stop::WorkLimit { limit });
+            }
+            spent += 1;
+            Ok(())
+        });
+        match result {
+            Ok(flags) => {
+                assert!(!refused);
+                break flags;
+            }
+            Err(error) => {
+                assert_eq!(error, Stop::WorkLimit { limit });
+                assert!(refused);
+                refusals += 1;
+                assert!(
+                    refusals < 1000,
+                    "empty input admits only finitely many actions"
+                );
+            }
+        }
+    };
+    assert!(refusals > 0, "the caller is consulted for empty input");
+    restrictions_except(completed, &[]);
 }
 
 #[test]
