@@ -246,10 +246,8 @@ fn branches_by_depth(
 /// A change to one meta, as it bears on a selection.
 #[derive(Clone, Copy)]
 enum Change {
-    /// It is attached or still attached and a candidate for the selection.
+    /// It is attached and a candidate for the selection.
     Candidate,
-    /// It is attached and no longer a candidate for the selection.
-    NotCandidate,
     /// It leaves the tree.
     Removed,
 }
@@ -306,7 +304,7 @@ pub(super) struct MetaHistory {
 /// needs another walk.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SelectionIndex {
-    /// No walk has run, or a document fact the readings depend on changed.
+    /// No walk has run, or the record cannot name the deciding candidate.
     Stale,
     /// The first candidate in tree order that selected a value, if any, as a
     /// record position plus one.
@@ -397,20 +395,6 @@ impl SessionStorage {
             return Err(SessionError::registry_row());
         };
         Ok(meta)
-    }
-    /// Makes the next change to a color-scheme candidate walk the tree.
-    pub(super) fn forget_color_scheme_selection(
-        &mut self,
-        c: &mut ParseControl,
-    ) -> Result<(), SessionError> {
-        let slot = self.document_slot(c, 0)?;
-        c.charge(WorkCategory::RecordWrite, 1)?;
-        *self
-            .meta_history_mut(slot)
-            .map_err(|_| latch_registry_row(c))?
-            .selections
-            .get_mut(MetaDomain::ColorScheme) = SelectionIndex::Stale;
-        Ok(())
     }
     pub(super) fn meta_policy_missing(
         &self,
@@ -1110,7 +1094,7 @@ impl SessionStorage {
             Step::Walk
         } else {
             match (change, deciding) {
-                (Change::Removed | Change::NotCandidate, _) => Step::Unchanged,
+                (Change::Removed, _) => Step::Unchanged,
                 (Change::Candidate, None) => Step::Read,
                 (Change::Candidate, Some(deciding)) => {
                     if self.ordinary_root(c, deciding, None)? != document {
@@ -1296,22 +1280,11 @@ impl SessionStorage {
             if self.ordinary_root(c, node, None)? != document {
                 return Ok(());
             }
-            for (enabled, domain, expected) in [
-                (true, MetaDomain::ThemeColor, "theme-color"),
-                (name_or_content, MetaDomain::ColorScheme, "color-scheme"),
-            ] {
-                if !enabled {
-                    continue;
-                }
-                let change = if self.meta_candidate(c, node, expected)? {
-                    Change::Candidate
-                } else {
-                    Change::NotCandidate
-                };
-                self.meta_settle(c, document, node, None, domain, change)?;
-                #[cfg(test)]
-                self.assert_selection_matches_walk(c, document, None, domain)?;
-            }
+            // This hook runs for an element being created or cloned, which is in
+            // no tree yet, so it returns above and its insertion decides the
+            // selection. Should an attached meta ever reach it, the tree is
+            // walked: nothing here knows which candidate the change concerns.
+            self.meta_candidates(c, document, None, true, name_or_content)?;
         }
         Ok(())
     }
@@ -1808,8 +1781,8 @@ mod tests {
         assert_eq!(scheme(&session), utf16("dark"));
         take(&mut session, &mut c, dark); // [bogus, light]
         assert_eq!(scheme(&session), utf16("light"));
-        // A document mode changes how a value reads, so what an earlier walk
-        // learned is not carried over it.
+        // The mode does not change how a scheme reads, so nothing learned
+        // before it is lost.
         session
             .set_document_mode(&mut c, HtmlDocumentMode::Quirks)
             .unwrap();
@@ -1882,6 +1855,47 @@ mod tests {
             second * 10 <= first * 21,
             "inserting 100, 200 and 400 children added {visits:?} record visits"
         );
+    }
+
+    #[test]
+    fn a_color_scheme_reads_the_same_in_every_document_mode() {
+        // The pinned text reads a `color-scheme` meta by "parsing a list of
+        // component values" and asking whether the result is a valid
+        // 'color-scheme' value (lines 1874-1890 of
+        // `references/html-language-elements-attributes--877d6146487f--2ca83b5ac984.md`),
+        // and the grammar of that value, keywords and identifiers, reads no
+        // quirk of the mode, which only changes lengths, colors and glyph
+        // sizes in surgeist-css (quirky_length.rs, quirky_color.rs and
+        // svg_glyph.rs). So what a walk learned of the selection stays true
+        // when the mode changes.
+        let mut c = ParseControl::new(
+            super::super::tests::limits(),
+            crate::HtmlParseCancellation::new(),
+        );
+        for content in [
+            "dark",
+            "light dark",
+            "only dark",
+            "light only",
+            "normal",
+            "normal light",
+            "only",
+            "1",
+            "DARK",
+            "foo bar",
+            "dark 1",
+            "",
+        ] {
+            let units: Vec<u16> = content.encode_utf16().collect();
+            let results = [HtmlDocumentMode::NoQuirks, HtmlDocumentMode::Quirks].map(|mode| {
+                let value = c.parse_meta_color_scheme(&units, mode).unwrap();
+                let valid = value.report().result().is_ok();
+                value.release(&mut c).unwrap();
+                valid
+            });
+            assert_eq!(results[0], results[1], "{content:?}");
+        }
+        super::super::tests::storage_zero(&c);
     }
 
     #[test]
