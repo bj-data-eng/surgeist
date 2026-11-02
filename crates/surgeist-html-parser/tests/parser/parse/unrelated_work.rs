@@ -143,6 +143,26 @@ fn a_viewport_meta_adds_the_same_visits_whatever_unrelated_elements_precede_it()
     assert_independent_of_unrelated(SPAN, "<meta name=viewport content=x>");
 }
 
+#[test]
+fn a_theme_color_meta_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
+    // It is a candidate for the theme color, so its insertion settles the
+    // selection, and that takes reading this meta, not walking the tree.
+    assert_independent_of_unrelated_within(
+        SPAN,
+        "<meta name=theme-color content=red>",
+        POOL_PROBE_SLACK,
+    );
+}
+
+#[test]
+fn a_color_scheme_meta_adds_the_same_visits_whatever_unrelated_elements_precede_it() {
+    assert_independent_of_unrelated_within(
+        SPAN,
+        "<meta name=color-scheme content=dark>",
+        POOL_PROBE_SLACK,
+    );
+}
+
 /// One form control that registers a form association.
 const CONTROL: &str = "<input name=a>";
 

@@ -385,6 +385,64 @@ fn work_added_by_each_doubling_of_meta_elements_is_near_double() {
     );
 }
 
+#[test]
+fn work_added_by_each_doubling_of_unselectable_theme_color_metas_is_near_double() {
+    // Each of these is a candidate for the theme color: the exact name and a
+    // content attribute. None selects anything, since `bogus` is no color, so
+    // the selection is "none" after every one. Placing a candidate must cost
+    // what it takes to read that candidate, whatever candidates precede it.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><head>{}",
+                "<meta name=theme-color content=bogus>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_unselectable_color_scheme_metas_is_near_double() {
+    // `1` is no color-scheme value, so every candidate is read and none selected.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><head>{}",
+                "<meta name=color-scheme content=1>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
+#[test]
+fn work_added_by_each_doubling_of_metas_behind_a_selected_theme_color_is_near_double() {
+    // The first candidate selects red. Every later one follows it in tree
+    // order, so it cannot change the selection and needs no reading.
+    assert_doublings_add_near_double(
+        [50, 100, 200, 400],
+        |repeats| {
+            format!(
+                "<!doctype html><head><meta name=theme-color content=red>{}",
+                "<meta name=theme-color content=blue>".repeat(repeats)
+            )
+        },
+        &[
+            ("record visits", |work| work.visited),
+            ("total work", |work| work.total),
+        ],
+    );
+}
+
 /// One layer of nested declarative shadow roots: a host whose template becomes
 /// its shadow root, and the template and host still open.
 const SHADOW_LAYER: &str = "<div><template shadowrootmode=open><p>x</p>";
