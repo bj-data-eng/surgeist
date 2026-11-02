@@ -197,6 +197,10 @@ struct Scratch<'a> {
     opaque: Vec<usize>,
     block: Vec<usize>,
     document: Vec<HtmlCapturedChildIds<'a>>,
+    /// Each cell's th scope state, read the first time header assignment
+    /// consults it. A cell's attributes do not change during a query, so one
+    /// resolution serves every header assignment that reaches the cell.
+    scopes: Vec<Option<HtmlTableHeaderScopeState>>,
 }
 /// Which HTML-owned span rule applies; the rule itself owns caps and defaults.
 #[derive(Clone, Copy)]
@@ -303,6 +307,7 @@ impl<'a> HtmlSemanticSession<'a> {
             scratch.opaque.capacity(),
             scratch.block.capacity(),
             scratch.document.capacity(),
+            scratch.scopes.capacity(),
         ] {
             self.release_scratch(capacity);
         }
@@ -706,11 +711,25 @@ impl<'a> HtmlSemanticSession<'a> {
         self.poll()?;
         Ok(model)
     }
+    /// The th scope state of cell `index`, resolved through the HTML-owned rule
+    /// the first time this query consults it and reused afterwards. The first
+    /// consultation admits the state table (one entry per cell) and the rule's
+    /// work; later ones charge a single lookup.
     fn table_scope(
         &mut self,
         model: &HtmlTableModel,
         index: usize,
+        scopes: &mut Vec<Option<HtmlTableHeaderScopeState>>,
     ) -> TableResult<HtmlTableHeaderScopeState> {
+        if scopes.len() != model.cells.len() {
+            self.reserve_scratch(scopes, model.cells.len())?;
+            self.charge(model.cells.len())?;
+            scopes.resize(model.cells.len(), None);
+        }
+        self.charge(1)?;
+        if let Some(state) = scopes[index] {
+            return Ok(state);
+        }
         let element = self.table_element(&model.cells[index].subject)?;
         let raw = self.table_raw(element, "scope")?;
         self.admit_intrinsic(element, raw, TABLE_SCOPE_KEYWORDS)?;
@@ -719,12 +738,19 @@ impl<'a> HtmlSemanticSession<'a> {
             .th_scope(element.name(), raw)
             .map_err(|e| TableStop::Failure(self.stop(HtmlSemanticFailureKind::Attribute(e))))?;
         self.poll()?;
-        report.intrinsic().copied().ok_or_else(|| {
+        let state = report.intrinsic().copied().ok_or_else(|| {
             TableStop::Failure(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))
-        })
+        })?;
+        scopes[index] = Some(state);
+        Ok(state)
     }
-    fn table_column_header(&mut self, model: &HtmlTableModel, index: usize) -> TableResult<bool> {
-        match self.table_scope(model, index)? {
+    fn table_column_header(
+        &mut self,
+        model: &HtmlTableModel,
+        index: usize,
+        scopes: &mut Vec<Option<HtmlTableHeaderScopeState>>,
+    ) -> TableResult<bool> {
+        match self.table_scope(model, index, scopes)? {
             HtmlTableHeaderScopeState::Keyword(HtmlTableHeaderScope::Column) => Ok(true),
             HtmlTableHeaderScopeState::Auto => {
                 let header = &model.cells[index];
@@ -743,10 +769,17 @@ impl<'a> HtmlSemanticSession<'a> {
             _ => Ok(false),
         }
     }
-    fn table_row_header(&mut self, model: &HtmlTableModel, index: usize) -> TableResult<bool> {
-        match self.table_scope(model, index)? {
+    fn table_row_header(
+        &mut self,
+        model: &HtmlTableModel,
+        index: usize,
+        scopes: &mut Vec<Option<HtmlTableHeaderScopeState>>,
+    ) -> TableResult<bool> {
+        match self.table_scope(model, index, scopes)? {
             HtmlTableHeaderScopeState::Keyword(HtmlTableHeaderScope::Row) => Ok(true),
-            HtmlTableHeaderScopeState::Auto if !self.table_column_header(model, index)? => {
+            HtmlTableHeaderScopeState::Auto
+                if !self.table_column_header(model, index, scopes)? =>
+            {
                 let header = &model.cells[index];
                 let right = self.table_add(header.x, header.width)?;
                 for cell in &model.cells {
@@ -813,9 +846,9 @@ impl<'a> HtmlSemanticSession<'a> {
                 }
                 if !blocked {
                     blocked = if vertical {
-                        !self.table_column_header(model, index)?
+                        !self.table_column_header(model, index, &mut scratch.scopes)?
                     } else {
-                        !self.table_row_header(model, index)?
+                        !self.table_row_header(model, index, &mut scratch.scopes)?
                     };
                 }
                 if !blocked {
@@ -961,7 +994,7 @@ impl<'a> HtmlSemanticSession<'a> {
                                 && header.y - group.y < group.height
                                 && header.x < right
                                 && header.y < bottom
-                                && self.table_scope(model, index)?
+                                && self.table_scope(model, index, &mut scratch.scopes)?
                                     == HtmlTableHeaderScopeState::Keyword(
                                         HtmlTableHeaderScope::RowGroup,
                                     )
@@ -981,7 +1014,7 @@ impl<'a> HtmlSemanticSession<'a> {
                                 && header.x - group.x < group.width
                                 && header.x < right
                                 && header.y < bottom
-                                && self.table_scope(model, index)?
+                                && self.table_scope(model, index, &mut scratch.scopes)?
                                     == HtmlTableHeaderScopeState::Keyword(
                                         HtmlTableHeaderScope::ColumnGroup,
                                     )

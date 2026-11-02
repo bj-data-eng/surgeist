@@ -11,8 +11,9 @@ use crate::semantics::support::{builder_with, context};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlSemanticCancellation, HtmlSemanticLimits,
-    HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticSession, HtmlSemanticUsage,
+    HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlSemanticCancellation, HtmlSemanticFailure,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUsage,
 };
 
 fn element(
@@ -51,7 +52,7 @@ fn cell(
 /// a `scope` of `scope_units` letters that match no keyword, and whose other
 /// cells are td. The `2n - 1` header cells are each reached by the scan of
 /// some other cell, and every cell is a principal cell.
-fn usage(n: usize, scope_units: usize) -> HtmlSemanticUsage {
+fn fixture(n: usize, scope_units: usize) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
     let scope = "x".repeat(scope_units);
     let (mut b, d) = builder_with(HtmlCaptureLimits::new(
         10000, 100000, 10000, 1_000_000, 1000, 0, 0, 16_777_216,
@@ -72,22 +73,40 @@ fn usage(n: usize, scope_units: usize) -> HtmlSemanticUsage {
         rows.push(row);
     }
     b.establish_children(&table, &rows).unwrap();
-    let capture: HtmlCapture = b.finish().unwrap();
-    let cx = context(&capture);
-    HtmlSemanticSession::new(
-        &capture,
+    (b.finish().unwrap(), table)
+}
+
+fn query(
+    capture: &HtmlCapture,
+    table: &HtmlCaptureBuilderSubject,
+    limits: HtmlSemanticLimits,
+) -> (
+    Result<HtmlSemanticReport, HtmlSemanticFailure>,
+    HtmlSemanticUsage,
+) {
+    let cx = context(capture);
+    let mut session = HtmlSemanticSession::new(
+        capture,
         &cx,
         HtmlValueInterpreter::new(10000),
-        HtmlSemanticLimits::new(1_000_000_000, 100, 100000, 10000, 100000000, 200000),
+        limits,
         HtmlSemanticCancellation::new(),
     )
-    .unwrap()
-    .query(&[HtmlSemanticRequest::new(
-        capture.subject_id(&table).unwrap(),
+    .unwrap();
+    let result = session.query(&[HtmlSemanticRequest::new(
+        capture.subject_id(table).unwrap(),
         HtmlSemanticQuery::TableModel,
-    )])
-    .unwrap()
-    .usage()
+    )]);
+    (result, session.usage())
+}
+
+fn limits() -> HtmlSemanticLimits {
+    HtmlSemanticLimits::new(1_000_000_000, 100, 100000, 10000, 100000000, 200000)
+}
+
+fn usage(n: usize, scope_units: usize) -> HtmlSemanticUsage {
+    let (capture, table) = fixture(n, scope_units);
+    query(&capture, &table, limits()).0.unwrap().usage()
 }
 
 #[test]
@@ -111,4 +130,59 @@ fn scope_work_grows_with_header_cells_not_header_and_cell_pairs() {
             headers(n)
         );
     }
+}
+
+#[test]
+fn cached_scope_states_keep_the_first_reached_limit_failure_and_balanced_cleanup() {
+    let (capture, table) = fixture(4, 5);
+    let (baseline, usage) = query(&capture, &table, limits());
+    let baseline = baseline.unwrap();
+    let work = usage.work();
+    let peak = usage.peak_scratch_records();
+    assert!(peak > 0);
+
+    // One unit short of the total work stops in the query, not before it.
+    let (short, after) = query(
+        &capture,
+        &table,
+        HtmlSemanticLimits::new(work - 1, 100, 100000, 10000, 100000000, 200000),
+    );
+    assert!(matches!(
+        short.unwrap_err().kind(),
+        HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::Work,
+            ..
+        }
+    ));
+    assert_eq!(after.scratch_records(), 0);
+
+    // The exact work budget succeeds with the same result.
+    let (exact, _) = query(
+        &capture,
+        &table,
+        HtmlSemanticLimits::new(work, 100, 100000, 10000, 100000000, 200000),
+    );
+    assert_eq!(exact.unwrap().results(), baseline.results());
+
+    // Scratch records, including the cached scope states, are all released.
+    let (short, after) = query(
+        &capture,
+        &table,
+        HtmlSemanticLimits::new(1_000_000_000, 100, peak - 1, 10000, 100000000, 200000),
+    );
+    assert!(matches!(
+        short.unwrap_err().kind(),
+        HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::ScratchRecords,
+            ..
+        }
+    ));
+    assert_eq!(after.scratch_records(), 0);
+    let (exact, after) = query(
+        &capture,
+        &table,
+        HtmlSemanticLimits::new(1_000_000_000, 100, peak, 10000, 100000000, 200000),
+    );
+    assert_eq!(exact.unwrap().results(), baseline.results());
+    assert_eq!(after.scratch_records(), 0);
 }
