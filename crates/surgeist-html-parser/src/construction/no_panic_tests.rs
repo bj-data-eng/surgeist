@@ -444,3 +444,31 @@ fn field_group_lookups_past_the_registry_report_the_registry_row() {
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+#[test]
+fn an_id_edit_over_a_row_that_is_not_a_staged_attribute_list_reports_the_registry_row() {
+    let request = input_request();
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let input = named(&nodes, "input", 0).index;
+    let storage = session.active_mut().unwrap();
+    // The stage names the input's own metadata row, which holds no attributes.
+    let stage = input_slot(storage, input);
+    let result = storage.prepare_id_attribute_effects(&mut c, input, stage);
+    assert_registry_row(result, &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_textarea_without_its_state_row_reports_the_registry_row_when_it_leaves_the_stack() {
+    let request = request("<body><textarea>x</textarea>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let textarea = named(&nodes, "textarea", 0).clone();
+    let storage = session.active_mut().unwrap();
+    // Private-state fault injection: the node's join to its state row is lost.
+    storage.payloads.node_joins[textarea.index].textarea = None;
+    let result = session.parser_stack_removed(&mut c, &textarea, None);
+    assert_registry_row(result, &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
