@@ -33,10 +33,31 @@ enum Bank {
     Wrapper,
 }
 
+/// The session error for a refusal from HTML's construction owner, with every
+/// variant of its error classified by what it violates.
+///
+/// - Handle, placement and cycle refusals are errors about the document's own
+///   shape; their callers classify them and nothing is latched here.
+/// - A payload that was aliased and a count that cannot be represented keep
+///   their own stops.
+/// - A ticket, layout or limit that disagrees with what the controller
+///   charged, and a release beyond what was held, are accounting faults. The
+///   parse controller admits every resource before the owner is asked, so a
+///   limit the owner reports is the owner's accounting disagreeing with it.
+/// - An allocation that failed is the environment refusing, a reached stop
+///   that never names an invariant. The sites that know the layout classify
+///   it themselves first, so none is known here.
+/// - Every other refusal is the owner declining a request that the parser's
+///   sequencing guarantees valid.
+///
+/// The owner's error enum is open to later variants, which the compiler cannot
+/// make this match classify; one this parser does not name reports the same
+/// fault as the others, and the inventory test lists each current variant.
 pub(super) fn construction_error(
     control: &mut ParseControl,
     error: HtmlConstructionError,
 ) -> SessionError {
+    use crate::parser::control::Invariant;
     match error {
         HtmlConstructionError::ForeignBuilder | HtmlConstructionError::UnknownNode => {
             SessionError::ForeignNode
@@ -49,15 +70,39 @@ pub(super) fn construction_error(
             SessionError::WrongSibling
         }
         HtmlConstructionError::Cycle => SessionError::Cycle,
-        HtmlConstructionError::SharedAllocationAliased => SessionError::Stop(
-            control.fail_invariant(crate::parser::control::Invariant::SharedAllocationAliased),
-        ),
+        HtmlConstructionError::SharedAllocationAliased => {
+            SessionError::Stop(control.fail_invariant(Invariant::SharedAllocationAliased))
+        }
         HtmlConstructionError::RepresentationExhausted => {
             SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
         }
-        _ => SessionError::Stop(
-            control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch),
-        ),
+        HtmlConstructionError::CapacityMismatch
+        | HtmlConstructionError::ForeignAllocation
+        | HtmlConstructionError::LimitExceeded { .. } => {
+            SessionError::Stop(control.fail_invariant(Invariant::CapacityMismatch))
+        }
+        HtmlConstructionError::ReleaseUnderflow => {
+            SessionError::Stop(control.fail_invariant(Invariant::ReleaseUnderflow))
+        }
+        HtmlConstructionError::AllocationFailed => {
+            SessionError::Stop(control.construction_allocation_failed(0))
+        }
+        HtmlConstructionError::ShadowHostMustBeElement
+        | HtmlConstructionError::ShadowAlreadyAttached
+        | HtmlConstructionError::WrongNodeKind
+        | HtmlConstructionError::AssociationAlreadyOwned
+        | HtmlConstructionError::InvalidTemplateAssociation
+        | HtmlConstructionError::DuplicateAttribute { .. }
+        | HtmlConstructionError::AttributeNameMismatch
+        | HtmlConstructionError::AttributeOrderMismatch
+        | HtmlConstructionError::InvalidShadowAssociation
+        | HtmlConstructionError::InvalidContentsReference
+        | HtmlConstructionError::InvalidOutputRoot
+        | HtmlConstructionError::OperationConsumed
+        | HtmlConstructionError::OperationNotReady => {
+            SessionError::Stop(control.fail_invariant(Invariant::ConstructionOwnerRefusal))
+        }
+        _ => SessionError::Stop(control.fail_invariant(Invariant::ConstructionOwnerRefusal)),
     }
 }
 pub(super) struct PendingConstruction {
