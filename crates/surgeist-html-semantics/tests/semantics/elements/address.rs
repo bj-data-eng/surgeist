@@ -1,6 +1,6 @@
 use crate::semantics::support::{
-    SCALAR_AND_SCRATCH_RESOURCES, builder, cap_resources, context,
-    semantic_limits_without_nested_output as limits, session,
+    Charge, ExpectedUsage, SCALAR_AND_SCRATCH_RESOURCES, assert_exact_and_one_short_caps, builder,
+    cap_resources, context, semantic_limits_without_nested_output as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -402,19 +402,26 @@ fn witness_stops_before_later_unavailable_branch_and_huge_name() {
     assert_eq!(value(&r), &HtmlSemanticValue::Known(true));
     assert_eq!(r.usage().peak_scratch_records(), 1);
     let cx = context(&c);
-    assert_eq!(
-        value(
-            &session(
-                &c,
-                &cx,
-                resource_limits(HtmlSemanticResource::Work, r.usage().work()),
-                0,
-                HtmlSemanticCancellation::new()
-            )
-            .query(&[request(&id)])
-            .unwrap()
-        ),
-        &HtmlSemanticValue::Known(true)
+    // The first witness ends the search before the later branches, so the answer
+    // is one result with only the address's own child list live. The search's
+    // visit layout is private, so work is required to be charged without being
+    // pinned; the helper proves the exact work cap admits and one less stops.
+    assert_exact_and_one_short_caps(
+        "address witness before later branches",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                std::mem::size_of::<HtmlSemanticResult>()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'_>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
     );
 }
 
@@ -422,46 +429,27 @@ fn witness_stops_before_later_unavailable_branch_and_huge_name() {
 fn exact_and_one_short_work_scratch_bytes_and_batch_records_are_terminal() {
     let (c, id) = empty();
     let cx = context(&c);
-    let r = report(&c, &id);
-    let u = r.usage();
-    // One vocabulary envelope, two namespace-unit passes, and eleven fixed
-    // batch/node/iterator/reservation/result actions for this empty capture.
-    assert_eq!(u.work(), 8 * KnownHtmlElement::ALL.len() + 2 * 28 + 11);
-    assert_eq!(u.output_records(), 1);
-    assert_eq!(u.peak_scratch_records(), 1);
-    assert_eq!(u.nested_output_records(), 0);
-    assert_eq!(
-        u.allocated_bytes(),
-        std::mem::size_of::<HtmlSemanticResult>() + std::mem::size_of::<HtmlCapturedChildIds<'_>>()
+    // The address witness search is not among the semantic query work reference (docs/reference/html-operations.md),
+    // so work is required to be charged but is not pinned; the helper still
+    // proves the reported work is the least admitting cap.
+    let r = assert_exact_and_one_short_caps(
+        "address",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                std::mem::size_of::<HtmlSemanticResult>()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'_>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
     );
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, 1),
-        (HtmlSemanticResource::ScratchRecords, 1),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        let mut s = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        assert_eq!(
-            value(&s.query(&[request(&id)]).unwrap()),
-            &HtmlSemanticValue::Known(false)
-        );
-        let selected = resource_limits(resource, exact - 1);
-        let mut short = session(&c, &cx, selected, 0, HtmlSemanticCancellation::new());
-        let f = short.query(&[request(&id)]).unwrap_err();
-        assert!(
-            matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded {resource:r,..} if *r==resource)
-        );
-        assert_eq!(f.qualification().unwrap().limits(), selected);
-        assert_eq!(short.usage().scratch_records(), 0);
-        assert_eq!(short.query(&[]).unwrap_err(), f);
-        assert_eq!(value(&r), &HtmlSemanticValue::Known(false));
-    }
+    assert_eq!(value(&r), &HtmlSemanticValue::Known(false));
 }
 
 #[test]
@@ -560,23 +548,28 @@ fn repeated_and_duplicate_queries_admit_real_cumulative_scalar_and_scratch_stora
 fn exact_batch_work_and_one_short_late_failure_discard_prefix_and_release_frames() {
     let (c, id) = empty();
     let cx = context(&c);
-    let mut measure = session(&c, &cx, limits(), 0, HtmlSemanticCancellation::new());
-    let measured = measure.query(&[request(&id), request(&id)]).unwrap();
-    let exact = measured.usage().work();
-    let mut s = session(
+    // Two identical requests retain two result records and the walk's one frame
+    // allocation per request (no scratch survives a request). The helper proves
+    // the reported batch work is the least admitting cap before the late stop
+    // below reuses it.
+    let measured = assert_exact_and_one_short_caps(
+        "address duplicate batch",
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, exact),
         0,
-        HtmlSemanticCancellation::new(),
+        limits(),
+        &[request(&id), request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(2),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                2 * std::mem::size_of::<HtmlSemanticResult>()
+                    + 2 * std::mem::size_of::<HtmlCapturedChildIds<'_>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
     );
-    assert_eq!(
-        s.query(&[request(&id), request(&id)])
-            .unwrap()
-            .results()
-            .len(),
-        2
-    );
+    let exact = measured.usage().work();
     let mut short = session(
         &c,
         &cx,

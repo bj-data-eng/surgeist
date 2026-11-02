@@ -7,7 +7,10 @@
 //! the number of header and principal-cell pairs. The expectations below come
 //! from counting header cells in the fixture, not from the implementation.
 
-use crate::semantics::support::{builder_with, context};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_with, context,
+    result_record_bytes,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
@@ -136,11 +139,32 @@ fn scope_work_grows_with_header_cells_not_header_and_cell_pairs() {
 #[test]
 fn cached_scope_states_keep_the_first_reached_limit_failure_and_balanced_cleanup() {
     let (capture, table) = fixture(4, 5);
-    let (baseline, usage) = query(&capture, &table, limits());
-    let baseline = baseline.unwrap();
-    let work = usage.work();
-    let peak = usage.peak_scratch_records();
-    assert!(peak > 0);
+    // The table model keeps cached scope states and cell vectors in scratch and
+    // retains the model as nested records; the walk's visit layout and the model
+    // payloads are private, so those amounts are required to be charged without
+    // being pinned. The helper proves the reported work and peak scratch are the
+    // least admitting caps before the stops below reuse them.
+    let cx = context(&capture);
+    let baseline = assert_exact_and_one_short_caps(
+        "table model scope states",
+        &capture,
+        &cx,
+        10000,
+        limits(),
+        &[HtmlSemanticRequest::new(
+            capture.subject_id(&table).unwrap(),
+            HtmlSemanticQuery::TableModel,
+        )],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            nested_output_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(result_record_bytes()),
+            ..ExpectedUsage::none()
+        },
+    );
+    let work = baseline.usage().work();
+    let peak = baseline.usage().peak_scratch_records();
 
     // One unit short of the total work stops in the query, not before it.
     let (short, after) = query(

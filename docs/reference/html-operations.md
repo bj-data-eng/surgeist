@@ -2078,6 +2078,156 @@ Constructing a request admits no source and produces no parse result. The caps
 describe logical storage, known allocation layouts and work credits, rather than
 wall-clock time, process memory or allocator headers.
 
+<a id="semantic-query-work"></a>
+
+The `work` allowance of [HtmlSemanticLimits](../../crates/surgeist-html-semantics/src/semantics.rs)
+counts one unit per visit, unit read or write. This section states the charges
+that are stable enough for tests to pin; the work of every other query is only
+required to be charged, and its layout is not part of the contract. The shared
+primitives (result reservation, subject lookup, namespace test, vocabulary
+recognition, attribute lookup and record reservation) are summarized in the
+type's documentation; the code locations named below show where each charge is
+made and are not API.
+
+Notation: `N` is `KnownHtmlElement::ALL.len()`. `K(l)` is the recognition charge
+of an HTML element whose local name has `l` UTF-16 units, `(l + 1) * N + 28`;
+for a namespace with `u` units it is `(l + 1) * N + u`, and 0 units for no
+namespace. `D` is the 29 units of a matched HTML namespace test (1 plus 28
+compared units); a namespace test whose length differs from the expected length
+costs 1. The *query prefix* is the batch's one result reservation (1, charged
+once per non-empty batch), the request's subject lookup (1) and, for an element
+subject, the HTML namespace test of the subject (`D` when it is in the HTML
+namespace). Every query stated below pays that test. The author-context,
+media-rules, template-for, nonce, link-relationship and noopener queries, which
+handle foreign namespaces themselves, and the document-level feed, manifest and
+icon queries, which are dispatched before the subject is classified, do not, and
+none of them is stated here. Each result write adds 1. A text subject answered `Inapplicable` by an
+element-only query therefore costs the reservation, the lookup and the write: 3.
+
+- **Tree walk** (shared by the walks below; [code](../../crates/surgeist-html-semantics/src/semantics.rs)).
+  Entering an element, document or fragment charges 1 and, whether or not it
+  has children, one frame reservation (1) and one push (1). Resuming charges 1
+  per loop iteration: an iteration that finds a next child ends it, one that
+  finds an exhausted frame pops it and iterates again, and an empty stack ends
+  the walk with a final iteration. Other node kinds are not entered.
+- **Text content** (shared by the text queries; [code](../../crates/surgeist-html-semantics/src/semantics/control_text.rs)).
+  Entry is a lookup (1) and 1. In direct-child mode each child costs a loop
+  charge (1) and a lookup
+  (1), and the end of the child list costs 1; only text children contribute and
+  elements are not entered. In descendant mode a node with at least one child
+  costs one frame (reservation 1, push 1); each iteration costs 1, an exhausted
+  frame costs a further 1 for the pop, and each yielded node costs a lookup (1).
+  Every element node also costs 1 to be entered (a document or fragment cannot
+  be an ordinary child), plus a
+  frame (2) only when it has children; a childless one costs just that 1. No
+  vocabulary recognition is charged. Each text unit costs 3: a read (1), an exact
+  one-record reservation (1) and a push (1). Closing charges 1.
+- **Intrinsic envelope** ([code](../../crates/surgeist-html-semantics/src/semantics.rs)).
+  One charge of `3 * (element units + 1) * N + (attribute-name units + 1) *
+  KnownHtmlAttribute::ALL.len() + value units * keywords + 3 * (namespace units
+  + 1)`, where an absent attribute has 0 name and value units.
+- **Non-element subject.** See the notation above: 3 for an element-only query.
+- **TextareaDefaultValue, OutputValue, OutputDefaultValue** ([code](../../crates/surgeist-html-semantics/src/semantics/control_text.rs)).
+  The query prefix, then a second lookup (1), `D` and `K(l)` of `textarea` or
+  `output`, then text content: direct-child for `TextareaDefaultValue`,
+  descendant for `OutputValue`. `OutputDefaultValue` scans the supplied override
+  records at 1 per record up to and including the subject's. A text override
+  then costs 1 and returns the shared string with no further allocation; a null
+  override continues with descendant text content. An absent record is not
+  stated.
+- **TitleText** ([code](../../crates/surgeist-html-semantics/src/semantics/document_title.rs)).
+  The query prefix, the local-name test of a `title` element (1 plus its 5 compared units), then direct-child
+  text content.
+- **AdvisoryInformation** ([code](../../crates/surgeist-html-semantics/src/semantics/advisory_title.rs)).
+  The query prefix, then for each HTML element on the path from the subject:
+  the `title` attribute scan (1 per attribute scanned plus one per compared unit
+  of a length-matching name) and 1 for the presence test. A present attribute
+  charges 1 (raw admission), its normalization (1 per raw unit read plus 2 per
+  kept unit, a reservation and a push; a line feed that follows a carriage return
+  is read but not kept), a closing 1 and 1 for the record. An absent attribute
+  charges the boundary test (1, plus one per compared unit of `link` or `style`
+  for a name of 4 or 5 units, up to the first mismatch); a boundary ends the walk
+  with the empty answer (1). Otherwise the walk steps to the parent (1). With no
+  parent it ends with the empty answer (1). With a parent it charges the parent
+  lookup (1) and then 1 more whatever the parent is. A parent that is not an
+  element ends with the empty answer (1); an element parent charges its
+  namespace test (1, plus 28 compared units when its namespace has the 28 units
+  of the HTML namespace and matches) and the walk repeats, skipping the `title`
+  scan for a non-HTML element. Then the result write (1).
+- **TabIndex** ([code](../../crates/surgeist-html-semantics/src/semantics/tabindex.rs)),
+  for an HTML element with a recovered `tabindex`. The query prefix, a lookup (1),
+  `D`, the attribute scan (1 for a one-attribute element plus 8 compared units of
+  `tabindex`), the value owner's published `integer_long_work_bound` of the raw
+  units, and 1. The missing, unparsable and out-of-range defaults are not stated.
+- **Disabledness** of a parentless `button`, `input`, `select`, `textarea` or
+  `fieldset` without attributes. The query prefix, `K(l)` of the element, then a
+  lookup (1), the intrinsic envelope with 1 keyword for the absent `disabled`
+  attribute and one parent step (1).
+- **TableCaption, TableHead, TableFoot** ([code](../../crates/surgeist-html-semantics/src/semantics/table.rs))
+  on an HTML `table`. The query prefix, a lookup (1), `D`, `K(5)`, then the first
+  matching child scan: a lookup (1), 1, and per scanned child a loop charge (1)
+  and a lookup (1), plus `K(l)` when the child is an element; a scan that finds
+  no match ends with 1.
+- **Table walks** ([code](../../crates/surgeist-html-semantics/src/semantics/table/collections.rs)).
+  Listing a node's children costs a lookup and 1. Taking the next element child
+  costs, per visited child, 1 and a lookup (1), plus `K(l)` when the child is an
+  element (non-elements cost the 2 and are skipped); an exhausted list costs 1. A
+  retained id costs 2 (reservation 1, push 1); a counted or target row costs 2.
+- **TableRows.** The query prefix, a lookup (1), `D`, `K(5)`, then three passes
+  (head, body, foot). Each pass charges 1, lists the table's children and, for
+  every element child, takes it and charges 1, then takes the final exhausted
+  entry. A section matching the pass additionally lists its children and, per `tr`
+  child, takes it, charges 1 and retains its id (2), then takes the final
+  exhausted entry; a direct `tr` child charges a retained id (2) in the body pass.
+- **TableRowIndex, TableSectionRowIndex, TableCellIndex.** The query prefix, a
+  lookup (1), `D` and `K(l)` of the subject, one parent step (1), the parent's
+  lookup (1) and `K(l)` of the parent; a row in a section
+  also steps to the table (1, lookup 1, `K(5)`). The collection walk is the
+  one above, stopping at the target: every collection row costs 2, the target
+  included.
+- **FooterScope** ([code](../../crates/surgeist-html-semantics/src/semantics/footer.rs)),
+  for two shapes. The query prefix, a lookup (1), `D` and `K(6)` come first.
+  With a sectioning ancestor, each ancestor costs one parent step (1) and a
+  lookup (1), with `K(l)` only when the ancestor is an element, and 1 when the
+  ancestor is an `article`, `aside`, `nav` or `section`, which ends the walk.
+  When the only ancestor is the document (a non-element, so it costs the step and
+  the lookup without `K(l)`), a second parent step (1) finds no parent and the
+  walk ends; then 1, and the document-body search for a document whose only
+  child element is not `html`: a lookup (1), 1, for that one child a loop charge
+  (1), a lookup (1) and 1, the exhausted child list (1), the child's lookup (1)
+  and `K(l)` of its name, which is not `html`, so the body is absent; then 1
+  before the document-body answer. Other documents, such as an `html` root with
+  or without a `body`, a second child element or unavailable children, are not
+  stated.
+- **DatalistOptions** (not `DatalistSuggestionOptions`, which adds suggestion
+  steps that are not stated; [code](../../crates/surgeist-html-semantics/src/semantics/datalist.rs)).
+  The query prefix, a lookup (1), `D`, `K(8)`, then entry (a lookup and 1). A
+  datalist with no children returns the empty collection there, without a frame
+  or the closing charge. Otherwise a frame (2), then per iteration 1, a lookup (1)
+  per yielded node, `K(l)` for an element, 2 for a retained `option` and, for
+  every element, 1 plus a frame (2) only when it has
+  children. An exhausted frame costs 2 and the closing charge 1.
+- **MapAreas** ([code](../../crates/surgeist-html-semantics/src/semantics/image_map.rs)).
+  The query prefix, a lookup (1), `D`, `K(3)`, then the tree walk from the map:
+  per visited node a lookup (1), `K(l)` when it is an element, 2 for a retained
+  `area`, and the tree-walk charges for entering it; then a closing charge (1).
+- **OptionText** ([code](../../crates/surgeist-html-semantics/src/semantics/option_text.rs)).
+  The query prefix, a lookup (1), `D`, `K(6)`, then entry (a lookup and 1) and a
+  frame (2) only when the option has children. Per iteration 1 (an exhausted
+  frame costs 2); per yielded node a lookup (1). A text node costs 1 per unit, and
+  per kept unit a one-record reservation (1) and a push (1), with one more push
+  (1) for a pending separator; text is not entered. An element costs `K(l)`; a
+  `script` or `img` ends there. Any other element also costs the svg-script test:
+  1, then a namespace comparison of 1 (which ends there for an HTML element,
+  whose 28 units differ from the 26 of the SVG namespace) or, for a namespace
+  with the SVG namespace's 26 units, 1 plus one per compared unit up to the first
+  mismatch; a namespace that matches then adds the local-name comparison of
+  `script` (1, plus one per compared unit when the length is 6). An element that
+  is not an SVG `script` is entered: 1, plus a frame (2) only when it has
+  children. Comments and processing instructions cost only their lookup. A
+  document or fragment cannot be an ordinary child, so its entry is not stated.
+  Closing charges 1.
+
 <a id="decoded-unicode-parsing"></a>
 
 ## Decoded-Unicode parsing

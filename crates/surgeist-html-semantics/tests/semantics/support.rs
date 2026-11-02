@@ -8,8 +8,8 @@ use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlHostFactsRevision, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticResource,
-    HtmlSemanticSession,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
 };
 
 /// Builder with one no-quirks document and no scripting or registry input.
@@ -230,4 +230,210 @@ pub fn scalar_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemantic
 /// Standard budget with one collection resource capped.
 pub fn collection_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
     cap_resources(semantic_limits(), COLLECTION_RESOURCES, resource, cap)
+}
+
+/// What a test requires of one resource's baseline usage. The expectation is
+/// derived by the test from the documented cost model, never read back from the
+/// run it judges.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Charge {
+    /// The query must not touch this resource.
+    Zero,
+    /// The query must charge this resource; its exact amount is private step
+    /// layout and is not part of the contract the test pins.
+    Charged,
+    /// The query must charge exactly this amount.
+    Exactly(usize),
+    /// The query must charge at least this amount; the excess is the size of
+    /// a private payload type, not part of the contract.
+    AtLeast(usize),
+}
+
+/// Independently derived baseline usage of one batch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExpectedUsage {
+    pub work: Charge,
+    pub output_records: Charge,
+    pub peak_scratch_records: Charge,
+    pub nested_output_records: Charge,
+    pub allocated_bytes: Charge,
+}
+
+impl ExpectedUsage {
+    /// Defaults for a scalar query: work and allocated bytes are only required
+    /// to be charged ([`Charge::Charged`]), while output, peak scratch and
+    /// nested records must be zero ([`Charge::Zero`]). Use struct update syntax
+    /// to pin or relax individual resources.
+    pub const fn none() -> Self {
+        Self {
+            work: Charge::Charged,
+            output_records: Charge::Zero,
+            peak_scratch_records: Charge::Zero,
+            nested_output_records: Charge::Zero,
+            allocated_bytes: Charge::Charged,
+        }
+    }
+}
+
+fn check_charge(label: &str, resource: HtmlSemanticResource, expected: Charge, actual: usize) {
+    match expected {
+        Charge::Zero => assert_eq!(actual, 0, "{label}: {resource:?} must not be charged"),
+        Charge::Charged => assert!(actual > 0, "{label}: {resource:?} must be charged"),
+        Charge::Exactly(n) => assert_eq!(actual, n, "{label}: {resource:?} usage"),
+        Charge::AtLeast(n) => assert!(
+            actual >= n,
+            "{label}: {resource:?} usage {actual} is below {n}"
+        ),
+    }
+}
+
+/// Bytes of one output record, as the documented tariff multiplies capacity
+/// growth by `size_of` the stored record type.
+pub fn result_record_bytes() -> usize {
+    std::mem::size_of::<surgeist_html_semantics::HtmlSemanticResult>()
+}
+
+/// Runs `requests` once under `base` and checks the independently derived
+/// usage, then proves for every resource that its exact baseline usage is the
+/// smallest admitting cap: at that cap the report equals the baseline report
+/// (results and usage) and one unit less fails with exactly that resource,
+/// the session's qualification and limits, a sticky repeat and released
+/// scratch. Resources expected to be [`Charge::Zero`] are proven by capping
+/// them at zero, which must still reproduce the baseline report.
+pub fn assert_exact_and_one_short_caps(
+    label: &str,
+    c: &HtmlCapture,
+    cx: &HtmlSemanticContext,
+    raw: usize,
+    base: HtmlSemanticLimits,
+    requests: &[HtmlSemanticRequest],
+    expected: ExpectedUsage,
+) -> HtmlSemanticReport {
+    let baseline = session(c, cx, base, raw, HtmlSemanticCancellation::new())
+        .query(requests)
+        .unwrap_or_else(|f| panic!("{label}: baseline failed: {f:?}"));
+    let u = baseline.usage();
+    use HtmlSemanticResource as R;
+    check_charge(label, R::Work, expected.work, u.work());
+    check_charge(
+        label,
+        R::OutputRecords,
+        expected.output_records,
+        u.output_records(),
+    );
+    check_charge(
+        label,
+        R::ScratchRecords,
+        expected.peak_scratch_records,
+        u.peak_scratch_records(),
+    );
+    check_charge(
+        label,
+        R::NestedOutputRecords,
+        expected.nested_output_records,
+        u.nested_output_records(),
+    );
+    check_charge(
+        label,
+        R::AllocatedBytes,
+        expected.allocated_bytes,
+        u.allocated_bytes(),
+    );
+    assert_eq!(u.scratch_records(), 0, "{label}: scratch released");
+    for (resource, exact) in [
+        (R::Work, u.work()),
+        (R::OutputRecords, u.output_records()),
+        (R::ScratchRecords, u.peak_scratch_records()),
+        (R::NestedOutputRecords, u.nested_output_records()),
+        (R::AllocatedBytes, u.allocated_bytes()),
+    ] {
+        let at_cap = cap_resources(base, ALL_RESOURCES, resource, exact);
+        let mut ss = session(c, cx, at_cap, raw, HtmlSemanticCancellation::new());
+        let r = ss
+            .query(requests)
+            .unwrap_or_else(|f| panic!("{label}: {resource:?} exact cap {exact}: {f:?}"));
+        assert_eq!(
+            r.results(),
+            baseline.results(),
+            "{label}: {resource:?} exact cap results"
+        );
+        assert_eq!(r.usage(), u, "{label}: {resource:?} exact cap usage");
+        assert_eq!(r.capture(), c.identity());
+        assert_eq!(r.context(), cx.identity());
+        assert_eq!(r.limits(), at_cap);
+        if exact == 0 {
+            continue;
+        }
+        let short = cap_resources(base, ALL_RESOURCES, resource, exact - 1);
+        let mut ss = session(c, cx, short, raw, HtmlSemanticCancellation::new());
+        let f = ss.query(requests).expect_err(&format!(
+            "{label}: {resource:?} cap {} must fail",
+            exact - 1
+        ));
+        match f.kind() {
+            HtmlSemanticFailureKind::LimitExceeded {
+                resource: failed,
+                limit,
+                required,
+            } => {
+                assert_eq!(*failed, resource, "{label}: failing resource");
+                assert_eq!(*limit, exact - 1, "{label}: {resource:?} limit");
+                assert!(*required > *limit, "{label}: {resource:?} required");
+            }
+            other => panic!("{label}: {resource:?} one short: {other:?}"),
+        }
+        let q = f.qualification().expect("qualified failure");
+        assert_eq!(q.capture(), c.identity());
+        assert_eq!(q.context(), cx.identity());
+        assert_eq!(q.limits(), short);
+        assert_eq!(ss.query(&[]).unwrap_err(), f, "{label}: sticky");
+        assert_eq!(ss.usage().scratch_records(), 0, "{label}: scratch released");
+    }
+    baseline
+}
+
+/// Runs `requests` under `base` and proves the run's work is the least
+/// admitting work cap: the exact cap reproduces the baseline results and usage
+/// and one less stops with exactly that resource. Returns that work so a test
+/// can place a later stop relative to it (for example one request's work as the
+/// cap of a two-request batch) without trusting an unvalidated measurement.
+pub fn validated_work(
+    label: &str,
+    c: &HtmlCapture,
+    cx: &HtmlSemanticContext,
+    raw: usize,
+    base: HtmlSemanticLimits,
+    requests: &[HtmlSemanticRequest],
+) -> usize {
+    let baseline = session(c, cx, base, raw, HtmlSemanticCancellation::new())
+        .query(requests)
+        .unwrap_or_else(|f| panic!("{label}: baseline failed: {f:?}"));
+    let work = baseline.usage().work();
+    assert!(work > 0, "{label}: work must be charged");
+    let at = cap_resources(base, ALL_RESOURCES, HtmlSemanticResource::Work, work);
+    let r = session(c, cx, at, raw, HtmlSemanticCancellation::new())
+        .query(requests)
+        .unwrap_or_else(|f| panic!("{label}: exact work cap {work}: {f:?}"));
+    assert_eq!(
+        r.results(),
+        baseline.results(),
+        "{label}: exact cap results"
+    );
+    assert_eq!(r.usage(), baseline.usage(), "{label}: exact cap usage");
+    let short = cap_resources(base, ALL_RESOURCES, HtmlSemanticResource::Work, work - 1);
+    let f = session(c, cx, short, raw, HtmlSemanticCancellation::new())
+        .query(requests)
+        .expect_err(&format!("{label}: work cap {} must fail", work - 1));
+    assert!(
+        matches!(
+            f.kind(),
+            HtmlSemanticFailureKind::LimitExceeded {
+                resource: HtmlSemanticResource::Work,
+                limit,
+                ..
+            } if *limit == work - 1
+        ),
+        "{label}: {f:?}"
+    );
+    work
 }

@@ -1,17 +1,18 @@
 use crate::semantics::support::{
-    builder, semantic_limits as limits, session_without_raw_values as session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, result_record_bytes,
+    semantic_limits as limits, session_without_raw_values as session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlTextOrigin,
-    HtmlControlTextReadback, HtmlOutputDefaultError, HtmlOutputDefaultFact, HtmlOutputDefaultFacts,
-    HtmlOutputDefaultLimits, HtmlOutputDefaultValueOverride, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlControlTextOrigin, HtmlControlTextReadback, HtmlOutputDefaultError, HtmlOutputDefaultFact,
+    HtmlOutputDefaultFacts, HtmlOutputDefaultLimits, HtmlOutputDefaultValueOverride,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
+    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -556,7 +557,11 @@ fn moved_capacity_logical_units_and_validation_work_have_exact_one_short_boundar
     let baseline =
         HtmlOutputDefaultFacts::new(&c, c.host_facts_revision().clone(), make(), fact_limits())
             .unwrap();
-    let work = baseline.validation_work();
+    // Validation charges the record (1), the vocabulary envelope of the
+    // six-unit "output" name in the 28-unit HTML namespace, no previous-record
+    // comparisons and the override check (1).
+    let work = 1 + (("output".len() + 1) * KnownHtmlElement::ALL.len() + 28) + 1;
+    assert_eq!(baseline.validation_work(), work);
     assert_eq!(baseline.records()[0].subject(), &id);
     assert_eq!(baseline.capture(), c.identity());
     assert_eq!(baseline.host_revision(), c.host_facts_revision());
@@ -676,86 +681,223 @@ fn limited(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
         },
     )
 }
+/// Work for the shared prefix of one control-text request, from the tariff in
+/// the `HtmlSemanticLimits` documentation: the one-record result reservation
+/// (1), the subject lookup (1), the dispatcher's HTML namespace test (1 plus
+/// 28 compared units), the readback's lookup (1), namespace test (29) and
+/// vocabulary recognition of `local_units` units, and the content lookup and
+/// entry (2).
+fn shared_prefix_work(local_units: usize) -> usize {
+    let namespace = 1 + "http://www.w3.org/1999/xhtml".len();
+    1 + 1
+        + namespace
+        + 1
+        + namespace
+        + (local_units + 1) * KnownHtmlElement::ALL.len()
+        + "http://www.w3.org/1999/xhtml".len()
+        + 2
+}
 fn check_caps(
+    label: &str,
     c: &HtmlCapture,
     cx: &HtmlSemanticContext,
     id: &HtmlCaptureSubjectId,
     q: HtmlSemanticQuery,
-) {
-    let u = report(c, cx, id, q).usage();
-    let request = req(id, q);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        if exact == 0 {
-            continue;
-        }
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                c,
-                cx,
-                limited(resource, cap),
-                HtmlSemanticCancellation::new(),
-            );
-            let r = ss.query(std::slice::from_ref(&request));
-            if cap == exact {
-                assert!(r.is_ok(), "{q:?} {resource:?}: {r:?}");
-            } else {
-                let f = r.unwrap_err();
-                assert!(
-                    matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{q:?} {resource:?}: {f:?}"
-                );
-                assert_eq!(f.qualification().unwrap().capture(), c.identity());
-                assert_eq!(f.qualification().unwrap().context(), cx.identity());
-                assert_eq!(f.qualification().unwrap().limits(), limited(resource, cap));
-                assert_eq!(ss.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    expected: ExpectedUsage,
+) -> HtmlSemanticReport {
+    assert_exact_and_one_short_caps(
+        label,
+        c,
+        cx,
+        0,
+        limits(),
+        std::slice::from_ref(&req(id, q)),
+        expected,
+    )
 }
 
 #[test]
 fn actual_text_and_override_work_output_scratch_capacity_bytes_caps_are_exact() {
-    for name in ["textarea", "output"] {
-        let (c, id) = leaf(name, &[" \r\nAB\t ".into()]);
-        let cx = context(
-            &c,
-            if name == "output" {
-                Some(vec![record(&id, HtmlOutputDefaultValueOverride::Null)])
-            } else {
-                None
-            },
-        );
-        let q = if name == "textarea" {
-            HtmlSemanticQuery::TextareaDefaultValue
-        } else {
-            HtmlSemanticQuery::OutputValue
-        };
-        check_caps(&c, &cx, &id, q);
-        if name == "output" {
-            check_caps(&c, &cx, &id, HtmlSemanticQuery::OutputDefaultValue);
-            let cx = context(
-                &c,
-                Some(vec![record(
-                    &id,
-                    HtmlOutputDefaultValueOverride::Value("override".into()),
-                )]),
-            );
-            check_caps(&c, &cx, &id, HtmlSemanticQuery::OutputDefaultValue);
-        }
-    }
+    // " \r\nAB\t " is seven UTF-16 units. Each unit costs three work (loop
+    // charge, capacity growth, push) and grows the nested buffer by exactly
+    // one `u16` (`try_reserve_exact(1)` per unit), i.e. two bytes.
+    let units = 7usize;
+    let result_bytes = result_record_bytes();
+    let textarea_prefix = shared_prefix_work("textarea".len());
+    let output_prefix = shared_prefix_work("output".len());
+    let (c, id) = leaf("textarea", &[" \r\nAB\t ".into()]);
+    let cx = context(&c, None);
+    // Direct-child mode: loop charge for the child and for the end (2), the
+    // child lookup (1), the units, the final charge (1) and the result write
+    // (1); no scratch frames.
+    check_caps(
+        "textarea",
+        &c,
+        &cx,
+        &id,
+        HtmlSemanticQuery::TextareaDefaultValue,
+        ExpectedUsage {
+            work: Charge::Exactly(textarea_prefix + 2 + 1 + 3 * units + 1 + 1),
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(units),
+            allocated_bytes: Charge::Exactly(result_bytes + 2 * units),
+            ..ExpectedUsage::none()
+        },
+    );
+    let (c, id) = leaf("output", &[" \r\nAB\t ".into()]);
+    let cx = context(
+        &c,
+        Some(vec![record(&id, HtmlOutputDefaultValueOverride::Null)]),
+    );
+    // Descendant mode reserves one child-iterator frame (growth 1, push 1),
+    // then per frame step a loop charge, the child lookup and the units, and
+    // an exhausted step charging the loop and the pop (2), the final charge
+    // (1) and the result write (1).
+    let descendant = 2 + 1 + 1 + 3 * units + 2 + 1 + 1;
+    let descendant_expected = ExpectedUsage {
+        output_records: Charge::Exactly(1),
+        peak_scratch_records: Charge::Exactly(1),
+        nested_output_records: Charge::Exactly(units),
+        ..ExpectedUsage::none()
+    };
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    check_caps(
+        "output value",
+        &c,
+        &cx,
+        &id,
+        HtmlSemanticQuery::OutputValue,
+        ExpectedUsage {
+            work: Charge::Exactly(output_prefix + descendant),
+            allocated_bytes: Charge::Exactly(result_bytes + frame + 2 * units),
+            ..descendant_expected
+        },
+    );
+    // A Null override scans one record (1) and then reads the descendants.
+    check_caps(
+        "output default value, null override",
+        &c,
+        &cx,
+        &id,
+        HtmlSemanticQuery::OutputDefaultValue,
+        ExpectedUsage {
+            work: Charge::Exactly(output_prefix + 1 + descendant),
+            allocated_bytes: Charge::Exactly(result_bytes + frame + 2 * units),
+            ..descendant_expected
+        },
+    );
+    // A text override scans one record (1), copies the shared string handle
+    // (charge 1) and writes the result (1); nothing is allocated beyond the
+    // result record.
+    let cx = context(
+        &c,
+        Some(vec![record(
+            &id,
+            HtmlOutputDefaultValueOverride::Value("override".into()),
+        )]),
+    );
+    check_caps(
+        "output default value, text override",
+        &c,
+        &cx,
+        &id,
+        HtmlSemanticQuery::OutputDefaultValue,
+        ExpectedUsage {
+            work: Charge::Exactly(output_prefix - 2 + 1 + 1 + 1),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_bytes),
+            ..ExpectedUsage::none()
+        },
+    );
+}
+
+#[test]
+fn documented_work_distinguishes_childless_and_parent_nodes_in_descendant_text() {
+    // Reference: semantic query work, text content (descendant mode). The output
+    // holds a childless span, a comment, and a span holding one unit of text.
+    // Entering an element costs 1 and a frame (2) only when it has children; a
+    // comment costs only its iteration and lookup.
+    let (mut b, d) = builder();
+    let output = html(&mut b, &d, "output");
+    let empty = html(&mut b, &d, "span");
+    children(&mut b, &empty, &[]);
+    let comment = b.add_comment(&d, "c".into()).unwrap();
+    let parent = html(&mut b, &d, "span");
+    let inner = text(&mut b, &d, "b");
+    children(&mut b, &parent, &[inner]);
+    children(&mut b, &output, &[empty, comment, parent]);
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&output).unwrap();
+    let cx = context(&c, None);
+    let work = shared_prefix_work("output".len())
+        + 2 // frame for the output's children
+        + (1 + 1 + 1) // childless span: iteration, lookup, entered (no frame)
+        + (1 + 1) // comment: iteration, lookup
+        + (1 + 1 + 1 + 2) // parent span: iteration, lookup, entered, frame
+        + (1 + 1 + 3) // its text: iteration, lookup, one unit
+        + 2 // the parent span's exhausted frame
+        + 2 // the output's exhausted frame
+        + 1 // closing
+        + 1; // result write
+    let r = check_caps(
+        "descendant text node kinds",
+        &c,
+        &cx,
+        &id,
+        HtmlSemanticQuery::OutputValue,
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            // The output's frame stays live while the parent span's is pushed.
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes()
+                    + 2 * std::mem::size_of::<HtmlCapturedChildIds<'static>>()
+                    + 2,
+            ),
+        },
+    );
+    assert_eq!(value(&r).value().code_units(), [98]);
+}
+
+#[test]
+fn documented_work_does_not_enter_an_element_in_direct_child_text() {
+    // Reference: semantic query work, text content (direct-child mode). A
+    // textarea holding one unit of text and a span: the span costs its loop
+    // charge and lookup like any child but is not entered, so its own text is
+    // ignored and no frame is needed.
+    let (mut b, d) = builder();
+    let textarea = html(&mut b, &d, "textarea");
+    let note = text(&mut b, &d, "a");
+    let span = html(&mut b, &d, "span");
+    let ignored = text(&mut b, &d, "ignored");
+    children(&mut b, &span, &[ignored]);
+    children(&mut b, &textarea, &[note, span]);
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&textarea).unwrap();
+    let cx = context(&c, None);
+    let work = shared_prefix_work("textarea".len())
+        + 3 // loop charges: one per child and the end of the list
+        + 2 // child lookups
+        + 3 // the unit of text
+        + 1 // closing
+        + 1; // result write
+    let r = check_caps(
+        "direct-child text with an element child",
+        &c,
+        &cx,
+        &id,
+        HtmlSemanticQuery::TextareaDefaultValue,
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_record_bytes() + 2),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(value(&r).value().code_units(), [97]);
 }
 
 #[test]

@@ -1,4 +1,7 @@
-use crate::semantics::support::{builder, context, session};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
+    session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
@@ -653,48 +656,32 @@ fn actual_work_bytes_records_and_numeric_digit_limits_have_exact_one_short_bound
                 leaf(None, Some(std::slice::from_ref(&text)))
             };
             let cx = context(&c);
-            let usage = report(&c, &cx, &id).usage();
-            for (resource, exact) in [
-                (HtmlSemanticResource::Work, usage.work()),
-                (HtmlSemanticResource::OutputRecords, usage.output_records()),
-                (
-                    HtmlSemanticResource::NestedOutputRecords,
-                    usage.nested_output_records(),
-                ),
-                (
-                    HtmlSemanticResource::AllocatedBytes,
-                    usage.allocated_bytes(),
-                ),
-            ] {
-                assert!(exact > 0);
-                for cap in [exact, exact - 1] {
-                    let mut ss = session(
-                        &c,
-                        &cx,
-                        limited(resource, cap),
-                        100000,
-                        HtmlSemanticCancellation::new(),
-                    );
-                    let result = ss.query(&[request(&id)]);
-                    if cap == exact {
-                        assert!(result.is_ok(), "{raw} {resource:?}: {result:?}");
-                    } else {
-                        let failure = result.unwrap_err();
-                        assert!(
-                            matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                            "{raw} {resource:?}: {failure:?}"
-                        );
-                        assert_eq!(failure.qualification().unwrap().capture(), c.identity());
-                        assert_eq!(failure.qualification().unwrap().context(), cx.identity());
-                        assert_eq!(
-                            failure.qualification().unwrap().limits(),
-                            limited(resource, cap)
-                        );
-                        assert_eq!(ss.query(&[]).unwrap_err(), failure);
-                    }
-                    assert_eq!(ss.usage().scratch_records(), 0);
-                }
-            }
+            // The datetime attribute is read in place and the readback payload
+            // is the only nested record. Child text is first copied one `u16`
+            // per exact growth, so the text variant adds one nested record per
+            // unit. The numeric interpretation's step layout and capacities are
+            // owned by the HTML value owner: work and bytes are required to be
+            // charged, and the bytes must at least cover the result record and
+            // the payload.
+            let nested = if attribute {
+                1
+            } else {
+                raw.encode_utf16().count() + 1
+            };
+            assert_exact_and_one_short_caps(
+                &format!("{raw} attribute={attribute}"),
+                &c,
+                &cx,
+                100000,
+                limits(),
+                &[request(&id)],
+                ExpectedUsage {
+                    output_records: Charge::Exactly(1),
+                    nested_output_records: Charge::Exactly(nested),
+                    allocated_bytes: Charge::AtLeast(result_record_bytes() + nested),
+                    ..ExpectedUsage::none()
+                },
+            );
         }
     }
     let (c, id) = leaf(Some("12345".into()), None);

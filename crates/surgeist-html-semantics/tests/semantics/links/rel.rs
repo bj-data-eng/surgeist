@@ -1,4 +1,7 @@
-use crate::semantics::support::small_builder_with_short_text as builder;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
+    small_builder_with_short_text as builder,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
@@ -11,8 +14,8 @@ use surgeist_html_semantics::{
     HtmlRelSupportedTokens, HtmlRelUrlGrammar, HtmlRelUrlKey, HtmlRelUrlObservation,
     HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
     HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
-    HtmlSemanticValue,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult,
+    HtmlSemanticSession, HtmlSemanticValue,
 };
 use surgeist_html_semantics::{HtmlRelOriginId, HtmlRelSettingsId, HtmlRelUrlId};
 
@@ -341,10 +344,14 @@ fn closed_supported_set_known_empty_and_missing_have_distinct_results() {
     );
     let cx = context(&c, HtmlRelExpectedRevisions::new(), None);
     let result = session(&c, &cx, 100).query(&[request(&c, &e)]).unwrap();
-    assert!(matches!(
+    // No supported-token fact was supplied for this link.
+    assert_eq!(
         read(&result, 0).supported_tokens(),
-        HtmlSemanticValue::Missing(_)
-    ));
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::LinkRelationship {
+            subject: c.subject_id(&e).unwrap(),
+            fact: HtmlRelMissingFact::SupportedTokens,
+        })
+    );
     let input = HtmlRelFactsInput::new().with_supported_tokens(
         revision(2),
         vec![HtmlRelSupportedTokens::new(
@@ -508,6 +515,8 @@ fn noopener_ordered_dominance_and_actual_url_settings_facts_cover_all_roles() {
                 (HtmlSemanticFact::Noopener(HtmlSemanticValue::Known(actual)), Some(expected)) => {
                     assert_eq!(*actual, expected, "{role} {rel} {target}")
                 }
+                // Table rows with no expected value only require that the
+                // outcome is missing evidence; the rows share no single payload.
                 (HtmlSemanticFact::Noopener(HtmlSemanticValue::Missing(_)), None) => {}
                 other => panic!("{role} {rel} {target}: {other:?}"),
             };
@@ -636,8 +645,26 @@ fn noopener_exact_work_scratch_and_bytes_limits_retire_temporary_capacity_on_fai
         .query(std::slice::from_ref(&q))
         .unwrap();
     let usage = success.usage();
-    assert!(usage.peak_scratch_records() > 0);
     assert_eq!(usage.scratch_records(), 0);
+    // The independent expectation for the usage capped below: one Boolean
+    // result record, a relationship-token scan whose private layout makes
+    // work, scratch and token-buffer bytes required-to-be-charged rather than
+    // pinned, and no nested storage; the exact cap on every resource must
+    // reproduce the report and one short must fail with exactly that resource.
+    assert_exact_and_one_short_caps(
+        "noopener",
+        &c,
+        &cx,
+        100,
+        HtmlSemanticLimits::new(20000000, 1, 1000, 0, 1000000, 0),
+        std::slice::from_ref(&q),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let exact = HtmlSemanticLimits::new(
         usage.work(),
         1,
@@ -979,11 +1006,16 @@ fn author_bookmark_help_and_translation_follow_actual_tree_context() {
     let c = b.finish().unwrap();
     let cx = context(&c, HtmlRelExpectedRevisions::new(), None);
     let r = session(&c, &cx, 100).query(&[request(&c, &a)]).unwrap();
+    // Each meaning's association depends on the link's tree context, and the
+    // anchor's parent was never established, so that parent is the missing
+    // evidence of every meaning.
+    let missing =
+        HtmlSemanticValue::Missing(HtmlSemanticMissing::Parent(c.subject_id(&a).unwrap()));
     assert!(
         read(&r, 0)
             .meanings()
             .iter()
-            .all(|m| matches!(m.association(), HtmlSemanticValue::Missing(_)))
+            .all(|m| m.association() == &missing)
     );
 }
 

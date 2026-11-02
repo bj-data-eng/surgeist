@@ -1,5 +1,6 @@
 use crate::semantics::support::{
-    compact_builder_without_registries as builder,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
+    compact_builder_without_registries as builder, result_record_bytes,
     small_semantic_limits_with_integer_digits as limits,
 };
 use surgeist_html::*;
@@ -988,12 +989,28 @@ fn session_work_scratch_bytes_cancellation_and_failed_batches_are_qualified_and_
     let make = |l, cancel| {
         HtmlSemanticSession::new(&c, &cx, HtmlValueInterpreter::new(100), l, cancel).unwrap()
     };
-    let report = make(limits(), HtmlSemanticCancellation::new())
-        .query(std::slice::from_ref(&request))
-        .unwrap();
+    // The auto-direction scan keeps a task stack for the element and its text
+    // (scratch required, depth private) and answers with a plain classification:
+    // one result record and no nested storage. The scan's visit layout is
+    // private, so work is required to be charged without being pinned. The
+    // helper proves the reported work is the least admitting cap before the
+    // stops below reuse it.
+    let report = assert_exact_and_one_short_caps(
+        "directionality of a dir=auto element",
+        &c,
+        &cx,
+        100,
+        limits(),
+        std::slice::from_ref(&request),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 1),
+            ..ExpectedUsage::none()
+        },
+    );
     let work = report.usage().work();
     assert_eq!(report.usage().scratch_records(), 0);
-    assert!(report.usage().peak_scratch_records() > 0);
     let mut short = make(
         HtmlSemanticLimits::new(work - 1, 100, 1000, 1000, 1000000, 1000),
         HtmlSemanticCancellation::new(),

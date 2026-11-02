@@ -1,5 +1,6 @@
 use crate::semantics::support::{
-    moderate_semantic_limits as limits, session, small_builder_without_registries as builder,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, moderate_semantic_limits as limits,
+    result_record_bytes, session, small_builder_without_registries as builder,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -394,71 +395,27 @@ fn actual_vector_work_and_output_admission_have_exact_and_one_short_boundaries()
     );
     let cx = context(&f, None);
     let req = request(&f.control);
-    let baseline = report(&f, &cx).usage();
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, baseline.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            baseline.output_records(),
-        ),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            baseline.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            baseline.nested_output_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            baseline.allocated_bytes(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let l = HtmlSemanticLimits::new(
-                if resource == HtmlSemanticResource::Work {
-                    cap
-                } else {
-                    limits().work()
-                },
-                if resource == HtmlSemanticResource::OutputRecords {
-                    cap
-                } else {
-                    100
-                },
-                if resource == HtmlSemanticResource::ScratchRecords {
-                    cap
-                } else {
-                    1000
-                },
-                0,
-                if resource == HtmlSemanticResource::AllocatedBytes {
-                    cap
-                } else {
-                    1000000
-                },
-                if resource == HtmlSemanticResource::NestedOutputRecords {
-                    cap
-                } else {
-                    10000
-                },
-            );
-            let mut ss = session(&f.capture, &cx, l, 10000, HtmlSemanticCancellation::new());
-            let result = ss.query(std::slice::from_ref(&req));
-            if cap == exact {
-                assert!(result.is_ok(), "{resource:?}: {result:?}");
-            } else {
-                let failure = result.unwrap_err();
-                assert!(
-                    matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{resource:?}: {failure:?}"
-                );
-                assert_eq!(ss.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    // The four-token autocomplete detail is materialized by the HTML value
+    // owner's controlled materialization (token scratch and token records), so
+    // the amounts of work, scratch, nested records and bytes are that owner's
+    // published tariff, not this crate's: each must be charged, and the bytes
+    // must at least cover the result record and the report. One result record
+    // is pinned.
+    assert_exact_and_one_short_caps(
+        "autocomplete detail",
+        &f.capture,
+        &cx,
+        10000,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 10000),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            nested_output_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 1),
+            ..ExpectedUsage::none()
+        },
+    );
 }
 #[test]
 fn late_batch_stop_discards_all_results_and_keeps_original_qualification() {
