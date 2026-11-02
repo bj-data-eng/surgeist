@@ -5347,3 +5347,9 @@ mod cyclic_query_border;
 
 #[path = "scroll_composition/auto_hidden_query.rs"]
 mod auto_hidden_query;
+
+#[path = "scroll_composition/distinct_contribution.rs"]
+mod distinct_contribution;
+
+#[path = "scroll_composition/minimum_edges.rs"]
+mod minimum_edges;
