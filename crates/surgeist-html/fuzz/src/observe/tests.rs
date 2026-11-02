@@ -48,3 +48,102 @@ fn question_mark_terminated_instruction_literal_requires_its_tokenizer_data() {
 fn greater_than_terminated_instruction_literal_requires_its_tokenizer_data() {
     assert_literal_requires_instruction_data(8, "<?target data><p>P</p>");
 }
+
+fn work_cut(
+    cap: u64,
+) -> (
+    HtmlParseFailure,
+    HtmlParseLimits,
+    HtmlSource,
+    HtmlParseCancellation,
+) {
+    let mut caps = crate::codec::CAPS;
+    caps[18] = cap;
+    let limits = crate::codec::limits(caps).expect("documented envelope");
+    let source = HtmlSource::utf8("<!DOCTYPE html><p>a</p><p>b</p>".to_owned());
+    let request = HtmlDocumentParseRequest::offline(source.clone(), limits);
+    let cancel = request.cancellation().clone();
+    let failure = request
+        .parse()
+        .expect_err("a work cap of 40 credits stops this parse");
+    (failure, limits, source, cancel)
+}
+
+#[test]
+fn balanced_recipes_accept_only_a_stop_at_the_configured_cap() {
+    let descriptor = crate::UnicodeTarget::document().descriptor.clone();
+    let props = Props(&descriptor);
+    let (failure, limits, source, cancel) = work_cut(40);
+    let text = UnicodeSource::Utf8("<!DOCTYPE html><p>a</p><p>b</p>".to_owned());
+    let spec = |work_cap: u64| {
+        let mut caps = crate::codec::CAPS;
+        caps[18] = work_cap;
+        Spec {
+            fragment: false,
+            text: &text,
+            original: &source,
+            limits: &limits,
+            caps,
+            requested: HtmlParserScriptingMode::Disabled,
+            capture: None,
+            shadow_allowed: false,
+        }
+    };
+    // The stop reports the cap that was configured: a product outcome.
+    let ok = verify_failure(&props, &spec(40), &failure, &cancel, Expect::Balanced).unwrap();
+    assert_eq!(ok.kind(), OutcomeKind::ExpectedRejection, "{ok:?}");
+    // The same stop against a configured cap it did not report is a spurious
+    // stop, which a balanced recipe must never accept.
+    let spurious = verify_failure(&props, &spec(41), &failure, &cancel, Expect::Balanced).unwrap();
+    assert_eq!(spurious.kind(), OutcomeKind::Failure, "{spurious:?}");
+    assert_eq!(
+        spurious.failure_key().and_then(FailureKey::discriminator),
+        Some("stop-limit-mismatch")
+    );
+    // The permissive classification still accepts it.
+    let general = verify_failure(&props, &spec(41), &failure, &cancel, Expect::General).unwrap();
+    assert_eq!(general.kind(), OutcomeKind::ExpectedRejection);
+    // An oracle that expects success accepts no stop at all.
+    let never = verify_failure(&props, &spec(40), &failure, &cancel, Expect::Never).unwrap();
+    assert_eq!(never.kind(), OutcomeKind::Failure);
+}
+
+#[test]
+fn balanced_recipes_reject_a_stop_on_a_cap_the_case_did_not_lower() {
+    // A source one unit over the documented 100000-unit envelope really stops
+    // the parse at the default cap. The stop is self-consistent (it reports the
+    // configured cap and an attempted total above it), but no resource was
+    // lowered, so an oracle that expects a tree must not accept it.
+    let descriptor = crate::UnicodeTarget::document().descriptor.clone();
+    let props = Props(&descriptor);
+    let limits = crate::codec::limits(crate::codec::CAPS).expect("documented envelope");
+    let text = UnicodeSource::Utf8("a".repeat(100_001));
+    let source = HtmlSource::utf8("a".repeat(100_001));
+    let request = HtmlDocumentParseRequest::offline(source.clone(), limits);
+    let cancel = request.cancellation().clone();
+    let failure = request
+        .parse()
+        .expect_err("the source exceeds the envelope");
+    let spec = Spec {
+        fragment: false,
+        text: &text,
+        original: &source,
+        limits: &limits,
+        caps: crate::codec::CAPS,
+        requested: HtmlParserScriptingMode::Disabled,
+        capture: None,
+        shadow_allowed: false,
+    };
+    let balanced = verify_failure(&props, &spec, &failure, &cancel, Expect::Balanced).unwrap();
+    assert_eq!(balanced.kind(), OutcomeKind::Failure, "{balanced:?}");
+    assert_eq!(
+        balanced.failure_key().and_then(FailureKey::discriminator),
+        Some("stop-limit-mismatch")
+    );
+    let general = verify_failure(&props, &spec, &failure, &cancel, Expect::General).unwrap();
+    assert_eq!(
+        general.kind(),
+        OutcomeKind::ExpectedRejection,
+        "{general:?}"
+    );
+}
