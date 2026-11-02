@@ -32,9 +32,6 @@ enum Exclusion {
         tokens: &'static str,
         errors: &'static [&'static str],
     },
-    /// A tracked divergence without a fix yet. Its output is not asserted
-    /// either way, but a panic still fails.
-    Defect(&'static str),
 }
 
 /// HTML877d tag open state: `<?` sets the temporary buffer to empty and enters
@@ -689,17 +686,6 @@ fn replay(file: &str, raw: &str, count: usize) {
                     ));
                 }
             }
-            Some(Exclusion::Defect(_)) => {
-                for run in &runs {
-                    if let Err(panic) = &run.outcome {
-                        failures.push(format!(
-                            "{} {}: actual tokenizer panicked: {panic}",
-                            context(),
-                            run.label
-                        ));
-                    }
-                }
-            }
         }
     }
     assert!(
@@ -749,7 +735,7 @@ bundled! {
 fn exclusions_name_only_bundled_files_once_with_reasons() {
     for (i, (file, ordinal, exclusion)) in EXCLUSIONS.iter().enumerate() {
         assert!(BUNDLED.contains(file), "{file}");
-        let (Exclusion::Spec { reason, .. } | Exclusion::Defect(reason)) = exclusion;
+        let Exclusion::Spec { reason, .. } = exclusion;
         assert!(!reason.is_empty(), "{file}/{ordinal} has no reason");
         assert!(
             !EXCLUSIONS[..i]

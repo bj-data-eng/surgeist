@@ -78,6 +78,25 @@ pub(crate) enum AsciiMatch {
     NeedInput,
 }
 
+/// The input-stream error of the next input character, committed by an ASCII
+/// lookahead that stopped at it. That character is the one the examining state
+/// decides on, so its record is committed with the lookahead, ahead of the
+/// tokenizer error the decision reports, and the character's later
+/// consumption does not emit it again. Characters further into the lookahead
+/// region are only "next few characters": they report when consumed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ExaminedDiagnostic {
+    pub(crate) diagnostic: InputDiagnostic,
+    pub(crate) source: HtmlSourceRange,
+}
+
+/// An ASCII lookahead's verdict together with the stream error it committed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct Lookahead<T> {
+    pub(crate) result: T,
+    pub(crate) examined: Option<ExaminedDiagnostic>,
+}
+
 enum InputAvailability {
     Complete,
     #[cfg(test)]
@@ -496,20 +515,23 @@ impl<'source> InputCursor<'source> {
         Ok(())
     }
 
-    /// Non-consuming preprocessed ASCII lookahead. Each examined source unit
-    /// and comparison is charged again, with a poll before every bounded read.
+    /// Preprocessed ASCII lookahead; it consumes nothing. Each examined source
+    /// unit and comparison is charged again, with a poll before every bounded
+    /// read. When the next input character itself mismatches and carries an
+    /// input-stream diagnostic, that diagnostic is committed and returned (see
+    /// [`ExaminedDiagnostic`]).
     pub(crate) fn matches_ascii(
-        &self,
+        &mut self,
         expected: &[u8],
         comparison: AsciiComparison,
         control: &mut ParseControl,
-    ) -> Result<bool, ParseStop> {
+    ) -> Result<Lookahead<bool>, ParseStop> {
         control.require_identity(&self.owner)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
         self.require_complete(control)?;
         let mut position = self.position;
         let mut replay = self.reconsume;
-        for &byte in expected {
+        for (index, &byte) in expected.iter().enumerate() {
             control.charge(WorkCategory::InspectByte, 1)?;
             if !byte.is_ascii() {
                 return Err(control.fail_invariant(Invariant::InputCursorState));
@@ -521,34 +543,43 @@ impl<'source> InputCursor<'source> {
                 self.decode_at(position, control)?
             };
             let InputRead::Character(character) = read else {
-                return Ok(false);
+                return Ok(Lookahead {
+                    result: false,
+                    examined: None,
+                });
             };
             position = character.source.end();
             control.charge(WorkCategory::InspectByte, size_of::<CodePoint>() as u64)?;
             let value = character.code_point.value();
-            if value > 0x7F {
-                return Ok(false);
-            }
-            let actual = value as u8;
-            let equal = match comparison {
-                AsciiComparison::Sensitive => actual == byte,
-                AsciiComparison::Insensitive => actual.eq_ignore_ascii_case(&byte),
+            let equal = value <= 0x7F && {
+                let actual = value as u8;
+                match comparison {
+                    AsciiComparison::Sensitive => actual == byte,
+                    AsciiComparison::Insensitive => actual.eq_ignore_ascii_case(&byte),
+                }
             };
             if !equal {
-                return Ok(false);
+                return Ok(Lookahead {
+                    result: false,
+                    examined: self.commit_examined(&character, index == 0),
+                });
             }
         }
-        Ok(true)
+        Ok(Lookahead {
+            result: true,
+            examined: None,
+        })
     }
 
     /// An available matching prefix cannot decide a mismatch. This lookahead
-    /// does not commit cursor progress or preprocessing emissions.
+    /// does not consume; like [`Self::matches_ascii`] it commits the stream
+    /// error of a mismatching next input character.
     pub(crate) fn poll_matches_ascii(
-        &self,
+        &mut self,
         expected: &[u8],
         comparison: AsciiComparison,
         control: &mut ParseControl,
-    ) -> Result<AsciiMatch, ParseStop> {
+    ) -> Result<Lookahead<AsciiMatch>, ParseStop> {
         control.require_identity(&self.owner)?;
         control.charge(WorkCategory::RecordVisit, 1)?;
         let mut position = self.position;
@@ -560,7 +591,7 @@ impl<'source> InputCursor<'source> {
             )?;
         }
         let mut boundary = self.boundary().cloned();
-        for expected in expected {
+        for (index, expected) in expected.iter().enumerate() {
             control.charge(WorkCategory::InspectByte, 1)?;
             let byte = *expected;
             if !byte.is_ascii() {
@@ -571,7 +602,12 @@ impl<'source> InputCursor<'source> {
                 self.saved_current(control)?
             } else {
                 match self.decode_poll_at(position, boundary.as_ref(), control)? {
-                    DecodedPoll::NeedInput => return Ok(AsciiMatch::NeedInput),
+                    DecodedPoll::NeedInput => {
+                        return Ok(Lookahead {
+                            result: AsciiMatch::NeedInput,
+                            examined: None,
+                        });
+                    }
                     DecodedPoll::Ready {
                         read,
                         _boundary: end,
@@ -582,24 +618,55 @@ impl<'source> InputCursor<'source> {
                 }
             };
             let InputRead::Character(character) = read else {
-                return Ok(AsciiMatch::Mismatched);
+                return Ok(Lookahead {
+                    result: AsciiMatch::Mismatched,
+                    examined: None,
+                });
             };
             position = character.source.end();
             control.charge(WorkCategory::InspectByte, size_of::<CodePoint>() as u64)?;
             let value = character.code_point.value();
-            if value > 0x7F {
-                return Ok(AsciiMatch::Mismatched);
-            }
-            let actual = value as u8;
-            let equal = match comparison {
-                AsciiComparison::Sensitive => actual == byte,
-                AsciiComparison::Insensitive => actual.eq_ignore_ascii_case(&byte),
+            let equal = value <= 0x7F && {
+                let actual = value as u8;
+                match comparison {
+                    AsciiComparison::Sensitive => actual == byte,
+                    AsciiComparison::Insensitive => actual.eq_ignore_ascii_case(&byte),
+                }
             };
             if !equal {
-                return Ok(AsciiMatch::Mismatched);
+                return Ok(Lookahead {
+                    result: AsciiMatch::Mismatched,
+                    examined: self.commit_examined(&character, index == 0),
+                });
             }
         }
-        Ok(AsciiMatch::Matched)
+        Ok(Lookahead {
+            result: AsciiMatch::Matched,
+            examined: None,
+        })
+    }
+
+    /// Commits the stream diagnostic of the next input character a lookahead
+    /// stopped at, once. A character already processed by an earlier traversal
+    /// or lookahead reports nothing, so no replay can emit it twice. Later
+    /// characters of the lookahead region are left to their own consumption.
+    fn commit_examined(
+        &mut self,
+        character: &InputCharacter,
+        next_input_character: bool,
+    ) -> Option<ExaminedDiagnostic> {
+        let Some(PreprocessingRecord::Diagnostic(diagnostic)) = character.preprocessing else {
+            return None;
+        };
+        let end = character.source.end();
+        if !next_input_character || end <= self.processed_through {
+            return None;
+        }
+        self.processed_through = end;
+        Some(ExaminedDiagnostic {
+            diagnostic,
+            source: character.source.clone(),
+        })
     }
 
     fn saved_current(&self, control: &mut ParseControl) -> Result<InputRead, ParseStop> {
@@ -1312,33 +1379,38 @@ mod tests {
         assert_eq!(
             cursor
                 .poll_matches_ascii(b"", AsciiComparison::Sensitive, &mut control)
-                .unwrap(),
+                .unwrap()
+                .result,
             AsciiMatch::Matched
         );
         cursor.make_available(2, &mut control).unwrap();
         assert_eq!(
             cursor
                 .poll_matches_ascii(b"DOCTYPE", AsciiComparison::Insensitive, &mut control)
-                .unwrap(),
+                .unwrap()
+                .result,
             AsciiMatch::NeedInput
         );
         assert_eq!(
             cursor
                 .poll_matches_ascii(b"Dx", AsciiComparison::Sensitive, &mut control)
-                .unwrap(),
+                .unwrap()
+                .result,
             AsciiMatch::Mismatched
         );
         cursor.make_available(7, &mut control).unwrap();
         assert_eq!(
             cursor
                 .poll_matches_ascii(b"DOCTYPE", AsciiComparison::Insensitive, &mut control)
-                .unwrap(),
+                .unwrap()
+                .result,
             AsciiMatch::Matched
         );
         assert_eq!(
             cursor
                 .poll_matches_ascii(b"DOCTYPE!", AsciiComparison::Insensitive, &mut control)
-                .unwrap(),
+                .unwrap()
+                .result,
             AsciiMatch::NeedInput
         );
         assert_eq!(cursor.position, 0);
@@ -1349,7 +1421,8 @@ mod tests {
         assert_eq!(
             cursor
                 .poll_matches_ascii(b"DOCTYPE!!", AsciiComparison::Insensitive, &mut control)
-                .unwrap(),
+                .unwrap()
+                .result,
             AsciiMatch::Mismatched
         );
         cursor.poll_consume(&mut control).unwrap();
@@ -1357,7 +1430,8 @@ mod tests {
         assert_eq!(
             cursor
                 .poll_matches_ascii(b"Do", AsciiComparison::Sensitive, &mut control)
-                .unwrap(),
+                .unwrap()
+                .result,
             AsciiMatch::Matched
         );
         assert_eq!(cursor.position, 1);
@@ -1792,6 +1866,57 @@ mod tests {
     }
 
     #[test]
+    fn ascii_lookahead_commits_the_next_input_characters_stream_diagnostic_once() {
+        let source = HtmlSource::utf8("\u{b}-");
+        let mut control = control(&source);
+        let mut cursor = InputCursor::new(&source, &mut control).unwrap();
+        let first = cursor
+            .matches_ascii(b"--", AsciiComparison::Sensitive, &mut control)
+            .unwrap();
+        assert!(!first.result);
+        assert_eq!(
+            first.examined,
+            Some(ExaminedDiagnostic {
+                diagnostic: InputDiagnostic::ControlCharacter,
+                source: source.range(0, 1).unwrap(),
+            })
+        );
+        assert_eq!((cursor.position, cursor.processed_through), (0, 1));
+        // A repeated lookahead and the later consumption add no second record.
+        let again = cursor
+            .matches_ascii(b"DOCTYPE", AsciiComparison::Insensitive, &mut control)
+            .unwrap();
+        assert_eq!((again.result, again.examined), (false, None));
+        let consumed = character(cursor.consume(&mut control).unwrap());
+        assert_eq!(consumed.code_point().value(), 0xB);
+        assert_eq!(consumed.preprocessing(), None);
+    }
+
+    #[test]
+    fn ascii_lookahead_leaves_later_characters_of_the_region_to_their_consumption() {
+        // The control character is the second character examined, not the next
+        // input character: html5lib test4.test expects its error on consumption.
+        let source = HtmlSource::utf8("-\u{b}");
+        let mut control = control(&source);
+        let mut cursor = InputCursor::new(&source, &mut control).unwrap();
+        let lookahead = cursor
+            .matches_ascii(b"--", AsciiComparison::Sensitive, &mut control)
+            .unwrap();
+        assert_eq!((lookahead.result, lookahead.examined), (false, None));
+        assert_eq!(cursor.processed_through, 0);
+        assert_eq!(
+            character(cursor.consume(&mut control).unwrap()).preprocessing(),
+            None
+        );
+        assert_eq!(
+            character(cursor.consume(&mut control).unwrap()).preprocessing(),
+            Some(PreprocessingRecord::Diagnostic(
+                InputDiagnostic::ControlCharacter
+            ))
+        );
+    }
+
+    #[test]
     fn lookahead_reconsume_and_rewind_charge_work_without_duplicate_records_or_source() {
         let source = HtmlSource::utf8("\r\nAb!");
         let mut control = control(&source);
@@ -1801,16 +1926,19 @@ mod tests {
             cursor
                 .matches_ascii(b"\nAb", AsciiComparison::Sensitive, &mut control)
                 .unwrap()
+                .result
         );
         assert!(
             cursor
                 .matches_ascii(b"\naB", AsciiComparison::Insensitive, &mut control)
                 .unwrap()
+                .result
         );
         assert!(
             !cursor
                 .matches_ascii(b"\nab", AsciiComparison::Sensitive, &mut control)
                 .unwrap()
+                .result
         );
         assert_eq!(cursor.position(&mut control).unwrap(), 0);
         assert_eq!(
@@ -1965,11 +2093,13 @@ mod tests {
             cursor
                 .matches_ascii(b"", AsciiComparison::Sensitive, &mut control)
                 .unwrap()
+                .result
         );
         assert!(
             !cursor
                 .matches_ascii(b"x", AsciiComparison::Sensitive, &mut control)
                 .unwrap()
+                .result
         );
         assert_eq!(
             cursor.consume(&mut control).unwrap(),

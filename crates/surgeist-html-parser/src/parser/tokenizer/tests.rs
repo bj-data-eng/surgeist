@@ -2025,7 +2025,7 @@ fn lexical_comment_doctype_pi_cdata_and_raw_recovery_keep_original_field_atoms()
 }
 
 #[test]
-fn lookahead_reports_input_stream_error_of_the_character_it_examines_first() {
+fn lookahead_reports_input_stream_error_of_the_next_input_character_first() {
     use DiagnosticCode::{
         ControlCharacterInInputStream as Control, IncorrectlyOpenedComment as Incorrect,
         InvalidCharacterSequenceAfterDoctypeName as AfterName,
@@ -2033,21 +2033,22 @@ fn lookahead_reports_input_stream_error_of_the_character_it_examines_first() {
     };
     // HTML877d 13.2.3.5: every control, noncharacter and surrogate in the input
     // stream is a parse error of the stream itself. The markup declaration open
-    // state and the DOCTYPE keyword check examine the next few characters
-    // before deciding, so the stream error of a character they stop at precedes
-    // the tokenizer error that decision reports. A character no comparison
-    // reached is only examined when a later state consumes it, so its stream
-    // error follows the decision. html5lib tokenizer/test3.test case 80
-    // expects the first row.
+    // state decides on the next input character (and the characters after it),
+    // so the stream error of that character precedes incorrectly-opened-comment;
+    // html5lib tokenizer/test3.test case 80 expects the first rows. The
+    // characters after it are only the "next few characters" and report when a
+    // later state consumes them, after the decision (html5lib test4.test cases
+    // 59-62 expect the last rows).
     for (input, expected) in [
         ("<!\u{b}", vec![Control, Incorrect]),
-        ("<!-\u{b}", vec![Control, Incorrect]),
-        ("<![CDA\u{b}", vec![Control, Incorrect]),
+        ("<!\u{80}", vec![Control, Incorrect]),
         ("<!\u{fffe}", vec![Noncharacter, Incorrect]),
-        ("<!DOCTYPE a P\u{b}", vec![Control, AfterName]),
-        ("<!DOCTYPE a SYSTE\u{fffe}", vec![Noncharacter, AfterName]),
+        ("<!\u{b}x", vec![Control, Incorrect]),
         ("<!x\u{b}", vec![Incorrect, Control]),
-        ("<!-x\u{b}", vec![Incorrect, Control]),
+        ("<!-\u{b}", vec![Incorrect, Control]),
+        ("<![CDA\u{b}", vec![Incorrect, Control]),
+        ("<!DOCTYPE a \u{b}", vec![Control, AfterName]),
+        ("<!DOCTYPE a P\u{b}", vec![AfterName, Control]),
     ] {
         let source = HtmlSource::utf8(input);
         assert_eq!(

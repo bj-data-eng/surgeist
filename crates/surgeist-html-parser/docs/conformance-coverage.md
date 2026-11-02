@@ -86,9 +86,7 @@ output, except that a spec exclusion's replacement expectation is derived by
 hand from the pinned edition. An exclusion is keyed by file and one-based
 ordinal with its reason. A **spec** exclusion records a pinned HTML877d rule
 that the historical corpus predates; its case must still diverge, so a stale
-record fails, and its actual output must equal the recorded pinned output. A
-**defect** exclusion records a divergence tracked by an open issue; its output
-is not asserted either way.
+record fails, and its actual output must equal the recorded pinned output.
 
 ### Tree construction
 
@@ -203,7 +201,7 @@ metadata are not compared. Processing-instruction tokens remain actual output.
 | namedEntities.test, numericEntities.test | 4,210, 336 | — |
 | pendingSpecChanges.test | 1 | — |
 | test1.test, test2.test | 69, 45 | test2/32, 33 spec |
-| test3.test | 1,590 | 1159–1191 spec; 80 defect |
+| test3.test | 1,590 | 1159–1191 spec |
 | test4.test | 85 | — |
 | unicodeChars.test, unicodeCharsProblematic.test | 323, 5 | — |
 
@@ -217,10 +215,10 @@ otherwise a `?`-prefixed bogus comment with
 `invalid-first-character-of-processing-instruction-target`, preceded by
 `control-character-in-input-stream` for test3/1163 (U+000B) and followed by
 `unexpected-null-character` for test3/1160 and 1166 (U+0000). A tokenizer panic
-fails any case, excluded or not. Test3/80 (`<!` U+000B) is a defect tracked by
-[#1345](https://github.com/bj-data-eng/surgeist/issues/1345): tokens match, but
-`control-character-in-input-stream` follows `incorrectly-opened-comment`, while
-the corpus reports it first.
+fails any case, excluded or not. Test3/80 (`<!` U+000B) matches the corpus: the
+input-stream error of the next input character, which the markup declaration
+open state decides on, precedes `incorrectly-opened-comment`, while a character
+further into its lookahead region reports when consumed (test4/59–62).
 `xmlViolation.test` is not bundled because it assumes infoset coercion rather
 than the HTML tokenizer.
 
