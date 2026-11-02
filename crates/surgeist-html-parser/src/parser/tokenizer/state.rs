@@ -249,7 +249,10 @@ impl Tokenizer<'_> {
                     self.set_state(TagName, c)?;
                 }
                 0x3E => {
+                    // HTML877d end tag open state: no token follows, so the
+                    // consumed `</>` ends its markup occurrence abandoned.
                     self.error(MissingEndTagName, c, evidence)?;
+                    self.abandon_lexical(c, evidence)?;
                     self.set_state(Data, c)?;
                 }
                 _ => {

@@ -46,6 +46,13 @@ fn render<'a>(
                 let text = String::from_utf16(text.code_units()).unwrap();
                 out.push_str(&format!("{pad}\"{text}\"\n"));
             }
+            // Initial, "a DOCTYPE token": missing identifiers become empty.
+            HtmlNodeKind::Doctype(doctype) => {
+                assert_eq!(doctype.public_id(), Some(&DocumentString::from("")));
+                assert_eq!(doctype.system_id(), Some(&DocumentString::from("")));
+                let name = String::from_utf16(doctype.name().code_units()).unwrap();
+                out.push_str(&format!("{pad}<!DOCTYPE {name}>\n"));
+            }
             other => panic!("unexpected node kind {other:?}"),
         }
         render(lookup, node, depth + 1, out);
@@ -158,19 +165,22 @@ fn document_missing_end_tag_name_parses_as_if_the_markup_were_absent() {
     // End tag open state, U+003E: error, data state, no token. With a doctype
     // the document is no-quirks; the EOF then completes html, head and body.
     let cases: [(&str, &str); 4] = [
-        ("<!doctype html></>", "<html>\n  <head>\n  <body>\n"),
+        (
+            "<!doctype html></>",
+            "<!DOCTYPE html>\n<html>\n  <head>\n  <body>\n",
+        ),
         (
             "<!doctype html><p></>",
-            "<html>\n  <head>\n  <body>\n    <p>\n",
+            "<!DOCTYPE html>\n<html>\n  <head>\n  <body>\n    <p>\n",
         ),
         // The surrounding character tokens append to one text node.
         (
             "<!doctype html><p>a</>b</p>",
-            "<html>\n  <head>\n  <body>\n    <p>\n      \"ab\"\n",
+            "<!DOCTYPE html>\n<html>\n  <head>\n  <body>\n    <p>\n      \"ab\"\n",
         ),
         (
             "<!doctype html></></><p></>",
-            "<html>\n  <head>\n  <body>\n    <p>\n",
+            "<!DOCTYPE html>\n<html>\n  <head>\n  <body>\n    <p>\n",
         ),
     ];
     for (input, tree) in cases {
