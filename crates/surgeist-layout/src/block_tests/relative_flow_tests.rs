@@ -119,6 +119,83 @@ fn assert_unshifted_trio<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>
         assert_box(batch, node, (0.0, y), (50.0, 10.0));
     }
 }
+
+fn auto_inline_size<S: LayoutScalar>() {
+    for display in [Display::Block, Display::Flex, Display::Grid] {
+        for direction in [Direction::Ltr, Direction::Rtl] {
+            for offset in [4.0, -4.0] {
+                let mut tree = PublicLayoutTreeOf::new()
+                    .children(0, [1])
+                    .style(
+                        0,
+                        NodeInputOf {
+                            display: Display::Block,
+                            direction,
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .children(1, [])
+                    .style(
+                        1,
+                        NodeInputOf {
+                            display,
+                            direction,
+                            position: Position::Relative,
+                            size: Size::new(
+                                PreferredSizeOf::px(px::<S>(10.0)),
+                                PreferredSizeOf::px(px::<S>(10.0)),
+                            ),
+                            ..NodeInputOf::default()
+                        },
+                    );
+                let run = |tree: &PublicLayoutTreeOf<S>| {
+                    compute_layout(
+                        tree,
+                        0,
+                        LayoutRootRequestOf::viewport(Size::new(
+                            AvailableOf::MAX_CONTENT,
+                            AvailableOf::MAX_CONTENT,
+                        ))
+                        .unwrap(),
+                    )
+                    .unwrap()
+                };
+                let control = run(&tree);
+                assert_box(&control, 0, (0.0, 0.0), (10.0, 10.0));
+                assert_box(&control, 1, (0.0, 0.0), (10.0, 10.0));
+                replace_inset(
+                    &mut tree,
+                    1,
+                    Edges {
+                        left: LengthAutoOf::px(px::<S>(offset)),
+                        ..Edges::all(LengthAutoOf::AUTO)
+                    },
+                );
+                let shifted = run(&tree);
+                assert_box(&shifted, 0, (0.0, 0.0), (10.0, 10.0));
+                assert_box(&shifted, 1, (offset, 0.0), (10.0, 10.0));
+                let overflow = output(&shifted, 0)
+                    .scroll_geometry
+                    .unwrap()
+                    .scrollable_overflow();
+                assert_eq!(
+                    overflow.origin(),
+                    Point::new(px::<S>(offset.min(0.0)), S::ZERO)
+                );
+                assert_eq!(overflow.size(), Size::new(px::<S>(14.0), px::<S>(10.0)));
+            }
+        }
+    }
+}
+#[test]
+fn relative_flow_auto_inline_size_f32() {
+    auto_inline_size::<f32>();
+}
+#[test]
+fn relative_flow_auto_inline_size_f64() {
+    auto_inline_size::<f64>();
+}
+
 fn named_offsets<S: LayoutScalar>(display: Display, direction: Direction, box_sizing: BoxSizing) {
     for decorated in [false, true] {
         let mut tree = three_boxes::<S>(display, direction, box_sizing, decorated);
