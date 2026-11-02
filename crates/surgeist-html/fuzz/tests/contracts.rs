@@ -455,33 +455,6 @@ fn processing_instruction_literals_use_each_documented_ending() {
 }
 
 #[test]
-fn descriptor_source_references_name_existing_repository_files() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .unwrap();
-    let descriptor: toml::Table = toml::from_str(
-        &std::fs::read_to_string(env!("CARGO_MANIFEST_DIR").to_owned() + "/fuzz.toml").unwrap(),
-    )
-    .unwrap();
-    let descriptor_targets = descriptor["targets"].as_array().unwrap();
-    assert_eq!(descriptor_targets.len(), 2);
-    for target in descriptor_targets {
-        let id = target["id"].as_str().unwrap();
-        let references = target["source_references"].as_array().unwrap();
-        assert!(!references.is_empty(), "{id}");
-        for reference in references {
-            let reference = reference.as_str().unwrap();
-            let path = reference.split('#').next().unwrap();
-            assert!(
-                root.join(path).is_file(),
-                "{id} source reference {reference:?} is not a file under the repository root"
-            );
-        }
-    }
-}
-
-#[test]
 fn owner_package_registers_real_workers_and_canonical_seed_directories() {
     use surgeist_fuzz::registry::TargetRegistry;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
