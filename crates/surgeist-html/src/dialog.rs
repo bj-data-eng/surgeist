@@ -271,6 +271,7 @@ pub enum HtmlDialogReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlDialogCursorError {
     WrongReply,
     Terminal,

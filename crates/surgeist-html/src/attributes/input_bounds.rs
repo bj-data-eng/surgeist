@@ -15,6 +15,7 @@ use std::{cmp::Ordering, error::Error, fmt};
 
 /// Per-value raw admission precedes name, state and grammar interpretation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlInputNumericConstraintsError {
     Admission(HtmlValueAdmissionError),
     InputCodeUnitsOverflow,

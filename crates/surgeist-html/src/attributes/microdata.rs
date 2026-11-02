@@ -79,6 +79,7 @@ impl HtmlMicrodataTokenReport {
     }
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlMicrodataTokenListError {
     Empty,
     Duplicate(crate::HtmlDuplicateTokenError),

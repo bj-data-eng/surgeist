@@ -654,6 +654,7 @@ impl TryFrom<HtmlProcessingInstruction> for HtmlAuthoredProcessingInstruction {
 }
 /// A strict processing-instruction authoring violation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlProcessingInstructionError {
     InvalidTarget,
     ReservedTarget,

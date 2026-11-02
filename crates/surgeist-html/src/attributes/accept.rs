@@ -80,6 +80,7 @@ impl HtmlAcceptSpecifier {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAcceptSpecifierError {
     Token(HtmlTokenError),
     MissingLeadingDot,

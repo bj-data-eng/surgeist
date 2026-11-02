@@ -161,6 +161,7 @@ impl HtmlMeterAuthorRelation {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlMeterRelationUnavailable {
     MissingRequiredValue,
     Syntax(HtmlMeterNumberRole),
@@ -388,6 +389,7 @@ fn meter_relations(facts: &[ExactFact; 6], applicable: bool) -> [HtmlMeterRelati
 
 /// A checked native bundle could not satisfy its authored-number requirements.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlMeterNativeError {
     Syntax {
         role: HtmlMeterNumberRole,

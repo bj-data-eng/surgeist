@@ -139,6 +139,7 @@ pub enum HtmlAttributeContextAuthorState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAttributeContextConformanceError {
     ImageMapRequiresAncestorAnchorWithHref,
     ImageControlsRequireNonemptyAlt,
@@ -242,6 +243,7 @@ pub enum HtmlAttributeRecognition {
 
 /// A value violates an author requirement of this bounded intrinsic family.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAttributeConformanceError {
     UnrecognizedKeyword,
     /// A source-recognized keyword spelling is forbidden in authored markup.

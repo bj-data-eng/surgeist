@@ -3,6 +3,77 @@
 //! The selected WHATWG HTML edition defines language behavior. Immutable values
 //! preserve exact UTF-16 code units; live document identity and mutation belong
 //! to the consuming DOM subsystem.
+//!
+//! # Errors
+//!
+//! Every type that a public function returns in an `Err` implements `Debug`,
+//! `Display` and [`std::error::Error`]. `Display` states the cause in prose and
+//! never prints `Debug`. A wrapper reports its own operation and returns the
+//! wrapped failure from `source`; a rejection that carries recoverable owners
+//! also prints its reason. A public error is one of four shapes, chosen by what
+//! a caller can do about the cause:
+//!
+//! - A struct with a private cause, queried through `is_*` predicates and fact
+//!   accessors, for a refusal of an owner protocol or of one of many unrelated
+//!   operations, such as [`HtmlConstructionError`]. New causes never break a
+//!   caller.
+//! - A `#[non_exhaustive]` enum for a rule verdict: each variant names one rule
+//!   of the pinned standard or one syntax class, such as
+//!   [`HtmlTokenError`] or [`HtmlAttributeConformanceError`]. A verdict names
+//!   the rule it breaks because a validator reports exactly that.
+//! - An exhaustive enum for resource accounting, such as
+//!   [`bounded::IntegerUnitStepError`], and for the two-source wrappers
+//!   [`HtmlCspError`] and `bounded::HtmlRelActionError`, which separate the
+//!   caller's own refusal from this crate's.
+//!
+//! An owned cause converts with `From`, so `?` applies it. `map_err` remains
+//! where the wrapped value is the caller's generic error, because a blanket
+//! `From` for it would overlap the protocol conversion.
+//!
+//! Errors do not capture a [`std::backtrace::Backtrace`]. Most are small `Clone`
+//! and `Eq` values that bounded operations return under exact allocation
+//! accounting, and a capture allocates outside that accounting and cannot be
+//! compared. A recoverable parse diagnostic is a value, not an error, and never
+//! pays for a capture. A caller that wants a backtrace captures it where it
+//! converts this crate's error into its own.
+//!
+//! # API evolution
+//!
+//! Public enums are closed or open by what their variants enumerate:
+//!
+//! - Closed by the pinned standard: keyword and state sets that the HTML
+//!   Standard enumerates, such as input types and token comparison. They are
+//!   exhaustive. A new edition of the standard is a deliberate breaking change
+//!   that must fail to compile in every consumer.
+//! - Closed by a controlled-operation protocol: the action, reply, outcome,
+//!   step and phase enums that an owner and its driver exchange, and the
+//!   resource vocabularies a driver charges. They are exhaustive, because
+//!   matching every variant is what proves that a driver services every action
+//!   and charges every resource.
+//! - Open: failure causes, rule verdicts, conformance violations and
+//!   unavailability reasons grow with the standard and its checks. They are
+//!   `#[non_exhaustive]`, so a downstream `match` needs a wildcard arm.
+//!
+//! Before the root `surgeist` API reaches 1.0 no compatibility alias or
+//! migration shim is kept for a changed enum.
+//!
+//! ```
+//! use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
+//!
+//! // One UTF-16 unit of text fits; eight do not.
+//! let mut builder = HtmlFragment::builder(HtmlConstructionLimits::new(3, 2, 0, 2, 2))?;
+//! let root = builder.root();
+//! let refusal = builder.append_text(&root, "too long").unwrap_err();
+//!
+//! // The cause is private; a caller asks about it and reads its facts.
+//! assert!(refusal.is_limit_exceeded());
+//! assert_eq!(refusal.attempted(), Some(8));
+//! assert_eq!(
+//!     refusal.to_string(),
+//!     "UTF-16 unit limit of 2 would be exceeded by 8"
+//! );
+//! # Ok::<(), surgeist_html::HtmlConstructionError>(())
+//! ```
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
 

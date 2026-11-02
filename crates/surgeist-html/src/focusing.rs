@@ -74,6 +74,7 @@ pub enum HtmlFocusingReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlFocusingError {
     WrongReply,
     Terminal,

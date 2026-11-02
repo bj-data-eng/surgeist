@@ -12,6 +12,7 @@ use std::{error::Error, fmt};
 
 /// A local author error; raw tokens remain in the common report independently.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlTokenDeclarationError {
     Duplicate(HtmlDuplicateTokenError),
     AccessKeyLength {
@@ -126,6 +127,7 @@ pub struct HtmlBitmapIconSize {
     height: HtmlNonNegativeInteger,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlIconSizeError {
     ZeroDimension,
     LeadingZero,

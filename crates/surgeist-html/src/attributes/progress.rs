@@ -12,6 +12,7 @@ use std::fmt;
 
 /// An individual content-number requirement, independently of the upper bound.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlProgressNumberAuthorError {
     Syntax(HtmlValueSyntaxError),
     NegativeValue,
@@ -51,6 +52,7 @@ pub enum HtmlProgressNumberAuthorState {
 
 /// Why an applicable upper-bound comparison could not be established.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlProgressUpperBoundUnavailable {
     ValueSyntax,
     MaximumSyntax,
@@ -266,6 +268,7 @@ fn upper_bound(value: &ExactNumber, maximum: &ExactNumber) -> HtmlProgressUpperB
 
 /// Rejection of a coupled finite native progress attribute set.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlProgressNativeError {
     NegativeValue,
     NonpositiveMaximum,

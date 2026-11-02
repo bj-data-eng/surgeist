@@ -13,6 +13,7 @@ use std::{cmp::Ordering, error::Error, fmt};
 
 /// Admission is per supplied value, before any name/context or syntax processing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlControlLengthError {
     Admission(HtmlValueAdmissionError),
     /// The sum of supplied UTF-16 lengths cannot be represented by usize.

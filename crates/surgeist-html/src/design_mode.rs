@@ -73,6 +73,7 @@ pub enum HtmlDesignModeReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlDesignModeError {
     WrongReply,
     Terminal,

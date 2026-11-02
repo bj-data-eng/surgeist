@@ -61,6 +61,7 @@ pub enum HtmlCurrentlyFocusedAreaReply {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlCurrentlyFocusedAreaError {
     WrongReply,
     Terminal,

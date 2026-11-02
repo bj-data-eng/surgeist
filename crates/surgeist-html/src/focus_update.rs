@@ -157,6 +157,7 @@ pub enum HtmlFocusUpdateReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlFocusUpdateError {
     WrongReply,
     Terminal,

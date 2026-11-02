@@ -31,6 +31,7 @@ pub enum HtmlCurrentFocusChainReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlCurrentFocusChainError {
     WrongReply,
     Terminal,
@@ -141,6 +142,7 @@ pub enum HtmlFocusChainReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlFocusChainError {
     WrongReply,
     /// An actual non-area currentObject is not a Document either.

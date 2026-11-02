@@ -6,6 +6,7 @@ use super::*;
 /// A local navigable target-name author violation, measured in UTF-16 units.
 /// A leading underscore is reported before the combined-character restriction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlNavigableTargetError {
     Empty,
     /// Names beginning with underscore are reserved for special keywords.

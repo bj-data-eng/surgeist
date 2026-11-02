@@ -68,6 +68,7 @@ pub enum HtmlFocusEventReply {
     Dispatched,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlFocusEventError {
     WrongReply,
     Terminal,

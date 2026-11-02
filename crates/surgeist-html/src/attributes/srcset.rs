@@ -40,6 +40,7 @@ impl HtmlSrcsetUrlToken {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlSrcsetUrlTokenError {
     Empty,
     AsciiWhitespace,
@@ -128,6 +129,7 @@ impl TryFrom<HtmlFloatingPointNumber> for HtmlSrcsetDensity {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlSrcsetDensityError {
     InvalidSyntax,
     Nonpositive,
@@ -180,6 +182,7 @@ impl HtmlSrcsetCandidate {
 
 /// Established HTML list constraints; external URL/resource conformance is separate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlSrcsetAuthorViolation {
     EmptyList,
     MissingCandidate,
@@ -387,6 +390,7 @@ impl HtmlParsedImageCandidate {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlSrcsetParseError {
     SkippedCommas,
     MultipleTrailingCommas,
@@ -508,6 +512,7 @@ impl HtmlSrcsetContext {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlSrcsetContextViolation {
     SrcOrSrcsetRequired,
     SourceParentNotPicture,

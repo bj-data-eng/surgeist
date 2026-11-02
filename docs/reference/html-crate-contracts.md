@@ -1566,6 +1566,27 @@ controller, order of provider calls and provenance. HTML legacy color grammar
 and `HtmlLegacyColor` remain HTML values; no numerical matrix, gamut or
 serialization implementation is copied into HTML or parser.
 
+## Error conventions and enum evolution
+
+The crate documentation in [lib.rs](../../crates/surgeist-html/src/lib.rs) owns
+this policy; the table records how each family follows it.
+
+| Family | Shape | Evolution |
+| --- | --- | --- |
+| `HtmlConstructionError`, the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
+| Conformance, token, syntax and range verdicts such as `HtmlTokenError`, `HtmlAttributeConformanceError`, `HtmlTemporalError`, `HtmlSrcsetAuthorViolation` | Enum naming one rule or syntax class | `#[non_exhaustive]` |
+| Reply and cursor protocol misuse such as `HtmlFocusingError` and `HtmlDialogCursorError` | Enum of the misuse | `#[non_exhaustive]` |
+| Resource accounting such as `IntegerUnitStepError`, `FloatingPointAllocationError`, `AutocompleteMaterializationError`, `NumericMaterializationError`, `IntegerRecoveryError`, `RangeNumericError`, `HtmlSrcsetInterpretationError`, `HtmlPiPseudoAttributeError` | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
+| Two-source wrappers `HtmlCspError` and the rel, media and microdata-token action errors | Enum separating the caller's refusal from this crate's | Exhaustive |
+
+Keyword and state sets that the pinned standard enumerates, and the action,
+reply, outcome and step enums of the controlled operations, are exhaustive. Every
+error implements `Display` and `Error`; a wrapper exposes its cause through
+`source`. Errors capture no backtrace, because most are `Clone` and `Eq` values
+returned under exact allocation accounting. The `From` conversion of an owned
+cause replaces repeated `map_err`; the generic caller-error wrappers keep
+`map_err` because a blanket `From` would overlap the protocol conversion.
+
 ## Consumer, generated-data and attribution changes
 
 This extraction is a breaking public move under the repository's pre-v1 policy.

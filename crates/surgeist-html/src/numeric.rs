@@ -1113,6 +1113,7 @@ impl TryFrom<HtmlInteger> for HtmlNonNegativeInteger {
 
 /// An exact decimal-magnitude constructor received no digits or a non-digit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlDecimalDigitsError {
     /// There were no code units.
     Empty,
@@ -1665,6 +1666,7 @@ impl HtmlDimensionList {
 
 /// Failures of the common numeric algorithms; request limits are separate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum NumericParseError {
     InvalidSyntax,
     Negative,

@@ -69,6 +69,7 @@ impl HtmlCommaToken {
 
 /// A rejected native token's grammar error, using UTF-16 code-unit offsets.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlTokenError {
     EmptySpaceToken,
     SpaceTokenWhitespace { code_unit_offset: usize },

@@ -174,6 +174,7 @@ impl HtmlAreaPolygon {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAreaNativeError {
     NonincreasingX,
     NonincreasingY,
@@ -248,6 +249,7 @@ impl HtmlAuthoredArea {
 
 /// Shape-specific author diagnostics, independent of common grammar evidence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAreaCoordinatesAuthorError {
     MissingRequired,
     ForbiddenPresence,

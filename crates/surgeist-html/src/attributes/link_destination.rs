@@ -68,6 +68,7 @@ pub enum HtmlLinkDestinationContextAuthorState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlLinkDestinationContextError {
     PreloadRequiresAs,
     PreloadRequiresPreloadDestination,

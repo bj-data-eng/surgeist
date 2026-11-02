@@ -89,6 +89,7 @@ pub enum HtmlFocusDelegateReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlFocusDelegateError {
     WrongReply,
     Terminal,
@@ -206,6 +207,7 @@ pub enum HtmlAutofocusDelegateReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAutofocusDelegateError {
     WrongReply,
     Terminal,

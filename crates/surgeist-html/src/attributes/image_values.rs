@@ -27,6 +27,7 @@ pub enum HtmlImageAttributeAuthorState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlImageAttributeConformanceError {
     RequiredAttributeMissing,
     EmptyAlt,
@@ -75,6 +76,7 @@ pub struct HtmlInputImageAttributes {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlInputImageAttributeError {
     EmptyAlt,
     EmptySource,

@@ -14,6 +14,7 @@ keyword_type!(HtmlPopoverTargetAction, Popovertargetaction, [
 
 /// A custom command fails the selected local native author checks.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlCustomCommandError {
     MissingPrefix,
     BoundaryWhitespace,

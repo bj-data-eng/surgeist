@@ -590,6 +590,7 @@ pub struct HtmlAutocompleteSection {
     token: HtmlSpaceToken,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAutocompleteSectionError {
     Token(HtmlTokenError),
     MissingSectionPrefix,
@@ -752,6 +753,7 @@ impl HtmlAutocompleteValue {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAutocompleteSyntaxError {
     EmptyTokens,
     MissingDetailField,

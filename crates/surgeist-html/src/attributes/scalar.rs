@@ -20,6 +20,7 @@ pub enum HtmlNumericAttributeAuthorState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlNumericAttributeConformanceError {
     CommonValue(HtmlValueFailure),
     /// Textarea rows/cols, select size and positive span rules require authored positivity.

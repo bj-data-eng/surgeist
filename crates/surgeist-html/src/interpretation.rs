@@ -153,6 +153,7 @@ impl HtmlValueSyntax {
 
 /// Failure of the selected grammar or a source-defined rejection condition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlValueSyntaxError {
     /// Legacy-color processing rejects an originally empty raw value.
     EmptyLegacyColor,
@@ -170,6 +171,7 @@ pub enum HtmlValueSyntaxError {
 
 /// A mathematical value outside the selected machine representation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlValueRepresentationError {
     /// The decimal number rounds to infinity in the selected binary64 model.
     FloatingPointOverflow,
@@ -209,6 +211,7 @@ impl std::error::Error for HtmlValueRepresentationError {}
 
 /// A failed recovery operation, distinct from resource admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlValueFailure {
     /// Failure of source-defined syntax or a rejection condition.
     Syntax(HtmlValueSyntaxError),

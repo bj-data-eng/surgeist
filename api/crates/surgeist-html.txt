@@ -289,7 +289,7 @@ pub surgeist_html::bounded::HtmlFormOwnerResetAction::FindNearestAncestor
 pub surgeist_html::bounded::HtmlFormOwnerResetAction::ReadConnectedness
 pub surgeist_html::bounded::HtmlFormOwnerResetAction::ReadCurrentOwnerIsNearestAncestor
 pub surgeist_html::bounded::HtmlFormOwnerResetAction::ReadFormAttributePresence
-pub enum surgeist_html::bounded::HtmlFormOwnerResetCursorError
+#[non_exhaustive] pub enum surgeist_html::bounded::HtmlFormOwnerResetCursorError
 pub surgeist_html::bounded::HtmlFormOwnerResetCursorError::Reply
 impl core::error::Error for surgeist_html::bounded::HtmlFormOwnerResetCursorError
 impl core::fmt::Display for surgeist_html::bounded::HtmlFormOwnerResetCursorError
@@ -468,7 +468,7 @@ pub surgeist_html::bounded::HtmlScriptPreparationAction::SaveAndClearParserDocum
 pub surgeist_html::bounded::HtmlScriptPreparationAction::SetForceAsync
 pub surgeist_html::bounded::HtmlScriptPreparationAction::StorePreparationDocument
 pub surgeist_html::bounded::HtmlScriptPreparationAction::StoreType(surgeist_html::HtmlScriptKind)
-pub enum surgeist_html::bounded::HtmlScriptPreparationError
+#[non_exhaustive] pub enum surgeist_html::bounded::HtmlScriptPreparationError
 pub surgeist_html::bounded::HtmlScriptPreparationError::EvidenceUnavailable
 pub surgeist_html::bounded::HtmlScriptPreparationError::ReplyMismatch
 pub surgeist_html::bounded::HtmlScriptPreparationError::ScriptingEnabled
@@ -513,7 +513,7 @@ pub surgeist_html::bounded::HtmlSelectAction::UpdateSelectedcontent
 pub surgeist_html::bounded::HtmlSelectAction::WriteSelectedness
 pub surgeist_html::bounded::HtmlSelectAction::WriteSelectedness::ordinal: usize
 pub surgeist_html::bounded::HtmlSelectAction::WriteSelectedness::selected: bool
-pub enum surgeist_html::bounded::HtmlSelectCursorError
+#[non_exhaustive] pub enum surgeist_html::bounded::HtmlSelectCursorError
 pub surgeist_html::bounded::HtmlSelectCursorError::MultipleContext
 pub surgeist_html::bounded::HtmlSelectCursorError::Reply
 impl core::error::Error for surgeist_html::bounded::HtmlSelectCursorError
@@ -585,7 +585,7 @@ pub surgeist_html::bounded::HtmlSlotAssignAction::RemoveIncomingFromReferredManu
 pub surgeist_html::bounded::HtmlSlotAssignAction::ReplaceTargetManualSet
 pub surgeist_html::bounded::HtmlSlotAssignAction::SetIncomingManualAssignmentToTarget
 pub surgeist_html::bounded::HtmlSlotAssignAction::SetIncomingManualAssignmentToTarget::ordinal: usize
-pub enum surgeist_html::bounded::HtmlSlotAssignCursorError
+#[non_exhaustive] pub enum surgeist_html::bounded::HtmlSlotAssignCursorError
 pub surgeist_html::bounded::HtmlSlotAssignCursorError::Reply
 impl core::error::Error for surgeist_html::bounded::HtmlSlotAssignCursorError
 impl core::fmt::Display for surgeist_html::bounded::HtmlSlotAssignCursorError
@@ -682,7 +682,7 @@ pub fn surgeist_html::bounded::IntegerRecoveryError::from(error: surgeist_html::
 impl core::error::Error for surgeist_html::bounded::IntegerUnitStepError
 impl core::fmt::Display for surgeist_html::bounded::IntegerUnitStepError
 pub fn surgeist_html::bounded::IntegerUnitStepError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::bounded::NaturalArithmeticError
+#[non_exhaustive] pub enum surgeist_html::bounded::NaturalArithmeticError
 pub surgeist_html::bounded::NaturalArithmeticError::EmptySlot
 pub surgeist_html::bounded::NaturalArithmeticError::InvalidDigit
 pub surgeist_html::bounded::NaturalArithmeticError::InvalidDigit::index: usize
@@ -704,7 +704,7 @@ impl core::error::Error for surgeist_html::bounded::NumericMaterializationError
 pub fn surgeist_html::bounded::NumericMaterializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::bounded::NumericMaterializationError
 pub fn surgeist_html::bounded::NumericMaterializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::bounded::NumericParseError
+#[non_exhaustive] pub enum surgeist_html::bounded::NumericParseError
 pub surgeist_html::bounded::NumericParseError::FloatingPointOverflow
 pub surgeist_html::bounded::NumericParseError::InvalidSyntax
 pub surgeist_html::bounded::NumericParseError::Negative
@@ -1696,7 +1696,7 @@ pub surgeist_html::HtmlAcceptProcessingState::IgnoredForInputState(surgeist_html
 pub surgeist_html::HtmlAcceptProcessingState::InputStateRequired
 pub surgeist_html::HtmlAcceptProcessingState::MissingAttribute
 pub surgeist_html::HtmlAcceptProcessingState::Unapplied
-pub enum surgeist_html::HtmlAcceptSpecifierError
+#[non_exhaustive] pub enum surgeist_html::HtmlAcceptSpecifierError
 pub surgeist_html::HtmlAcceptSpecifierError::MissingLeadingDot
 pub surgeist_html::HtmlAcceptSpecifierError::Token(surgeist_html::HtmlTokenError)
 impl core::error::Error for surgeist_html::HtmlAcceptSpecifierError
@@ -1714,7 +1714,7 @@ pub surgeist_html::HtmlAllowFocusDecision::Allowed
 pub surgeist_html::HtmlAllowFocusDecision::Denied
 pub surgeist_html::HtmlAllowFocusDecision::NeedsFeaturePermission
 pub surgeist_html::HtmlAllowFocusDecision::NeedsTransientActivation
-pub enum surgeist_html::HtmlAreaCoordinatesAuthorError
+#[non_exhaustive] pub enum surgeist_html::HtmlAreaCoordinatesAuthorError
 pub surgeist_html::HtmlAreaCoordinatesAuthorError::Cardinality
 pub surgeist_html::HtmlAreaCoordinatesAuthorError::ForbiddenPresence
 pub surgeist_html::HtmlAreaCoordinatesAuthorError::InvalidListSyntax
@@ -1737,7 +1737,7 @@ pub surgeist_html::HtmlAreaEmptyReason::NonpositiveRadius
 pub surgeist_html::HtmlAreaEmptyReason::TooFewCoordinates
 pub surgeist_html::HtmlAreaEmptyReason::TooFewCoordinates::actual: usize
 pub surgeist_html::HtmlAreaEmptyReason::TooFewCoordinates::required: usize
-pub enum surgeist_html::HtmlAreaNativeError
+#[non_exhaustive] pub enum surgeist_html::HtmlAreaNativeError
 pub surgeist_html::HtmlAreaNativeError::NonincreasingX
 pub surgeist_html::HtmlAreaNativeError::NonincreasingY
 pub surgeist_html::HtmlAreaNativeError::TooFewVertices
@@ -1774,7 +1774,7 @@ pub surgeist_html::HtmlAttributeAuthorState::Conforming
 pub surgeist_html::HtmlAttributeAuthorState::Missing
 pub surgeist_html::HtmlAttributeAuthorState::Nonconforming(surgeist_html::HtmlAttributeConformanceError)
 pub surgeist_html::HtmlAttributeAuthorState::Unapplied
-pub enum surgeist_html::HtmlAttributeConformanceError
+#[non_exhaustive] pub enum surgeist_html::HtmlAttributeConformanceError
 pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionMustBeLtrOrRtl
 pub surgeist_html::HtmlAttributeConformanceError::BdoDirectionRequired
 pub surgeist_html::HtmlAttributeConformanceError::BooleanSpelling
@@ -1801,7 +1801,7 @@ pub surgeist_html::HtmlAttributeContextAuthorState::NotRequired
 pub surgeist_html::HtmlAttributeContextAuthorState::Unapplied
 pub surgeist_html::HtmlAttributeContextAuthorState::Unavailable
 pub surgeist_html::HtmlAttributeContextAuthorState::Unchecked
-pub enum surgeist_html::HtmlAttributeContextConformanceError
+#[non_exhaustive] pub enum surgeist_html::HtmlAttributeContextConformanceError
 pub surgeist_html::HtmlAttributeContextConformanceError::BlockingRequiresStylesheetOrExpectRel
 pub surgeist_html::HtmlAttributeContextConformanceError::FormOverrideRequiresSubmitButton
 pub surgeist_html::HtmlAttributeContextConformanceError::FormnovalidateRequiresSubmitButton
@@ -1899,7 +1899,7 @@ pub surgeist_html::HtmlAutocompleteProcessingState::InapplicableInputState(surge
 pub surgeist_html::HtmlAutocompleteProcessingState::InputContextRequired
 pub surgeist_html::HtmlAutocompleteProcessingState::Processed(surgeist_html::HtmlAutocompleteProcessed)
 pub surgeist_html::HtmlAutocompleteProcessingState::Unapplied
-pub enum surgeist_html::HtmlAutocompleteSectionError
+#[non_exhaustive] pub enum surgeist_html::HtmlAutocompleteSectionError
 pub surgeist_html::HtmlAutocompleteSectionError::MissingSectionPrefix
 pub surgeist_html::HtmlAutocompleteSectionError::Token(surgeist_html::HtmlTokenError)
 impl core::convert::From<surgeist_html::HtmlTokenError> for surgeist_html::HtmlAutocompleteSectionError
@@ -1908,7 +1908,7 @@ impl core::error::Error for surgeist_html::HtmlAutocompleteSectionError
 pub fn surgeist_html::HtmlAutocompleteSectionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::HtmlAutocompleteSectionError
 pub fn surgeist_html::HtmlAutocompleteSectionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::HtmlAutocompleteSyntaxError
+#[non_exhaustive] pub enum surgeist_html::HtmlAutocompleteSyntaxError
 pub surgeist_html::HtmlAutocompleteSyntaxError::ContactHintRequiresContactField
 pub surgeist_html::HtmlAutocompleteSyntaxError::ContactHintRequiresContactField::field: surgeist_html::HtmlAutofillField
 pub surgeist_html::HtmlAutocompleteSyntaxError::EmptyTokens
@@ -2022,7 +2022,7 @@ pub surgeist_html::HtmlAutofocusDelegateAction::ReadAutofocus
 pub surgeist_html::HtmlAutofocusDelegateAction::ReadClickFocusable
 pub surgeist_html::HtmlAutofocusDelegateAction::ReadClickFocusable::candidate: surgeist_html::HtmlFocusDelegateCandidate
 pub surgeist_html::HtmlAutofocusDelegateAction::ReadFocusableArea
-pub enum surgeist_html::HtmlAutofocusDelegateError
+#[non_exhaustive] pub enum surgeist_html::HtmlAutofocusDelegateError
 pub surgeist_html::HtmlAutofocusDelegateError::Terminal
 pub surgeist_html::HtmlAutofocusDelegateError::WrongReply
 impl core::error::Error for surgeist_html::HtmlAutofocusDelegateError
@@ -2050,7 +2050,7 @@ pub surgeist_html::HtmlAutofocusInsertionAction::ReadFullyActive
 pub surgeist_html::HtmlAutofocusInsertionAction::ReadInDocumentTree
 pub surgeist_html::HtmlAutofocusInsertionAction::ReadSandboxAutomaticFeatures
 pub surgeist_html::HtmlAutofocusInsertionAction::RemoveCandidate
-pub enum surgeist_html::HtmlAutofocusInsertionError
+#[non_exhaustive] pub enum surgeist_html::HtmlAutofocusInsertionError
 pub surgeist_html::HtmlAutofocusInsertionError::Terminal
 pub surgeist_html::HtmlAutofocusInsertionError::WrongReply
 impl core::error::Error for surgeist_html::HtmlAutofocusInsertionError
@@ -2161,7 +2161,7 @@ pub surgeist_html::HtmlCloseWatcherRequestAction::RunCancelAction
 pub surgeist_html::HtmlCloseWatcherRequestAction::RunCancelAction::can_prevent_close: bool
 pub surgeist_html::HtmlCloseWatcherRequestAction::RunCloseAction
 pub surgeist_html::HtmlCloseWatcherRequestAction::SetRunningCancelAction(bool)
-pub enum surgeist_html::HtmlCloseWatcherRequestError
+#[non_exhaustive] pub enum surgeist_html::HtmlCloseWatcherRequestError
 pub surgeist_html::HtmlCloseWatcherRequestError::NoncancelableActionPreventedClose
 pub surgeist_html::HtmlCloseWatcherRequestError::Terminal
 pub surgeist_html::HtmlCloseWatcherRequestError::WrongReply
@@ -2179,7 +2179,7 @@ pub surgeist_html::HtmlCloseWatcherRequestReply::ManagerGroups::allowed_groups: 
 pub surgeist_html::HtmlCloseWatcherRequestReply::ManagerGroups::groups: usize
 pub surgeist_html::HtmlCloseWatcherRequestReply::RunningCancelAction(bool)
 pub surgeist_html::HtmlCloseWatcherRequestReply::WindowFullyActive(bool)
-pub enum surgeist_html::HtmlCloseWatcherStateError
+#[non_exhaustive] pub enum surgeist_html::HtmlCloseWatcherStateError
 pub surgeist_html::HtmlCloseWatcherStateError::AlreadyRunning
 pub surgeist_html::HtmlCloseWatcherStateError::NotRunning
 impl core::error::Error for surgeist_html::HtmlCloseWatcherStateError
@@ -2257,7 +2257,7 @@ pub surgeist_html::HtmlControlIntegerAuthorState::Missing
 pub surgeist_html::HtmlControlIntegerAuthorState::Nonconforming(surgeist_html::HtmlValueFailure)
 pub surgeist_html::HtmlControlIntegerAuthorState::Unapplied
 pub surgeist_html::HtmlControlIntegerAuthorState::ZeroMustBePositive
-pub enum surgeist_html::HtmlControlLengthError
+#[non_exhaustive] pub enum surgeist_html::HtmlControlLengthError
 pub surgeist_html::HtmlControlLengthError::Admission(surgeist_html::HtmlValueAdmissionError)
 pub surgeist_html::HtmlControlLengthError::InputCodeUnitsOverflow
 impl core::convert::From<surgeist_html::HtmlValueAdmissionError> for surgeist_html::HtmlControlLengthError
@@ -2310,7 +2310,7 @@ pub surgeist_html::HtmlCurrentFocusChainAction::InitializeEmptyChain
 pub surgeist_html::HtmlCurrentFocusChainAction::ReadTraversable
 pub surgeist_html::HtmlCurrentFocusChainAction::RunCurrentlyFocusedArea
 pub surgeist_html::HtmlCurrentFocusChainAction::RunFocusChain
-pub enum surgeist_html::HtmlCurrentFocusChainError
+#[non_exhaustive] pub enum surgeist_html::HtmlCurrentFocusChainError
 pub surgeist_html::HtmlCurrentFocusChainError::Terminal
 pub surgeist_html::HtmlCurrentFocusChainError::WrongReply
 impl core::error::Error for surgeist_html::HtmlCurrentFocusChainError
@@ -2329,7 +2329,7 @@ pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadContentNavigable
 pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadLoopFocusedArea
 pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadResultFocusedArea
 pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadSystemFocus
-pub enum surgeist_html::HtmlCurrentlyFocusedAreaError
+#[non_exhaustive] pub enum surgeist_html::HtmlCurrentlyFocusedAreaError
 pub surgeist_html::HtmlCurrentlyFocusedAreaError::Terminal
 pub surgeist_html::HtmlCurrentlyFocusedAreaError::WrongReply
 impl core::error::Error for surgeist_html::HtmlCurrentlyFocusedAreaError
@@ -2345,7 +2345,7 @@ pub surgeist_html::HtmlCurrentlyFocusedAreaReply::ContentNavigablePresent(bool)
 pub surgeist_html::HtmlCurrentlyFocusedAreaReply::LoopFocusedArea(surgeist_html::HtmlFocusedAreaKind)
 pub surgeist_html::HtmlCurrentlyFocusedAreaReply::ResultFocusedAreaPresent(bool)
 pub surgeist_html::HtmlCurrentlyFocusedAreaReply::SystemFocus(bool)
-pub enum surgeist_html::HtmlCustomCommandError
+#[non_exhaustive] pub enum surgeist_html::HtmlCustomCommandError
 pub surgeist_html::HtmlCustomCommandError::BoundaryWhitespace
 pub surgeist_html::HtmlCustomCommandError::MissingPrefix
 impl core::error::Error for surgeist_html::HtmlCustomCommandError
@@ -2354,7 +2354,7 @@ pub fn surgeist_html::HtmlCustomCommandError::fmt(&self, f: &mut core::fmt::Form
 pub enum surgeist_html::HtmlCustomControlAttributeContext
 pub surgeist_html::HtmlCustomControlAttributeContext::FormAssociated
 pub surgeist_html::HtmlCustomControlAttributeContext::NotFormAssociated
-pub enum surgeist_html::HtmlCustomElementNameError
+#[non_exhaustive] pub enum surgeist_html::HtmlCustomElementNameError
 pub surgeist_html::HtmlCustomElementNameError::Empty
 pub surgeist_html::HtmlCustomElementNameError::FirstCodePointNotLowercaseAscii
 pub surgeist_html::HtmlCustomElementNameError::ForbiddenCodeUnit
@@ -2382,7 +2382,7 @@ impl surgeist_html::HtmlDateWithOptionalTime
 pub fn surgeist_html::HtmlDateWithOptionalTime::into_modification_datetime_attribute(self) -> surgeist_html::Attribute
 impl surgeist_html::HtmlDateWithOptionalTime
 pub fn surgeist_html::HtmlDateWithOptionalTime::to_document_string(&self) -> surgeist_html::DocumentString
-pub enum surgeist_html::HtmlDecimalDigitsError
+#[non_exhaustive] pub enum surgeist_html::HtmlDecimalDigitsError
 pub surgeist_html::HtmlDecimalDigitsError::Empty
 pub surgeist_html::HtmlDecimalDigitsError::NonAsciiDigit
 pub surgeist_html::HtmlDecimalDigitsError::NonAsciiDigit::code_unit: u16
@@ -2406,7 +2406,7 @@ pub surgeist_html::HtmlDesignModeAction::ResetActiveRange
 pub surgeist_html::HtmlDesignModeAction::RunFocusingSteps
 pub surgeist_html::HtmlDesignModeAction::SetEnabled
 pub surgeist_html::HtmlDesignModeAction::SetEnabled::enabled: bool
-pub enum surgeist_html::HtmlDesignModeError
+#[non_exhaustive] pub enum surgeist_html::HtmlDesignModeError
 pub surgeist_html::HtmlDesignModeError::Terminal
 pub surgeist_html::HtmlDesignModeError::WrongReply
 impl core::error::Error for surgeist_html::HtmlDesignModeError
@@ -2497,7 +2497,7 @@ pub surgeist_html::HtmlDialogAction::SetModal
 pub surgeist_html::HtmlDialogAction::WriteNullRequestCloseSource
 pub surgeist_html::HtmlDialogAction::WriteRequestCloseReturnValue
 pub surgeist_html::HtmlDialogAction::WriteReturnValue
-pub enum surgeist_html::HtmlDialogCursorError
+#[non_exhaustive] pub enum surgeist_html::HtmlDialogCursorError
 pub surgeist_html::HtmlDialogCursorError::Terminal
 pub surgeist_html::HtmlDialogCursorError::WrongReply
 impl core::error::Error for surgeist_html::HtmlDialogCursorError
@@ -2522,7 +2522,7 @@ pub surgeist_html::HtmlDialogFocusingAction::ReadSameOrigin::control: surgeist_h
 pub surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps
 pub surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps::control: surgeist_html::HtmlDialogFocusControl
 pub surgeist_html::HtmlDialogFocusingAction::SetAutofocusProcessed
-pub enum surgeist_html::HtmlDialogFocusingError
+#[non_exhaustive] pub enum surgeist_html::HtmlDialogFocusingError
 pub surgeist_html::HtmlDialogFocusingError::Terminal
 pub surgeist_html::HtmlDialogFocusingError::WrongReply
 impl core::error::Error for surgeist_html::HtmlDialogFocusingError
@@ -2661,7 +2661,7 @@ pub surgeist_html::HtmlFocusChainAction::ReadDocument
 pub surgeist_html::HtmlFocusChainAction::ReadFocusableArea
 pub surgeist_html::HtmlFocusChainAction::ReadNavigableParent
 pub surgeist_html::HtmlFocusChainAction::ReadNodeNavigable
-pub enum surgeist_html::HtmlFocusChainError
+#[non_exhaustive] pub enum surgeist_html::HtmlFocusChainError
 pub surgeist_html::HtmlFocusChainError::InvalidCurrentObject
 pub surgeist_html::HtmlFocusChainError::Terminal
 pub surgeist_html::HtmlFocusChainError::WrongReply
@@ -2690,7 +2690,7 @@ pub surgeist_html::HtmlFocusDelegateAction::RunAutofocusDelegate::root: surgeist
 pub enum surgeist_html::HtmlFocusDelegateCandidate
 pub surgeist_html::HtmlFocusDelegateCandidate::Descendant
 pub surgeist_html::HtmlFocusDelegateCandidate::ResolvedArea
-pub enum surgeist_html::HtmlFocusDelegateError
+#[non_exhaustive] pub enum surgeist_html::HtmlFocusDelegateError
 pub surgeist_html::HtmlFocusDelegateError::Terminal
 pub surgeist_html::HtmlFocusDelegateError::WrongReply
 impl core::error::Error for surgeist_html::HtmlFocusDelegateError
@@ -2728,7 +2728,7 @@ pub surgeist_html::HtmlFocusEventAction::Dispatch::cancelable: bool
 pub surgeist_html::HtmlFocusEventAction::Dispatch::composed: bool
 pub surgeist_html::HtmlFocusEventAction::Dispatch::interface: surgeist_html::HtmlFocusEventInterface
 pub surgeist_html::HtmlFocusEventAction::Dispatch::view: surgeist_html::HtmlFocusEventView
-pub enum surgeist_html::HtmlFocusEventError
+#[non_exhaustive] pub enum surgeist_html::HtmlFocusEventError
 pub surgeist_html::HtmlFocusEventError::Terminal
 pub surgeist_html::HtmlFocusEventError::WrongReply
 impl core::error::Error for surgeist_html::HtmlFocusEventError
@@ -2803,7 +2803,7 @@ pub enum surgeist_html::HtmlFocusUpdateEntryKind
 pub surgeist_html::HtmlFocusUpdateEntryKind::Document
 pub surgeist_html::HtmlFocusUpdateEntryKind::Element
 pub surgeist_html::HtmlFocusUpdateEntryKind::Other
-pub enum surgeist_html::HtmlFocusUpdateError
+#[non_exhaustive] pub enum surgeist_html::HtmlFocusUpdateError
 pub surgeist_html::HtmlFocusUpdateError::Terminal
 pub surgeist_html::HtmlFocusUpdateError::WrongReply
 impl core::error::Error for surgeist_html::HtmlFocusUpdateError
@@ -2872,7 +2872,7 @@ pub surgeist_html::HtmlFocusingAction::RunFocusChain
 pub surgeist_html::HtmlFocusingAction::RunFocusUpdate
 pub surgeist_html::HtmlFocusingAction::RunGetFocusableArea
 pub surgeist_html::HtmlFocusingAction::UseFallbackTarget
-pub enum surgeist_html::HtmlFocusingError
+#[non_exhaustive] pub enum surgeist_html::HtmlFocusingError
 pub surgeist_html::HtmlFocusingError::Terminal
 pub surgeist_html::HtmlFocusingError::WrongReply
 impl core::error::Error for surgeist_html::HtmlFocusingError
@@ -2966,7 +2966,7 @@ pub surgeist_html::HtmlGetFocusableAreaAction::RunCurrentlyFocusedArea
 pub surgeist_html::HtmlGetFocusableAreaAction::RunFocusDelegate
 pub surgeist_html::HtmlGetFocusableAreaAction::SelectFirstImageMapShape
 pub surgeist_html::HtmlGetFocusableAreaAction::SelectFirstScrollableRegion
-pub enum surgeist_html::HtmlGetFocusableAreaError
+#[non_exhaustive] pub enum surgeist_html::HtmlGetFocusableAreaError
 pub surgeist_html::HtmlGetFocusableAreaError::Terminal
 pub surgeist_html::HtmlGetFocusableAreaError::WrongReply
 impl core::error::Error for surgeist_html::HtmlGetFocusableAreaError
@@ -3041,7 +3041,7 @@ pub surgeist_html::HtmlHyperlinkTreeMutation::Removal::old_ancestor_connected: b
 pub enum surgeist_html::HtmlIconSize
 pub surgeist_html::HtmlIconSize::Bitmap(surgeist_html::HtmlBitmapIconSize)
 pub surgeist_html::HtmlIconSize::Scalable
-pub enum surgeist_html::HtmlIconSizeError
+#[non_exhaustive] pub enum surgeist_html::HtmlIconSizeError
 pub surgeist_html::HtmlIconSizeError::DimensionDigits
 pub surgeist_html::HtmlIconSizeError::LeadingZero
 pub surgeist_html::HtmlIconSizeError::Separator
@@ -3066,7 +3066,7 @@ pub enum surgeist_html::HtmlImageAttributeChange
 pub surgeist_html::HtmlImageAttributeChange::Removed
 pub surgeist_html::HtmlImageAttributeChange::Set
 pub surgeist_html::HtmlImageAttributeChange::Set::same_value: bool
-pub enum surgeist_html::HtmlImageAttributeConformanceError
+#[non_exhaustive] pub enum surgeist_html::HtmlImageAttributeConformanceError
 pub surgeist_html::HtmlImageAttributeConformanceError::CommonValue(surgeist_html::HtmlValueFailure)
 pub surgeist_html::HtmlImageAttributeConformanceError::EmptyAlt
 pub surgeist_html::HtmlImageAttributeConformanceError::EmptySource
@@ -3142,7 +3142,7 @@ pub surgeist_html::HtmlInputEmptySelectionSupport::Supported
 pub surgeist_html::HtmlInputEmptySelectionSupport::Unsupported
 pub enum surgeist_html::HtmlInputFileSelection
 pub surgeist_html::HtmlInputFileSelection::Empty
-pub enum surgeist_html::HtmlInputImageAttributeError
+#[non_exhaustive] pub enum surgeist_html::HtmlInputImageAttributeError
 pub surgeist_html::HtmlInputImageAttributeError::EmptyAlt
 pub surgeist_html::HtmlInputImageAttributeError::EmptySource
 impl core::error::Error for surgeist_html::HtmlInputImageAttributeError
@@ -3204,7 +3204,7 @@ pub surgeist_html::HtmlInputNumericCommonReport::LocalDateTime(surgeist_html::Ht
 pub surgeist_html::HtmlInputNumericCommonReport::Month(surgeist_html::HtmlValueReport<surgeist_html::HtmlMonth, surgeist_html::HtmlMonth>)
 pub surgeist_html::HtmlInputNumericCommonReport::Time(surgeist_html::HtmlValueReport<surgeist_html::HtmlTime, surgeist_html::HtmlParsedTime>)
 pub surgeist_html::HtmlInputNumericCommonReport::Week(surgeist_html::HtmlValueReport<surgeist_html::HtmlWeek, surgeist_html::HtmlWeek>)
-pub enum surgeist_html::HtmlInputNumericConstraintsError
+#[non_exhaustive] pub enum surgeist_html::HtmlInputNumericConstraintsError
 pub surgeist_html::HtmlInputNumericConstraintsError::Admission(surgeist_html::HtmlValueAdmissionError)
 pub surgeist_html::HtmlInputNumericConstraintsError::InputCodeUnitsOverflow
 impl core::convert::From<surgeist_html::HtmlValueAdmissionError> for surgeist_html::HtmlInputNumericConstraintsError
@@ -3367,7 +3367,7 @@ pub surgeist_html::HtmlLinkDestinationContextAuthorState::Conforming
 pub surgeist_html::HtmlLinkDestinationContextAuthorState::Nonconforming(surgeist_html::HtmlLinkDestinationContextError)
 pub surgeist_html::HtmlLinkDestinationContextAuthorState::NotRequired
 pub surgeist_html::HtmlLinkDestinationContextAuthorState::Unapplied
-pub enum surgeist_html::HtmlLinkDestinationContextError
+#[non_exhaustive] pub enum surgeist_html::HtmlLinkDestinationContextError
 pub surgeist_html::HtmlLinkDestinationContextError::AsRequiresPreloadOrModulePreloadRel
 pub surgeist_html::HtmlLinkDestinationContextError::ModulePreloadRequiresModuleDestination
 pub surgeist_html::HtmlLinkDestinationContextError::PreloadRequiresAs
@@ -3472,7 +3472,7 @@ pub surgeist_html::HtmlMeterAuthorRelation::OptimumMaximum
 pub surgeist_html::HtmlMeterAuthorRelation::ValueMaximum
 impl core::fmt::Display for surgeist_html::HtmlMeterAuthorRelation
 pub fn surgeist_html::HtmlMeterAuthorRelation::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::HtmlMeterNativeError
+#[non_exhaustive] pub enum surgeist_html::HtmlMeterNativeError
 pub surgeist_html::HtmlMeterNativeError::RelationViolation(surgeist_html::HtmlMeterAuthorRelation)
 pub surgeist_html::HtmlMeterNativeError::RepresentationUnavailable
 pub surgeist_html::HtmlMeterNativeError::Syntax
@@ -3504,7 +3504,7 @@ pub surgeist_html::HtmlMeterRelationState::NotRequired
 pub surgeist_html::HtmlMeterRelationState::Unapplied
 pub surgeist_html::HtmlMeterRelationState::Unavailable(surgeist_html::HtmlMeterRelationUnavailable)
 pub surgeist_html::HtmlMeterRelationState::Violated
-pub enum surgeist_html::HtmlMeterRelationUnavailable
+#[non_exhaustive] pub enum surgeist_html::HtmlMeterRelationUnavailable
 pub surgeist_html::HtmlMeterRelationUnavailable::MissingRequiredValue
 pub surgeist_html::HtmlMeterRelationUnavailable::Representation
 pub surgeist_html::HtmlMeterRelationUnavailable::Syntax(surgeist_html::HtmlMeterNumberRole)
@@ -3514,7 +3514,7 @@ pub surgeist_html::HtmlMicrodataTokenKind::ItemRef
 pub surgeist_html::HtmlMicrodataTokenKind::ItemType
 impl surgeist_html::HtmlMicrodataTokenKind
 pub fn surgeist_html::HtmlMicrodataTokenKind::attribute(self) -> surgeist_html::KnownHtmlAttribute
-pub enum surgeist_html::HtmlMicrodataTokenListError
+#[non_exhaustive] pub enum surgeist_html::HtmlMicrodataTokenListError
 pub surgeist_html::HtmlMicrodataTokenListError::Duplicate(surgeist_html::HtmlDuplicateTokenError)
 pub surgeist_html::HtmlMicrodataTokenListError::Empty
 impl core::convert::From<surgeist_html::HtmlDuplicateTokenError> for surgeist_html::HtmlMicrodataTokenListError
@@ -3561,7 +3561,7 @@ pub surgeist_html::HtmlNavigableTargetAttribute::HyperlinkTarget
 pub surgeist_html::HtmlNavigableTargetAttribute::IframeName
 pub surgeist_html::HtmlNavigableTargetAttribute::ObjectName
 pub surgeist_html::HtmlNavigableTargetAttribute::SubmitterFormtarget
-pub enum surgeist_html::HtmlNavigableTargetError
+#[non_exhaustive] pub enum surgeist_html::HtmlNavigableTargetError
 pub surgeist_html::HtmlNavigableTargetError::Empty
 pub surgeist_html::HtmlNavigableTargetError::ReservedLeadingUnderscore
 pub surgeist_html::HtmlNavigableTargetError::TabOrNewlineWithLessThan
@@ -3605,7 +3605,7 @@ pub surgeist_html::HtmlNumericAttributeAuthorState::Conforming
 pub surgeist_html::HtmlNumericAttributeAuthorState::Missing
 pub surgeist_html::HtmlNumericAttributeAuthorState::Nonconforming(surgeist_html::HtmlNumericAttributeConformanceError)
 pub surgeist_html::HtmlNumericAttributeAuthorState::Unapplied
-pub enum surgeist_html::HtmlNumericAttributeConformanceError
+#[non_exhaustive] pub enum surgeist_html::HtmlNumericAttributeConformanceError
 pub surgeist_html::HtmlNumericAttributeConformanceError::CommonValue(surgeist_html::HtmlValueFailure)
 pub surgeist_html::HtmlNumericAttributeConformanceError::MaximumExceeded
 pub surgeist_html::HtmlNumericAttributeConformanceError::MaximumExceeded::maximum: u16
@@ -3689,7 +3689,7 @@ pub fn surgeist_html::HtmlPreload::into_attribute(self) -> surgeist_html::Attrib
 pub enum surgeist_html::HtmlPreloadState
 pub surgeist_html::HtmlPreloadState::ImplementationDefined
 pub surgeist_html::HtmlPreloadState::Keyword(surgeist_html::HtmlPreload)
-pub enum surgeist_html::HtmlProcessingInstructionError
+#[non_exhaustive] pub enum surgeist_html::HtmlProcessingInstructionError
 pub surgeist_html::HtmlProcessingInstructionError::DataContainsGreaterThan
 pub surgeist_html::HtmlProcessingInstructionError::DataEndsWithQuestionMark
 pub surgeist_html::HtmlProcessingInstructionError::InvalidTarget
@@ -3697,7 +3697,7 @@ pub surgeist_html::HtmlProcessingInstructionError::ReservedTarget
 impl core::error::Error for surgeist_html::HtmlProcessingInstructionError
 impl core::fmt::Display for surgeist_html::HtmlProcessingInstructionError
 pub fn surgeist_html::HtmlProcessingInstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::HtmlProgressNativeError
+#[non_exhaustive] pub enum surgeist_html::HtmlProgressNativeError
 pub surgeist_html::HtmlProgressNativeError::NegativeValue
 pub surgeist_html::HtmlProgressNativeError::NonpositiveMaximum
 pub surgeist_html::HtmlProgressNativeError::RepresentationUnavailable
@@ -3705,7 +3705,7 @@ pub surgeist_html::HtmlProgressNativeError::ValueAboveMaximum
 impl core::error::Error for surgeist_html::HtmlProgressNativeError
 impl core::fmt::Display for surgeist_html::HtmlProgressNativeError
 pub fn surgeist_html::HtmlProgressNativeError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::HtmlProgressNumberAuthorError
+#[non_exhaustive] pub enum surgeist_html::HtmlProgressNumberAuthorError
 pub surgeist_html::HtmlProgressNumberAuthorError::NegativeValue
 pub surgeist_html::HtmlProgressNumberAuthorError::NonpositiveMaximum
 pub surgeist_html::HtmlProgressNumberAuthorError::Syntax(surgeist_html::HtmlValueSyntaxError)
@@ -3725,7 +3725,7 @@ pub surgeist_html::HtmlProgressUpperBoundState::NotRequired
 pub surgeist_html::HtmlProgressUpperBoundState::Unapplied
 pub surgeist_html::HtmlProgressUpperBoundState::Unavailable(surgeist_html::HtmlProgressUpperBoundUnavailable)
 pub surgeist_html::HtmlProgressUpperBoundState::ValueAboveMaximum
-pub enum surgeist_html::HtmlProgressUpperBoundUnavailable
+#[non_exhaustive] pub enum surgeist_html::HtmlProgressUpperBoundUnavailable
 pub surgeist_html::HtmlProgressUpperBoundUnavailable::MaximumSyntax
 pub surgeist_html::HtmlProgressUpperBoundUnavailable::Representation
 pub surgeist_html::HtmlProgressUpperBoundUnavailable::ValueSyntax
@@ -3735,7 +3735,7 @@ pub surgeist_html::HtmlRadioTrigger::Connected
 pub surgeist_html::HtmlRadioTrigger::FormOwner
 pub surgeist_html::HtmlRadioTrigger::Name
 pub surgeist_html::HtmlRadioTrigger::Type
-pub enum surgeist_html::HtmlRationalError
+#[non_exhaustive] pub enum surgeist_html::HtmlRationalError
 pub surgeist_html::HtmlRationalError::ZeroDenominator
 impl core::error::Error for surgeist_html::HtmlRationalError
 impl core::fmt::Display for surgeist_html::HtmlRationalError
@@ -3905,7 +3905,7 @@ pub surgeist_html::HtmlSandboxRedundancy::CustomProtocolsAndTopNavigation
 pub surgeist_html::HtmlSandboxRedundancy::TopNavigationAndByUserActivation
 impl core::fmt::Display for surgeist_html::HtmlSandboxRedundancy
 pub fn surgeist_html::HtmlSandboxRedundancy::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::HtmlSandboxValueError
+#[non_exhaustive] pub enum surgeist_html::HtmlSandboxValueError
 pub surgeist_html::HtmlSandboxValueError::Duplicate(surgeist_html::HtmlDuplicateTokenError)
 pub surgeist_html::HtmlSandboxValueError::Redundant(surgeist_html::HtmlSandboxRedundancy)
 impl core::convert::From<surgeist_html::HtmlDuplicateTokenError> for surgeist_html::HtmlSandboxValueError
@@ -3981,7 +3981,7 @@ pub surgeist_html::HtmlSrcsetAuthorState::HtmlConstraintsConforming
 pub surgeist_html::HtmlSrcsetAuthorState::Missing
 pub surgeist_html::HtmlSrcsetAuthorState::Nonconforming
 pub surgeist_html::HtmlSrcsetAuthorState::Unapplied
-pub enum surgeist_html::HtmlSrcsetAuthorViolation
+#[non_exhaustive] pub enum surgeist_html::HtmlSrcsetAuthorViolation
 pub surgeist_html::HtmlSrcsetAuthorViolation::DuplicateDensity
 pub surgeist_html::HtmlSrcsetAuthorViolation::DuplicateDensity::duplicate: usize
 pub surgeist_html::HtmlSrcsetAuthorViolation::DuplicateDensity::first: usize
@@ -4014,7 +4014,7 @@ pub surgeist_html::HtmlSrcsetContextAuthorState::Nonconforming
 pub surgeist_html::HtmlSrcsetContextAuthorState::NotRequired
 pub surgeist_html::HtmlSrcsetContextAuthorState::Unapplied
 pub surgeist_html::HtmlSrcsetContextAuthorState::Unchecked
-pub enum surgeist_html::HtmlSrcsetContextViolation
+#[non_exhaustive] pub enum surgeist_html::HtmlSrcsetContextViolation
 pub surgeist_html::HtmlSrcsetContextViolation::ImageAsStateRequired
 pub surgeist_html::HtmlSrcsetContextViolation::ImagesizesRequired
 pub surgeist_html::HtmlSrcsetContextViolation::PreloadRelRequired
@@ -4026,7 +4026,7 @@ pub surgeist_html::HtmlSrcsetContextViolation::WidthDescriptorsRequiredForSizes
 impl core::error::Error for surgeist_html::HtmlSrcsetContextViolation
 impl core::fmt::Display for surgeist_html::HtmlSrcsetContextViolation
 pub fn surgeist_html::HtmlSrcsetContextViolation::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::HtmlSrcsetDensityError
+#[non_exhaustive] pub enum surgeist_html::HtmlSrcsetDensityError
 pub surgeist_html::HtmlSrcsetDensityError::InvalidSyntax
 pub surgeist_html::HtmlSrcsetDensityError::Nonpositive
 pub surgeist_html::HtmlSrcsetDensityError::RepresentationExhausted
@@ -4060,7 +4060,7 @@ pub enum surgeist_html::HtmlSrcsetParentObservation
 pub surgeist_html::HtmlSrcsetParentObservation::Absent
 pub surgeist_html::HtmlSrcsetParentObservation::Element(surgeist_html::QualifiedName)
 pub surgeist_html::HtmlSrcsetParentObservation::Unavailable
-pub enum surgeist_html::HtmlSrcsetParseError
+#[non_exhaustive] pub enum surgeist_html::HtmlSrcsetParseError
 pub surgeist_html::HtmlSrcsetParseError::DensityConversionOverflow
 pub surgeist_html::HtmlSrcsetParseError::FutureHeightDescriptor
 pub surgeist_html::HtmlSrcsetParseError::MultipleTrailingCommas
@@ -4073,7 +4073,7 @@ pub enum surgeist_html::HtmlSrcsetProcessingState
 pub surgeist_html::HtmlSrcsetProcessingState::Candidates
 pub surgeist_html::HtmlSrcsetProcessingState::MissingAttribute
 pub surgeist_html::HtmlSrcsetProcessingState::Unapplied
-pub enum surgeist_html::HtmlSrcsetUrlTokenError
+#[non_exhaustive] pub enum surgeist_html::HtmlSrcsetUrlTokenError
 pub surgeist_html::HtmlSrcsetUrlTokenError::AsciiWhitespace
 pub surgeist_html::HtmlSrcsetUrlTokenError::EdgeComma
 pub surgeist_html::HtmlSrcsetUrlTokenError::Empty
@@ -4158,7 +4158,7 @@ pub surgeist_html::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocum
 pub surgeist_html::HtmlTemplateContentsOwnerDocument::CurrentDocument
 pub enum surgeist_html::HtmlTemplateFreshInsertionState
 pub surgeist_html::HtmlTemplateFreshInsertionState::NullTargetAndMarkers
-pub enum surgeist_html::HtmlTemporalError
+#[non_exhaustive] pub enum surgeist_html::HtmlTemporalError
 pub surgeist_html::HtmlTemporalError::DayOutOfRange
 pub surgeist_html::HtmlTemporalError::HourOutOfRange
 pub surgeist_html::HtmlTemporalError::InvalidSyntax
@@ -4208,7 +4208,7 @@ pub surgeist_html::HtmlTokenDeclarationAuthorState::Conforming
 pub surgeist_html::HtmlTokenDeclarationAuthorState::Missing
 pub surgeist_html::HtmlTokenDeclarationAuthorState::Nonconforming(surgeist_html::HtmlTokenDeclarationError)
 pub surgeist_html::HtmlTokenDeclarationAuthorState::Unapplied
-pub enum surgeist_html::HtmlTokenDeclarationError
+#[non_exhaustive] pub enum surgeist_html::HtmlTokenDeclarationError
 pub surgeist_html::HtmlTokenDeclarationError::AccessKeyLength
 pub surgeist_html::HtmlTokenDeclarationError::AccessKeyLength::token_index: usize
 pub surgeist_html::HtmlTokenDeclarationError::Duplicate(surgeist_html::HtmlDuplicateTokenError)
@@ -4223,7 +4223,7 @@ impl core::error::Error for surgeist_html::HtmlTokenDeclarationError
 pub fn surgeist_html::HtmlTokenDeclarationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::HtmlTokenDeclarationError
 pub fn surgeist_html::HtmlTokenDeclarationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::HtmlTokenError
+#[non_exhaustive] pub enum surgeist_html::HtmlTokenError
 pub surgeist_html::HtmlTokenError::CommaTokenBoundaryWhitespace
 pub surgeist_html::HtmlTokenError::CommaTokenBoundaryWhitespace::code_unit_offset: usize
 pub surgeist_html::HtmlTokenError::CommaTokenComma
@@ -4260,7 +4260,7 @@ pub surgeist_html::HtmlValueAuthorState::Missing
 pub surgeist_html::HtmlValueAuthorState::NotDefined
 pub surgeist_html::HtmlValueAuthorState::Unrepresentable(surgeist_html::HtmlValueRepresentationError)
 pub surgeist_html::HtmlValueAuthorState::Valid(T)
-pub enum surgeist_html::HtmlValueFailure
+#[non_exhaustive] pub enum surgeist_html::HtmlValueFailure
 pub surgeist_html::HtmlValueFailure::Representation(surgeist_html::HtmlValueRepresentationError)
 pub surgeist_html::HtmlValueFailure::Syntax(surgeist_html::HtmlValueSyntaxError)
 impl core::error::Error for surgeist_html::HtmlValueFailure
@@ -4271,7 +4271,7 @@ pub enum surgeist_html::HtmlValueRecoveryState<T>
 pub surgeist_html::HtmlValueRecoveryState::Failed(surgeist_html::HtmlValueFailure)
 pub surgeist_html::HtmlValueRecoveryState::Missing
 pub surgeist_html::HtmlValueRecoveryState::Value(T)
-pub enum surgeist_html::HtmlValueRepresentationError
+#[non_exhaustive] pub enum surgeist_html::HtmlValueRepresentationError
 pub surgeist_html::HtmlValueRepresentationError::FloatingPointOverflow
 impl core::error::Error for surgeist_html::HtmlValueRepresentationError
 impl core::fmt::Display for surgeist_html::HtmlValueRepresentationError
@@ -4302,7 +4302,7 @@ pub surgeist_html::HtmlValueSyntax::Week
 pub surgeist_html::HtmlValueSyntax::YearlessDate
 impl surgeist_html::HtmlValueSyntax
 pub fn surgeist_html::HtmlValueSyntax::source_clause(self) -> &'static str
-pub enum surgeist_html::HtmlValueSyntaxError
+#[non_exhaustive] pub enum surgeist_html::HtmlValueSyntaxError
 pub surgeist_html::HtmlValueSyntaxError::EmptyLegacyColor
 pub surgeist_html::HtmlValueSyntaxError::InvalidNumericSyntax
 pub surgeist_html::HtmlValueSyntaxError::NegativeNonnegativeInteger

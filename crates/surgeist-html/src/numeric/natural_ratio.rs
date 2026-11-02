@@ -19,6 +19,7 @@ pub struct HtmlNonNegativeRational {
     denominator: HtmlNonNegativeInteger,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlRationalError {
     ZeroDenominator,
 }
@@ -227,6 +228,7 @@ impl<'a> NaturalDigits<'a> {
 }
 /// Invalid external operands, unadmitted scratch, or premature completion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum NaturalArithmeticError {
     NonCanonical,
     InvalidDigit { index: usize, value: u8 },

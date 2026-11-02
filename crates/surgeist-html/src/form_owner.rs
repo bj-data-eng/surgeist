@@ -114,6 +114,7 @@ pub enum HtmlFormOwnerResetReply {
 
 /// A reply which does not match the current pending operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlFormOwnerResetCursorError {
     Reply,
 }

@@ -3,6 +3,7 @@ use std::num::NonZeroUsize;
 
 /// Rejected transitions leave the original watcher state unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlCloseWatcherStateError {
     AlreadyRunning,
     NotRunning,
@@ -62,6 +63,7 @@ pub enum HtmlCloseWatcherRequestReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlCloseWatcherRequestError {
     WrongReply,
     Terminal,

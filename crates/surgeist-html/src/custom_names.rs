@@ -54,6 +54,7 @@ impl HtmlCustomElementName {
 
 /// A rejected custom-element name, with offsets measured in UTF-16 code units.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlCustomElementNameError {
     Empty,
     FirstCodePointNotLowercaseAscii,

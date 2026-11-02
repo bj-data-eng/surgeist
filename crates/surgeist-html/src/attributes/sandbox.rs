@@ -313,6 +313,7 @@ impl HtmlSandboxValue {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlSandboxValueError {
     Duplicate(HtmlDuplicateTokenError),
     Redundant(HtmlSandboxRedundancy),

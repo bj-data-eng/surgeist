@@ -77,6 +77,7 @@ pub enum HtmlSelectReply {
 
 /// A contradictory operation context or a reply to the wrong pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlSelectCursorError {
     MultipleContext,
     Reply,
