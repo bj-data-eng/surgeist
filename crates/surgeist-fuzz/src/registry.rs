@@ -242,11 +242,12 @@ impl TargetRegistry {
             .ok_or_else(|| error(format!("target {id} is not registered")))
     }
 }
+
 /// A source reference is either an absolute URL, which this offline discovery
 /// does not fetch, or a workspace-relative file path with an optional
 /// `#fragment`; a path must name an existing regular file inside `root`.
 fn check_source_reference(root: &Path, reference: &str) -> Result<()> {
-    if reference.contains("://") {
+    if is_url(reference) {
         return Ok(());
     }
     let path = reference
@@ -265,6 +266,17 @@ fn check_source_reference(root: &Path, reference: &str) -> Result<()> {
         )));
     }
     Ok(())
+}
+/// An RFC 3986 section 3.1 scheme followed by `://`, with no whitespace.
+fn is_url(reference: &str) -> bool {
+    let Some((scheme, _)) = reference.split_once("://") else {
+        return false;
+    };
+    scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        && !reference.contains(char::is_whitespace)
 }
 fn canonical(path: &Path) -> Result<PathBuf> {
     path.canonicalize()
