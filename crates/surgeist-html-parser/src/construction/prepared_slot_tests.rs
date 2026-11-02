@@ -11,7 +11,7 @@
 //! resource at zero after cleanup.
 use super::base::{BaseValue, ResponseDomain};
 use super::tests::storage_zero;
-use super::{KindList, RetainedPayload};
+use super::{KindList, RetainedPayload, StringLocation, literal_string};
 use crate::construction::effects::tests::{graph, request};
 use crate::parser::control::{PreparedSlotStopScope, prepared_slots, stop_after_prepared_slot};
 use crate::parser::tree_builder::tests::limits;
@@ -504,4 +504,25 @@ fn merged_text_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot
     assert_nothing_retained(&document(
         "<!doctype html><textarea>a&amp;b&lt;c</textarea><style>x&amp;y</style><p>a&amp;b</p>",
     ));
+}
+
+#[test]
+fn a_refused_row_that_owns_a_string_is_released_with_the_registry() {
+    let request = request("<body><div id=a>");
+    let (mut c, mut session, _proof, _nodes) = graph(&request);
+    let storage = session.active_mut().unwrap();
+    let (value, allocation) = literal_string(&mut c, b"owned").unwrap().into_parts();
+    // A slot admitted for a listed row refuses a row of no list.
+    let prepared = storage
+        .prepare_payload_slot_for(&mut c, Some(KindList::Base))
+        .unwrap();
+    let row = RetainedPayload::String {
+        value,
+        allocation,
+        origins: None,
+        location: StringLocation::Detached,
+    };
+    assert!(storage.payloads.push_row(prepared, row).is_err());
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
 }
