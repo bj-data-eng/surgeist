@@ -762,3 +762,26 @@ fn removing_an_unreferenced_command_renumbers_later_handles_without_repair() {
         assert_eq!(t.evaluate(r).unwrap().kind(), OutcomeKind::Evaluated);
     }
 }
+
+#[test]
+fn native_generator_never_discards_entropy_over_a_fixed_range() {
+    // A generator defect must not hide as a generation rejection: every entropy
+    // slice of 1 to 300 bytes from this fixed xorshift stream yields a case, and
+    // that case encodes and decodes unchanged.
+    let t = NativeTarget::new();
+    let mut state = 0x1172_C0DE_9E37_79B9u64;
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for i in 0..4000 {
+        let len = 1 + (next() % 300) as usize;
+        let entropy: Vec<u8> = (0..len).map(|_| next() as u8).collect();
+        let Generation::Generated(case) = t.generate(&entropy).unwrap() else {
+            panic!("entropy {i} was discarded: {entropy:?}")
+        };
+        assert_eq!(t.decode(&t.encode(&case).unwrap()).unwrap(), case);
+    }
+}
