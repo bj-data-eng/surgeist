@@ -387,8 +387,18 @@ fn session_reason(e: SessionError) -> HtmlParseFailureReason {
             SessionError::ContextReactionUnavailable => {
                 HtmlParseFailureReason::UnsupportedContextReactions
             }
-            _ => HtmlParseFailureReason::Stop(stop),
+            _ => stop_reason(stop),
         },
+    }
+}
+/// The reason for a stop: the two Meta CSP stops have reasons of their own, so
+/// one stop is one reason whether the service raised it or the controller
+/// latched it.
+fn stop_reason(stop: ParseStop) -> HtmlParseFailureReason {
+    match stop {
+        ParseStop::CspProcessing => HtmlParseFailureReason::CspProcessing,
+        ParseStop::CspProtocol(p) => HtmlParseFailureReason::CspProtocol(p),
+        other => HtmlParseFailureReason::Stop(other),
     }
 }
 /// The reason for a cause: derived from the same `stop_cause` that the stop is
@@ -1339,6 +1349,21 @@ mod tests {
         assert_eq!(
             ordinary_reason(&StandaloneError::UnsupportedExecutionProfile),
             HtmlParseFailureReason::UnsupportedExecutionProfile
+        );
+    }
+
+    /// One Meta CSP stop is one reason, whether the service raised it as a
+    /// session error or the controller latched it as a stop.
+    #[test]
+    fn a_meta_csp_stop_has_the_same_reason_as_the_error_that_names_it() {
+        let protocol = surgeist_html::HtmlCspProtocolError::WrongProcessor;
+        assert_eq!(
+            session_reason(SessionError::Stop(ParseStop::CspProcessing)),
+            session_reason(SessionError::CspService)
+        );
+        assert_eq!(
+            session_reason(SessionError::Stop(ParseStop::CspProtocol(protocol))),
+            session_reason(SessionError::CspProtocol(protocol))
         );
     }
 }
