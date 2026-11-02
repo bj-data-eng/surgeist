@@ -12,7 +12,7 @@ function capture(changes, nonempty) {
   const style = {
     fontFamily: 'SurgeistParityAhem', fontStyle: 'normal', fontWeight: '400',
     fontStretch: '100%', fontFeatureSettings: 'normal', fontVariationSettings: 'normal',
-    fontSynthesis: 'none', writingMode: 'horizontal-tb', unicodeBidi: 'normal',
+    fontSynthesis: 'none', writingMode: 'horizontal-tb', unicodeBidi: 'normal', dominantBaseline: 'auto',
     fontSize: '16px', lineHeight: '20px', whiteSpace: 'normal', wordBreak: 'normal',
     overflowWrap: 'normal', letterSpacing: 'normal', wordSpacing: 'normal',
     textTransform: 'none', textDecorationLine: 'none', fontVariant: 'normal',
@@ -52,7 +52,7 @@ function atomicBreakCapture(spec) {
     fontFamily: 'SurgeistParityAhem', fontStyle: 'normal', fontWeight: '400',
     fontStretch: '100%', fontFeatureSettings: 'normal', fontVariationSettings: 'normal',
     fontSynthesis: 'none', fontKerning: 'auto', writingMode: spec.mode,
-    textOrientation: 'mixed', textCombineUpright: 'none', unicodeBidi: 'normal',
+    textOrientation: 'mixed', textCombineUpright: 'none', unicodeBidi: 'normal', dominantBaseline: 'auto',
     fontSize: '20px', lineHeight: '30px', whiteSpace: 'normal', wordBreak: 'normal',
     overflowWrap: 'normal', letterSpacing: 'normal', wordSpacing: 'normal',
     textTransform: 'none', textDecorationLine: 'none', fontVariant: 'normal',
@@ -201,6 +201,8 @@ function atomicBreakProfileTests() {
   ];
   const refused=[
     {name:'whole-upright is not the Mixed source profile',mode:'vertical-rl',direction:'rtl',whitespace:true,rootChanges:{textOrientation:'upright'}},
+    {name:'vertical root has a nondefault dominant baseline',mode:'vertical-rl',direction:'ltr',whitespace:true,rootChanges:{dominantBaseline:'alphabetic'}},
+    {name:'vertical BR has a nondefault dominant baseline',mode:'vertical-lr',direction:'ltr',whitespace:true,brChanges:{dominantBaseline:'alphabetic'}},
     {name:'sideways is outside the three captured modes',mode:'sideways-rl',direction:'ltr',whitespace:true},
     {name:'visible vertical glyph text is not qualified by whitespace support',mode:'vertical-rl',direction:'ltr',visible:true},
     {name:'out-of-flow blockified atomic is outside the vertical profile',mode:'vertical-rl',direction:'ltr',whitespace:true,atomicChanges:{position:'absolute',display:'block'}},

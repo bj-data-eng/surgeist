@@ -1510,11 +1510,6 @@ mod tests {
                 assert_eq!(placed.source().text().code_units(), &[10, 32, 32, 10]);
                 assert!(placed.run_views().all(|run| run.glyphs().next().is_none()));
                 assert_eq!(placed.lines().len(), 2);
-                let boxes = placed.inline_boxes();
-                assert_eq!((boxes[0].id().as_u64(), boxes[0].line()), (1, 0));
-                assert_eq!((boxes[1].id().as_u64(), boxes[1].line()), (3, 1));
-                assert_eq!(boxes[0].rect().size, text::Size::new(30.0, 30.0));
-                assert_eq!(boxes[1].rect().size, text::Size::new(30.0, 16.0));
                 let control = batch
                     .final_inline_fragments()
                     .iter()
@@ -1525,6 +1520,43 @@ mod tests {
                     line.control_slots().next().unwrap().control(),
                     binding.controls[0].occurrence
                 );
+                assert_eq!(line.feedback().line_height, 30.0);
+                let root_output = batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == 0)
+                    .unwrap()
+                    .output();
+                assert_eq!(root_output.size, layout::Size::new(80.0, 30.0));
+                let expected_x = if mode == "vertical-lr" {
+                    [0.0, 30.0]
+                } else {
+                    [50.0, 20.0]
+                };
+                for (index, node) in [2, 4].into_iter().enumerate() {
+                    let actual = batch
+                        .unrounded_entries()
+                        .iter()
+                        .find(|entry| entry.node() == node)
+                        .unwrap()
+                        .output();
+                    let expected_y = if index == 1 && direction == "rtl" {
+                        14.0
+                    } else {
+                        0.0
+                    };
+                    assert_eq!(
+                        actual.location,
+                        layout::Point::new(expected_x[index], expected_y)
+                    );
+                    assert_eq!(actual.size.width, 30.0);
+                    assert_eq!(actual.size.height, if index == 0 { 30.0 } else { 16.0 });
+                }
+                let boxes = placed.inline_boxes();
+                assert_eq!((boxes[0].id().as_u64(), boxes[0].line()), (1, 0));
+                assert_eq!((boxes[1].id().as_u64(), boxes[1].line()), (3, 1));
+                assert_eq!(boxes[0].rect().size, text::Size::new(30.0, 30.0));
+                assert_eq!(boxes[1].rect().size, text::Size::new(30.0, 16.0));
                 assert_eq!(line.feedback().advance, 30.0);
                 assert!(
                     line.selected_line()
