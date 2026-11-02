@@ -922,6 +922,145 @@ pub(super) mod tests {
         }
     }
 
+    /// A frozen base whose environment facts come from another owner than the
+    /// document's base row cannot have been frozen against that document: the
+    /// two retained rows disagree about whose facts they hold.
+    #[test]
+    fn validating_a_frozen_base_with_another_owners_facts_reports_the_registry_row() {
+        use crate::parser::control::Invariant;
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        let other = request("<base href=A>");
+        let foreign = other.base_facts().unwrap().clone();
+        let request = request("<base href=A>");
+        assert!(!request.base_facts().unwrap().same_owner(&foreign));
+        let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let base = node(&mut session, &mut c, &mut lexer);
+        session
+            .insert_parser(&mut c, &root, &base, None, &capability)
+            .unwrap();
+        session
+            .active()
+            .unwrap()
+            .validate_base_facts(&mut c)
+            .unwrap();
+        let mut original = None;
+        for payload in &mut session.active_mut().unwrap().payloads.values {
+            if let RetainedPayload::Base {
+                frozen: BaseValue::Frozen(frozen),
+                ..
+            } = payload
+            {
+                original = Some(mem::replace(&mut frozen.environment, foreign.clone()));
+            }
+        }
+        let result = session.active().unwrap().validate_base_facts(&mut c);
+        assert_eq!(result, Err(SessionError::Stop(registry_row)));
+        assert_eq!(c.stop(), Some(registry_row));
+        for payload in &mut session.active_mut().unwrap().payloads.values {
+            if let RetainedPayload::Base {
+                frozen: BaseValue::Frozen(frozen),
+                ..
+            } = payload
+            {
+                frozen.environment = original.take().unwrap();
+            }
+        }
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+
+    /// An unavailable base names the missing-policy row that made it so. A row
+    /// of another kind, or one that is not a missing-policy row at all, is a
+    /// retained row that is not what the base says it is.
+    #[test]
+    fn validating_an_unavailable_base_whose_missing_row_is_not_a_csp_row_reports_the_registry_row()
+    {
+        use crate::parser::control::Invariant;
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        for case in 0..2 {
+            let request = request(
+                "<head><base href=A><meta http-equiv=content-security-policy content=policy><i href=B>",
+            );
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let root = session.root(&mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let head = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &root, &head, None, &capability)
+                .unwrap();
+            let base = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &head, &base, None, &capability)
+                .unwrap();
+            let meta = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &head, &meta, None, &capability)
+                .unwrap();
+            let mut incoming = attribute(&mut lexer, &mut c);
+            session
+                .set_managed_attribute(
+                    &mut c,
+                    &base,
+                    &mut incoming,
+                    &capability,
+                    mutation::ManagedFamily::Base,
+                )
+                .unwrap();
+            session
+                .active()
+                .unwrap()
+                .validate_base_facts(&mut c)
+                .unwrap();
+            let base_slot = session
+                .active()
+                .unwrap()
+                .base_slot(&mut c, base.index)
+                .unwrap();
+            let storage = session.active_mut().unwrap();
+            let RetainedPayload::Base {
+                frozen: BaseValue::Unavailable { missing, .. },
+                ..
+            } = &mut storage.payloads.values[base_slot]
+            else {
+                panic!("the policy recomputation left the base unavailable")
+            };
+            let named = *missing;
+            if case == 0 {
+                // The named row is a missing-policy row of another kind.
+                let RetainedPayload::MetaMissing { kind, .. } = &mut storage.payloads.values[named]
+                else {
+                    panic!("the base names its missing-policy row")
+                };
+                *kind = meta::MetaMissingKind::ThemeColor;
+            } else {
+                // The named row is not a missing-policy row at all.
+                *missing = base_slot;
+            }
+            let result = session.active().unwrap().validate_base_facts(&mut c);
+            assert_eq!(result, Err(SessionError::Stop(registry_row)), "case {case}");
+            assert_eq!(c.stop(), Some(registry_row), "case {case}");
+            // The registry's own join check runs at release, so restore the rows.
+            let storage = session.active_mut().unwrap();
+            if let RetainedPayload::Base {
+                frozen: BaseValue::Unavailable { missing, .. },
+                ..
+            } = &mut storage.payloads.values[base_slot]
+            {
+                *missing = named;
+            }
+            if let RetainedPayload::MetaMissing { kind, .. } = &mut storage.payloads.values[named] {
+                *kind = meta::MetaMissingKind::Csp;
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+        }
+    }
+
     #[test]
     fn real_insert_reorder_remove_href_change_and_clone_bind_the_immediate_first() {
         let request = request("<base href=A><base href=B><i href=C>");

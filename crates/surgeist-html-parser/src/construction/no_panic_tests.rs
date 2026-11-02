@@ -546,6 +546,10 @@ fn effect_work_errors_map_to_their_precise_invariant() {
         SessionError::CompletionMetadataUnavailable,
         SessionError::CompletionIncomplete,
         SessionError::ContextReactionUnavailable,
+        SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
+        SessionError::CspProtocol(surgeist_html::HtmlCspProtocolError::WrongProcessor),
+        // A stop is already latched by whoever raised it; mapping adds none.
+        SessionError::Stop(ParseStop::Cancelled),
     ] {
         let mut c = control();
         assert_eq!(latch_effect_fault(&mut c, error), error, "{error:?}");
