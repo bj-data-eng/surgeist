@@ -1,13 +1,16 @@
-use crate::semantics::support::{builder, context, semantic_limits as limits, session};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
+    semantic_limits as limits, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlOptionCollection, HtmlOptionControlState, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported,
-    HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlOptionCollection, HtmlOptionControlState,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
+    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -898,83 +901,107 @@ fn limited(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
     )
 }
 fn check_caps(
+    label: &str,
     c: &HtmlCapture,
     cx: &HtmlSemanticContext,
     id: &HtmlCaptureSubjectId,
     q: HtmlSemanticQuery,
     raw: usize,
-) {
-    let base = report(c, cx, id, q, raw);
-    let u = base.usage();
-    let req = request(id, q);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        if exact == 0 {
-            continue;
-        }
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                c,
-                cx,
-                limited(resource, cap),
-                raw,
-                HtmlSemanticCancellation::new(),
-            );
-            let outcome = ss.query(std::slice::from_ref(&req));
-            if cap == exact {
-                assert!(outcome.is_ok(), "{q:?} {resource:?}: {outcome:?}");
-            } else {
-                let f = outcome.unwrap_err();
-                assert!(
-                    matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{q:?} {resource:?}: {f:?}"
-                );
-                assert_eq!(f.qualification().unwrap().capture(), c.identity());
-                assert_eq!(f.qualification().unwrap().context(), cx.identity());
-                assert_eq!(f.qualification().unwrap().limits(), limited(resource, cap));
-                assert_eq!(ss.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    expected: ExpectedUsage,
+) -> HtmlSemanticReport {
+    assert_exact_and_one_short_caps(
+        label,
+        c,
+        cx,
+        raw,
+        limits(),
+        std::slice::from_ref(&request(id, q)),
+        expected,
+    )
 }
 
 #[test]
 fn nested_text_temporaries_and_retained_id_capacity_have_exact_one_short_limits() {
     let (c, dl, os) = text_options();
     let cx = context(&c);
-    let r = report(
+    let record = result_record_bytes();
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let id = std::mem::size_of::<HtmlCaptureSubjectId>();
+    let n = KnownHtmlElement::ALL.len();
+    // All options: result reservation (1), request lookup (1), dispatcher and
+    // collection namespace tests (2 x 29), collection lookup (1), "datalist"
+    // recognition (9n + 28), entry (2), first frame (2), then for each of the
+    // two options: loop (1), lookup (1), "option" recognition (7n + 28), a
+    // retained id (growth 1, push 1), descent (1), frame (2); its span: loop
+    // (1), lookup (1), "span" recognition (5n + 28), descent (1), frame (2);
+    // its text: loop (1), lookup (1); two exhausted frames (2 x 2); finally the
+    // datalist frame's exhaustion (2), the closing charge (1) and the result
+    // write (1).
+    let per_option =
+        (1 + 1 + (7 * n + 28) + 2 + 1 + 2) + (1 + 1 + (5 * n + 28) + 1 + 2) + (1 + 1) + 2 * 2;
+    let all_work = 1 + 1 + 29 + 1 + 29 + (9 * n + 28) + 2 + 2 + 2 * per_option + 2 + 1 + 1;
+    // Frames nest datalist, option, span: three iterator records. Two ids are
+    // retained one record at a time.
+    let all = check_caps(
+        "datalist options",
+        &c,
+        &cx,
+        &dl,
+        HtmlSemanticQuery::DatalistOptions,
+        0,
+        ExpectedUsage {
+            work: Charge::Exactly(all_work),
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(3),
+            nested_output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(record + 2 * id + 3 * frame),
+        },
+    );
+    assert_eq!(collection(&all).options(), os);
+    // Suggestions additionally read each option's value text through a private
+    // iterator stack and a text buffer. " A B " normalizes to the three units
+    // "A B" per option (the second unit needs a pending separator, so the
+    // buffer grows 1 then 2), plus the two retained ids: 2 x 3 + 2 = 8. The
+    // option text frames (option, span) coexist with the datalist's three
+    // retained frame records, so the scratch peak is 3 + 2. Each option's text
+    // pass grows its own two-frame stack by two records.
+    let r = check_caps(
+        "datalist suggestions",
         &c,
         &cx,
         &dl,
         HtmlSemanticQuery::DatalistSuggestionOptions,
         0,
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(5),
+            nested_output_records: Charge::Exactly(8),
+            allocated_bytes: Charge::Exactly(
+                record + 2 * id + 3 * frame + 2 * 2 * frame + 2 * 3 * 2,
+            ),
+            ..ExpectedUsage::none()
+        },
     );
     assert_eq!(collection(&r).options(), os);
-    // Each normalized value has three units, even though only identities escape.
-    assert!(r.usage().nested_output_records() >= 8);
-    assert!(r.usage().peak_scratch_records() >= 3);
-    assert_eq!(r.usage().scratch_records(), 0);
-    for q in [
-        HtmlSemanticQuery::DatalistOptions,
-        HtmlSemanticQuery::DatalistSuggestionOptions,
-    ] {
-        check_caps(&c, &cx, &dl, q, 0);
-    }
+    assert!(r.usage().work() > all.usage().work());
     let (c, i, _) = associated(None, "target");
     let cx = context(&c);
-    check_caps(&c, &cx, &i, HtmlSemanticQuery::InputSuggestionsSource, 6);
+    check_caps(
+        "input suggestions source",
+        &c,
+        &cx,
+        &i,
+        HtmlSemanticQuery::InputSuggestionsSource,
+        6,
+        // The id search enters the document frame and then the input's own
+        // (empty) frame before it finds the datalist: two iterator records.
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(record + 2 * frame),
+            ..ExpectedUsage::none()
+        },
+    );
 }
 
 #[test]

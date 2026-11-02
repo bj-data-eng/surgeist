@@ -1,5 +1,6 @@
 use crate::semantics::support::{
-    builder_without_registries as builder, context, small_semantic_limits as limits,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_without_registries as builder,
+    context, small_semantic_limits as limits,
 };
 // Text getters do not consume raw attributes; zero is intentional.
 use crate::semantics::support::session_without_raw_values as session;
@@ -487,82 +488,46 @@ fn restricted(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits 
 fn literal_child_text_and_two_stage_normalization_work_have_exact_one_short_limits() {
     let (c, d, t) = single(" A ".into());
     let cx = context(&c);
+    let record = std::mem::size_of::<HtmlSemanticResult>();
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'_>>();
     // Title: result reserve + request node + HTML namespace(1+28) + local(1+5)
-    // + child text(4+2*1+3*3) + result slot = 53.
+    // + child text(4+2*1+3*3) + result slot = 53. The three raw units are the
+    // only nested buffer (one `u16` each).
+    assert_exact_and_one_short_caps(
+        "title text",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[req(&t, HtmlSemanticQuery::TitleText)],
+        ExpectedUsage {
+            work: Charge::Exactly(53),
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(3),
+            allocated_bytes: Charge::Exactly(record + 6),
+            ..ExpectedUsage::none()
+        },
+    );
     // Document: reserve/request(2), unique root(5), SVG length mismatch(1),
     // ordinary descent(4), title node(1), HTML namespace/local(35), child(15),
-    // normalize(3+2*1+1), readback(1), result(1) = 71.
-    for (id, q, credits) in [
-        (&t, HtmlSemanticQuery::TitleText, 53),
-        (&d, HtmlSemanticQuery::DocumentTitle, 71),
-    ] {
-        for cap in [credits, credits - 1] {
-            let mut s = session(
-                &c,
-                &cx,
-                restricted(HtmlSemanticResource::Work, cap),
-                HtmlSemanticCancellation::new(),
-            );
-            let result = s.query(&[req(id, q)]);
-            if cap == credits {
-                assert_eq!(result.unwrap().usage().work(), credits);
-            } else {
-                let f = result.unwrap_err();
-                assert_eq!(
-                    f.kind(),
-                    &HtmlSemanticFailureKind::LimitExceeded {
-                        resource: HtmlSemanticResource::Work,
-                        limit: cap,
-                        required: credits
-                    }
-                );
-                assert_eq!(s.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
-}
-
-#[test]
-fn both_real_buffers_and_traversal_capacity_have_exact_one_short_admission() {
-    let (c, d, _) = single(" A ".into());
-    let cx = context(&c);
-    let r = report(&c, &d, HtmlSemanticQuery::DocumentTitle);
-    let u = r.usage();
-    assert_eq!(u.nested_output_records(), 4); // raw three units, normalized one.
-    assert_eq!(u.peak_scratch_records(), 1); // Document iterator, title matches before descent.
-    assert_eq!(
-        u.allocated_bytes(),
-        std::mem::size_of::<HtmlSemanticResult>()
-            + std::mem::size_of::<HtmlCapturedChildIds<'_>>()
-            + 8
+    // normalize(3+2*1+1), readback(1), result(1) = 71. The raw three units
+    // plus the one normalized unit are nested; the document iterator frame is
+    // the single scratch record.
+    assert_exact_and_one_short_caps(
+        "document title",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[req(&d, HtmlSemanticQuery::DocumentTitle)],
+        ExpectedUsage {
+            work: Charge::Exactly(71),
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(4),
+            allocated_bytes: Charge::Exactly(record + frame + 8),
+        },
     );
-    for (resource, exact) in [
-        (HtmlSemanticResource::NestedOutputRecords, 4),
-        (HtmlSemanticResource::ScratchRecords, 1),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-        (HtmlSemanticResource::OutputRecords, 1),
-    ] {
-        for cap in [exact, exact - 1] {
-            let mut s = session(
-                &c,
-                &cx,
-                restricted(resource, cap),
-                HtmlSemanticCancellation::new(),
-            );
-            let result = s.query(&[req(&d, HtmlSemanticQuery::DocumentTitle)]);
-            if cap == exact {
-                assert!(result.is_ok());
-            } else {
-                let f = result.unwrap_err();
-                assert!(
-                    matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource)
-                );
-                assert_eq!(s.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
 }
 
 #[test]
