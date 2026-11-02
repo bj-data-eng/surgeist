@@ -107,24 +107,25 @@ enum GlobalStage {
     Finish,
 }
 impl GlobalStage {
-    fn next(self) -> Option<Self> {
+    /// `Finish` publishes the report and never resumes at a successor.
+    fn next(self) -> Self {
         match self {
-            Self::Year => Some(Self::CopyYear),
-            Self::CopyYear => Some(Self::Date),
-            Self::Date => Some(Self::PrecedingYear),
-            Self::PrecedingYear => Some(Self::Cycles),
-            Self::Cycles => Some(Self::CycleDays),
-            Self::CycleDays => Some(Self::WithinCycle),
-            Self::WithinCycle => Some(Self::WithinCycleNumber),
-            Self::WithinCycleNumber => Some(Self::Ordinal),
-            Self::Ordinal => Some(Self::Day),
-            Self::Day => Some(Self::Adjustment),
-            Self::Adjustment => Some(Self::AdjustDay),
-            Self::AdjustDay => Some(Self::Seconds),
-            Self::Seconds => Some(Self::CopySeconds),
-            Self::CopySeconds => Some(Self::Local),
-            Self::Local => Some(Self::Finish),
-            Self::Finish => None,
+            Self::Year => Self::CopyYear,
+            Self::CopyYear => Self::Date,
+            Self::Date => Self::PrecedingYear,
+            Self::PrecedingYear => Self::Cycles,
+            Self::Cycles => Self::CycleDays,
+            Self::CycleDays => Self::WithinCycle,
+            Self::WithinCycle => Self::WithinCycleNumber,
+            Self::WithinCycleNumber => Self::Ordinal,
+            Self::Ordinal => Self::Day,
+            Self::Day => Self::Adjustment,
+            Self::Adjustment => Self::AdjustDay,
+            Self::AdjustDay => Self::Seconds,
+            Self::Seconds => Self::CopySeconds,
+            Self::CopySeconds => Self::Local,
+            Self::Local => Self::Finish,
+            Self::Finish => Self::Finish,
         }
     }
 }
@@ -776,10 +777,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 return Ok(());
             }
         }
-        self.stage = Stage::Global(
-            step.next()
-                .expect("finishing stage returns before its successor"),
-        );
+        self.stage = Stage::Global(step.next());
         Ok(())
     }
     fn advance_duration(
