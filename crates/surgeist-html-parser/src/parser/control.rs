@@ -101,14 +101,18 @@ pub enum Invariant {
     /// SVG-wrapper or task effect, an open checkpoint, an intrinsic operation
     /// not yet performed, or a base response not yet returned.
     PendingFormEffects,
-    /// A creation that holds a form, link, select or details association
-    /// failed with an error other than a stop.
+    /// A creation that holds a form, link, select or details association met
+    /// an outcome of the document or of a service that none of its own steps
+    /// produces, so the association it registered stays unbound. A creation
+    /// that fails for a fault of its own reports what that fault violates
+    /// instead: a missing row, an aliased allocation, a pending operation.
     IncompleteFormAssociationCreation,
     /// A construction registry row, record, child or payload that internal
     /// state names is missing, out of range or of another kind, a construction
-    /// owner that the registry keeps in a slot is not there, or construction
-    /// bookkeeping that its algorithms keep consistent (staged buffers, range
-    /// machine state, counts) contradicts its own sequencing.
+    /// owner that the registry keeps in a slot is not there, or a position or
+    /// count that the registry's own sequencing keeps in range is not. The
+    /// range-input machine's own state and HTML's construction owner refusing
+    /// a request are reported separately.
     RegistryRow,
     /// The range-input machine is in a state its own protocol excludes: a
     /// staged scratch or output buffer is missing, mis-sized or not where the

@@ -556,3 +556,39 @@ fn effect_work_errors_map_to_their_precise_invariant() {
         assert_eq!(c.stop(), None, "{error:?}");
     }
 }
+
+/// A creation that registered association metadata cannot continue past a
+/// non-stop error, so the error becomes a stop labelled by what it reports. A
+/// fault of the creation's own is classified like effect work; an outcome that
+/// belongs to another stage is the creation returning what it never produces.
+/// The forced-state counterpart is in the construction tests.
+#[test]
+fn creation_errors_map_to_the_fault_they_report() {
+    let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
+    let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
+    let incomplete = ParseStop::InternalInvariant(Invariant::IncompleteFormAssociationCreation);
+    for (error, expected) in [
+        (SessionError::PendingIntrinsicWork, pending),
+        (SessionError::AliasedPayload, aliased),
+        (SessionError::WrongToken, registry_row()),
+        (SessionError::Consumed, registry_row()),
+        (
+            SessionError::FormAssociationMetadataUnavailable,
+            registry_row(),
+        ),
+        (SessionError::InputMetadataUnavailable, registry_row()),
+        (SessionError::CspService, incomplete),
+        (SessionError::AssociatedFacts, incomplete),
+        (SessionError::ScriptMetadataUnavailable, incomplete),
+        (SessionError::CompletionIncomplete, incomplete),
+        (SessionError::ContextReactionUnavailable, incomplete),
+    ] {
+        let mut c = control();
+        assert_eq!(
+            latch_creation_fault(&mut c, error),
+            SessionError::Stop(expected),
+            "{error:?}"
+        );
+        assert_eq!(c.stop(), Some(expected), "{error:?}");
+    }
+}
