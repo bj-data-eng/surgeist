@@ -142,6 +142,37 @@ use surgeist_html::bounded::{
 /// atomic provider operations; work charges their visits and owned inspection
 /// envelopes, without claiming internal instruction counts. Capture retention
 /// and parsing have their separate controls.
+///
+/// # Shared tariffs
+///
+/// Every query's usage is the sum of these shared primitives and of the
+/// query's own steps, which are charged one unit per visit, unit read or write:
+///
+/// - `HtmlSemanticSession::query` reserves the whole batch's result vector
+///   once (1 work, `requests.len()` output records, that many
+///   `size_of::<HtmlSemanticResult>()` bytes) and charges 1 work per result
+///   written.
+/// - A subject lookup (`node`) charges 1.
+/// - A namespace test (`namespace_is`) charges 1, plus one per compared UTF-16
+///   unit when the namespace length equals the expected length, stopping at the
+///   first mismatch. The 28-unit HTML namespace therefore costs 29 on a match.
+/// - Vocabulary recognition (`known`) charges
+///   `(local-name units + 1) * KnownHtmlElement::ALL.len() + namespace units`
+///   before the existing recognizer runs.
+/// - An attribute lookup (`attribute_ns`) charges 1 per attribute scanned plus
+///   one per compared unit of a length-matching name.
+/// - A capacity reservation (`reserve_record_capacity`) that grows a vector
+///   charges 1 work, adds the actual capacity growth to the usage of its
+///   resource and `growth * size_of::<element>()` to allocated bytes. Output
+///   and nested records use exact reservation, so reserving one record at a
+///   time grows capacity one record at a time. Scratch records are the live
+///   capacity of iterator-frame stacks (one `HtmlCapturedChildIds` per
+///   entered element, document or fragment) and are released when the stack
+///   is dropped; the peak is reported separately.
+///
+/// A query that composes further owner steps (intrinsic envelopes, form
+/// association, option text) charges them under the same one-unit-per-visit
+/// rule; their exact layout is not otherwise part of the contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticLimits {
     work: usize,
