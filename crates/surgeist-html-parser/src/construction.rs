@@ -13172,16 +13172,15 @@ mod tests {
                 .unwrap();
             let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
             if cap == 3 {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::TokenAttributes,
-                        limit: 3,
-                        current: 3,
-                        requested_delta: 1
-                    }))
-                ));
-                assert!(session.freeze(&mut c).is_err());
+                // One attribute beyond the exact cap of three is the first stop.
+                let first = ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::TokenAttributes,
+                    limit: 3,
+                    current: 3,
+                    requested_delta: 1,
+                };
+                assert_eq!(result.err(), Some(SessionError::Stop(first)));
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::BufferedUtf16Units)
@@ -13248,7 +13247,7 @@ mod tests {
         drop(alias);
         creation.release(&mut c).unwrap();
         creation.release(&mut c).unwrap();
-        assert!(session.freeze(&mut c).is_err());
+        assert_freeze_reports_first_stop(&mut session, &mut c, ParseStop::Cancelled);
         session.release(&mut c).unwrap();
         storage_zero(&c);
         assert_eq!(c.stop(), Some(ParseStop::Cancelled));
@@ -13405,15 +13404,14 @@ mod tests {
                 .unwrap();
             let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
             if cap == 28 {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::BufferedUtf16Units,
-                        limit: 28,
-                        current: 28,
-                        requested_delta: 1
-                    }))
-                ));
+                // Peak 1 + 28 against the cap of 28: one unit is refused.
+                let first = ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::BufferedUtf16Units,
+                    limit: 28,
+                    current: 28,
+                    requested_delta: 1,
+                };
+                assert_eq!(result.err(), Some(SessionError::Stop(first)));
                 assert_eq!(
                     c.usage().resource(HtmlParseResource::ManagedNodes).current,
                     1
@@ -13424,7 +13422,7 @@ mod tests {
                         .current,
                     1
                 );
-                assert!(session.freeze(&mut c).is_err());
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             } else {
                 assert!(result.is_ok());
                 assert_eq!(
@@ -13539,15 +13537,14 @@ mod tests {
             );
             let result = session.create_formatting_from_creation(&mut c, &creation, &parent);
             if cap == 1564 {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::SourceMapEntries,
-                        limit: 1564,
-                        current: 1564,
-                        requested_delta: 1
-                    }))
-                ));
+                // 1041 retained entries plus the copy leave one short of 1565.
+                let first = ParseStop::LimitExceeded {
+                    resource: HtmlParseResource::SourceMapEntries,
+                    limit: 1564,
+                    current: 1564,
+                    requested_delta: 1,
+                };
+                assert_eq!(result.err(), Some(SessionError::Stop(first)));
                 assert_eq!(
                     c.usage()
                         .resource(HtmlParseResource::SourceMapEntries)
@@ -13564,7 +13561,7 @@ mod tests {
                     c.usage().resource(HtmlParseResource::ManagedNodes).current,
                     1
                 );
-                assert!(session.freeze(&mut c).is_err());
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             } else {
                 assert!(result.is_ok());
                 assert_eq!(
@@ -13721,7 +13718,14 @@ mod tests {
                     + storage.payloads.values.len() as u64
             );
             if result.is_err() {
-                assert!(session.freeze(&mut c).is_err());
+                // The sweep leaves `remaining` work credits, so the first stop
+                // is the exhausted work-credit limit of the configured limits.
+                let first = limit_stop_of(
+                    &result,
+                    HtmlParseResource::WorkCredits,
+                    limits().work_credits(),
+                );
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             }
             let stop = c.stop();
             if session.release(&mut c).is_err() {
@@ -17920,14 +17924,8 @@ mod tests {
                     101
                 );
             } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::ManagedUtf16Units,
-                        ..
-                    }))
-                ));
-                assert!(session.freeze(&mut c).is_err());
+                let first = limit_stop_of(&result, HtmlParseResource::ManagedUtf16Units, cap);
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             }
             let first = c.stop();
             release_formatting_tag(&mut input, &mut c).unwrap();
@@ -17985,14 +17983,9 @@ mod tests {
                     return;
                 }
                 if short {
-                    assert!(matches!(
-                        result,
-                        Err(SessionError::Stop(ParseStop::LimitExceeded {
-                            resource: HtmlParseResource::ManagedUtf16Units,
-                            ..
-                        }))
-                    ));
-                    assert!(session.freeze(&mut c).is_err());
+                    let first =
+                        limit_stop_of(&result, HtmlParseResource::ManagedUtf16Units, units - 1);
+                    assert_freeze_reports_first_stop(&mut session, &mut c, first);
                 } else {
                     let node = result.unwrap();
                     assert_eq!(
@@ -18425,14 +18418,8 @@ mod tests {
                     2
                 );
             } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::ManagedUtf16Units,
-                        ..
-                    }))
-                ));
-                assert!(session.freeze(&mut c).is_err());
+                let first = limit_stop_of(&result, HtmlParseResource::ManagedUtf16Units, cap);
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             }
             let stop = c.stop();
             release_formatting_tag(&mut input, &mut c).unwrap();
@@ -24372,6 +24359,105 @@ mod tests {
             assert_eq!(c.usage().resource(resource).current, 0, "{resource:?}");
         }
     }
+    /// The stop a result reports when it ends in `LimitExceeded` for the
+    /// scenario's own resource and limit. The caller derives both from the
+    /// configured limits, not from the observed stop; the arithmetic check is
+    /// that the refused charge really crosses that limit.
+    pub(super) fn limit_stop_of<T>(
+        result: &Result<T, SessionError>,
+        resource: HtmlParseResource,
+        limit: u64,
+    ) -> ParseStop {
+        let Err(SessionError::Stop(stop)) = result else {
+            panic!(
+                "expected a {resource:?} limit stop, got {:?}",
+                result.as_ref().err()
+            );
+        };
+        let ParseStop::LimitExceeded {
+            resource: stopped,
+            limit: stopped_limit,
+            current,
+            requested_delta,
+        } = *stop
+        else {
+            panic!("expected a {resource:?} limit stop, got {stop:?}");
+        };
+        assert_eq!((stopped, stopped_limit), (resource, limit));
+        assert!(
+            current <= limit && current + requested_delta > limit,
+            "{stop:?} must refuse a charge that crosses {limit}"
+        );
+        *stop
+    }
+    /// Freezing a session whose control has stopped reports exactly the sticky
+    /// first stop and leaves it unchanged.
+    pub(super) fn assert_freeze_reports_first_stop(
+        session: &mut ParserArenaSession,
+        c: &mut ParseControl,
+        first: ParseStop,
+    ) {
+        assert_eq!(c.stop(), Some(first), "the control latched the first stop");
+        assert_eq!(
+            session.freeze(c).err(),
+            Some(SessionError::Stop(first)),
+            "freeze reports the sticky first stop"
+        );
+        assert_eq!(c.stop(), Some(first), "freeze keeps the first stop");
+    }
+    /// Runs a copy of a stopped range-ingress cursor to completion over the
+    /// given source units and retained coefficient cells, servicing each
+    /// request as the cursor's public protocol defines it.
+    pub(super) fn resume_range_ingress(
+        mut cursor: surgeist_html::bounded::FiniteDecimalIngressCursor,
+        source: &[u16],
+        coefficient: &[u8],
+    ) -> Option<Result<u64, surgeist_html::bounded::RangeNumericError>> {
+        use surgeist_html::bounded::{RangeNumericReply, RangeNumericRequest, RangeScratchRole};
+        let headers = cursor.headers();
+        let mut buffers: [Vec<u8>; 8] = std::array::from_fn(|_| Vec::new());
+        let coefficient_buffer = &mut buffers[RangeScratchRole::Coefficient.index()];
+        coefficient_buffer.reserve_exact(headers.buffer(RangeScratchRole::Coefficient).capacity());
+        coefficient_buffer.extend_from_slice(coefficient);
+        for step in 0..1_000_000 {
+            let Some(request) = cursor.request() else {
+                return cursor.result();
+            };
+            let reply = match request {
+                RangeNumericRequest::SourceUnit { index } => RangeNumericReply::Unit(source[index]),
+                RangeNumericRequest::ReadCells { cells } => RangeNumericReply::Cells(
+                    cells.map(|cell| cell.map(|c| buffers[c.role().index()][c.index()])),
+                ),
+                RangeNumericRequest::Reserve { role, required_len } => {
+                    let buffer = &mut buffers[role.index()];
+                    buffer.reserve_exact(required_len - buffer.len());
+                    RangeNumericReply::Reserved {
+                        actual_capacity: buffer.capacity(),
+                        actual_len: buffer.len(),
+                    }
+                }
+                RangeNumericRequest::AppendCell { role, value } => {
+                    buffers[role.index()].push(value);
+                    RangeNumericReply::Ack
+                }
+                RangeNumericRequest::WriteCell { cell, value } => {
+                    buffers[cell.role().index()][cell.index()] = value;
+                    RangeNumericReply::Ack
+                }
+                RangeNumericRequest::PopCell { role } => {
+                    buffers[role.index()].pop().expect("a cell to pop");
+                    RangeNumericReply::Ack
+                }
+                RangeNumericRequest::ScalarStep => RangeNumericReply::Ack,
+                RangeNumericRequest::ReserveOutput { .. }
+                | RangeNumericRequest::EmitUnit { .. } => {
+                    panic!("ingress never writes output: {request:?} at step {step}")
+                }
+            };
+            cursor.reply(reply).expect("a faithful reply is accepted");
+        }
+        panic!("range ingress did not finish");
+    }
     pub(super) fn lexical_kind(
         tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,
         c: &mut ParseControl,
@@ -30189,14 +30275,8 @@ mod tests {
                     102
                 );
             } else {
-                assert!(matches!(
-                    result,
-                    Err(SessionError::Stop(ParseStop::LimitExceeded {
-                        resource: HtmlParseResource::ManagedUtf16Units,
-                        ..
-                    }))
-                ));
-                assert!(session.freeze(&mut c).is_err());
+                let first = limit_stop_of(&result, HtmlParseResource::ManagedUtf16Units, cap);
+                assert_freeze_reports_first_stop(&mut session, &mut c, first);
             }
             let first = c.stop();
             let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -31082,17 +31162,13 @@ mod tests {
     #[test]
     fn range_small_decimal_committed_cell_and_power_cancellation_keep_real_owners() {
         use range::{RangeIngressCancellation, RangeIngressCancellationPoint};
-        for (point, denominator, phase) in [
+        use surgeist_html::bounded::RangeScratchRole;
+        for (point, label) in [
             (
                 RangeIngressCancellationPoint::CoefficientFold,
-                1,
-                "phase: Next",
+                "coefficient fold",
             ),
-            (
-                RangeIngressCancellationPoint::DecimalPower,
-                10,
-                "phase: Power",
-            ),
+            (RangeIngressCancellationPoint::DecimalPower, "decimal power"),
         ] {
             let request = crate::HtmlDocumentParseRequest::offline(
                 crate::HtmlSource::utf8("<html><head></head><input type=range step=any value=.1>"),
@@ -31143,12 +31219,26 @@ mod tests {
             assert_eq!(value.code_units(), [46, 49]);
             let cursor = cursor.unwrap();
             assert!(cursor.result().is_none());
-            // The fixed literal .1 proves the selected small route. Its actual
-            // fold is A=1; its actual second scalar commits B=10 (one power).
-            let state = format!("{cursor:?}");
-            assert!(state.contains("active: Small(") && state.contains(phase));
-            assert!(state.contains("numerator: 1,"));
-            assert!(state.contains(&format!("denominator: {denominator},")));
+            let headers = cursor.headers();
+            assert_eq!(
+                headers.buffer(RangeScratchRole::Coefficient).len(),
+                coefficient.len()
+            );
+            // The committed numeric state is observed through the cursor's own
+            // protocol: resuming a copy of the cancelled cursor with a faithful
+            // servicer over the retained source and coefficient cell must finish
+            // with the value of the literal .1. The oracle is Rust's own
+            // binary64 nearest-value conversion of that literal, so a wrong
+            // committed numerator, denominator or power would change the result.
+            assert!(
+                cursor.request().is_some(),
+                "the cancelled ingress is unfinished"
+            );
+            assert_eq!(
+                resume_range_ingress(*cursor, &[46, 49], coefficient),
+                Some(Ok(0.1_f64.to_bits())),
+                "{label}"
+            );
             let raw = storage
                 .payloads
                 .values
