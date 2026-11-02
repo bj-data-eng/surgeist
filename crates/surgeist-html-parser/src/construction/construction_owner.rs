@@ -153,7 +153,7 @@ impl ConstructionOwner {
             .next_action()
             .map_err(|error| construction_error(control, error))?
         else {
-            return Err(latch_registry_row(control));
+            return Err(latch_owner_refusal(control));
         };
         let HtmlConstructionActionDescription::InitializeIdentity {
             payload_bytes,
@@ -161,7 +161,7 @@ impl ConstructionOwner {
             provider_calls,
         } = action.description()
         else {
-            return Err(latch_registry_row(control));
+            return Err(latch_owner_refusal(control));
         };
         control.prepare_construction_share(payload_bytes)?;
         // The first call was charged above; a plan that counts none differs
@@ -548,7 +548,7 @@ impl ConstructionOwner {
             }
             HtmlConstructionActionDescription::InitializeIdentity { .. } => {
                 // Identity belongs to the separate initialization owner.
-                return Err(latch_registry_row(control));
+                return Err(latch_owner_refusal(control));
             }
         }
         let performed = match reserved_capacity {
@@ -559,7 +559,7 @@ impl ConstructionOwner {
             Ok(observation) => {
                 if let Some(bank) = allocation {
                     let Some(snapshot) = observation.allocation() else {
-                        return Err(latch_registry_row(control));
+                        return Err(latch_owner_refusal(control));
                     };
                     let slot = self.allocation_slot(control, bank)?;
                     control.observe_construction_allocation(snapshot, slot, expected)?;

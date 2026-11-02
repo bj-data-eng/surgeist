@@ -95,7 +95,7 @@ impl ConstructionOwner {
                     .map_err(|e| construction_error(control, e))?;
                 if report {
                     let Some(snapshot) = observation.allocation() else {
-                        return Err(latch_registry_row(control));
+                        return Err(latch_owner_refusal(control));
                     };
                     control.observe_construction_allocation(
                         snapshot,
@@ -266,7 +266,7 @@ impl ConstructionOwner {
                     Ok(observation) => {
                         if let Some(expected) = expected {
                             let Some(snapshot) = observation.allocation() else {
-                                return Err(latch_registry_row(control));
+                                return Err(latch_owner_refusal(control));
                             };
                             control.observe_construction_allocation(
                                 snapshot,
@@ -352,7 +352,7 @@ pub(in crate::construction) fn prepare_attribute_slot<'a>(
             Ok(observation) => {
                 if let Some(expected) = expected {
                     let Some(capacity) = observation.capacity() else {
-                        return Err(latch_registry_row(control));
+                        return Err(latch_owner_refusal(control));
                     };
                     control.record_controlled_attribute_capacity(capacity, allocation, expected)?;
                     let backing = observation

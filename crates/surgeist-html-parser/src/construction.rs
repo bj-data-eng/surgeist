@@ -186,6 +186,14 @@ impl SessionError {
         ))
     }
 }
+/// HTML's construction owner answered a step with an action or observation
+/// that the parser's sequencing does not expect, latched as the controller's
+/// first stop.
+fn latch_owner_refusal(control: &mut ParseControl) -> SessionError {
+    SessionError::Stop(
+        control.fail_invariant(crate::parser::control::Invariant::ConstructionOwnerRefusal),
+    )
+}
 /// An impossible registry state, latched as the controller's first stop.
 fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))
@@ -2608,7 +2616,7 @@ impl SessionStorage {
         control.charge(WorkCategory::CopyByte, mem::size_of::<ParserNode>() as u64)?;
         control.charge(WorkCategory::RecordVisit, 3)?;
         let Some(handle) = self.construction.apply(control, command, &requests)? else {
-            return Err(latch_registry_row(control));
+            return Err(latch_owner_refusal(control));
         };
         let Ok(position) = self
             .construction
@@ -6219,7 +6227,7 @@ impl SessionStorage {
                         control.observe_tree_depth(usage.depth() as u64)?;
                         control.charge(WorkCategory::RecordVisit, 1)?;
                         let Some(view) = action.storage_view() else {
-                            return Err(latch_registry_row(control));
+                            return Err(latch_owner_refusal(control));
                         };
                         revoke_standalone = self.standalone_ineligibility.is_none()
                             && self.associated_document_parent_in(control, view, parent)?;

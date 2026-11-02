@@ -423,7 +423,7 @@ impl SessionStorage {
                                 .map_err(|_| latch_registry_row(control))?,
                         );
                         let Some(view) = action.storage_view() else {
-                            return Err(latch_registry_row(control));
+                            return Err(latch_owner_refusal(control));
                         };
                         children_changed = self.textarea_slot(control, parent)?.is_some()
                             || Self::html_local_in(control, view, parent, "script")?
@@ -461,7 +461,7 @@ impl SessionStorage {
                                 return Err(latch_registry_row(control));
                             };
                             let Some(capacity) = observation.capacity() else {
-                                return Err(latch_registry_row(control));
+                                return Err(latch_owner_refusal(control));
                             };
                             control.record_text_append_capacity(
                                 allocation,
@@ -470,7 +470,7 @@ impl SessionStorage {
                             )?;
                             if matches!(description, Description::InitializeBacking(_)) {
                                 let Some(backing) = observation.backing() else {
-                                    return Err(latch_registry_row(control));
+                                    return Err(latch_owner_refusal(control));
                                 };
                                 control.bind_text_append_pending(allocation, backing)?;
                             }
@@ -497,7 +497,7 @@ impl SessionStorage {
                                 return Err(latch_registry_row(control));
                             };
                             let Some(capacity) = owner.capacity() else {
-                                return Err(latch_registry_row(control));
+                                return Err(latch_owner_refusal(control));
                             };
                             control.record_text_append_capacity(allocation, capacity, expected)?;
                         }
