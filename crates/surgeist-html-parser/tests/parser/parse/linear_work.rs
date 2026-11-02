@@ -484,34 +484,6 @@ fn work_added_by_each_doubling_of_candidate_metas_in_a_nested_moved_subtree_is_n
 }
 
 #[test]
-fn work_added_by_each_doubling_of_children_in_a_moved_subtree_is_near_double() {
-    // Every child of the moved `p` is visited as the subtree is inserted, and
-    // stepping from one child to the next must not count from the first. The
-    // children are comments, the cheapest nodes, so that a term quadratic in
-    // them is a large share of the work: it raises the ratio of one doubling to
-    // the previous one from two to about 2.8 over these sizes, so this bound is
-    // tighter than the one the other tests share.
-    const BOUND_TENTHS: u64 = 22;
-    let sizes = [100usize, 200, 400, 800];
-    let measured: Vec<u64> = sizes
-        .iter()
-        .map(|&n| parse_work(format!("<!doctype html><b><p>{}</b>", "<!--c-->".repeat(n))).visited)
-        .collect();
-    for (pair, window) in sizes.windows(3).zip(measured.windows(3)) {
-        let (first, second) = (window[1] - window[0], window[2] - window[1]);
-        assert!(
-            second * 10 <= BOUND_TENTHS * first,
-            "record visits grew faster than linearly: doubling {} -> {} children added {first}, \
-             doubling {} -> {} added {second}",
-            pair[0],
-            pair[1],
-            pair[1],
-            pair[2],
-        );
-    }
-}
-
-#[test]
 fn work_added_by_each_doubling_of_one_selects_selected_options_is_near_four_times() {
     // Each selected option updates the select's selectedcontent, which reads
     // the select's descendants and its list of options: work proportional to

@@ -1480,6 +1480,17 @@ mod tests {
         let limits = super::super::tests::limits()
             .into_builder()
             .work_credits(100_000_000_000)
+            .source_units(1_000_000)
+            .buffered_utf16_units(1_000_000)
+            .managed_utf16_units(1_000_000)
+            .managed_capacity_bytes(1_000_000_000)
+            .peak_transient_bytes(1_000_000_000)
+            .atomic_layout_bytes(1_000_000_000)
+            .source_map_entries(1_000_000)
+            .source_map_payload_units(1_000_000)
+            .managed_nodes(1_000_000)
+            .managed_edges(1_000_000)
+            .auxiliary_entries(100_000_000)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
@@ -1681,6 +1692,38 @@ mod tests {
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
+    }
+
+    /// The record visits inserting a `div` that holds `children` spans adds,
+    /// the spans having been put in the div first.
+    fn visits_inserting_a_wide_subtree(children: usize) -> u64 {
+        let (mut c, mut session, root, nodes, lexer) =
+            detached_metas(&format!("<div>{}", "<span>".repeat(children)));
+        let (div, spans) = nodes.split_first().unwrap();
+        for span in spans {
+            put(&mut session, &mut c, div, span, None);
+        }
+        let before = c.usage().work(WorkCategory::RecordVisit);
+        put(&mut session, &mut c, &root, div, None);
+        let added = c.usage().work(WorkCategory::RecordVisit) - before;
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        added
+    }
+
+    #[test]
+    fn inserting_a_subtree_whole_visits_each_child_without_counting_its_siblings() {
+        // The insertion walks the inserted subtree to hide nonces and to settle
+        // form effects, stepping from each child to the next. Counting a child's
+        // place among its siblings from the first would add a term quadratic in
+        // the children, so one doubling would add more than two times the
+        // previous one.
+        let visits = [100, 200, 400].map(visits_inserting_a_wide_subtree);
+        let (first, second) = (visits[1] - visits[0], visits[2] - visits[1]);
+        assert!(
+            second * 10 <= first * 21,
+            "inserting 100, 200 and 400 children added {visits:?} record visits"
+        );
     }
 
     #[test]
