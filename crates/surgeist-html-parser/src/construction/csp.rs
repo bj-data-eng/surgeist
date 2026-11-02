@@ -90,8 +90,16 @@ impl SessionStorage {
         };
         // Native temporaries have now actually dropped. Reconcile the receipt
         // to the complete graph still retained by original payloads.
+        // A row the closure replaced is a fault of the parser's own, found
+        // below, and is not an account to reconcile.
+        let row_kept = matches!(
+            self.payloads.values.get(slot),
+            Some(RetainedPayload::CspState(_))
+        );
         let result = result.and_then(|out| {
-            self.reconcile_csp(c, &mut value)?;
+            if row_kept {
+                self.reconcile_csp(c, &mut value)?;
+            }
             Ok(out)
         });
         match self.payloads.values.get_mut(slot) {
@@ -194,11 +202,13 @@ impl SessionStorage {
                 })
                 .ok_or(SessionError::WrongToken)?;
         }
+        // The account holds less than the graph the policies retain only if
+        // the processor released storage it never held.
         let retired = state
             .account
             .live
             .sub(live)
-            .ok_or(SessionError::WrongToken)?;
+            .ok_or_else(|| crate::meta_csp::accounting_violation(c))?;
         retired.release(c)?;
         state.account.live = live;
         Ok(())

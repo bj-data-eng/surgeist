@@ -327,6 +327,19 @@ fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::contro
         SessionClass::Outcome(_) => None,
     }
 }
+/// Ends the session on `error` where it is met: latches the stop its class
+/// names now, and returns the error itself for an outcome, which keeps its own
+/// reason, or the stop for a fault. The stop and the reason both derive from
+/// the class, so a producer that must leave the session terminal at the point
+/// of the error cannot pair a reason with a different stop.
+fn end_session_on(control: &mut ParseControl, error: SessionError) -> SessionError {
+    let class = session_class(&error);
+    let stop = class.latch(control);
+    match class {
+        SessionClass::Outcome(_) => error,
+        SessionClass::Fault(_) => SessionError::Stop(stop),
+    }
+}
 /// The result of a non-stop error that effect work met, classified by
 /// [`session_fault_invariant`]. An outcome the driver classifies itself passes
 /// through unchanged and latches nothing.
@@ -5712,12 +5725,7 @@ impl SessionStorage {
                                 return match self.captured_shadow_including_document(control, host)
                                 {
                                     Ok(document) => Ok(document.is_some()),
-                                    Err(error) => {
-                                        control.stop_unsupported_standalone(
-                                            StandaloneUnsupported::Provenance,
-                                        );
-                                        Err(error)
-                                    }
+                                    Err(error) => Err(end_session_on(control, error)),
                                 };
                             }
                         }
@@ -15636,12 +15644,12 @@ mod tests {
                 .unwrap();
             let result = session.set_input_checked(&mut c, &a, true);
             if name == "g" {
-                assert_eq!(result, Err(SessionError::InputMetadataUnavailable));
                 let stop = c.stop().unwrap();
                 assert_eq!(
                     stop,
                     ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
                 );
+                assert_eq!(result, Err(SessionError::Stop(stop)));
                 assert_eq!(session.freeze(&mut c).err(), Some(SessionError::Stop(stop)));
                 assert!(session.active().unwrap().effects.radio.is_some());
             } else {

@@ -1524,8 +1524,7 @@ impl ParserArenaSession {
             Ok::<(), SessionError>(())
         })();
         if let Err(error) = result {
-            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            return Err(error);
+            return Err(super::end_session_on(c, error));
         }
         Ok(true)
     }
@@ -1714,8 +1713,9 @@ impl SessionStorage {
         // visited session and visits no effect record. The test-only check
         // above scans the effects to compare against it and is not charged.
         if fragment.unbound_effects != 0 {
-            c.stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            return Err(SessionError::ContextUnavailable);
+            return Err(c
+                .stop_unsupported_standalone(StandaloneUnsupported::Provenance)
+                .into());
         }
         Ok(())
     }

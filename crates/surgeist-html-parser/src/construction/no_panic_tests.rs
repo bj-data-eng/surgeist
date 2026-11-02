@@ -618,3 +618,34 @@ fn creation_errors_map_to_the_fault_they_report() {
         assert_eq!(c.stop(), None, "{error:?}");
     }
 }
+
+/// A producer that must leave the session terminal where it meets an error
+/// gets the stop its class names, and an error whose reason agrees with that
+/// stop: an outcome keeps its own reason, a fault is the stop it latched.
+#[test]
+fn ending_the_session_on_an_error_pairs_the_error_with_the_stop_of_its_class() {
+    let provenance = ParseStop::UnsupportedStandaloneState(
+        crate::parser::control::StandaloneUnsupported::Provenance,
+    );
+    let fact = SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::Parent);
+    let mut c = control();
+    assert_eq!(end_session_on(&mut c, fact), fact);
+    assert_eq!(c.stop(), Some(provenance));
+
+    for (fault, invariant) in [
+        (SessionError::WrongToken, registry_row()),
+        (SessionError::ContextUnavailable, registry_row()),
+        (
+            SessionError::PendingIntrinsicWork,
+            ParseStop::InternalInvariant(Invariant::PendingFormEffects),
+        ),
+    ] {
+        let mut c = control();
+        assert_eq!(
+            end_session_on(&mut c, fault),
+            SessionError::Stop(invariant),
+            "{fault:?}"
+        );
+        assert_eq!(c.stop(), Some(invariant), "{fault:?}");
+    }
+}

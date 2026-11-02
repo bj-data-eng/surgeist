@@ -184,7 +184,7 @@ impl Account {
         let base = self
             .live
             .sub(Storage::from(a.transferred().storage()))
-            .ok_or_else(|| c.stop_invalid_associated_facts())?;
+            .ok_or_else(|| c.csp_processing_stop())?;
         let peak = base
             .add(Storage::from(a.peak()))
             .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::ManagedCapacityBytes))?;
@@ -202,10 +202,7 @@ impl Account {
     pub fn release(&mut self, c: &mut ParseControl, v: HtmlCspStorage) -> Result<(), ParseStop> {
         self.settle(c)?;
         let n = Storage::from(v);
-        self.live = self
-            .live
-            .sub(n)
-            .ok_or_else(|| c.stop_invalid_associated_facts())?;
+        self.live = self.live.sub(n).ok_or_else(|| c.csp_processing_stop())?;
         n.release(c)?;
         Ok(())
     }
@@ -283,7 +280,11 @@ impl<'c, 'a> Shared<'c, 'a> {
 /// A processor that returned without a usable result while the account holds
 /// storage it admitted, or that released more than it held, broke the
 /// accounting contract of the service it was given: its processing failed.
-fn accounting_violation(c: &mut ParseControl) -> SessionError {
+/// Every such violation ends the parse as a failed processing, wherever it is
+/// found: when the processor releases (`Account::release`), when it asks for a
+/// transfer its account cannot cover (`Account::admit`), when it returns, and
+/// when the retained graph is reconciled against its account afterwards.
+pub(crate) fn accounting_violation(c: &mut ParseControl) -> SessionError {
     c.csp_processing_stop();
     SessionError::CspService
 }
