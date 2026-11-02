@@ -131,7 +131,10 @@ enum Phase {
     },
     Step,
     ValueContent(HtmlInputNumericStep),
-    Lattice,
+    Lattice {
+        current: HtmlInputRangeNumber,
+        step: HtmlInputRangeNumber,
+    },
     Complete,
 }
 
@@ -223,10 +226,12 @@ impl HtmlInputRangeSanitizationCursor {
         }
     }
     fn begin_lattice(&self) -> Phase {
-        if self.current.is_some() && self.constraints.allowed_step().is_some() {
-            Phase::Lattice
-        } else {
-            Phase::Complete
+        match (self.current, self.constraints.allowed_step()) {
+            (Some(current), Some(step)) => Phase::Lattice {
+                current,
+                step: step.into(),
+            },
+            _ => Phase::Complete,
         }
     }
     /// Actual bound origins are available before late step/base observations.
@@ -241,7 +246,7 @@ impl HtmlInputRangeSanitizationCursor {
     pub fn constraints(&self) -> Option<HtmlInputNumericConstraints> {
         matches!(
             self.phase,
-            Phase::Lattice
+            Phase::Lattice { .. }
                 | Phase::Replace {
                     branch: HtmlInputRangeReplacement::StepCorrection,
                     ..
@@ -264,16 +269,12 @@ impl HtmlInputRangeSanitizationCursor {
             Phase::Replace { value, branch, .. } => A::Replace { value, branch },
             Phase::Step => A::ReadStep,
             Phase::ValueContent(_) => A::ReadValueContent,
-            Phase::Lattice => A::Lattice {
-                current: self.current.expect("finite current selected lattice"),
+            Phase::Lattice { current, step } => A::Lattice {
+                current,
                 minimum: self.minimum(),
                 maximum: self.effective_maximum(),
                 base: self.constraints.step_base().into(),
-                step: self
-                    .constraints
-                    .allowed_step()
-                    .expect("allowed step selected lattice")
-                    .into(),
+                step,
             },
             Phase::Complete => A::Complete,
         }
@@ -326,7 +327,7 @@ impl HtmlInputRangeSanitizationCursor {
                 self.constraints.update_step_value(step, value);
                 self.begin_lattice()
             }
-            (Phase::Lattice, R::Lattice(selected)) => {
+            (Phase::Lattice { current, .. }, R::Lattice(selected)) => {
                 if let Some(value) = selected {
                     if value.value() < self.minimum().value()
                         || self
@@ -338,9 +339,7 @@ impl HtmlInputRangeSanitizationCursor {
                     // The existing lattice owner returns the exact current
                     // bits on numeric equality, including signed zero. A
                     // no-mismatch result therefore never canonicalizes -0.
-                    if value.value().to_bits()
-                        != self.current.expect("lattice has current").value().to_bits()
-                    {
+                    if value.value().to_bits() != current.value().to_bits() {
                         Phase::Replace {
                             value,
                             branch: HtmlInputRangeReplacement::StepCorrection,

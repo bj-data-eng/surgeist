@@ -67,16 +67,16 @@ impl<'a> HtmlMediaValueCursor<'a> {
         }
     }
     pub fn advance(&mut self) {
-        match self.next_action() {
-            HtmlMediaCursorAction::InspectUnit(index) => {
-                let unit = self.units.expect("announced present input")[index];
+        match (self.next_action(), self.units) {
+            (HtmlMediaCursorAction::InspectUnit(index), Some(units)) => {
+                let unit = units[index];
                 if !matches!(unit, 9 | 10 | 12 | 13 | 32) {
                     self.first.get_or_insert(index);
                     self.end = index + 1;
                 }
                 self.position += 1;
             }
-            HtmlMediaCursorAction::Finish => {
+            (HtmlMediaCursorAction::Finish, _) => {
                 let class = match self.units {
                     None => HtmlMediaValueClass::Absent,
                     Some([]) => HtmlMediaValueClass::Empty,
@@ -96,7 +96,8 @@ impl<'a> HtmlMediaValueCursor<'a> {
                     restrictive_picture_value: self.first.is_some() && !all,
                 });
             }
-            HtmlMediaCursorAction::Complete => {}
+            (HtmlMediaCursorAction::Complete, _)
+            | (HtmlMediaCursorAction::InspectUnit(_), None) => {}
         }
     }
     pub fn result(&self) -> Option<HtmlMediaValue> {
@@ -136,11 +137,8 @@ pub(crate) mod theme {
             !self.equal || self.position == 11
         }
         pub fn advance(&mut self) {
-            if !self.is_complete() {
-                self.equal = ascii_equal(
-                    self.units.expect("fixed name input")[self.position],
-                    b"theme-color"[self.position],
-                );
+            if let (false, Some(units)) = (self.is_complete(), self.units) {
+                self.equal = ascii_equal(units[self.position], b"theme-color"[self.position]);
                 self.position += 1;
             }
         }
