@@ -187,6 +187,18 @@ impl SessionError {
 fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::RegistryRow))
 }
+/// The invariant stop for a non-stop error that effect work met. Only an
+/// intrinsic operation that is still owed names pending effects; every other
+/// error says that a retained row the work needs is missing, of another kind,
+/// aliased or unjoined, which is a registry row.
+fn latch_effect_fault(control: &mut ParseControl, error: SessionError) -> SessionError {
+    match error {
+        SessionError::PendingIntrinsicWork => SessionError::Stop(
+            control.fail_invariant(crate::parser::control::Invariant::PendingFormEffects),
+        ),
+        _ => latch_registry_row(control),
+    }
+}
 /// The position after `cursor`. Every caller reaches it only after the work
 /// list yielded an entry at `cursor`, so `cursor` is below an in-memory length
 /// (at most `isize::MAX`) and the successor cannot overflow.
@@ -5792,9 +5804,7 @@ impl SessionStorage {
                 | SessionError::CspService
                 | SessionError::CspProtocol(_)),
             ) => Err(error),
-            Err(_) => Err(control
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(latch_effect_fault(control, error)),
             Ok(()) => Ok(()),
         }
     }
@@ -7594,14 +7604,17 @@ impl ParserArenaSession {
         if !storage.html_local(control, node, "textarea")? {
             return Ok(());
         }
-        if storage.textarea_slot(control, node)?.is_none() {
-            return Err(latch_registry_row(control));
+        match storage.textarea_slot(control, node) {
+            Ok(Some(_)) => {}
+            // No state row, or a row of another kind, for a textarea.
+            Ok(None) | Err(SessionError::WrongToken | SessionError::ForeignNode) => {
+                return Err(latch_registry_row(control));
+            }
+            Err(error) => return Err(error),
         }
         match storage.refresh_textarea(control, node, None, true) {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(control
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(latch_effect_fault(control, error)),
             Ok(()) => Ok(()),
         }
     }

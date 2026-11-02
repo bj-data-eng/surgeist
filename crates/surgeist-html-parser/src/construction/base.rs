@@ -429,13 +429,15 @@ impl SessionStorage {
                 ..
             } = payload
             {
-                let node = node.ok_or(SessionError::WrongToken)?;
+                let node = node.ok_or_else(|| latch_registry_row(c))?;
                 if !is_base(
                     self.construction
                         .node_at(node)
                         .ok_or_else(|| latch_registry_row(c))?,
-                ) || frozen.response == Response::Pending
-                {
+                ) {
+                    return Err(latch_registry_row(c));
+                }
+                if frozen.response == Response::Pending {
                     return Err(c
                         .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
                         .into());
@@ -833,6 +835,16 @@ pub(super) mod tests {
             let result = session.active().unwrap().validate_base_facts(&mut c);
             assert_eq!(result, Err(SessionError::Stop(expected)), "case {case}");
             assert_eq!(c.stop(), Some(expected), "case {case}");
+            // The registry's own join check runs at release, so restore the row.
+            for payload in &mut session.active_mut().unwrap().payloads.values {
+                if let RetainedPayload::Base { node, frozen, .. } = payload
+                    && let BaseValue::Frozen(frozen) = frozen
+                    && (*node != Some(base.index) || case == 2)
+                {
+                    *node = Some(base.index);
+                    frozen.response = Response::Returned;
+                }
+            }
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
             super::super::tests::storage_zero(&c);

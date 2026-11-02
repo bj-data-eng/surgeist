@@ -326,9 +326,7 @@ impl SessionStorage {
                 );
                 Err(error)
             }
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
             Ok(()) => Ok(()),
         }
     }
@@ -976,9 +974,7 @@ impl ParserArenaSession {
         })();
         match result {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
             Ok(()) => Ok(()),
         }
     }

@@ -507,3 +507,30 @@ fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_registry_row() {
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+/// Characterisation of the mapping every effect-work catch-all shares: only an
+/// intrinsic operation that is still owed names pending effects, and every
+/// other non-stop error is a retained row that is missing, of another kind,
+/// aliased or unjoined.
+#[test]
+fn effect_work_errors_map_to_their_precise_invariant() {
+    let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
+    for (error, expected) in [
+        (SessionError::PendingIntrinsicWork, pending),
+        (SessionError::WrongToken, registry_row()),
+        (SessionError::AliasedPayload, registry_row()),
+        (SessionError::ForeignNode, registry_row()),
+        (SessionError::Consumed, registry_row()),
+        (SessionError::TextareaMetadataUnavailable, registry_row()),
+        (SessionError::NodeDocumentUnavailable, registry_row()),
+        (SessionError::SelectMetadataUnavailable, registry_row()),
+    ] {
+        let mut c = control();
+        assert_eq!(
+            latch_effect_fault(&mut c, error),
+            SessionError::Stop(expected),
+            "{error:?}"
+        );
+        assert_eq!(c.stop(), Some(expected), "{error:?}");
+    }
+}

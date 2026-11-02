@@ -724,9 +724,7 @@ impl ParserArenaSession {
         match result {
             Ok(()) => Ok(()),
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
         }
     }
     pub(super) fn remove_managed_attribute(
@@ -764,9 +762,7 @@ impl ParserArenaSession {
         match result {
             Ok(()) => Ok(()),
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
         }
     }
 }
