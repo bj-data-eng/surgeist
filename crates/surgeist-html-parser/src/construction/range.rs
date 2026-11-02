@@ -993,3 +993,30 @@ impl SessionStorage {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod absent_owner_tests {
+    use super::*;
+    use crate::parser::control::Invariant;
+
+    /// Range work that finds no range owner has lost a retained owner; it is
+    /// not an operation that is still owed.
+    #[test]
+    fn range_work_without_its_owner_reports_the_registry_row() {
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        for execute in [false, true] {
+            let mut c = crate::construction::tests::control();
+            let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+            let storage = session.active_mut().unwrap();
+            assert!(storage.effects.range.is_none());
+            let result = if execute {
+                storage.execute_range(&mut c)
+            } else {
+                storage.range_stage(&mut c).map(|_| ())
+            };
+            assert_eq!(result, Err(SessionError::Stop(registry_row)), "{execute}");
+            assert_eq!(c.stop(), Some(registry_row), "{execute}");
+            session.release(&mut c).unwrap();
+        }
+    }
+}

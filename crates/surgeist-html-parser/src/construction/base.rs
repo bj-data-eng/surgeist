@@ -824,6 +824,7 @@ pub(super) mod tests {
                     _ => None,
                 })
                 .unwrap();
+            let original = row.1.response;
             match case {
                 // The row names no node at all.
                 0 => *row.0 = None,
@@ -842,7 +843,71 @@ pub(super) mod tests {
                     && (*node != Some(base.index) || case == 2)
                 {
                     *node = Some(base.index);
-                    frozen.response = Response::Returned;
+                    frozen.response = original;
+                }
+            }
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+        }
+    }
+
+    /// A base document row that disagrees with the tree, and a frozen base
+    /// whose document has no base-document row, are retained rows that are
+    /// inconsistent or missing.
+    #[test]
+    fn validating_base_rows_that_disagree_with_the_tree_reports_the_registry_row() {
+        use crate::parser::control::Invariant;
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        for case in 0..2 {
+            let request = request("<base href=A>");
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let root = session.root(&mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let base = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &root, &base, None, &capability)
+                .unwrap();
+            session
+                .active()
+                .unwrap()
+                .validate_base_facts(&mut c)
+                .unwrap();
+            let mut original = None;
+            for payload in &mut session.active_mut().unwrap().payloads.values {
+                match payload {
+                    // The document row no longer names the tree's first base.
+                    RetainedPayload::BaseDocument { first, .. } if case == 0 => {
+                        original = Some(*first);
+                        *first = None;
+                    }
+                    // The frozen base names a document without a base row.
+                    RetainedPayload::Base {
+                        frozen: BaseValue::Frozen(frozen),
+                        ..
+                    } if case == 1 => {
+                        original = Some(Some(frozen.document));
+                        frozen.document = base.index;
+                    }
+                    _ => {}
+                }
+            }
+            let result = session.active().unwrap().validate_base_facts(&mut c);
+            assert_eq!(result, Err(SessionError::Stop(registry_row)), "case {case}");
+            assert_eq!(c.stop(), Some(registry_row), "case {case}");
+            for payload in &mut session.active_mut().unwrap().payloads.values {
+                match payload {
+                    RetainedPayload::BaseDocument { first, .. } if case == 0 => {
+                        *first = original.unwrap();
+                    }
+                    RetainedPayload::Base {
+                        frozen: BaseValue::Frozen(frozen),
+                        ..
+                    } if case == 1 => {
+                        frozen.document = original.unwrap().unwrap();
+                    }
+                    _ => {}
                 }
             }
             lexer.release(&mut c).unwrap();

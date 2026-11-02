@@ -490,7 +490,7 @@ fn a_textarea_whose_state_join_names_another_row_kind_reports_the_registry_row()
 }
 
 #[test]
-fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_registry_row() {
+fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_aliased_allocation() {
     let request = request("<body><textarea>x</textarea>");
     let (mut c, mut session, _proof, nodes) = graph(&request);
     let textarea = named(&nodes, "textarea", 0).clone();
@@ -502,28 +502,33 @@ fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_registry_row() {
             .shared_code_units(),
     );
     let result = session.parser_stack_removed(&mut c, &textarea, None);
-    assert_registry_row(result, &c);
+    let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
+    assert_eq!(result.err(), Some(SessionError::Stop(aliased)));
+    assert_eq!(c.stop(), Some(aliased));
     drop(held);
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
 
-/// Characterisation of the mapping every effect-work catch-all shares: only an
-/// intrinsic operation that is still owed names pending effects, and every
-/// other non-stop error is a retained row that is missing, of another kind,
-/// aliased or unjoined.
+/// The mapping every effect-work catch-all shares: an operation that is still
+/// owed names pending effects, a uniqueness check that failed names the aliased
+/// allocation, a row that is missing, of another kind or unjoined is a registry
+/// row, and the outcomes the driver classifies itself pass through unchanged
+/// without a stop.
 #[test]
 fn effect_work_errors_map_to_their_precise_invariant() {
     let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
+    let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
     for (error, expected) in [
         (SessionError::PendingIntrinsicWork, pending),
+        (SessionError::AliasedPayload, aliased),
         (SessionError::WrongToken, registry_row()),
-        (SessionError::AliasedPayload, registry_row()),
         (SessionError::ForeignNode, registry_row()),
         (SessionError::Consumed, registry_row()),
         (SessionError::TextareaMetadataUnavailable, registry_row()),
         (SessionError::NodeDocumentUnavailable, registry_row()),
         (SessionError::SelectMetadataUnavailable, registry_row()),
+        (SessionError::NonceMetadataUnavailable, registry_row()),
     ] {
         let mut c = control();
         assert_eq!(
@@ -532,5 +537,18 @@ fn effect_work_errors_map_to_their_precise_invariant() {
             "{error:?}"
         );
         assert_eq!(c.stop(), Some(expected), "{error:?}");
+    }
+    for error in [
+        SessionError::CspService,
+        SessionError::AssociatedFacts,
+        SessionError::ScriptMetadataUnavailable,
+        SessionError::SvgScriptMetadataUnavailable,
+        SessionError::CompletionMetadataUnavailable,
+        SessionError::CompletionIncomplete,
+        SessionError::ContextReactionUnavailable,
+    ] {
+        let mut c = control();
+        assert_eq!(latch_effect_fault(&mut c, error), error, "{error:?}");
+        assert_eq!(c.stop(), None, "{error:?}");
     }
 }
