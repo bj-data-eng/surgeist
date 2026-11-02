@@ -123,7 +123,7 @@ pub enum HtmlSelectSetterReply {
 enum SetterPhase {
     Deselect(usize),
     Match(usize),
-    Select,
+    Select(usize),
     Refresh,
     Complete,
 }
@@ -164,11 +164,7 @@ impl HtmlSelectSetterCursor {
         match self.phase {
             SetterPhase::Deselect(ordinal) => HtmlSelectSetterAction::Deselect { ordinal },
             SetterPhase::Match(ordinal) => HtmlSelectSetterAction::ReadMatch { ordinal },
-            SetterPhase::Select => HtmlSelectSetterAction::SelectAndDirty {
-                ordinal: self
-                    .first_match
-                    .expect("a complete scan retained its match"),
-            },
+            SetterPhase::Select(ordinal) => HtmlSelectSetterAction::SelectAndDirty { ordinal },
             SetterPhase::Refresh => HtmlSelectSetterAction::UpdateSelectedcontent,
             SetterPhase::Complete => HtmlSelectSetterAction::Complete,
         }
@@ -188,8 +184,8 @@ impl HtmlSelectSetterCursor {
         let next = ordinal.checked_add(1).ok_or(HtmlSelectCursorError::Reply)?;
         self.phase = if next < self.option_count {
             SetterPhase::Deselect(next)
-        } else if self.first_match.is_some() {
-            SetterPhase::Select
+        } else if let Some(matched) = self.first_match {
+            SetterPhase::Select(matched)
         } else {
             SetterPhase::Refresh
         };
@@ -211,7 +207,7 @@ impl HtmlSelectSetterCursor {
                 }
                 self.after_option(ordinal)?;
             }
-            (SetterPhase::Select, HtmlSelectSetterReply::Applied) => {
+            (SetterPhase::Select(_), HtmlSelectSetterReply::Applied) => {
                 self.phase = SetterPhase::Refresh;
             }
             (SetterPhase::Refresh, HtmlSelectSetterReply::Applied) => {
@@ -230,9 +226,13 @@ enum Phase {
     FirstRead(usize),
     FirstWrite(usize),
     Read(usize),
-    Deselect { current: usize, previous: usize },
+    Deselect {
+        current: usize,
+        previous: usize,
+    },
     Disabled(usize),
-    Size,
+    /// Carries the first enabled option, the fallback candidate.
+    Size(usize),
     Select(usize),
     Refresh,
     Complete,
@@ -302,7 +302,7 @@ impl HtmlSelectCursor {
                 selected: false,
             },
             Phase::Disabled(ordinal) => HtmlSelectAction::ReadDisabled { ordinal },
-            Phase::Size => HtmlSelectAction::ReadDisplaySize,
+            Phase::Size(_) => HtmlSelectAction::ReadDisplaySize,
             Phase::Select(ordinal) => HtmlSelectAction::WriteSelectedness {
                 ordinal,
                 selected: true,
@@ -352,8 +352,8 @@ impl HtmlSelectCursor {
         let next = ordinal + 1;
         if next < self.option_count {
             self.phase = Phase::Read(next);
-        } else if self.last_selected.is_none() && self.first_enabled.is_some() {
-            self.phase = Phase::Size;
+        } else if let (None, Some(fallback)) = (self.last_selected, self.first_enabled) {
+            self.phase = Phase::Size(fallback);
         } else {
             self.finish_normalization();
         }
@@ -408,9 +408,9 @@ impl HtmlSelectCursor {
                 }
                 self.next_option(ordinal);
             }
-            (Phase::Size, HtmlSelectReply::DisplaySizeIsOne(one)) => {
+            (Phase::Size(fallback), HtmlSelectReply::DisplaySizeIsOne(one)) => {
                 if one {
-                    self.phase = Phase::Select(self.first_enabled.expect("fallback candidate"));
+                    self.phase = Phase::Select(fallback);
                 } else {
                     self.finish_normalization();
                 }
