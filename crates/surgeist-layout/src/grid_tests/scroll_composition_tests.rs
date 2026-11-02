@@ -5353,3 +5353,6 @@ mod distinct_contribution;
 
 #[path = "scroll_composition/minimum_edges.rs"]
 mod minimum_edges;
+
+#[path = "scroll_composition/subgrid_lanes.rs"]
+mod subgrid_lanes;
