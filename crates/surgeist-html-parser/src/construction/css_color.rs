@@ -33,7 +33,7 @@ pub(super) fn source_processing(c: &mut ParseControl, error: CssColorError) -> F
     }
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
-    c.fail_invariant(crate::parser::control::Invariant::InputCursorState)
+    c.fail_invariant(crate::parser::control::Invariant::ColorConversionState)
         .into()
 }
 const BANK_COUNT: usize = 3;

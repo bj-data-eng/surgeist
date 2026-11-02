@@ -156,7 +156,7 @@ impl Tokenizer<'_> {
         let mut reference = self
             .reference
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         let result = self.reference_steps(&mut reference, c, evidence);
         match result {
             Ok(false) => {
@@ -329,7 +329,7 @@ impl Tokenizer<'_> {
                     }
                     let value = r
                         .replacement
-                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
                     if r.attribute {
                         match value {
                             ReferenceValue::One(a) => self.reference_point(
@@ -416,7 +416,7 @@ impl Tokenizer<'_> {
                             } else {
                                 r.literal
                                     .as_mut()
-                                    .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                                    .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                                     .push(p, &self.current, self.current_kind, c)?;
                             }
                             continue;
@@ -431,7 +431,7 @@ impl Tokenizer<'_> {
                         let text = r
                             .literal
                             .take()
-                            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                             .freeze(c)?;
                         self.emit(TokenKind::Text(text), r.amp.start(), r.end, c, evidence)?;
                     }

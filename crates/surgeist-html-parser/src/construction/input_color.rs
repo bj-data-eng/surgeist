@@ -32,7 +32,7 @@ fn css_error(c: &mut ParseControl, error: CssColorError) -> SessionError {
     c.stop_color_processing(error).into()
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
-    c.fail_invariant(crate::parser::control::Invariant::InputCursorState)
+    c.fail_invariant(crate::parser::control::Invariant::ColorConversionState)
         .into()
 }
 /// One total transformation; a refused admission drops it, which declines it.

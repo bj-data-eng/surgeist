@@ -313,12 +313,12 @@ impl ParseEvidence {
             .records
             .as_slice()
             .get(id.index)
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
         let location = self
             .locations
             .as_slice()
             .get(record.location)
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
         Ok((record, location))
     }
     #[cfg(test)]

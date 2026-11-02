@@ -66,7 +66,7 @@ impl DraftText {
     ) -> Result<(), ParseStop> {
         let start = self.value.len();
         let point = CodePoint::new(point)
-            .ok_or_else(|| c.fail_invariant(super::super::control::Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(super::super::control::Invariant::TokenizerState))?;
         self.value.push_code_point(point, c)?;
         c.charge(
             WorkCategory::CopyByte,
@@ -89,7 +89,7 @@ impl DraftText {
         if self.value.len() == self.origins.len() {
             Ok(())
         } else {
-            Err(c.fail_invariant(super::super::control::Invariant::InputCursorState))
+            Err(c.fail_invariant(super::super::control::Invariant::TokenizerState))
         }
     }
     pub(super) fn freeze(self, c: &mut ParseControl) -> Result<Text, ParseStop> {
@@ -409,7 +409,7 @@ impl TokenEvent {
         self.record
             .as_slice()
             .first()
-            .ok_or_else(|| c.fail_invariant(super::super::control::Invariant::InputCursorState))
+            .ok_or_else(|| c.fail_invariant(super::super::control::Invariant::TokenizerState))
     }
     /// Test observation of a well-formed event, outside any controller.
     #[cfg(test)]
@@ -432,7 +432,7 @@ impl TokenEvent {
                 Ok(token)
             }
             Ok(None) => {
-                let stop = c.fail_invariant(super::super::control::Invariant::InputCursorState);
+                let stop = c.fail_invariant(super::super::control::Invariant::TokenizerState);
                 self.record.release(c)?;
                 Err(stop)
             }

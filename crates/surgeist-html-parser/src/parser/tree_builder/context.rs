@@ -24,7 +24,7 @@ impl FragmentExecutionError {
     /// is still held: the first stop becomes the invariant, or stays the stop
     /// that was already first.
     pub(super) fn latch_invariant(control: &mut ParseControl) -> Self {
-        Self::Stop(control.fail_invariant(super::Invariant::RegistryRow))
+        Self::Stop(control.fail_invariant(super::Invariant::TreeBuilderState))
     }
     /// The error names a state the driver's own sequencing cannot produce,
     /// rather than a document or a limit.

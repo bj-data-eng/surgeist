@@ -484,7 +484,7 @@ impl ParseControl {
         reason: surgeist_css::color::CssColorError,
     ) -> ParseStop {
         let Some(error) = HtmlColorProcessingError::from_source(reason) else {
-            return self.fail_invariant(Invariant::InputCursorState);
+            return self.fail_invariant(Invariant::ColorConversionState);
         };
         if let Err(first) = self.checkpoint() {
             return first;

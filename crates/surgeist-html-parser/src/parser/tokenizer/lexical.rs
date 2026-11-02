@@ -92,15 +92,15 @@ impl Tokenizer<'_> {
                 let offset = evidence.lexical_data_offset(c, occurrence)?;
                 let end = offset
                     .checked_add(text.value.text().len())
-                    .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+                    .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
                 for origin in text.origins.as_slice() {
                     c.charge(WorkCategory::RecordVisit, 1)?;
                     let start = offset
                         .checked_add(origin.start)
-                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
                     let end = offset
                         .checked_add(origin.end)
-                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
                     evidence.lexical_part(
                         c,
                         occurrence,
@@ -290,7 +290,7 @@ impl Tokenizer<'_> {
                             .and_then(|tag| tag.attribute.as_ref())
                             .map(|attribute| &attribute.value),
                     }
-                    .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+                    .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
                     text.value.len()
                 };
                 evidence.lexical_part(c, occurrence, field_role, &empty, offset..offset, None)?;

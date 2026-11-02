@@ -122,12 +122,12 @@ impl Tokenizer<'_> {
                         .less_than
                         .end()
                         .checked_add(1)
-                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
                     let source = self.range(after_bang, self.current.end(), c)?;
                     for &p in b"[CDATA[" {
                         self.comment
                             .as_mut()
-                            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                             .push(u32::from(p), &source, OriginKind::RecoverySyntax, c)?;
                     }
                     self.set_state(BogusComment, c)?;
@@ -816,7 +816,7 @@ impl Tokenizer<'_> {
                         .pending_syntax
                         .start()
                         .checked_add(1)
-                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
                     let first = self.range(self.pending_syntax.start(), after_first, c)?;
                     self.emit_point(0x5D, &first, OriginKind::Literal, c, evidence)?;
                     let source = self.range(first.end(), self.current.end(), c)?;
@@ -895,7 +895,7 @@ impl Tokenizer<'_> {
                 _ => self
                     .pi_data
                     .as_mut()
-                    .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                    .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                     .push(p, &self.current, self.current_kind, c)?,
             },
             PiQuestionable => {
@@ -905,12 +905,12 @@ impl Tokenizer<'_> {
                 } else {
                     self.pi_data
                         .as_mut()
-                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                         .push(0x3F, &self.pending_syntax, OriginKind::Literal, c)?;
                     self.reconsume(PiData, c)?;
                 }
             }
-            MarkupDeclaration => return Err(c.fail_invariant(Invariant::InputCursorState)),
+            MarkupDeclaration => return Err(c.fail_invariant(Invariant::TokenizerState)),
         }
         Ok(StepProgress::Advanced)
     }
@@ -1044,7 +1044,7 @@ impl Tokenizer<'_> {
                 self.abandon_lexical(c, evidence)?;
                 self.reconsume(Data, c)?;
             }
-            MarkupDeclaration => return Err(c.fail_invariant(Invariant::InputCursorState)),
+            MarkupDeclaration => return Err(c.fail_invariant(Invariant::TokenizerState)),
         }
         Ok(())
     }

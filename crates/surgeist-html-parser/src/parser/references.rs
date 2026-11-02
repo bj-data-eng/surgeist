@@ -62,7 +62,7 @@ fn record(
     control.charge(WorkCategory::RecordVisit, 1)?;
     data::NAMED_REFERENCES
         .get(index)
-        .ok_or_else(|| control.fail_invariant(Invariant::InputCursorState))
+        .ok_or_else(|| control.fail_invariant(Invariant::TokenizerState))
 }
 
 fn compare_name(
@@ -220,7 +220,7 @@ pub(super) fn c1_replacement(
         data::C1_REPLACEMENTS
             .get(index as usize)
             .copied()
-            .ok_or_else(|| control.fail_invariant(Invariant::InputCursorState))
+            .ok_or_else(|| control.fail_invariant(Invariant::TokenizerState))
     } else {
         admit_result::<Option<char>>(control)?;
         Ok(None)

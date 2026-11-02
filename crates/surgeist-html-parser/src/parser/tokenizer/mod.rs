@@ -101,7 +101,7 @@ impl Names {
                 let next = self
                     .nodes
                     .get_mut(index, c)?
-                    .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                    .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                     .child(bit);
                 index = if let Some(next) = next {
                     next
@@ -120,7 +120,7 @@ impl Names {
                     *self
                         .nodes
                         .get_mut(index, c)?
-                        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                         .child_mut(bit) = Some(next);
                     next
                 };
@@ -130,12 +130,12 @@ impl Names {
         let duplicate = self
             .nodes
             .get_mut(index, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .terminal;
         admit_record_write(size_of::<bool>(), 1, c)?;
         self.nodes
             .get_mut(index, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .terminal = true;
         Ok(duplicate)
     }
@@ -308,7 +308,7 @@ impl TokenizerProofs {
                 return Ok(proof.clone());
             }
         }
-        Err(c.fail_invariant(Invariant::InputCursorState))
+        Err(c.fail_invariant(Invariant::TokenizerState))
     }
 }
 pub(crate) struct Tokenizer<'source> {
@@ -560,10 +560,10 @@ impl<'source> Tokenizer<'source> {
         };
         admit_record_write(bytes, writes, c)?;
         let Some(live) = self.pending.get_mut(..self.pending_len) else {
-            return Err(c.fail_invariant(Invariant::InputCursorState));
+            return Err(c.fail_invariant(Invariant::TokenizerState));
         };
         let Some(front) = live.first_mut() else {
-            return Err(c.fail_invariant(Invariant::InputCursorState));
+            return Err(c.fail_invariant(Invariant::TokenizerState));
         };
         let first = front.take();
         // The emptied front moves behind the remaining events, which each
@@ -572,7 +572,7 @@ impl<'source> Tokenizer<'source> {
         self.pending_len = remaining;
         match first {
             Some(event) => Ok(TokenizerPull::Event(event)),
-            None => Err(c.fail_invariant(Invariant::InputCursorState)),
+            None => Err(c.fail_invariant(Invariant::TokenizerState)),
         }
     }
     #[cfg(test)]
@@ -645,7 +645,7 @@ impl<'source> Tokenizer<'source> {
     ) -> Result<crate::source::ConsumedSourceBoundary, ParseStop> {
         self.proofs
             .as_ref()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .find(offset, c)
     }
     fn sync_proofs(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
@@ -723,7 +723,7 @@ impl<'source> Tokenizer<'source> {
         let p = self
             .proofs
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         let proof = p.find(offset, c)?;
         admit_record_write(size_of::<crate::source::ConsumedSourceBoundary>(), 1, c)?;
         match role {
@@ -805,7 +805,7 @@ impl<'source> Tokenizer<'source> {
     fn queue(&mut self, event: Event, c: &mut ParseControl) -> Result<(), ParseStop> {
         let Some(slot) = self.pending.get_mut(self.pending_len) else {
             event.release(c)?;
-            return Err(c.fail_invariant(Invariant::InputCursorState));
+            return Err(c.fail_invariant(Invariant::TokenizerState));
         };
         if let Err(stop) = admit_record_write(
             const { size_of::<Option<Event>>() + size_of::<usize>() },
@@ -985,7 +985,7 @@ impl<'source> Tokenizer<'source> {
         let tag = self
             .tag
             .as_ref()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         let a = tag.name.value.units();
         let b = self.last_start.units();
         if a.len() != b.len() {
@@ -1035,7 +1035,7 @@ impl<'source> Tokenizer<'source> {
         };
         self.tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .name
             .push(
                 if point == 0 { 0xFFFD } else { lower(point) },
@@ -1065,7 +1065,7 @@ impl<'source> Tokenizer<'source> {
         admit_record_write(size_of::<Option<DraftAttribute>>(), 1, c)?;
         self.tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .attribute = Some(DraftAttribute {
             name: DraftText::new(c)?,
             value: DraftText::new(c)?,
@@ -1095,10 +1095,10 @@ impl<'source> Tokenizer<'source> {
         let tag = self
             .tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         tag.attribute
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .name
             .push(
                 if point == 0 { 0xFFFD } else { lower(point) },
@@ -1115,7 +1115,7 @@ impl<'source> Tokenizer<'source> {
         let t = self
             .tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         if let Some(a) = &mut t.attribute
             && !a.name_checked
         {
@@ -1142,10 +1142,10 @@ impl<'source> Tokenizer<'source> {
         let t = self
             .tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         t.attribute
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .value
             .push(point, source, kind, c)
     }
@@ -1158,7 +1158,7 @@ impl<'source> Tokenizer<'source> {
         let t = self
             .tag
             .as_ref()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         let Some(a) = &t.attribute else {
             return Ok(());
         };
@@ -1202,7 +1202,7 @@ impl<'source> Tokenizer<'source> {
             // A denied physical layout must not consume their cleanup tickets.
             self.tag
                 .as_mut()
-                .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                 .attributes
                 .reserve_geometric(c, 1)?;
         }
@@ -1210,7 +1210,7 @@ impl<'source> Tokenizer<'source> {
         let t = self
             .tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         if let Some(a) = t.attribute.take() {
             if a.duplicate {
                 a.name.release(c)?;
@@ -1260,7 +1260,7 @@ impl<'source> Tokenizer<'source> {
         let t = self
             .tag
             .as_ref()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         if t.kind == TagKind::Start {
             self.last_start.clear(c)?;
             self.last_start.extend_units(t.name.value.units(), c)?;
@@ -1270,7 +1270,7 @@ impl<'source> Tokenizer<'source> {
         let mut t = self
             .tag
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         t.names.nodes.release(c)?;
         let name = match t.name.freeze(c) {
             Ok(name) => name,
@@ -1314,7 +1314,7 @@ impl<'source> Tokenizer<'source> {
         };
         self.comment
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .push(
                 if point == 0 { 0xFFFD } else { point },
                 &self.current,
@@ -1328,7 +1328,7 @@ impl<'source> Tokenizer<'source> {
             c.charge(WorkCategory::InspectByte, 1)?;
             self.comment
                 .as_mut()
-                .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                 .push(u32::from(p), &source, OriginKind::RecoverySyntax, c)?;
         }
         Ok(())
@@ -1343,7 +1343,7 @@ impl<'source> Tokenizer<'source> {
         let text = self
             .comment
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .freeze(c)?;
         self.emit(
             TokenKind::Comment(text),
@@ -1370,14 +1370,14 @@ impl<'source> Tokenizer<'source> {
         let d = self
             .doctype
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         if d.name.is_none() {
             admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
             d.name = Some(DraftText::new(c)?);
         }
         d.name
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .push(
                 if point == 0 { 0xFFFD } else { lower(point) },
                 &self.current,
@@ -1393,7 +1393,7 @@ impl<'source> Tokenizer<'source> {
         let d = self
             .doctype
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
         *match kind {
             Identifier::Public => &mut d.public,
@@ -1417,13 +1417,13 @@ impl<'source> Tokenizer<'source> {
         let d = self
             .doctype
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         match kind {
             Identifier::Public => &mut d.public,
             Identifier::System => &mut d.system,
         }
         .as_mut()
-        .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+        .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
         .push(
             if point == 0 { 0xFFFD } else { point },
             &self.current,
@@ -1435,7 +1435,7 @@ impl<'source> Tokenizer<'source> {
         admit_record_write(size_of::<bool>(), 1, c)?;
         self.doctype
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .force_quirks = true;
         Ok(())
     }
@@ -1443,7 +1443,7 @@ impl<'source> Tokenizer<'source> {
         admit_record_write(size_of::<bool>(), 1, c)?;
         self.tag
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .self_closing = true;
         Ok(())
     }
@@ -1457,7 +1457,7 @@ impl<'source> Tokenizer<'source> {
         let d = self
             .doctype
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         let mut frozen = std::array::from_fn::<_, 3, _>(|_| None);
         let mut slots = [d.name, d.public, d.system].into_iter().zip(&mut frozen);
         while let Some((draft, slot)) = slots.next() {
@@ -1602,7 +1602,7 @@ impl<'source> Tokenizer<'source> {
         self.create_comment(c)?;
         self.comment
             .as_mut()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
             .push(0x3F, &self.slash, OriginKind::Literal, c)?;
         self.temporary.require_paired(c)?;
         for (&unit, origin) in self
@@ -1616,7 +1616,7 @@ impl<'source> Tokenizer<'source> {
             c.charge(WorkCategory::RecordVisit, 1)?;
             self.comment
                 .as_mut()
-                .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?
+                .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?
                 .push(u32::from(unit), &origin.source, origin.kind, c)?;
         }
         self.clear_temporary(c)
@@ -1632,11 +1632,11 @@ impl<'source> Tokenizer<'source> {
         let target = self
             .pi_target
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         let data = self
             .pi_data
             .take()
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::TokenizerState))?;
         let (target, data) = freeze_pair(target, data, c)?;
         self.emit(
             TokenKind::ProcessingInstruction { target, data },

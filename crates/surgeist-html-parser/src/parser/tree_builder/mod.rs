@@ -1088,7 +1088,7 @@ impl StandaloneError {
     /// is still held: the first stop becomes the invariant, or stays the stop
     /// that was already first.
     pub(super) fn latch_invariant(control: &mut ParseControl) -> Self {
-        Self::Stop(control.fail_invariant(Invariant::RegistryRow))
+        Self::Stop(control.fail_invariant(Invariant::TreeBuilderState))
     }
     /// The error names a state the driver's own sequencing cannot produce,
     /// rather than a document or a limit.
@@ -1178,7 +1178,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
             if error.invariant_fault() {
                 // Nothing the document contains made this unsupported; a driver
                 // lost an owner its own sequencing keeps.
-                self.control.fail_invariant(Invariant::RegistryRow);
+                self.control.fail_invariant(Invariant::TreeBuilderState);
                 return;
             }
             let reason = match error {
@@ -1639,7 +1639,7 @@ fn take_token_event(
         Some(super::tokenizer::token::Event::Token(event)) => Ok(event),
         other => {
             *slot = other;
-            Err(c.fail_invariant(super::control::Invariant::InputCursorState))
+            Err(c.fail_invariant(super::control::Invariant::TreeBuilderState))
         }
     }
 }
