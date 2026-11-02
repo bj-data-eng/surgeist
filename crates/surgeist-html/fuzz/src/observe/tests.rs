@@ -107,3 +107,43 @@ fn balanced_recipes_accept_only_a_stop_at_the_configured_cap() {
     let never = verify_failure(&props, &spec(40), &failure, &cancel, Expect::Never).unwrap();
     assert_eq!(never.kind(), OutcomeKind::Failure);
 }
+
+#[test]
+fn balanced_recipes_reject_a_stop_on_a_cap_the_case_did_not_lower() {
+    // A source one unit over the documented 100000-unit envelope really stops
+    // the parse at the default cap. The stop is self-consistent (it reports the
+    // configured cap and an attempted total above it), but no resource was
+    // lowered, so an oracle that expects a tree must not accept it.
+    let descriptor = crate::UnicodeTarget::document().descriptor.clone();
+    let props = Props(&descriptor);
+    let limits = crate::codec::limits(crate::codec::CAPS).expect("documented envelope");
+    let text = UnicodeSource::Utf8("a".repeat(100_001));
+    let source = HtmlSource::utf8("a".repeat(100_001));
+    let request = HtmlDocumentParseRequest::offline(source.clone(), limits);
+    let cancel = request.cancellation().clone();
+    let failure = request
+        .parse()
+        .expect_err("the source exceeds the envelope");
+    let spec = Spec {
+        fragment: false,
+        text: &text,
+        original: &source,
+        limits: &limits,
+        caps: crate::codec::CAPS,
+        requested: HtmlParserScriptingMode::Disabled,
+        capture: None,
+        shadow_allowed: false,
+    };
+    let balanced = verify_failure(&props, &spec, &failure, &cancel, Expect::Balanced).unwrap();
+    assert_eq!(balanced.kind(), OutcomeKind::Failure, "{balanced:?}");
+    assert_eq!(
+        balanced.failure_key().and_then(FailureKey::discriminator),
+        Some("stop-limit-mismatch")
+    );
+    let general = verify_failure(&props, &spec, &failure, &cancel, Expect::General).unwrap();
+    assert_eq!(
+        general.kind(),
+        OutcomeKind::ExpectedRejection,
+        "{general:?}"
+    );
+}

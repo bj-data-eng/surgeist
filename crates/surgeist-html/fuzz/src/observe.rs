@@ -660,8 +660,9 @@ pub(crate) enum Expect {
     /// known unsupported states are unsupported, anything else is a failure.
     General,
     /// An independent oracle expects a tree. Only an allocation or
-    /// representation refusal, or a limit stop that reports the configured cap
-    /// and an attempted total above it, is a product outcome; an unsupported
+    /// representation refusal, or a limit stop on a resource the case lowered
+    /// that reports the configured cap and an attempted total above it, is a
+    /// product outcome; an unsupported
     /// state or any other stop is a failure.
     Balanced,
     PreCancelled,
@@ -851,11 +852,18 @@ pub(crate) fn verify_failure(
                 current,
                 requested_delta,
             }) => {
-                let configured = RESOURCE_ORDER
-                    .iter()
-                    .position(|r| *r == resource)
-                    .and_then(|i| spec.caps.get(i));
-                if configured != Some(&limit) || current.saturating_add(requested_delta) <= limit {
+                let index = RESOURCE_ORDER.iter().position(|r| *r == resource);
+                let configured = index.and_then(|i| spec.caps.get(i));
+                // A stop is a product outcome only where the case lowered the
+                // resource below the documented envelope: a stop on an unlowered
+                // cap contradicts an oracle that expects the tree.
+                let lowered = index
+                    .and_then(|i| crate::codec::CAPS.get(i))
+                    .is_some_and(|default| *default != limit);
+                if configured != Some(&limit)
+                    || current.saturating_add(requested_delta) <= limit
+                    || !lowered
+                {
                     return props.failure(
                         3,
                         "stop-limit-mismatch",
