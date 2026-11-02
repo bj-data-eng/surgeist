@@ -738,6 +738,29 @@ fn fallback_scan_has_exact_budget_and_duplicate_batch_order() {
         f.ids[0].clone(),
         HtmlSemanticQuery::FormImplicitSubmissionCondition,
     );
+    // Two input blockers and no submit button: the default-button search and
+    // then the blocker count each climb to the document and descend through its
+    // child list and one blocker's own (empty) list, so each walk's stack holds
+    // two iterator records and the two stacks are separate allocations (four
+    // records of growth in all). No nested storage exists. The scans' visit
+    // layout is private, so work is required to be charged without being
+    // pinned.
+    assert_exact_and_one_short_caps(
+        "implicit submission fallback scan",
+        &f.capture,
+        &c,
+        0,
+        limits(),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes() + 4 * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
     let baseline = report(&f, &c, HtmlSemanticQuery::FormImplicitSubmissionCondition).usage();
     for cap in [baseline.work(), baseline.work() - 1] {
         let l = HtmlSemanticLimits::new(

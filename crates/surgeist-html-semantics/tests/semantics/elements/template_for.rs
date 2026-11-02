@@ -1,12 +1,16 @@
-use crate::semantics::support::{builder, context, moderate_semantic_limits as limits};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context,
+    moderate_semantic_limits as limits,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
-    HtmlTemplateForNameRelation, HtmlTemplateForReport, HtmlTemplateForSelection,
+    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported,
+    HtmlSemanticValue, HtmlTemplateForNameRelation, HtmlTemplateForReport,
+    HtmlTemplateForSelection,
 };
 
 fn attr(value: impl Into<DocumentString>) -> Attribute {
@@ -485,6 +489,25 @@ fn exact_actual_scratch_output_and_work_limits_keep_first_stop_and_release() {
     let (c, t, _) = one("X", "marker", "name='X' x='Y'");
     let r = run(&c, &t);
     let u = r.usage();
+    // The independent expectation for the usage the loops below cap: one
+    // result record, a processing-instruction pseudo-attribute scan whose
+    // private layout makes work and scratch required-to-be-charged rather than
+    // pinned, and no nested storage; the exact cap on every resource must
+    // reproduce the report and one short must fail with exactly that resource.
+    assert_exact_and_one_short_caps(
+        "template for",
+        &c,
+        &context(&c),
+        100,
+        limits(),
+        &[request(&t)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let exact = HtmlSemanticLimits::new(
         u.work(),
         u.output_records(),

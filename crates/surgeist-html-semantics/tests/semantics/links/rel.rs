@@ -1,4 +1,7 @@
-use crate::semantics::support::small_builder_with_short_text as builder;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
+    small_builder_with_short_text as builder,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
@@ -11,8 +14,8 @@ use surgeist_html_semantics::{
     HtmlRelSupportedTokens, HtmlRelUrlGrammar, HtmlRelUrlKey, HtmlRelUrlObservation,
     HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
     HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
-    HtmlSemanticValue,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult,
+    HtmlSemanticSession, HtmlSemanticValue,
 };
 use surgeist_html_semantics::{HtmlRelOriginId, HtmlRelSettingsId, HtmlRelUrlId};
 
@@ -636,8 +639,26 @@ fn noopener_exact_work_scratch_and_bytes_limits_retire_temporary_capacity_on_fai
         .query(std::slice::from_ref(&q))
         .unwrap();
     let usage = success.usage();
-    assert!(usage.peak_scratch_records() > 0);
     assert_eq!(usage.scratch_records(), 0);
+    // The independent expectation for the usage capped below: one Boolean
+    // result record, a relationship-token scan whose private layout makes
+    // work, scratch and token-buffer bytes required-to-be-charged rather than
+    // pinned, and no nested storage; the exact cap on every resource must
+    // reproduce the report and one short must fail with exactly that resource.
+    assert_exact_and_one_short_caps(
+        "noopener",
+        &c,
+        &cx,
+        100,
+        HtmlSemanticLimits::new(20000000, 1, 1000, 0, 1000000, 0),
+        std::slice::from_ref(&q),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let exact = HtmlSemanticLimits::new(
         usage.work(),
         1,
