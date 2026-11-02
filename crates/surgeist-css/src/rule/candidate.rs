@@ -2,7 +2,7 @@
 use crate::component::CssComponentValueLimits;
 use crate::diagnostic::CssRecoveryDiagnostic;
 use crate::parser::reconstruction::{BoundedParseContext, BoundedParseSyntax, parse_bounded};
-use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
+use crate::parser::recovery::{RecoveryState, SharedNamespaces};
 use crate::parser::rule_candidate::classify_rule_syntax_with_limits;
 use crate::parser::{conditional_chains, fragments, recovery};
 use crate::rule::CssRule;
@@ -117,13 +117,12 @@ impl CssRuleSyntax {
     ) -> CssParseReport<Option<CssRule>> {
         let source = self.origin.source().as_str();
         let refused = || None;
-        let report = fragments::bounded_report(source, refused, || {
+        let report = fragments::bounded_rules_report(source, refused, || {
             let (syntax, diagnostics) = parse_bounded(
                 source,
                 self.origin.source(),
-                0,
                 BoundedParseContext::Candidate { context },
-                StyleContextCaptures::with_namespaces(namespaces),
+                SharedNamespaces::with_namespaces(namespaces),
                 parser_context,
             )
             .into_parts();
@@ -163,9 +162,8 @@ impl CssRuleSyntax {
         let refused = || None;
         let report = fragments::bounded_report(source, refused, || {
             let state = RecoveryState::at_depth_with_snapshot(
-                source,
                 0,
-                StyleContextCaptures::default(),
+                SharedNamespaces::default(),
                 self.origin.source().clone(),
             )
             .with_parser_context(parser_context);

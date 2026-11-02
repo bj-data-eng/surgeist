@@ -1,13 +1,13 @@
 //! Contextual admission after every bounded sibling chunk has been reconstructed.
 //! Original token gaps prove parsed adjacency; reusable checked fragments use the
 //! separate complete-list assembly owner and never carry these source constraints.
-use super::recovery::next_source_token;
 use crate::CssParseReport;
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::rule::{CssRule, CssSheet, CssStyleBlock};
 use crate::source::{CssSourcePosition, CssSourceSpan};
-use cssparser::Token;
 use std::ops::Range;
+use surgeist_css_parser::Token;
+use surgeist_css_parser::lexer::{Lexer, Options};
 
 pub(super) fn sheet(source: &str, report: CssParseReport<CssSheet>) -> CssParseReport<CssSheet> {
     let (mut sheet, mut diagnostics) = report.into_parts();
@@ -138,31 +138,44 @@ fn check(
     *previous_end = Some(end);
     true
 }
-fn trivia_gap(source: &str, mut offset: usize, end: usize) -> bool {
+fn trivia_gap(source: &str, offset: usize, end: usize) -> bool {
     if offset > end {
         return false;
     }
-    while offset < end {
-        let Some((_, token_end, token)) = next_source_token(source, offset) else {
+    let Some(rest) = source.get(offset..) else {
+        return false;
+    };
+    let options = Options::default();
+    let mut lexer = Lexer::new(rest, &options);
+    let mut at = offset;
+    while at < end {
+        let Some(lexeme) = lexer.next_lexeme() else {
             return false;
         };
-        if token_end > end || !matches!(token, Token::WhiteSpace(_) | Token::Comment(_)) {
+        let token_end = offset + lexeme.range().end.value();
+        if token_end > end || !matches!(lexeme.token(), Token::Whitespace | Token::Comment) {
             return false;
         }
-        offset = token_end;
+        at = token_end;
     }
     true
 }
 // Same delimiter semantics as structural recovery, without an admission budget:
 // descendants may already have been discarded while the complete outer unit lives.
-fn balanced_unit_end(source: &str, mut offset: usize) -> usize {
+fn balanced_unit_end(source: &str, offset: usize) -> usize {
+    let Some(rest) = source.get(offset..) else {
+        return source.len();
+    };
+    let options = Options::default();
+    let mut lexer = Lexer::new(rest, &options);
     let mut blocks = Vec::new();
-    while let Some((_, end, token)) = next_source_token(source, offset) {
-        offset = end;
+    while let Some(lexeme) = lexer.next_lexeme() {
+        let end = offset + lexeme.range().end.value();
+        let token = lexeme.token();
         let close = match token {
-            Token::CloseParenthesis => Some(0),
-            Token::CloseSquareBracket => Some(1),
-            Token::CloseCurlyBracket => Some(2),
+            Token::CloseParen => Some(0),
+            Token::CloseSquare => Some(1),
+            Token::CloseCurly => Some(2),
             _ => None,
         };
         if let Some(close) = close {
@@ -178,9 +191,9 @@ fn balanced_unit_end(source: &str, mut offset: usize) -> usize {
             return end;
         }
         let open = match token {
-            Token::Function(_) | Token::ParenthesisBlock => Some(0),
-            Token::SquareBracketBlock => Some(1),
-            Token::CurlyBracketBlock => Some(2),
+            Token::Function(_) | Token::OpenParen => Some(0),
+            Token::OpenSquare => Some(1),
+            Token::OpenCurly => Some(2),
             _ => None,
         };
         if let Some(open) = open {

@@ -5,7 +5,7 @@ use crate::CssParseReport;
 use crate::diagnostic::error::ErrorKind;
 use crate::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
 use crate::parser::reconstruction::{BoundedParseContext, parse_sheet_bounded};
-use crate::parser::recovery::StyleContextCaptures;
+use crate::parser::recovery::SharedNamespaces;
 use crate::rule::{CssNamespaceName, CssNamespacePrefix, CssRule, CssSheet, CssStyleRule};
 use crate::selector::{CssNamespaceConstraint, CssNamespaceContext, CssSelector, CssStyleSelector};
 use crate::source::{CssSourcePosition, CssSourceSnapshot};
@@ -539,28 +539,36 @@ fn real_brace_style_block_keeps_statement_eof_at_the_actual_inner_parent_bound()
     }
 }
 
-fn direct_bounded(source: &str) -> CssParseReport<CssSheet> {
+/// The sheet parse as the stack policy admits it: deeper than the trusted depth
+/// it runs on the parser thread, whatever the caller's stack.
+fn stack_bounded(source: &str) -> CssParseReport<CssSheet> {
     let snapshot = CssSourceSnapshot::new(source);
-    let report = parse_sheet_bounded(
+    let report = super::bounded_execution::report(
+        super::bounded_execution::StackProfile::Structural,
         source,
-        &snapshot,
-        0,
-        BoundedParseContext::Rules { top_level: true },
-        StyleContextCaptures::default(),
-        crate::CssParserContext::default(),
+        CssSheet::new,
+        || {
+            parse_sheet_bounded(
+                source,
+                &snapshot,
+                BoundedParseContext::Sheet,
+                SharedNamespaces::default(),
+                crate::CssParserContext::default(),
+            )
+        },
     );
     recovery::finish_report(source, conditional_chains::sheet(source, report))
 }
 
-fn direct_depth_on_two_mib(depth: usize) {
+fn bounded_depth_on_two_mib(depth: usize) {
     std::thread::Builder::new()
-        .name(format!("direct-css-depth-{depth}"))
+        .name(format!("bounded-css-depth-{depth}"))
         .stack_size(2 * 1024 * 1024)
         .spawn(move || {
             for scoped in [false, true] {
                 for terminated in [true, false] {
                     let (source, start, end) = layer_source(depth, scoped, terminated);
-                    let report = direct_bounded(&source);
+                    let report = stack_bounded(&source);
                     if depth <= 256 {
                         assert_layer_chain(report.syntax(), depth, scoped, Some(start), &source);
                         if terminated {
@@ -627,16 +635,16 @@ fn direct_depth_on_two_mib(depth: usize) {
 }
 
 #[test]
-fn direct_bounded_owner_retains_255_groups_and_completes_lifecycle_on_two_mib() {
-    direct_depth_on_two_mib(255);
+fn bounded_owner_retains_255_groups_and_completes_lifecycle_on_two_mib() {
+    bounded_depth_on_two_mib(255);
 }
 
 #[test]
-fn direct_bounded_owner_retains_256_groups_and_completes_lifecycle_on_two_mib() {
-    direct_depth_on_two_mib(256);
+fn bounded_owner_retains_256_groups_and_completes_lifecycle_on_two_mib() {
+    bounded_depth_on_two_mib(256);
 }
 
 #[test]
-fn direct_bounded_owner_drops_only_group_257_on_two_mib() {
-    direct_depth_on_two_mib(257);
+fn bounded_owner_drops_only_group_257_on_two_mib() {
+    bounded_depth_on_two_mib(257);
 }

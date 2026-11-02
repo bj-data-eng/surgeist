@@ -3,12 +3,12 @@ use super::block_units::{
     location_at, offset_of,
 };
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
-use super::descriptor_stream::{Value, fail, from_component, from_here, parse_scope, read_scope};
+use super::descriptor_stream::{Value, fail, from_component, from_here, read_scope};
 use super::rule_list::{
     RuleBlock, RuleListGrammar, RuleListKind, RuleListSink, UnitState, recover_rule_list,
 };
 use super::syntax_types::{Attached, Site, Stream, SyntaxError};
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 use surgeist_css_parser::Offset;
 use surgeist_css_parser::Token;
 use surgeist_css_parser::grammar::{
@@ -207,6 +207,8 @@ pub(super) struct KeyframeBlockParser<'s> {
     pub(super) diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
     unit: UnitState,
+    /// Where the last qualified rule the driver handed over ends.
+    pub(super) rule_end: Option<usize>,
 }
 
 impl<'s> KeyframeBlockParser<'s> {
@@ -216,6 +218,7 @@ impl<'s> KeyframeBlockParser<'s> {
             diagnostics: Vec::new(),
             recovery,
             unit: UnitState::new(),
+            rule_end: None,
         }
     }
 
@@ -307,19 +310,19 @@ impl<'i> RuleListGrammar<'i> for KeyframeBlockParser<'_> {
                 location_at(self.recovery.source_snapshot(), offset_of(start)),
             ));
         };
-        let selectors =
-            match parse_keyframe_selector_list_stream(prelude, self.recovery.source_snapshot()) {
-                Ok(selectors) => selectors,
-                Err(error) => {
-                    self.unit.prelude_failed = true;
-                    self.unit.block_error = self.recovery.check_failed_rule_block_at(
-                        self.source,
-                        opening + 1,
-                        "css.qualified-rule",
-                    );
-                    return Err(error);
-                }
-            };
+        let selectors = match parse_keyframe_selector_list(prelude, self.recovery.source_snapshot())
+        {
+            Ok(selectors) => selectors,
+            Err(error) => {
+                self.unit.prelude_failed = true;
+                self.unit.block_error = self.recovery.check_failed_rule_block_at(
+                    self.source,
+                    opening + 1,
+                    "css.qualified-rule",
+                );
+                return Err(error);
+            }
+        };
         self.block(selectors, start, opening, block)
     }
 
@@ -360,6 +363,7 @@ impl<'i> RuleGrammar<'i, Attached<'i>> for KeyframeBlockParser<'_> {
         rule: QualifiedRule<'i, Attached<'i>>,
     ) -> Result<Self::Item, GrammarError<'i>> {
         let at = rule.start();
+        self.rule_end = Some(offset_of(rule.end()));
         let block = super::rule_list::rule_block_of(Some(rule.block()), rule.end());
         let mut prelude = rule.prelude();
         self.admit_qualified(at, &mut prelude, block)
@@ -374,24 +378,15 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for KeyframeBlockParser<'_> {
     }
 }
 
-/// The selector list of a keyframe block that the native parser `input`
-/// holds, to the end of its scope.
-pub(super) fn parse_keyframe_selector_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    snapshot: &crate::source::CssSourceSnapshot,
-) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, CssError>> {
-    parse_scope(input, snapshot, read_keyframe_selector_list)
-}
-
 /// The selector list of a keyframe block that the stream `input` holds.
-pub(super) fn parse_keyframe_selector_list_stream<'i>(
+pub(super) fn parse_keyframe_selector_list<'i>(
     input: &mut Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
 ) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, CssError>> {
     read_scope(input, snapshot, read_keyframe_selector_list)
 }
 
-fn read_keyframe_selector_list<'i>(
+pub(super) fn read_keyframe_selector_list<'i>(
     input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Value<'i, CssKeyframeSelectorList> {

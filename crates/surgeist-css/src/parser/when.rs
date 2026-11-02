@@ -75,18 +75,10 @@ fn prelude_error<'i>(
 ) -> ParseError<'i, CssError> {
     let position = crate::query::media::construction::parsed_position(error.origin())
         .unwrap_or_else(|| {
-            let mut offset = fallback;
-            while let Some((start, end, token)) = super::recovery::next_source_token(source, offset)
-            {
-                if !matches!(
-                    token,
-                    cssparser::Token::WhiteSpace(_) | cssparser::Token::Comment(_)
-                ) {
-                    return CssSourcePosition::from_byte_offset_in(source, start);
-                }
-                offset = end;
-            }
-            CssSourcePosition::from_byte_offset_in(source, source.len())
+            CssSourcePosition::from_byte_offset_in(
+                source,
+                super::structure::first_non_trivia(source, fallback, source.len()),
+            )
         });
     let location = cssparser::SourceLocation {
         line: position.line().value(),
@@ -97,8 +89,9 @@ fn prelude_error<'i>(
             crate::diagnostic::error::invalid_component_value(location, error)
         }
         _ => {
-            let token = super::recovery::next_source_token(source, position.byte_offset().value())
-                .map(|(_, _, token)| token);
+            let token =
+                crate::tokenization::next_source_token(source, position.byte_offset().value())
+                    .map(|(_, _, token)| token);
             crate::diagnostic::error::invalid_when_prelude(position, name, token.as_ref())
         }
     }

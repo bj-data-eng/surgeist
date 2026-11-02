@@ -32,7 +32,7 @@ pub(crate) use kind_predicates;
 
 use std::fmt;
 
-use cssparser::{BasicParseError, BasicParseErrorKind, ParseError, ParseErrorKind, ToCss, Token};
+use cssparser::{BasicParseErrorKind, ParseError, ParseErrorKind, ToCss, Token};
 
 use crate::declaration::CssCustomPropertyName;
 use crate::property::CssKnownProperty;
@@ -2101,19 +2101,6 @@ fn basic_error(location: cssparser::SourceLocation, kind: BasicParseErrorKind<'_
             }),
         ),
     }
-}
-
-pub(crate) fn basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, CssError> {
-    error.into()
-}
-
-pub(crate) fn selector_basic<'i>(error: BasicParseError<'i>) -> ParseError<'i, CssError> {
-    let location = error.location;
-    let encountered = match error.kind {
-        BasicParseErrorKind::UnexpectedToken(token) => Some(CssTokenSummary::from_token(&token)),
-        _ => None,
-    };
-    selector_encountered_at(location, encountered)
 }
 
 /// An invalid selector at `location`, naming the token it met when there is one.

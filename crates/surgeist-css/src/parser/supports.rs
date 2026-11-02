@@ -4,7 +4,7 @@ use super::boolean_condition::{
 use super::descriptor_stream::{
     Value, byte_offset, collect_scope, consume_remaining, location, native, read_scope,
 };
-use super::recovery::{RecoveryState, StyleContextCaptures};
+use super::recovery::{RecoveryState, SharedNamespaces};
 use super::selectors::{SelectorRecovery, read_rule_selector};
 use super::syntax_types::{Stream, SyntaxError};
 use crate::component::values::CssComponentValueErrorKind;
@@ -190,7 +190,7 @@ pub(crate) fn construct_supports_condition_with_context(
     parser_context: crate::CssParserContext,
 ) -> Result<CssCondition<CssSupportsLeaf>, CssSupportsConstructionError> {
     validate(&values, limits)?;
-    let recovery = RecoveryState::at_depth("", 0, StyleContextCaptures::default())
+    let recovery = RecoveryState::at_depth("", 0, SharedNamespaces::default())
         .with_parser_context(parser_context);
     if let Some(name) = &namespaces.0.default {
         recovery.activate_namespace(None, name.clone());
@@ -725,7 +725,7 @@ mod generated_selector_tests {
             panic!("Is")
         };
         let expected = is.values().items()[1].origin().clone();
-        let state = RecoveryState::at_depth(source, 254, StyleContextCaptures::default());
+        let state = RecoveryState::at_depth(source, 254, SharedNamespaces::default());
         let value = condition(
             SupportsLexical::root(values.clone()),
             &state,
@@ -738,7 +738,7 @@ mod generated_selector_tests {
             CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
         ));
         assert_eq!(state.structural_depth(), 254);
-        let state = RecoveryState::at_depth(source, 255, StyleContextCaptures::default());
+        let state = RecoveryState::at_depth(source, 255, SharedNamespaces::default());
         let error = condition(
             SupportsLexical::root(values),
             &state,

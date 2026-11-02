@@ -35,6 +35,8 @@ pub(crate) mod content_values;
 pub(crate) mod counter_style;
 pub(crate) mod declaration_block;
 pub(crate) mod declaration_unit;
+#[cfg(test)]
+pub(crate) mod deep_sibling_tests;
 pub(crate) mod descriptor_stream;
 pub(crate) mod domain_declaration_contents;
 pub(crate) mod effects;
@@ -71,8 +73,6 @@ pub(crate) mod overflow_controls;
 pub(crate) mod page;
 pub(crate) mod page_margin_rule;
 pub(crate) mod position;
-#[cfg(test)]
-pub(crate) mod preparation_growth_tests;
 pub(crate) mod property_input;
 pub(crate) mod queries;
 pub(crate) mod query_components;
@@ -80,8 +80,6 @@ pub(crate) mod quirky_color;
 pub(crate) mod quirky_length;
 pub(crate) mod reconstruction;
 pub(crate) mod recovery;
-#[cfg(test)]
-pub(crate) mod replay_growth_tests;
 pub(crate) mod rule_candidate;
 pub(crate) mod rule_list;
 pub(crate) mod scroll_snap;
@@ -93,6 +91,9 @@ pub(crate) mod side_shapes;
 pub(crate) mod sizing;
 pub(crate) mod sizing_controls;
 pub(crate) mod speech;
+#[cfg(test)]
+pub(crate) mod statement_growth_tests;
+pub(crate) mod structure;
 #[cfg(test)]
 pub(crate) mod style_scope_media_separator_tests;
 pub(crate) mod style_selector_fragments;
@@ -219,7 +220,7 @@ use shape_outside::parse_shape_outside;
 use view_transitions::parse_view_transition_name;
 // Shared checked media construction uses the same private admission engine.
 
-use cssparser::{CowRcStr, Delimiter, ParseError, Parser, ParserInput, ParserState, Token};
+use cssparser::{CowRcStr, Delimiter, ParseError, Parser, ParserState};
 
 use crate::parser::alignment::*;
 use crate::parser::background::*;
@@ -265,8 +266,7 @@ use counter_style::{CounterStylePrelude, parse_counter_style_name};
 use font_palette::parse_font_palette;
 use grid_placement::{parse_grid_area, parse_grid_line, parse_grid_line_range};
 use keyframes::parse_keyframes_name;
-use nesting::parse_style_contents;
-use recovery::{RecoveryState, StyleContextCaptures, recovery_action_for_error};
+use recovery::{RecoveryState, SharedNamespaces, recovery_action_for_error};
 use selectors::SelectorRecovery;
 use sizing::{parse_max_size_value, parse_size_value};
 use variables::{
@@ -281,9 +281,8 @@ use crate::declaration::{
 };
 use crate::diagnostic::error::{
     from_parse_error, from_rule_parse_error, invalid_at_rule_placement,
-    invalid_custom_declaration_annotation, invalid_descriptor_annotation,
-    invalid_known_declaration_annotation, invalid_syntax, property_name_error,
-    with_at_rule_prelude_context, with_property_context,
+    invalid_custom_declaration_annotation, invalid_known_declaration_annotation, invalid_syntax,
+    property_name_error, with_at_rule_prelude_context, with_property_context,
 };
 use crate::diagnostic::{CssError, CssFeatureId};
 use crate::property::CssPropertyNameRef;
@@ -676,9 +675,8 @@ fn parse_sheet_snapshot_inner(
         parse_sheet_bounded(
             source,
             source_snapshot,
-            0,
-            BoundedParseContext::Rules { top_level: true },
-            StyleContextCaptures::default(),
+            BoundedParseContext::Sheet,
+            SharedNamespaces::default(),
             parser_context,
         )
     });
@@ -691,74 +689,8 @@ pub(crate) enum ScopedBodyKind {
     OrdinaryGroup,
 }
 
-// Detached style and scoped contexts replay one rule list over the caller's
-// source; failing to build its token tree rejects the whole source.
-fn parse_context_inner(
-    source: &str,
-    recovery: RecoveryState,
-    parse: impl for<'i> FnOnce(
-        &'i str,
-        syntax_types::Stream<'i>,
-        RecoveryState,
-    ) -> Recovered<Vec<CssRule>>,
-) -> crate::CssParseReport<CssSheet> {
-    let document = match recovery.syntax_document(source) {
-        Ok(document) => document,
-        Err(error) => {
-            let error = crate::diagnostic::error::invalid_component_value(
-                block_units::location_at(recovery.source_snapshot(), 0),
-                error,
-            );
-            return crate::CssParseReport::new(
-                CssSheet::new(),
-                vec![fragments::reject(
-                    source,
-                    error,
-                    crate::diagnostic::CssRecoveryAction::DropQualifiedRule,
-                )],
-            );
-        }
-    };
-    let recovered = parse(source, document.root(), recovery.clone());
-    let mut sheet = CssSheet::new();
-    for rule in recovered.syntax {
-        sheet.push_rule(rule);
-    }
-    let mut diagnostics = recovered.diagnostics;
-    diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
-    crate::CssParseReport::new(sheet, diagnostics)
-}
-
-fn parse_style_context_inner(
-    source: &str,
-    recovery: RecoveryState,
-) -> crate::CssParseReport<CssSheet> {
-    parse_context_inner(source, recovery, |source, contents, recovery| {
-        let recovered = parse_style_contents(source, contents, recovery);
-        Recovered {
-            syntax: recovered.syntax.into_nested_rules(),
-            diagnostics: recovered.diagnostics,
-        }
-    })
-}
-
-fn parse_scoped_context_inner(
-    source: &str,
-    recovery: RecoveryState,
-    has_style_ancestor: bool,
-    body: ScopedBodyKind,
-) -> crate::CssParseReport<CssSheet> {
-    parse_context_inner(source, recovery, |source, contents, recovery| {
-        parse_scoped_rule_list(source, contents, recovery, has_style_ancestor, body)
-    })
-}
-
-fn parse_sheet_inner(
-    source: &str,
-    recovery: RecoveryState,
-    top_level: bool,
-) -> crate::CssParseReport<CssSheet> {
-    let document = match recovery.syntax_document(source) {
+fn parse_sheet_inner(source: &str, recovery: RecoveryState) -> crate::CssParseReport<CssSheet> {
+    let document = match recovery.syntax_document() {
         Ok(document) => document,
         Err(error) => {
             return crate::CssParseReport::new(
@@ -767,21 +699,15 @@ fn parse_sheet_inner(
             );
         }
     };
-    // A non-top-level sheet is the isolated replay of a unit from a group
-    // block, whose list is consumed as that block's contents.
-    let (mut grammar, kind) = if top_level {
-        (
-            RuleParser::top_level(source, recovery.clone()),
-            RuleListKind::Stylesheet,
-        )
-    } else {
-        (
-            RuleParser::group(source, recovery.clone()),
-            RuleListKind::Rules,
-        )
-    };
+    let mut grammar = RuleParser::top_level(source, recovery.clone());
     let mut sink = SheetSink(CssSheet::new());
-    recover_rule_list(source, document.root(), kind, &mut grammar, &mut sink);
+    recover_rule_list(
+        source,
+        document.root(),
+        RuleListKind::Stylesheet,
+        &mut grammar,
+        &mut sink,
+    );
     let mut diagnostics = grammar.diagnostics;
     diagnostics.extend(recovery.take_implicit_closure_diagnostics(source));
     crate::CssParseReport::new(sink.0, diagnostics)
@@ -860,13 +786,13 @@ pub(crate) fn top_level_only_at_rule_placement<'i>(
     invalid_at_rule_placement(location, name, "the stylesheet top level")
 }
 
+/// Whether the text of a dropped unit begins with an identifier, as a
+/// declaration does: its first token is no whitespace or comment.
 pub(crate) fn is_declaration_recovery_unit(failed_unit: &str) -> bool {
-    let mut input = ParserInput::new(failed_unit);
-    let mut parser = Parser::new(&mut input);
-    matches!(
-        parser.next_including_whitespace_and_comments(),
-        Ok(Token::Ident(_))
-    )
+    let options = surgeist_css_parser::lexer::Options::default();
+    surgeist_css_parser::lexer::Lexer::new(failed_unit, &options)
+        .next_lexeme()
+        .is_some_and(|lexeme| matches!(lexeme.token(), surgeist_css_parser::Token::Ident(_)))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1073,9 +999,6 @@ fn parse_scoped_rule_list<'i>(
     has_style_ancestor: bool,
     body: ScopedBodyKind,
 ) -> Recovered<Vec<CssRule>> {
-    if has_style_ancestor {
-        recovery.record_style_context(block_units::offset_of(contents.start_site()));
-    }
     let mut grammar = RuleParser::scoped(source, recovery.clone(), has_style_ancestor, body);
     // Without a style ancestor neither body admits declarations, so every unit
     // is read as a rule; with one, each unit is tried as a declaration before
@@ -1452,17 +1375,13 @@ impl ParsedDeclaration {
     }
 }
 
-enum DeclarationBoundaryContext<'a> {
+enum DeclarationBoundaryContext {
     OrdinarySvgGlyph,
     KeyframeSvgGlyph,
     OrdinaryKnown(crate::property::CssKnownProperty),
     OrdinaryCustom(CssCustomPropertyName),
     KeyframeKnown(crate::property::CssKnownProperty),
     KeyframeCustom(CssCustomPropertyName),
-    Descriptor {
-        at_rule: &'a str,
-        descriptor: &'a str,
-    },
 }
 
 /// The single admission predicate for known properties in authored keyframes.
@@ -1480,62 +1399,13 @@ pub(crate) fn keyframe_property_admitted(property: CssKnownProperty) -> bool {
     )
 }
 
-pub(crate) fn parse_declaration_core<'i, 't>(
-    mode: DeclarationMode,
-    name: CowRcStr<'i>,
-    input: &mut Parser<'i, 't>,
-    declaration_start: &ParserState,
-    source_snapshot: &CssSourceSnapshot,
-    parser_context: crate::CssParserContext,
-) -> std::result::Result<ParsedDeclaration, ParseError<'i, CssError>> {
-    // Revisit only the name token. The original snapshot is shared even when
-    // this parser reads a same-length masked structural chunk.
-    let value_start = input.state();
-    input.reset(declaration_start);
-    input.expect_ident()?;
-    let name_origin = CssParsedOrigin::from_range(
-        source_snapshot,
-        declaration_start.position().byte_index()..input.position().byte_index(),
-    )
-    .expect("parser name boundaries belong to the original source");
-    input.reset(&value_start);
-
-    let plan = declaration_plan(
-        mode,
-        name.as_ref(),
-        declaration_start.source_location(),
-        parser_context,
-    )?;
-    let numeric = crate::numeric::expression::NumericInputContext::parsed(source_snapshot);
-    let ((body, components, value_origin), importance) =
-        parse_declaration_boundary(input, &plan.context, |input| {
-            collect_declaration_value(input, source_snapshot, |input| {
-                parse_property_declaration_source(
-                    plan.grammar(),
-                    input,
-                    &numeric,
-                    plan.value_context,
-                )
-                .map_err(|error| plan.contextualize(error))
-            })
-        })?;
-    Ok(ParsedDeclaration {
-        body,
-        importance,
-        components,
-        name: name_origin,
-        value_origin,
-        parser_context,
-    })
-}
-
 /// What the name of a declaration selects: the context its importance
 /// annotation is judged in and the grammar its value is read with. Both the
 /// native declaration callbacks and the ported declaration grammars choose
 /// them here, in this order: custom property, SVG glyph property, known
 /// property.
 struct DeclarationPlan {
-    context: DeclarationBoundaryContext<'static>,
+    context: DeclarationBoundaryContext,
     grammar: PlannedGrammar,
     /// The parser context the value grammar reads with.
     value_context: crate::CssParserContext,
@@ -1626,29 +1496,6 @@ fn declaration_plan<'i>(
             custom_name: None,
         })
     }
-}
-
-pub(crate) fn collect_declaration_value<'i, 't, T>(
-    input: &mut Parser<'i, 't>,
-    source_snapshot: &CssSourceSnapshot,
-    parse_value: impl FnOnce(&mut Parser<'i, 't>) -> std::result::Result<T, ParseError<'i, CssError>>,
-) -> std::result::Result<(T, CssComponentValues, CssParsedOrigin), ParseError<'i, CssError>> {
-    let start = input.state();
-    let value = parse_value(input)?;
-    input.reset(&start);
-    let components =
-        CssComponentValues::collect_from_parser(input, source_snapshot).map_err(|error| {
-            crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                error,
-            )
-        })?;
-    let origin = CssParsedOrigin::from_range(
-        source_snapshot,
-        start.position().byte_index()..input.position().byte_index(),
-    )
-    .expect("parser value boundaries belong to the original source");
-    Ok((value, components, origin))
 }
 
 /// The original checked property pipeline under the producer's one live control.
@@ -1861,49 +1708,6 @@ fn parse_property_declaration_body_from_property_input<'i>(
             })
         }
     }
-}
-
-// Native rule/declaration cursors select a source window; only the portable
-// property cursor admits the selected value. The source arena retains lexical
-// failures so the property grammar supplies their diagnostic context.
-fn parse_property_declaration_source<'i>(
-    grammar: PropertyValueGrammar<'_>,
-    input: &mut Parser<'i, '_>,
-    numeric: &crate::numeric::expression::NumericInputContext<'_>,
-    parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
-    let crate::numeric::expression::NumericInputContext::Parsed(snapshot) = numeric.ordinary()
-    else {
-        unreachable!("native property adapters receive source input")
-    };
-    let start = input.position().byte_index();
-    while let Ok(token) = input.next_including_whitespace_and_comments().cloned() {
-        fragments::finish_nested_component(input, &token)?;
-    }
-    let end = input.position().byte_index();
-    let document = crate::syntax_consumption::source_window_document(snapshot, start..end)
-        .map_err(|error| {
-            crate::diagnostic::error::invalid_component_value(
-                input.current_source_location(),
-                error,
-            )
-        })?;
-    let mut property_input = document.root();
-    parse_property_declaration_body_from_property_input(
-        grammar,
-        &mut property_input,
-        numeric,
-        parser_context,
-    )
-    .map_err(|error| {
-        let error = error.into_source_error();
-        let position = error.position();
-        cssparser::SourceLocation {
-            line: position.line().value(),
-            column: position.column().value() + 1,
-        }
-        .new_custom_error(error)
-    })
 }
 
 fn parse_known_declaration_body_from_property_input<'i>(
@@ -2276,8 +2080,7 @@ fn parse_legacy_property_alias_value<'i>(
 /// `important` identifier that follows it, ignoring trivia.
 ///
 /// This is the one detection of the annotation for retained node lists, for
-/// component values and, through [`parse_importance_boundary`], for token
-/// streams. Whether an owner admits the annotation, and what a rejected one
+/// component values and for token streams. Whether an owner admits the annotation, and what a rejected one
 /// reports, stays with that owner.
 /// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration>
 pub(crate) fn trailing_importance<T>(
@@ -2297,64 +2100,9 @@ pub(crate) fn trailing_importance<T>(
     (is_bang(&items[bang]) && is_important(&items[word])).then_some((bang, word))
 }
 
-/// The single importance boundary of a declaration value. Syntax 3 (2026 CRD)
-/// §5.5.6 step 6: a value whose last two non-whitespace tokens are `!` and
-/// `important` carries the importance annotation. Each owner decides whether
-/// it admits the annotation and which error a rejected annotation reports:
-/// `invalid` receives the `!` location and, for a malformed annotation, the
-/// first token that is not part of it.
-/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration>
-pub(crate) fn parse_importance_boundary<'i, 't, T>(
-    input: &mut Parser<'i, 't>,
-    importance_admitted: bool,
-    invalid: impl FnOnce(
-        cssparser::SourceLocation,
-        Option<cssparser::BasicParseError<'i>>,
-    ) -> ParseError<'i, CssError>,
-    parse_value: impl for<'tt> FnOnce(
-        &mut Parser<'i, 'tt>,
-    ) -> std::result::Result<T, ParseError<'i, CssError>>,
-) -> std::result::Result<(T, CssImportance), ParseError<'i, CssError>> {
-    let value = input.parse_until_before(Delimiter::Bang, parse_value)?;
-    if input.is_exhausted() {
-        return Ok((value, CssImportance::Normal));
-    }
-    let bang_location = input.current_source_location();
-    let annotation = input
-        .expect_delim('!')
-        .and_then(|()| input.expect_ident_matching("important"))
-        .and_then(|()| input.expect_exhausted());
-    match annotation {
-        Ok(()) if importance_admitted => Ok((value, CssImportance::Important)),
-        Ok(()) => Err(invalid(bang_location, None)),
-        Err(malformed) => Err(invalid(bang_location, Some(malformed))),
-    }
-}
-
-fn parse_declaration_boundary<'i, 't, T>(
-    input: &mut Parser<'i, 't>,
-    context: &DeclarationBoundaryContext<'_>,
-    parse_value: impl for<'tt> FnOnce(
-        &mut Parser<'i, 'tt>,
-    ) -> std::result::Result<T, ParseError<'i, CssError>>,
-) -> std::result::Result<(T, CssImportance), ParseError<'i, CssError>> {
-    let ordinary = matches!(
-        context,
-        DeclarationBoundaryContext::OrdinaryKnown(_)
-            | DeclarationBoundaryContext::OrdinaryCustom(_)
-            | DeclarationBoundaryContext::OrdinarySvgGlyph
-    );
-    parse_importance_boundary(
-        input,
-        ordinary,
-        |location, _| invalid_annotation_for_context(location, context),
-        parse_value,
-    )
-}
-
 fn invalid_annotation_for_context<'i>(
     location: cssparser::SourceLocation,
-    context: &DeclarationBoundaryContext<'_>,
+    context: &DeclarationBoundaryContext,
 ) -> ParseError<'i, CssError> {
     match context {
         DeclarationBoundaryContext::OrdinarySvgGlyph
@@ -2376,26 +2124,7 @@ fn invalid_annotation_for_context<'i>(
         DeclarationBoundaryContext::KeyframeCustom(property) => {
             invalid_custom_declaration_annotation(location, property, true)
         }
-        DeclarationBoundaryContext::Descriptor {
-            at_rule,
-            descriptor,
-        } => invalid_descriptor_annotation(location, at_rule, descriptor),
     }
-}
-
-pub(crate) fn parse_descriptor_boundary<'i, 't, T>(
-    input: &mut Parser<'i, 't>,
-    at_rule: &str,
-    descriptor: &str,
-    parse_value: impl for<'tt> FnOnce(
-        &mut Parser<'i, 'tt>,
-    ) -> std::result::Result<T, ParseError<'i, CssError>>,
-) -> std::result::Result<T, ParseError<'i, CssError>> {
-    let context = DeclarationBoundaryContext::Descriptor {
-        at_rule,
-        descriptor,
-    };
-    parse_declaration_boundary(input, &context, parse_value).map(|(value, _)| value)
 }
 
 pub(crate) struct CustomMediaPrelude {
@@ -2525,4 +2254,174 @@ fn finish_custom_media(
         prelude.body_origin,
         prelude.semicolon,
     ))
+}
+
+pub(crate) fn parse_declaration_core<'i, 't>(
+    mode: DeclarationMode,
+    name: CowRcStr<'i>,
+    input: &mut Parser<'i, 't>,
+    declaration_start: &ParserState,
+    source_snapshot: &CssSourceSnapshot,
+    parser_context: crate::CssParserContext,
+) -> std::result::Result<ParsedDeclaration, ParseError<'i, CssError>> {
+    // Revisit only the name token. The original snapshot is shared even when
+    // this parser reads a same-length masked structural chunk.
+    let value_start = input.state();
+    input.reset(declaration_start);
+    input.expect_ident()?;
+    let name_origin = CssParsedOrigin::from_range(
+        source_snapshot,
+        declaration_start.position().byte_index()..input.position().byte_index(),
+    )
+    .expect("parser name boundaries belong to the original source");
+    input.reset(&value_start);
+
+    let plan = declaration_plan(
+        mode,
+        name.as_ref(),
+        declaration_start.source_location(),
+        parser_context,
+    )?;
+    let numeric = crate::numeric::expression::NumericInputContext::parsed(source_snapshot);
+    let ((body, components, value_origin), importance) =
+        parse_declaration_boundary(input, &plan.context, |input| {
+            collect_declaration_value(input, source_snapshot, |input| {
+                parse_property_declaration_source(
+                    plan.grammar(),
+                    input,
+                    &numeric,
+                    plan.value_context,
+                )
+                .map_err(|error| plan.contextualize(error))
+            })
+        })?;
+    Ok(ParsedDeclaration {
+        body,
+        importance,
+        components,
+        name: name_origin,
+        value_origin,
+        parser_context,
+    })
+}
+
+pub(crate) fn collect_declaration_value<'i, 't, T>(
+    input: &mut Parser<'i, 't>,
+    source_snapshot: &CssSourceSnapshot,
+    parse_value: impl FnOnce(&mut Parser<'i, 't>) -> std::result::Result<T, ParseError<'i, CssError>>,
+) -> std::result::Result<(T, CssComponentValues, CssParsedOrigin), ParseError<'i, CssError>> {
+    let start = input.state();
+    let value = parse_value(input)?;
+    input.reset(&start);
+    let components =
+        CssComponentValues::collect_from_parser(input, source_snapshot).map_err(|error| {
+            crate::diagnostic::error::invalid_component_value(
+                input.current_source_location(),
+                error,
+            )
+        })?;
+    let origin = CssParsedOrigin::from_range(
+        source_snapshot,
+        start.position().byte_index()..input.position().byte_index(),
+    )
+    .expect("parser value boundaries belong to the original source");
+    Ok((value, components, origin))
+}
+
+// Native rule/declaration cursors select a source window; only the portable
+// property cursor admits the selected value. The source arena retains lexical
+// failures so the property grammar supplies their diagnostic context.
+fn parse_property_declaration_source<'i>(
+    grammar: PropertyValueGrammar<'_>,
+    input: &mut Parser<'i, '_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+    parser_context: crate::CssParserContext,
+) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
+    let crate::numeric::expression::NumericInputContext::Parsed(snapshot) = numeric.ordinary()
+    else {
+        unreachable!("native property adapters receive source input")
+    };
+    let start = input.position().byte_index();
+    while let Ok(token) = input.next_including_whitespace_and_comments().cloned() {
+        fragments::finish_nested_component(input, &token)?;
+    }
+    let end = input.position().byte_index();
+    let document = crate::syntax_consumption::source_window_document(snapshot, start..end)
+        .map_err(|error| {
+            crate::diagnostic::error::invalid_component_value(
+                input.current_source_location(),
+                error,
+            )
+        })?;
+    let mut property_input = document.root();
+    parse_property_declaration_body_from_property_input(
+        grammar,
+        &mut property_input,
+        numeric,
+        parser_context,
+    )
+    .map_err(|error| {
+        let error = error.into_source_error();
+        let position = error.position();
+        cssparser::SourceLocation {
+            line: position.line().value(),
+            column: position.column().value() + 1,
+        }
+        .new_custom_error(error)
+    })
+}
+
+/// The single importance boundary of a declaration value. Syntax 3 (2026 CRD)
+/// §5.5.6 step 6: a value whose last two non-whitespace tokens are `!` and
+/// `important` carries the importance annotation. Each owner decides whether
+/// it admits the annotation and which error a rejected annotation reports:
+/// `invalid` receives the `!` location and, for a malformed annotation, the
+/// first token that is not part of it.
+/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration>
+pub(crate) fn parse_importance_boundary<'i, 't, T>(
+    input: &mut Parser<'i, 't>,
+    importance_admitted: bool,
+    invalid: impl FnOnce(
+        cssparser::SourceLocation,
+        Option<cssparser::BasicParseError<'i>>,
+    ) -> ParseError<'i, CssError>,
+    parse_value: impl for<'tt> FnOnce(
+        &mut Parser<'i, 'tt>,
+    ) -> std::result::Result<T, ParseError<'i, CssError>>,
+) -> std::result::Result<(T, CssImportance), ParseError<'i, CssError>> {
+    let value = input.parse_until_before(Delimiter::Bang, parse_value)?;
+    if input.is_exhausted() {
+        return Ok((value, CssImportance::Normal));
+    }
+    let bang_location = input.current_source_location();
+    let annotation = input
+        .expect_delim('!')
+        .and_then(|()| input.expect_ident_matching("important"))
+        .and_then(|()| input.expect_exhausted());
+    match annotation {
+        Ok(()) if importance_admitted => Ok((value, CssImportance::Important)),
+        Ok(()) => Err(invalid(bang_location, None)),
+        Err(malformed) => Err(invalid(bang_location, Some(malformed))),
+    }
+}
+
+fn parse_declaration_boundary<'i, 't, T>(
+    input: &mut Parser<'i, 't>,
+    context: &DeclarationBoundaryContext,
+    parse_value: impl for<'tt> FnOnce(
+        &mut Parser<'i, 'tt>,
+    ) -> std::result::Result<T, ParseError<'i, CssError>>,
+) -> std::result::Result<(T, CssImportance), ParseError<'i, CssError>> {
+    let ordinary = matches!(
+        context,
+        DeclarationBoundaryContext::OrdinaryKnown(_)
+            | DeclarationBoundaryContext::OrdinaryCustom(_)
+            | DeclarationBoundaryContext::OrdinarySvgGlyph
+    );
+    parse_importance_boundary(
+        input,
+        ordinary,
+        |location, _| invalid_annotation_for_context(location, context),
+        parse_value,
+    )
 }

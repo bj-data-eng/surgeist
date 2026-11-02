@@ -1,5 +1,5 @@
 use super::Recovered;
-use super::block_units::{location_at, native_error, offset_of};
+use super::block_units::{location_at, native_error};
 use super::recovery::RecoveryState;
 use super::rule_list::{RuleListKind, RuleParser, StyleSink, recover_rule_list};
 use super::syntax_types::Stream;
@@ -19,7 +19,6 @@ pub(crate) fn parse_style_rule_block<'i>(
     contents: Stream<'i>,
     recovery: RecoveryState,
 ) -> Recovered<Vec<CssRule>> {
-    recovery.record_style_context(offset_of(contents.start_site()));
     let recovered = parse_style_contents(source, contents, recovery);
     Recovered {
         syntax: vec![CssRule::Style(CssStyleRule::new(
@@ -38,7 +37,6 @@ pub(crate) fn parse_style_contents<'i>(
     contents: Stream<'i>,
     recovery: RecoveryState,
 ) -> Recovered<StyleContents> {
-    recovery.record_style_context(offset_of(contents.start_site()));
     let mut grammar = RuleParser::style(source, recovery);
     let mut sink = StyleSink::new();
     recover_rule_list(
@@ -84,7 +82,7 @@ pub(super) fn admit_one_rule(
     Vec<crate::diagnostic::CssRecoveryDiagnostic>,
 ) {
     let snapshot = recovery.source_snapshot().clone();
-    let document = match recovery.syntax_document(source) {
+    let document = match recovery.syntax_document() {
         Ok(document) => document,
         Err(error) => {
             let error =
