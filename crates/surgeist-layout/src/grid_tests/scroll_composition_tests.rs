@@ -5344,3 +5344,6 @@ fn grid_gutter_intrinsic_auto_flows_and_context_in_f64() {
 
 #[path = "scroll_composition/cyclic_query_border.rs"]
 mod cyclic_query_border;
+
+#[path = "scroll_composition/auto_hidden_query.rs"]
+mod auto_hidden_query;
