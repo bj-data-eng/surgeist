@@ -2565,8 +2565,24 @@ mod tests {
             ("24:60:60", HtmlTemporalError::HourOutOfRange),
             ("23:60:60", HtmlTemporalError::MinuteOutOfRange),
             ("23:59:60", HtmlTemporalError::SecondOutOfRange),
-            ("24:00:00..1", HtmlTemporalError::InvalidSyntax),
+            // §2.3.5.4 fails at step 2 (hour range) before the colon, minute,
+            // seconds and fraction steps can be reached.
+            ("24:00:00..1", HtmlTemporalError::HourOutOfRange),
             ("24:00x", HtmlTemporalError::HourOutOfRange),
+            ("24", HtmlTemporalError::HourOutOfRange),
+            ("24:xx", HtmlTemporalError::HourOutOfRange),
+            ("99:99:99.9.9", HtmlTemporalError::HourOutOfRange),
+            // Step 5 (minute range) precedes the step 7 seconds scan.
+            ("23:60", HtmlTemporalError::MinuteOutOfRange),
+            ("23:60:x", HtmlTemporalError::MinuteOutOfRange),
+            ("23:60:00..1", HtmlTemporalError::MinuteOutOfRange),
+            // Step 7.3 (seconds grammar) precedes step 7.4 (seconds range).
+            ("23:59:60..1", HtmlTemporalError::InvalidSyntax),
+            ("23:59:60.", HtmlTemporalError::InvalidSyntax),
+            ("23:59:60.0000", HtmlTemporalError::SecondOutOfRange),
+            // Steps 1, 3 and 4 fail before any range step applies.
+            ("2x:00", HtmlTemporalError::InvalidSyntax),
+            ("23:6x", HtmlTemporalError::InvalidSyntax),
             ("12:00:001", HtmlTemporalError::InvalidSyntax),
         ] {
             assert_eq!(
@@ -3298,7 +3314,37 @@ mod tests {
             (
                 TemporalInputFormat::Time,
                 "24:00:XX",
+                HtmlTemporalError::HourOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "24:00:00..1",
+                HtmlTemporalError::HourOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "24",
+                HtmlTemporalError::HourOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "23:60:XX",
+                HtmlTemporalError::MinuteOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Time,
+                "23:59:60.1234",
                 HtmlTemporalError::InvalidSyntax,
+            ),
+            (
+                TemporalInputFormat::LocalDateTime,
+                "2023-01-01T24:00:XX",
+                HtmlTemporalError::HourOutOfRange,
+            ),
+            (
+                TemporalInputFormat::LocalDateTime,
+                "2023-01-01T23:60:00..1",
+                HtmlTemporalError::MinuteOutOfRange,
             ),
             (
                 TemporalInputFormat::Time,
