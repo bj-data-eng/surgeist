@@ -76,13 +76,6 @@ const EXCLUSIONS: &[(&str, usize, Exclusion)] = &[
     // `>` ends the target; after-target reconsumes it in PI data, which emits.
     ("test2.test", 32, pi(r#"Pi("namespace", "")"#, &[])),
     ("test2.test", 33, pi(r#"Pi("foo--", "")"#, &[])),
-    (
-        "test3.test",
-        80,
-        Exclusion::Defect(
-            "#1345: control-character-in-input-stream for the character after `<!` is reported after incorrectly-opened-comment; the corpus reports it first",
-        ),
-    ),
     ("test3.test", 1159, pi("", EOF_IN_PI)),
     (
         "test3.test",

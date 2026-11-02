@@ -2025,6 +2025,46 @@ fn lexical_comment_doctype_pi_cdata_and_raw_recovery_keep_original_field_atoms()
 }
 
 #[test]
+fn lookahead_reports_input_stream_error_of_the_character_it_examines_first() {
+    use DiagnosticCode::{
+        ControlCharacterInInputStream as Control, IncorrectlyOpenedComment as Incorrect,
+        InvalidCharacterSequenceAfterDoctypeName as AfterName,
+        NoncharacterInInputStream as Noncharacter,
+    };
+    // HTML877d 13.2.3.5: every control, noncharacter and surrogate in the input
+    // stream is a parse error of the stream itself. The markup declaration open
+    // state and the DOCTYPE keyword check examine the next few characters
+    // before deciding, so the stream error of a character they stop at precedes
+    // the tokenizer error that decision reports. A character no comparison
+    // reached is only examined when a later state consumes it, so its stream
+    // error follows the decision. html5lib tokenizer/test3.test case 80
+    // expects the first row.
+    for (input, expected) in [
+        ("<!\u{b}", vec![Control, Incorrect]),
+        ("<!-\u{b}", vec![Control, Incorrect]),
+        ("<![CDA\u{b}", vec![Control, Incorrect]),
+        ("<!\u{fffe}", vec![Noncharacter, Incorrect]),
+        ("<!DOCTYPE a P\u{b}", vec![Control, AfterName]),
+        ("<!DOCTYPE a SYSTE\u{fffe}", vec![Noncharacter, AfterName]),
+        ("<!x\u{b}", vec![Incorrect, Control]),
+        ("<!-x\u{b}", vec![Incorrect, Control]),
+    ] {
+        let source = HtmlSource::utf8(input);
+        assert_eq!(
+            collect(&source, State::Data, None, false).1,
+            expected,
+            "{input:?}"
+        );
+        let cuts: Vec<_> = (0..=source.len()).collect();
+        assert_eq!(
+            collect_progressive(&source, &cuts, false).1,
+            expected,
+            "{input:?} at every cut"
+        );
+    }
+}
+
+#[test]
 fn missing_end_tag_name_abandons_its_markup_occurrence() {
     use crate::construction::provenance::{LexicalDisposition as D, LexicalKind as K};
     // HTML877d end tag open state: U+003E is missing-end-tag-name, switches to
