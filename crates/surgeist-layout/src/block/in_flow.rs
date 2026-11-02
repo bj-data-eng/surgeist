@@ -613,13 +613,12 @@ where
                 )
             };
             let relative = relative_inset_offset(
-                constants
-                    .flow_axes
-                    .zip_physical_edges_with_inline_extent(
-                        *child_style.common.inset,
-                        node_inner_size,
-                        |length, basis| resolve_auto_optional(length, basis),
-                    )
+                child_style
+                    .common
+                    .inset
+                    .zip_size(node_inner_size, |length, basis| {
+                        resolve_auto_optional(length, basis)
+                    })
                     .transpose_with_node(tree, child)?,
                 constants.flow_axes,
             );
@@ -820,13 +819,12 @@ where
             }
         }
         let inset_offset = relative_inset_offset(
-            constants
-                .flow_axes
-                .zip_physical_edges_with_inline_extent(
-                    *child_style.common.inset,
-                    node_inner_size,
-                    |length, basis| resolve_auto_optional(length, basis),
-                )
+            child_style
+                .common
+                .inset
+                .zip_size(node_inner_size, |length, basis| {
+                    resolve_auto_optional(length, basis)
+                })
                 .transpose_with_node(tree, child)?,
             constants.flow_axes,
         );
