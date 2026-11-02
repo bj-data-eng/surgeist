@@ -667,14 +667,19 @@ fn renaming_an_element_assigns_the_name_and_clears_the_link_history_unless_a_lin
         UsageEffect::Changes,
         false,
     );
-    // A rename to a link leaves the history alone.
-    let (storage, node) = element(begin(), "div");
+    // A rename to a link leaves the history alone: the element has history to
+    // lose, and a prefix changes the name but keeps the HTML link expanded name.
+    let (storage, node) = link(begin(), Some(crate::HtmlLinkFlags::fresh()));
     assert_assigned(
-        "ReplaceContent renaming to a link",
+        "ReplaceContent renaming a link to a link",
         storage,
         HtmlConstructionCommand::ReplaceContent {
             node,
-            content: HtmlConstructionContent::ElementName(name(Namespace::html(), "link")),
+            content: HtmlConstructionContent::ElementName(QualifiedName::new(
+                Namespace::html(),
+                Some("p".into()),
+                "link",
+            )),
         },
         &["kind.element.name"],
         UsageEffect::Changes,
