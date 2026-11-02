@@ -1045,6 +1045,7 @@ impl Tokenizer<'_> {
             PiOpen | PiTarget | AfterPiTarget | PiData | PiQuestionable => {
                 self.error(EofInProcessingInstruction, c, evidence)?;
                 self.abandon_lexical(c, evidence)?;
+                self.discard_pi(c)?;
                 self.reconsume(Data, c)?;
             }
             MarkupDeclaration => return Err(c.fail_invariant(Invariant::TokenizerState)),

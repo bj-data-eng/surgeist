@@ -1682,6 +1682,21 @@ impl<'source> Tokenizer<'source> {
             evidence,
         )
     }
+    /// Drops the target and data drafts of an instruction that ends without a
+    /// token, once its lexical occurrence has retained their parts.
+    fn discard_pi(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+        // Admit both removals before taking either nested owner.
+        admit_record_write(const { 2 * size_of::<Option<DraftText>>() }, 2, c)?;
+        let target = self.pi_target.take();
+        let data = self.pi_data.take();
+        if let Some(target) = target {
+            target.release(c)?;
+        }
+        if let Some(data) = data {
+            data.release(c)?;
+        }
+        Ok(())
+    }
     fn create_doctype(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
         admit_record_write(size_of::<Option<DraftDoctype>>(), 1, c)?;
         self.doctype = Some(DraftDoctype::empty());
