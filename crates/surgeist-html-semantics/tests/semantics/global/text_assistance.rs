@@ -1,16 +1,19 @@
-use crate::semantics::support::{COLLECTION_RESOURCES, builder_with, cap_resources, session};
+use crate::semantics::support::{
+    COLLECTION_RESOURCES, Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder_with,
+    cap_resources, result_record_bytes, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedNodeKind,
-    HtmlCapturedShadowProperties, HtmlComputedWritingSuggestions, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlDesignMode, HtmlDocumentDesignModeFact, HtmlFormAssociation,
-    HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlGlobalInheritanceFacts,
+    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
+    HtmlCapturedNodeKind, HtmlCapturedShadowProperties, HtmlComputedWritingSuggestions,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlDesignMode, HtmlDocumentDesignModeFact,
+    HtmlFormAssociation, HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlGlobalInheritanceFacts,
     HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision,
     HtmlOwnAutocapitalizationHint, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUsage, HtmlSemanticValue, HtmlUsedAutocapitalizationBranch,
+    HtmlSemanticResource, HtmlSemanticValue, HtmlUsedAutocapitalizationBranch,
     HtmlUsedAutocapitalizationHint, HtmlUsedAutocorrectionState,
 };
 
@@ -632,6 +635,146 @@ fn autocorrect_present_empty_invalid_and_off_bypass_unknown_owner() {
         );
     }
 }
+// Oracle for the next three tests: HTML 877d §§6.8.6-6.8.8, retained in
+// references/html-text-assistance--877d6146487f.md. writingsuggestions: missing
+// value default Default, empty and invalid value defaults True. autocapitalize:
+// missing value default Default, invalid value default Sentences, and an empty
+// content attribute is not used (own hint steps 1-2). autocorrect: missing,
+// empty and invalid value defaults all On.
+#[test]
+fn writing_suggestions_defaults_distinguish_default_from_true_state() {
+    // Under a False parent only the Default state inherits "false"; the empty
+    // and invalid value defaults are the True state and override the parent.
+    for (raw, expected) in [(None, "false"), (Some(""), "true"), (Some("nope"), "true")] {
+        let (mut b, d) = builder();
+        let parent = html(&mut b, &d, "div", &[("writingsuggestions", "false")]);
+        let child = html(
+            &mut b,
+            &d,
+            "div",
+            &raw.map(|v| vec![("writingsuggestions", v)])
+                .unwrap_or_default(),
+        );
+        b.establish_parent(&child, &parent).unwrap();
+        let c = b.finish().unwrap();
+        let r = query(
+            &c,
+            &context(&c),
+            &c.subject_id(&child).unwrap(),
+            HtmlSemanticQuery::ComputedWritingSuggestions,
+            5,
+        );
+        assert_eq!(writing(&r).idl_value(), expected, "{raw:?}");
+    }
+}
+#[test]
+fn autocapitalize_missing_and_empty_inherit_while_invalid_is_sentences() {
+    // The form's own hint is Words. A missing attribute and an empty one fall
+    // through to the form owner; an invalid one is the Sentences state itself.
+    for (raw, expected) in [
+        (None, "words"),
+        (Some(""), "words"),
+        (Some("nope"), "sentences"),
+    ] {
+        let (mut b, d) = builder();
+        let form = html(&mut b, &d, "form", &[("autocapitalize", "words")]);
+        let input = html(
+            &mut b,
+            &d,
+            "input",
+            &raw.map(|v| vec![("autocapitalize", v)]).unwrap_or_default(),
+        );
+        b.establish_children(&d, &[form.clone(), input.clone()])
+            .unwrap();
+        let c = b.finish().unwrap();
+        let id = c.subject_id(&input).unwrap();
+        let cx = with_owners(
+            &c,
+            vec![(
+                id.clone(),
+                HtmlFormAssociationState::EstablishedCurrent(Some(c.subject_id(&form).unwrap())),
+            )],
+        );
+        let r = query(
+            &c,
+            &cx,
+            &id,
+            HtmlSemanticQuery::OwnAutocapitalizationHint,
+            20,
+        );
+        assert_eq!(own(&r).idl_value(), expected, "{raw:?}");
+    }
+    // Without any form owner a missing or empty attribute is Default, whose
+    // getter value is the empty string.
+    for raw in [None, Some("")] {
+        let (c, id) = fixture(
+            "input",
+            &raw.map(|v| vec![("autocapitalize", v)]).unwrap_or_default(),
+            false,
+        );
+        let cx = with_owners(
+            &c,
+            vec![(
+                id.clone(),
+                HtmlFormAssociationState::EstablishedCurrent(None),
+            )],
+        );
+        let r = query(
+            &c,
+            &cx,
+            &id,
+            HtmlSemanticQuery::OwnAutocapitalizationHint,
+            20,
+        );
+        assert_eq!(own(&r).state(), HtmlAutocapitalizeState::Default, "{raw:?}");
+        assert_eq!(own(&r).idl_value(), "", "{raw:?}");
+    }
+}
+#[test]
+fn autocorrect_missing_empty_and_invalid_are_on_but_only_missing_inherits() {
+    // The form's autocorrect is off. A missing attribute uses the form owner
+    // (off); a present empty or invalid one is On by its own value default.
+    for (raw, expected) in [(None, false), (Some(""), true), (Some("nope"), true)] {
+        let (mut b, d) = builder();
+        let form = html(&mut b, &d, "form", &[("autocorrect", "off")]);
+        let input = html(
+            &mut b,
+            &d,
+            "input",
+            &raw.map(|v| vec![("autocorrect", v)]).unwrap_or_default(),
+        );
+        b.establish_children(&d, &[form.clone(), input.clone()])
+            .unwrap();
+        let c = b.finish().unwrap();
+        let id = c.subject_id(&input).unwrap();
+        let cx = with_owners(
+            &c,
+            vec![(
+                id.clone(),
+                HtmlFormAssociationState::EstablishedCurrent(Some(c.subject_id(&form).unwrap())),
+            )],
+        );
+        let r = query(&c, &cx, &id, HtmlSemanticQuery::UsedAutocorrectionState, 20);
+        assert_eq!(correct(&r).idl_value(), expected, "{raw:?}");
+    }
+    // With no form owner every absent, empty or invalid value is On.
+    for raw in [None, Some(""), Some("nope")] {
+        let (c, id) = fixture(
+            "input",
+            &raw.map(|v| vec![("autocorrect", v)]).unwrap_or_default(),
+            false,
+        );
+        let cx = with_owners(
+            &c,
+            vec![(
+                id.clone(),
+                HtmlFormAssociationState::EstablishedCurrent(None),
+            )],
+        );
+        let r = query(&c, &cx, &id, HtmlSemanticQuery::UsedAutocorrectionState, 20);
+        assert!(correct(&r).idl_value(), "{raw:?}");
+    }
+}
 #[test]
 fn nearest_editing_host_selects_used_hint_while_own_getter_stays_local() {
     let (mut b, d) = builder();
@@ -1206,16 +1349,6 @@ fn foreign_and_non_element_getter_targets_are_inapplicable() {
 fn capped(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLimits {
     cap_resources(limits(), COLLECTION_RESOURCES, resource, cap)
 }
-fn resource_value(usage: HtmlSemanticUsage, resource: HtmlSemanticResource) -> usize {
-    match resource {
-        HtmlSemanticResource::Work => usage.work(),
-        HtmlSemanticResource::OutputRecords => usage.output_records(),
-        HtmlSemanticResource::ScratchRecords => usage.peak_scratch_records(),
-        HtmlSemanticResource::AllocatedBytes => usage.allocated_bytes(),
-        HtmlSemanticResource::NestedOutputRecords => usage.nested_output_records(),
-        _ => panic!("not a selected resource"),
-    }
-}
 #[test]
 fn exact_and_one_short_physical_caps_cover_each_real_readback() {
     let (c, id) = fixture(
@@ -1229,40 +1362,32 @@ fn exact_and_one_short_physical_caps_cover_each_real_readback() {
         false,
     );
     let cx = context(&c);
-    for q in [
-        HtmlSemanticQuery::OwnAutocapitalizationHint,
-        HtmlSemanticQuery::UsedAutocapitalizationHint,
-        HtmlSemanticQuery::UsedAutocorrectionState,
-        HtmlSemanticQuery::ComputedWritingSuggestions,
+    // Every readback returns one report record holding one nested payload; the
+    // used autocapitalization hint additionally returns the own hint it was
+    // derived from (two nested records). No traversal frames are needed for an
+    // unlinked control. The payload types are private, so the byte charge needs
+    // only cover the result record and one byte per nested record, and each
+    // query's work is required to be charged without being pinned.
+    for (q, nested) in [
+        (HtmlSemanticQuery::OwnAutocapitalizationHint, 1),
+        (HtmlSemanticQuery::UsedAutocapitalizationHint, 2),
+        (HtmlSemanticQuery::UsedAutocorrectionState, 1),
+        (HtmlSemanticQuery::ComputedWritingSuggestions, 1),
     ] {
-        let r = query(&c, &cx, &id, q, 5);
-        for res in [
-            HtmlSemanticResource::Work,
-            HtmlSemanticResource::OutputRecords,
-            HtmlSemanticResource::NestedOutputRecords,
-            HtmlSemanticResource::AllocatedBytes,
-        ] {
-            let n = resource_value(r.usage(), res);
-            assert!(n > 0);
-            session(&c, &cx, capped(res, n), 5, HtmlSemanticCancellation::new())
-                .query(&[req(&id, q)])
-                .unwrap();
-            let mut ss = session(
-                &c,
-                &cx,
-                capped(res, n - 1),
-                5,
-                HtmlSemanticCancellation::new(),
-            );
-            let f = ss.query(&[req(&id, q)]).unwrap_err();
-            assert!(
-                matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource,..}if *resource==res),
-                "{q:?} {res:?} {f:?}"
-            );
-            assert_eq!(ss.query(&[]).unwrap_err(), f);
-            assert_eq!(ss.usage().scratch_records(), 0);
-            assert_eq!(f.qualification().unwrap().capture(), c.identity());
-        }
+        assert_exact_and_one_short_caps(
+            &format!("{q:?}"),
+            &c,
+            &cx,
+            5,
+            limits(),
+            &[req(&id, q)],
+            ExpectedUsage {
+                output_records: Charge::Exactly(1),
+                nested_output_records: Charge::Exactly(nested),
+                allocated_bytes: Charge::AtLeast(result_record_bytes() + nested),
+                ..ExpectedUsage::none()
+            },
+        );
     }
 }
 #[test]
@@ -1326,42 +1451,27 @@ fn reset_owner_scratch_is_finite_and_released_on_work_stop() {
         &c,
         vec![(id.clone(), HtmlFormAssociationState::ResetAgainstCapture)],
     );
-    let r = query(
+    // The reset association finds its form by id: the lookup enters the
+    // document's child list (one iterator record) and the form is its first
+    // child. The used hint returns the own hint it was derived from, so two
+    // nested payloads are retained.
+    assert_exact_and_one_short_caps(
+        "reset owner used hint",
         &c,
         &cx,
-        &id,
-        HtmlSemanticQuery::UsedAutocapitalizationHint,
         6,
+        limits(),
+        &[req(&id, HtmlSemanticQuery::UsedAutocapitalizationHint)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>() + 2,
+            ),
+            ..ExpectedUsage::none()
+        },
     );
-    let peak = r.usage().peak_scratch_records();
-    assert!(peak > 0);
-    session(
-        &c,
-        &cx,
-        capped(HtmlSemanticResource::ScratchRecords, peak),
-        6,
-        HtmlSemanticCancellation::new(),
-    )
-    .query(&[req(&id, HtmlSemanticQuery::UsedAutocapitalizationHint)])
-    .unwrap();
-    let mut ss = session(
-        &c,
-        &cx,
-        capped(HtmlSemanticResource::ScratchRecords, peak - 1),
-        6,
-        HtmlSemanticCancellation::new(),
-    );
-    let f = ss
-        .query(&[req(&id, HtmlSemanticQuery::UsedAutocapitalizationHint)])
-        .unwrap_err();
-    assert!(matches!(
-        f.kind(),
-        HtmlSemanticFailureKind::LimitExceeded {
-            resource: HtmlSemanticResource::ScratchRecords,
-            ..
-        }
-    ));
-    assert_eq!(ss.usage().scratch_records(), 0);
     for work in [1, 200, 500, 1000] {
         let mut ss = session(
             &c,
