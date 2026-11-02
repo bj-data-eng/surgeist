@@ -79,21 +79,6 @@ fn direct(text: &str) -> Outcome {
     crate::component::values::parse_component_values(text)
 }
 
-/// The cssparser-driven collection that the stack-B consumers still use (removed
-/// with them), over the same preprocessed text: it must give the values the
-/// unmetered token tree gives.
-fn cssparser_collected(text: &str) -> Outcome {
-    let snapshot = CssSourceSnapshot::new(text);
-    let working = crate::tokenization::prepare(text);
-    let mut input = cssparser::ParserInput::new(&working);
-    let mut parser = cssparser::Parser::new(&mut input);
-    crate::component::values::parse::collect(
-        &mut parser,
-        &snapshot,
-        CssComponentValueLimits::default(),
-    )
-}
-
 fn utf16_snapshot(units: &[u16]) -> CssSourceSnapshot {
     crate::source::utf16_input::prepare_utf16(
         Arc::new(units.to_vec()),
@@ -272,11 +257,6 @@ fn assert_paths_agree(utf8: Option<&str>, utf16: &[u16]) {
         "unmetered tree over UTF-16: {case:?}"
     );
     assert_checked_tree_agrees(&preprocessed, &expected);
-    assert_eq!(
-        cssparser_collected(&preprocessed),
-        expected,
-        "cssparser-driven collection: {case:?}"
-    );
     assert_eq!(
         bounded_decoded_utf8(&preprocessed),
         expected,

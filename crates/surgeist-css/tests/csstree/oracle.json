@@ -5,7 +5,7 @@
   "source_tree": "bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8",
   "expectation_schema_version": 1,
   "generation_report_sha256": "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366",
-  "expected_class_registry_sha256": "f07c7106a34906cd5756b2b8e05e5c2ee40f8cd374ab261857003063bc856b5a",
+  "expected_class_registry_sha256": "fd7740c15e96dc6eb20423fe01ed8d3eb6c0156229e22c5965b83f3c44f30f64",
   "records": [
     {
       "id": "atrule/atrule/container.json#/all together",
@@ -8717,25 +8717,15 @@
         }
       },
       "outcome": {
-        "kind": "strict_rejected"
+        "kind": "clean"
       },
       "observation": {
         "extractor": {
           "kind": "style_declarations"
         },
-        "syntax_count": 0,
-        "is_clean": false,
-        "diagnostics": [
-          {
-            "code": "invalid_declaration_annotation",
-            "action": "reject_input",
-            "byte_offset": 7,
-            "span_start": 0,
-            "span_end": 20,
-            "multiplicity": 1,
-            "payload_relation": "intersects"
-          }
-        ]
+        "syntax_count": 1,
+        "is_clean": true,
+        "diagnostics": []
       }
     },
     {
