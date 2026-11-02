@@ -96,17 +96,21 @@ fn first_direct_caption_wins_among_multiple_and_rows_need_no_contents() {
     let row = html(&mut b, &d, "tr", &[]);
     let first = html(&mut b, &d, "caption", &[]);
     let second = html(&mut b, &d, "caption", &[]);
-    children(&mut b, &table, &[row, first.clone(), second]);
+    children(&mut b, &table, &[row.clone(), first.clone(), second]);
     let c = b.finish().unwrap();
     let id = c.subject_id(&table).unwrap();
     assert_eq!(
         value(&report(&c, &id)),
         &HtmlSemanticValue::Known(Some(c.subject_id(&first).unwrap()))
     );
-    assert!(matches!(
+    // The caption needs no row contents, but the table model does: the row's
+    // children were never established, so they are the missing evidence.
+    assert_eq!(
         query(&c, &id, HtmlSemanticQuery::TableModel, 0).results()[0].fact(),
-        HtmlSemanticFact::TableModel(HtmlSemanticValue::Missing(_))
-    ));
+        &HtmlSemanticFact::TableModel(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::OrderedChildren(c.subject_id(&row).unwrap())
+        ))
+    );
 }
 
 #[test]

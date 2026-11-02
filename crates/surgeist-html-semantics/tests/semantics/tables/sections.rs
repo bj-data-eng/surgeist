@@ -125,10 +125,14 @@ fn interleaved_multiple_sections_select_first_identity_in_ordinary_order() {
         value(&r, 1),
         &HtmlSemanticValue::Known(Some(c.subject_id(&foot).unwrap()))
     );
-    assert!(matches!(
+    // The rows collection lists thead rows first, so the first thead in source
+    // order is the first section whose unestablished children are needed.
+    assert_eq!(
         query(&c, &id, HtmlSemanticQuery::TableRows, 0).results()[0].fact(),
-        HtmlSemanticFact::TableRows(HtmlSemanticValue::Missing(_))
-    ));
+        &HtmlSemanticFact::TableRows(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::OrderedChildren(c.subject_id(&head).unwrap())
+        ))
+    );
 }
 
 #[test]
