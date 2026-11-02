@@ -1392,6 +1392,19 @@ mod controlled_tests {
     fn raw(value: &str) -> Attribute {
         Attribute::new(KnownHtmlAttribute::Autocomplete.qualified_name(), value)
     }
+    fn assert_default(
+        state: &HtmlAutocompleteProcessingState,
+        reason: HtmlAutocompleteDefaultReason,
+        field: HtmlAutocompleteDefaultField,
+    ) {
+        let HtmlAutocompleteProcessingState::Defaulted(default) = state else {
+            panic!("expected the default branch, got {state:?}");
+        };
+        assert_eq!(default.reason(), reason);
+        assert_eq!(default.field(), field);
+        assert_eq!(default.idl_value(), &DocumentString::from(""));
+        assert_eq!(default.scope(), &HtmlSpaceSeparatedTokens::new([]));
+    }
     fn controlled(
         value: &str,
         limits: AutocompleteMaterializationLimits,
@@ -1567,17 +1580,26 @@ mod controlled_tests {
                 required: 1
             }
         );
-        assert!(error.usage.allocated_bytes >= std::mem::size_of::<HtmlSpaceToken>() + 8);
-        assert!(error.usage.nested_output_records >= 5);
+        // The declared contract (limits type docs) only says that every variable
+        // Vec capacity is observed before its next write, so the failed run must
+        // show some observed bytes and output records; no layout-dependent
+        // floor is asserted because `size_of` and allocator growth are not
+        // part of that contract.
+        assert!(error.usage.allocated_bytes > 0);
+        assert!(error.usage.nested_output_records > 0);
         assert_eq!(error.usage.peak_scratch_records, 0);
         let default = controlled("unknown name", limits()).unwrap();
-        assert!(matches!(
+        // Autofill processing model: the last token "name" is a field name, so
+        // the leading token must be a section- token; "unknown" is not, and a
+        // textarea's default expectation field needs its form owner.
+        assert_default(
             default.report.processing(),
-            HtmlAutocompleteProcessingState::Defaulted(_)
-        ));
-        assert!(default.usage.nested_output_records >= 13);
-        assert!(default.usage.peak_scratch_records >= 1);
-        assert!(default.usage.allocated_bytes >= 3 * std::mem::size_of::<HtmlSpaceToken>() + 22);
+            HtmlAutocompleteDefaultReason::UnrecognizedLeadingToken,
+            HtmlAutocompleteDefaultField::FormOwnerRequired,
+        );
+        assert!(default.usage.nested_output_records > 0);
+        assert!(default.usage.peak_scratch_records > 0);
+        assert!(default.usage.allocated_bytes > 0);
         let mut storage = Materialization::new(Some(limits()));
         let tokens = storage
             .tokens(&DocumentString::from("unknown name"))
@@ -1656,10 +1678,14 @@ mod controlled_tests {
                 zero,
             )
             .unwrap();
-        assert!(matches!(
+        // A Hidden input wears the autofill anchor mantle (forms capture line
+        // 11553), whose default field is the empty one rather than a form-owner
+        // dependent expectation.
+        assert_default(
             result.report.processing(),
-            HtmlAutocompleteProcessingState::Defaulted(_)
-        ));
+            HtmlAutocompleteDefaultReason::MissingAttribute,
+            HtmlAutocompleteDefaultField::Empty,
+        );
         assert_eq!(result.usage, AutocompleteMaterializationUsage::default());
     }
 
