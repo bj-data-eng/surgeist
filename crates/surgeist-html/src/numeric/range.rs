@@ -110,7 +110,8 @@ pub struct RangeNumericHeaders {
 }
 
 /// Only the enclosing authoritative grammar owner can issue these headers.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct RangeDecimalParts {
     pub(super) negative: bool,
     pub(super) integer_start: usize,
@@ -122,7 +123,8 @@ pub struct RangeDecimalParts {
     pub(super) exponent_negative: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 struct Io {
     headers: RangeNumericHeaders,
     request: Option<RangeNumericRequest>,
@@ -245,7 +247,8 @@ impl Io {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 enum ProductPhase {
     Start,
     Clear,
@@ -260,7 +263,8 @@ enum ProductPhase {
 }
 /// Exact distinct-role decimal coefficient times a fixed u64 mantissa.
 /// d*M+carry < 10*M < 2^68; each digit and carry is a separate request.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub(crate) struct RangeMantissaProductCursor {
     io: Io,
     source: RangeScratchRole,
@@ -401,7 +405,8 @@ impl RangeMantissaProductCursor {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 enum BuildPhase {
     Start,
     Clear,
@@ -457,7 +462,8 @@ fn decimal_dyadic_ordering(
 }
 /// Builds M*2^E as exact coefficient*10^scale. The scalar inventory is a
 /// u64 seed, u16 cell/carry, bounded exponent/pass/index and fixed headers.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub(crate) struct RangeDyadicCursor {
     io: Io,
     role: RangeScratchRole,
@@ -668,7 +674,8 @@ impl RangeDyadicCursor {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub(crate) struct RangeScaledComparisonCursor {
     io: Io,
     left: RangeScratchRole,
@@ -798,7 +805,8 @@ impl RangeScaledComparisonCursor {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub(crate) struct RangePowerTenCutCursor {
     io: Io,
     role: RangeScratchRole,

@@ -13,7 +13,8 @@ const MAX_MANTISSA: u64 = (1_u64 << 53) - 1;
 const SIGN: u64 = 1_u64 << 63;
 const BANDS: u16 = 4094;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 struct Dyadic {
     magnitude: u64,
     exponent: i16,
@@ -52,7 +53,8 @@ impl Dyadic {
 /// Exact signed sum of the two finite endpoints followed by division by two
 /// and one nearest/even binary64 rounding. Each reply reads only two fixed
 /// mantissas at one binary position; the receiver never owns a bigint.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct RangeMidpointCursor {
     first: Dyadic,
     second: Dyadic,
@@ -174,7 +176,8 @@ impl RangeMidpointCursor {
 /// One bit of exact 2*current - lower - upper per transition. Signed carry
 /// uses Euclidean division, so final negative carry distinguishes a negative
 /// integer from its nonnegative low bits without a temporary bigint.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 struct DistanceComparison {
     terms: [Dyadic; 3],
     bit: i16,
@@ -246,7 +249,8 @@ enum Phase {
 
 /// Fixed scalar machine. The caller admits the actual Copy receiver and fixed
 /// transition before each Ack; no request can read a source/scratch cell.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct RangeLatticeCursor {
     current: u64,
     minimum: u64,

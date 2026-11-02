@@ -81,7 +81,8 @@ enum Phase {
     Separated,
 }
 /// Allocation-free grammar state; source and emitted fields stay with the caller.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct Cursor {
     action: Option<Action>,
     phase: Phase,
