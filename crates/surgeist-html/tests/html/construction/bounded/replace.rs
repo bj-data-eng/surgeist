@@ -181,12 +181,15 @@ fn assert_rollback_at_every_action<P>(
 
 // ---------------------------------------------------------------- content
 
+type KindFactory = fn() -> HtmlNodeKind;
+type ContentFactory = fn() -> HtmlConstructionContent;
+
 /// One content replacement: the initial payload, the replacement, the payload
 /// the record must hold afterwards and the UTF-16 units each charges.
 struct ContentCase {
     label: &'static str,
     initial: HtmlNodeKind,
-    content: fn() -> HtmlConstructionContent,
+    content: ContentFactory,
     expected: HtmlNodeKind,
     old_units: usize,
     new_units: usize,
@@ -374,8 +377,8 @@ fn replacing_an_element_name_keeps_attributes_children_and_position_and_charges_
             before[4]
         ]
     );
-    assert_eq!(child_handles(&owner, &target), [child.clone()]);
-    assert_eq!(child_handles(&owner, &root), [target.clone()]);
+    assert_eq!(child_handles(&owner, &target), std::slice::from_ref(&child));
+    assert_eq!(child_handles(&owner, &root), std::slice::from_ref(&target));
     assert_eq!(
         owner.node(&child).unwrap().parent().unwrap().handle(),
         target
@@ -509,7 +512,7 @@ fn renaming_a_non_template_to_a_template_is_refused_because_it_has_no_contents()
 #[test]
 fn replacing_content_of_the_wrong_kind_is_refused_and_leaves_the_record_unchanged() {
     // Every payload kind refuses every other kind of replacement.
-    let initial: Vec<(&str, fn() -> HtmlNodeKind)> = vec![
+    let initial: Vec<(&str, KindFactory)> = vec![
         ("text", || HtmlNodeKind::Text(text("t"))),
         ("comment", || HtmlNodeKind::Comment(text("c"))),
         ("processing instruction", || {
@@ -525,7 +528,7 @@ fn replacing_content_of_the_wrong_kind_is_refused_and_leaves_the_record_unchange
             ))
         }),
     ];
-    let replacements: Vec<(&str, fn() -> HtmlConstructionContent)> = vec![
+    let replacements: Vec<(&str, ContentFactory)> = vec![
         ("text", || HtmlConstructionContent::Text(text("x"))),
         ("comment", || HtmlConstructionContent::Comment(text("x"))),
         ("processing instruction", || {
@@ -797,8 +800,11 @@ fn replacing_attributes_commits_the_ordered_collection_backing_and_usage() {
             before[4]
         ]
     );
-    assert_eq!(child_handles(&owner, &element), [child.clone()]);
-    assert_eq!(child_handles(&owner, &root), [element.clone()]);
+    assert_eq!(
+        child_handles(&owner, &element),
+        std::slice::from_ref(&child)
+    );
+    assert_eq!(child_handles(&owner, &root), std::slice::from_ref(&element));
     let element_id = owner.result_id(&element).unwrap();
     let (result, _) = publish(owner, root);
     let HtmlNodeKind::Element(published) = result.node(&element_id).unwrap().kind() else {
