@@ -16,7 +16,7 @@ use surgeist_html_semantics::{
     HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUsage,
 };
 
-fn element(
+pub(super) fn element(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
     local: &str,
@@ -36,7 +36,7 @@ fn element(
     .unwrap()
 }
 
-fn cell(
+pub(super) fn cell(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
     local: &str,
@@ -52,7 +52,7 @@ fn cell(
 /// a `scope` of `scope_units` letters that match no keyword, and whose other
 /// cells are td. The `2n - 1` header cells are each reached by the scan of
 /// some other cell, and every cell is a principal cell.
-fn fixture(n: usize, scope_units: usize) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
+pub(super) fn fixture(n: usize, scope_units: usize) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
     let scope = "x".repeat(scope_units);
     let (mut b, d) = builder_with(HtmlCaptureLimits::new(
         10000, 100000, 10000, 1_000_000, 1000, 0, 0, 16_777_216,
@@ -76,7 +76,7 @@ fn fixture(n: usize, scope_units: usize) -> (HtmlCapture, HtmlCaptureBuilderSubj
     (b.finish().unwrap(), table)
 }
 
-fn query(
+pub(super) fn query(
     capture: &HtmlCapture,
     table: &HtmlCaptureBuilderSubject,
     limits: HtmlSemanticLimits,
@@ -100,11 +100,11 @@ fn query(
     (result, session.usage())
 }
 
-fn limits() -> HtmlSemanticLimits {
+pub(super) fn limits() -> HtmlSemanticLimits {
     HtmlSemanticLimits::new(1_000_000_000, 100, 100000, 10000, 100000000, 200000)
 }
 
-fn usage(n: usize, scope_units: usize) -> HtmlSemanticUsage {
+pub(super) fn usage(n: usize, scope_units: usize) -> HtmlSemanticUsage {
     let (capture, table) = fixture(n, scope_units);
     query(&capture, &table, limits()).0.unwrap().usage()
 }

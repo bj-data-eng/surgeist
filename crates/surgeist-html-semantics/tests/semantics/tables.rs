@@ -1,3 +1,4 @@
+mod admitted_work;
 mod caption;
 mod collections;
 mod indices;
