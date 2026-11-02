@@ -888,10 +888,18 @@ fn saturated_column_layout_frame_f64() {
     saturated_columns::<f64>();
 }
 
-fn fixed_composite_ports_and_alignment<S: LayoutScalar>() {
+struct FixedCompositeQualification<S: LayoutScalar> {
+    tree: PublicLayoutTreeOf<S>,
+    batch: CompletedLayoutBatchOf<u32, S>,
+    ports: Vec<(u32, S, S)>,
+}
+
+fn qualified_fixed_composites<S: LayoutScalar>(
+    root_mode: WritingMode,
+) -> FixedCompositeQualification<S> {
     let mode = WritingMode::VerticalRl;
     let axes = FlowAxes::new(mode, Direction::Ltr);
-    let mut tree = configured_tree::<S>(mode, mode, mode, 20.0, 50.0);
+    let mut tree = configured_tree::<S>(root_mode, mode, mode, 20.0, 50.0);
     for (actor, first_child, last_child) in [(10, 30, 31), (11, 32, 33)] {
         let mut input = LayoutTree::node_input(&tree, actor).clone();
         input.display = Display::Grid;
@@ -995,6 +1003,21 @@ fn fixed_composite_ports_and_alignment<S: LayoutScalar>() {
         assert_ne!(first, last);
         actor_ports.push((actor, first, last));
     }
+    FixedCompositeQualification {
+        tree,
+        batch,
+        ports: actor_ports,
+    }
+}
+
+fn fixed_composite_ports_and_alignment<S: LayoutScalar>() {
+    let mode = WritingMode::VerticalRl;
+    let axes = FlowAxes::new(mode, Direction::Ltr);
+    let FixedCompositeQualification {
+        tree,
+        batch,
+        ports: actor_ports,
+    } = qualified_fixed_composites::<S>(mode);
     // Qualify all real selected ports and bodies before physical alignment.
     let root_first = selected_port(&batch, 20, axes, SelectedPort::First);
     let root_last = selected_port(&batch, 21, axes, SelectedPort::Last);
@@ -1023,4 +1046,103 @@ fn supplied_native_composite_first_and_last_zero_f32() {
 #[test]
 fn supplied_native_composite_first_and_last_zero_f64() {
     fixed_composite_ports_and_alignment::<f64>();
+}
+
+fn reversed_composite_selected_port<S: LayoutScalar>(selected: SelectedPort) {
+    let root_mode = WritingMode::VerticalLr;
+    let actor_mode = WritingMode::VerticalRl;
+    let root_axes = FlowAxes::new(root_mode, Direction::Ltr);
+    let actor_axes = FlowAxes::new(actor_mode, Direction::Ltr);
+    let FixedCompositeQualification { tree, batch, ports } =
+        qualified_fixed_composites::<S>(root_mode);
+    assert_eq!(LayoutTree::node_input(&tree, 0).writing_mode, root_mode);
+    for node in [1, 2, 10, 11] {
+        assert_eq!(LayoutTree::node_input(&tree, node).writing_mode, actor_mode);
+    }
+    assert_eq!(root_axes.block_axis(), actor_axes.block_axis());
+    assert_ne!(
+        root_axes.physical_axis_progression(root_axes.block_axis()),
+        actor_axes.physical_axis_progression(actor_axes.block_axis())
+    );
+    // The inner [1,3) span has the same progression as its outer parent.
+    // Outer [1,4) reverses against RootVLR: its local row1 is owner row3.
+    // Actual First30 therefore matches owner Last; actual Last0 matches First.
+    assert_eq!(
+        LayoutTree::node_input(&tree, 1).grid_row,
+        GridPlacement::try_lines(1, 4).unwrap()
+    );
+    assert_eq!(
+        LayoutTree::node_input(&tree, 2).grid_row,
+        GridPlacement::try_lines(1, 3).unwrap()
+    );
+    for actor in [10, 11] {
+        assert_eq!(
+            LayoutTree::node_input(&tree, actor).grid_row,
+            GridPlacement::try_lines(1, 2).unwrap()
+        );
+    }
+    for owner in [24, 25] {
+        assert_eq!(
+            LayoutTree::node_input(&tree, owner).grid_row,
+            GridPlacement::try_lines(3, 4).unwrap()
+        );
+    }
+    let (actor, owner, owner_selected, actor_port, owner_extent) = match selected {
+        SelectedPort::First => (
+            10,
+            25,
+            SelectedPort::Last,
+            ports.iter().find(|row| row.0 == 10).unwrap().1,
+            100.0,
+        ),
+        SelectedPort::Last => (
+            11,
+            24,
+            SelectedPort::First,
+            ports.iter().find(|row| row.0 == 11).unwrap().2,
+            50.0,
+        ),
+    };
+    assert_eq!(
+        LayoutTree::node_input(&tree, actor).align_self,
+        Some(alignment(selected))
+    );
+    assert_eq!(
+        LayoutTree::node_input(&tree, owner).align_self,
+        Some(alignment(owner_selected))
+    );
+    assert_eq!(LayoutTree::node_input(&tree, owner).writing_mode, root_mode);
+    assert_eq!(
+        normal_box(&batch, owner).size,
+        physical_size(root_mode, 20.0, owner_extent)
+    );
+    assert_eq!(
+        normal_box(&batch, owner).margin,
+        block_edges(root_mode, value(3.0), value(5.0), S::ZERO)
+    );
+    let owner_port = selected_port(&batch, owner, root_axes, owner_selected);
+    let actor_origin = absolute_origin(&tree, &batch, actor);
+    let owner_origin = absolute_origin(&tree, &batch, owner);
+    assert_eq!(
+        actor_origin.x + actor_port,
+        owner_origin.x + owner_port,
+        "actual {selected:?} port of VRL actor{actor} shares the physical point of VLR owner{owner}/{owner_selected:?}"
+    );
+}
+
+#[test]
+fn reversed_native_composite_first_thirty_f32() {
+    reversed_composite_selected_port::<f32>(SelectedPort::First);
+}
+#[test]
+fn reversed_native_composite_first_thirty_f64() {
+    reversed_composite_selected_port::<f64>(SelectedPort::First);
+}
+#[test]
+fn reversed_native_composite_supplied_last_zero_f32() {
+    reversed_composite_selected_port::<f32>(SelectedPort::Last);
+}
+#[test]
+fn reversed_native_composite_supplied_last_zero_f64() {
+    reversed_composite_selected_port::<f64>(SelectedPort::Last);
 }
