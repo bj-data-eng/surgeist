@@ -1,11 +1,27 @@
 //! Decoded-Unicode HTML ingestion, recovery and source-owning immutable reports.
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
+// No run-time panic is reachable from parsing, so production code carries none
+// of the operations that can panic. A site that is provably total says why in a
+// narrow `#[expect]`; test code is outside the gate.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice,
+        clippy::arithmetic_side_effects
+    )
+)]
 
 use surgeist_html::bounded;
 use surgeist_html::*;
 use surgeist_html_semantics::*;
 mod construction;
+mod keyed;
 mod meta_csp;
 mod parser;
 pub use meta_csp::{HtmlParseCspFailure, HtmlParseCspFailureKind};
@@ -16,7 +32,10 @@ pub use request::*;
 pub use settings::*;
 pub use source::*;
 
-pub use construction::read::{HtmlInputImageSource, HtmlParseRetiredDestination};
+pub use construction::read::{
+    HtmlInputImageSource, HtmlParseRetiredDestination, UnresolvedKind as HtmlParseUnresolvedKind,
+    UnresolvedReference as HtmlParseUnresolvedReference,
+};
 pub use construction::{
     ConstructionCompletion as HtmlParseCompletion, ConstructionReadiness as HtmlParseReadiness,
     StandaloneDocumentState as HtmlParseDocumentState,

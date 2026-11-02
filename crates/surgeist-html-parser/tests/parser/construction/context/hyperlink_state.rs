@@ -195,6 +195,7 @@ fn links(report: &HtmlParseReport) -> Vec<HtmlParseHyperlink<'_>> {
             }
             HtmlParseMetadataStep::Skipped => (),
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     result
@@ -263,7 +264,12 @@ fn root_nested_and_owned_template_href_keep_actual_source_document_and_outcome()
             };
             assert_eq!(
                 doc.id(),
-                report.fragment_parser_document().unwrap().document().id()
+                report
+                    .fragment_parser_document()
+                    .unwrap()
+                    .unwrap()
+                    .document()
+                    .id()
             );
             assert_eq!(value.encoding(), &a);
             assert!(value.url().is_none());
@@ -283,7 +289,12 @@ fn root_nested_and_owned_template_href_keep_actual_source_document_and_outcome()
             };
             assert_ne!(
                 doc.id(),
-                report.fragment_parser_document().unwrap().document().id()
+                report
+                    .fragment_parser_document()
+                    .unwrap()
+                    .unwrap()
+                    .document()
+                    .id()
             );
             assert_eq!(value.encoding(), &i);
             assert!(value.url().is_none());

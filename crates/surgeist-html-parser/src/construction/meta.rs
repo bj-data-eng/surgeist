@@ -1,6 +1,7 @@
 //! Original-controller Meta transitions. Missing external operations are data;
 //! they never certify execution or reset an unknown current value.
 use super::*;
+use crate::keyed::{Table, slots};
 use associated::HyperlinkUnavailable;
 use surgeist_html::HtmlMetaPragmaState as Pragma;
 
@@ -19,15 +20,28 @@ impl MetaDomain {
         Self::ThemeColor,
         Self::ColorScheme,
     ];
-    pub(super) const fn index(self) -> usize {
-        match self {
-            Self::Refresh => 0,
-            Self::Csp => 1,
-            Self::ThemeColor => 2,
-            Self::ColorScheme => 3,
-        }
-    }
 }
+const META_DOMAIN_COUNT: usize = 4;
+/// One value per [`MetaDomain`]; a lookup cannot be out of range.
+pub(super) type MetaDomainTable<T> = Table<MetaDomain, T, META_DOMAIN_COUNT>;
+slots!(MetaDomain, META_DOMAIN_COUNT, {
+    Refresh => 0,
+    Csp => 1,
+    ThemeColor => 2,
+    ColorScheme => 3,
+});
+// `ALL` lists every domain once, in discriminant order.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "evaluated at compile time with i < META_DOMAIN_COUNT, the array length: an index out of range fails the build"
+)]
+const _: () = {
+    let mut i = 0;
+    while i < META_DOMAIN_COUNT {
+        assert!(MetaDomain::ALL[i] as usize == i);
+        i += 1;
+    }
+};
 /// First actual unsatisfied operation in one independent domain.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MetaMissingKind {
@@ -58,15 +72,14 @@ pub(super) struct MetaHistory {
     pub(super) refresh: bool,
     pub(super) theme: Option<surgeist_color::Color>,
     pub(super) scheme: Option<crate::parser::control::CssSchemeValue>,
-    pub(super) gaps: [Option<usize>; 4],
+    pub(super) gaps: MetaDomainTable<Option<usize>>,
     pub(super) first: Option<MetaDomain>,
 }
 impl MetaHistory {
-    /// The first unsatisfied operation recorded for `domain`; the array has one
+    /// The first unsatisfied operation recorded for `domain`; the table has one
     /// cell per `MetaDomain`.
-    /// `None` only when `domain` has no cell, which `index` rules out.
-    fn gap(&self, domain: MetaDomain) -> Option<Option<usize>> {
-        self.gaps.get(domain.index()).copied()
+    fn gap(&self, domain: MetaDomain) -> Option<usize> {
+        self.gaps.copy(domain)
     }
     pub(super) fn offline() -> Self {
         Self {
@@ -77,7 +90,7 @@ impl MetaHistory {
             refresh: false,
             theme: None,
             scheme: None,
-            gaps: [None; 4],
+            gaps: MetaDomainTable::filled(None),
             first: None,
         }
     }
@@ -133,10 +146,10 @@ impl SessionStorage {
     ) -> Result<Option<usize>, SessionError> {
         let slot = self.document_slot(c, document)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        self.meta_history(slot)
+        Ok(self
+            .meta_history(slot)
             .map_err(|_| latch_registry_row(c))?
-            .gap(MetaDomain::Csp)
-            .ok_or_else(|| latch_registry_row(c))
+            .gap(MetaDomain::Csp))
     }
     pub(super) fn meta_missing(
         &mut self,
@@ -152,7 +165,6 @@ impl SessionStorage {
             .meta_history(slot)
             .map_err(|_| latch_registry_row(c))?
             .gap(domain)
-            .ok_or_else(|| latch_registry_row(c))?
             .is_some()
         {
             return Ok(());
@@ -178,11 +190,7 @@ impl SessionStorage {
         let meta = self
             .meta_history_mut(slot)
             .map_err(|_| latch_registry_row(c))?;
-        let cell = meta
-            .gaps
-            .get_mut(domain.index())
-            .ok_or_else(|| latch_registry_row(c))?;
-        *cell = Some(gap);
+        *meta.gaps.get_mut(domain) = Some(gap);
         if first {
             meta.first = Some(domain);
         }
@@ -301,7 +309,6 @@ impl SessionStorage {
                     .meta_history(slot)
                     .map_err(|_| latch_registry_row(c))?
                     .gap(MetaDomain::Refresh)
-                    .ok_or_else(|| latch_registry_row(c))?
                     .is_some()
                     || self
                         .meta_history(slot)
@@ -321,7 +328,11 @@ impl SessionStorage {
                         self.meta_document_url(c, document)?
                     }
                     Some(bounded::HtmlMetaRefreshSyntaxTarget::UrlString(range)) => {
-                        self.meta_refresh_url(c, node, &content.code_units()[range])?
+                        let units = content
+                            .code_units()
+                            .get(range)
+                            .ok_or_else(|| latch_registry_row(c))?;
+                        self.meta_refresh_url(c, node, units)?
                     }
                 };
                 match outcome {
@@ -454,7 +465,6 @@ impl SessionStorage {
                     .meta_history(slot)
                     .map_err(|_| latch_registry_row(c))?
                     .gap(domain)
-                    .ok_or_else(|| latch_registry_row(c))?
                     .is_some()
             {
                 continue;
@@ -511,14 +521,15 @@ impl SessionStorage {
                         };
                         let candidate = c.parse_meta_color_scheme(content.code_units(), *mode)?;
                         if let Err(stop) = c.charge(WorkCategory::ProviderCall, 1) {
-                            candidate.release(c);
+                            // The stop is latched; a refusal here would be a later one.
+                            let _ = candidate.release(c);
                             return Err(stop.into());
                         }
                         if candidate.report().result().is_ok() {
                             selected_scheme = Some(candidate);
                             break;
                         }
-                        candidate.release(c);
+                        candidate.release(c)?;
                     }
                 }
                 next = self.next_view_node(c, document, node, detached)?;
@@ -545,7 +556,8 @@ impl SessionStorage {
                     payload_write::<Option<crate::parser::control::CssSchemeValue>>(c, 1)
                 {
                     if let Some(candidate) = selected_scheme {
-                        candidate.release(c);
+                        // The stop is latched; a refusal here would be a later one.
+                        let _ = candidate.release(c);
                     }
                     return Err(stop);
                 }
@@ -566,7 +578,7 @@ impl SessionStorage {
                     after_commit(CancelPoint::Scheme);
                 }
                 if let Some(old) = old {
-                    old.release(c);
+                    old.release(c)?;
                 }
             }
         }
@@ -715,19 +727,19 @@ fn theme_color(
     Result<Option<surgeist_color::Color>, crate::parser::control::HtmlColorProcessingError>,
     SessionError,
 > {
-    while let Some(unit) = input.first() {
+    while let Some((unit, rest)) = input.split_first() {
         c.charge(WorkCategory::InspectByte, 2)?;
         if !bounded::is_ascii_whitespace(*unit) {
             break;
         }
-        input = &input[1..];
+        input = rest;
     }
-    while let Some(unit) = input.last() {
+    while let Some((unit, rest)) = input.split_last() {
         c.charge(WorkCategory::InspectByte, 2)?;
         if !bounded::is_ascii_whitespace(*unit) {
             break;
         }
-        input = &input[..input.len() - 1];
+        input = rest;
     }
     let mut owner = surgeist_css::color::controlled::CssColorOperationOwner::new();
     let facts = surgeist_css::color::CssColorFacts::new(

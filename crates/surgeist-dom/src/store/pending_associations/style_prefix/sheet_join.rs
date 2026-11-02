@@ -242,9 +242,10 @@ fn membership(
     let row = loop {
         meter.step(cancel)?;
         match rows.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *original.qualification.occurrence() => break row,
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     };
     let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
@@ -254,7 +255,10 @@ fn membership(
     let mut existing = 0usize;
     for i in 0..inputs.sheet_order_len() {
         meter.step(cancel)?;
-        let subject = inputs.sheet_order(i).expect("sealed original order").id();
+        let subject = inputs
+            .sheet_order(i)?
+            .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?
+            .id();
         if subject == *original.qualification.subject() {
             this += 1;
             meter.reserve(&mut order, 1, cancel)?;
@@ -289,6 +293,7 @@ fn membership(
             loop {
                 meter.step(cancel)?;
                 match history.advance() {
+                    Step::Fault(fault) => return Err(fault.into()),
                     Step::Occurrence(prior) if prior.subject().id() == subject => {
                         original_inputs |= prior.style().is_some();
                         if prior.requires_processing() {
@@ -296,7 +301,7 @@ fn membership(
                         }
                     }
                     Step::Complete => break,
-                    _ => (),
+                    Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
                 }
             }
             if !original_inputs {
@@ -370,6 +375,7 @@ fn form_request(
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if row.id() == *original.qualification.occurrence() => {
                 let inputs = row.style().ok_or(DomParsedHtmlStyleError::WrongRequest)?;
                 // The actual original list may name earlier inert Styles. Their
@@ -379,8 +385,8 @@ fn form_request(
                 for i in 0..inputs.sheet_order_len() {
                     meter.step(cancel)?;
                     let subject = inputs
-                        .sheet_order(i)
-                        .expect("qualified original order")
+                        .sheet_order(i)?
+                        .ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?
                         .id();
                     if subject == *original.qualification.subject() {
                         selected += 1;
@@ -432,7 +438,7 @@ fn form_request(
                 });
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }

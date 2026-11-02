@@ -71,6 +71,7 @@ fn fragment_descriptor_keeps_actual_constructor_environment_and_completion() {
         assert!(report.allow_declarative_shadow_roots());
         let descriptor = report
             .fragment_parser_document()
+            .unwrap()
             .expect("actual completed parser Document");
         assert_eq!(descriptor.source().identity(), &source);
         assert_eq!(descriptor.context().capture().identity(), &context);
@@ -143,6 +144,7 @@ fn fragment_descriptor_keeps_actual_constructor_environment_and_completion() {
                 }
                 HtmlParseMetadataStep::Skipped => (),
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(
@@ -170,23 +172,41 @@ fn fragment_origin_is_once_created_and_independent_of_equal_source_or_capture() 
     };
     let first = parse();
     let second = parse();
-    let origin = first.fragment_parser_document().unwrap().origin().clone();
-    assert_eq!(&origin, first.fragment_parser_document().unwrap().origin());
-    assert_ne!(&origin, second.fragment_parser_document().unwrap().origin());
+    let origin = first
+        .fragment_parser_document()
+        .unwrap()
+        .unwrap()
+        .origin()
+        .clone();
+    assert_eq!(
+        &origin,
+        first.fragment_parser_document().unwrap().unwrap().origin()
+    );
+    assert_ne!(
+        &origin,
+        second.fragment_parser_document().unwrap().unwrap().origin()
+    );
     let retained = std::sync::Arc::new(first);
     let alias = retained.clone();
     assert_eq!(
-        retained.fragment_parser_document().unwrap().origin(),
-        alias.fragment_parser_document().unwrap().origin()
+        retained
+            .fragment_parser_document()
+            .unwrap()
+            .unwrap()
+            .origin(),
+        alias.fragment_parser_document().unwrap().unwrap().origin()
     );
     drop(retained);
     drop(alias);
     assert_eq!(origin, origin.clone());
-    assert_ne!(&origin, second.fragment_parser_document().unwrap().origin());
+    assert_ne!(
+        &origin,
+        second.fragment_parser_document().unwrap().unwrap().origin()
+    );
     let ordinary = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits())
         .parse()
         .unwrap();
-    assert!(ordinary.fragment_parser_document().is_none());
+    assert!(ordinary.fragment_parser_document().unwrap().is_none());
 }
 
 #[test]
@@ -213,7 +233,7 @@ fn fragment_constructor_and_output_share_one_finite_node_admission_and_cleanup()
             .current(),
         5
     );
-    assert!(report.fragment_parser_document().is_some());
+    assert!(report.fragment_parser_document().unwrap().is_some());
     let failure = request(4).parse().unwrap_err();
     let stop = HtmlParseStop::LimitExceeded {
         resource: HtmlParseResource::ManagedNodes,

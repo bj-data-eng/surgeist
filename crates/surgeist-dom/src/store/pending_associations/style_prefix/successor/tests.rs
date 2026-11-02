@@ -230,6 +230,7 @@ fn authentic_unsupported_influence_diagnostic_is_admitted_before_identity_output
         loop {
             hold.step(&flag()).unwrap();
             match cursor.advance() {
+                Step::Fault(fault) => panic!("{fault}"),
                 Step::Occurrence(row) if row.kind() == Kind::ChangePreferred => {
                     assert!(matches!(
                         remaining(&hold.meter, &row, document, &flag()),
@@ -260,6 +261,7 @@ fn authentic_unsupported_influence_diagnostic_is_admitted_before_identity_output
     loop {
         hold.step(&flag()).unwrap();
         match cursor.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.kind() == Kind::ChangePreferred => {
                 let identity = row.id();
                 assert!(

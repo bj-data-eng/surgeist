@@ -1,6 +1,7 @@
 //! Finite whole-color CSS action servicing shared by parser-owned consumers.
 //! Consumers retain their own source policy, fallback, transformation and output.
 use super::*;
+use crate::keyed::{Table, slots};
 use surgeist_css::color::controlled::{
     CssColorActionLayout, CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction,
     CssColorParseOutcome, CssColorParseStep, CssColorSlot,
@@ -32,30 +33,30 @@ pub(super) fn source_processing(c: &mut ParseControl, error: CssColorError) -> F
     }
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
-    c.fail_invariant(crate::parser::control::Invariant::InputCursorState)
+    c.fail_invariant(crate::parser::control::Invariant::ColorConversionState)
         .into()
 }
-fn bank_index(bank: CssColorBank) -> usize {
-    match bank {
-        CssColorBank::Algorithm => 0,
-        CssColorBank::Arithmetic => 1,
-        CssColorBank::Evaluation => 2,
-    }
-}
-pub(super) type Banks<'a> = [Option<OwnedVec<CssColorSlot<'a>>>; 3];
+const BANK_COUNT: usize = 3;
+slots!(CssColorBank, BANK_COUNT, {
+    Algorithm => 0,
+    Arithmetic => 1,
+    Evaluation => 2,
+});
+/// One flat bank per [`CssColorBank`]; a lookup cannot be out of range.
+pub(super) type Banks<'a> = Table<CssColorBank, Option<OwnedVec<CssColorSlot<'a>>>, BANK_COUNT>;
 fn banks<'a>() -> Result<Banks<'a>, SessionError> {
-    Ok([
+    Ok(Banks::new([
         Some(OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?),
         Some(OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?),
         Some(OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?),
-    ])
+    ]))
 }
 fn bank<'a, 'b>(
     banks: &'b mut Banks<'a>,
     kind: CssColorBank,
     c: &mut ParseControl,
 ) -> Result<&'b mut OwnedVec<CssColorSlot<'a>>, SessionError> {
-    banks[bank_index(kind)].as_mut().ok_or_else(|| integrity(c))
+    banks.get_mut(kind).as_mut().ok_or_else(|| integrity(c))
 }
 /// No alias/controller escapes. Each flat bank was initialized by this owner
 /// and its admitted lengths/capacity exactly match the ledger. Release performs
@@ -63,7 +64,7 @@ fn bank<'a, 'b>(
 /// All three releases are attempted; a cleanup invariant remains an error.
 fn release_banks(banks: &mut Banks<'_>, c: &mut ParseControl) -> Result<(), SessionError> {
     let mut failure = None;
-    for bank in banks {
+    for bank in banks.as_mut_array() {
         if let Some(bank) = bank.take()
             && let Err(error) = bank.release(c)
         {
@@ -141,16 +142,20 @@ pub(super) fn parse<'facts, E: From<SessionError> + From<ParseStop>>(
     #[cfg(test)] mut slot_commit: impl FnMut(),
 ) -> Result<CssColorParseOutcome<'facts>, E> {
     let layout = CssColorParse::initialization_layout();
-    frame(
-        c,
-        layout.register_bytes,
-        layout.owner_bytes
-            + layout.fact_identity_bytes
-            + mem::size_of::<CssColorFacts<'_>>()
-            + mem::size_of::<Banks<'_>>()
-            + mem::size_of_val(&on_processing)
-            + consumer_layout,
-    )?;
+    let Some(guard) = [
+        layout.owner_bytes,
+        layout.fact_identity_bytes,
+        const { mem::size_of::<CssColorFacts<'_>>() + mem::size_of::<Banks<'_>>() },
+        mem::size_of_val(&on_processing),
+        consumer_layout,
+    ]
+    .into_iter()
+    .try_fold(0usize, usize::checked_add) else {
+        return Err(c
+            .stop_representation(HtmlParseResource::AtomicLayoutBytes)
+            .into());
+    };
+    frame(c, layout.register_bytes, guard)?;
     let parse = CssColorParse::start(
         owner,
         CssColorInputKind::Utf16,
@@ -230,4 +235,19 @@ pub(super) fn parse<'facts, E: From<SessionError> + From<ParseStop>>(
     let disposal = release_banks(&mut banks, c);
     disposal?;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::control::Invariant;
+
+    #[test]
+    fn a_colour_bank_fault_is_a_color_conversion_invariant() {
+        let mut c = crate::construction::tests::control();
+        let error = integrity(&mut c);
+        let stop = ParseStop::InternalInvariant(Invariant::ColorConversionState);
+        assert_eq!(error, SessionError::Stop(stop));
+        assert_eq!(c.stop(), Some(stop));
+    }
 }

@@ -474,7 +474,7 @@ fn actual_reports_transfer_separate_owned_document_states_and_preserve_captured_
         .parse()
         .unwrap(),
     );
-    let descriptor = fragment.fragment_parser_document().unwrap();
+    let descriptor = fragment.fragment_parser_document().unwrap().unwrap();
     assert_eq!(
         descriptor.document().document_design_mode_enabled(),
         Some(false)

@@ -6,8 +6,14 @@ fn has_source(cause: &HtmlParseCause<'_>) -> bool {
     fn walk(cause: &HtmlParseCause<'_>, depth: usize) -> bool {
         assert!(depth < 100, "finite literal fixture provenance");
         cause.source().is_some()
-            || cause.original_cause().is_some_and(|c| walk(&c, depth + 1))
-            || cause.trigger().is_some_and(|c| walk(&c, depth + 1))
+            || cause
+                .original_cause()
+                .unwrap()
+                .is_some_and(|c| walk(&c, depth + 1))
+            || cause
+                .trigger()
+                .unwrap()
+                .is_some_and(|c| walk(&c, depth + 1))
     }
     walk(cause, 0)
 }
@@ -38,6 +44,7 @@ fn hyperlinks(report: &HtmlParseReport) -> Vec<(String, HtmlBaseUrlRecord, HtmlB
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     found
@@ -172,6 +179,7 @@ fn absent_empty_failed_and_unavailable_href_are_distinct_completed_states() {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(states, ["absent", "empty-parsed", "failed", "unavailable"]);
@@ -243,6 +251,7 @@ fn reached_meta_csp_cannot_reuse_pre_policy_hyperlink_facts() {
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert_eq!(names, ["a", "area"]);
@@ -285,6 +294,7 @@ fn standalone_img_starts_before_disabled_guard_and_keeps_only_latest_inactive_wa
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(generations, [1, 3, 2]);
@@ -339,6 +349,7 @@ fn template_url_facts_bind_only_actual_independent_inert_document() {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert!(found);
@@ -454,6 +465,7 @@ fn source_insertion_updates_actual_picture_images_in_source_order() {
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(found);
@@ -520,6 +532,7 @@ fn ordinary_common_state_is_subject_qualified_and_nonce_is_independent() {
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         (subjects, nonces)
@@ -673,6 +686,7 @@ fn parsed_style_retains_actual_parser_document_and_pop_while_general_clone_is_fr
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     rows.sort();
@@ -726,6 +740,7 @@ fn inline_snapshot_header_is_counted_once_and_unused_observation_capacity_is_rel
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     // Both reports own identical retained payload Vec layouts and one retired
@@ -831,6 +846,7 @@ fn unavailable_contexts_cannot_self_validate_candidate_revision_or_equal_seriali
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(found);
@@ -910,6 +926,7 @@ fn reached_general_clones_use_current_base_and_fresh_image_update_identity() {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(links.len(), 2);
@@ -946,6 +963,7 @@ fn missing_inert_context_and_duplicate_execution_contexts_remain_explicit() {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert!(found);

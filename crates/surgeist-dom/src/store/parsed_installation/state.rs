@@ -274,6 +274,7 @@ pub(super) fn admit_history(
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => return Err(fault.into()),
         }
     }
     c.limit(Resource::HistoricalBytes, bytes, c.limits.historical_bytes)?;

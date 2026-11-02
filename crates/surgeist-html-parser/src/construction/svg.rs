@@ -74,11 +74,8 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<bool, SessionError> {
-        local(
-            c,
-            ConstructionView::Active(self.construction.storage()),
-            node,
-        )
+        let storage = self.construction.storage(c)?;
+        local(c, ConstructionView::Active(storage), node)
     }
     pub(super) fn svg_state_at(
         &self,
@@ -105,11 +102,17 @@ impl SessionStorage {
         Ok(slot)
     }
     /// Caller preadmits this fixed binding before actual native allocation.
-    pub(super) fn bind_svg_slot(&mut self, slot: usize, node: usize) {
-        let RetainedPayload::SvgScript { node: bound, .. } = &mut self.payloads.values[slot] else {
-            unreachable!("owned admitted SVG slot")
+    pub(super) fn bind_svg_slot(
+        &mut self,
+        c: &mut ParseControl,
+        slot: usize,
+        node: usize,
+    ) -> Result<(), SessionError> {
+        let RetainedPayload::SvgScript { node: bound, .. } = self.payloads.row_mut(c, slot)? else {
+            return Err(latch_registry_row(c));
         };
         *bound = Some(node);
+        Ok(())
     }
     /// Effect frames already own readiness; the same sealed domain and source
     /// identity still qualify each invocation before the flag can change.
@@ -149,9 +152,9 @@ impl SessionStorage {
         // listener/observer or retained SVG notification producer. No Tiny load
         // event or failed-load claim is fabricated, and no intrinsic FIFO is drained.
         payload_write::<SvgScriptFlags>(c, 1)?;
-        let RetainedPayload::SvgScript { state: stored, .. } = &mut self.payloads.values[slot]
+        let RetainedPayload::SvgScript { state: stored, .. } = self.payloads.row_mut(c, slot)?
         else {
-            unreachable!("qualified SVG slot")
+            return Err(latch_registry_row(c));
         };
         stored.flags.mark_processed();
         Ok(SvgScriptProcessing::RestrictedProcessed)
@@ -206,7 +209,7 @@ impl ParserArenaSession {
         c.charge(WorkCategory::RecordVisit, 1)?;
         let position = storage
             .construction
-            .storage()
+            .storage(c)?
             .position(&node.handle)
             .map_err(|_| SessionError::SvgScriptMetadataUnavailable)?;
         if storage.effects.svg_wrapper != Some(position) {
@@ -224,7 +227,7 @@ impl ParserArenaSession {
         c.charge(WorkCategory::RecordVisit, 1)?;
         let position = storage
             .construction
-            .storage()
+            .storage(c)?
             .position(&node.handle)
             .map_err(|_| SessionError::SvgScriptMetadataUnavailable)?;
         if storage.effects.svg_wrapper != Some(position) {
@@ -883,7 +886,7 @@ mod tests {
         let (tag, source) = tag(&mut lexer, &mut c);
         let alias = tag.name.value.text().clone();
         let mut input = Some(tag);
-        let nodes = session.active().unwrap().construction.storage().len();
+        let nodes = session.active().unwrap().construction.test_storage().len();
         let slots = session.active().unwrap().payloads.values.len();
         assert_eq!(
             session
@@ -900,7 +903,7 @@ mod tests {
         );
         assert!(input.is_some());
         assert_eq!(
-            session.active().unwrap().construction.storage().len(),
+            session.active().unwrap().construction.test_storage().len(),
             nodes
         );
         assert_eq!(session.active().unwrap().payloads.values.len(), slots);

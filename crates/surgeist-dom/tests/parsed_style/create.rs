@@ -271,6 +271,9 @@ fn root_style_first_and_pop_creation_preserve_auxiliary_inert_inventory_without_
     let mut inventory = report.pending_associations();
     loop {
         match inventory.advance() {
+            surgeist_html_parser::HtmlParsePendingAssociationStep::Fault(fault) => {
+                panic!("{fault}")
+            }
             surgeist_html_parser::HtmlParsePendingAssociationStep::Document(_) => documents += 1,
             surgeist_html_parser::HtmlParsePendingAssociationStep::Complete => break,
             _ => (),

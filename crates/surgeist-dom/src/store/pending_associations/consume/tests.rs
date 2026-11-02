@@ -298,3 +298,36 @@ fn conflicting_busy_and_poisoned_actual_capabilities_cannot_acknowledge_the_cont
         }
     }
 }
+
+#[test]
+fn a_preferred_name_change_without_its_original_name_is_a_typed_report_defect() {
+    use surgeist_html_parser::{
+        HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
+    };
+    let (mut dom, environment) = setup();
+    let report = parse("<!doctype html><head><meta http-equiv=default-style content=B></head>");
+    let (_, id) = install(&mut dom, report.clone(), environment);
+    let mut cursor = report.pending_associations();
+    let occurrence = loop {
+        match cursor.advance() {
+            Step::Occurrence(row) if row.kind() == Kind::ChangePreferred => {
+                // The sealed row carries the name the decoder needs.
+                assert!(row.preferred_name().is_some());
+                break row.id();
+            }
+            Step::Complete | Step::Fault(_) => panic!("no preferred-name change was sealed"),
+            _ => {}
+        }
+    };
+    assert!(matches!(
+        require_preferred_name::<()>(None, id, occurrence.clone()),
+        Err(DomParsedHtmlAssociationAdmissionError::MissingPreferredName {
+            contribution,
+            occurrence: found,
+        }) if contribution == id && found == occurrence
+    ));
+    assert_eq!(
+        require_preferred_name(Some(7), id, occurrence.clone()).unwrap(),
+        7
+    );
+}

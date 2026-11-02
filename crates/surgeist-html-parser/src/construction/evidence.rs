@@ -121,13 +121,22 @@ impl DiagnosticEvidenceView<'_> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    /// The committed record at `index` with the location it names, or `None`
+    /// past the last record. Every committed record names a committed
+    /// location; a record that did not is a fault in the report.
     pub fn retained_record(
         &self,
         index: usize,
-    ) -> Option<(&DiagnosticRecord, &DiagnosticLocation)> {
-        self.records
-            .get(index)
-            .map(|record| (record, &self.locations[record.location]))
+    ) -> Result<Option<(&DiagnosticRecord, &DiagnosticLocation)>, read::UnresolvedReference> {
+        let Some(record) = self.records.get(index) else {
+            return Ok(None);
+        };
+        self.locations
+            .get(record.location)
+            .map(|location| Some((record, location)))
+            .ok_or(read::UnresolvedReference::new(
+                read::UnresolvedKind::Diagnostic,
+            ))
     }
     #[cfg(test)]
     pub fn records_pointer(&self) -> *const DiagnosticRecord {
@@ -170,6 +179,20 @@ impl FailureDiagnosticEvidence {
         } else {
             drop(self._identity);
             Ok(())
+        }
+    }
+}
+#[cfg(test)]
+impl ParseEvidence {
+    /// Names a location that is not committed as the location of one
+    /// diagnostic record. Whether the record exists.
+    pub(super) fn corrupt_diagnostic_location_for_test(&mut self, index: usize) -> bool {
+        match self.records.as_mut_slice_for_test().get_mut(index) {
+            Some(record) => {
+                record.location = usize::MAX;
+                true
+            }
+            None => false,
         }
     }
 }
@@ -236,7 +259,9 @@ impl ParseEvidence {
         // Handle and descriptor preparation precedes the atomic pair commit.
         c.charge(
             WorkCategory::CopyByte,
-            (mem::size_of::<ControlIdentity>() + mem::size_of::<Arc<EvidenceIdentity>>()) as u64,
+            const {
+                (mem::size_of::<ControlIdentity>() + mem::size_of::<Arc<EvidenceIdentity>>()) as u64
+            },
         )?;
         let owner = c.identity();
         let evidence = self.identity.clone();
@@ -288,12 +313,12 @@ impl ParseEvidence {
             .records
             .as_slice()
             .get(id.index)
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
         let location = self
             .locations
             .as_slice()
             .get(record.location)
-            .ok_or_else(|| c.fail_invariant(Invariant::InputCursorState))?;
+            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
         Ok((record, location))
     }
     #[cfg(test)]
@@ -346,27 +371,34 @@ impl ParseEvidence {
         if c.stop().is_none() {
             return Err(SessionError::WrongToken);
         }
-        let Some(evidence) = input.as_ref() else {
+        let Some(evidence) = input.take() else {
             return Ok(None);
         };
-        evidence.records.require_disposal_owner(c)?;
-        evidence.locations.require_disposal_owner(c)?;
-        evidence.native.preflight_failed_disposal(c)?;
-        let Some(Self {
+        // Every refusal gives the evidence back to its slot untouched.
+        let preflight = (|| {
+            evidence.records.require_disposal_owner(c)?;
+            evidence.locations.require_disposal_owner(c)?;
+            evidence.native.preflight_failed_disposal(c)?;
+            Ok::<(), ParseStop>(())
+        })();
+        if let Err(stop) = preflight {
+            *input = Some(evidence);
+            return Err(stop.into());
+        }
+        let Self {
             identity,
             identity_allocation,
             records,
             locations,
             native,
             diagnostics_taken: _,
-        }) = input.take()
-        else {
-            unreachable!("the exclusively borrowed slot was preflighted")
-        };
+        } = evidence;
         // Same-owner flat vectors, exact checked capacities and their aggregate
         // logical/capacity totals were proved above. No ledger mutation intervenes,
-        // so each cleanup subtraction is covered by that aggregate proof.
-        native.release(c).expect("preflighted native cleanup");
+        // so each cleanup subtraction is covered by that aggregate proof. The
+        // controller is already stopped, so a refusal here would be secondary
+        // (latched by its owner); the diagnostics are handed on regardless.
+        let _ = native.release(c);
         Ok(Some(FailureDiagnosticEvidence {
             _identity: identity,
             _identity_allocation: Some(identity_allocation),
@@ -413,18 +445,19 @@ impl ParserArenaSession {
         if storage.evidence.is_some() {
             return Err(SessionError::WrongToken);
         }
-        storage.evidence = Some(ParseEvidence::prepare(c)?);
+        // The evidence is retained before it is initialized, so a refusal
+        // leaves it with the session for cleanup.
         storage
             .evidence
-            .as_mut()
-            .expect("retained evidence")
+            .insert(ParseEvidence::prepare(c)?)
             .initialize_native_source(c, source)?;
         let slots = storage.prepare_node_causes(c, 1)?;
-        if let Some(slot) = slots[0] {
+        let [first, _] = slots;
+        if let Some(slot) = first {
             let RetainedPayload::ConstructionCause { node, .. } =
-                &mut storage.payloads.values[slot]
+                storage.payloads.row_mut(c, slot)?
             else {
-                unreachable!()
+                return Err(latch_registry_row(c));
             };
             *node = Some(0);
         }
@@ -553,6 +586,19 @@ mod tests {
         c.admit_source(source).unwrap();
         let evidence = ParseEvidence::prepare(&mut c).unwrap();
         (c, evidence)
+    }
+
+    #[test]
+    fn a_record_identifier_past_the_retained_records_is_a_registry_row_invariant() {
+        let source = HtmlSource::utf8("\0");
+        let (mut c, mut evidence) = owner(&source, limits(100));
+        evidence.initialize_native_source(&mut c, &source).unwrap();
+        let mut id = append(&mut evidence, &mut c, &source, 0).unwrap();
+        id.index = evidence.len();
+        let stop = evidence.get(&mut c, &id).err().unwrap();
+        assert_eq!(stop, ParseStop::InternalInvariant(Invariant::RegistryRow));
+        assert_eq!(c.stop(), Some(stop));
+        evidence.release(&mut c).unwrap();
     }
 
     #[test]
@@ -1344,7 +1390,7 @@ mod tests {
                     }
                     Event::Token(value) => {
                         assert_eq!(diagnostics, n);
-                        let token = value.token();
+                        let token = value.token_for_tests();
                         assert_eq!(token.source.source(), source.identity());
                         match &token.kind {
                             TokenKind::Comment(text) => {
@@ -1392,7 +1438,7 @@ mod tests {
             let retained = evidence.diagnostics();
             assert_eq!(retained.len(), n);
             for i in 0..n {
-                let (record, location) = retained.retained_record(i).unwrap();
+                let (record, location) = retained.retained_record(i).unwrap().unwrap();
                 assert_eq!(record.location, i);
                 assert_eq!(
                     record.kind,
@@ -1404,7 +1450,7 @@ mod tests {
                     (4 + i, 5 + i)
                 );
             }
-            assert!(retained.retained_record(n).is_none());
+            assert!(retained.retained_record(n).unwrap().is_none());
             assert_eq!(c.stop(), None);
             let before_cleanup = c.usage().clone();
             lexer.release(&mut c).unwrap();
@@ -1463,5 +1509,35 @@ mod tests {
                 8 * n
             );
         }
+    }
+
+    #[test]
+    fn a_retained_record_naming_a_missing_location_is_reported() {
+        let record = DiagnosticRecord {
+            kind: DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter),
+            context: DiagnosticContext::Tokenizer {
+                phase: DiagnosticPhase::Tokenizer,
+                state: State::Data,
+            },
+            severity: DiagnosticSeverity::Recoverable,
+            rule: DiagnosticRule {
+                anchor: "parse-error-unexpected-null-character",
+                branch: "unexpected-null-character",
+            },
+            location: 3,
+        };
+        let records = [record];
+        let view = DiagnosticEvidenceView {
+            records: &records,
+            locations: &[],
+        };
+        assert_eq!(view.len(), 1);
+        assert_eq!(
+            view.retained_record(0).err(),
+            Some(read::UnresolvedReference::new(
+                read::UnresolvedKind::Diagnostic
+            ))
+        );
+        assert!(matches!(view.retained_record(1), Ok(None)));
     }
 }

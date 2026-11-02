@@ -407,17 +407,20 @@ impl<'a> Source<'a> {
             c.limits.mapped_nodes as u64,
         )?;
         c.reserve(&mut self.captured_bindings, 1)?;
+        // The document is resolved from the subject before the subject moves
+        // into its binding, so nothing is read back from the pushed row.
+        let captured = capture
+            .capture()
+            .node(&subject)
+            .map_err(|_| Error::ForeignContext)?;
+        let document = captured.node_document();
+        let document_subject = (document.subject() != &subject).then(|| document.subject().clone());
         self.captured_bindings
             .push(DomParsedHtmlCapturedBinding { subject, node });
         #[cfg(test)]
         written.pushed::<DomParsedHtmlCapturedBinding>();
-        let captured = capture
-            .capture()
-            .node(self.captured_bindings.last().expect("just added").subject())
-            .map_err(|_| Error::ForeignContext)?;
-        let document = captured.node_document();
-        if document.subject() != self.captured_bindings.last().expect("just added").subject() {
-            self.add_captured(document.subject().clone(), c)?;
+        if let Some(document_subject) = document_subject {
+            self.add_captured(document_subject, c)?;
         }
         Ok(Key::Existing(node))
     }
@@ -545,7 +548,7 @@ fn collect<'a>(report: &'a HtmlParseReport, c: &mut Control<'_>) -> Result<Sourc
         || state.readiness() != HtmlParseReadiness::Complete
         || !state.ready_for_post_load_tasks()
         || report.context().is_some()
-        || report.effects().is_some()
+        || report.effects()?.is_some()
         || report.allow_declarative_shadow_roots()
         || report.effective_scripting_mode() != surgeist_html::HtmlParserScriptingMode::Disabled
         || report.image_support() != surgeist_html_semantics::HtmlImageSupport::Disabled
@@ -577,7 +580,7 @@ fn collect_fragment<'a>(
     let fragment = report.fragment().ok_or(Error::NotCompletedFragmentReport)?;
     let context = report.context().ok_or(Error::NotCompletedFragmentReport)?;
     let parser = report
-        .fragment_parser_document()
+        .fragment_parser_document()?
         .ok_or(Error::NotCompletedFragmentReport)?;
     let state = parser.completion();
     c.step(1)?;
@@ -630,10 +633,10 @@ fn collect_fragment<'a>(
     if let Some(form) = context.nearest_form() {
         source.add_captured(form.subject().clone(), c)?;
     }
-    let effects = report.effects().ok_or(Error::NotCompletedFragmentReport)?;
+    let effects = report.effects()?.ok_or(Error::NotCompletedFragmentReport)?;
     for index in 0..effects.registry_slots() {
         c.step(1)?;
-        if let Some(binding) = effects.registry(index) {
+        if let Some(binding) = effects.registry(index)? {
             if !matches!(binding.registry(), HtmlParseRegistry::Null) {
                 return Err(Error::CurrentPolicyUnavailable);
             }
@@ -645,7 +648,7 @@ fn collect_fragment<'a>(
     for index in 0..effects.len() {
         c.step(1)?;
         match effects
-            .effect(index)
+            .effect(index)?
             .ok_or(Error::NotCompletedFragmentReport)?
         {
             HtmlParseEffect::TemplateCache { document, inert } => {
@@ -701,6 +704,7 @@ fn collect_rows<'a>(
             HtmlParseMetadataStep::Record(record) => record,
             HtmlParseMetadataStep::Skipped => continue,
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => return Err(fault.into()),
         };
         // The auxiliary parser Document/html are installed only if an actual
         // retained semantic reference reaches them, not merely as bootstrap.
@@ -779,9 +783,12 @@ fn collect_rows<'a>(
     let associations = report.associations();
     for index in 0..associations.len() {
         c.step(1)?;
-        let row = associations
-            .row(index)
-            .expect("qualified association index");
+        // An index below the length that names no row is a report that lacks
+        // what it says it holds.
+        let row = associations.row(index)?.ok_or(match source.arena {
+            Arena::Document(_) => Error::NotCompletedOrdinaryReport,
+            Arena::Fragment(_) => Error::NotCompletedFragmentReport,
+        })?;
         match row.destination() {
             HtmlParseDestination::Node(node)
             | HtmlParseDestination::Field { node, .. }
@@ -852,6 +859,7 @@ fn collect_rows<'a>(
             }
             HtmlParsePendingAssociationStep::Skipped => {}
             HtmlParsePendingAssociationStep::Complete => break,
+            HtmlParsePendingAssociationStep::Fault(fault) => return Err(fault.into()),
         }
     }
     // Grow only from actual retained subjects and current relationships. Retired
@@ -923,11 +931,11 @@ fn apply_fragment_effects(
     c: &mut Control<'_>,
 ) -> Result<(), Error> {
     use surgeist_html_parser::{HtmlParseEffect, HtmlParseEffectHost};
-    let effects = report.effects().ok_or(Error::NotCompletedFragmentReport)?;
+    let effects = report.effects()?.ok_or(Error::NotCompletedFragmentReport)?;
     for index in 0..effects.len() {
         c.step(1)?;
         match effects
-            .effect(index)
+            .effect(index)?
             .ok_or(Error::NotCompletedFragmentReport)?
         {
             HtmlParseEffect::TemplateCache { document, inert } => {
@@ -1150,14 +1158,12 @@ impl Dom {
                         design_mode_enabled,
                     )
                 }
-            } else if report
-                .fragment_parser_document()
-                .is_some_and(|descriptor| descriptor.document().id() == node.id())
+            } else if let Some(descriptor) = report
+                .fragment_parser_document()?
+                .filter(|descriptor| descriptor.document().id() == node.id())
             {
                 DomDocumentMetadata::from_fragment_parser(
-                    &report
-                        .fragment_parser_document()
-                        .expect("selected descriptor"),
+                    &descriptor,
                     self.document_environment.clone(),
                     design_mode_enabled,
                 )
@@ -1184,7 +1190,7 @@ impl Dom {
             draft
                 .private_node_mut(key)
                 .document_fields_mut()
-                .expect("new owned Document")
+                .ok_or(Error::UnsupportedState { subject: node.id() })?
                 .focused_area_designation = focused_area_designation;
             // Only this genuinely new owned Document receives its original
             // qualified history. Captured current Documents are never reset.
@@ -1247,7 +1253,13 @@ impl Dom {
         }
         for row in &source.rows {
             c.step(1)?;
-            let key = row.key.expect("complete private allocation pass");
+            let Some(key) = row.key else {
+                // The allocation pass above keys every row; an unkeyed one
+                // is a fault of this installer, not a state of the report.
+                return Err(Error::UnsupportedState {
+                    subject: row.source.id(),
+                });
+            };
             let parent = row
                 .source
                 .parent()
@@ -1304,14 +1316,23 @@ impl Dom {
         )?;
         let mut bindings = Vec::new();
         c.reserve(&mut bindings, source.rows.len())?;
+        // The pass over the rows above refused an unkeyed row, so each row
+        // yields its key. Were one missing anyway, it maps to the root and the
+        // installation is refused below instead of publishing that mapping.
+        let mut unkeyed = None;
         let (prepared, mapped) = draft.finish_with_mapping(
             self,
             cancelled,
-            source
-                .rows
-                .iter()
-                .map(|row| row.key.expect("allocated source row")),
+            source.rows.iter().map(|row| {
+                row.key.unwrap_or_else(|| {
+                    unkeyed.get_or_insert(row.source.id());
+                    root
+                })
+            }),
         )?;
+        if let Some(subject) = unkeyed {
+            return Err(Error::UnsupportedState { subject });
+        }
         // finish owns the actual vector; account its observed backing rather
         // than replacing it with an uncharged collector.
         if mapped.capacity() > source.rows.len() {
@@ -1321,18 +1342,34 @@ impl Dom {
                     .ok_or(Error::RepresentationExhausted)?,
             )?;
         }
-        let root_index = source.index(&root_id, &mut c)?.expect("collected root");
-        let document = if let Some(capture) = capture {
-            let context = report.context().expect("qualified contextual report");
-            DocumentId(
-                capture
-                    .node(context.target_document().subject())
-                    .map_err(|_| Error::ForeignContext)?,
-            )
-        } else {
-            DocumentId(mapped[root_index])
-        };
-        let root_id_canonical = mapped[root_index];
+        let root_index =
+            source
+                .index(&root_id, &mut c)?
+                .ok_or_else(|| Error::UnsupportedState {
+                    subject: root_id.clone(),
+                })?;
+        let document =
+            if let Some(capture) = capture {
+                let context = report.context().ok_or(Error::NotCompletedFragmentReport)?;
+                DocumentId(
+                    capture
+                        .node(context.target_document().subject())
+                        .map_err(|_| Error::ForeignContext)?,
+                )
+            } else {
+                DocumentId(mapped.get(root_index).copied().ok_or_else(|| {
+                    Error::UnsupportedState {
+                        subject: root_id.clone(),
+                    }
+                })?)
+            };
+        let root_id_canonical =
+            mapped
+                .get(root_index)
+                .copied()
+                .ok_or_else(|| Error::UnsupportedState {
+                    subject: root_id.clone(),
+                })?;
         let mut association_documents = Vec::new();
         let mut association_cursor = report.pending_associations();
         loop {
@@ -1375,7 +1412,10 @@ impl Dom {
                     }
                 }
                 HtmlParsePendingAssociationStep::Complete => break,
-                _ => {}
+                HtmlParsePendingAssociationStep::Fault(fault) => return Err(fault.into()),
+                HtmlParsePendingAssociationStep::Document(_)
+                | HtmlParsePendingAssociationStep::Occurrence(_)
+                | HtmlParsePendingAssociationStep::Skipped => {}
             }
         }
         for (row, node) in source.rows.iter().zip(mapped) {
@@ -1387,7 +1427,11 @@ impl Dom {
             #[cfg(test)]
             written.pushed::<DomParsedHtmlBinding>();
         }
-        debug_assert_eq!(root, source.rows[root_index].key.expect("allocated root"));
+        #[cfg(test)]
+        assert_eq!(
+            Some(root),
+            source.rows.get(root_index).and_then(|row| row.key)
+        );
         let captured_bindings = std::mem::take(&mut source.captured_bindings);
         drop(source);
         c.check()?;

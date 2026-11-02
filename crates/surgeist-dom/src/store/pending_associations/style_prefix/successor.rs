@@ -356,12 +356,13 @@ fn dependency(
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(DomError::ParsedReportUnresolved(fault)),
             Step::Occurrence(row) if row.id() == *next => return Ok(false),
             Step::Occurrence(row) if row.id() == *prior => {
                 return Ok(!row.requires_processing() || prior == executed);
             }
             Step::Complete => return Ok(false),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }
@@ -398,6 +399,7 @@ pub(super) fn qualify_creation(
     loop {
         meter.step(cancel)?;
         match cursor.advance() {
+            Step::Fault(fault) => return Err(fault.into()),
             Step::Occurrence(row) if &row.id() == q.occurrence() => {
                 if row.kind() != Kind::StyleUpdate(surgeist_html::HtmlStyleTrigger::ParserPopped)
                     || row.subject().id() != *q.subject()
@@ -426,7 +428,7 @@ pub(super) fn qualify_creation(
                 return Ok(());
             }
             Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest),
-            _ => (),
+            Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
         }
     }
 }

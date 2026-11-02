@@ -30,23 +30,24 @@ impl ParseControl {
         {
             let mut addition = 0_u64;
             for &(_, delta) in requests {
-                addition = addition.checked_add(delta).ok_or_else(|| {
-                    self.representation::<()>(HtmlParseResource::ManagedEdges)
-                        .unwrap_err()
-                })?;
+                addition = addition
+                    .checked_add(delta)
+                    .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedEdges))?;
             }
             return self.commit_construction_edges(owner, addition, edge_remove);
         }
         self.require_identity(owner)?;
         let mut values = self.plan_storage(requests)?;
-        let Some(edges) = values[HtmlParseResource::ManagedEdges as usize].checked_sub(edge_remove)
+        let Some(edges) = values
+            .copy(HtmlParseResource::ManagedEdges)
+            .checked_sub(edge_remove)
         else {
             return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
         };
-        values[HtmlParseResource::ManagedEdges as usize] = edges;
+        *values.get_mut(HtmlParseResource::ManagedEdges) = edges;
         for resource in RESOURCES {
             if resource.storage() {
-                self.set(resource, values[resource as usize]);
+                self.set(resource, values.copy(resource));
             }
         }
         Ok(())
@@ -188,11 +189,10 @@ impl ParseControl {
         self.checkpoint()
     }
     pub(crate) fn construction_allocation_failed(&mut self, layout_bytes: usize) -> ParseStop {
-        self.fail::<()>(ParseStop::AllocationFailed {
+        self.latch_stop(ParseStop::AllocationFailed {
             resource: HtmlParseResource::ManagedCapacityBytes,
             layout_bytes: layout_bytes as u64,
         })
-        .unwrap_err()
     }
     pub(crate) fn record_construction_allocation(
         &mut self,

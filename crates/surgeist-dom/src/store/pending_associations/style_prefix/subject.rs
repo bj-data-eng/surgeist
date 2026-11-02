@@ -195,6 +195,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         loop {
             self.meter.step(cancel)?;
             match rows.advance() {
+                Step::Fault(fault) => return Err(fault.into()),
                 Step::Occurrence(candidate) if candidate.id() == row.id() => break,
                 Step::Occurrence(candidate) if candidate.subject().id() == row.subject().id() => {
                     earlier_influence |= candidate.requires_processing();
@@ -203,7 +204,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                     }
                 }
                 Step::Complete => return Err(DomParsedHtmlStyleError::WrongRequest.into()),
-                _ => (),
+                Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
             }
         }
         // Disconnected attribute setup is legitimate no-effect history, but an

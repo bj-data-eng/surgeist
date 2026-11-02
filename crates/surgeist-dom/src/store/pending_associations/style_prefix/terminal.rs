@@ -105,6 +105,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
         loop {
             meter.step(cancel)?;
             match rows.advance() {
+                Step::Fault(fault) => return Err(fault.into()),
                 Step::Occurrence(row) if row.style().is_some() => {
                     let document = super::super::consume::mapped(
                         meter.entry(),
@@ -158,7 +159,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                     }
                 }
                 Step::Complete => break,
-                _ => (),
+                Step::Document(_) | Step::Occurrence(_) | Step::Skipped => (),
             }
         }
         drop(view);

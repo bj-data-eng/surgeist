@@ -135,6 +135,17 @@ asynchronous resource-completion order. The report owns and prices this immutabl
 storage; `retained_construction_bytes()` and `retained_construction_utf16_units()`
 lend its whole retained physical and UTF-16 receipts for downstream custody.
 
+A published report is qualified once and is immutable afterwards, so a reference
+it holds that its own tables cannot resolve is a defect in that qualification,
+not an absent value. The metadata, pending association, history and reverse
+cursors end with a `Fault` outcome and keep reporting it. The readers that
+follow a stored index (an association row, a cause link, a history header, a
+retained diagnostic, an effect or registry binding, the parser Document) return
+`HtmlParseUnresolvedReference`. A consumer fails its operation on the fault: a
+skipped row or an absent answer would install a report that lacks what it
+names. Past-the-end indices remain absent, and a slot that holds no record
+remains a skipped step.
+
 A reached unavailable CSP invalidates later required policy-dependent URL/Base
 operations while preserving earlier cached observations. `base_state()` separates
 unfrozen, frozen and unavailable current state, retaining a genuine previous

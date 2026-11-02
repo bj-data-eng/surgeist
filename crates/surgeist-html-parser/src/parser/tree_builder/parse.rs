@@ -2,15 +2,16 @@
 use super::{
     StandaloneDocumentDriver, StandaloneError,
     context::{
-        ContextFragmentDriver, FragmentExecutionError,
+        ContextFragmentDriver, FailedContextFragment, FragmentExecutionError,
+        FrozenContextFragmentParts,
         ownership::{
-            FragmentInitializationOwner, OwnedFragmentFailure, SealedFragmentConstruction,
+            FragmentInitialization, OwnedFragmentFailure, SealedFragmentConstruction,
             StoppedFragmentConstruction,
         },
     },
     head::{HeadBoundary, HeadStep},
     report::ImmutableParseReport,
-    seal::{OrdinaryInitializationOwner, OwnedOrdinaryFailure, SealedOrdinaryConstruction},
+    seal::{OrdinaryInitialization, OwnedOrdinaryFailure, SealedOrdinaryConstruction},
     terminal::{DetachedStandaloneFailure, FailedStandaloneDocument, FrozenStandaloneParts},
 };
 use crate::construction::{SessionError, evidence::DiagnosticEvidenceView};
@@ -39,10 +40,17 @@ pub enum HtmlParseEngineCondition {
     Completion,
     Cleanup,
 }
+/// CSP storage this failure agreed to take back (see
+/// `HtmlParseFailure::claim_csp_storage`); only a claim can produce one.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ReturnableCspStorage(crate::meta_csp::Storage);
+impl ReturnableCspStorage {
+    pub(crate) const NONE: Self = Self(crate::meta_csp::Storage::ZERO);
+}
 enum FailureStorage {
-    OrdinaryInitialization(OrdinaryInitializationOwner),
+    OrdinaryInitialization(OrdinaryInitialization),
     Ordinary(OwnedOrdinaryFailure),
-    FragmentInitialization(FragmentInitializationOwner),
+    FragmentInitialization(FragmentInitialization),
     Fragment(OwnedFragmentFailure),
     OrdinaryFrozen(SealedOrdinaryConstruction),
     FragmentFrozen(SealedFragmentConstruction),
@@ -54,18 +62,50 @@ pub struct HtmlParseFailure {
     cleanup_error: Option<HtmlParseEngineCondition>,
 }
 impl HtmlParseFailure {
-    pub(crate) fn release_csp_storage(&mut self, storage: crate::meta_csp::Storage) {
-        match &mut self.storage {
-            FailureStorage::Ordinary(owner) => owner.release_csp_storage(storage),
-            _ => panic!("native error was issued only by the original ordinary driver"),
+    /// Decides, while this failure is still readable by the caller, whether it
+    /// can take back `storage` that a processor's native error carried out of
+    /// the parse. Only the original ordinary driver holds the controller the
+    /// storage was charged to, and only if that controller admitted it. For any
+    /// other owner, or for storage it does not hold, the storage stays
+    /// unreleased and `cleanup_error` says why; the original stop and retained
+    /// evidence are untouched. The result is what may later be returned.
+    pub(crate) fn claim_csp_storage(
+        &mut self,
+        storage: crate::meta_csp::Storage,
+    ) -> ReturnableCspStorage {
+        if storage == crate::meta_csp::Storage::ZERO {
+            return ReturnableCspStorage(storage);
         }
+        let condition = match &self.storage {
+            FailureStorage::Ordinary(owner) if owner.csp_storage_fits(storage) => {
+                return ReturnableCspStorage(storage);
+            }
+            FailureStorage::Ordinary(_) => HtmlParseEngineCondition::Cleanup,
+            _ => HtmlParseEngineCondition::Ownership,
+        };
+        self.cleanup_error.get_or_insert(condition);
+        ReturnableCspStorage::NONE
+    }
+    /// Gives claimed storage back to the controller it was charged to. A
+    /// refusal is latched on that controller, which the caller no longer
+    /// reaches; a claim always passed the controller's own check.
+    pub(crate) fn return_csp_storage(
+        &mut self,
+        storage: ReturnableCspStorage,
+    ) -> Result<(), ParseStop> {
+        // A claim for nonzero storage exists only for an ordinary failure, and
+        // the owner variant never changes after construction.
+        if let FailureStorage::Ordinary(owner) = &mut self.storage
+            && storage.0 != crate::meta_csp::Storage::ZERO
+        {
+            return owner.release_csp_storage(storage.0);
+        }
+        Ok(())
     }
 
     fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
         match &self.storage {
-            FailureStorage::OrdinaryInitialization(owner) => {
-                owner.request()?.associated_inputs().map(AsRef::as_ref)
-            }
+            FailureStorage::OrdinaryInitialization(owner) => owner.request().associated_inputs(),
             FailureStorage::Ordinary(owner) => owner
                 .original_request()
                 .associated_inputs()
@@ -73,10 +113,9 @@ impl HtmlParseFailure {
             FailureStorage::OrdinaryFrozen(owner) => {
                 owner.request.associated_inputs().map(AsRef::as_ref)
             }
-            FailureStorage::FragmentInitialization(owner) => owner
-                .original_request()?
-                .associated_inputs()
-                .map(AsRef::as_ref),
+            FailureStorage::FragmentInitialization(owner) => {
+                owner.original_request().associated_inputs()
+            }
             FailureStorage::Fragment(owner) => owner
                 .original_request()
                 .associated_inputs()
@@ -112,8 +151,23 @@ impl HtmlParseFailure {
     pub fn reason(&self) -> HtmlParseFailureReason {
         self.reason
     }
+    /// A condition under which the failure could not keep all it learned. When
+    /// it is `Cleanup` or `Ownership` the evidence readers (`first_stop`,
+    /// `source_admitted`, `at_stop`, `retained_usage`, `after_cleanup` and
+    /// `diagnostics`) can read `None` even though execution ran, so a `None`
+    /// from them does not mean the request was rejected before execution. The
+    /// original request, its source and the reason are always kept, and
+    /// `first_stop` still names the stop when the reason does.
     pub fn cleanup_error(&self) -> Option<HtmlParseEngineCondition> {
         self.cleanup_error
+    }
+    /// The stop the reason names, for a failure that reports a cleanup or an
+    /// ownership condition and so holds no stopped prefix.
+    fn stop_of_refused_cleanup(&self) -> Option<ParseStop> {
+        match (self.cleanup_error, self.reason) {
+            (Some(_), HtmlParseFailureReason::Stop(stop)) => Some(stop),
+            _ => None,
+        }
     }
     /// The original execution stop, including an unsupported construction's
     /// canonical terminal stop. Pre-execution rejection has no invented stop.
@@ -121,16 +175,22 @@ impl HtmlParseFailure {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => match o.failure() {
                 Some(super::entry::InitializationFailure::Stopped(stop)) => Some(stop),
-                _ => None,
+                // A refused cleanup keeps no stopped prefix, but the reason
+                // still names the stop that ended execution.
+                _ => self.stop_of_refused_cleanup(),
             },
             FailureStorage::Ordinary(o) => Some(o.stop()),
-            FailureStorage::FragmentInitialization(o) => o.failure().map(|f| f.stop()),
+            FailureStorage::FragmentInitialization(o) => o
+                .failure()
+                .map(|f| f.stop())
+                .or_else(|| self.stop_of_refused_cleanup()),
             FailureStorage::Fragment(o) => Some(o.stop()),
             FailureStorage::OrdinaryFrozen(o) => o.parts.control.stop(),
             FailureStorage::FragmentFrozen(o) => o.parts.control.stop(),
         }
     }
-    /// None means rejection before an execution control was established.
+    /// None means rejection before an execution control was established, or a
+    /// failure whose `cleanup_error` reports that it kept no stopped prefix.
     /// Some(false) is a stopped source-admission attempt, distinct from an
     /// admitted empty source.
     pub fn source_admitted(&self) -> Option<bool> {
@@ -169,13 +229,9 @@ impl HtmlParseFailure {
     }
     pub fn source(&self) -> &HtmlSource {
         match &self.storage {
-            FailureStorage::OrdinaryInitialization(o) => {
-                o.source().expect("original request retained")
-            }
+            FailureStorage::OrdinaryInitialization(o) => o.source(),
             FailureStorage::Ordinary(o) => o.source(),
-            FailureStorage::FragmentInitialization(o) => {
-                o.source().expect("original request retained")
-            }
+            FailureStorage::FragmentInitialization(o) => o.source(),
             FailureStorage::Fragment(o) => o.source(),
             FailureStorage::OrdinaryFrozen(o) => o.source(),
             FailureStorage::FragmentFrozen(o) => o.source(),
@@ -183,13 +239,9 @@ impl HtmlParseFailure {
     }
     pub fn limits(&self) -> &HtmlParseLimits {
         match &self.storage {
-            FailureStorage::OrdinaryInitialization(o) => {
-                o.request().expect("original request").limits()
-            }
+            FailureStorage::OrdinaryInitialization(o) => o.request().limits(),
             FailureStorage::Ordinary(o) => o.original_request().limits(),
-            FailureStorage::FragmentInitialization(o) => {
-                o.original_request().expect("original request").limits()
-            }
+            FailureStorage::FragmentInitialization(o) => o.original_request().limits(),
             FailureStorage::Fragment(o) => o.original_request().limits(),
             FailureStorage::OrdinaryFrozen(o) => o.limits(),
             FailureStorage::FragmentFrozen(o) => o.limits(),
@@ -199,9 +251,7 @@ impl HtmlParseFailure {
     /// and fragments. A fragment capture is available through context().
     pub fn capture(&self) -> Option<&crate::HtmlCapture> {
         match &self.storage {
-            FailureStorage::OrdinaryInitialization(o) => {
-                o.request().expect("original request").capture()
-            }
+            FailureStorage::OrdinaryInitialization(o) => o.request().capture(),
             FailureStorage::Ordinary(o) => o.original_request().capture(),
             FailureStorage::OrdinaryFrozen(o) => o.request.capture(),
             _ => None,
@@ -211,9 +261,7 @@ impl HtmlParseFailure {
     /// documents and fragments; this is not an output-tree identity.
     pub fn document(&self) -> Option<&crate::HtmlCaptureDocumentId> {
         match &self.storage {
-            FailureStorage::OrdinaryInitialization(o) => {
-                o.request().expect("original request").document()
-            }
+            FailureStorage::OrdinaryInitialization(o) => o.request().document(),
             FailureStorage::Ordinary(o) => o.original_request().document(),
             FailureStorage::OrdinaryFrozen(o) => o.request.document(),
             _ => None,
@@ -222,9 +270,7 @@ impl HtmlParseFailure {
     /// The original ordinary request's URL facts, including on pre-source failure.
     pub fn document_base_facts(&self) -> Option<&crate::HtmlParseBaseFacts> {
         match &self.storage {
-            FailureStorage::OrdinaryInitialization(o) => {
-                o.request().expect("original request").base_facts()
-            }
+            FailureStorage::OrdinaryInitialization(o) => o.request().base_facts(),
             FailureStorage::Ordinary(o) => o.original_request().base_facts(),
             FailureStorage::OrdinaryFrozen(o) => o.request.base_facts(),
             _ => None,
@@ -233,9 +279,7 @@ impl HtmlParseFailure {
     /// The original fragment request's qualified captured facts.
     pub fn captured_base_facts(&self) -> Option<&crate::HtmlCapturedBaseFacts> {
         match &self.storage {
-            FailureStorage::FragmentInitialization(o) => {
-                o.original_request().expect("original request").base_facts()
-            }
+            FailureStorage::FragmentInitialization(o) => o.original_request().base_facts(),
             FailureStorage::Fragment(o) => o.original_request().base_facts(),
             FailureStorage::FragmentFrozen(o) => o.request.base_facts(),
             _ => None,
@@ -244,16 +288,13 @@ impl HtmlParseFailure {
     /// The original request option, not a claim that execution occurred.
     pub fn requested_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
         match &self.storage {
-            FailureStorage::OrdinaryInitialization(o) => {
-                o.request().expect("original request").scripting_mode()
-            }
+            FailureStorage::OrdinaryInitialization(o) => o.request().scripting_mode(),
             FailureStorage::Ordinary(_) | FailureStorage::OrdinaryFrozen(_) => {
                 crate::HtmlParserScriptingMode::Disabled
             }
-            FailureStorage::FragmentInitialization(o) => o
-                .original_request()
-                .expect("original request")
-                .requested_scripting_mode(),
+            FailureStorage::FragmentInitialization(o) => {
+                o.original_request().requested_scripting_mode()
+            }
             FailureStorage::Fragment(o) => o.original_request().requested_scripting_mode(),
             FailureStorage::FragmentFrozen(o) => o.request.requested_scripting_mode(),
         }
@@ -261,24 +302,20 @@ impl HtmlParseFailure {
     /// The original permission option, distinct from committed effects.
     pub fn allow_declarative_shadow_roots(&self) -> bool {
         match &self.storage {
-            FailureStorage::OrdinaryInitialization(o) => o
-                .request()
-                .expect("original request")
-                .allow_declarative_shadow_roots(),
+            FailureStorage::OrdinaryInitialization(o) => {
+                o.request().allow_declarative_shadow_roots()
+            }
             FailureStorage::Ordinary(_) | FailureStorage::OrdinaryFrozen(_) => false,
-            FailureStorage::FragmentInitialization(o) => o
-                .original_request()
-                .expect("original request")
-                .allow_declarative_shadow_roots(),
+            FailureStorage::FragmentInitialization(o) => {
+                o.original_request().allow_declarative_shadow_roots()
+            }
             FailureStorage::Fragment(o) => o.original_request().allow_declarative_shadow_roots(),
             FailureStorage::FragmentFrozen(o) => o.request.allow_declarative_shadow_roots(),
         }
     }
     pub fn context(&self) -> Option<&crate::HtmlFragmentContext> {
         match &self.storage {
-            FailureStorage::FragmentInitialization(o) => {
-                Some(o.original_request().expect("original request").context())
-            }
+            FailureStorage::FragmentInitialization(o) => Some(o.original_request().context()),
             FailureStorage::Fragment(o) => Some(o.context()),
             FailureStorage::FragmentFrozen(o) => Some(o.context()),
             _ => None,
@@ -287,7 +324,7 @@ impl HtmlParseFailure {
     pub fn at_stop(&self) -> Option<&ParseUsage> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.at_stop(),
-            FailureStorage::Ordinary(o) => Some(o.at_stop()),
+            FailureStorage::Ordinary(o) => o.at_stop(),
             FailureStorage::FragmentInitialization(o) => o.failure().map(|f| f.at_stop()),
             FailureStorage::Fragment(o) => Some(o.at_stop()),
             FailureStorage::OrdinaryFrozen(o) => o.parts.at_stop(),
@@ -391,70 +428,99 @@ fn fragment_reason(e: &FragmentExecutionError) -> HtmlParseFailureReason {
         _ => HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership),
     }
 }
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the variants own the very owners a stop must hand over, without allocating after it"
+)]
 enum OrdinaryAttempt {
-    Ready,
-    Failed(HtmlParseFailureReason),
-    Initialization(HtmlParseFailureReason, bool),
+    Ready(FrozenStandaloneParts),
+    Failed(HtmlParseFailureReason, DetachedStandaloneFailure),
+    Initialization(HtmlParseFailureReason, Option<HtmlParseEngineCondition>),
+}
+/// Ends an execution that stopped: the driver is cleaned and its failure
+/// detached, or, if either step is refused, the request-owning carrier reports
+/// the failure with a cleanup error. The driver cannot move into the carrier,
+/// since it borrows the request the carrier owns.
+fn abandon_ordinary(
+    mut driver: StandaloneDocumentDriver<'_>,
+    reason: HtmlParseFailureReason,
+    invariant_fault: bool,
+) -> OrdinaryAttempt {
+    if invariant_fault {
+        StandaloneError::latch_invariant(&mut driver.control);
+    } else {
+        driver
+            .control
+            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+    }
+    let Ok(failed) = driver.into_failed() else {
+        return OrdinaryAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Cleanup));
+    };
+    detach_ordinary(failed, reason)
+}
+fn detach_ordinary(
+    failed: FailedStandaloneDocument<'_>,
+    reason: HtmlParseFailureReason,
+) -> OrdinaryAttempt {
+    match failed.into_detached() {
+        Ok(failure) => OrdinaryAttempt::Failed(reason, failure),
+        // The cleaned failure could not be detached from its source binding.
+        Err(_) => {
+            OrdinaryAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Ownership))
+        }
+    }
 }
 fn ordinary_attempt(
-    owner: &mut OrdinaryInitializationOwner,
-    ready: &mut Option<FrozenStandaloneParts>,
-    failed_output: &mut Option<DetachedStandaloneFailure>,
+    owner: &mut OrdinaryInitialization,
     mut service: Option<&mut dyn crate::meta_csp::Service>,
     fixed: usize,
     initial_base: bool,
 ) -> OrdinaryAttempt {
     let mut attempt = match owner.begin_report() {
         Ok(a) => a,
-        Err(e) => return OrdinaryAttempt::Initialization(ordinary_reason(&e), false),
+        Err(e) => return OrdinaryAttempt::Initialization(ordinary_reason(&e), None),
     };
     let mut driver = match attempt.take_driver() {
-        Ok(d) => Some(d),
+        Ok(d) => d,
         Err(e) => {
             let reason = ordinary_reason(&e);
-            let cleanup_failed = attempt.retain_failure().is_err();
-            return OrdinaryAttempt::Initialization(reason, cleanup_failed);
+            let refused = attempt
+                .retain_failure()
+                .is_err()
+                .then_some(HtmlParseEngineCondition::Cleanup);
+            return OrdinaryAttempt::Initialization(reason, refused);
         }
     };
     // Actual output receivers are admitted on this public-only path before
     // its first token pull; no heap indirection is introduced.
     let mut reason = super::write(
-        std::mem::size_of::<Option<FrozenStandaloneParts>>()
-            + std::mem::size_of::<Option<DetachedStandaloneFailure>>()
-            + std::mem::size_of::<OrdinaryAttempt>(),
+        const { std::mem::size_of::<OrdinaryAttempt>() },
         3,
-        &mut driver.as_mut().expect("actual driver").control,
+        &mut driver.control,
     )
     .err()
     .map(HtmlParseFailureReason::Stop);
     if service.is_some() && reason.is_none() {
-        if let Err(e) = super::write(
-            fixed,
-            2,
-            &mut driver.as_mut().expect("actual driver").control,
-        ) {
+        if let Err(e) = super::write(fixed, 2, &mut driver.control) {
             reason = Some(HtmlParseFailureReason::Stop(e));
         }
         if reason.is_none()
-            && let Err(e) = driver
-                .as_mut()
-                .expect("actual driver")
-                .enable_meta_csp(initial_base)
+            && let Err(e) = driver.enable_meta_csp(initial_base)
         {
             reason = Some(ordinary_reason(&e));
         }
     }
+    // The parse functions give the tokenizer the complete source, which never
+    // starves it, so a request for more input is a fault of the parser.
+    let mut starved = false;
     while reason.is_none() {
-        match driver
-            .as_mut()
-            .expect("actual driver")
-            .step_with_meta_csp(&mut service)
-        {
+        match driver.step_with_meta_csp(&mut service) {
             Ok(HeadStep::Consumed) => {}
             Ok(HeadStep::NeedInput) => {
                 reason = Some(HtmlParseFailureReason::Engine(
                     HtmlParseEngineCondition::Tokenizer,
                 ));
+                starved = true;
                 break;
             }
             Ok(HeadStep::Complete) => break,
@@ -469,58 +535,29 @@ fn ordinary_attempt(
         }
     }
     if let Some(reason) = reason {
-        driver
-            .as_mut()
-            .expect("actual driver")
-            .control
-            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-        let mut failed = Some(
-            StandaloneDocumentDriver::take_failed(&mut driver).expect("closed execution cleanup"),
-        );
-        *failed_output = Some(
-            FailedStandaloneDocument::detach(&mut failed).expect("same request terminal transfer"),
-        );
-        return OrdinaryAttempt::Failed(reason);
+        return abandon_ordinary(driver, reason, starved);
     }
-    let mut completed = match StandaloneDocumentDriver::take_completed(&mut driver) {
+    // A refused completion has already latched a lost owner as an invariant.
+    let mut completed = match driver.into_completed() {
         Ok(completed) => completed,
-        Err(error) => {
-            let reason = ordinary_reason(&error);
-            driver
-                .as_mut()
-                .expect("completion refusal retains driver")
-                .control
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            let mut failed = Some(
-                StandaloneDocumentDriver::take_failed(&mut driver)
-                    .expect("closed completion-refusal cleanup"),
-            );
-            *failed_output = Some(
-                FailedStandaloneDocument::detach(&mut failed)
-                    .expect("same stopped request authority"),
-            );
-            return OrdinaryAttempt::Failed(reason);
+        Err((error, driver)) => {
+            return abandon_ordinary(driver, ordinary_reason(&error), error.invariant_fault());
         }
     };
     let completion = completed
         .prepare_native_associations()
         .and_then(|()| completed.freeze_parts());
     match completion {
-        Ok(parts) => {
-            *ready = Some(parts);
-            OrdinaryAttempt::Ready
-        }
+        Ok(parts) => OrdinaryAttempt::Ready(parts),
         Err(e) => {
             let reason = ordinary_reason(&e);
-            completed.stop_for_public_failure();
-            let mut failed = Some(
-                completed
-                    .take_public_failure()
-                    .expect("closed completed cleanup"),
-            );
-            *failed_output =
-                Some(FailedStandaloneDocument::detach(&mut failed).expect("same stopped binding"));
-            OrdinaryAttempt::Failed(reason)
+            completed.stop_for_public_failure(e.invariant_fault());
+            match completed.take_public_failure() {
+                Ok(failed) => detach_ordinary(failed, reason),
+                Err(_) => {
+                    OrdinaryAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Cleanup))
+                }
+            }
         }
     }
 }
@@ -534,65 +571,38 @@ pub(crate) fn document(
     fixed: usize,
 ) -> Result<ImmutableParseReport, HtmlParseFailure> {
     let initial_base = request.initial_policy_base();
-    let mut owner = OrdinaryInitializationOwner::new(request);
-    let mut parts = None;
-    let mut failed = None;
-    match ordinary_attempt(
-        &mut owner,
-        &mut parts,
-        &mut failed,
-        service,
-        fixed,
-        initial_base,
-    ) {
-        OrdinaryAttempt::Ready => {}
+    let mut owner = OrdinaryInitialization::new(request);
+    let parts = match ordinary_attempt(&mut owner, service, fixed, initial_base) {
+        OrdinaryAttempt::Ready(parts) => parts,
         OrdinaryAttempt::Initialization(reason, refused) => {
             return Err(HtmlParseFailure {
                 reason,
                 storage: FailureStorage::OrdinaryInitialization(owner),
-                cleanup_error: refused.then_some(HtmlParseEngineCondition::Cleanup),
+                cleanup_error: refused,
             });
         }
-        OrdinaryAttempt::Failed(reason) => {
-            let failure = OwnedOrdinaryFailure::take(
-                &mut Some(owner.take_request().expect("transferred real request")),
-                &mut failed,
-            )
-            .expect("original authority");
-            return Err(HtmlParseFailure {
-                reason,
-                storage: FailureStorage::Ordinary(failure),
-                cleanup_error: None,
-            });
+        OrdinaryAttempt::Failed(reason, failure) => {
+            return Err(ordinary_failure(owner, reason, failure));
         }
     };
-    let mut request = Some(owner.take_request().expect("complete actual request"));
-    let sealed = match SealedOrdinaryConstruction::take(&mut request, &mut parts) {
+    let sealed = match owner.into_sealed(parts) {
         Ok(sealed) => sealed,
-        Err(e) => {
-            let reason = ordinary_reason(&e);
-            parts
-                .as_mut()
-                .expect("retained freeze")
-                .control
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            let failure = super::terminal::FrozenStandaloneParts::detach_failure(&mut parts)
-                .expect("closed frozen cleanup");
-            let failure = OwnedOrdinaryFailure::take(&mut request, &mut Some(failure))
-                .expect("actual original request");
-            return Err(HtmlParseFailure {
-                reason,
-                storage: FailureStorage::Ordinary(failure),
-                cleanup_error: None,
-            });
+        Err((error, owner, mut parts)) => {
+            let reason = ordinary_reason(&error);
+            if error.invariant_fault() {
+                StandaloneError::latch_invariant(&mut parts.control);
+            } else {
+                parts
+                    .control
+                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+            }
+            return Err(detach_frozen_ordinary(owner, reason, parts));
         }
     };
-    let mut input = Some(sealed);
-    match ImmutableParseReport::take_document(&mut input) {
+    match ImmutableParseReport::publish_document(sealed) {
         Ok(report) => Ok(report),
-        Err(e) => {
+        Err((e, mut sealed)) => {
             let reason = session_reason(e);
-            let mut sealed = input.take().expect("publication refusal retains owner");
             sealed
                 .parts
                 .control
@@ -606,6 +616,153 @@ pub(crate) fn document(
         }
     }
 }
+/// Ends a frozen ordinary execution that could not be sealed: the stopped
+/// parts are cleaned and detached into the failure. If either step is refused
+/// the request-owning carrier reports it, a cleanup fault for the cleaning and
+/// an ownership fault for the detaching, as the stopped-driver path does.
+fn detach_frozen_ordinary(
+    owner: OrdinaryInitialization,
+    reason: HtmlParseFailureReason,
+    mut parts: FrozenStandaloneParts,
+) -> HtmlParseFailure {
+    let carrier = |owner, fault| HtmlParseFailure {
+        reason,
+        storage: FailureStorage::OrdinaryInitialization(owner),
+        cleanup_error: Some(fault),
+    };
+    // The detach below finds the cleaning done and goes on to the binding.
+    if parts.cleanup_failure().is_err() {
+        return carrier(owner, HtmlParseEngineCondition::Cleanup);
+    }
+    match parts.into_detached_failure() {
+        Ok(failure) => ordinary_failure(owner, reason, failure),
+        Err(_) => carrier(owner, HtmlParseEngineCondition::Ownership),
+    }
+}
+/// Joins a cleaned failure to the original request. If the join is refused the
+/// carrier keeps the request and reports why the failure was not kept.
+fn ordinary_failure(
+    owner: OrdinaryInitialization,
+    reason: HtmlParseFailureReason,
+    failure: DetachedStandaloneFailure,
+) -> HtmlParseFailure {
+    match owner.into_failure(failure) {
+        Ok(failure) => HtmlParseFailure {
+            reason,
+            storage: FailureStorage::Ordinary(failure),
+            cleanup_error: None,
+        },
+        Err((_, owner, _)) => HtmlParseFailure {
+            reason,
+            storage: FailureStorage::OrdinaryInitialization(owner),
+            cleanup_error: Some(HtmlParseEngineCondition::Ownership),
+        },
+    }
+}
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the variants own the very owners a stop must hand over, without allocating after it"
+)]
+enum FragmentAttempt {
+    Ready(FrozenContextFragmentParts),
+    Failed(HtmlParseFailureReason, StoppedFragmentConstruction),
+    Initialization(HtmlParseFailureReason, Option<HtmlParseEngineCondition>),
+}
+/// Ends a fragment execution that stopped; a refused step is reported by the
+/// request-owning carrier, as for the ordinary driver.
+fn abandon_fragment(
+    driver: ContextFragmentDriver<'_>,
+    reason: HtmlParseFailureReason,
+) -> FragmentAttempt {
+    match driver.into_failed() {
+        Ok(failed) => stop_fragment(failed, reason),
+        Err(_) => FragmentAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Cleanup)),
+    }
+}
+fn stop_fragment(
+    failed: FailedContextFragment<'_>,
+    reason: HtmlParseFailureReason,
+) -> FragmentAttempt {
+    match StoppedFragmentConstruction::from_failed(failed) {
+        Ok(stopped) => FragmentAttempt::Failed(reason, stopped),
+        // The failure did not qualify against its request and binding.
+        Err(_) => {
+            FragmentAttempt::Initialization(reason, Some(HtmlParseEngineCondition::Ownership))
+        }
+    }
+}
+fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
+    let mut attempt = match owner.begin_report() {
+        Ok(attempt) => attempt,
+        Err(_) => {
+            return FragmentAttempt::Initialization(
+                HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership),
+                None,
+            );
+        }
+    };
+    let mut driver =
+        match attempt.take_driver() {
+            Ok(d) => d,
+            Err(_) => {
+                let why = attempt.reason().map(fragment_reason).unwrap_or(
+                    HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership),
+                );
+                let refused = attempt
+                    .retain_failure()
+                    .is_err()
+                    .then_some(HtmlParseEngineCondition::Cleanup);
+                return FragmentAttempt::Initialization(why, refused);
+            }
+        };
+    // A fragment source is complete, which never starves the tokenizer, so a
+    // request for more input is a fault of the parser.
+    let mut starved = false;
+    let why = loop {
+        match driver.step() {
+            Ok(HeadStep::Consumed) => {}
+            Ok(HeadStep::NeedInput) => {
+                starved = true;
+                break Some(HtmlParseFailureReason::Engine(
+                    HtmlParseEngineCondition::Tokenizer,
+                ));
+            }
+            Ok(HeadStep::Complete) => break None,
+            Ok(HeadStep::Boundary(b)) => {
+                break Some(HtmlParseFailureReason::UnsupportedConstruction(b));
+            }
+            Err(e) => break Some(fragment_reason(&e)),
+        }
+    };
+    if let Some(why) = why {
+        driver.stop_for_public_failure(starved);
+        return abandon_fragment(driver, why);
+    }
+    // A refused completion has already latched a lost owner as an invariant.
+    let mut completed = match driver.into_completed() {
+        Ok(completed) => completed,
+        Err((error, mut driver)) => {
+            driver.stop_for_public_failure(error.invariant_fault());
+            return abandon_fragment(driver, fragment_reason(&error));
+        }
+    };
+    match completed
+        .prepare_native_associations()
+        .and_then(|()| completed.freeze_parts())
+    {
+        Ok(parts) => FragmentAttempt::Ready(parts),
+        Err(e) => {
+            let why = fragment_reason(&e);
+            completed.stop_for_public_failure(e.invariant_fault());
+            match completed.take_failed() {
+                Ok(failed) => stop_fragment(failed, why),
+                Err(_) => {
+                    FragmentAttempt::Initialization(why, Some(HtmlParseEngineCondition::Cleanup))
+                }
+            }
+        }
+    }
+}
 #[expect(
     clippy::result_large_err,
     reason = "returns the actual original request, stopped control and cleanup owner without allocating after a stop"
@@ -613,149 +770,38 @@ pub(crate) fn document(
 pub(crate) fn fragment(
     request: HtmlFragmentParseRequest,
 ) -> Result<ImmutableParseReport, HtmlParseFailure> {
-    let mut owner = FragmentInitializationOwner::new(request);
-    let mut parts;
-    let mut stopped = None;
-    let reason;
-    {
-        let mut attempt = owner.begin_report().expect("fresh request owner");
-        let mut driver = match attempt.take_driver() {
-            Ok(d) => Some(d),
-            Err(_) => {
-                let why = attempt.reason().map(fragment_reason).unwrap_or(
-                    HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership),
-                );
-                let refused = attempt.retain_failure().is_err();
-                drop(attempt);
-                return Err(HtmlParseFailure {
-                    reason: why,
-                    storage: FailureStorage::FragmentInitialization(owner),
-                    cleanup_error: refused.then_some(HtmlParseEngineCondition::Cleanup),
-                });
-            }
-        };
-        let mut why = None;
-        loop {
-            match driver.as_mut().expect("actual fragment driver").step() {
-                Ok(HeadStep::Consumed) => {}
-                Ok(HeadStep::NeedInput) => {
-                    why = Some(HtmlParseFailureReason::Engine(
-                        HtmlParseEngineCondition::Tokenizer,
-                    ));
-                    break;
-                }
-                Ok(HeadStep::Complete) => break,
-                Ok(HeadStep::Boundary(b)) => {
-                    why = Some(HtmlParseFailureReason::UnsupportedConstruction(b));
-                    break;
-                }
-                Err(e) => {
-                    why = Some(fragment_reason(&e));
-                    break;
-                }
-            }
-        }
-        if let Some(why) = why {
-            driver
-                .as_mut()
-                .expect("actual driver")
-                .stop_for_public_failure();
-            let mut failed = Some(
-                ContextFragmentDriver::take_failed(&mut driver).expect("closed fragment cleanup"),
-            );
-            stopped = Some(
-                StoppedFragmentConstruction::take(&mut failed, &mut None)
-                    .expect("actual stopped authority"),
-            );
-            parts = None;
-            reason = Some(why);
-        } else {
-            match ContextFragmentDriver::take_completed(&mut driver) {
-                Err(error) => {
-                    let why = fragment_reason(&error);
-                    driver
-                        .as_mut()
-                        .expect("completion refusal retains fragment driver")
-                        .stop_for_public_failure();
-                    let mut failed = Some(
-                        ContextFragmentDriver::take_failed(&mut driver)
-                            .expect("closed fragment completion-refusal cleanup"),
-                    );
-                    stopped = Some(
-                        StoppedFragmentConstruction::take(&mut failed, &mut None)
-                            .expect("same stopped fragment authority"),
-                    );
-                    parts = None;
-                    reason = Some(why);
-                }
-                Ok(mut completed) => match completed
-                    .prepare_native_associations()
-                    .and_then(|()| completed.freeze_parts())
-                {
-                    Ok(p) => {
-                        parts = Some(p);
-                        reason = None;
-                    }
-                    Err(e) => {
-                        let why = fragment_reason(&e);
-                        completed.stop_for_public_failure();
-                        let mut failed = Some(
-                            completed
-                                .take_failed()
-                                .expect("closed completed fragment cleanup"),
-                        );
-                        stopped = Some(
-                            StoppedFragmentConstruction::take(&mut failed, &mut None)
-                                .expect("stopped original source"),
-                        );
-                        parts = None;
-                        reason = Some(why);
-                    }
-                },
-            }
-        }
-    }
-    if let Some(reason) = reason {
-        owner
-            .retain_execution_failure(&mut stopped)
-            .expect("original authority");
-        return Err(HtmlParseFailure {
-            reason,
-            storage: FailureStorage::Fragment(
-                owner.take_failure().expect("original owned failure"),
-            ),
-            cleanup_error: None,
-        });
-    }
-    let sealed = match owner.seal(&mut parts) {
-        Ok(sealed) => sealed,
-        Err(e) => {
-            let reason = fragment_reason(&e);
-            parts
-                .as_mut()
-                .expect("retained actual parts")
-                .control
-                .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-            stopped = Some(
-                StoppedFragmentConstruction::take_frozen(&mut parts, &mut None)
-                    .expect("closed frozen cleanup"),
-            );
-            owner
-                .retain_execution_failure(&mut stopped)
-                .expect("qualified original authority");
+    let mut owner = FragmentInitialization::new(request);
+    let parts = match fragment_attempt(&mut owner) {
+        FragmentAttempt::Ready(parts) => parts,
+        FragmentAttempt::Initialization(reason, refused) => {
             return Err(HtmlParseFailure {
                 reason,
-                storage: FailureStorage::Fragment(owner.take_failure().expect("same request")),
-                cleanup_error: None,
+                storage: FailureStorage::FragmentInitialization(owner),
+                cleanup_error: refused,
             });
         }
+        FragmentAttempt::Failed(reason, stopped) => {
+            return Err(fragment_failure(owner, reason, stopped));
+        }
     };
-    let mut input = Some(sealed);
-    match ImmutableParseReport::take_fragment(&mut input) {
+    let sealed = match owner.into_sealed(parts) {
+        Ok(sealed) => sealed,
+        Err((error, owner, mut parts)) => {
+            let reason = fragment_reason(&error);
+            if error.invariant_fault() {
+                FragmentExecutionError::latch_invariant(&mut parts.control);
+            } else {
+                parts
+                    .control
+                    .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+            }
+            return Err(detach_frozen_fragment(owner, reason, parts));
+        }
+    };
+    match ImmutableParseReport::publish_fragment(sealed) {
         Ok(report) => Ok(report),
-        Err(e) => {
+        Err((e, mut sealed)) => {
             let reason = session_reason(e);
-            let mut sealed = input.take().expect("same refused report slot");
             sealed
                 .parts
                 .control
@@ -769,16 +815,64 @@ pub(crate) fn fragment(
         }
     }
 }
+/// Ends a frozen fragment execution that could not be sealed, as
+/// [`detach_frozen_ordinary`] does for an ordinary one.
+pub(super) fn detach_frozen_fragment(
+    owner: FragmentInitialization,
+    reason: HtmlParseFailureReason,
+    mut parts: FrozenContextFragmentParts,
+) -> HtmlParseFailure {
+    let carrier = |owner, fault| HtmlParseFailure {
+        reason,
+        storage: FailureStorage::FragmentInitialization(owner),
+        cleanup_error: Some(fault),
+    };
+    // The detach below finds the cleaning done and goes on to the binding.
+    if parts.cleanup_failure().is_err() {
+        return carrier(owner, HtmlParseEngineCondition::Cleanup);
+    }
+    match StoppedFragmentConstruction::from_frozen(parts) {
+        Ok(stopped) => fragment_failure(owner, reason, stopped),
+        Err(_) => carrier(owner, HtmlParseEngineCondition::Ownership),
+    }
+}
+/// Joins a stopped construction to the original request. If either step is
+/// refused the carrier keeps the request and the stopped construction, and
+/// reports why they were not joined.
+fn fragment_failure(
+    owner: FragmentInitialization,
+    reason: HtmlParseFailureReason,
+    stopped: StoppedFragmentConstruction,
+) -> HtmlParseFailure {
+    let carrier = |owner| HtmlParseFailure {
+        reason,
+        storage: FailureStorage::FragmentInitialization(owner),
+        cleanup_error: Some(HtmlParseEngineCondition::Ownership),
+    };
+    match owner.retain_stopped(stopped) {
+        Ok(owner) => match owner.into_failure() {
+            Ok(failure) => HtmlParseFailure {
+                reason,
+                storage: FailureStorage::Fragment(failure),
+                cleanup_error: None,
+            },
+            Err((_, owner)) => carrier(owner),
+        },
+        Err((_, owner, _)) => carrier(owner),
+    }
+}
 /// Exact added physical terminal envelope, admitted before first token pull.
-pub(super) fn terminal_layout() -> (usize, usize) {
-    use std::mem::size_of;
-    (
-        size_of::<HtmlParseFailure>()
-            + size_of::<FailureStorage>()
-            + size_of::<HtmlParseFailureReason>()
-            + size_of::<Option<HtmlParseEngineCondition>>(),
-        4,
-    )
+pub(super) const fn terminal_layout() -> (usize, usize) {
+    const {
+        use std::mem::size_of;
+        (
+            size_of::<HtmlParseFailure>()
+                + size_of::<FailureStorage>()
+                + size_of::<HtmlParseFailureReason>()
+                + size_of::<Option<HtmlParseEngineCondition>>(),
+            4,
+        )
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -807,6 +901,226 @@ impl InitializationTarget {
 mod tests {
     use super::*;
     use crate::HtmlParseResource;
+
+    /// Frozen parts of a finished ordinary parse and the carrier that owns its
+    /// request, stopped as a refused seal would stop them.
+    fn frozen_ordinary_parts() -> (OrdinaryInitialization, FrozenStandaloneParts) {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        let initial_base = request.initial_policy_base();
+        let mut owner = OrdinaryInitialization::new(request);
+        let OrdinaryAttempt::Ready(mut parts) = ordinary_attempt(&mut owner, None, 0, initial_base)
+        else {
+            panic!("the fixture parses");
+        };
+        parts
+            .control
+            .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
+        (owner, parts)
+    }
+
+    #[test]
+    fn a_frozen_failure_whose_source_binding_is_gone_is_reported_as_an_ownership_fault() {
+        let (owner, mut parts) = frozen_ordinary_parts();
+        // Cleanup succeeds; only moving the source binding out is refused.
+        parts.control.take_stopped_source_binding().unwrap();
+        let failure = detach_frozen_ordinary(
+            owner,
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            parts,
+        );
+        assert_eq!(
+            failure.cleanup_error(),
+            Some(HtmlParseEngineCondition::Ownership)
+        );
+    }
+
+    #[test]
+    fn a_frozen_failure_whose_cleanup_is_refused_is_reported_as_a_cleanup_fault() {
+        let (owner, mut parts) = frozen_ordinary_parts();
+        parts.control.refuse_next_construction_retire();
+        let failure = detach_frozen_ordinary(
+            owner,
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            parts,
+        );
+        assert_eq!(
+            failure.cleanup_error(),
+            Some(HtmlParseEngineCondition::Cleanup)
+        );
+    }
+
+    #[test]
+    fn csp_storage_returned_to_a_failure_without_the_ordinary_driver_is_reported() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        request.cancellation().cancel();
+        let mut failed = request.parse().unwrap_err();
+        assert!(!matches!(failed.storage, FailureStorage::Ordinary(_)));
+        assert_eq!(failed.cleanup_error(), None);
+        let retained = failed.retained_usage().cloned();
+        let claimed = failed.claim_csp_storage(crate::meta_csp::Storage {
+            bytes: 1,
+            units: 1,
+            entries: 1,
+        });
+        assert_eq!(claimed, ReturnableCspStorage::NONE);
+        failed.return_csp_storage(claimed).unwrap();
+        assert_eq!(
+            failed.cleanup_error(),
+            Some(HtmlParseEngineCondition::Ownership)
+        );
+        assert_eq!(
+            failed.reason(),
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled)
+        );
+        assert_eq!(failed.retained_usage().cloned(), retained);
+    }
+
+    /// An ordinary failure whose controller was holding processor storage when
+    /// a cancellation stopped the parse, built through the real driver chain.
+    fn ordinary_failure_holding(storage: crate::meta_csp::Storage) -> HtmlParseFailure {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        let mut driver = Some(super::super::entry::initialized_driver(&request));
+        storage
+            .acquire(&mut driver.as_mut().unwrap().control)
+            .unwrap();
+        request.cancellation().cancel();
+        assert!(driver.as_mut().unwrap().step().is_err());
+        let mut failed = Some(StandaloneDocumentDriver::take_failed(&mut driver).unwrap());
+        let detached = FailedStandaloneDocument::detach(&mut failed).unwrap();
+        drop(failed);
+        drop(driver);
+        let owned = OwnedOrdinaryFailure::take(&mut Some(request), &mut Some(detached)).unwrap();
+        HtmlParseFailure {
+            reason: HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            storage: FailureStorage::Ordinary(owned),
+            cleanup_error: None,
+        }
+    }
+
+    #[test]
+    fn csp_storage_the_ordinary_controller_admitted_is_claimed_and_returned_in_full() {
+        let storage = crate::meta_csp::Storage {
+            bytes: 8,
+            units: 2,
+            entries: 1,
+        };
+        let mut failed = ordinary_failure_holding(storage);
+        assert!(matches!(failed.storage, FailureStorage::Ordinary(_)));
+        let held = failed.retained_usage().cloned().unwrap();
+        let claimed = failed.claim_csp_storage(storage);
+        assert_eq!(claimed, ReturnableCspStorage(storage));
+        assert_eq!(failed.cleanup_error(), None);
+        // Claiming decides; it changes no accounting.
+        assert_eq!(failed.retained_usage().cloned().unwrap(), held);
+        failed.return_csp_storage(claimed).unwrap();
+        let returned = failed.retained_usage().unwrap();
+        for (resource, amount) in [
+            (HtmlParseResource::ManagedCapacityBytes, 8),
+            (HtmlParseResource::PeakTransientBytes, 8),
+            (HtmlParseResource::ManagedUtf16Units, 2),
+            (HtmlParseResource::AuxiliaryEntries, 1),
+        ] {
+            assert_eq!(
+                returned.resource(resource).current,
+                held.resource(resource).current - amount,
+                "{resource:?}"
+            );
+        }
+        assert_eq!(failed.cleanup_error(), None);
+        assert_eq!(
+            failed.reason(),
+            HtmlParseFailureReason::Stop(ParseStop::Cancelled)
+        );
+    }
+
+    #[test]
+    fn a_csp_failure_envelope_keeps_the_claim_it_returns_when_dropped() {
+        let storage = crate::meta_csp::Storage {
+            bytes: 8,
+            units: 2,
+            entries: 1,
+        };
+        let failure = crate::meta_csp::HtmlParseCspFailure::<()>::new(
+            ordinary_failure_holding(storage),
+            None,
+            crate::meta_csp::HtmlParseCspFailureKind::Cancelled,
+            storage,
+        );
+        // The drop returns exactly this claim, and the caller can see that
+        // nothing was left unreleased.
+        assert_ne!(failure.storage, ReturnableCspStorage::NONE);
+        assert_eq!(failure.parse_failure().cleanup_error(), None);
+        drop(failure);
+    }
+
+    #[test]
+    fn a_failure_whose_cleanup_was_refused_still_reports_its_first_stop() {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        let failed = HtmlParseFailure {
+            reason: HtmlParseFailureReason::Stop(ParseStop::Cancelled),
+            storage: FailureStorage::OrdinaryInitialization(OrdinaryInitialization::new(request)),
+            cleanup_error: Some(HtmlParseEngineCondition::Cleanup),
+        };
+        // The carrier holds no stopped prefix, but execution ran and was
+        // stopped: the stop the reason names is the first one.
+        assert_eq!(failed.first_stop(), Some(ParseStop::Cancelled));
+        assert_eq!(failed.source_admitted(), None);
+        assert_eq!(
+            failed.cleanup_error(),
+            Some(HtmlParseEngineCondition::Cleanup)
+        );
+        // Without a cleanup condition, the same carrier names no stop.
+        let rejected = HtmlParseFailure {
+            reason: HtmlParseFailureReason::UnsupportedDocumentInitialization,
+            storage: FailureStorage::OrdinaryInitialization(OrdinaryInitialization::new(
+                HtmlDocumentParseRequest::offline(
+                    HtmlSource::utf8("x"),
+                    super::super::tests::limits(100),
+                ),
+            )),
+            cleanup_error: None,
+        };
+        assert_eq!(rejected.first_stop(), None);
+    }
+
+    #[test]
+    fn csp_storage_the_ordinary_controller_never_admitted_is_reported_not_claimed() {
+        let tight = super::super::tests::limits(100)
+            .into_builder()
+            .managed_nodes(4)
+            .finish()
+            .unwrap();
+        let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x</p>"), tight);
+        let mut failed = request.parse().unwrap_err();
+        assert!(matches!(failed.storage, FailureStorage::Ordinary(_)));
+        assert_eq!(failed.cleanup_error(), None);
+        let retained = failed.retained_usage().cloned();
+        // The controller admitted no provider storage, so a return of this
+        // storage could only underflow it.
+        let claimed = failed.claim_csp_storage(crate::meta_csp::Storage {
+            bytes: 8,
+            units: 2,
+            entries: 1,
+        });
+        assert_eq!(claimed, ReturnableCspStorage::NONE);
+        assert_eq!(
+            failed.cleanup_error(),
+            Some(HtmlParseEngineCondition::Cleanup)
+        );
+        assert_eq!(failed.retained_usage().cloned(), retained);
+    }
 
     #[test]
     fn public_terminal_receiver_exact_and_one_short_preserve_source_first_stop_and_cleanup() {

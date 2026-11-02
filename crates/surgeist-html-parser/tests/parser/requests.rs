@@ -1,15 +1,17 @@
+use crate::parser::support::{bank, record, revision};
 use surgeist_html::*;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits, HtmlParseLimitsBuilder,
     HtmlParseLimitsError, HtmlParseRequestError, HtmlParseResource, HtmlSource,
     HtmlSourceCoordinates,
 };
+use surgeist_html_semantics::HtmlBaseEncoding;
 use surgeist_html_semantics::HtmlCaptureDocumentId;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureError, HtmlCaptureFact, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCaptureSubjectKind, HtmlCapturedIsValue,
-    HtmlFragmentContext, HtmlScriptingStatus,
+    HtmlFragmentContext, HtmlImageSupport, HtmlScriptingStatus,
 };
 
 struct Cap {
@@ -511,4 +513,112 @@ fn hosted_fragment_retains_distinct_target_and_context_documents_and_source() {
             HtmlParserScriptingMode::Fragment
         ))
     );
+}
+
+fn image_support_capture(
+    support: HtmlImageSupport,
+) -> (HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureSubjectId) {
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(20, 100, 20, 1000, 20, 20, 20, 16_777_216),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let document = builder
+        .add_document(
+            HtmlDocumentMode::NoQuirks,
+            HtmlScriptingStatus::Disabled,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    if support != HtmlImageSupport::Unavailable {
+        builder
+            .establish_parser_creation_image_support(&document, support)
+            .unwrap();
+    }
+    let element = builder
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::html(), None, "div"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder.establish_root(&element).unwrap();
+    builder.establish_no_shadow_root(&element).unwrap();
+    let capture = builder.finish().unwrap();
+    let document = capture
+        .document_id(&capture.subject_id(&document).unwrap())
+        .unwrap();
+    let element = capture.subject_id(&element).unwrap();
+    (capture, document, element)
+}
+#[test]
+fn request_image_support_is_the_selected_documents_parser_creation_fact() {
+    // Independent oracle: the fact the capture builder was told to attest.
+    for support in [
+        HtmlImageSupport::Unavailable,
+        HtmlImageSupport::Disabled,
+        HtmlImageSupport::Enabled,
+    ] {
+        let (capture, document, element) = image_support_capture(support);
+        let request = HtmlDocumentParseRequest::captured(
+            HtmlSource::utf8("x"),
+            capture.clone(),
+            document,
+            limits(0),
+        )
+        .unwrap();
+        assert_eq!(request.image_support(), support);
+        let context = HtmlFragmentContext::element(&capture, &element).unwrap();
+        let request =
+            HtmlFragmentParseRequest::new(HtmlSource::utf8("x"), context, limits(0)).unwrap();
+        assert_eq!(request.image_support(), support);
+    }
+    let offline = HtmlDocumentParseRequest::offline(HtmlSource::utf8("x"), limits(0));
+    assert_eq!(offline.image_support(), HtmlImageSupport::Disabled);
+}
+#[test]
+fn request_input_bank_is_absent_until_a_builder_supplies_it() {
+    let (capture, _, element) = image_support_capture(HtmlImageSupport::Disabled);
+    let context = HtmlFragmentContext::element(&capture, &element).unwrap();
+    let plain = HtmlFragmentParseRequest::new(HtmlSource::utf8("x"), context.clone(), limits(0))
+        .unwrap()
+        .parse()
+        .unwrap_err();
+    assert_eq!(plain.encoding_url_facts(), None);
+    assert_eq!(plain.encoding_url_contexts(), None);
+
+    let encoding = HtmlBaseEncoding::fresh();
+    let base = record(&revision(), "https://example.test/", false, None);
+    let first = bank(&base, &encoding, Vec::new());
+    let second = bank(&base, &encoding, Vec::new());
+    assert!(!first.same_owner(&second));
+
+    // A later builder call for another field keeps the earlier supplied facts.
+    let kept = HtmlFragmentParseRequest::new(HtmlSource::utf8("x"), context.clone(), limits(0))
+        .unwrap()
+        .with_encoding_url_facts(vec![first.clone()])
+        .with_encoding_url_contexts(Vec::new())
+        .parse()
+        .unwrap_err();
+    let facts = kept.encoding_url_facts().unwrap();
+    assert_eq!(facts.len(), 1);
+    assert!(facts[0].same_owner(&first));
+    assert_eq!(kept.encoding_url_contexts(), Some(&[][..]));
+
+    // Supplying the same field again replaces it, and the contexts supplied in
+    // between survive that second facts call.
+    let replaced = HtmlFragmentParseRequest::new(HtmlSource::utf8("x"), context, limits(0))
+        .unwrap()
+        .with_encoding_url_facts(vec![first.clone()])
+        .with_encoding_url_contexts(Vec::with_capacity(3))
+        .with_encoding_url_facts(vec![second.clone()])
+        .parse()
+        .unwrap_err();
+    let facts = replaced.encoding_url_facts().unwrap();
+    assert_eq!(facts.len(), 1);
+    assert!(facts[0].same_owner(&second));
+    assert!(!facts[0].same_owner(&first));
+    assert_eq!(replaced.encoding_url_contexts(), Some(&[][..]));
+    assert!(replaced.encoding_url_context_capacity().unwrap() >= 3);
 }

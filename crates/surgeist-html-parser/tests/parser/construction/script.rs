@@ -37,6 +37,7 @@ fn disabled_preparation_preserves_uninitialized_result_and_absent_ready_steps() 
                 }
                 HtmlParseMetadataStep::Skipped => {}
                 HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             }
         }
         assert!(found);

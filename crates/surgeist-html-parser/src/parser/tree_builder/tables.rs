@@ -341,7 +341,10 @@ impl HeadState<'_> {
                     )?;
                 }
                 write(
-                    size_of::<Option<crate::construction::TextRun>>() + size_of::<Option<Text>>(),
+                    const {
+                        size_of::<Option<crate::construction::TextRun>>()
+                            + size_of::<Option<Text>>()
+                    },
                     2,
                     c,
                 )?;
@@ -374,7 +377,10 @@ impl HeadState<'_> {
                     .clone();
                 let cause = self.before.kernel.session.current_parser_cause(c)?;
                 write(
-                    size_of::<TableCharacter>() + size_of::<Option<crate::construction::TextRun>>(),
+                    const {
+                        size_of::<TableCharacter>()
+                            + size_of::<Option<crate::construction::TextRun>>()
+                    },
                     5,
                     c,
                 )?;
@@ -432,7 +438,7 @@ impl HeadState<'_> {
                 break;
             }
             write(
-                size_of::<Option<TableCharacter>>() * 2 + size_of::<usize>(),
+                const { size_of::<Option<TableCharacter>>() * 2 + size_of::<usize>() },
                 3,
                 c,
             )?;
@@ -442,7 +448,7 @@ impl HeadState<'_> {
                 .get_mut(index, c)?
                 .ok_or(HeadError::MissingInput)?
                 .take();
-            self.table.next += 1;
+            self.table.next = self.table.next.saturating_add(1);
             c.charge(WorkCategory::RecordVisit, 1)?;
             let entry = self
                 .table
@@ -462,7 +468,7 @@ impl HeadState<'_> {
                 .begin_buffered_replay(c, entry.cause.as_ref())?;
             c.charge(WorkCategory::InspectByte, size_of::<BodyTextKind>() as u64)?;
             let other = entry.kind == BodyTextKind::Other;
-            write(size_of::<Option<Text>>() * 2, 2, c)?;
+            write(const { size_of::<Option<Text>>() * 2 }, 2, c)?;
             self.whitespace_pending = self
                 .table
                 .transfer
@@ -493,7 +499,7 @@ impl HeadState<'_> {
             self.table.transfer = None;
         }
         self.table.entries.clear(c)?;
-        write(size_of::<usize>() + size_of::<bool>(), 2, c)?;
+        write(const { size_of::<usize>() + size_of::<bool>() }, 2, c)?;
         self.table.next = 0;
         self.table.nonwhite = false;
         c.charge(WorkCategory::RecordVisit, 1)?;

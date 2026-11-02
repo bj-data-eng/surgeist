@@ -222,6 +222,45 @@ fn frozen_completed(request: &HtmlDocumentParseRequest) -> CompletedStandaloneDo
     }
     panic!("real EOF was not reached");
 }
+#[test]
+fn a_completion_stopped_for_an_invariant_fault_latches_the_invariant_and_still_cleans() {
+    for lost in [true, false] {
+        let request = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8("<p>x"),
+            super::super::tests::limits(100),
+        );
+        let mut completed = frozen_completed(&request);
+        completed.stop_for_public_failure(lost);
+        let expected = if lost {
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState)
+        } else {
+            ParseStop::UnsupportedStandaloneState(StandaloneUnsupported::Provenance)
+        };
+        assert_eq!(
+            completed.driver.as_ref().unwrap().control.stop(),
+            Some(expected)
+        );
+        let mut failed = completed.take_public_failure().unwrap();
+        assert_eq!(failed.stop(), expected);
+        failed.release().unwrap();
+        super::super::tests::assert_released(&failed.control);
+    }
+}
+#[test]
+fn a_completion_without_a_stop_is_not_taken_as_a_failure_and_keeps_its_driver() {
+    let request = HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<p>x"),
+        super::super::tests::limits(100),
+    );
+    let mut completed = frozen_completed(&request);
+    assert!(matches!(
+        completed.take_public_failure(),
+        Err(StandaloneError::Consumed)
+    ));
+    assert!(completed.driver.is_some());
+    completed.release().unwrap();
+    assert!(completed.driver.is_none());
+}
 fn native_child<'a>(
     document: &'a crate::HtmlDocument,
     parent: crate::HtmlNode<'a>,
@@ -367,7 +406,7 @@ fn frozen_native_projection_cancellation_partitions_only_committed_diagnostics()
     {
         let diagnostics = parts.diagnostics().unwrap();
         assert_eq!(diagnostics.records_pointer(), pointer);
-        let (record, location) = diagnostics.retained_record(2).unwrap();
+        let (record, location) = diagnostics.retained_record(2).unwrap().unwrap();
         assert_eq!(
             record.kind,
             crate::construction::evidence::DiagnosticKind::Tree(
@@ -452,7 +491,7 @@ fn frozen_native_projection_alias_refusal_keeps_partition_and_reclaims_it_once()
     assert_eq!(parts.at_stop(), Some(&first));
     assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
     let diagnostics = parts.diagnostics().unwrap();
-    let (record, location) = diagnostics.retained_record(2).unwrap();
+    let (record, location) = diagnostics.retained_record(2).unwrap().unwrap();
     assert_eq!(
         record.kind,
         crate::construction::evidence::DiagnosticKind::Tree(
@@ -2169,7 +2208,7 @@ fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
     ];
     assert_eq!(evidence.len(), expected.len());
     for (index, (kind, context, start, end, anchor)) in expected.into_iter().enumerate() {
-        let (record, source) = evidence.retained_record(index).unwrap();
+        let (record, source) = evidence.retained_record(index).unwrap().unwrap();
         assert_eq!(
             (record.kind, record.context, record.severity),
             (kind, context, DiagnosticSeverity::Recoverable)
@@ -2197,7 +2236,7 @@ fn ordered_evidence_keeps_actual_delayed_table_and_lexer_emission_order() {
         );
         assert!(!record.rule.branch.is_empty());
     }
-    assert!(evidence.retained_record(expected.len()).is_none());
+    assert!(evidence.retained_record(expected.len()).unwrap().is_none());
     completed.release().unwrap();
 }
 
@@ -2286,6 +2325,36 @@ fn failed_extraction_cleanup_refusal_keeps_actual_evidence_for_retry_or_disposal
 }
 
 #[test]
+fn a_refused_evidence_take_leaves_the_flag_clear_so_a_retry_takes_it() {
+    let request = HtmlDocumentParseRequest::offline(
+        HtmlSource::utf8("<div>A"),
+        super::super::tests::limits(100),
+    );
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    request.cancellation().cancel();
+    assert!(driver.step().is_err());
+    // Cancelled before any head stage, the session is the prologue's. Without
+    // it the take is refused before it reaches the session, so the evidence
+    // has not been taken.
+    assert!(driver.head.is_none() && driver.before.is_none());
+    let prologue = driver.prologue.take().unwrap();
+    let refused = driver.reclaim_failed().err().unwrap();
+    assert!(matches!(refused, StandaloneError::Consumed), "{refused:?}");
+    assert!(!driver.evidence_taken);
+    assert!(driver.failed_evidence.is_none());
+    driver.prologue = Some(prologue);
+    driver.reclaim_failed().unwrap();
+    assert!(driver.evidence_taken);
+    driver
+        .failed_evidence
+        .take()
+        .unwrap()
+        .release(&mut driver.control)
+        .unwrap();
+    super::super::tests::assert_released(&driver.control);
+}
+
+#[test]
 fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
     let limits = super::super::tests::limits(100)
         .into_builder()
@@ -2361,7 +2430,7 @@ fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
     assert_eq!(failed.control.owned_span_observation().polls, polls);
     let evidence = failed.diagnostics().unwrap();
     assert_eq!(evidence.len(), 1);
-    let (record, source) = evidence.retained_record(0).unwrap();
+    let (record, source) = evidence.retained_record(0).unwrap().unwrap();
     assert_eq!(
         record.kind,
         crate::construction::evidence::DiagnosticKind::Prologue(
@@ -3049,7 +3118,7 @@ fn failed_transfer_preserves_first_stop_usage_before_reference_scratch_cleanup()
     assert_eq!(failed.source().identity(), request.source().identity());
     let evidence = failed.diagnostics().unwrap();
     assert_eq!(evidence.len(), 1);
-    let (record, source) = evidence.retained_record(0).unwrap();
+    let (record, source) = evidence.retained_record(0).unwrap().unwrap();
     assert_eq!(
         record.kind,
         crate::construction::evidence::DiagnosticKind::Prologue(

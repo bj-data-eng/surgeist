@@ -15,53 +15,92 @@ pub(crate) struct CompletedStandaloneDocument<'source> {
     cancel_after_freeze: Option<crate::HtmlParseCancellation>,
 }
 impl<'source> StandaloneDocumentDriver<'source> {
+    #[cfg(test)]
     pub(crate) fn take_completed(
         input: &mut Option<Self>,
     ) -> Result<CompletedStandaloneDocument<'source>, StandaloneError> {
-        let driver = input.as_mut().ok_or(StandaloneError::Consumed)?;
-        driver.control.require_source(driver.source)?;
-        let head = driver.head.as_ref().ok_or(StandaloneError::Consumed)?;
-        head.require(&mut driver.control)?;
+        let driver = input.take().ok_or(StandaloneError::Consumed)?;
+        match driver.into_completed() {
+            Ok(completed) => Ok(completed),
+            Err((error, driver)) => {
+                *input = Some(driver);
+                Err(error)
+            }
+        }
+    }
+    /// A refusal hands the driver back; one that names a lost owner has latched
+    /// the invariant on the controller first.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_completed(
+        mut self,
+    ) -> Result<CompletedStandaloneDocument<'source>, (StandaloneError, Self)> {
+        match self.qualify_completed_driver() {
+            Ok(()) => Ok(CompletedStandaloneDocument {
+                driver: Some(self),
+                frozen: None,
+                after_cleanup: None,
+                #[cfg(test)]
+                cancel_after_freeze: None,
+            }),
+            Err(error) => {
+                // A driver that has not reached its head stage is not complete
+                // yet; one that has reached it must still hold its owners.
+                if self.head.is_some() && error.invariant_fault() {
+                    StandaloneError::latch_invariant(&mut self.control);
+                }
+                Err((error, self))
+            }
+        }
+    }
+    fn qualify_completed_driver(&mut self) -> Result<(), StandaloneError> {
+        self.control.require_source(self.source)?;
+        let head = self.head.as_ref().ok_or(StandaloneError::Consumed)?;
+        head.require(&mut self.control)?;
         head.state
             .as_ref()
             .ok_or(StandaloneError::Consumed)?
-            .qualify_completed(&mut driver.control)?;
-        driver.control.charge(WorkCategory::RecordVisit, 6)?;
-        if driver.prologue.is_some()
-            || driver.before.is_some()
-            || driver.tokenizer.is_some()
-            || driver.token.is_some()
-            || driver.event.is_some()
+            .qualify_completed(&mut self.control)?;
+        self.control.charge(WorkCategory::RecordVisit, 6)?;
+        if self.prologue.is_some()
+            || self.before.is_some()
+            || self.tokenizer.is_some()
+            || self.token.is_some()
+            || self.event.is_some()
         {
             return Err(head::HeadError::IncompleteCompletion.into());
         }
-        driver
-            .lexical
+        self.lexical
             .as_mut()
             .ok_or(StandaloneError::Consumed)?
-            .require_owner(&mut driver.control)?;
+            .require_owner(&mut self.control)?;
         write(
-            size_of::<CompletedStandaloneDocument>()
-                + size_of::<Self>()
-                + size_of::<Option<Self>>(),
-            4 + usize::from(cfg!(test)),
-            &mut driver.control,
+            const {
+                size_of::<CompletedStandaloneDocument>()
+                    + size_of::<Self>()
+                    + size_of::<Option<Self>>()
+            },
+            const { 4 + cfg!(test) as usize },
+            &mut self.control,
         )?;
-        driver.control.require_source(driver.source)?;
-        Ok(CompletedStandaloneDocument {
-            driver: input.take(),
-            frozen: None,
-            after_cleanup: None,
-            #[cfg(test)]
-            cancel_after_freeze: None,
-        })
+        self.control.require_source(self.source)?;
+        Ok(())
     }
 }
 impl<'source> CompletedStandaloneDocument<'source> {
-    pub(super) fn stop_for_public_failure(&mut self) {
+    /// Latches the stop a public failure reports: a lost owner is an invariant
+    /// and anything else is the provenance boundary. A stop already latched
+    /// stays the first one.
+    pub(super) fn stop_for_public_failure(&mut self, invariant_fault: bool) {
         if let Some(d) = &mut self.driver {
-            d.control
-                .stop_unsupported_standalone(super::StandaloneUnsupported::Provenance);
+            if invariant_fault {
+                StandaloneError::latch_invariant(&mut d.control);
+            } else {
+                d.control
+                    .stop_unsupported_standalone(super::StandaloneUnsupported::Provenance);
+            }
         }
     }
     pub(super) fn take_public_failure(
@@ -69,12 +108,14 @@ impl<'source> CompletedStandaloneDocument<'source> {
     ) -> Result<FailedStandaloneDocument<'source>, StandaloneError> {
         self.cleanup_failure()?;
         let driver = self.driver.take().ok_or(StandaloneError::Consumed)?;
-        let stop = driver.control.stop().ok_or(StandaloneError::Consumed)?;
-        let at_stop = driver
+        let Some((stop, at_stop)) = driver
             .control
-            .first_stop_usage()
-            .ok_or(StandaloneError::Consumed)?
-            .clone();
+            .stopped()
+            .map(|(stop, usage)| (stop, usage.clone()))
+        else {
+            self.driver = Some(driver);
+            return Err(StandaloneError::Consumed);
+        };
         Ok(FailedStandaloneDocument {
             _source: driver.source,
             after_cleanup: driver.control.usage().clone(),
@@ -360,15 +401,39 @@ impl<'source> CompletedStandaloneDocument<'source> {
                 .stop()
                 .map_or(StandaloneError::Consumed, StandaloneError::Stop));
         }
-        let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;
+        // The driver is held by value while it freezes and goes back to its
+        // slot on every refusal, so the slot cannot be found empty afterwards.
+        let mut driver = self.driver.take().ok_or(StandaloneError::Consumed)?;
+        let (source, document_state) = match self.freeze_driver(&mut driver) {
+            Ok(frozen) => frozen,
+            Err(error) => {
+                self.driver = Some(driver);
+                return Err(error);
+            }
+        };
+        let usage = driver.control.usage().clone();
+        Ok(FrozenStandaloneParts {
+            source,
+            control: driver.control,
+            arena: self.frozen.take(),
+            document_state,
+            final_usage: usage,
+            failed_evidence: driver.failed_evidence,
+            after_cleanup: None,
+        })
+    }
+    fn freeze_driver(
+        &mut self,
+        driver: &mut StandaloneDocumentDriver<'source>,
+    ) -> Result<(FrozenSourceBinding, StandaloneDocumentState), StandaloneError> {
         let c = &mut driver.control;
         c.require_source(driver.source)?;
         let state = driver
             .head
-            .as_ref()
+            .as_mut()
             .ok_or(StandaloneError::Consumed)?
             .state
-            .as_ref()
+            .as_mut()
             .ok_or(StandaloneError::Consumed)?;
         state.qualify_completed(c)?;
         state
@@ -386,11 +451,13 @@ impl<'source> CompletedStandaloneDocument<'source> {
         // Every fixed output/failure slot is submitted before active storage can
         // move. The fixed usage snapshots contain arrays, never variable clones.
         write(
-            size_of::<FrozenStandaloneParts>()
-                + size_of::<Option<crate::construction::FrozenArena>>()
-                + size_of::<Option<StandaloneDocumentDriver>>()
-                + size_of::<ParseControl>()
-                + size_of::<FrozenSourceBinding>(),
+            const {
+                size_of::<FrozenStandaloneParts>()
+                    + size_of::<Option<crate::construction::FrozenArena>>()
+                    + size_of::<Option<StandaloneDocumentDriver>>()
+                    + size_of::<ParseControl>()
+                    + size_of::<FrozenSourceBinding>()
+            },
             13,
             c,
         )?;
@@ -401,13 +468,7 @@ impl<'source> CompletedStandaloneDocument<'source> {
             coordinates: driver.source.coordinates(),
             length: driver.source.len(),
         };
-        let frozen = driver
-            .head
-            .as_mut()
-            .expect("qualified completed head")
-            .state
-            .as_mut()
-            .expect("qualified completed state")
+        let frozen = state
             .before
             .kernel
             .session
@@ -421,17 +482,7 @@ impl<'source> CompletedStandaloneDocument<'source> {
         }
         driver.reclaim_frozen_execution()?;
         driver.control.checkpoint()?;
-        let usage = driver.control.usage().clone();
-        let driver = self.driver.take().expect("retained completed control");
-        Ok(FrozenStandaloneParts {
-            source,
-            control: driver.control,
-            arena: self.frozen.take(),
-            document_state,
-            final_usage: usage,
-            failed_evidence: driver.failed_evidence,
-            after_cleanup: None,
-        })
+        Ok((source, document_state))
     }
 }
 
@@ -466,11 +517,13 @@ impl FrozenStandaloneParts {
         self.control.charge(WorkCategory::RecordVisit, 7)?;
         self.control.charge(
             WorkCategory::InspectByte,
-            (2 * size_of::<crate::HtmlSourceId>()
-                + 2 * size_of::<crate::HtmlSourceCoordinates>()
-                + 2 * size_of::<usize>()
-                + 2 * size_of::<crate::HtmlParseCancellation>()
-                + size_of::<StandaloneDocumentState>()) as u64,
+            const {
+                2 * size_of::<crate::HtmlSourceId>()
+                    + 2 * size_of::<crate::HtmlSourceCoordinates>()
+                    + 2 * size_of::<usize>()
+                    + 2 * size_of::<crate::HtmlParseCancellation>()
+                    + size_of::<StandaloneDocumentState>()
+            } as u64,
         )?;
         if !request.is_offline()
             || !self.control.owns_request(request.cancellation())
@@ -490,26 +543,65 @@ impl FrozenStandaloneParts {
         }
         Ok(())
     }
+    #[cfg(test)]
     /// Consumes only a successfully reclaimed stopped frozen owner. A cleanup
     /// refusal preserves the input slot, actual binding and safe evidence.
     pub(crate) fn detach_failure(
         input: &mut Option<Self>,
     ) -> Result<DetachedStandaloneFailure, StandaloneError> {
-        let parts = input.as_mut().ok_or(StandaloneError::Consumed)?;
-        parts.cleanup_failure()?;
-        let stop = parts.control.stop().ok_or(StandaloneError::Consumed)?;
-        if parts.control.first_stop_usage().is_none() {
-            return Err(StandaloneError::Consumed);
+        let parts = input.take().ok_or(StandaloneError::Consumed)?;
+        match parts.into_detached_failure() {
+            Ok(detached) => Ok(detached),
+            Err((error, parts)) => {
+                *input = Some(parts);
+                Err(error)
+            }
         }
-        let binding = parts.control.take_stopped_source_binding()?;
-        let parts = input.take().expect("reclaimed stopped frozen owner");
-        Ok(DetachedStandaloneFailure {
-            binding,
-            control: parts.control,
-            stop,
-            after_cleanup: parts.after_cleanup.expect("real frozen cleanup snapshot"),
-            evidence: parts.failed_evidence,
-        })
+    }
+    /// A cleanup refusal hands the owner back with its binding and evidence.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_detached_failure(
+        mut self,
+    ) -> Result<DetachedStandaloneFailure, (StandaloneError, Self)> {
+        match self.detach_cleaned() {
+            Ok((stop, binding, after_cleanup)) => Ok(DetachedStandaloneFailure {
+                binding,
+                control: self.control,
+                stop,
+                after_cleanup,
+                evidence: self.failed_evidence,
+            }),
+            Err(error) => Err((error, self)),
+        }
+    }
+    /// Cleans the stopped owner, then moves its cleanup observation and source
+    /// binding out; a refusal puts back what it had already moved.
+    fn detach_cleaned(
+        &mut self,
+    ) -> Result<
+        (
+            ParseStop,
+            (crate::HtmlSourceId, crate::HtmlSourceCoordinates),
+            super::super::control::ParseUsage,
+        ),
+        StandaloneError,
+    > {
+        self.cleanup_failure()?;
+        // Cleanup refuses an owner that has not stopped, so the stop is there.
+        let stop = self.control.stop().ok_or(StandaloneError::Consumed)?;
+        let Some(after_cleanup) = self.after_cleanup.take() else {
+            return Err(StandaloneError::latch_invariant(&mut self.control));
+        };
+        match self.control.take_stopped_source_binding() {
+            Ok(binding) => Ok((stop, binding, after_cleanup)),
+            Err(stop) => {
+                self.after_cleanup = Some(after_cleanup);
+                Err(stop.into())
+            }
+        }
     }
     /// Admits the private source-owning immutable construction transfer. The
     /// complete lexical/D1 proof is a separate required public-assembly input.
@@ -543,12 +635,12 @@ impl FrozenStandaloneParts {
             return Err(StandaloneError::Consumed);
         }
         write(
-            size_of::<super::seal::SealedOrdinaryConstruction>()
-                + size_of::<Option<Self>>()
-                + size_of::<Option<crate::HtmlDocumentParseRequest>>()
-                + size_of::<crate::request::DocumentRequestParts>()
-                + size_of::<super::super::control::ParseUsage>(),
-            9,
+            const {
+                size_of::<super::seal::SealedOrdinaryConstruction>()
+                    + size_of::<crate::request::DocumentRequestParts>()
+                    + size_of::<super::super::control::ParseUsage>()
+            },
+            7,
             &mut self.control,
         )?;
         self.control.checkpoint()?;
@@ -686,8 +778,14 @@ pub(crate) struct DetachedStandaloneFailure {
     evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
 }
 impl DetachedStandaloneFailure {
-    pub(crate) fn release_csp_storage(&mut self, storage: crate::meta_csp::Storage) {
-        storage.release(&mut self.control);
+    pub(crate) fn csp_storage_fits(&self, storage: crate::meta_csp::Storage) -> bool {
+        storage.fits(&self.control)
+    }
+    pub(crate) fn release_csp_storage(
+        &mut self,
+        storage: crate::meta_csp::Storage,
+    ) -> Result<(), ParseStop> {
+        storage.release(&mut self.control)
     }
     pub(super) fn owns_request(&self, cancellation: &crate::HtmlParseCancellation) -> bool {
         self.control.owns_request(cancellation)
@@ -695,10 +793,8 @@ impl DetachedStandaloneFailure {
     pub(super) fn stop(&self) -> ParseStop {
         self.stop
     }
-    pub(super) fn at_stop(&self) -> &super::super::control::ParseUsage {
-        self.control
-            .first_stop_usage()
-            .expect("qualified canonical first stop")
+    pub(super) fn at_stop(&self) -> Option<&super::super::control::ParseUsage> {
+        self.control.first_stop_usage()
     }
     pub(super) fn after_cleanup(&self) -> &super::super::control::ParseUsage {
         &self.after_cleanup
@@ -722,22 +818,54 @@ impl DetachedStandaloneFailure {
     }
 }
 impl<'source> StandaloneDocumentDriver<'source> {
+    #[cfg(test)]
     pub(crate) fn take_failed(
         input: &mut Option<Self>,
     ) -> Result<FailedStandaloneDocument<'source>, StandaloneError> {
-        let driver = input.as_mut().ok_or(StandaloneError::Consumed)?;
-        let stop = driver.control.stop().ok_or(StandaloneError::Consumed)?;
+        // A cleanup refusal keeps the driver and detached committed evidence in
+        // the caller's original owning slot. A retry cannot lose or re-copy it.
+        let driver = input.take().ok_or(StandaloneError::Consumed)?;
+        match driver.into_failed() {
+            Ok(failed) => Ok(failed),
+            Err((error, driver)) => {
+                *input = Some(driver);
+                Err(error)
+            }
+        }
+    }
+    /// A cleanup refusal hands the driver back with its detached evidence.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_failed(
+        mut self,
+    ) -> Result<FailedStandaloneDocument<'source>, (StandaloneError, Self)> {
+        match self.reclaim_failed() {
+            Ok((stop, at_stop)) => Ok(FailedStandaloneDocument {
+                _source: self.source,
+                after_cleanup: self.control.usage().clone(),
+                control: self.control,
+                stop,
+                _at_stop: at_stop,
+                evidence: self.failed_evidence,
+            }),
+            Err(error) => Err((error, self)),
+        }
+    }
+    fn reclaim_failed(
+        &mut self,
+    ) -> Result<(ParseStop, super::super::control::ParseUsage), StandaloneError> {
+        // The stop and its snapshot exist together.
+        let (stop, at_stop) = self
+            .control
+            .stopped()
+            .map(|(stop, usage)| (stop, usage.clone()))
+            .ok_or(StandaloneError::Consumed)?;
         // Fixed snapshots and moves use the envelope admitted before first pull.
         // No checkpoint, allocation, variable copy or error append follows stop.
-        if driver.failure_usage.is_none() {
-            driver.failure_usage = Some(
-                driver
-                    .control
-                    .first_stop_usage()
-                    .expect("canonical first-stop snapshot")
-                    .clone(),
-            );
-            let session = if let Some(head) = &mut driver.head {
+        if !self.evidence_taken {
+            let session = if let Some(head) = &mut self.head {
                 &mut head
                     .state
                     .as_mut()
@@ -745,10 +873,10 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     .before
                     .kernel
                     .session
-            } else if let Some(before) = &mut driver.before {
+            } else if let Some(before) = &mut self.before {
                 &mut before.kernel.session
             } else {
-                &mut driver
+                &mut self
                     .prologue
                     .as_mut()
                     .ok_or(StandaloneError::Consumed)?
@@ -757,40 +885,50 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     .ok_or(StandaloneError::Consumed)?
                     .session
             };
-            driver.failed_evidence = session
-                .take_failed_evidence(&mut driver.control)
+            self.failed_evidence = session
+                .take_failed_evidence(&mut self.control)
                 .map_err(KernelError::from)
                 .map_err(HeadError::from)?;
+            self.evidence_taken = true;
         }
-        // A cleanup refusal keeps the driver and detached committed evidence in
-        // the caller's original owning slot. A retry cannot lose or re-copy it.
-        driver.reclaim_parse_owners()?;
-        let driver = input.take().expect("stopped actual owner reclaimed");
-        Ok(FailedStandaloneDocument {
-            _source: driver.source,
-            after_cleanup: driver.control.usage().clone(),
-            control: driver.control,
-            stop,
-            _at_stop: driver.failure_usage.expect("prepared fixed snapshot"),
-            evidence: driver.failed_evidence,
-        })
+        self.reclaim_parse_owners()?;
+        Ok((stop, at_stop))
     }
 }
 impl FailedStandaloneDocument<'_> {
+    #[cfg(test)]
     /// The constructor of this owner already completed cleanup before moving
     /// out the driver. All storage left is committed diagnostic retention.
     pub(crate) fn detach(
         input: &mut Option<Self>,
     ) -> Result<DetachedStandaloneFailure, StandaloneError> {
-        let failed = input.as_mut().ok_or(StandaloneError::Consumed)?;
-        let binding = failed.control.take_stopped_source_binding()?;
-        let failed = input.take().expect("cleaned stopped original owner");
+        let failed = input.take().ok_or(StandaloneError::Consumed)?;
+        match failed.into_detached() {
+            Ok(detached) => Ok(detached),
+            Err((error, failed)) => {
+                *input = Some(failed);
+                Err(error)
+            }
+        }
+    }
+    /// A refusal hands the cleaned failure back with its binding intact.
+    #[expect(
+        clippy::result_large_err,
+        reason = "hands back the very owner that a refused step could not move, without allocating after a stop"
+    )]
+    pub(crate) fn into_detached(
+        mut self,
+    ) -> Result<DetachedStandaloneFailure, (StandaloneError, Self)> {
+        let binding = match self.control.take_stopped_source_binding() {
+            Ok(binding) => binding,
+            Err(stop) => return Err((stop.into(), self)),
+        };
         Ok(DetachedStandaloneFailure {
             binding,
-            control: failed.control,
-            stop: failed.stop,
-            after_cleanup: failed.after_cleanup,
-            evidence: failed.evidence,
+            control: self.control,
+            stop: self.stop,
+            after_cleanup: self.after_cleanup,
+            evidence: self.evidence,
         })
     }
     #[cfg(test)]

@@ -106,6 +106,7 @@ fn assert_report(report: &HtmlParseReport) {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!((controls, inputs, options), (2, 1, 1));
@@ -207,6 +208,7 @@ fn captured_form_context_stays_historical_while_insertion_clone_and_adoption_res
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     let mut batch = DomBatch::new();
@@ -496,6 +498,7 @@ fn assert_nonancestor_report(
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(inputs, 1);
@@ -727,6 +730,7 @@ fn assert_checked_report(report: &HtmlParseReport) {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(associations.len(), 4);
@@ -815,6 +819,7 @@ fn parser_radio_normalization_and_checkbox_flags_transfer_before_canonical_check
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(associated, [true; 4]);

@@ -41,6 +41,7 @@ fn units(report: &HtmlParseReport, group: HtmlParseOriginGroup<'_>) -> Vec<u16> 
             HtmlParseHistoryStep::Progress => {}
             HtmlParseHistoryStep::Complete => return units,
             HtmlParseHistoryStep::Cancelled => panic!("no query cancellation"),
+            HtmlParseHistoryStep::Fault(fault) => panic!("{fault}"),
         }
     }
 }
@@ -92,7 +93,7 @@ fn original_style_meta_style_dependencies_retain_decoded_inputs_without_selectin
         [65]
     );
     assert_eq!(
-        units(&report, before.style().unwrap().text(0).unwrap()),
+        units(&report, before.style().unwrap().text(0).unwrap().unwrap()),
         "a{content:'&amp;'}".encode_utf16().collect::<Vec<_>>()
     );
     assert_eq!(

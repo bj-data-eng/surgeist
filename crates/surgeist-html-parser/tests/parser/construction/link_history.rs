@@ -60,6 +60,7 @@ fn actual_completed_parser_publishes_fresh_flags_and_creating_document_identity(
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert_eq!(links, 2);
@@ -98,6 +99,7 @@ fn template_link_birth_document_differs_from_its_actual_inert_node_document() {
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     assert!(found);

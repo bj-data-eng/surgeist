@@ -766,6 +766,7 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
                 }
             }
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
             _ => {}
         }
     }
@@ -784,7 +785,10 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
     }
     let (group, computation) = selected.expect("50 is equally far from40 and60: source selects60");
     assert!(!computation.original_is_fresh_empty());
-    assert!(computation.original_group().is_some() && computation.original_cause().is_some());
+    assert!(
+        computation.original_group().unwrap().is_some()
+            && computation.original_cause().unwrap().is_some()
+    );
     for role in [
         HtmlParseRangeOperandRole::Minimum,
         HtmlParseRangeOperandRole::Maximum,
@@ -792,9 +796,9 @@ fn range_public_parse_lends_native_default_current_and_qualified_generated_depen
     ] {
         let operand = computation.operand(role);
         assert_eq!(operand.kind(), HtmlParseRangeOperandKind::Finite);
-        assert!(operand.group().is_some() && operand.cause().is_some());
+        assert!(operand.group().unwrap().is_some() && operand.cause().unwrap().is_some());
         assert!(
-            (0..rows.len()).any(|index| rows.row(index).unwrap().relation()
+            (0..rows.len()).any(|index| rows.row(index).unwrap().unwrap().relation()
                 == HtmlParseAssociationRelation::RangeDependency(role))
         );
     }

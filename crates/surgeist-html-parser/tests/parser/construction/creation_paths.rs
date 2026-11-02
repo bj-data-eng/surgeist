@@ -26,6 +26,7 @@ fn creations(
             }
             HtmlParseMetadataStep::Skipped => {}
             HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
         }
     }
     rows
@@ -103,12 +104,12 @@ fn formatting_reconstruction_keeps_each_original_creation_value_and_identity() {
     let associations = report.associations();
     let mut replay = false;
     for index in 0..associations.len() {
-        let row = associations.row(index).unwrap();
+        let row = associations.row(index).unwrap().unwrap();
         if let HtmlParseDestination::Node(node) = row.destination()
             && rows.iter().any(|(id, _, _)| *id == node.id())
             && row.cause().operation() == HtmlParseConstructionOperation::Replay
         {
-            let original = row.cause().original_cause().unwrap();
+            let original = row.cause().original_cause().unwrap().unwrap();
             assert_eq!(original.operation(), HtmlParseConstructionOperation::Token);
             assert_eq!(
                 report.source().text(original.source().unwrap()).unwrap(),
@@ -150,12 +151,12 @@ fn selectedcontent_clones_retain_saved_creation_state_on_distinct_result_subject
     let associations = report.associations();
     let mut copy = false;
     for index in 0..associations.len() {
-        let row = associations.row(index).unwrap();
+        let row = associations.row(index).unwrap().unwrap();
         if let HtmlParseDestination::Node(node) = row.destination()
             && subjects.contains(&node.id())
             && row.cause().operation() == HtmlParseConstructionOperation::Copy
         {
-            let original = row.cause().original_node().unwrap();
+            let original = row.cause().original_node().unwrap().unwrap();
             assert!(subjects.contains(&original.id()));
             assert_ne!(node.id(), original.id());
             copy = true;

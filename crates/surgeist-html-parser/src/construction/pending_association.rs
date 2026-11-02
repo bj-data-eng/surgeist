@@ -149,6 +149,26 @@ pub(super) struct Occurrence {
     may_have_sheet: bool,
 }
 
+#[cfg(test)]
+impl FrozenArena {
+    /// Names, as the first Base of one occurrence, a node the arena does not
+    /// hold. Whether an occurrence was found to name it.
+    pub(crate) fn corrupt_first_base_for_test(&mut self) -> bool {
+        let Some(storage) = self.storage.as_mut() else {
+            return false;
+        };
+        for row in &mut storage.payloads.values {
+            if let RetainedPayload::AssociationOccurrence(values) = row
+                && let Some(first) = values.as_mut_slice_for_test().first_mut()
+            {
+                first.context.first_base = Some(usize::MAX);
+                return true;
+            }
+        }
+        false
+    }
+}
+
 /// The subject of a style occurrence row: one that carries style inputs.
 #[cfg(test)]
 pub(super) fn style_occurrence_subject(row: &RetainedPayload) -> Option<usize> {
@@ -334,11 +354,12 @@ impl SessionStorage {
         let mut text = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let result = (|| {
             let mut attributes = [None, None, None, None, None];
-            for (index, local) in ["type", "media", "title", "blocking", "nonce"]
-                .into_iter()
-                .enumerate()
+            // One slot per name: the array and the names are the same length.
+            for (slot, local) in attributes
+                .iter_mut()
+                .zip(["type", "media", "title", "blocking", "nonce"])
             {
-                attributes[index] = self.association_attribute(c, node, local)?;
+                *slot = self.association_attribute(c, node, local)?;
             }
             // Internal nonce is separate from the potentially hidden authored attribute.
             if let Some(nonce) = self.association_nonce(c, node)? {
@@ -576,7 +597,7 @@ impl SessionStorage {
         let value = value.clone();
         if let Err(error) = self.prepare_payload_slot_owned(c) {
             drop(value);
-            usage.release(c, &self.control);
+            usage.release(c, &self.control)?;
             return Err(error);
         }
         let index = self.payloads.values.len();
@@ -873,12 +894,16 @@ impl SessionStorage {
                 };
                 let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
                 if let Err((stop, value)) = values.try_push_recover(c, value) {
-                    release_inputs(value, c);
+                    // The stop returned is the first; a refusal of the release
+                    // is latched behind it.
+                    let _ = release_inputs(value, c);
                     values.release(c)?;
                     return Err(SessionError::Stop(stop));
                 }
                 if let Err(error) = self.prepare_payload_slot_owned(c) {
-                    release_occurrence(values, c);
+                    // The error returned is the first; a refusal of the release
+                    // is latched behind it.
+                    let _ = release_occurrence(values, c);
                     return Err(error);
                 }
                 let slot = self.payloads.values.len();
@@ -1069,9 +1094,11 @@ impl SessionStorage {
             return Ok(());
         }
         let extent = self.payloads.values.len();
+        #[cfg(test)]
+        let extent = extent.saturating_add(c.take_registry_walk_overshoot());
         for index in 0..extent {
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let document = match &self.payloads.values[index] {
+            let document = match self.payloads.row(c, index)? {
                 RetainedPayload::Document {
                     node: Some(node), ..
                 } => Some(DocumentRef::Owned(*node)),
@@ -1113,6 +1140,8 @@ impl SessionStorage {
                 bounded::HtmlSpaceTokenStep::Continue => {}
                 bounded::HtmlSpaceTokenStep::Done => break,
                 bounded::HtmlSpaceTokenStep::Token { start, end } => {
+                    #[cfg(test)]
+                    let end = end.saturating_add(c.take_space_token_overshoot());
                     struct Meter<'a>(&'a mut ParseControl);
                     impl bounded::HtmlRelMeter for Meter<'_> {
                         type Error = SessionError;
@@ -1128,14 +1157,15 @@ impl SessionStorage {
                             Err(SessionError::WrongToken)
                         }
                     }
-                    let (keyword, _) =
-                        bounded::classify_rel(&rel.code_units()[start..end], &mut Meter(c))
-                            .map_err(|error| match error {
-                                bounded::HtmlRelActionError::Admission(error) => error,
-                                bounded::HtmlRelActionError::Protocol(_) => {
-                                    SessionError::WrongToken
-                                }
-                            })?;
+                    let Some(token) = rel.code_units().get(start..end) else {
+                        return Err(latch_registry_row(c));
+                    };
+                    let (keyword, _) = bounded::classify_rel(token, &mut Meter(c)).map_err(
+                        |error| match error {
+                            bounded::HtmlRelActionError::Admission(error) => error,
+                            bounded::HtmlRelActionError::Protocol(_) => SessionError::WrongToken,
+                        },
+                    )?;
                     stylesheet |= keyword == Some(surgeist_html::HtmlRelKeyword::Stylesheet);
                     extension |= keyword.is_none();
                 }
@@ -1157,97 +1187,179 @@ impl SessionStorage {
     }
 }
 
-/// One actual payload slot per step; no hidden next-match traversal.
-pub struct Cursor<'a> {
+type Fault = read::UnresolvedReference;
+fn unresolved(kind: read::UnresolvedKind) -> Fault {
+    read::UnresolvedReference::new(kind)
+}
+/// The report storage the readers answer from, with the one node that every
+/// identity names. Resolved when a cursor is created, so no reader looks it up.
+#[derive(Clone, Copy)]
+struct Anchor<'a> {
     history: &'a FrozenHistory,
     storage: &'a FrozenStorage,
-    next: usize,
+    first: HtmlNode<'a>,
 }
-pub enum Step<'a> {
-    Document(DocumentView<'a>),
-    Occurrence(OccurrenceView<'a>),
-    Skipped,
-    Complete,
+/// A Document reference resolved against the report that holds it.
+#[derive(Clone, Copy)]
+enum Resolved<'a> {
+    Owned(HtmlNode<'a>),
+    Captured(crate::HtmlCapturedNode<'a>),
 }
-impl<'a> Cursor<'a> {
-    pub(crate) fn new(history: &'a FrozenHistory) -> Self {
-        Self {
-            history,
-            storage: history.arena().storage.as_ref().expect("qualified report"),
-            next: 0,
-        }
-    }
-    pub fn advance(&mut self) -> Step<'a> {
-        let slot = self.next;
-        let Some(row) = self.storage.payloads.values.get(slot) else {
-            return Step::Complete;
-        };
-        self.next += 1;
-        match row {
-            RetainedPayload::AssociationDocument(value) => Step::Document(DocumentView {
-                history: self.history,
-                storage: self.storage,
-                value,
-            }),
-            RetainedPayload::AssociationOccurrence(value) => Step::Occurrence(OccurrenceView {
-                history: self.history,
-                storage: self.storage,
-                slot,
-                value: &value.as_slice()[0],
-            }),
-            _ => Step::Skipped,
-        }
-    }
-}
-fn native(storage: &FrozenStorage, index: usize) -> HtmlNode<'_> {
-    storage
-        .view
-        .node_at(index)
-        .expect("qualified original subject")
-        .as_node()
-}
-fn document<'a>(storage: &'a FrozenStorage, value: &DocumentRef) -> report::MetadataDocument<'a> {
-    match value {
-        DocumentRef::Owned(node) => report::MetadataDocument::Owned(native(storage, *node)),
-        DocumentRef::Captured(id) => report::MetadataDocument::Captured(
-            storage
+impl<'a> Resolved<'a> {
+    /// The fault if the report no longer holds the Document.
+    fn new(storage: &'a FrozenStorage, value: &DocumentRef) -> Result<Self, Fault> {
+        match value {
+            DocumentRef::Owned(node) => native(storage, *node).map(Self::Owned),
+            DocumentRef::Captured(id) => storage
                 .fragment
                 .as_ref()
-                .expect("qualified capture")
+                .ok_or(unresolved(read::UnresolvedKind::Fragment))?
                 .context
                 .capture()
                 .node(id.subject())
-                .expect("qualified Document"),
-        ),
+                .map(Self::Captured)
+                .map_err(|_| unresolved(read::UnresolvedKind::CapturedNode)),
+        }
+    }
+    fn optional(
+        storage: &'a FrozenStorage,
+        value: Option<&DocumentRef>,
+    ) -> Result<Option<Self>, Fault> {
+        value.map(|value| Self::new(storage, value)).transpose()
+    }
+    fn lend(self) -> report::MetadataDocument<'a> {
+        match self {
+            Self::Owned(node) => report::MetadataDocument::Owned(node),
+            Self::Captured(node) => report::MetadataDocument::Captured(node),
+        }
     }
 }
-fn identity(storage: &FrozenStorage, slot: usize) -> OccurrenceId {
+/// One actual payload slot per step; no hidden next-match traversal.
+///
+/// Publication qualifies every row and what it names (`qualify`), and a
+/// report is immutable afterwards, so every row it holds can be lent. A row
+/// whose references the report cannot resolve is a defect in that
+/// qualification: the cursor reports it as a fault, and keeps reporting it,
+/// instead of skipping the row, because a consumer that skipped it would act
+/// on a report that lacks an association. `Step::Skipped` means only a row
+/// that is not an association.
+pub struct Cursor<'a> {
+    anchor: Result<Anchor<'a>, Fault>,
+    next: usize,
+    fault: Option<Fault>,
+}
+#[expect(
+    clippy::large_enum_variant,
+    reason = "The occurrence holds what it resolved, and is lent by value so the read path allocates nothing; boxing it would add an allocation where no controller exists to charge it"
+)]
+pub enum Step<'a> {
+    Document(DocumentView<'a>),
+    Occurrence(OccurrenceView<'a>),
+    /// A row that is not an association.
+    Skipped,
+    Complete,
+    /// The row is an association that names a reference the report cannot
+    /// resolve. The cursor stays faulted, so a caller that continues is told
+    /// again.
+    Fault(read::UnresolvedReference),
+}
+impl<'a> Cursor<'a> {
+    pub(crate) fn new(history: &'a FrozenHistory) -> Self {
+        let storage = history.storage();
+        let anchor = native(storage, 0).map(|first| Anchor {
+            history,
+            storage,
+            first,
+        });
+        Self {
+            anchor,
+            next: 0,
+            fault: None,
+        }
+    }
+    fn fail(&mut self, fault: Fault) -> Step<'a> {
+        self.fault = Some(fault);
+        Step::Fault(fault)
+    }
+    pub fn advance(&mut self) -> Step<'a> {
+        if let Some(fault) = self.fault {
+            return Step::Fault(fault);
+        }
+        let anchor = match self.anchor {
+            Ok(anchor) => anchor,
+            Err(fault) => return self.fail(fault),
+        };
+        let slot = self.next;
+        let Some(row) = anchor.storage.payloads.values.get(slot) else {
+            return Step::Complete;
+        };
+        // `slot` indexes a vector, so it is below the address space.
+        self.next = slot.saturating_add(1);
+        let view = match row {
+            RetainedPayload::AssociationDocument(value) => {
+                DocumentView::new(anchor, value).map(Step::Document)
+            }
+            RetainedPayload::AssociationOccurrence(values) => values
+                .as_slice()
+                .first()
+                .ok_or(unresolved(read::UnresolvedKind::Fact))
+                .and_then(|value| OccurrenceView::new(anchor, slot, value))
+                .map(Step::Occurrence),
+            _ => return Step::Skipped,
+        };
+        view.unwrap_or_else(|fault| self.fail(fault))
+    }
+}
+fn native(storage: &FrozenStorage, index: usize) -> Result<HtmlNode<'_>, Fault> {
+    storage
+        .view
+        .node_at(index)
+        .map(|node| node.as_node())
+        .ok_or(unresolved(read::UnresolvedKind::Node))
+}
+fn identity(anchor: Anchor<'_>, slot: usize) -> OccurrenceId {
     OccurrenceId {
-        result: native(storage, 0).id(),
+        result: anchor.first.id(),
         slot,
     }
 }
-fn context_epoch(storage: &FrozenStorage, slot: usize) -> ContextEpochId {
+fn context_epoch(anchor: Anchor<'_>, slot: usize) -> ContextEpochId {
     ContextEpochId {
-        result: native(storage, 0).id(),
+        result: anchor.first.id(),
         slot,
     }
 }
-fn group<'a>(history: &'a FrozenHistory, value: &'a OriginGroupRef) -> HistoryGroup<'a> {
+/// The group a stored reference names, or the fault.
+fn group<'a>(
+    history: &'a FrozenHistory,
+    value: &OriginGroupRef,
+) -> Result<HistoryGroup<'a>, Fault> {
     history
         .view()
-        .expect("qualified history")
         .group(value.index)
-        .expect("qualified snapshot group")
+        .ok_or(unresolved(read::UnresolvedKind::Group))
+}
+fn optional_group<'a>(
+    history: &'a FrozenHistory,
+    value: Option<&OriginGroupRef>,
+) -> Result<Option<HistoryGroup<'a>>, Fault> {
+    value.map(|value| group(history, value)).transpose()
 }
 pub struct DocumentView<'a> {
-    history: &'a FrozenHistory,
-    storage: &'a FrozenStorage,
+    anchor: Anchor<'a>,
     value: &'a DocumentCapture,
+    document: Resolved<'a>,
 }
 impl<'a> DocumentView<'a> {
+    fn new(anchor: Anchor<'a>, value: &'a DocumentCapture) -> Result<Self, Fault> {
+        Ok(Self {
+            anchor,
+            value,
+            document: Resolved::new(anchor.storage, &value.document)?,
+        })
+    }
     pub fn document(&self) -> report::MetadataDocument<'a> {
-        document(self.storage, &self.value.document)
+        self.document.lend()
     }
     pub fn disposition(&self) -> CaptureDisposition {
         self.value.missing.map_or(
@@ -1262,26 +1374,80 @@ impl<'a> DocumentView<'a> {
         self.value.obligations != 0
     }
     pub fn last_occurrence(&self) -> Option<OccurrenceId> {
-        self.value.last.map(|slot| identity(self.storage, slot))
+        self.value.last.map(|slot| identity(self.anchor, slot))
     }
     pub fn first_missing(&self) -> Option<OccurrenceId> {
         self.value
             .missing_at
-            .map(|slot| identity(self.storage, slot))
+            .map(|slot| identity(self.anchor, slot))
     }
     pub fn history(&self) -> crate::construction::read::HtmlParseHistory<'a> {
-        crate::construction::read::HtmlParseHistory::new(self.history)
+        crate::construction::read::HtmlParseHistory::new(self.anchor.history)
     }
 }
+/// An occurrence with everything it names resolved when it is lent, so the
+/// readers of the view cannot fail afterwards.
+#[derive(Clone, Copy)]
 pub struct OccurrenceView<'a> {
-    history: &'a FrozenHistory,
-    storage: &'a FrozenStorage,
+    anchor: Anchor<'a>,
     slot: usize,
     value: &'a Occurrence,
+    subject: HtmlNode<'a>,
+    root: HtmlNode<'a>,
+    document: Resolved<'a>,
+    previous_document: Option<Resolved<'a>>,
+    cause: Option<read::HtmlParseCause<'a>>,
+    preferred: Option<HistoryGroup<'a>>,
+    base_changed_input: Option<HistoryGroup<'a>>,
+    style: Option<StyleInputs<'a>>,
+    context: ContextView<'a>,
 }
 impl<'a> OccurrenceView<'a> {
+    /// The fault if the report no longer holds a node, Document, cause, group
+    /// or row the occurrence names.
+    fn new(anchor: Anchor<'a>, slot: usize, value: &'a Occurrence) -> Result<Self, Fault> {
+        let storage = anchor.storage;
+        let history = anchor.history;
+        let parser_document = Resolved::optional(
+            storage,
+            value
+                .inputs
+                .as_ref()
+                .and_then(|inputs| inputs.parser_document.as_ref()),
+        )?;
+        let style = value
+            .inputs
+            .as_ref()
+            .map(|inputs| StyleInputs::new(anchor, inputs, parser_document))
+            .transpose()?;
+        let cause = value
+            .cause
+            .as_ref()
+            .map(|cause| {
+                history
+                    .evidence()
+                    .retained_cause(cause)
+                    .map(|retained| read::HtmlParseCause::qualified(history, retained))
+                    .ok_or(unresolved(read::UnresolvedKind::Cause))
+            })
+            .transpose()?;
+        Ok(Self {
+            anchor,
+            slot,
+            value,
+            subject: native(storage, value.subject)?,
+            root: native(storage, value.root)?,
+            document: Resolved::new(storage, &value.document)?,
+            previous_document: Resolved::optional(storage, value.previous_document.as_ref())?,
+            cause,
+            preferred: optional_group(history, value.preferred.as_ref())?,
+            base_changed_input: optional_group(history, value.base_changed_input.as_ref())?,
+            style,
+            context: ContextView::new(anchor, slot, &value.document, &value.context)?,
+        })
+    }
     pub fn id(&self) -> OccurrenceId {
-        identity(self.storage, self.slot)
+        identity(self.anchor, self.slot)
     }
     pub fn kind(&self) -> OccurrenceKind {
         self.value.kind
@@ -1290,31 +1456,28 @@ impl<'a> OccurrenceView<'a> {
         self.value.requires_processing
     }
     pub fn subject(&self) -> HtmlNode<'a> {
-        native(self.storage, self.value.subject)
+        self.subject
     }
     pub fn document(&self) -> report::MetadataDocument<'a> {
-        document(self.storage, &self.value.document)
+        self.document.lend()
     }
     pub fn root(&self) -> HtmlNode<'a> {
-        native(self.storage, self.value.root)
+        self.root
     }
     pub fn previous_document(&self) -> Option<report::MetadataDocument<'a>> {
         matches!(self.value.kind, OccurrenceKind::StyleDocumentChanged)
-            .then(|| document(self.storage, &self.value.document))
+            .then(|| self.document.lend())
     }
     /// Adoption is captured before replacing the old Document relation.
     pub fn next_document(&self) -> Option<report::MetadataDocument<'a>> {
-        self.value
-            .previous_document
-            .as_ref()
-            .map(|d| document(self.storage, d))
+        self.previous_document.map(Resolved::lend)
     }
     /// Prior original invocation in this Document. This records causal source
     /// order, not successful sheet addition or asynchronous resource completion.
     pub fn prior_document(&self) -> Option<OccurrenceId> {
         self.value
             .prior_document
-            .map(|slot| identity(self.storage, slot))
+            .map(|slot| identity(self.anchor, slot))
     }
     /// Prior lifecycle invocation for this Style. Consumers preserve the HTML
     /// synchronous prefix and genuine resource dependencies; this edge does not
@@ -1322,63 +1485,56 @@ impl<'a> OccurrenceView<'a> {
     pub fn prior_style(&self) -> Option<OccurrenceId> {
         self.value
             .prior_style
-            .map(|slot| identity(self.storage, slot))
+            .map(|slot| identity(self.anchor, slot))
     }
+    /// `None` when the occurrence has no cause.
     pub fn cause(&self) -> Option<read::HtmlParseCause<'a>> {
-        self.value.cause.as_ref().map(|cause| {
-            read::HtmlParseCause::qualified(
-                self.history,
-                self.storage
-                    .evidence
-                    .as_ref()
-                    .and_then(|e| e.retained_cause(cause))
-                    .expect("qualified occurrence cause"),
-            )
-        })
+        self.cause
     }
+    /// `None` when there is no preferred name.
     pub fn preferred_name(&self) -> Option<HistoryGroup<'a>> {
-        self.value
-            .preferred
-            .as_ref()
-            .map(|value| group(self.history, value))
+        self.preferred
     }
+    /// `None` when there is no changed input.
     pub fn base_changed_input(&self) -> Option<HistoryGroup<'a>> {
-        self.value
-            .base_changed_input
-            .as_ref()
-            .map(|value| group(self.history, value))
+        self.base_changed_input
     }
     pub fn style(&self) -> Option<StyleInputs<'a>> {
-        self.value.inputs.as_ref().map(|value| StyleInputs {
-            history: self.history,
-            storage: self.storage,
-            value,
-        })
+        self.style
     }
     pub fn context(&self) -> ContextView<'a> {
-        ContextView {
-            history: self.history,
-            storage: self.storage,
-            slot: self.slot,
-            document: &self.value.document,
-            value: &self.value.context,
-        }
+        self.context
     }
 }
+#[derive(Clone, Copy)]
 pub struct StyleInputs<'a> {
-    history: &'a FrozenHistory,
-    storage: &'a FrozenStorage,
+    anchor: Anchor<'a>,
     value: &'a Inputs,
+    parser_document: Option<Resolved<'a>>,
+    attributes: [Option<HistoryGroup<'a>>; 5],
 }
 impl<'a> StyleInputs<'a> {
+    fn new(
+        anchor: Anchor<'a>,
+        value: &'a Inputs,
+        parser_document: Option<Resolved<'a>>,
+    ) -> Result<Self, Fault> {
+        let mut attributes = [None; 5];
+        for (resolved, stored) in attributes.iter_mut().zip(&value.attributes) {
+            *resolved = optional_group(anchor.history, stored.as_ref())?;
+        }
+        Ok(Self {
+            anchor,
+            value,
+            parser_document,
+            attributes,
+        })
+    }
     pub fn state(&self) -> surgeist_html::HtmlStyleState {
         self.value.state
     }
     pub fn creating_parser_document(&self) -> Option<report::MetadataDocument<'a>> {
-        self.value
-            .parser_document
-            .as_ref()
-            .map(|d| document(self.storage, d))
+        self.parser_document.map(Resolved::lend)
     }
     pub fn connected(&self) -> bool {
         self.value.connected
@@ -1392,69 +1548,150 @@ impl<'a> StyleInputs<'a> {
     pub fn text_len(&self) -> usize {
         self.value.text.len()
     }
-    pub fn text(&self, index: usize) -> Option<HistoryGroup<'a>> {
-        self.value
-            .text
-            .as_slice()
-            .get(index)
-            .map(|value| group(self.history, value))
+    /// `None` past the text. A group the history no longer holds is a fault.
+    pub fn text(&self, index: usize) -> Result<Option<HistoryGroup<'a>>, Fault> {
+        optional_group(self.anchor.history, self.value.text.as_slice().get(index))
     }
     pub fn sheet_order_len(&self) -> usize {
         self.value.order.map_or(0, |order| order.len)
     }
-    pub fn sheet_order(&self, index: usize) -> Option<HtmlNode<'a>> {
-        let order = self.value.order?;
-        if index >= order.len {
-            return None;
-        }
-        let Some(RetainedPayload::StyleOrder(list)) = self.storage.payloads.values.get(order.slot)
-        else {
-            return None;
+    /// `None` past the order. An entry the report no longer holds is a fault.
+    pub fn sheet_order(&self, index: usize) -> Result<Option<HtmlNode<'a>>, Fault> {
+        let Some(order) = self.value.order else {
+            return Ok(None);
         };
-        list.as_slice()
+        if index >= order.len {
+            return Ok(None);
+        }
+        let Some(RetainedPayload::StyleOrder(list)) =
+            self.anchor.storage.payloads.values.get(order.slot)
+        else {
+            return Err(unresolved(read::UnresolvedKind::Fact));
+        };
+        let entry = list
+            .as_slice()
             .get(index)
-            .map(|node| native(self.storage, *node))
+            .ok_or(unresolved(read::UnresolvedKind::Fact))?;
+        native(self.anchor.storage, *entry).map(Some)
     }
     pub fn attribute(
         &self,
         attribute: surgeist_html::KnownHtmlAttribute,
     ) -> Option<HistoryGroup<'a>> {
-        let index = match attribute {
-            surgeist_html::KnownHtmlAttribute::Type => 0,
-            surgeist_html::KnownHtmlAttribute::Media => 1,
-            surgeist_html::KnownHtmlAttribute::Title => 2,
-            surgeist_html::KnownHtmlAttribute::Blocking => 3,
-            surgeist_html::KnownHtmlAttribute::Nonce => 4,
-            _ => return None,
-        };
-        self.value.attributes[index]
-            .as_ref()
-            .map(|value| group(self.history, value))
+        let [kind, media, title, blocking, nonce] = self.attributes;
+        match attribute {
+            surgeist_html::KnownHtmlAttribute::Type => kind,
+            surgeist_html::KnownHtmlAttribute::Media => media,
+            surgeist_html::KnownHtmlAttribute::Title => title,
+            surgeist_html::KnownHtmlAttribute::Blocking => blocking,
+            surgeist_html::KnownHtmlAttribute::Nonce => nonce,
+            _ => None,
+        }
     }
 }
+/// The context of an occurrence, with the policy, the base facts, the captured
+/// context, the first Base and the input it names resolved when it is lent.
+#[derive(Clone, Copy)]
 pub struct ContextView<'a> {
-    history: &'a FrozenHistory,
-    storage: &'a FrozenStorage,
+    anchor: Anchor<'a>,
     slot: usize,
     document: &'a DocumentRef,
     value: &'a Context,
+    csp: Option<&'a surgeist_html::HtmlCspAssociation>,
+    base_facts: Option<&'a crate::HtmlParseBaseFacts>,
+    captured_context: Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext>,
+    first_base: Option<HtmlNode<'a>>,
+    base_input: Option<HistoryGroup<'a>>,
+    observation: Option<&'a surgeist_html_semantics::HtmlBaseParseObservation>,
+    /// For a captured Document: its identity and the context that captured it.
+    captured: Option<(
+        &'a crate::HtmlCaptureDocumentId,
+        &'a crate::HtmlFragmentContext,
+    )>,
 }
 impl<'a> ContextView<'a> {
-    /// The exact association applicable at this occurrence, never final policy.
-    /// The policy row was qualified as a CSP policy at publication (`qualify`),
-    /// so `None` here means the occurrence has no association.
-    pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
-        if self.value.policy_missing {
-            return None;
-        }
-        let slot = self.value.csp?;
-        let Some(RetainedPayload::CspPolicy(value)) = self.storage.payloads.values.get(slot) else {
-            return None;
+    fn new(
+        anchor: Anchor<'a>,
+        slot: usize,
+        document: &'a DocumentRef,
+        value: &'a Context,
+    ) -> Result<Self, Fault> {
+        let storage = anchor.storage;
+        let row = |slot: usize| {
+            storage
+                .payloads
+                .values
+                .get(slot)
+                .ok_or(unresolved(read::UnresolvedKind::Fact))
         };
-        value.value.as_ref()
+        // A policy that is missing from the history has no association.
+        let csp = match value.csp {
+            Some(slot) if !value.policy_missing => match row(slot)? {
+                RetainedPayload::CspPolicy(policy) => policy.value.as_ref(),
+                _ => return Err(unresolved(read::UnresolvedKind::Fact)),
+            },
+            _ => None,
+        };
+        let base_facts = match value.base_document {
+            Some(slot) => match row(slot)? {
+                RetainedPayload::BaseDocument { facts, .. } => Some(facts),
+                _ => return Err(unresolved(read::UnresolvedKind::Fact)),
+            },
+            None => None,
+        };
+        let captured_context = match value.captured {
+            Some(slot) => match row(slot)? {
+                RetainedPayload::AssociationCapturedContext(captured) => Some(&captured.value),
+                _ => return Err(unresolved(read::UnresolvedKind::Fact)),
+            },
+            None => None,
+        };
+        let first_base = value
+            .first_base
+            .map(|index| native(storage, index))
+            .transpose()?;
+        // The observation is consulted only to select a frozen Base of the
+        // facts, for a first Base that names one.
+        let observation = match (base_facts, first_base, value.base_observation) {
+            (Some(facts), Some(_), Some(index)) => Some(
+                facts
+                    .observations()
+                    .get(index)
+                    .ok_or(unresolved(read::UnresolvedKind::Fact))?,
+            ),
+            _ => None,
+        };
+        Ok(Self {
+            anchor,
+            slot,
+            document,
+            value,
+            csp,
+            base_facts,
+            captured_context,
+            first_base,
+            base_input: optional_group(anchor.history, value.base_input.as_ref())?,
+            observation,
+            captured: match document {
+                DocumentRef::Captured(id) => Some((
+                    id,
+                    &storage
+                        .fragment
+                        .as_ref()
+                        .ok_or(unresolved(read::UnresolvedKind::Fragment))?
+                        .context,
+                )),
+                DocumentRef::Owned(_) => None,
+            },
+        })
+    }
+    /// The exact association applicable at this occurrence, never final policy.
+    /// `None` means the occurrence has no association.
+    pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
+        self.csp
     }
     pub fn epoch(&self) -> ContextEpochId {
-        context_epoch(self.storage, self.slot)
+        context_epoch(self.anchor, self.slot)
     }
     /// Immutable initial Document input lineage for URL, fallback, encoding and
     /// initial policy; other roles retain their original occurrence frontier.
@@ -1468,7 +1705,7 @@ impl<'a> ContextView<'a> {
                 | ContextRole::Encoding
                 | ContextRole::InitialPolicy
         ) {
-            context_epoch(self.storage, self.value.input_document)
+            context_epoch(self.anchor, self.value.input_document)
         } else {
             self.epoch()
         }
@@ -1536,51 +1773,31 @@ impl<'a> ContextView<'a> {
         if self.requirement(role) != ContextRequirement::DeferredCaptured {
             return None;
         }
-        let DocumentRef::Captured(document) = self.document else {
-            return None;
-        };
+        let (document, context) = self.captured?;
         Some(CapturedObservation {
             epoch: self.input_epoch(role),
             role,
             document,
-            context: &self
-                .storage
-                .fragment
-                .as_ref()
-                .expect("qualified original context")
-                .context,
+            context,
         })
     }
-    /// The provider row was qualified as base facts of this document at
-    /// publication (`qualify`), so `None` here means the occurrence has none.
+    /// `None` means the occurrence has no base facts of this document.
     pub fn base_facts(&self) -> Option<&'a crate::HtmlParseBaseFacts> {
-        self.value
-            .base_document
-            .and_then(|slot| match self.storage.payloads.values.get(slot) {
-                Some(RetainedPayload::BaseDocument { facts, .. }) => Some(facts),
-                _ => None,
-            })
+        self.base_facts
     }
-    /// The provider row was qualified as this document's captured context at
-    /// publication (`qualify`), so `None` here means the occurrence has none.
+    /// `None` means the occurrence has no captured context of this document.
     pub fn captured_context(
         &self,
     ) -> Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext> {
-        self.value
-            .captured
-            .and_then(|slot| match self.storage.payloads.values.get(slot) {
-                Some(RetainedPayload::AssociationCapturedContext(value)) => Some(&value.value),
-                _ => None,
-            })
+        self.captured_context
     }
+    /// `None` when there is no first Base.
     pub fn first_base(&self) -> Option<HtmlNode<'a>> {
-        self.value.first_base.map(|node| native(self.storage, node))
+        self.first_base
     }
+    /// `None` when there is no input.
     pub fn base_input(&self) -> Option<HistoryGroup<'a>> {
-        self.value
-            .base_input
-            .as_ref()
-            .map(|value| group(self.history, value))
+        self.base_input
     }
     pub fn base_observation(&self) -> Option<usize> {
         self.value.base_observation
@@ -1593,13 +1810,12 @@ impl<'a> ContextView<'a> {
             .base_facts()
             .ok_or(crate::HtmlBaseMissing::DocumentFacts)?;
         if self.value.first_base.is_some() {
-            let index = self
-                .value
-                .base_observation
-                .ok_or(crate::HtmlBaseMissing::FrozenBase)?;
+            if self.value.base_observation.is_none() {
+                return Err(crate::HtmlBaseMissing::FrozenBase);
+            }
             let fallback = facts.document().fallback()?;
-            crate::select_frozen_base(fallback, facts.observations()[index].outcome())
-                .map(|(value, _)| value)
+            let observation = self.observation.ok_or(crate::HtmlBaseMissing::FrozenBase)?;
+            crate::select_frozen_base(fallback, observation.outcome()).map(|(value, _)| value)
         } else {
             surgeist_html_semantics::select_document_base(
                 Some(facts.document()),
@@ -1644,10 +1860,9 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
             }
             RetainedPayload::AssociationOccurrence(values) => {
                 values.require_disposal_owner(c)?;
-                if values.len() != 1 {
+                let [value] = values.as_slice() else {
                     return Err(latch_registry_row(c));
-                }
-                let value = &values.as_slice()[0];
+                };
                 if value.context.input_document >= slot
                     || !matches!(
                         storage.payloads.values.get(value.context.input_document),
@@ -1730,6 +1945,14 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 {
                     return Err(latch_registry_row(c));
                 }
+                // `ContextView::first_base` and `selected_base` read this node
+                // without a controller, so it is established here, at publication.
+                if let Some(first) = value.context.first_base {
+                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    if storage.view.node_at(first).is_none() {
+                        return Err(latch_registry_row(c));
+                    }
+                }
                 // `ContextView::csp_association` reads this row without a controller,
                 // so its kind is established here, at publication.
                 if let Some(policy) = value.context.csp
@@ -1789,29 +2012,49 @@ impl FrozenStorage {
         }
     }
 }
-pub(super) fn release_occurrence(mut values: OwnedVec<Occurrence>, c: &mut ParseControl) {
-    while let Some(value) = if c.stop().is_some() {
-        values.cleanup_pop(c)
-    } else {
-        values.try_pop(c)
+/// Releases the receiver and what each occurrence holds. A refusal is
+/// remembered and the release goes on, so everything else is still credited;
+/// the first refusal is returned.
+pub(super) fn release_occurrence(
+    mut values: OwnedVec<Occurrence>,
+    c: &mut ParseControl,
+) -> Result<(), ParseStop> {
+    let mut refused = None;
+    loop {
+        let popped = if c.stop().is_some() {
+            values.cleanup_pop(c)
+        } else {
+            match values.try_pop(c) {
+                Ok(popped) => Ok(popped),
+                // The refusal latched a stop, which opens the cleanup pop.
+                Err(stop) => {
+                    refused.get_or_insert(stop);
+                    values.cleanup_pop(c)
+                }
+            }
+        };
+        match popped {
+            Ok(Some(value)) => {
+                if let Err(stop) = release_inputs(value, c) {
+                    refused.get_or_insert(stop);
+                }
+            }
+            Ok(None) => break,
+            Err(stop) => {
+                refused.get_or_insert(stop);
+                break;
+            }
+        }
     }
-    .unwrap_or_else(|_| {
-        values
-            .cleanup_pop(c)
-            .expect("terminal association receiver disposal")
-    }) {
-        release_inputs(value, c);
+    if let Err(stop) = values.release(c) {
+        refused.get_or_insert(stop);
     }
-    values
-        .release(c)
-        .expect("owned association occurrence receiver");
+    refused.map_or(Ok(()), Err)
 }
-fn release_inputs(value: Occurrence, c: &mut ParseControl) {
-    if let Some(inputs) = value.inputs {
-        inputs
-            .text
-            .release(c)
-            .expect("owned association text inputs");
+fn release_inputs(value: Occurrence, c: &mut ParseControl) -> Result<(), ParseStop> {
+    match value.inputs {
+        Some(inputs) => inputs.text.release(c),
+        None => Ok(()),
     }
 }
 pub(super) fn captured_usage(value: &CapturedContext) -> associated::AssociatedStorageUsage {
@@ -2065,5 +2308,404 @@ mod tests {
         session.release(&mut c).unwrap();
         assert_eq!(c.stop(), Some(first));
         super::super::tests::storage_zero(&c);
+    }
+    // Impossible states met while recording associations are reported as the
+    // controller's first stop, never as a panic. Each test forces the state
+    // through a controller hook, asserts the exact typed error and that the
+    // stop is latched first, and that the session's own release drains.
+    fn registry_row() -> ParseStop {
+        ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+    }
+    #[test]
+    fn a_registry_walk_past_the_end_reports_the_registry_row() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(""),
+            super::super::tests::limits(),
+        );
+        let (mut c, mut session, _) = super::super::tests::fresh_script_owner(&request);
+        // The walk may add rows as it goes, so it must overshoot them all.
+        c.overshoot_next_registry_walk(1_000);
+        let result = session
+            .active_mut()
+            .unwrap()
+            .prepare_association_documents(&mut c);
+        assert_eq!(result, Err(SessionError::Stop(registry_row())));
+        assert_eq!(c.stop(), Some(registry_row()));
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+    #[test]
+    fn a_stylesheet_token_reaching_past_its_relation_reports_the_registry_row() {
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<link rel=stylesheet href=a>"),
+            super::super::tests::limits(),
+        );
+        let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
+        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let root = session.root(&mut c).unwrap();
+        let link = lexical_node(&mut session, &mut c, &mut lexer);
+        session
+            .insert(&mut c, &root, &link, None, Some(&capability))
+            .unwrap();
+        c.overshoot_next_space_token(1);
+        let result = session
+            .active_mut()
+            .unwrap()
+            .association_link(&mut c, link.index);
+        assert_eq!(result, Err(SessionError::Stop(registry_row())));
+        assert_eq!(c.stop(), Some(registry_row()));
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+    fn forged_occurrence(inputs: Option<Inputs>) -> Occurrence {
+        Occurrence {
+            subject: 0,
+            document: DocumentRef::Owned(0),
+            root: 0,
+            previous_document: None,
+            prior_document: None,
+            prior_style: None,
+            cause: None,
+            kind: OccurrenceKind::StyleCreated,
+            inputs,
+            preferred: None,
+            base_changed_input: None,
+            context: Context {
+                input_document: 0,
+                mode: HtmlDocumentMode::NoQuirks,
+                class: crate::HtmlDocumentClass::Html,
+                body: false,
+                base_document: None,
+                first_base: None,
+                base_input: None,
+                base_observation: None,
+                captured: None,
+                policy_missing: false,
+                csp: None,
+                missing: false,
+            },
+            requires_processing: false,
+            may_have_sheet: false,
+        }
+    }
+    fn foreign_stop() -> ParseStop {
+        ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl)
+    }
+    #[test]
+    fn releasing_occurrences_to_a_foreign_controller_stops_instead_of_panicking() {
+        let mut owner = super::super::tests::control();
+        let mut foreign = super::super::tests::control();
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        values
+            .try_push_geometric(&mut owner, forged_occurrence(None))
+            .unwrap();
+        assert_eq!(
+            release_occurrence(values, &mut foreign),
+            Err(foreign_stop())
+        );
+        assert_eq!(foreign.stop(), Some(foreign_stop()));
+    }
+    #[test]
+    fn releasing_an_occurrence_whose_text_inputs_are_foreign_stops_and_still_releases_the_rest() {
+        let mut owner = super::super::tests::control();
+        let mut foreign = super::super::tests::control();
+        // An empty vector bound to the other controller by an empty pop.
+        let mut text = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        assert!(text.try_pop(&mut foreign).unwrap().is_none());
+        let inputs = Inputs {
+            state: surgeist_html::HtmlStyleState::default(),
+            parser_document: None,
+            connected: false,
+            type_eligible: false,
+            document_tree: false,
+            attributes: [None, None, None, None, None],
+            text,
+            order: None,
+        };
+        let mut values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+        values
+            .try_push_geometric(&mut owner, forged_occurrence(Some(inputs)))
+            .unwrap();
+        assert_eq!(release_occurrence(values, &mut owner), Err(foreign_stop()));
+        assert_eq!(owner.stop(), Some(foreign_stop()));
+        // The receiver itself was released although its inputs were refused.
+        assert_eq!(
+            owner
+                .usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+            0
+        );
+    }
+
+    // A published report was qualified once, so a reference one of its rows
+    // holds that its tables cannot resolve is a defect in that qualification.
+    // Each test corrupts one such reference and requires the cursor to report
+    // the fault at that row, and to stay faulted, rather than skip the row or
+    // read the reference as absent. A skipped row is only one that is not an
+    // association.
+    fn styled_report() -> crate::HtmlParseReport {
+        crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<!doctype html><style title=a type=text/css>b{}</style><p>c"),
+            super::super::tests::limits(),
+        )
+        .parse()
+        .unwrap()
+    }
+    fn frozen(report: &mut crate::HtmlParseReport) -> &mut FrozenStorage {
+        report.storage_mut().history_mut().storage_mut()
+    }
+    fn fault(kind: read::UnresolvedKind) -> read::UnresolvedReference {
+        read::UnresolvedReference::new(kind)
+    }
+    /// Edits the first style occurrence a report holds that the filter accepts.
+    fn corrupt_style_occurrence(
+        report: &mut crate::HtmlParseReport,
+        select: impl Fn(&Occurrence) -> bool,
+        edit: impl FnOnce(&mut Occurrence),
+    ) {
+        let row = frozen(report)
+            .payloads
+            .values
+            .iter_mut()
+            .find_map(|row| match row {
+                RetainedPayload::AssociationOccurrence(values)
+                    if values.as_slice()[0].inputs.is_some() && select(&values.as_slice()[0]) =>
+                {
+                    Some(&mut values.as_mut_slice_for_test()[0])
+                }
+                _ => None,
+            })
+            .unwrap();
+        edit(row);
+    }
+    /// What a walk of the cursor lends: the associations presented, the rows
+    /// skipped, and the first fault, which the cursor must keep reporting.
+    struct Walk {
+        presented: usize,
+        skipped: usize,
+        fault: Option<read::UnresolvedReference>,
+    }
+    fn walk(report: &crate::HtmlParseReport) -> Walk {
+        let mut cursor = report.pending_associations();
+        let mut walk = Walk {
+            presented: 0,
+            skipped: 0,
+            fault: None,
+        };
+        loop {
+            match cursor.advance() {
+                Step::Occurrence(_) | Step::Document(_) => walk.presented += 1,
+                Step::Skipped => walk.skipped += 1,
+                Step::Complete => return walk,
+                Step::Fault(first) => {
+                    assert!(matches!(cursor.advance(), Step::Fault(again) if again == first));
+                    walk.fault = Some(first);
+                    return walk;
+                }
+            }
+        }
+    }
+    #[test]
+    fn an_uncorrupted_report_lends_every_association_and_skips_only_other_rows() {
+        let report = styled_report();
+        let walk = walk(&report);
+        assert!(walk.presented > 0 && walk.skipped > 0);
+        assert_eq!(walk.fault, None);
+    }
+    fn assert_row_fault(report: &crate::HtmlParseReport, kind: read::UnresolvedKind) {
+        assert_eq!(walk(report).fault, Some(fault(kind)));
+    }
+    #[test]
+    fn an_occurrence_whose_subject_is_missing_is_a_fault() {
+        let mut report = styled_report();
+        corrupt_style_occurrence(&mut report, |_| true, |row| row.subject = usize::MAX);
+        assert_row_fault(&report, read::UnresolvedKind::Node);
+    }
+    #[test]
+    fn an_occurrence_whose_root_is_missing_is_a_fault() {
+        let mut report = styled_report();
+        corrupt_style_occurrence(&mut report, |_| true, |row| row.root = usize::MAX);
+        assert_row_fault(&report, read::UnresolvedKind::Node);
+    }
+    #[test]
+    fn an_occurrence_whose_document_is_missing_is_a_fault() {
+        let mut report = styled_report();
+        corrupt_style_occurrence(
+            &mut report,
+            |_| true,
+            |row| row.document = DocumentRef::Owned(usize::MAX),
+        );
+        assert_row_fault(&report, read::UnresolvedKind::Node);
+    }
+    #[test]
+    fn an_occurrence_whose_previous_document_is_missing_is_a_fault() {
+        let mut report = styled_report();
+        corrupt_style_occurrence(
+            &mut report,
+            |_| true,
+            |row| row.previous_document = Some(DocumentRef::Owned(usize::MAX)),
+        );
+        assert_row_fault(&report, read::UnresolvedKind::Node);
+    }
+    #[test]
+    fn an_occurrence_whose_creating_parser_document_is_missing_is_a_fault() {
+        let mut report = styled_report();
+        corrupt_style_occurrence(
+            &mut report,
+            |_| true,
+            |row| {
+                row.inputs.as_mut().unwrap().parser_document = Some(DocumentRef::Owned(usize::MAX));
+            },
+        );
+        assert_row_fault(&report, read::UnresolvedKind::Node);
+    }
+    #[test]
+    fn an_occurrence_whose_cause_is_missing_is_a_fault() {
+        let mut report = styled_report();
+        corrupt_style_occurrence(
+            &mut report,
+            |row| row.cause.is_some(),
+            |row| row.cause.as_mut().unwrap().corrupt_for_test(),
+        );
+        assert_row_fault(&report, read::UnresolvedKind::Cause);
+    }
+    #[test]
+    fn an_occurrence_whose_attribute_group_is_missing_is_a_fault() {
+        let mut report = styled_report();
+        let with_attribute = |row: &Occurrence| {
+            row.inputs
+                .as_ref()
+                .is_some_and(|inputs| inputs.attributes.iter().any(Option::is_some))
+        };
+        corrupt_style_occurrence(&mut report, with_attribute, |row| {
+            let attributes = &mut row.inputs.as_mut().unwrap().attributes;
+            attributes.iter_mut().flatten().next().unwrap().index = usize::MAX;
+        });
+        assert_row_fault(&report, read::UnresolvedKind::Group);
+    }
+    #[test]
+    fn an_occurrence_whose_policy_row_is_not_a_policy_is_a_fault() {
+        let mut report = styled_report();
+        corrupt_style_occurrence(
+            &mut report,
+            |row| !row.context.policy_missing,
+            |row| row.context.csp = Some(usize::MAX),
+        );
+        assert_row_fault(&report, read::UnresolvedKind::Fact);
+    }
+    #[test]
+    fn an_occurrence_whose_base_facts_row_is_not_base_facts_is_a_fault() {
+        let mut report =
+            super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
+                .parse()
+                .unwrap();
+        corrupt_style_occurrence(
+            &mut report,
+            |row| row.context.base_document.is_some(),
+            |row| row.context.base_document = Some(usize::MAX),
+        );
+        assert_row_fault(&report, read::UnresolvedKind::Fact);
+    }
+    #[test]
+    fn a_text_group_that_is_missing_is_a_fault_of_the_text_reader() {
+        let mut report = styled_report();
+        let with_text = |row: &Occurrence| row.inputs.as_ref().is_some_and(|i| i.text.len() != 0);
+        corrupt_style_occurrence(&mut report, with_text, |row| {
+            let text = row.inputs.as_mut().unwrap().text.as_mut_slice_for_test();
+            text[0].index = usize::MAX;
+        });
+        let mut cursor = report.pending_associations();
+        let mut checked = false;
+        loop {
+            match cursor.advance() {
+                Step::Occurrence(view) => {
+                    if let Some(style) = view.style()
+                        && style.text_len() != 0
+                    {
+                        assert_eq!(
+                            style.text(0).err(),
+                            Some(fault(read::UnresolvedKind::Group))
+                        );
+                        assert!(matches!(style.text(style.text_len()), Ok(None)));
+                        checked = true;
+                    }
+                }
+                Step::Complete => break,
+                Step::Fault(fault) => panic!("{fault}"),
+                _ => {}
+            }
+        }
+        assert!(checked);
+    }
+    #[test]
+    fn a_sheet_order_entry_that_is_missing_is_a_fault_of_the_order_reader() {
+        let mut report = styled_report();
+        for row in frozen(&mut report).payloads.values.iter_mut() {
+            if let RetainedPayload::StyleOrder(list) = row {
+                list.as_mut_slice_for_test()[0] = usize::MAX;
+            }
+        }
+        let mut cursor = report.pending_associations();
+        let mut checked = false;
+        loop {
+            match cursor.advance() {
+                Step::Occurrence(view) => {
+                    if let Some(style) = view.style()
+                        && style.sheet_order_len() != 0
+                    {
+                        assert_eq!(
+                            style.sheet_order(0).err(),
+                            Some(fault(read::UnresolvedKind::Node))
+                        );
+                        assert!(matches!(
+                            style.sheet_order(style.sheet_order_len()),
+                            Ok(None)
+                        ));
+                        checked = true;
+                    }
+                }
+                Step::Complete => break,
+                Step::Fault(fault) => panic!("{fault}"),
+                _ => {}
+            }
+        }
+        assert!(checked);
+    }
+    #[test]
+    fn documents_whose_capture_is_missing_are_a_fault() {
+        let mut report =
+            super::super::fragment_document::tests::fragment_report("<style>a</style>");
+        frozen(&mut report).fragment = None;
+        assert_row_fault(&report, read::UnresolvedKind::Fragment);
+    }
+    #[test]
+    fn a_base_observation_that_is_missing_is_a_fault() {
+        let mut report =
+            super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
+                .parse()
+                .unwrap();
+        let with_base = |row: &Occurrence| {
+            row.context.base_document.is_some()
+                && row.context.first_base.is_some()
+                && row.context.base_observation.is_some()
+        };
+        corrupt_style_occurrence(&mut report, with_base, |row| {
+            row.context.base_observation = Some(usize::MAX);
+        });
+        assert_row_fault(&report, read::UnresolvedKind::Fact);
+    }
+    #[test]
+    fn a_first_base_that_is_missing_is_a_fault() {
+        let mut report =
+            super::super::base::tests::request("<!doctype html><base href=A><style>b{}</style>")
+                .parse()
+                .unwrap();
+        let with_base = |row: &Occurrence| row.context.first_base.is_some();
+        corrupt_style_occurrence(&mut report, with_base, |row| {
+            row.context.first_base = Some(usize::MAX);
+        });
+        assert_row_fault(&report, read::UnresolvedKind::Node);
     }
 }

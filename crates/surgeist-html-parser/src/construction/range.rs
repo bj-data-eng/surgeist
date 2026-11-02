@@ -6,8 +6,38 @@ use crate::bounded::{
     RangeNumericError, RangeNumericHeaders, RangeNumericReply, RangeNumericRequest,
     RangeScratchRole,
 };
+use crate::keyed::{Table, slots};
 use crate::{HtmlInputNumericContent, HtmlInputNumericStep};
-use provenance::{RangeBranch, RangeComputation, RangeOperand, RangeOriginal};
+use provenance::{
+    RangeBranch, RangeComputation, RangeOperand, RangeOperandRole, RangeOperandTable, RangeOriginal,
+};
+
+const SCRATCH_COUNT: usize = 8;
+/// One scratch value per [`RangeScratchRole`]; a lookup cannot be out of range.
+type ScratchTable<T> = Table<RangeScratchRole, T, SCRATCH_COUNT>;
+slots!(RangeScratchRole, SCRATCH_COUNT, {
+    Coefficient => 0,
+    Lower => 1,
+    Upper => 2,
+    Left => 3,
+    Right => 4,
+    Quotient => 5,
+    Remainder => 6,
+    Trial => 7,
+});
+// The HTML owner's own index and role list agree with the table's slots.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "evaluated at compile time with i < SCRATCH_COUNT, the array length: an index out of range fails the build"
+)]
+const _: () = {
+    let mut i = 0;
+    while i < SCRATCH_COUNT {
+        assert!(RangeScratchRole::ALL[i].index() == i);
+        assert!(RangeScratchRole::ALL[i] as usize == i);
+        i += 1;
+    }
+};
 
 // Closed fixture scheduling at actual committed ingress replies only.
 #[cfg(test)]
@@ -127,7 +157,7 @@ impl Machine {
     }
 }
 pub(super) struct RangeStaging {
-    buffers: [OwnedVec<u8>; 8],
+    buffers: ScratchTable<OwnedVec<u8>>,
     output: Option<Utf16Buffer>,
     machine: Option<Machine>,
     generated: Option<OriginGroupRef>,
@@ -136,11 +166,11 @@ pub(super) struct RangeStaging {
 impl RangeStaging {
     #[cfg(test)]
     pub(super) fn owned_cells(&self) -> usize {
-        self.buffers.iter().map(OwnedVec::len).sum()
+        self.buffers.as_array().iter().map(OwnedVec::len).sum()
     }
     #[cfg(test)]
     pub(super) fn right_cache_extent(&self) -> (usize, usize) {
-        let buffer = &self.buffers[RangeScratchRole::Right.index()];
+        let buffer = self.buffers.get(RangeScratchRole::Right);
         (buffer.len(), buffer.capacity())
     }
     #[cfg(test)]
@@ -155,9 +185,9 @@ impl RangeStaging {
     ) {
         (
             self.source,
-            self.buffers[RangeScratchRole::Coefficient.index()].as_slice(),
-            self.buffers[RangeScratchRole::Right.index()].len(),
-            self.buffers[RangeScratchRole::Trial.index()].len(),
+            self.buffers.get(RangeScratchRole::Coefficient).as_slice(),
+            self.buffers.get(RangeScratchRole::Right).len(),
+            self.buffers.get(RangeScratchRole::Trial).len(),
             self.machine
                 .as_ref()
                 .and_then(|machine| machine.ingress.as_ref()),
@@ -165,7 +195,7 @@ impl RangeStaging {
     }
     fn new(c: &mut ParseControl, source: usize) -> Result<Self, SessionError> {
         Ok(Self {
-            buffers: [
+            buffers: ScratchTable::new([
                 OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
                 OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
                 OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
@@ -174,7 +204,7 @@ impl RangeStaging {
                 OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
                 OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
                 OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
-            ],
+            ]),
             output: Some(Utf16Buffer::new(c)?),
             machine: None,
             generated: None,
@@ -182,7 +212,7 @@ impl RangeStaging {
         })
     }
     pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
-        for buffer in self.buffers {
+        for buffer in self.buffers.into_array() {
             buffer.release(c)?;
         }
         if let Some(output) = self.output {
@@ -196,23 +226,28 @@ impl RangeStaging {
             WorkCategory::CopyByte,
             mem::size_of::<RangeNumericHeaders>() as u64,
         )?;
-        fn actual_header(len: usize, capacity: usize) -> RangeBufferHeader {
-            RangeBufferHeader::new(len, capacity)
-                .expect("actual non-ZST Vec length/capacity obey allocation invariants")
+        // An actual non-ZST Vec obeys the header's allocation invariants; a
+        // violation is reported as the capacity-mismatch stop.
+        fn actual_header(
+            c: &mut ParseControl,
+            len: usize,
+            capacity: usize,
+        ) -> Result<RangeBufferHeader, SessionError> {
+            RangeBufferHeader::new(len, capacity).map_err(|error| numeric_failure(c, error))
         }
-        Ok(RangeNumericHeaders::new(
-            std::array::from_fn(|i| {
-                actual_header(self.buffers[i].len(), self.buffers[i].capacity())
-            }),
-            self.output.as_ref().map_or_else(
-                || actual_header(0, 0),
-                |output| actual_header(output.len(), output.capacity()),
-            ),
-        ))
+        let mut buffers = [RangeBufferHeader::default(); SCRATCH_COUNT];
+        for (header, buffer) in buffers.iter_mut().zip(self.buffers.as_array()) {
+            *header = actual_header(c, buffer.len(), buffer.capacity())?;
+        }
+        let output = match &self.output {
+            Some(output) => actual_header(c, output.len(), output.capacity())?,
+            None => actual_header(c, 0, 0)?,
+        };
+        Ok(RangeNumericHeaders::new(buffers, output))
     }
     fn scratch_empty(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         for role in RangeScratchRole::ALL {
-            while self.buffers[role.index()].try_pop(c)?.is_some() {}
+            while self.buffers.get_mut(role).try_pop(c)?.is_some() {}
         }
         Ok(())
     }
@@ -220,24 +255,22 @@ impl RangeStaging {
 fn numeric_failure(c: &mut ParseControl, error: RangeNumericError) -> SessionError {
     match error {
         RangeNumericError::Representation => c
-            .representation::<()>(HtmlParseResource::AuxiliaryEntries)
-            .unwrap_err()
+            .stop_representation(HtmlParseResource::AuxiliaryEntries)
             .into(),
         _ => integrity(c),
     }
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
-    c.fail_invariant(crate::parser::control::Invariant::CapacityMismatch)
-        .into()
+    latch_registry_row(c)
 }
 impl SessionStorage {
     fn range_stage(&mut self, c: &mut ParseControl) -> Result<&mut RangeStaging, SessionError> {
         c.require_identity(&self.control)?;
         c.charge(WorkCategory::RecordVisit, 1)?;
-        self.effects
-            .range
-            .as_mut()
-            .ok_or(SessionError::PendingIntrinsicWork)
+        match self.effects.range.as_mut() {
+            Some(stage) => Ok(stage),
+            None => Err(latch_registry_row(c)),
+        }
     }
     fn execute_range(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         loop {
@@ -245,19 +278,21 @@ impl SessionStorage {
             c.charge(WorkCategory::RecordVisit, 2)?;
             c.charge(
                 WorkCategory::InspectByte,
-                (mem::size_of::<Option<RangeNumericRequest>>()
-                    + mem::size_of::<MachineKind>()
-                    + mem::size_of::<usize>()) as u64,
+                const {
+                    (mem::size_of::<Option<RangeNumericRequest>>()
+                        + mem::size_of::<MachineKind>()
+                        + mem::size_of::<usize>()) as u64
+                },
             )?;
             let stage = self
                 .effects
                 .range
                 .as_ref()
-                .ok_or(SessionError::PendingIntrinsicWork)?;
+                .ok_or_else(|| latch_registry_row(c))?;
             let Some(request) = stage
                 .machine
                 .as_ref()
-                .ok_or(SessionError::PendingIntrinsicWork)?
+                .ok_or_else(|| latch_registry_row(c))?
                 .request()
             else {
                 let expected = stage.machine.as_ref().and_then(Machine::headers);
@@ -286,7 +321,7 @@ impl SessionStorage {
                     let mut read = [None; 3];
                     for (out, cell) in read.iter_mut().zip(cells) {
                         if let Some(cell) = cell {
-                            let buffer = &stage.buffers[cell.role().index()];
+                            let buffer = stage.buffers.get(cell.role());
                             buffer.require_disposal_owner(c)?;
                             c.charge(WorkCategory::RecordVisit, 1)?;
                             c.charge(WorkCategory::InspectByte, 1)?;
@@ -302,7 +337,7 @@ impl SessionStorage {
                 }
                 RangeNumericRequest::Reserve { role, required_len } => {
                     let stage = self.range_stage(c)?;
-                    let buffer = &mut stage.buffers[role.index()];
+                    let buffer = stage.buffers.get_mut(role);
                     let additional = required_len
                         .checked_sub(buffer.len())
                         .ok_or_else(|| integrity(c))?;
@@ -314,7 +349,7 @@ impl SessionStorage {
                 }
                 RangeNumericRequest::AppendCell { role, value } => {
                     let stage = self.range_stage(c)?;
-                    let buffer = &mut stage.buffers[role.index()];
+                    let buffer = stage.buffers.get_mut(role);
                     if value > 9 || buffer.len() == buffer.capacity() {
                         return Err(integrity(c));
                     }
@@ -354,13 +389,18 @@ impl SessionStorage {
                         return Err(integrity(c));
                     }
                     payload_write::<u8>(c, 1)?;
-                    *stage.buffers[cell.role().index()]
+                    *stage
+                        .buffers
+                        .get_mut(cell.role())
                         .get_mut(cell.index(), c)?
                         .ok_or_else(|| integrity(c))? = value;
                     RangeNumericReply::Ack
                 }
                 RangeNumericRequest::PopCell { role } => {
-                    if self.range_stage(c)?.buffers[role.index()]
+                    if self
+                        .range_stage(c)?
+                        .buffers
+                        .get_mut(role)
                         .try_pop(c)?
                         .is_none()
                     {
@@ -449,7 +489,7 @@ impl SessionStorage {
                     if ingress {
                         let stage = self.effects.range.as_ref().unwrap();
                         let source = stage.source;
-                        let coefficient = &stage.buffers[RangeScratchRole::Coefficient.index()];
+                        let coefficient = stage.buffers.get(RangeScratchRole::Coefficient);
                         coefficient.require_disposal_owner(c)?;
                         let one_cell = coefficient.len() == 1;
                         let raw = admitted_input_string(&self.payloads, c, source)?;
@@ -676,12 +716,12 @@ impl SessionStorage {
         let (valid, value) = self.range_parse(c, source, FloatingPointParseMode::Author)?;
         let (min, min_operand) = self.range_content(c, node, "min")?;
         let (max, max_operand) = self.range_content(c, node, "max")?;
-        let mut operands = [
+        let mut operands = RangeOperandTable::new([
             min_operand,
             max_operand,
             RangeOperand::NotConsulted,
             RangeOperand::NotConsulted,
-        ];
+        ]);
         payload_write::<HtmlInputRangeValue>(c, 1)?;
         let value = match (valid, value) {
             (false, _) => HtmlInputRangeValue::InvalidGrammar,
@@ -782,13 +822,13 @@ impl SessionStorage {
                             c.charge(WorkCategory::RecordVisit, 1)?;
                             let mut any = raw.len() == keyword_len;
                             if any {
-                                for index in 0..keyword_len {
+                                // The lengths are equal, so the enumeration covers
+                                // the keyword exactly.
+                                for (index, &unit) in raw.code_units().iter().enumerate() {
                                     c.charge(WorkCategory::InspectByte, 2)?;
                                     c.charge(WorkCategory::StateStep, 1)?;
-                                    if !HtmlInputNumericStep::any_keyword_unit_matches(
-                                        index,
-                                        raw.code_units()[index],
-                                    ) {
+                                    if !HtmlInputNumericStep::any_keyword_unit_matches(index, unit)
+                                    {
                                         any = false;
                                         break;
                                     }
@@ -797,14 +837,15 @@ impl SessionStorage {
                             any
                         };
                         if any {
-                            operands[2] = RangeOperand::Any(edge);
+                            *operands.get_mut(RangeOperandRole::Step) = RangeOperand::Any(edge);
                             HtmlInputNumericStep::Any
                         } else {
                             let (_, result) =
                                 self.range_parse(c, step_slot, FloatingPointParseMode::Recovery)?;
                             match result {
                                 Some(bits) => {
-                                    operands[2] = RangeOperand::Finite(edge);
+                                    *operands.get_mut(RangeOperandRole::Step) =
+                                        RangeOperand::Finite(edge);
                                     HtmlInputNumericStep::Value(
                                         crate::HtmlFloatingPointNumber::try_from(f64::from_bits(
                                             bits,
@@ -813,20 +854,21 @@ impl SessionStorage {
                                     )
                                 }
                                 None => {
-                                    operands[2] = RangeOperand::ConversionFailed(edge);
+                                    *operands.get_mut(RangeOperandRole::Step) =
+                                        RangeOperand::ConversionFailed(edge);
                                     HtmlInputNumericStep::Failed
                                 }
                             }
                         }
                     } else {
-                        operands[2] = RangeOperand::Absent;
+                        *operands.get_mut(RangeOperandRole::Step) = RangeOperand::Absent;
                         HtmlInputNumericStep::Absent
                     };
                     R::Step(step)
                 }
                 A::ReadValueContent => {
                     let (content, operand) = self.range_content(c, node, "value")?;
-                    operands[3] = operand;
+                    *operands.get_mut(RangeOperandRole::ValueContent) = operand;
                     R::ValueContent(content)
                 }
                 A::Lattice {
@@ -948,5 +990,42 @@ impl SessionStorage {
             self.dispose_aggregate_string(c, previous)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod absent_owner_tests {
+    use super::*;
+    use crate::parser::control::Invariant;
+
+    /// The integrity fault of the range machine is the state of retained
+    /// staging rows and buffers, not a capacity that was charged.
+    #[test]
+    fn a_range_machine_integrity_fault_reports_the_registry_row() {
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        let mut c = crate::construction::tests::control();
+        assert_eq!(integrity(&mut c), SessionError::Stop(registry_row));
+        assert_eq!(c.stop(), Some(registry_row));
+    }
+
+    /// Range work that finds no range owner has lost a retained owner; it is
+    /// not an operation that is still owed.
+    #[test]
+    fn range_work_without_its_owner_reports_the_registry_row() {
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        for execute in [false, true] {
+            let mut c = crate::construction::tests::control();
+            let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+            let storage = session.active_mut().unwrap();
+            assert!(storage.effects.range.is_none());
+            let result = if execute {
+                storage.execute_range(&mut c)
+            } else {
+                storage.range_stage(&mut c).map(|_| ())
+            };
+            assert_eq!(result, Err(SessionError::Stop(registry_row)), "{execute}");
+            assert_eq!(c.stop(), Some(registry_row), "{execute}");
+            session.release(&mut c).unwrap();
+        }
     }
 }

@@ -1048,6 +1048,31 @@ fn a_failed_stack_release_takes_the_templates_and_clears_the_root_target() {
 }
 
 #[test]
+fn a_frozen_stack_release_without_the_open_elements_reports_consumed_and_takes_the_rest() {
+    let source = HtmlSource::utf8("<html><template>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer =
+        crate::parser::tokenizer::tests::LexerFixture::new(&source, State::Data, None, &mut c)
+            .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    assert_eq!(kernel.template_indices(), [1]);
+    // Private-state fault injection: the open-element storage is already gone,
+    // released through its own owner, while the listings are still retained.
+    kernel.open.take().unwrap().release(&mut c).unwrap();
+    assert!(matches!(
+        kernel.release_frozen_stack(&mut c),
+        Err(KernelError::Consumed)
+    ));
+    assert!(kernel.templates.is_none());
+    assert!(kernel.root_target.is_none());
+    tokenizer.release(&mut c).unwrap();
+    kernel.session.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
 fn empty_wrong_kind_duplicate_and_foreign_handles_preserve_stack() {
     let source = HtmlSource::utf8("<html><body>");
     let mut c = control(100);
@@ -14717,7 +14742,7 @@ fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
             let diagnostics = completed.diagnostics().unwrap();
             assert_eq!(diagnostics.len(), n);
             for i in 0..n {
-                let (record, location) = diagnostics.retained_record(i).unwrap();
+                let (record, location) = diagnostics.retained_record(i).unwrap().unwrap();
                 assert_eq!(
                     record.kind,
                     DiagnosticKind::Tokenizer(DiagnosticCode::UnexpectedNullCharacter)
@@ -15583,9 +15608,7 @@ fn progressive_successfully_released_driver_refuses_feed_once(seal: bool) {
     }
     .unwrap_err();
     assert!(matches!(error, StandaloneError::Consumed));
-    let expected = ParseStop::UnsupportedStandaloneState(
-        crate::parser::control::StandaloneUnsupported::InvalidNesting,
-    );
+    let expected = ParseStop::InternalInvariant(Invariant::TreeBuilderState);
     assert_eq!(driver.control.stop(), Some(expected));
     let first = driver.control.first_stop_usage().unwrap().clone();
     assert_eq!(driver.control.usage(), &first);
@@ -15747,7 +15770,7 @@ fn progressive_completed_native_evidence(
         let retained = completed.diagnostics().unwrap();
         assert_eq!(retained.len(), diagnostics.len());
         for (index, expected) in diagnostics.iter().enumerate() {
-            let (record, location) = retained.retained_record(index).unwrap();
+            let (record, location) = retained.retained_record(index).unwrap().unwrap();
             assert_eq!(record.kind, expected.kind);
             assert_eq!(record.context, expected.context);
             assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
@@ -18746,7 +18769,7 @@ fn afterhead_template_removes_exact_head_identity_and_retains_source_diagnostic(
         let diagnostics = frozen.retained_evidence().unwrap().diagnostics();
         assert_eq!(diagnostics.len(), usize::from(late));
         if late {
-            let (record, location) = diagnostics.retained_record(0).unwrap();
+            let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
             assert_eq!(
                 record.kind,
                 DiagnosticKind::Tree(HeadCondition::UnexpectedBodyToken)
@@ -19066,7 +19089,7 @@ mod complete_hostile_scan {
         };
         assert_eq!(view.len(), count);
         for index in 0..count {
-            let (record, location) = view.retained_record(index).unwrap();
+            let (record, location) = view.retained_record(index).unwrap().unwrap();
             let duplicate = matches!(scan, Scan::Duplicates);
             assert_eq!(
                 record.kind,
@@ -19109,7 +19132,7 @@ mod complete_hostile_scan {
             };
             assert_eq!((location.source.start(), location.source.end()), expected);
         }
-        assert!(view.retained_record(count).is_none());
+        assert!(view.retained_record(count).unwrap().is_none());
     }
 
     fn element(view: &mut NativeView<'_>, path: &[usize], local: &str) -> ParserNode {
@@ -19495,7 +19518,7 @@ mod complete_hostile_scan {
             let count = if complete { 2 } else { 1 };
             assert_eq!(view.len(), count);
             for index in 0..count {
-                let (record, location) = view.retained_record(index).unwrap();
+                let (record, location) = view.retained_record(index).unwrap().unwrap();
                 let (code, anchor, branch, range) = if index == 0 {
                     (
                         DiagnosticCode::NullCharacterReference,
@@ -19528,7 +19551,7 @@ mod complete_hostile_scan {
                 assert_eq!(location.source.coordinates(), source.coordinates());
                 assert_eq!((location.source.start(), location.source.end()), range);
             }
-            assert!(view.retained_record(count).is_none());
+            assert!(view.retained_record(count).unwrap().is_none());
         }
 
         fn run(
@@ -19809,4 +19832,205 @@ mod complete_hostile_scan {
             }
         }
     }
+}
+
+#[test]
+fn the_fresh_head_transition_without_retained_lexical_evidence_reports_consumed() {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<html>"), limits(100));
+    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
+    // Private-state fault injection: the driver's lexical evidence owner is gone
+    // before the one step that hands the owners to the head stage.
+    driver
+        .lexical
+        .take()
+        .unwrap()
+        .release(&mut driver.control)
+        .unwrap();
+    let error = driver.step().err().unwrap();
+    assert!(matches!(error, StandaloneError::Consumed), "{error:?}");
+    // A lost owner is an impossible state, not an unsupported document: the
+    // driver latches it as an invariant stop, and that first stop is the one
+    // cleanup runs under.
+    assert_eq!(
+        driver.control.stop(),
+        Some(ParseStop::InternalInvariant(Invariant::TreeBuilderState))
+    );
+    driver.release().unwrap();
+    assert_released(&driver.control);
+}
+
+#[test]
+fn a_token_event_is_taken_only_from_a_token_slot_and_other_content_stays_for_release() {
+    use crate::parser::input::PreprocessingRecord;
+    let source = HtmlSource::utf8("a\r\nb");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut empty = None;
+    let stop = take_token_event(&mut empty, &mut c).err().unwrap();
+    assert_eq!(
+        stop,
+        ParseStop::InternalInvariant(Invariant::TreeBuilderState)
+    );
+    assert_eq!(c.stop(), Some(stop));
+    assert!(empty.is_none());
+
+    let mut other = Some(Event::Preprocessing {
+        _record: PreprocessingRecord::Newline { was_crlf: true },
+        _source: source.range(1, 3).unwrap(),
+        retention: OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap(),
+    });
+    // The first stop stays the first stop; the content is still in its slot.
+    let again = take_token_event(&mut other, &mut c).err().unwrap();
+    assert_eq!(again, stop);
+    other.take().unwrap().release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn only_invariant_faults_are_classified_as_invariant_faults() {
+    use super::head::HeadError;
+    use super::prologue::PrologueError;
+    let lost = [
+        StandaloneError::Consumed,
+        StandaloneError::Head(HeadError::Consumed),
+        StandaloneError::Head(HeadError::MissingInput),
+        StandaloneError::Head(HeadError::MissingTokenizer),
+        StandaloneError::Head(HeadError::InvalidFormattingState),
+        StandaloneError::Head(HeadError::InvalidTextToken),
+        StandaloneError::Head(HeadError::MissingReturnMode),
+        StandaloneError::Head(HeadError::InvalidScriptNesting),
+        StandaloneError::Head(HeadError::TokenizerExhausted),
+        StandaloneError::Head(HeadError::AlreadyAtBoundary),
+        StandaloneError::TokenizerExhausted,
+        StandaloneError::Head(HeadError::Kernel(KernelError::Consumed)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::Consumed)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::MissingInput)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::AlreadyAtBeforeHead)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::PendingInput)),
+        StandaloneError::Head(HeadError::Prologue(PrologueError::NotAtBeforeHead)),
+        StandaloneError::Prologue(PrologueError::Consumed),
+        StandaloneError::Prologue(PrologueError::MissingInput),
+        StandaloneError::Prologue(PrologueError::AlreadyAtBeforeHead),
+        StandaloneError::Prologue(PrologueError::PendingInput),
+        StandaloneError::Prologue(PrologueError::NotAtBeforeHead),
+        StandaloneError::Prologue(PrologueError::Kernel(KernelError::Consumed)),
+    ];
+    for error in &lost {
+        assert!(error.invariant_fault(), "{error:?}");
+    }
+    let named = [
+        StandaloneError::UnsupportedDocumentInitialization,
+        StandaloneError::UnsupportedExecutionProfile,
+        StandaloneError::Stop(ParseStop::Cancelled),
+        StandaloneError::Head(HeadError::UnsupportedScriptPause),
+        StandaloneError::Head(HeadError::UnsupportedPendingScript),
+        StandaloneError::Head(HeadError::IncompleteCompletion),
+        StandaloneError::Head(HeadError::ConstructionCapabilityUnavailable),
+        StandaloneError::Head(HeadError::Handoff(
+            crate::parser::tokenizer::TokenizerHandoffError::PendingEvents,
+        )),
+        StandaloneError::Head(HeadError::Kernel(KernelError::Stop(ParseStop::Cancelled))),
+        StandaloneError::Head(HeadError::Kernel(KernelError::EmptyStack)),
+        StandaloneError::Head(HeadError::Kernel(KernelError::NotElement)),
+        StandaloneError::Head(HeadError::Kernel(KernelError::FirstOpenElementNotHtml)),
+        StandaloneError::Head(HeadError::Kernel(KernelError::DuplicateOpenElement)),
+        StandaloneError::Head(HeadError::Kernel(KernelError::Session(
+            SessionError::ScriptMetadataUnavailable,
+        ))),
+        StandaloneError::Head(HeadError::Kernel(KernelError::Session(
+            SessionError::WrongToken,
+        ))),
+        StandaloneError::Prologue(PrologueError::Kernel(KernelError::Stop(
+            ParseStop::Cancelled,
+        ))),
+    ];
+    for error in &named {
+        assert!(!error.invariant_fault(), "{error:?}");
+    }
+}
+
+#[test]
+fn an_ordinary_completion_without_its_stage_state_latches_the_tree_builder_state() {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits(100));
+    let mut driver = entry::initialized_driver(&request);
+    for _ in 0..100 {
+        if driver.head.is_some() {
+            break;
+        }
+        driver.step().unwrap();
+    }
+    // Private-state fault injection: the stage's state is not where completion
+    // expects it, and the refusal is not a document or a limit.
+    let state = driver.head.as_mut().unwrap().state.take().unwrap();
+    let mut slot = Some(driver);
+    let error = StandaloneDocumentDriver::take_completed(&mut slot)
+        .err()
+        .unwrap();
+    assert!(
+        matches!(error, StandaloneError::Head(head::HeadError::Consumed)),
+        "{error:?}"
+    );
+    let mut driver = slot.unwrap();
+    let stop = ParseStop::InternalInvariant(Invariant::TreeBuilderState);
+    assert_eq!(driver.control.stop(), Some(stop));
+    driver.head.as_mut().unwrap().state = Some(state);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.stop(), Some(stop));
+}
+
+#[test]
+fn enabling_meta_csp_without_the_prologue_latches_the_tree_builder_state() {
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits(100));
+    let mut driver = entry::initialized_driver(&request);
+    // Private-state fault injection: the prologue the processor attaches to is
+    // gone, which is not an unsupported document.
+    let prologue = driver.prologue.take().unwrap();
+    let error = driver.enable_meta_csp(false).err().unwrap();
+    assert!(matches!(error, StandaloneError::Consumed), "{error:?}");
+    let stop = ParseStop::InternalInvariant(Invariant::TreeBuilderState);
+    assert_eq!(driver.control.stop(), Some(stop));
+    driver.prologue = Some(prologue);
+    driver.release().unwrap();
+    assert_released(&driver.control);
+    assert_eq!(driver.control.stop(), Some(stop));
+}
+
+#[test]
+fn stepping_a_driver_whose_stage_waits_at_a_boundary_latches_the_tree_builder_state() {
+    // The parse functions stop at the first boundary a stage returns, and the
+    // driver itself consumes the after-head one, so a driver stepped while its
+    // stage waits at a boundary has lost its place; no document puts it there.
+    let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), limits(100));
+    let mut driver = entry::initialized_driver(&request);
+    for _ in 0..100 {
+        if driver.head.is_some() {
+            break;
+        }
+        driver.step().unwrap();
+    }
+    // Private-state fault injection: the stage is left at a boundary.
+    driver
+        .head
+        .as_mut()
+        .unwrap()
+        .state
+        .as_mut()
+        .unwrap()
+        .boundary = Some(super::head::HeadBoundary::Script);
+    assert_eq!(driver.control.stop(), None);
+    let error = driver.step().err().unwrap();
+    assert!(
+        matches!(
+            error,
+            StandaloneError::Head(super::head::HeadError::AlreadyAtBoundary)
+        ),
+        "{error:?}"
+    );
+    assert_eq!(
+        driver.control.stop(),
+        Some(ParseStop::InternalInvariant(Invariant::TreeBuilderState))
+    );
+    driver.release().unwrap();
+    assert_released(&driver.control);
 }

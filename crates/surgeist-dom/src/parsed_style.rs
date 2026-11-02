@@ -102,6 +102,11 @@ impl From<DomError> for DomParsedHtmlStyleError {
         Self::Admission(e.into())
     }
 }
+impl From<surgeist_html_parser::HtmlParseUnresolvedReference> for DomParsedHtmlStyleError {
+    fn from(e: surgeist_html_parser::HtmlParseUnresolvedReference) -> Self {
+        Self::Admission(DomParsedHtmlAssociationAdmissionError::UnresolvedReport(e))
+    }
+}
 impl From<DomParsedHtmlAssociationAdmissionError> for DomParsedHtmlStyleError {
     fn from(e: DomParsedHtmlAssociationAdmissionError) -> Self {
         Self::Admission(e)

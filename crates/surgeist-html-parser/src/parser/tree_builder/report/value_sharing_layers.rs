@@ -152,7 +152,7 @@ fn origin(
     let rows = report.associations();
     let mut actual = Vec::new();
     for index in 0..rows.len() {
-        let row = rows.row(index).unwrap();
+        let row = rows.row(index).unwrap().unwrap();
         if row.relation() == HtmlParseAssociationRelation::Output
             && let HtmlParseDestination::Field {
                 node,

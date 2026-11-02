@@ -2,9 +2,9 @@
 //! source admission, preprocessing and parsing remain execution operations.
 
 use crate::{
-    HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureFact, HtmlCapturedNodeKind,
-    HtmlFragmentContext, HtmlParseCancellation, HtmlParseLimits, HtmlParserScriptingMode,
-    HtmlScriptingStatus, HtmlSource,
+    HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureFact, HtmlCaptureSubjectKind,
+    HtmlCapturedDocument, HtmlCapturedNodeKind, HtmlFragmentContext, HtmlParseCancellation,
+    HtmlParseLimits, HtmlParserScriptingMode, HtmlScriptingStatus, HtmlSource,
 };
 use std::{error::Error, fmt};
 
@@ -67,27 +67,109 @@ fn validate_constructor_base_facts(
     Ok(())
 }
 
+/// The selected document's facts, read once when a request is constructed so
+/// that no later accessor repeats the lookup or can fail.
+fn document_facts<'a>(
+    capture: &'a HtmlCapture,
+    document: &HtmlCaptureDocumentId,
+) -> Result<&'a HtmlCapturedDocument, HtmlCaptureError> {
+    match capture.node(document.subject())?.kind() {
+        HtmlCapturedNodeKind::Document(facts) => Ok(facts),
+        HtmlCapturedNodeKind::Element(_) => Err(not_a_document(HtmlCaptureSubjectKind::Element)),
+        HtmlCapturedNodeKind::Fragment(_) => Err(not_a_document(HtmlCaptureSubjectKind::Fragment)),
+        HtmlCapturedNodeKind::Text(_) => Err(not_a_document(HtmlCaptureSubjectKind::Text)),
+        HtmlCapturedNodeKind::Comment(_) => Err(not_a_document(HtmlCaptureSubjectKind::Comment)),
+        HtmlCapturedNodeKind::ProcessingInstruction(_) => Err(not_a_document(
+            HtmlCaptureSubjectKind::ProcessingInstruction,
+        )),
+        HtmlCapturedNodeKind::Doctype(_) => Err(not_a_document(HtmlCaptureSubjectKind::Doctype)),
+    }
+}
+fn not_a_document(actual: HtmlCaptureSubjectKind) -> HtmlCaptureError {
+    HtmlCaptureError::WrongKind {
+        expected: HtmlCaptureSubjectKind::Document,
+        actual,
+    }
+}
+
 #[derive(Debug)]
 enum DocumentContext {
     Offline,
     Captured {
         capture: HtmlCapture,
         document: HtmlCaptureDocumentId,
+        image_support: crate::HtmlImageSupport,
     },
+}
+
+/// The supplied observation banks, in exactly one of two states. They are
+/// edited only while the caller builds the request, and then shared once with
+/// execution, so no edit can ever need to copy a bank that execution also holds
+/// and a request can never carry both an editable and a shared bank.
+#[derive(Debug)]
+enum InputBank {
+    Building(Option<crate::construction::associated::Inputs>),
+    Shared(Option<std::sync::Arc<crate::construction::associated::Inputs>>),
+}
+impl Default for InputBank {
+    fn default() -> Self {
+        Self::Building(None)
+    }
+}
+impl InputBank {
+    /// Applies a builder's edit. The builders consume a request, and a parse
+    /// owner never hands a request back to a builder, so only a building bank
+    /// is edited here. A shared bank that nothing else holds reopens for the
+    /// edit; one that execution also holds is left as it is.
+    fn edited(self, edit: impl FnOnce(&mut crate::construction::associated::Inputs)) -> Self {
+        let mut bank = match self {
+            Self::Building(bank) => bank.unwrap_or_default(),
+            Self::Shared(None) => Default::default(),
+            Self::Shared(Some(shared)) => match std::sync::Arc::try_unwrap(shared) {
+                Ok(bank) => bank,
+                Err(shared) => return Self::unedited(shared),
+            },
+        };
+        edit(&mut bank);
+        Self::Building(Some(bank))
+    }
+    /// The edit found a bank that execution also holds. No public path leads
+    /// here, so tests fail loudly; a release build leaves the bank alone.
+    fn unedited(shared: std::sync::Arc<crate::construction::associated::Inputs>) -> Self {
+        #[cfg(test)]
+        panic!("an input edit reached a bank that execution also holds: {shared:?}");
+        #[cfg(not(test))]
+        Self::Shared(Some(shared))
+    }
+    /// Ends editing: a supplied bank becomes the one execution shares.
+    fn share(self) -> Self {
+        Self::Shared(self.into_shared())
+    }
+    fn inputs(&self) -> Option<&crate::construction::associated::Inputs> {
+        match self {
+            Self::Building(bank) => bank.as_ref(),
+            Self::Shared(bank) => bank.as_deref(),
+        }
+    }
+    fn shared(&self) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
+        match self {
+            Self::Building(_) => None,
+            Self::Shared(bank) => bank.as_ref(),
+        }
+    }
+    fn into_shared(self) -> Option<std::sync::Arc<crate::construction::associated::Inputs>> {
+        match self {
+            Self::Building(bank) => bank.map(std::sync::Arc::new),
+            Self::Shared(bank) => bank,
+        }
+    }
 }
 
 impl DocumentContext {
     fn image_support(&self) -> crate::HtmlImageSupport {
         match self {
             Self::Offline => crate::HtmlImageSupport::Disabled,
-            Self::Captured { capture, document } => match capture
-                .node(document.subject())
-                .expect("checked request document")
-                .kind()
-            {
-                HtmlCapturedNodeKind::Document(facts) => facts.parser_creation_image_support(),
-                _ => unreachable!("checked request document"),
-            },
+            Self::Captured { image_support, .. } => *image_support,
         }
     }
 }
@@ -102,7 +184,7 @@ pub struct HtmlDocumentParseRequest {
     context: DocumentContext,
     base_facts: Option<crate::HtmlParseBaseFacts>,
     initial_policy_base: bool,
-    associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    associated: InputBank,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
@@ -154,7 +236,7 @@ impl HtmlDocumentParseRequest {
             cancellation: self.cancellation,
             context: self.context,
             base_facts: self.base_facts,
-            associated: self.associated,
+            associated: self.associated.into_shared(),
             #[cfg(test)]
             value_sharing: self.value_sharing,
         }
@@ -169,7 +251,7 @@ impl HtmlDocumentParseRequest {
             context: DocumentContext::Offline,
             base_facts: None,
             initial_policy_base: false,
-            associated: None,
+            associated: InputBank::default(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         }
@@ -183,11 +265,8 @@ impl HtmlDocumentParseRequest {
         document: HtmlCaptureDocumentId,
         limits: HtmlParseLimits,
     ) -> Result<Self, HtmlParseRequestError> {
-        capture.document_id(document.subject())?;
-        let node = capture.node(document.subject())?;
-        let HtmlCapturedNodeKind::Document(facts) = node.kind() else {
-            unreachable!("capture.document_id checked immutable document kind")
-        };
+        let facts = document_facts(&capture, &document)?;
+        let image_support = facts.parser_creation_image_support();
         match facts.scripting() {
             HtmlScriptingStatus::Disabled => {}
             HtmlScriptingStatus::Enabled => {
@@ -208,10 +287,14 @@ impl HtmlDocumentParseRequest {
             source,
             limits,
             cancellation: HtmlParseCancellation::new(),
-            context: DocumentContext::Captured { capture, document },
+            context: DocumentContext::Captured {
+                capture,
+                document,
+                image_support,
+            },
             base_facts: None,
             initial_policy_base: false,
-            associated: None,
+            associated: InputBank::default(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         })
@@ -240,7 +323,7 @@ impl HtmlDocumentParseRequest {
         mut self,
         facts: Vec<surgeist_html_semantics::HtmlEncodingUrlParseFacts>,
     ) -> Self {
-        self.associated_mut().encoding_urls = facts;
+        self.edit_associated(|bank| bank.encoding_urls = facts);
         self
     }
     /// Attests the actual default URL/encoding context of this parse's separately
@@ -250,19 +333,37 @@ impl HtmlDocumentParseRequest {
         facts: crate::HtmlParseBaseFacts,
     ) -> Result<Self, HtmlParseRequestError> {
         validate_constructor_base_facts(&facts)?;
-        self.associated_mut().template = Some(facts);
+        self.edit_associated(|bank| bank.template = Some(facts));
         Ok(self)
     }
-    fn associated_mut(&mut self) -> &mut crate::construction::associated::Inputs {
-        let inputs = self.associated.get_or_insert_with(|| {
-            std::sync::Arc::new(crate::construction::associated::Inputs::default())
-        });
-        std::sync::Arc::get_mut(inputs).expect("unexecuted non-Clone request owns its input bank")
+    fn edit_associated(&mut self, edit: impl FnOnce(&mut crate::construction::associated::Inputs)) {
+        self.associated = std::mem::take(&mut self.associated).edited(edit);
     }
-    pub(crate) fn associated_inputs(
+    pub(crate) fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
+        self.associated.inputs()
+    }
+    /// The bank execution shares with the session; present only after
+    /// `share_associated_inputs`, which every parse owner calls on entry.
+    pub(crate) fn shared_associated_inputs(
         &self,
     ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
-        self.associated.as_ref()
+        self.associated.shared()
+    }
+    /// A test entry borrows its request, so it cannot share the banks for it
+    /// and would skip supplied inputs without a trace; it refuses such a request.
+    #[cfg(test)]
+    pub(crate) fn require_inputs_reach_execution(&self) {
+        assert!(
+            self.associated.inputs().is_none() || self.associated.shared().is_some(),
+            "a borrowed test entry needs a request whose input banks are shared"
+        );
+    }
+    /// Ends the caller's editing of the supplied banks and shares them with
+    /// execution. No builder is reachable afterwards: builders consume the
+    /// request, and only the parse owners call this.
+    pub(crate) fn share_associated_inputs(mut self) -> Self {
+        self.associated = std::mem::take(&mut self.associated).share();
+        self
     }
     /// Exact supplied source, including its immutable identity and coordinates.
     pub fn source(&self) -> &HtmlSource {
@@ -372,8 +473,9 @@ pub struct HtmlFragmentParseRequest {
     requested: HtmlParserScriptingMode,
     effective: HtmlParserScriptingMode,
     allow_declarative_shadow_roots: bool,
+    image_support: crate::HtmlImageSupport,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
-    associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    associated: InputBank,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
@@ -386,16 +488,7 @@ impl HtmlFragmentParseRequest {
     /// Capture/revision-qualified attestation for this entry Document's parser
     /// creation environment. Target-only image support is insufficient.
     pub fn image_support(&self) -> crate::HtmlImageSupport {
-        match self
-            .context
-            .capture()
-            .node(self.context.target_document().subject())
-            .expect("checked entry document")
-            .kind()
-        {
-            HtmlCapturedNodeKind::Document(facts) => facts.parser_creation_image_support(),
-            _ => unreachable!("checked entry document"),
-        }
+        self.image_support
     }
 
     /// Parse in the actual retained context, returning no partial tree on failure.
@@ -417,8 +510,9 @@ impl HtmlFragmentParseRequest {
             requested: self.requested,
             effective: self.effective,
             allow_declarative_shadow_roots: self.allow_declarative_shadow_roots,
+            image_support: self.image_support,
             base_facts: self.base_facts,
-            associated: self.associated,
+            associated: self.associated.into_shared(),
             #[cfg(test)]
             value_sharing: self.value_sharing,
         }
@@ -448,6 +542,8 @@ impl HtmlFragmentParseRequest {
         allow_declarative_shadow_roots: bool,
     ) -> Result<Self, HtmlParseRequestError> {
         let effective = context.resolve_scripting_mode(requested)?;
+        let image_support = document_facts(context.capture(), context.target_document())?
+            .parser_creation_image_support();
         Ok(Self {
             source,
             limits,
@@ -456,8 +552,9 @@ impl HtmlFragmentParseRequest {
             requested,
             effective,
             allow_declarative_shadow_roots,
+            image_support,
             base_facts: None,
-            associated: None,
+            associated: InputBank::default(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         })
@@ -467,7 +564,7 @@ impl HtmlFragmentParseRequest {
         mut self,
         facts: Vec<surgeist_html_semantics::HtmlEncodingUrlParseFacts>,
     ) -> Self {
-        self.associated_mut().encoding_urls = facts;
+        self.edit_associated(|bank| bank.encoding_urls = facts);
         self
     }
     /// Sealed immutable semantic query results for independently qualified
@@ -476,7 +573,7 @@ impl HtmlFragmentParseRequest {
         mut self,
         contexts: Vec<surgeist_html_semantics::HtmlDocumentEncodingUrlContext>,
     ) -> Self {
-        self.associated_mut().captured = contexts;
+        self.edit_associated(|bank| bank.captured = contexts);
         self
     }
     /// Actual external observations for this operation's auxiliary §13.4
@@ -486,7 +583,7 @@ impl HtmlFragmentParseRequest {
         facts: crate::HtmlParseBaseFacts,
     ) -> Result<Self, HtmlParseRequestError> {
         validate_constructor_base_facts(&facts)?;
-        self.associated_mut().parser_document = Some(facts);
+        self.edit_associated(|bank| bank.parser_document = Some(facts));
         Ok(self)
     }
     /// Actual observations for separately source-created inert template owners;
@@ -496,19 +593,37 @@ impl HtmlFragmentParseRequest {
         facts: crate::HtmlParseBaseFacts,
     ) -> Result<Self, HtmlParseRequestError> {
         validate_constructor_base_facts(&facts)?;
-        self.associated_mut().template = Some(facts);
+        self.edit_associated(|bank| bank.template = Some(facts));
         Ok(self)
     }
-    fn associated_mut(&mut self) -> &mut crate::construction::associated::Inputs {
-        let inputs = self.associated.get_or_insert_with(|| {
-            std::sync::Arc::new(crate::construction::associated::Inputs::default())
-        });
-        std::sync::Arc::get_mut(inputs).expect("unexecuted non-Clone request owns its inputs")
+    fn edit_associated(&mut self, edit: impl FnOnce(&mut crate::construction::associated::Inputs)) {
+        self.associated = std::mem::take(&mut self.associated).edited(edit);
     }
-    pub(crate) fn associated_inputs(
+    pub(crate) fn associated_inputs(&self) -> Option<&crate::construction::associated::Inputs> {
+        self.associated.inputs()
+    }
+    /// The bank execution shares with the session; present only after
+    /// `share_associated_inputs`, which every parse owner calls on entry.
+    pub(crate) fn shared_associated_inputs(
         &self,
     ) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
-        self.associated.as_ref()
+        self.associated.shared()
+    }
+    /// A test entry borrows its request, so it cannot share the banks for it
+    /// and would skip supplied inputs without a trace; it refuses such a request.
+    #[cfg(test)]
+    pub(crate) fn require_inputs_reach_execution(&self) {
+        assert!(
+            self.associated.inputs().is_none() || self.associated.shared().is_some(),
+            "a borrowed test entry needs a request whose input banks are shared"
+        );
+    }
+    /// Ends the caller's editing of the supplied banks and shares them with
+    /// execution. No builder is reachable afterwards: builders consume the
+    /// request, and only the parse owners call this.
+    pub(crate) fn share_associated_inputs(mut self) -> Self {
+        self.associated = std::mem::take(&mut self.associated).share();
+        self
     }
     pub fn with_base_facts(
         mut self,
@@ -569,6 +684,7 @@ pub(crate) struct FragmentRequestParts {
     requested: HtmlParserScriptingMode,
     effective: HtmlParserScriptingMode,
     allow_declarative_shadow_roots: bool,
+    image_support: crate::HtmlImageSupport,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
     #[cfg(test)]
@@ -611,6 +727,10 @@ impl FragmentRequestParts {
     }
     pub(crate) fn allow_declarative_shadow_roots(&self) -> bool {
         self.allow_declarative_shadow_roots
+    }
+    /// The entry Document's image support, resolved when the request was made.
+    pub(crate) fn image_support(&self) -> crate::HtmlImageSupport {
+        self.image_support
     }
 }
 
@@ -695,5 +815,37 @@ mod tests {
         assert_eq!(control.usage().work(WorkCategory::RecordVisit), 1);
         assert_eq!(control.usage().work(WorkCategory::InputUnitRead), 0);
         assert_eq!(control.stop(), None);
+    }
+
+    #[test]
+    fn input_banks_are_editable_until_shared_and_visible_through_one_view_each() {
+        let none = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1));
+        assert!(none.associated_inputs().is_none());
+        assert!(none.shared_associated_inputs().is_none());
+        let none = none.share_associated_inputs();
+        assert!(none.associated_inputs().is_none());
+        assert!(none.shared_associated_inputs().is_none());
+
+        let supplied = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1))
+            .with_encoding_url_facts(Vec::new());
+        // Being built, the bank is editable and not yet shared with execution.
+        assert!(supplied.associated_inputs().is_some());
+        assert!(supplied.shared_associated_inputs().is_none());
+        let shared = supplied.share_associated_inputs();
+        let seen = shared.shared_associated_inputs().unwrap();
+        assert!(std::ptr::eq(
+            std::sync::Arc::as_ptr(seen),
+            shared.associated_inputs().unwrap()
+        ));
+    }
+
+    #[test]
+    fn an_edit_after_sharing_reopens_a_bank_nothing_else_holds() {
+        let shared = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1))
+            .with_encoding_url_facts(Vec::new())
+            .share_associated_inputs();
+        let reopened = shared.with_encoding_url_facts(Vec::new());
+        assert!(reopened.shared_associated_inputs().is_none());
+        assert!(reopened.associated_inputs().is_some());
     }
 }

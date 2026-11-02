@@ -287,11 +287,13 @@ impl SessionStorage {
                 if self.effects.current.is_some() {
                     c.admit_atomic_layout(mem::size_of::<EffectFrame>())?;
                     c.charge(WorkCategory::CopyByte, mem::size_of::<EffectFrame>() as u64)?;
+                    // The wrapper below reports a missing frame as a registry
+                    // row.
                     let frame = self
                         .effects
                         .current
                         .as_ref()
-                        .expect("admitted present frame");
+                        .ok_or(SessionError::WrongToken)?;
                     frame.admit_clone(c)?;
                     let frame = frame.clone();
                     self.step_effect(c, frame)?;
@@ -324,9 +326,7 @@ impl SessionStorage {
                 );
                 Err(error)
             }
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
             Ok(()) => Ok(()),
         }
     }
@@ -401,7 +401,7 @@ impl SessionStorage {
                     c.charge(WorkCategory::ProviderCall, 1)?;
                     let contents = self
                         .construction
-                        .storage()
+                        .storage(c)?
                         .node_by_result_id(shadow.contents())
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
@@ -448,7 +448,7 @@ impl SessionStorage {
                     c,
                     Some(EffectFrame::PatchRemoval {
                         list,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                     }),
                 )?;
                 c.charge(WorkCategory::RecordVisit, 1)?;
@@ -516,7 +516,7 @@ impl SessionStorage {
                     Some(EffectFrame::CloneChildren {
                         source,
                         copy,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                         document: retained_document,
                     }),
                 )?;
@@ -564,7 +564,7 @@ impl SessionStorage {
                     c,
                     Some(EffectFrame::PostConnection {
                         list,
-                        cursor: cursor + 1,
+                        cursor: next_cursor(cursor),
                         cause,
                     }),
                 )?;
@@ -610,7 +610,7 @@ impl SessionStorage {
                             Some(EffectFrame::FragmentInsertion {
                                 parent,
                                 list,
-                                cursor: cursor + 1,
+                                cursor: next_cursor(cursor),
                                 stage,
                             }),
                         )?;
@@ -631,7 +631,7 @@ impl SessionStorage {
                             Some(EffectFrame::FragmentInsertion {
                                 parent,
                                 list,
-                                cursor: cursor + 1,
+                                cursor: next_cursor(cursor),
                                 stage,
                             }),
                         )?;
@@ -768,7 +768,7 @@ impl SessionStorage {
                 );
             next = if excluded {
                 next_ordinary_view_after_subtree(
-                    ConstructionView::Active(self.construction.storage()),
+                    ConstructionView::Active(self.construction.storage(c)?),
                     c,
                     root,
                     node,
@@ -811,7 +811,7 @@ impl SessionStorage {
                 next = self.next_view_node(c, root, node, None)?;
             }
             c.charge(WorkCategory::RecordWrite, 1)?;
-            cursor += 1;
+            cursor = next_cursor(cursor);
         }
         Ok(slot)
     }
@@ -866,11 +866,16 @@ impl SessionStorage {
         slot: usize,
     ) -> Result<(), SessionError> {
         payload_write::<RetainedPayload>(c, 2)?;
-        let RetainedPayload::WorkList(Some(list)) =
-            mem::replace(&mut self.payloads.values[slot], RetainedPayload::Retired)
-        else {
+        let row = self.payloads.row_mut(c, slot)?;
+        // Only a work list that is still held is taken; any other row stays.
+        let list = match row {
+            RetainedPayload::WorkList(list) => list.take(),
+            _ => None,
+        };
+        let Some(list) = list else {
             return Err(SessionError::WrongToken);
         };
+        *row = RetainedPayload::Retired;
         list.release(c)?;
         Ok(())
     }
@@ -957,7 +962,8 @@ impl ParserArenaSession {
                 }
                 let operation = task.task;
                 storage.effects.task = Some(task);
-                storage.effects.dequeue += 1;
+                // The branch above returned when `dequeue` reached the length.
+                storage.effects.dequeue = next_cursor(storage.effects.dequeue);
                 match operation {
                     IntrinsicTask::UpdateSelect(select) => storage.update_select(c, select)?,
                 }
@@ -968,9 +974,7 @@ impl ParserArenaSession {
         })();
         match result {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(_) => Err(c
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into()),
+            Err(error) => Err(super::latch_effect_fault(c, error)),
             Ok(()) => Ok(()),
         }
     }

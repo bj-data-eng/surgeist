@@ -28,6 +28,7 @@ fn next_parser_pop(
     let mut seen = false;
     loop {
         match inventory.advance() {
+            Step::Fault(fault) => panic!("{fault}"),
             Step::Occurrence(row) if row.id() == *old.occurrence() => seen = true,
             Step::Occurrence(row) if seen && row.requires_processing() => {
                 assert_eq!(
