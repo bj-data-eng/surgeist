@@ -3,7 +3,7 @@ use super::inline_run::{
     InlineRunContext, InlineRunTransitionState, VisibleInlineRunTransition, inline_run_end,
     visible_inline_boundary_in_flow, visible_line_break_in_flow,
 };
-use super::scroll::retained_child_scroll_geometry;
+use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
 use super::sizing::{
     maximum_size, minimum_size, preferred_size, resolve_auto_optional, resolve_length_or_zero,
 };
@@ -47,11 +47,10 @@ pub(super) struct InFlowResult<Node, S: LayoutScalar> {
     pub(super) inherited_floats: usize,
     pub(super) groups: Vec<crate::group_alignment::Member<Node, S>>,
     pub(super) formatted: Option<crate::text_layout::formatted::FormattedFlow<Node, S>>,
-    pub(super) content_size: LogicalSizeOf<S>,
-    pub(super) scroll_content_size: LogicalSizeOf<S>,
+    pub(super) intrinsic_inline_demand: S,
     pub(super) owned_float_block_end: S,
     pub(super) resolved_terminal_float_block_end: Option<S>,
-    pub(super) contributions: ScrollContributionAccumulatorOf<S>,
+    pub(super) contributions: BlockScrollContributions<S>,
     pub(super) baselines: super::baseline_frame::PendingBaselines,
     pub(super) static_positions: Vec<(Node, Point<S>)>,
     pub(super) pending_floats: Vec<PendingFloat<Node, S>>,
@@ -134,8 +133,7 @@ where
         LogicalSizeOf::new(inner_inline, constants.logical_node_inner_size().block);
     let node_inner_size = constants.flow_axes.physical_size(logical_node_inner_size);
     let mut cursor_block = constants.logical_content_box_inset().block_start;
-    let mut content_size = LogicalSizeOf::new(S::ZERO, S::ZERO);
-    let mut scroll_content_size = LogicalSizeOf::new(S::ZERO, S::ZERO);
+    let mut intrinsic_inline_demand = S::ZERO;
     let mut owned_float_block_end = constants.logical_content_box_inset().block_start;
     let mut resolved_terminal_float_block_end = None;
     let mut baselines = super::baseline_frame::PendingBaselines::new();
@@ -193,7 +191,7 @@ where
     );
     let contribution_seed = crate::ScrollRectOf::try_new(content_box_origin, content_box_size)
         .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
-    let mut contributions = ScrollContributionAccumulatorOf::new(contribution_seed);
+    let mut contributions = BlockScrollContributions::new(constants.flow_axes, contribution_seed);
 
     let mut index = 0;
     if let Some(text) = tree.text_computation() {
@@ -446,8 +444,7 @@ where
                         hyphenation_state: &mut hyphenation_state,
                         tail_ledger: &mut tail_ledger,
                         cursor_block: &mut cursor_block,
-                        content_size: &mut content_size,
-                        scroll_content_size: &mut scroll_content_size,
+                        intrinsic_inline_demand: &mut intrinsic_inline_demand,
                         baselines: &mut baselines,
                         static_positions: &mut static_positions,
                         resolved_terminal_float_block_end: &mut resolved_terminal_float_block_end,
@@ -759,7 +756,7 @@ where
         if !child_style.float.is_none() {
             let margin_box_inline = logical_child_size.inline + logical_child_margin.inline_sum();
             float_intrinsics.add(margin_box_inline, child_style.float, child_style.clear);
-            content_size.inline = content_size.inline.max(float_intrinsics.result());
+            intrinsic_inline_demand = intrinsic_inline_demand.max(float_intrinsics.result());
             if !input.run_mode().is_perform_layout() && !sizes_float_context {
                 index += 1;
                 continue;
@@ -801,10 +798,7 @@ where
                 - content_box_inset.inline_start;
             let float_block_end =
                 logical_location.block + logical_child_size.block + logical_child_margin.block_end;
-            content_size.inline = content_size.inline.max(float_inline_end);
-            content_size.block = content_size
-                .block
-                .max(float_block_end - content_box_inset.block_start);
+            intrinsic_inline_demand = intrinsic_inline_demand.max(float_inline_end);
             owned_float_block_end = owned_float_block_end.max(float_block_end);
             index += 1;
             continue;
@@ -866,16 +860,12 @@ where
             cursor_block,
         );
         let containing_size = constants.containing_size(logical_node_inner_size);
-        let logical_fallback_location = constants.flow_axes.physical_point(
+        let fallback_location = constants.flow_axes.physical_point(
             logical_location,
             logical_child_size,
             containing_size,
         );
-        let fallback_location = Point::new(
-            logical_fallback_location.x + inset_offset.x,
-            logical_fallback_location.y + inset_offset.y,
-        );
-        let location = if avoids_float_exclusions {
+        let flow_location = if avoids_float_exclusions {
             let placement = float_exclusions.place_bfc_block(
                 ProviderBandContext {
                     tree,
@@ -887,37 +877,31 @@ where
                     size: output.size,
                     margin: child_margin,
                     clear: child_style.clear,
-                    fallback: Point::new(
-                        fallback_location.x - inset_offset.x,
-                        fallback_location.y - inset_offset.y,
-                    ),
+                    fallback: fallback_location,
                     // This is the actual computed child, not a width proposal.
                     // A narrower band would require another child computation;
                     // retain its used width and advance to a fitting transition.
                     inline_size_can_shrink: false,
                 },
             )?;
-            Point::new(
-                placement.location.x + inset_offset.x,
-                placement.location.y + inset_offset.y,
-            )
+            placement.location
         } else if child_style.clear != Clear::None {
             let cleared_logical_location = LogicalPointOf::new(
                 logical_location.inline,
                 float_exclusions.clearance_block(cursor_block, child_style.clear),
             );
-            let cleared_location = constants.flow_axes.physical_point(
+            constants.flow_axes.physical_point(
                 cleared_logical_location,
                 logical_child_size,
                 containing_size,
-            );
-            Point::new(
-                cleared_location.x + inset_offset.x,
-                cleared_location.y + inset_offset.y,
             )
         } else {
             fallback_location
         };
+        let location = Point::new(
+            flow_location.x + inset_offset.x,
+            flow_location.y + inset_offset.y,
+        );
         if let Some(shared) = shared_child {
             let flow_origin = LogicalPointOf::new(
                 logical_location.inline,
@@ -972,32 +956,24 @@ where
         let child_block_end = if avoids_float_exclusions || child_style.clear != Clear::None {
             constants
                 .flow_axes
-                .logical_point(location, output.size, containing_size)
+                .logical_point(flow_location, output.size, containing_size)
                 .block
                 + logical_child_size.block
         } else {
             logical_location.block + logical_child_size.block
         };
-        let contribution = content_size_contribution(
-            Point::new(
-                location.x - constants.content_box_inset.left,
-                location.y - constants.content_box_inset.top,
-            ),
-            output.size,
-            output.content_size,
-            child_style.common.overflow,
-            child_style.common.item_is_replaced,
-        );
-        let logical_contribution = constants.flow_axes.logical_size(contribution);
-        let child_inline_content = (logical_child_margin.inline_sum() + logical_child_size.inline)
-            .max(logical_contribution.inline + logical_child_margin.inline_end);
-        let child_block_content = logical_contribution
-            .block
-            .max(child_block_end - constants.logical_content_box_inset().block_start);
-        content_size.inline = content_size.inline.max(child_inline_content);
-        content_size.block = content_size.block.max(child_block_content);
-        scroll_content_size.inline = scroll_content_size.inline.max(child_inline_content);
-        scroll_content_size.block = scroll_content_size.block.max(child_block_content);
+        // Normal intrinsic demand uses only the accepted border geometry and
+        // margins. Performed child content may include recursive visual
+        // overflow, which belongs exclusively to the scroll contributions.
+        let border_inline_start = match constants.flow_axes.inline_axis() {
+            PhysicalAxis::Horizontal => flow_location.x - constants.content_box_inset.left,
+            PhysicalAxis::Vertical => flow_location.y - constants.content_box_inset.top,
+        };
+        let border_inline_span = (border_inline_start + logical_child_size.inline).max(S::ZERO)
+            - border_inline_start.min(S::ZERO);
+        let child_inline_demand = (logical_child_margin.inline_sum() + logical_child_size.inline)
+            .max(border_inline_span + logical_child_margin.inline_end);
+        intrinsic_inline_demand = intrinsic_inline_demand.max(child_inline_demand);
         baselines
             .resolved_child(
                 output,
@@ -1057,8 +1033,7 @@ where
         inherited_floats,
         groups,
         formatted,
-        content_size,
-        scroll_content_size,
+        intrinsic_inline_demand,
         owned_float_block_end,
         resolved_terminal_float_block_end,
         contributions,
@@ -1331,51 +1306,4 @@ fn in_flow_child_inline_offset<S: LayoutScalar>(
     }
 
     inline
-}
-
-pub(super) fn content_size_contribution<S: LayoutScalar>(
-    location: Point<S>,
-    size: Size<S>,
-    content_size: Size<S>,
-    overflow: ComputedOverflow,
-    item_is_replaced: bool,
-) -> Size<S> {
-    let overflow = UsedOverflow::from_computed(overflow, item_is_replaced);
-    let contribution_size = Size::new(
-        if overflow.x().value() == Overflow::Visible {
-            size.width.max(content_size.width)
-        } else {
-            size.width
-        },
-        if overflow.y().value() == Overflow::Visible {
-            size.height.max(content_size.height)
-        } else {
-            size.height
-        },
-    );
-    let max_x = (location.x + contribution_size.width).max(S::ZERO);
-    let min_x = location.x.min(S::ZERO);
-    let max_y = (location.y + contribution_size.height).max(S::ZERO);
-    let min_y = location.y.min(S::ZERO);
-    Size::new(max_x - min_x, max_y - min_y)
-}
-
-pub(super) fn block_final_in_flow_end<S: LayoutScalar>(
-    content_box: crate::ScrollRectOf<S>,
-    flow_axes: crate::FlowAxes,
-    axis: crate::LogicalAxis,
-    extent: S,
-) -> S {
-    let origin = content_box.origin();
-    let size = content_box.size();
-    let side = match axis {
-        crate::LogicalAxis::Inline => flow_axes.inline_end(),
-        crate::LogicalAxis::Block => flow_axes.block_end(),
-    };
-    match side {
-        PhysicalSide::Top => origin.y + size.height - extent,
-        PhysicalSide::Right => origin.x + extent,
-        PhysicalSide::Bottom => origin.y + extent,
-        PhysicalSide::Left => origin.x + size.width - extent,
-    }
 }
