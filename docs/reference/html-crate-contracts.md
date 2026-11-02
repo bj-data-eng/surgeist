@@ -151,7 +151,7 @@ It provides read-only `node`, `kind`, `parent`, `children`, `template_contents`,
 generic transitions: append/insert a node, detach/reparent an ordinary node,
 replace content, replace validated attributes, edit an element's attributes
 through the complete controlled group below, attach template contents, attach
-or detach a shadow fragment, and select the output document/fragment root.
+a shadow fragment, and select the output document/fragment root.
 Parser-specific select, form, radio, input, nonce, script and template-patching
 decisions remain parser operations that compose these generic transitions.
 For the parser's dense retained-record joins, add checked
@@ -491,9 +491,8 @@ command operands, never mutable arena fields.
 | `Detach` | `node`; removes an ordinary edge, retaining the record and its descendants in storage. Detaching an already-detached ordinary record is a no-op. |
 | `ReplaceContent` | `node`, `content: HtmlConstructionContent`; replaces only text/comment/PI/doctype payloads or an element's qualified name. The closed content enum preserves node kind; roots, topology and associations cannot be replaced by this operation. |
 | `ReplaceAttributes` | `element`, `attributes: HtmlValidatedAttributes`; replaces one checked ordered collection without bypassing duplicate validation. |
-| `AttachShadow` | `host`, `contents`; associates an unowned shadow-contents fragment with an element, using that fragment's retained properties. |
+| `AttachShadow` | `host`, `contents`; associates an unowned shadow-contents fragment with an element, using that fragment's retained properties. A shadow root stays attached to its host: neither the DOM nor the HTML parser removes one, and no command does. |
 | `AttachTemplateShadow` | `template`, `host`, `contents`; atomically releases the template's old owning association, installs local host shadow ownership of the new shadow contents, and installs the template's non-owning reference, without a transient extra owned edge. |
-| `DetachShadow` | `host`; removes that association, leaving its fragment an unowned root. |
 | `SetTemplateShadowContents` | `template`, `contents`; validates an HTML template with ordinary owned contents and a live unowned shadow-contents fragment, atomically releases that owning template association and installs a typed non-owning contents reference. |
 | `SetDocumentMode` | `document`, `mode: HtmlDocumentMode`; parser prologue selection changes only the actual document mode. |
 | `SetLinkFlags` | `element`, `flags: HtmlLinkFlags`; installs the local rule's actual link flags only on an HTML link element. Source-qualified history remains parser metadata. |

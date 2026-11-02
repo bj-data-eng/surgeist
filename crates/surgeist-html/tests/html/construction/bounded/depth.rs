@@ -264,16 +264,11 @@ fn depth_stays_exact_after_shadow_and_template_changes_that_move_whole_subtrees(
     let (owner, d) = create(owner, element("d"));
     let owner = append(owner, &d, &c);
     assert_eq!(owner.usage().depth(), 6);
-    // Detaching it makes the contents a root again: d sits at depth 4.
-    let (owner, _) = change(
-        owner,
-        HtmlConstructionCommand::DetachShadow { host: host.clone() },
-    );
-    assert_eq!(owner.usage().depth(), 4);
     let (owner, e) = create(owner, element("e"));
     let owner = append(owner, &e, &d);
-    assert_eq!(owner.usage().depth(), 5);
-    // Moving the chain's top under the host: a at 2, b 3, c 4, d 5, e 6.
+    assert_eq!(owner.usage().depth(), 7);
+    // Moving the chain's top out of the shadow tree and under the host lifts
+    // it by one level: a at 2, b 3, c 4, d 5, e 6.
     let owner = append(owner, &a, &host);
     assert_eq!(owner.usage().depth(), 6);
     // A template counts its contents as one more level, and moving the template
@@ -672,22 +667,6 @@ fn replacing_template_contents_with_shadow_contents_describes_the_same_work_at_e
             },
         )
         .1
-    });
-}
-
-#[test]
-fn detaching_a_shadow_root_describes_the_same_work_at_every_unrelated_record_count() {
-    assert_same_work_at_every_unrelated_record_count("detaching a shadow root", |owner| {
-        let (owner, host) = create(owner, element("host"));
-        let (owner, shadow) = shadow_with_child(owner);
-        let (owner, _) = change(
-            owner,
-            HtmlConstructionCommand::AttachShadow {
-                host: host.clone(),
-                contents: shadow,
-            },
-        );
-        driven(owner, HtmlConstructionCommand::DetachShadow { host }).1
     });
 }
 

@@ -57,9 +57,6 @@ pub enum HtmlConstructionCommand {
         host: HtmlBuilderNode,
         contents: HtmlBuilderNode,
     },
-    DetachShadow {
-        host: HtmlBuilderNode,
-    },
     SetTemplateShadowContents {
         template: HtmlBuilderNode,
         contents: HtmlBuilderNode,
@@ -103,7 +100,7 @@ impl HtmlConstructionCommand {
             (Self::ReplaceAttributes { element, .. } | Self::SetLinkFlags { element, .. }, 0) => {
                 Some(element)
             }
-            (Self::AttachShadow { host, .. } | Self::DetachShadow { host }, 0) => Some(host),
+            (Self::AttachShadow { host, .. }, 0) => Some(host),
             (Self::AttachShadow { contents, .. }, 1) => Some(contents),
             (
                 Self::AttachTemplateShadow { template, .. }
@@ -1025,18 +1022,6 @@ impl HtmlConstructionOperation {
                         None => return Err(HtmlConstructionError::InvalidTemplateAssociation),
                     }
                 }
-                Command::DetachShadow { .. } => {
-                    if !matches!(arena.records[a].kind, HtmlNodeKind::Element(_)) {
-                        return Err(HtmlConstructionError::ShadowHostMustBeElement);
-                    }
-                    plan.old_contents = arena.records[a]
-                        .shadow
-                        .as_ref()
-                        .map(|value| value.contents.index);
-                    plan.no_op = plan.old_contents.is_none();
-                    plan.usage.edges =
-                        subtract(plan.usage.edges, usize::from(plan.old_contents.is_some()))?;
-                }
                 Command::SetDocumentMode { .. } => {
                     if !matches!(arena.records[a].kind, HtmlNodeKind::Document(_)) {
                         return Err(HtmlConstructionError::WrongNodeKind);
@@ -1153,7 +1138,6 @@ impl HtmlConstructionOperation {
             HtmlConstructionCommand::Insert { .. }
                 | HtmlConstructionCommand::Detach { .. }
                 | HtmlConstructionCommand::AttachShadow { .. }
-                | HtmlConstructionCommand::DetachShadow { .. }
                 | HtmlConstructionCommand::AttachTemplateShadow { .. }
                 | HtmlConstructionCommand::SetTemplateShadowContents { .. }
                 | HtmlConstructionCommand::ReassignTemplateContents { .. }
@@ -1204,8 +1188,7 @@ impl HtmlConstructionOperation {
                     )?;
                 }
                 Command::SetTemplateShadowContents { .. }
-                | Command::ReassignTemplateContents { .. }
-                | Command::DetachShadow { .. } => {
+                | Command::ReassignTemplateContents { .. } => {
                     plan.references = usize::from(matches!(
                         self.command(),
                         Command::ReassignTemplateContents { .. }
@@ -2012,10 +1995,6 @@ impl HtmlConstructionReadyOperation {
                         host: plan.ids[0].take().expect("preadmitted host ID"),
                         contents: plan.ids[1].take().expect("preadmitted contents ID"),
                     });
-                }
-                Command::DetachShadow { .. } => {
-                    arena.records[plan.old_contents.expect("ready shadow detach")].owner = None;
-                    arena.records[p[0]].shadow = None;
                 }
                 Command::SetTemplateShadowContents { .. } => {
                     arena.records[plan.old_contents.expect("ordinary owning contents")].owner =
