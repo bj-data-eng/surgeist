@@ -568,10 +568,14 @@ fn effect_work_errors_map_to_their_precise_invariant() {
 }
 
 /// A creation that registered association metadata cannot continue past a
-/// non-stop error, so the error becomes a stop labelled by what it reports. A
-/// fault of the creation's own is classified like effect work; an outcome that
-/// belongs to another stage is the creation returning what it never produces.
-/// The forced-state counterpart is in the construction tests.
+/// non-stop error. A fault of the creation's own becomes a stop labelled by
+/// what it reports, as effect work does. An outcome the driver classifies
+/// itself passes through unchanged, as the unavailable image-support fact does:
+/// the creation steps include image, associated-fact and nonce work whose
+/// outcomes come from the caller's facts, so none of them is an invariant. The
+/// outcomes of script and completion work, which no creation step runs, keep
+/// the incomplete-creation label. The forced-state counterpart is in the
+/// construction tests.
 #[test]
 fn creation_errors_map_to_the_fault_they_report() {
     let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
@@ -587,11 +591,10 @@ fn creation_errors_map_to_the_fault_they_report() {
             registry_row(),
         ),
         (SessionError::InputMetadataUnavailable, registry_row()),
-        (SessionError::CspService, incomplete),
-        (SessionError::AssociatedFacts, incomplete),
         (SessionError::ScriptMetadataUnavailable, incomplete),
+        (SessionError::SvgScriptMetadataUnavailable, incomplete),
+        (SessionError::CompletionMetadataUnavailable, incomplete),
         (SessionError::CompletionIncomplete, incomplete),
-        (SessionError::ContextReactionUnavailable, incomplete),
     ] {
         let mut c = control();
         assert_eq!(
@@ -600,5 +603,18 @@ fn creation_errors_map_to_the_fault_they_report() {
             "{error:?}"
         );
         assert_eq!(c.stop(), Some(expected), "{error:?}");
+    }
+    for error in [
+        SessionError::CspService,
+        SessionError::CspProtocol(surgeist_html::HtmlCspProtocolError::WrongProcessor),
+        SessionError::AssociatedFacts,
+        SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
+        SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::BrowsingContextConnection),
+        SessionError::ContextReactionUnavailable,
+        SessionError::Stop(ParseStop::Cancelled),
+    ] {
+        let mut c = control();
+        assert_eq!(latch_creation_fault(&mut c, error), error, "{error:?}");
+        assert_eq!(c.stop(), None, "{error:?}");
     }
 }
