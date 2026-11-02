@@ -571,3 +571,93 @@ pub fn fold_rel_ascii(unit: u16) -> u16 {
 pub fn rel_ascii_keyword(units: &[u16], keyword: &str) -> bool {
     super::ascii_keyword(units, keyword)
 }
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    /// Every cause states its documented meaning, and exactly one of the
+    /// cause predicates, its own, recognizes it.
+    #[test]
+    fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
+        type Predicate = fn(&HtmlRelInterpretationError) -> bool;
+        let cases: Vec<(HtmlRelInterpretationError, &str, Predicate)> = vec![
+            (
+                HtmlRelInterpretationErrorKind::Consumed.error(),
+                "rel interpretation was already consumed",
+                HtmlRelInterpretationError::is_consumed,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::NotReady.error(),
+                "rel interpretation has an unfinished step",
+                HtmlRelInterpretationError::is_not_ready,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::Stopped.error(),
+                "rel interpretation was stopped",
+                HtmlRelInterpretationError::is_stopped,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::WrongPhase.error(),
+                "rel interpretation step was requested out of order",
+                HtmlRelInterpretationError::is_wrong_phase,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::UnknownOccurrence.error(),
+                "rel refinement names an occurrence that does not exist",
+                HtmlRelInterpretationError::is_unknown_occurrence,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::WrongSource.error(),
+                "rel refinement does not match the source token",
+                HtmlRelInterpretationError::is_wrong_source,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::WrongSpelling.error(),
+                "rel refinement does not match the token spelling",
+                HtmlRelInterpretationError::is_wrong_spelling,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::RepeatedRefinement.error(),
+                "rel token was refined more than once",
+                HtmlRelInterpretationError::is_repeated_refinement,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::OutOfOrderRefinement.error(),
+                "rel refinements were not given in token order",
+                HtmlRelInterpretationError::is_out_of_order_refinement,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::InvalidExtensionEffect.error(),
+                "rel extension effect is not valid for its keyword",
+                HtmlRelInterpretationError::is_invalid_extension_effect,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::ReservationNotPerformed.error(),
+                "rel storage reservation was not performed",
+                HtmlRelInterpretationError::is_reservation_not_performed,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::ReservationAlreadyAttempted.error(),
+                "rel storage reservation was already attempted",
+                HtmlRelInterpretationError::is_reservation_already_attempted,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::RepresentationExhausted.error(),
+                "rel interpretation size cannot be represented on this platform",
+                HtmlRelInterpretationError::is_representation_exhausted,
+            ),
+            (
+                HtmlRelInterpretationErrorKind::AllocationFailed.error(),
+                "reserving rel interpretation storage failed",
+                HtmlRelInterpretationError::is_allocation_failed,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
+    }
+}

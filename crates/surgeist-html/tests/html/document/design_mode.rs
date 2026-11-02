@@ -2,9 +2,9 @@
 //! #1243 KnownNull correction. These are pure language tests, not native Range,
 //! Source publication, Selection binding or positive focus integration evidence.
 use surgeist_html::{
-    HtmlDesignModeAction as A, HtmlDesignModeCursor as C, HtmlDesignModeError as E,
-    HtmlDesignModeInput as Input, HtmlDesignModeReply as R, HtmlFocusingAction as FA,
-    HtmlFocusingCursor, HtmlFocusingFallback, HtmlFocusingReply as FR,
+    HtmlDesignModeAction as A, HtmlDesignModeCursor as C, HtmlDesignModeInput as Input,
+    HtmlDesignModeReply as R, HtmlFocusingAction as FA, HtmlFocusingCursor, HtmlFocusingFallback,
+    HtmlFocusingReply as FR,
 };
 
 const REPLIES: [R; 8] = [
@@ -29,13 +29,11 @@ fn check_rejected_replies(c: &mut C) {
         );
         if !allowed {
             let before = *c;
+            let terminal = c.action() == A::Complete;
+            let error = c.reply(reply).unwrap_err();
             assert_eq!(
-                c.reply(reply),
-                Err(if c.action() == A::Complete {
-                    E::Terminal
-                } else {
-                    E::WrongReply
-                })
+                (error.is_terminal(), error.is_wrong_reply()),
+                (terminal, !terminal)
             );
             assert_eq!(*c, before);
         }
@@ -187,7 +185,7 @@ fn missing_facts_leave_the_exact_reached_action_retained() {
     // reset/child receipts cannot advance this operation to the no-range branch.
     for _ in 0..3 {
         assert_eq!(c.action(), A::ReadActiveRange);
-        assert_eq!(c.reply(R::Applied), Err(E::WrongReply));
+        assert!(matches!(c.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
         assert_eq!(c, before);
     }
     step(&mut c, A::ReadActiveRange, R::ActiveRange);

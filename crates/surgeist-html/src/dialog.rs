@@ -271,19 +271,53 @@ pub enum HtmlDialogReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlDialogCursorError {
+pub struct HtmlDialogCursorError {
+    kind: HtmlDialogCursorErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlDialogCursorErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlDialogCursorError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending Dialog action",
-            Self::Terminal => "Dialog transition is already complete",
-        })
+
+impl HtmlDialogCursorErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlDialogCursorError {
+        HtmlDialogCursorError { kind: self }
     }
 }
+
+impl From<HtmlDialogCursorErrorKind> for HtmlDialogCursorError {
+    fn from(kind: HtmlDialogCursorErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlDialogCursorError {
+    /// Whether the cause is: reply does not match the pending Dialog action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlDialogCursorErrorKind::WrongReply)
+    }
+    /// Whether the cause is: Dialog transition is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlDialogCursorErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlDialogCursorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlDialogCursorErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending Dialog action")
+            }
+            HtmlDialogCursorErrorKind::Terminal => {
+                f.write_str("Dialog transition is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlDialogCursorError {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -341,7 +375,7 @@ impl HtmlDialogCursor {
     /// actual adapter retains its source obligations under the owning protocol.
     pub fn reply(&mut self, reply: HtmlDialogReply) -> Result<(), HtmlDialogCursorError> {
         if matches!(self.pending, HtmlDialogAction::Complete(_)) {
-            return Err(HtmlDialogCursorError::Terminal);
+            return Err(HtmlDialogCursorErrorKind::Terminal.error());
         }
         let mut next = *self;
         next.advance(reply)?;
@@ -418,7 +452,7 @@ impl HtmlDialogCursor {
                     A::ReadTopLayerContains
                 }
             }
-            O::OpenChanged(_) => return Err(HtmlDialogCursorError::WrongReply),
+            O::OpenChanged(_) => return Err(HtmlDialogCursorErrorKind::WrongReply.error()),
         })
     }
     fn advance(&mut self, reply: HtmlDialogReply) -> Result<(), HtmlDialogCursorError> {
@@ -514,7 +548,7 @@ impl HtmlDialogCursor {
                     result_present: false,
                 } => A::ClearRequestCloseReturnValue,
                 O::Removed => Self::completed(),
-                _ => return Err(HtmlDialogCursorError::WrongReply),
+                _ => return Err(HtmlDialogCursorErrorKind::WrongReply.error()),
             },
             (A::WriteReturnValue, R::Applied) => A::ClearRequestCloseReturnValue,
             (A::ClearRequestCloseReturnValue, R::Applied) => A::ClearRequestCloseSource,
@@ -624,7 +658,7 @@ impl HtmlDialogCursor {
                 }
             }
             (A::RemoveTopLayerImmediately, R::Applied) => A::ClearModal,
-            _ => return Err(HtmlDialogCursorError::WrongReply),
+            _ => return Err(HtmlDialogCursorErrorKind::WrongReply.error()),
         };
         Ok(())
     }
@@ -776,7 +810,7 @@ impl HtmlCloseWatcherState {
     /// Begin only an actually reached cancel action. No drop-based reset occurs.
     pub fn begin_cancel_action(&mut self) -> Result<(), HtmlCloseWatcherStateError> {
         if self.running_cancel_action {
-            return Err(HtmlCloseWatcherStateError::AlreadyRunning);
+            return Err(HtmlCloseWatcherStateErrorKind::AlreadyRunning.error());
         }
         self.running_cancel_action = true;
         Ok(())
@@ -784,7 +818,7 @@ impl HtmlCloseWatcherState {
     /// Finish only after the original cancel action has actually returned.
     pub fn finish_cancel_action(&mut self) -> Result<(), HtmlCloseWatcherStateError> {
         if !self.running_cancel_action {
-            return Err(HtmlCloseWatcherStateError::NotRunning);
+            return Err(HtmlCloseWatcherStateErrorKind::NotRunning.error());
         }
         self.running_cancel_action = false;
         Ok(())
@@ -843,5 +877,33 @@ mod allow_focus_tests {
         );
         assert_eq!(allow_focus_decision(Some(false), Some(true)), D::Allowed);
         assert_eq!(allow_focus_decision(Some(false), Some(false)), D::Denied);
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_dialog_cursor_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlDialogCursorError) -> bool;
+        let cases: Vec<(HtmlDialogCursorError, &str, Predicate)> = vec![
+            (
+                HtmlDialogCursorErrorKind::WrongReply.error(),
+                "reply does not match the pending Dialog action",
+                HtmlDialogCursorError::is_wrong_reply,
+            ),
+            (
+                HtmlDialogCursorErrorKind::Terminal.error(),
+                "Dialog transition is already complete",
+                HtmlDialogCursorError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

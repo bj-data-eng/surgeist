@@ -289,11 +289,6 @@ pub surgeist_html::bounded::HtmlFormOwnerResetAction::FindNearestAncestor
 pub surgeist_html::bounded::HtmlFormOwnerResetAction::ReadConnectedness
 pub surgeist_html::bounded::HtmlFormOwnerResetAction::ReadCurrentOwnerIsNearestAncestor
 pub surgeist_html::bounded::HtmlFormOwnerResetAction::ReadFormAttributePresence
-#[non_exhaustive] pub enum surgeist_html::bounded::HtmlFormOwnerResetCursorError
-pub surgeist_html::bounded::HtmlFormOwnerResetCursorError::Reply
-impl core::error::Error for surgeist_html::bounded::HtmlFormOwnerResetCursorError
-impl core::fmt::Display for surgeist_html::bounded::HtmlFormOwnerResetCursorError
-pub fn surgeist_html::bounded::HtmlFormOwnerResetCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::bounded::HtmlFormOwnerResetDecision
 pub surgeist_html::bounded::HtmlFormOwnerResetDecision::Reset
 pub surgeist_html::bounded::HtmlFormOwnerResetDecision::ResetIfFormAttributePresent
@@ -513,12 +508,6 @@ pub surgeist_html::bounded::HtmlSelectAction::UpdateSelectedcontent
 pub surgeist_html::bounded::HtmlSelectAction::WriteSelectedness
 pub surgeist_html::bounded::HtmlSelectAction::WriteSelectedness::ordinal: usize
 pub surgeist_html::bounded::HtmlSelectAction::WriteSelectedness::selected: bool
-#[non_exhaustive] pub enum surgeist_html::bounded::HtmlSelectCursorError
-pub surgeist_html::bounded::HtmlSelectCursorError::MultipleContext
-pub surgeist_html::bounded::HtmlSelectCursorError::Reply
-impl core::error::Error for surgeist_html::bounded::HtmlSelectCursorError
-impl core::fmt::Display for surgeist_html::bounded::HtmlSelectCursorError
-pub fn surgeist_html::bounded::HtmlSelectCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::bounded::HtmlSelectFirstSelectedAction
 pub surgeist_html::bounded::HtmlSelectFirstSelectedAction::Complete(surgeist_html::bounded::HtmlSelectFirstSelection)
 pub surgeist_html::bounded::HtmlSelectFirstSelectedAction::ReadSelectedness
@@ -585,11 +574,6 @@ pub surgeist_html::bounded::HtmlSlotAssignAction::RemoveIncomingFromReferredManu
 pub surgeist_html::bounded::HtmlSlotAssignAction::ReplaceTargetManualSet
 pub surgeist_html::bounded::HtmlSlotAssignAction::SetIncomingManualAssignmentToTarget
 pub surgeist_html::bounded::HtmlSlotAssignAction::SetIncomingManualAssignmentToTarget::ordinal: usize
-#[non_exhaustive] pub enum surgeist_html::bounded::HtmlSlotAssignCursorError
-pub surgeist_html::bounded::HtmlSlotAssignCursorError::Reply
-impl core::error::Error for surgeist_html::bounded::HtmlSlotAssignCursorError
-impl core::fmt::Display for surgeist_html::bounded::HtmlSlotAssignCursorError
-pub fn surgeist_html::bounded::HtmlSlotAssignCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::bounded::HtmlSlotAssignReply
 pub surgeist_html::bounded::HtmlSlotAssignReply::Applied
 pub surgeist_html::bounded::HtmlSlotAssignReply::ManualAssignmentPresent(bool)
@@ -714,7 +698,7 @@ pub fn surgeist_html::bounded::IntegerRecoveryError::from(error: surgeist_html::
 impl core::error::Error for surgeist_html::bounded::NumericParseError
 impl core::fmt::Display for surgeist_html::bounded::NumericParseError
 pub fn surgeist_html::bounded::NumericParseError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub enum surgeist_html::bounded::RangeNumericError
+#[non_exhaustive] pub enum surgeist_html::bounded::RangeNumericError
 pub surgeist_html::bounded::RangeNumericError::Integrity
 pub surgeist_html::bounded::RangeNumericError::InvalidSyntax
 pub surgeist_html::bounded::RangeNumericError::Overflow
@@ -1165,6 +1149,12 @@ impl surgeist_html::bounded::HtmlFormOwnerResetCursor
 pub fn surgeist_html::bounded::HtmlFormOwnerResetCursor::action(&self) -> surgeist_html::bounded::HtmlFormOwnerResetAction
 pub const fn surgeist_html::bounded::HtmlFormOwnerResetCursor::new(listed: bool, has_current_owner: bool) -> Self
 pub fn surgeist_html::bounded::HtmlFormOwnerResetCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlFormOwnerResetReply) -> core::result::Result<(), surgeist_html::bounded::HtmlFormOwnerResetCursorError>
+pub struct surgeist_html::bounded::HtmlFormOwnerResetCursorError
+impl surgeist_html::bounded::HtmlFormOwnerResetCursorError
+pub fn surgeist_html::bounded::HtmlFormOwnerResetCursorError::is_reply(&self) -> bool
+impl core::error::Error for surgeist_html::bounded::HtmlFormOwnerResetCursorError
+impl core::fmt::Display for surgeist_html::bounded::HtmlFormOwnerResetCursorError
+pub fn surgeist_html::bounded::HtmlFormOwnerResetCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlInputRangeNumber(_)
 impl surgeist_html::bounded::HtmlInputRangeNumber
 pub fn surgeist_html::bounded::HtmlInputRangeNumber::value(self) -> f64
@@ -1337,6 +1327,13 @@ impl surgeist_html::bounded::HtmlSelectCursor
 pub fn surgeist_html::bounded::HtmlSelectCursor::action(&self) -> surgeist_html::bounded::HtmlSelectAction
 pub fn surgeist_html::bounded::HtmlSelectCursor::new(operation: surgeist_html::bounded::HtmlSelectOperation, multiple: bool, option_count: usize) -> core::result::Result<Self, surgeist_html::bounded::HtmlSelectCursorError>
 pub fn surgeist_html::bounded::HtmlSelectCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlSelectReply) -> core::result::Result<(), surgeist_html::bounded::HtmlSelectCursorError>
+pub struct surgeist_html::bounded::HtmlSelectCursorError
+impl surgeist_html::bounded::HtmlSelectCursorError
+pub fn surgeist_html::bounded::HtmlSelectCursorError::is_multiple_context(&self) -> bool
+pub fn surgeist_html::bounded::HtmlSelectCursorError::is_reply(&self) -> bool
+impl core::error::Error for surgeist_html::bounded::HtmlSelectCursorError
+impl core::fmt::Display for surgeist_html::bounded::HtmlSelectCursorError
+pub fn surgeist_html::bounded::HtmlSelectCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlSelectFirstSelectedCursor
 impl surgeist_html::bounded::HtmlSelectFirstSelectedCursor
 pub fn surgeist_html::bounded::HtmlSelectFirstSelectedCursor::action(&self) -> surgeist_html::bounded::HtmlSelectFirstSelectedAction
@@ -1357,6 +1354,12 @@ impl surgeist_html::bounded::HtmlSlotAssignCursor
 pub fn surgeist_html::bounded::HtmlSlotAssignCursor::action(&self) -> surgeist_html::bounded::HtmlSlotAssignAction
 pub const fn surgeist_html::bounded::HtmlSlotAssignCursor::new(previous_manual_count: usize, raw_incoming_count: usize) -> Self
 pub fn surgeist_html::bounded::HtmlSlotAssignCursor::reply(&mut self, reply: surgeist_html::bounded::HtmlSlotAssignReply) -> core::result::Result<(), surgeist_html::bounded::HtmlSlotAssignCursorError>
+pub struct surgeist_html::bounded::HtmlSlotAssignCursorError
+impl surgeist_html::bounded::HtmlSlotAssignCursorError
+pub fn surgeist_html::bounded::HtmlSlotAssignCursorError::is_reply(&self) -> bool
+impl core::error::Error for surgeist_html::bounded::HtmlSlotAssignCursorError
+impl core::fmt::Display for surgeist_html::bounded::HtmlSlotAssignCursorError
+pub fn surgeist_html::bounded::HtmlSlotAssignCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
 impl<'a> surgeist_html::bounded::HtmlSpaceTokenCursor<'a>
 pub const surgeist_html::bounded::HtmlSpaceTokenCursor<'a>::BEGIN_WORK: usize
@@ -1706,6 +1709,8 @@ pub surgeist_html::HtmlAcceptProcessingState::Unapplied
 #[non_exhaustive] pub enum surgeist_html::HtmlAcceptSpecifierError
 pub surgeist_html::HtmlAcceptSpecifierError::MissingLeadingDot
 pub surgeist_html::HtmlAcceptSpecifierError::Token(surgeist_html::HtmlTokenError)
+impl core::convert::From<surgeist_html::HtmlTokenError> for surgeist_html::HtmlAcceptSpecifierError
+pub fn surgeist_html::HtmlAcceptSpecifierError::from(error: surgeist_html::HtmlTokenError) -> Self
 impl core::error::Error for surgeist_html::HtmlAcceptSpecifierError
 pub fn surgeist_html::HtmlAcceptSpecifierError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::HtmlAcceptSpecifierError
@@ -2029,12 +2034,6 @@ pub surgeist_html::HtmlAutofocusDelegateAction::ReadAutofocus
 pub surgeist_html::HtmlAutofocusDelegateAction::ReadClickFocusable
 pub surgeist_html::HtmlAutofocusDelegateAction::ReadClickFocusable::candidate: surgeist_html::HtmlFocusDelegateCandidate
 pub surgeist_html::HtmlAutofocusDelegateAction::ReadFocusableArea
-#[non_exhaustive] pub enum surgeist_html::HtmlAutofocusDelegateError
-pub surgeist_html::HtmlAutofocusDelegateError::Terminal
-pub surgeist_html::HtmlAutofocusDelegateError::WrongReply
-impl core::error::Error for surgeist_html::HtmlAutofocusDelegateError
-impl core::fmt::Display for surgeist_html::HtmlAutofocusDelegateError
-pub fn surgeist_html::HtmlAutofocusDelegateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlAutofocusDelegateOutcome
 pub surgeist_html::HtmlAutofocusDelegateOutcome::Candidate(surgeist_html::HtmlFocusDelegateCandidate)
 pub surgeist_html::HtmlAutofocusDelegateOutcome::Null
@@ -2057,12 +2056,6 @@ pub surgeist_html::HtmlAutofocusInsertionAction::ReadFullyActive
 pub surgeist_html::HtmlAutofocusInsertionAction::ReadInDocumentTree
 pub surgeist_html::HtmlAutofocusInsertionAction::ReadSandboxAutomaticFeatures
 pub surgeist_html::HtmlAutofocusInsertionAction::RemoveCandidate
-#[non_exhaustive] pub enum surgeist_html::HtmlAutofocusInsertionError
-pub surgeist_html::HtmlAutofocusInsertionError::Terminal
-pub surgeist_html::HtmlAutofocusInsertionError::WrongReply
-impl core::error::Error for surgeist_html::HtmlAutofocusInsertionError
-impl core::fmt::Display for surgeist_html::HtmlAutofocusInsertionError
-pub fn surgeist_html::HtmlAutofocusInsertionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlAutofocusInsertionReply
 pub surgeist_html::HtmlAutofocusInsertionReply::AllowFocus(bool)
 pub surgeist_html::HtmlAutofocusInsertionReply::Applied
@@ -2168,13 +2161,6 @@ pub surgeist_html::HtmlCloseWatcherRequestAction::RunCancelAction
 pub surgeist_html::HtmlCloseWatcherRequestAction::RunCancelAction::can_prevent_close: bool
 pub surgeist_html::HtmlCloseWatcherRequestAction::RunCloseAction
 pub surgeist_html::HtmlCloseWatcherRequestAction::SetRunningCancelAction(bool)
-#[non_exhaustive] pub enum surgeist_html::HtmlCloseWatcherRequestError
-pub surgeist_html::HtmlCloseWatcherRequestError::NoncancelableActionPreventedClose
-pub surgeist_html::HtmlCloseWatcherRequestError::Terminal
-pub surgeist_html::HtmlCloseWatcherRequestError::WrongReply
-impl core::error::Error for surgeist_html::HtmlCloseWatcherRequestError
-impl core::fmt::Display for surgeist_html::HtmlCloseWatcherRequestError
-pub fn surgeist_html::HtmlCloseWatcherRequestError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlCloseWatcherRequestReply
 pub surgeist_html::HtmlCloseWatcherRequestReply::Active(bool)
 pub surgeist_html::HtmlCloseWatcherRequestReply::Applied
@@ -2186,12 +2172,6 @@ pub surgeist_html::HtmlCloseWatcherRequestReply::ManagerGroups::allowed_groups: 
 pub surgeist_html::HtmlCloseWatcherRequestReply::ManagerGroups::groups: usize
 pub surgeist_html::HtmlCloseWatcherRequestReply::RunningCancelAction(bool)
 pub surgeist_html::HtmlCloseWatcherRequestReply::WindowFullyActive(bool)
-#[non_exhaustive] pub enum surgeist_html::HtmlCloseWatcherStateError
-pub surgeist_html::HtmlCloseWatcherStateError::AlreadyRunning
-pub surgeist_html::HtmlCloseWatcherStateError::NotRunning
-impl core::error::Error for surgeist_html::HtmlCloseWatcherStateError
-impl core::fmt::Display for surgeist_html::HtmlCloseWatcherStateError
-pub fn surgeist_html::HtmlCloseWatcherStateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlClosedBy
 pub surgeist_html::HtmlClosedBy::Any
 pub surgeist_html::HtmlClosedBy::CloseRequest
@@ -2299,10 +2279,10 @@ pub surgeist_html::HtmlCspError::Interrupted(E)
 pub surgeist_html::HtmlCspError::Protocol(surgeist_html::HtmlCspProtocolError)
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_html::HtmlCspError<E>
 pub fn surgeist_html::HtmlCspError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
-impl<E: core::fmt::Display> core::fmt::Display for surgeist_html::HtmlCspError<E>
-pub fn surgeist_html::HtmlCspError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<E> core::convert::From<surgeist_html::HtmlCspProtocolError> for surgeist_html::HtmlCspError<E>
 pub fn surgeist_html::HtmlCspError<E>::from(error: surgeist_html::HtmlCspProtocolError) -> Self
+impl<E> core::fmt::Display for surgeist_html::HtmlCspError<E>
+pub fn surgeist_html::HtmlCspError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlCspNativePolicy<'a, A: surgeist_html::HtmlCspPolicyArtifact>
 pub surgeist_html::HtmlCspNativePolicy::External(&'a A)
 pub surgeist_html::HtmlCspNativePolicy::InitialEmpty
@@ -2317,12 +2297,6 @@ pub surgeist_html::HtmlCurrentFocusChainAction::InitializeEmptyChain
 pub surgeist_html::HtmlCurrentFocusChainAction::ReadTraversable
 pub surgeist_html::HtmlCurrentFocusChainAction::RunCurrentlyFocusedArea
 pub surgeist_html::HtmlCurrentFocusChainAction::RunFocusChain
-#[non_exhaustive] pub enum surgeist_html::HtmlCurrentFocusChainError
-pub surgeist_html::HtmlCurrentFocusChainError::Terminal
-pub surgeist_html::HtmlCurrentFocusChainError::WrongReply
-impl core::error::Error for surgeist_html::HtmlCurrentFocusChainError
-impl core::fmt::Display for surgeist_html::HtmlCurrentFocusChainError
-pub fn surgeist_html::HtmlCurrentFocusChainError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlCurrentFocusChainReply
 pub surgeist_html::HtmlCurrentFocusChainReply::Applied
 pub surgeist_html::HtmlCurrentFocusChainReply::CurrentlyFocusedAreaPresent(bool)
@@ -2336,12 +2310,6 @@ pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadContentNavigable
 pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadLoopFocusedArea
 pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadResultFocusedArea
 pub surgeist_html::HtmlCurrentlyFocusedAreaAction::ReadSystemFocus
-#[non_exhaustive] pub enum surgeist_html::HtmlCurrentlyFocusedAreaError
-pub surgeist_html::HtmlCurrentlyFocusedAreaError::Terminal
-pub surgeist_html::HtmlCurrentlyFocusedAreaError::WrongReply
-impl core::error::Error for surgeist_html::HtmlCurrentlyFocusedAreaError
-impl core::fmt::Display for surgeist_html::HtmlCurrentlyFocusedAreaError
-pub fn surgeist_html::HtmlCurrentlyFocusedAreaError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlCurrentlyFocusedAreaOutcome
 pub surgeist_html::HtmlCurrentlyFocusedAreaOutcome::CandidateDocument
 pub surgeist_html::HtmlCurrentlyFocusedAreaOutcome::CandidateFocusedArea
@@ -2413,12 +2381,6 @@ pub surgeist_html::HtmlDesignModeAction::ResetActiveRange
 pub surgeist_html::HtmlDesignModeAction::RunFocusingSteps
 pub surgeist_html::HtmlDesignModeAction::SetEnabled
 pub surgeist_html::HtmlDesignModeAction::SetEnabled::enabled: bool
-#[non_exhaustive] pub enum surgeist_html::HtmlDesignModeError
-pub surgeist_html::HtmlDesignModeError::Terminal
-pub surgeist_html::HtmlDesignModeError::WrongReply
-impl core::error::Error for surgeist_html::HtmlDesignModeError
-impl core::fmt::Display for surgeist_html::HtmlDesignModeError
-pub fn surgeist_html::HtmlDesignModeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlDesignModeInput
 pub surgeist_html::HtmlDesignModeInput::Invalid
 pub surgeist_html::HtmlDesignModeInput::Off
@@ -2504,12 +2466,6 @@ pub surgeist_html::HtmlDialogAction::SetModal
 pub surgeist_html::HtmlDialogAction::WriteNullRequestCloseSource
 pub surgeist_html::HtmlDialogAction::WriteRequestCloseReturnValue
 pub surgeist_html::HtmlDialogAction::WriteReturnValue
-#[non_exhaustive] pub enum surgeist_html::HtmlDialogCursorError
-pub surgeist_html::HtmlDialogCursorError::Terminal
-pub surgeist_html::HtmlDialogCursorError::WrongReply
-impl core::error::Error for surgeist_html::HtmlDialogCursorError
-impl core::fmt::Display for surgeist_html::HtmlDialogCursorError
-pub fn surgeist_html::HtmlDialogCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlDialogEventSource
 pub surgeist_html::HtmlDialogEventSource::Null
 pub surgeist_html::HtmlDialogEventSource::OperationSource
@@ -2529,12 +2485,6 @@ pub surgeist_html::HtmlDialogFocusingAction::ReadSameOrigin::control: surgeist_h
 pub surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps
 pub surgeist_html::HtmlDialogFocusingAction::RunFocusingSteps::control: surgeist_html::HtmlDialogFocusControl
 pub surgeist_html::HtmlDialogFocusingAction::SetAutofocusProcessed
-#[non_exhaustive] pub enum surgeist_html::HtmlDialogFocusingError
-pub surgeist_html::HtmlDialogFocusingError::Terminal
-pub surgeist_html::HtmlDialogFocusingError::WrongReply
-impl core::error::Error for surgeist_html::HtmlDialogFocusingError
-impl core::fmt::Display for surgeist_html::HtmlDialogFocusingError
-pub fn surgeist_html::HtmlDialogFocusingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlDialogFocusingReply
 pub surgeist_html::HtmlDialogFocusingReply::AllowFocus(bool)
 pub surgeist_html::HtmlDialogFocusingReply::Applied
@@ -2668,13 +2618,6 @@ pub surgeist_html::HtmlFocusChainAction::ReadDocument
 pub surgeist_html::HtmlFocusChainAction::ReadFocusableArea
 pub surgeist_html::HtmlFocusChainAction::ReadNavigableParent
 pub surgeist_html::HtmlFocusChainAction::ReadNodeNavigable
-#[non_exhaustive] pub enum surgeist_html::HtmlFocusChainError
-pub surgeist_html::HtmlFocusChainError::InvalidCurrentObject
-pub surgeist_html::HtmlFocusChainError::Terminal
-pub surgeist_html::HtmlFocusChainError::WrongReply
-impl core::error::Error for surgeist_html::HtmlFocusChainError
-impl core::fmt::Display for surgeist_html::HtmlFocusChainError
-pub fn surgeist_html::HtmlFocusChainError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlFocusChainReply
 pub surgeist_html::HtmlFocusChainReply::AnchorIsDifferentElement(bool)
 pub surgeist_html::HtmlFocusChainReply::Applied
@@ -2697,12 +2640,6 @@ pub surgeist_html::HtmlFocusDelegateAction::RunAutofocusDelegate::root: surgeist
 pub enum surgeist_html::HtmlFocusDelegateCandidate
 pub surgeist_html::HtmlFocusDelegateCandidate::Descendant
 pub surgeist_html::HtmlFocusDelegateCandidate::ResolvedArea
-#[non_exhaustive] pub enum surgeist_html::HtmlFocusDelegateError
-pub surgeist_html::HtmlFocusDelegateError::Terminal
-pub surgeist_html::HtmlFocusDelegateError::WrongReply
-impl core::error::Error for surgeist_html::HtmlFocusDelegateError
-impl core::fmt::Display for surgeist_html::HtmlFocusDelegateError
-pub fn surgeist_html::HtmlFocusDelegateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlFocusDelegateOutcome
 pub surgeist_html::HtmlFocusDelegateOutcome::AutofocusDelegate
 pub surgeist_html::HtmlFocusDelegateOutcome::Candidate(surgeist_html::HtmlFocusDelegateCandidate)
@@ -2735,12 +2672,6 @@ pub surgeist_html::HtmlFocusEventAction::Dispatch::cancelable: bool
 pub surgeist_html::HtmlFocusEventAction::Dispatch::composed: bool
 pub surgeist_html::HtmlFocusEventAction::Dispatch::interface: surgeist_html::HtmlFocusEventInterface
 pub surgeist_html::HtmlFocusEventAction::Dispatch::view: surgeist_html::HtmlFocusEventView
-#[non_exhaustive] pub enum surgeist_html::HtmlFocusEventError
-pub surgeist_html::HtmlFocusEventError::Terminal
-pub surgeist_html::HtmlFocusEventError::WrongReply
-impl core::error::Error for surgeist_html::HtmlFocusEventError
-impl core::fmt::Display for surgeist_html::HtmlFocusEventError
-pub fn surgeist_html::HtmlFocusEventError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlFocusEventInterface
 pub surgeist_html::HtmlFocusEventInterface::FocusEvent
 pub enum surgeist_html::HtmlFocusEventName
@@ -2810,12 +2741,6 @@ pub enum surgeist_html::HtmlFocusUpdateEntryKind
 pub surgeist_html::HtmlFocusUpdateEntryKind::Document
 pub surgeist_html::HtmlFocusUpdateEntryKind::Element
 pub surgeist_html::HtmlFocusUpdateEntryKind::Other
-#[non_exhaustive] pub enum surgeist_html::HtmlFocusUpdateError
-pub surgeist_html::HtmlFocusUpdateError::Terminal
-pub surgeist_html::HtmlFocusUpdateError::WrongReply
-impl core::error::Error for surgeist_html::HtmlFocusUpdateError
-impl core::fmt::Display for surgeist_html::HtmlFocusUpdateError
-pub fn surgeist_html::HtmlFocusUpdateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlFocusUpdateEventTarget
 pub surgeist_html::HtmlFocusUpdateEventTarget::EntryDocumentGlobal
 pub surgeist_html::HtmlFocusUpdateEventTarget::EntryElement
@@ -2879,12 +2804,6 @@ pub surgeist_html::HtmlFocusingAction::RunFocusChain
 pub surgeist_html::HtmlFocusingAction::RunFocusUpdate
 pub surgeist_html::HtmlFocusingAction::RunGetFocusableArea
 pub surgeist_html::HtmlFocusingAction::UseFallbackTarget
-#[non_exhaustive] pub enum surgeist_html::HtmlFocusingError
-pub surgeist_html::HtmlFocusingError::Terminal
-pub surgeist_html::HtmlFocusingError::WrongReply
-impl core::error::Error for surgeist_html::HtmlFocusingError
-impl core::fmt::Display for surgeist_html::HtmlFocusingError
-pub fn surgeist_html::HtmlFocusingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlFocusingFallback
 pub surgeist_html::HtmlFocusingFallback::Omitted
 pub surgeist_html::HtmlFocusingFallback::Supplied
@@ -2973,12 +2892,6 @@ pub surgeist_html::HtmlGetFocusableAreaAction::RunCurrentlyFocusedArea
 pub surgeist_html::HtmlGetFocusableAreaAction::RunFocusDelegate
 pub surgeist_html::HtmlGetFocusableAreaAction::SelectFirstImageMapShape
 pub surgeist_html::HtmlGetFocusableAreaAction::SelectFirstScrollableRegion
-#[non_exhaustive] pub enum surgeist_html::HtmlGetFocusableAreaError
-pub surgeist_html::HtmlGetFocusableAreaError::Terminal
-pub surgeist_html::HtmlGetFocusableAreaError::WrongReply
-impl core::error::Error for surgeist_html::HtmlGetFocusableAreaError
-impl core::fmt::Display for surgeist_html::HtmlGetFocusableAreaError
-pub fn surgeist_html::HtmlGetFocusableAreaError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::HtmlGetFocusableAreaOutcome
 pub surgeist_html::HtmlGetFocusableAreaOutcome::ContentActiveDocument
 pub surgeist_html::HtmlGetFocusableAreaOutcome::CurrentAnchor
@@ -4054,7 +3967,7 @@ pub surgeist_html::HtmlSrcsetFollowingImageObservation::Element
 pub surgeist_html::HtmlSrcsetFollowingImageObservation::Element::attributes: surgeist_html::OrderedAttributes
 pub surgeist_html::HtmlSrcsetFollowingImageObservation::Element::name: surgeist_html::QualifiedName
 pub surgeist_html::HtmlSrcsetFollowingImageObservation::Unavailable
-pub enum surgeist_html::HtmlSrcsetInterpretationError
+#[non_exhaustive] pub enum surgeist_html::HtmlSrcsetInterpretationError
 pub surgeist_html::HtmlSrcsetInterpretationError::RawAdmission(surgeist_html::HtmlValueAdmissionError)
 pub surgeist_html::HtmlSrcsetInterpretationError::RepresentationExhausted
 impl core::convert::From<surgeist_html::HtmlValueAdmissionError> for surgeist_html::HtmlSrcsetInterpretationError
@@ -4238,6 +4151,8 @@ pub surgeist_html::HtmlTokenError::CommaTokenComma::code_unit_offset: usize
 pub surgeist_html::HtmlTokenError::EmptySpaceToken
 pub surgeist_html::HtmlTokenError::SpaceTokenWhitespace
 pub surgeist_html::HtmlTokenError::SpaceTokenWhitespace::code_unit_offset: usize
+impl core::convert::From<surgeist_html::HtmlTokenError> for surgeist_html::HtmlAcceptSpecifierError
+pub fn surgeist_html::HtmlAcceptSpecifierError::from(error: surgeist_html::HtmlTokenError) -> Self
 impl core::convert::From<surgeist_html::HtmlTokenError> for surgeist_html::HtmlAutocompleteSectionError
 pub fn surgeist_html::HtmlAutocompleteSectionError::from(error: surgeist_html::HtmlTokenError) -> Self
 impl core::error::Error for surgeist_html::HtmlTokenError
@@ -4867,6 +4782,13 @@ impl surgeist_html::HtmlAutofocusDelegateCursor
 pub const fn surgeist_html::HtmlAutofocusDelegateCursor::action(&self) -> surgeist_html::HtmlAutofocusDelegateAction
 pub const fn surgeist_html::HtmlAutofocusDelegateCursor::new(trigger_kind: surgeist_html::HtmlFocusTriggerKind) -> Self
 pub fn surgeist_html::HtmlAutofocusDelegateCursor::reply(&mut self, reply: surgeist_html::HtmlAutofocusDelegateReply) -> core::result::Result<(), surgeist_html::HtmlAutofocusDelegateError>
+pub struct surgeist_html::HtmlAutofocusDelegateError
+impl surgeist_html::HtmlAutofocusDelegateError
+pub fn surgeist_html::HtmlAutofocusDelegateError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlAutofocusDelegateError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlAutofocusDelegateError
+impl core::fmt::Display for surgeist_html::HtmlAutofocusDelegateError
+pub fn surgeist_html::HtmlAutofocusDelegateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlAutofocusInsertionCursor
 impl surgeist_html::HtmlAutofocusInsertionCursor
 pub const fn surgeist_html::HtmlAutofocusInsertionCursor::action(&self) -> surgeist_html::HtmlAutofocusInsertionAction
@@ -4874,6 +4796,13 @@ pub const fn surgeist_html::HtmlAutofocusInsertionCursor::new() -> Self
 pub fn surgeist_html::HtmlAutofocusInsertionCursor::reply(&mut self, reply: surgeist_html::HtmlAutofocusInsertionReply) -> core::result::Result<(), surgeist_html::HtmlAutofocusInsertionError>
 impl core::default::Default for surgeist_html::HtmlAutofocusInsertionCursor
 pub fn surgeist_html::HtmlAutofocusInsertionCursor::default() -> Self
+pub struct surgeist_html::HtmlAutofocusInsertionError
+impl surgeist_html::HtmlAutofocusInsertionError
+pub fn surgeist_html::HtmlAutofocusInsertionError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlAutofocusInsertionError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlAutofocusInsertionError
+impl core::fmt::Display for surgeist_html::HtmlAutofocusInsertionError
+pub fn surgeist_html::HtmlAutofocusInsertionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlBitmapIconSize
 impl surgeist_html::HtmlBitmapIconSize
 pub fn surgeist_html::HtmlBitmapIconSize::height(&self) -> &surgeist_html::HtmlNonNegativeInteger
@@ -4913,12 +4842,27 @@ impl surgeist_html::HtmlCloseWatcherRequestCursor
 pub const fn surgeist_html::HtmlCloseWatcherRequestCursor::action(&self) -> surgeist_html::HtmlCloseWatcherRequestAction
 pub const fn surgeist_html::HtmlCloseWatcherRequestCursor::new(require_history_action_activation: bool) -> Self
 pub fn surgeist_html::HtmlCloseWatcherRequestCursor::reply(&mut self, reply: surgeist_html::HtmlCloseWatcherRequestReply) -> core::result::Result<(), surgeist_html::HtmlCloseWatcherRequestError>
+pub struct surgeist_html::HtmlCloseWatcherRequestError
+impl surgeist_html::HtmlCloseWatcherRequestError
+pub fn surgeist_html::HtmlCloseWatcherRequestError::is_noncancelable_action_prevented_close(&self) -> bool
+pub fn surgeist_html::HtmlCloseWatcherRequestError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlCloseWatcherRequestError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlCloseWatcherRequestError
+impl core::fmt::Display for surgeist_html::HtmlCloseWatcherRequestError
+pub fn surgeist_html::HtmlCloseWatcherRequestError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlCloseWatcherState
 impl surgeist_html::HtmlCloseWatcherState
 pub fn surgeist_html::HtmlCloseWatcherState::begin_cancel_action(&mut self) -> core::result::Result<(), surgeist_html::HtmlCloseWatcherStateError>
 pub fn surgeist_html::HtmlCloseWatcherState::finish_cancel_action(&mut self) -> core::result::Result<(), surgeist_html::HtmlCloseWatcherStateError>
 pub const fn surgeist_html::HtmlCloseWatcherState::fresh() -> Self
 pub const fn surgeist_html::HtmlCloseWatcherState::running_cancel_action(self) -> bool
+pub struct surgeist_html::HtmlCloseWatcherStateError
+impl surgeist_html::HtmlCloseWatcherStateError
+pub fn surgeist_html::HtmlCloseWatcherStateError::is_already_running(&self) -> bool
+pub fn surgeist_html::HtmlCloseWatcherStateError::is_not_running(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlCloseWatcherStateError
+impl core::fmt::Display for surgeist_html::HtmlCloseWatcherStateError
+pub fn surgeist_html::HtmlCloseWatcherStateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlClosedElementState
 impl surgeist_html::HtmlClosedElementState
 pub const fn surgeist_html::HtmlClosedElementState::click_in_progress(&self) -> bool
@@ -5156,6 +5100,13 @@ pub const fn surgeist_html::HtmlCurrentFocusChainCursor::new() -> Self
 pub fn surgeist_html::HtmlCurrentFocusChainCursor::reply(&mut self, reply: surgeist_html::HtmlCurrentFocusChainReply) -> core::result::Result<(), surgeist_html::HtmlCurrentFocusChainError>
 impl core::default::Default for surgeist_html::HtmlCurrentFocusChainCursor
 pub fn surgeist_html::HtmlCurrentFocusChainCursor::default() -> Self
+pub struct surgeist_html::HtmlCurrentFocusChainError
+impl surgeist_html::HtmlCurrentFocusChainError
+pub fn surgeist_html::HtmlCurrentFocusChainError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlCurrentFocusChainError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlCurrentFocusChainError
+impl core::fmt::Display for surgeist_html::HtmlCurrentFocusChainError
+pub fn surgeist_html::HtmlCurrentFocusChainError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlCurrentlyFocusedAreaCursor
 impl surgeist_html::HtmlCurrentlyFocusedAreaCursor
 pub const fn surgeist_html::HtmlCurrentlyFocusedAreaCursor::action(&self) -> surgeist_html::HtmlCurrentlyFocusedAreaAction
@@ -5163,6 +5114,13 @@ pub const fn surgeist_html::HtmlCurrentlyFocusedAreaCursor::new() -> Self
 pub fn surgeist_html::HtmlCurrentlyFocusedAreaCursor::reply(&mut self, reply: surgeist_html::HtmlCurrentlyFocusedAreaReply) -> core::result::Result<(), surgeist_html::HtmlCurrentlyFocusedAreaError>
 impl core::default::Default for surgeist_html::HtmlCurrentlyFocusedAreaCursor
 pub fn surgeist_html::HtmlCurrentlyFocusedAreaCursor::default() -> Self
+pub struct surgeist_html::HtmlCurrentlyFocusedAreaError
+impl surgeist_html::HtmlCurrentlyFocusedAreaError
+pub fn surgeist_html::HtmlCurrentlyFocusedAreaError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlCurrentlyFocusedAreaError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlCurrentlyFocusedAreaError
+impl core::fmt::Display for surgeist_html::HtmlCurrentlyFocusedAreaError
+pub fn surgeist_html::HtmlCurrentlyFocusedAreaError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlCustomCommandKeyword
 impl surgeist_html::HtmlCustomCommandKeyword
 pub fn surgeist_html::HtmlCustomCommandKeyword::new(value: impl core::convert::Into<surgeist_html::DocumentString>) -> core::result::Result<Self, surgeist_html::HtmlCustomCommandError>
@@ -5192,6 +5150,13 @@ impl surgeist_html::HtmlDesignModeCursor
 pub const fn surgeist_html::HtmlDesignModeCursor::action(&self) -> surgeist_html::HtmlDesignModeAction
 pub const fn surgeist_html::HtmlDesignModeCursor::new(input: surgeist_html::HtmlDesignModeInput) -> Self
 pub fn surgeist_html::HtmlDesignModeCursor::reply(&mut self, reply: surgeist_html::HtmlDesignModeReply) -> core::result::Result<(), surgeist_html::HtmlDesignModeError>
+pub struct surgeist_html::HtmlDesignModeError
+impl surgeist_html::HtmlDesignModeError
+pub fn surgeist_html::HtmlDesignModeError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlDesignModeError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlDesignModeError
+impl core::fmt::Display for surgeist_html::HtmlDesignModeError
+pub fn surgeist_html::HtmlDesignModeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlDetailsName
 impl surgeist_html::HtmlDetailsName
 pub fn surgeist_html::HtmlDetailsName::into_attribute(self) -> surgeist_html::Attribute
@@ -5207,6 +5172,13 @@ impl surgeist_html::HtmlDialogCursor
 pub const fn surgeist_html::HtmlDialogCursor::action(&self) -> surgeist_html::HtmlDialogAction
 pub const fn surgeist_html::HtmlDialogCursor::new(operation: surgeist_html::HtmlDialogOperation) -> Self
 pub fn surgeist_html::HtmlDialogCursor::reply(&mut self, reply: surgeist_html::HtmlDialogReply) -> core::result::Result<(), surgeist_html::HtmlDialogCursorError>
+pub struct surgeist_html::HtmlDialogCursorError
+impl surgeist_html::HtmlDialogCursorError
+pub fn surgeist_html::HtmlDialogCursorError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlDialogCursorError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlDialogCursorError
+impl core::fmt::Display for surgeist_html::HtmlDialogCursorError
+pub fn surgeist_html::HtmlDialogCursorError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlDialogFocusingCursor
 impl surgeist_html::HtmlDialogFocusingCursor
 pub const fn surgeist_html::HtmlDialogFocusingCursor::action(&self) -> surgeist_html::HtmlDialogFocusingAction
@@ -5214,6 +5186,13 @@ pub const fn surgeist_html::HtmlDialogFocusingCursor::new() -> Self
 pub fn surgeist_html::HtmlDialogFocusingCursor::reply(&mut self, reply: surgeist_html::HtmlDialogFocusingReply) -> core::result::Result<(), surgeist_html::HtmlDialogFocusingError>
 impl core::default::Default for surgeist_html::HtmlDialogFocusingCursor
 pub fn surgeist_html::HtmlDialogFocusingCursor::default() -> Self
+pub struct surgeist_html::HtmlDialogFocusingError
+impl surgeist_html::HtmlDialogFocusingError
+pub fn surgeist_html::HtmlDialogFocusingError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlDialogFocusingError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlDialogFocusingError
+impl core::fmt::Display for surgeist_html::HtmlDialogFocusingError
+pub fn surgeist_html::HtmlDialogFocusingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlDialogFreshState
 impl surgeist_html::HtmlDialogFreshState
 pub const fn surgeist_html::HtmlDialogFreshState::force_close_watcher_enabled(&self) -> bool
@@ -5345,16 +5324,38 @@ pub const fn surgeist_html::HtmlFocusChainCursor::new() -> Self
 pub fn surgeist_html::HtmlFocusChainCursor::reply(&mut self, reply: surgeist_html::HtmlFocusChainReply) -> core::result::Result<(), surgeist_html::HtmlFocusChainError>
 impl core::default::Default for surgeist_html::HtmlFocusChainCursor
 pub fn surgeist_html::HtmlFocusChainCursor::default() -> Self
+pub struct surgeist_html::HtmlFocusChainError
+impl surgeist_html::HtmlFocusChainError
+pub fn surgeist_html::HtmlFocusChainError::is_invalid_current_object(&self) -> bool
+pub fn surgeist_html::HtmlFocusChainError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlFocusChainError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlFocusChainError
+impl core::fmt::Display for surgeist_html::HtmlFocusChainError
+pub fn surgeist_html::HtmlFocusChainError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlFocusDelegateCursor
 impl surgeist_html::HtmlFocusDelegateCursor
 pub const fn surgeist_html::HtmlFocusDelegateCursor::action(&self) -> surgeist_html::HtmlFocusDelegateAction
 pub const fn surgeist_html::HtmlFocusDelegateCursor::new(target_kind: surgeist_html::HtmlFocusDelegateTargetKind) -> Self
 pub fn surgeist_html::HtmlFocusDelegateCursor::reply(&mut self, reply: surgeist_html::HtmlFocusDelegateReply) -> core::result::Result<(), surgeist_html::HtmlFocusDelegateError>
+pub struct surgeist_html::HtmlFocusDelegateError
+impl surgeist_html::HtmlFocusDelegateError
+pub fn surgeist_html::HtmlFocusDelegateError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlFocusDelegateError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlFocusDelegateError
+impl core::fmt::Display for surgeist_html::HtmlFocusDelegateError
+pub fn surgeist_html::HtmlFocusDelegateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlFocusEventCursor
 impl surgeist_html::HtmlFocusEventCursor
 pub const fn surgeist_html::HtmlFocusEventCursor::action(&self) -> surgeist_html::HtmlFocusEventAction
 pub const fn surgeist_html::HtmlFocusEventCursor::new(target_kind: surgeist_html::HtmlFocusEventTargetKind) -> Self
 pub fn surgeist_html::HtmlFocusEventCursor::reply(&mut self, reply: surgeist_html::HtmlFocusEventReply) -> core::result::Result<(), surgeist_html::HtmlFocusEventError>
+pub struct surgeist_html::HtmlFocusEventError
+impl surgeist_html::HtmlFocusEventError
+pub fn surgeist_html::HtmlFocusEventError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlFocusEventError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlFocusEventError
+impl core::fmt::Display for surgeist_html::HtmlFocusEventError
+pub fn surgeist_html::HtmlFocusEventError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlFocusUpdateCursor
 impl surgeist_html::HtmlFocusUpdateCursor
 pub const fn surgeist_html::HtmlFocusUpdateCursor::action(&self) -> surgeist_html::HtmlFocusUpdateAction
@@ -5362,11 +5363,25 @@ pub const fn surgeist_html::HtmlFocusUpdateCursor::new() -> Self
 pub fn surgeist_html::HtmlFocusUpdateCursor::reply(&mut self, reply: surgeist_html::HtmlFocusUpdateReply) -> core::result::Result<(), surgeist_html::HtmlFocusUpdateError>
 impl core::default::Default for surgeist_html::HtmlFocusUpdateCursor
 pub fn surgeist_html::HtmlFocusUpdateCursor::default() -> Self
+pub struct surgeist_html::HtmlFocusUpdateError
+impl surgeist_html::HtmlFocusUpdateError
+pub fn surgeist_html::HtmlFocusUpdateError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlFocusUpdateError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlFocusUpdateError
+impl core::fmt::Display for surgeist_html::HtmlFocusUpdateError
+pub fn surgeist_html::HtmlFocusUpdateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlFocusingCursor
 impl surgeist_html::HtmlFocusingCursor
 pub const fn surgeist_html::HtmlFocusingCursor::action(&self) -> surgeist_html::HtmlFocusingAction
 pub const fn surgeist_html::HtmlFocusingCursor::new(fallback: surgeist_html::HtmlFocusingFallback) -> Self
 pub fn surgeist_html::HtmlFocusingCursor::reply(&mut self, reply: surgeist_html::HtmlFocusingReply) -> core::result::Result<(), surgeist_html::HtmlFocusingError>
+pub struct surgeist_html::HtmlFocusingError
+impl surgeist_html::HtmlFocusingError
+pub fn surgeist_html::HtmlFocusingError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlFocusingError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlFocusingError
+impl core::fmt::Display for surgeist_html::HtmlFocusingError
+pub fn surgeist_html::HtmlFocusingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlFormName
 impl surgeist_html::HtmlFormName
 pub fn surgeist_html::HtmlFormName::into_attribute(self) -> surgeist_html::Attribute
@@ -5404,6 +5419,13 @@ pub const fn surgeist_html::HtmlGetFocusableAreaCursor::new() -> Self
 pub fn surgeist_html::HtmlGetFocusableAreaCursor::reply(&mut self, reply: surgeist_html::HtmlGetFocusableAreaReply) -> core::result::Result<(), surgeist_html::HtmlGetFocusableAreaError>
 impl core::default::Default for surgeist_html::HtmlGetFocusableAreaCursor
 pub fn surgeist_html::HtmlGetFocusableAreaCursor::default() -> Self
+pub struct surgeist_html::HtmlGetFocusableAreaError
+impl surgeist_html::HtmlGetFocusableAreaError
+pub fn surgeist_html::HtmlGetFocusableAreaError::is_terminal(&self) -> bool
+pub fn surgeist_html::HtmlGetFocusableAreaError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::HtmlGetFocusableAreaError
+impl core::fmt::Display for surgeist_html::HtmlGetFocusableAreaError
+pub fn surgeist_html::HtmlGetFocusableAreaError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::HtmlGlobalDateTime
 impl surgeist_html::HtmlGlobalDateTime
 pub fn surgeist_html::HtmlGlobalDateTime::local(&self) -> &surgeist_html::HtmlLocalDateTime

@@ -45,15 +45,45 @@ pub enum HtmlSlotAssignReply {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlSlotAssignCursorError {
+pub struct HtmlSlotAssignCursorError {
+    kind: HtmlSlotAssignCursorErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlSlotAssignCursorErrorKind {
     Reply,
 }
-impl std::fmt::Display for HtmlSlotAssignCursorError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("slot assign reply does not match its pending action")
+
+impl HtmlSlotAssignCursorErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlSlotAssignCursorError {
+        HtmlSlotAssignCursorError { kind: self }
     }
 }
+
+impl From<HtmlSlotAssignCursorErrorKind> for HtmlSlotAssignCursorError {
+    fn from(kind: HtmlSlotAssignCursorErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlSlotAssignCursorError {
+    /// Whether the cause is: slot assign reply does not match its pending action.
+    pub fn is_reply(&self) -> bool {
+        matches!(self.kind, HtmlSlotAssignCursorErrorKind::Reply)
+    }
+}
+
+impl std::fmt::Display for HtmlSlotAssignCursorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlSlotAssignCursorErrorKind::Reply => {
+                f.write_str("slot assign reply does not match its pending action")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlSlotAssignCursorError {}
 
 #[derive(Clone, Copy, Debug)]
@@ -192,7 +222,7 @@ impl HtmlSlotAssignCursor {
             (Phase::Append(ordinal), R::Applied) => self.next_incoming(ordinal),
             (Phase::Replace, R::Applied) => self.phase = Phase::AssignRoot,
             (Phase::AssignRoot, R::Applied) => self.phase = Phase::Complete,
-            _ => return Err(HtmlSlotAssignCursorError::Reply),
+            _ => return Err(HtmlSlotAssignCursorErrorKind::Reply.error()),
         }
         Ok(())
     }
@@ -236,5 +266,26 @@ mod extent_tests {
         };
         cursor.reply(R::SameNode(true)).unwrap();
         assert_eq!(cursor.action(), A::ReplaceTargetManualSet);
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_slot_assign_cursor_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlSlotAssignCursorError) -> bool;
+        let cases: Vec<(HtmlSlotAssignCursorError, &str, Predicate)> = vec![(
+            HtmlSlotAssignCursorErrorKind::Reply.error(),
+            "slot assign reply does not match its pending action",
+            HtmlSlotAssignCursorError::is_reply,
+        )];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

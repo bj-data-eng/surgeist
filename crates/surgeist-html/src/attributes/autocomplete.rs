@@ -202,7 +202,7 @@ impl Error for AutocompleteMaterializationError {
 }
 impl fmt::Display for AutocompleteMaterializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.kind, f)
+        f.write_str("autocomplete materialization failed")
     }
 }
 impl Error for AutocompleteMaterializationFailure {

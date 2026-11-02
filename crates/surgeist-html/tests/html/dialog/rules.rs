@@ -1,10 +1,9 @@
 use surgeist_html::{
     DocumentString, HtmlClosedBy, HtmlClosedByState, HtmlDialogAction as A, HtmlDialogCursor,
-    HtmlDialogCursorError, HtmlDialogEventSource as Source, HtmlDialogFreshState,
-    HtmlDialogOperation as Op, HtmlDialogOutcome as Outcome, HtmlDialogReply as R,
-    HtmlDialogState as State, HtmlDialogToggleDecision, HtmlDialogToggleEffect as T,
-    KnownHtmlAttribute, Namespace, computed_dialog_closed_by, dialog_attribute_operation,
-    dialog_close_watcher_enabled,
+    HtmlDialogEventSource as Source, HtmlDialogFreshState, HtmlDialogOperation as Op,
+    HtmlDialogOutcome as Outcome, HtmlDialogReply as R, HtmlDialogState as State,
+    HtmlDialogToggleDecision, HtmlDialogToggleEffect as T, KnownHtmlAttribute, Namespace,
+    computed_dialog_closed_by, dialog_attribute_operation, dialog_close_watcher_enabled,
 };
 
 fn step(cursor: &mut HtmlDialogCursor, action: A, reply: R) {
@@ -143,10 +142,7 @@ fn close_event_reentry_rereads_open_and_noncancelable_dispatch_has_no_cancel_rep
     });
     step(&mut cursor, A::ReadOpen, R::Open(true));
     let pending = cursor;
-    assert_eq!(
-        cursor.reply(R::EventCanceled(true)),
-        Err(HtmlDialogCursorError::WrongReply)
-    );
+    assert!(matches!(cursor.reply(R::EventCanceled(true)), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(cursor, pending);
     step(
         &mut cursor,
@@ -302,26 +298,17 @@ fn removal_cleanup_then_immediate_layer_removal_clears_modal_even_when_closed() 
 fn wrong_terminal_and_unfulfilled_replies_preserve_the_exact_pending_phase() {
     let mut cursor = HtmlDialogCursor::new(Op::Show);
     let before = cursor;
-    assert_eq!(
-        cursor.reply(R::Connected(false)),
-        Err(HtmlDialogCursorError::WrongReply)
-    );
+    assert!(matches!(cursor.reply(R::Connected(false)), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(cursor, before);
     step(&mut cursor, A::ReadOpen, R::Open(false));
     // No reply is made for unavailable/canceled caller work: no false or Applied is invented.
     let pending = cursor;
     assert_eq!(cursor.action(), pending.action());
-    assert_eq!(
-        cursor.reply(R::Applied),
-        Err(HtmlDialogCursorError::WrongReply)
-    );
+    assert!(matches!(cursor.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(cursor, pending);
     cursor.reply(R::EventCanceled(true)).unwrap();
     let terminal = cursor;
-    assert_eq!(
-        cursor.reply(R::Applied),
-        Err(HtmlDialogCursorError::Terminal)
-    );
+    assert!(matches!(cursor.reply(R::Applied), Err(ref e) if e.is_terminal()));
     assert_eq!(cursor, terminal);
 }
 

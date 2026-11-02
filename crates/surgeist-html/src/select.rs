@@ -77,19 +77,53 @@ pub enum HtmlSelectReply {
 
 /// A contradictory operation context or a reply to the wrong pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlSelectCursorError {
+pub struct HtmlSelectCursorError {
+    kind: HtmlSelectCursorErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlSelectCursorErrorKind {
     MultipleContext,
     Reply,
 }
-impl std::fmt::Display for HtmlSelectCursorError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::MultipleContext => "select operation contradicts multiple presence",
-            Self::Reply => "select reply does not match its pending action",
-        })
+
+impl HtmlSelectCursorErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlSelectCursorError {
+        HtmlSelectCursorError { kind: self }
     }
 }
+
+impl From<HtmlSelectCursorErrorKind> for HtmlSelectCursorError {
+    fn from(kind: HtmlSelectCursorErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlSelectCursorError {
+    /// Whether the cause is: select operation contradicts multiple presence.
+    pub fn is_multiple_context(&self) -> bool {
+        matches!(self.kind, HtmlSelectCursorErrorKind::MultipleContext)
+    }
+    /// Whether the cause is: select reply does not match its pending action.
+    pub fn is_reply(&self) -> bool {
+        matches!(self.kind, HtmlSelectCursorErrorKind::Reply)
+    }
+}
+
+impl std::fmt::Display for HtmlSelectCursorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlSelectCursorErrorKind::MultipleContext => {
+                f.write_str("select operation contradicts multiple presence")
+            }
+            HtmlSelectCursorErrorKind::Reply => {
+                f.write_str("select reply does not match its pending action")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlSelectCursorError {}
 
 /// Pending work for either the Select selectedIndex or value setter.
@@ -192,7 +226,9 @@ impl HtmlSelectSetterCursor {
     ) -> Result<(), HtmlSelectCursorError> {
         // Every reachable ordinal is below the complete extent. The last valid
         // ordinal for usize::MAX is MAX-1; its successor MAX is representable.
-        let next = ordinal.checked_add(1).ok_or(HtmlSelectCursorError::Reply)?;
+        let next = ordinal
+            .checked_add(1)
+            .ok_or(HtmlSelectCursorErrorKind::Reply)?;
         self.phase = match (next < self.option_count, matched) {
             (true, None) => SetterPhase::Deselect(next),
             (true, Some(matched)) => SetterPhase::DeselectMatched {
@@ -222,7 +258,7 @@ impl HtmlSelectSetterCursor {
             (SetterPhase::Refresh, HtmlSelectSetterReply::Applied) => {
                 self.phase = SetterPhase::Complete;
             }
-            _ => return Err(HtmlSelectCursorError::Reply),
+            _ => return Err(HtmlSelectCursorErrorKind::Reply.error()),
         }
         Ok(())
     }
@@ -274,7 +310,7 @@ impl HtmlSelectCursor {
         if matches!(operation, HtmlSelectOperation::MultipleAdded) && !multiple
             || matches!(operation, HtmlSelectOperation::MultipleRemoved) && multiple
         {
-            return Err(HtmlSelectCursorError::MultipleContext);
+            return Err(HtmlSelectCursorErrorKind::MultipleContext.error());
         }
         let mut cursor = Self {
             operation,
@@ -429,7 +465,7 @@ impl HtmlSelectCursor {
                 self.finish_normalization();
             }
             (Phase::Refresh, HtmlSelectReply::Applied) => self.phase = Phase::Complete,
-            _ => return Err(HtmlSelectCursorError::Reply),
+            _ => return Err(HtmlSelectCursorErrorKind::Reply.error()),
         }
         Ok(())
     }
@@ -645,7 +681,7 @@ impl HtmlSelectFirstSelectedCursor {
     }
     pub fn reply(&mut self, selected: Option<bool>) -> Result<(), HtmlSelectCursorError> {
         if self.result.is_some() {
-            return Err(HtmlSelectCursorError::Reply);
+            return Err(HtmlSelectCursorErrorKind::Reply.error());
         }
         match selected {
             None => self.result = Some(HtmlSelectFirstSelection::Unavailable),
@@ -722,5 +758,33 @@ mod setter_tests {
         assert_eq!(cursor.action(), Action::UpdateSelectedcontent);
         cursor.reply(Reply::Applied).unwrap();
         assert_eq!(cursor.action(), Action::Complete);
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_select_cursor_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlSelectCursorError) -> bool;
+        let cases: Vec<(HtmlSelectCursorError, &str, Predicate)> = vec![
+            (
+                HtmlSelectCursorErrorKind::MultipleContext.error(),
+                "select operation contradicts multiple presence",
+                HtmlSelectCursorError::is_multiple_context,
+            ),
+            (
+                HtmlSelectCursorErrorKind::Reply.error(),
+                "select reply does not match its pending action",
+                HtmlSelectCursorError::is_reply,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

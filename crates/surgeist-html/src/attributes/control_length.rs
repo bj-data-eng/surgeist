@@ -29,8 +29,10 @@ impl From<HtmlValueAdmissionError> for HtmlControlLengthError {
 impl fmt::Display for HtmlControlLengthError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Admission(error) => error.fmt(f),
-            Self::InputCodeUnitsOverflow => f.write_str("control input UTF-16 length overflow"),
+            Self::Admission(_) => f.write_str("control value was refused by raw-value admission"),
+            Self::InputCodeUnitsOverflow => {
+                f.write_str("control input UTF-16 length cannot be represented")
+            }
         }
     }
 }

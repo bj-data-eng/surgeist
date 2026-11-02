@@ -165,7 +165,7 @@ impl RationalIntegerMaterializationFailure {
 }
 impl fmt::Display for RationalIntegerMaterializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.failure, f)
+        f.write_str("rational integer materialization failed")
     }
 }
 impl Error for RationalIntegerMaterializationFailure {

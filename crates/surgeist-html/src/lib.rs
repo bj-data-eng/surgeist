@@ -8,23 +8,32 @@
 //!
 //! Every type that a public function returns in an `Err` implements `Debug`,
 //! `Display` and [`std::error::Error`]. `Display` states the cause in prose and
-//! never prints `Debug`. A wrapper reports its own operation and returns the
-//! wrapped failure from `source`; a rejection that carries recoverable owners
-//! also prints its reason. A public error is one of four shapes, chosen by what
-//! a caller can do about the cause:
+//! never prints `Debug`. A wrapper's text describes its own operation and
+//! returns the wrapped failure from `source`, so a reporter that walks the chain
+//! never prints a cause twice. A public error has one of four shapes. Apply the
+//! questions in order to predict the shape of any error:
 //!
-//! - A struct with a private cause, queried through `is_*` predicates and fact
-//!   accessors, for a refusal of an owner protocol or of one of many unrelated
-//!   operations, such as [`HtmlConstructionError`]. New causes never break a
-//!   caller.
-//! - A `#[non_exhaustive]` enum for a rule verdict: each variant names one rule
-//!   of the pinned standard or one syntax class, such as
-//!   [`HtmlTokenError`] or [`HtmlAttributeConformanceError`]. A verdict names
-//!   the rule it breaks because a validator reports exactly that.
-//! - An exhaustive enum for resource accounting, such as
-//!   [`bounded::IntegerUnitStepError`], and for the two-source wrappers
-//!   [`HtmlCspError`] and `bounded::HtmlRelActionError`, which separate the
-//!   caller's own refusal from this crate's.
+//! 1. Does the refusal hand back recoverable owners? Then it is a carrier
+//!    struct with the reason and an `into_parts` or accessor, such as
+//!    [`bounded::HtmlConstructionRejection`] and
+//!    [`bounded::HtmlValuePoolSealRefusal`].
+//! 2. Is it a misuse of an owner or cursor protocol (a consumed, not-ready,
+//!    stale, wrong-reply or already-complete state), or does one type merge the
+//!    refusals of many operations? Then it is a struct with a private cause,
+//!    queried through `is_*` predicates and fact accessors, such as
+//!    [`HtmlConstructionError`], [`HtmlCspProtocolError`], the interpretation
+//!    protocol errors and the cursor errors like [`HtmlFocusingError`]. New
+//!    causes never break a caller.
+//! 3. Does a driver charge or branch on every variant, and does a consumer
+//!    match it exhaustively? Then it is an exhaustive enum: the resource
+//!    accounting enums such as [`bounded::IntegerUnitStepError`] and
+//!    [`bounded::FloatingPointAllocationError`], and the two-source wrappers
+//!    [`HtmlCspError`] and `bounded::HtmlRelActionError`, which separate the
+//!    caller's own refusal from this crate's.
+//! 4. Otherwise it names a rule of the pinned standard, a syntax class, an
+//!    unavailability reason or a vocabulary that a driver constructs. Then it is
+//!    a `#[non_exhaustive]` enum, such as [`HtmlTokenError`],
+//!    [`HtmlAttributeConformanceError`] and [`bounded::HtmlValuePoolError`].
 //!
 //! An owned cause converts with `From`, so `?` applies it. `map_err` remains
 //! where the wrapped value is the caller's generic error, because a blanket
@@ -70,7 +79,7 @@
 //! assert_eq!(refusal.attempted(), Some(8));
 //! assert_eq!(
 //!     refusal.to_string(),
-//!     "UTF-16 unit limit of 2 would be exceeded by 8"
+//!     "UTF-16 unit limit of 2 cannot admit a total of 8"
 //! );
 //! # Ok::<(), surgeist_html::HtmlConstructionError>(())
 //! ```

@@ -99,19 +99,53 @@ pub enum HtmlAutofocusInsertionReply {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlAutofocusInsertionError {
+pub struct HtmlAutofocusInsertionError {
+    kind: HtmlAutofocusInsertionErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlAutofocusInsertionErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlAutofocusInsertionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending autofocus insertion action",
-            Self::Terminal => "autofocus insertion is already complete",
-        })
+
+impl HtmlAutofocusInsertionErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlAutofocusInsertionError {
+        HtmlAutofocusInsertionError { kind: self }
     }
 }
+
+impl From<HtmlAutofocusInsertionErrorKind> for HtmlAutofocusInsertionError {
+    fn from(kind: HtmlAutofocusInsertionErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlAutofocusInsertionError {
+    /// Whether the cause is: reply does not match the pending autofocus insertion action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlAutofocusInsertionErrorKind::WrongReply)
+    }
+    /// Whether the cause is: autofocus insertion is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlAutofocusInsertionErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlAutofocusInsertionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlAutofocusInsertionErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending autofocus insertion action")
+            }
+            HtmlAutofocusInsertionErrorKind::Terminal => {
+                f.write_str("autofocus insertion is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlAutofocusInsertionError {}
 
 /// Identity-free, allocation-free complete insertion language protocol.
@@ -143,7 +177,7 @@ impl HtmlAutofocusInsertionCursor {
         use HtmlAutofocusInsertionAction as A;
         use HtmlAutofocusInsertionReply as R;
         if self.pending == A::Complete {
-            return Err(HtmlAutofocusInsertionError::Terminal);
+            return Err(HtmlAutofocusInsertionErrorKind::Terminal.error());
         }
         let next = match (self.pending, reply) {
             (A::ReadAutofocus, R::Autofocus(false))
@@ -164,7 +198,7 @@ impl HtmlAutofocusInsertionCursor {
             (A::ReadAutofocusProcessed, R::AutofocusProcessed(false)) => A::RemoveCandidate,
             (A::RemoveCandidate, R::Applied) => A::AppendCandidate,
             (A::AppendCandidate, R::Applied) => A::Complete,
-            _ => return Err(HtmlAutofocusInsertionError::WrongReply),
+            _ => return Err(HtmlAutofocusInsertionErrorKind::WrongReply.error()),
         };
         self.pending = next;
         Ok(())
@@ -173,5 +207,33 @@ impl HtmlAutofocusInsertionCursor {
 impl Default for HtmlAutofocusInsertionCursor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_autofocus_insertion_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlAutofocusInsertionError) -> bool;
+        let cases: Vec<(HtmlAutofocusInsertionError, &str, Predicate)> = vec![
+            (
+                HtmlAutofocusInsertionErrorKind::WrongReply.error(),
+                "reply does not match the pending autofocus insertion action",
+                HtmlAutofocusInsertionError::is_wrong_reply,
+            ),
+            (
+                HtmlAutofocusInsertionErrorKind::Terminal.error(),
+                "autofocus insertion is already complete",
+                HtmlAutofocusInsertionError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

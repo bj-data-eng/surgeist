@@ -135,12 +135,12 @@ pub enum HtmlCspError<E> {
     Protocol(HtmlCspProtocolError),
     Interrupted(E),
 }
-impl<E: fmt::Display> fmt::Display for HtmlCspError<E> {
+impl<E> fmt::Display for HtmlCspError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Protocol(e) => e.fmt(f),
-            Self::Interrupted(e) => write!(f, "HTML CSP interrupted: {e}"),
-        }
+        f.write_str(match self {
+            Self::Protocol(_) => "CSP protocol was violated",
+            Self::Interrupted(_) => "CSP processing was interrupted by the caller's admission",
+        })
     }
 }
 impl<E: Error + 'static> Error for HtmlCspError<E> {
@@ -316,3 +316,78 @@ pub enum HtmlMetaCspOutcome<E> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    /// Every cause states its documented meaning, and exactly one of the
+    /// cause predicates, its own, recognizes it.
+    #[test]
+    fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
+        type Predicate = fn(&HtmlCspProtocolError) -> bool;
+        let cases: Vec<(HtmlCspProtocolError, &str, Predicate)> = vec![
+            (
+                HtmlCspProtocolErrorKind::ForeignOwner.error(),
+                "policy state belongs to a different CSP owner",
+                HtmlCspProtocolError::is_foreign_owner,
+            ),
+            (
+                HtmlCspProtocolErrorKind::ForeignDocument.error(),
+                "association belongs to a different document",
+                HtmlCspProtocolError::is_foreign_document,
+            ),
+            (
+                HtmlCspProtocolErrorKind::WrongProcessor.error(),
+                "processor does not match the request",
+                HtmlCspProtocolError::is_wrong_processor,
+            ),
+            (
+                HtmlCspProtocolErrorKind::WrongProfile.error(),
+                "processor profile does not match the request",
+                HtmlCspProtocolError::is_wrong_profile,
+            ),
+            (
+                HtmlCspProtocolErrorKind::WrongRequest.error(),
+                "request does not match the pending meta element state",
+                HtmlCspProtocolError::is_wrong_request,
+            ),
+            (
+                HtmlCspProtocolErrorKind::StaleAssociation.error(),
+                "association is stale",
+                HtmlCspProtocolError::is_stale_association,
+            ),
+            (
+                HtmlCspProtocolErrorKind::PriorPolicyMismatch.error(),
+                "prior policy does not match the document's current policy",
+                HtmlCspProtocolError::is_prior_policy_mismatch,
+            ),
+            (
+                HtmlCspProtocolErrorKind::WrongNativeArtifactType.error(),
+                "native policy artifact has the wrong type",
+                HtmlCspProtocolError::is_wrong_native_artifact_type,
+            ),
+            (
+                HtmlCspProtocolErrorKind::EmptyContent.error(),
+                "meta CSP content is empty",
+                HtmlCspProtocolError::is_empty_content,
+            ),
+            (
+                HtmlCspProtocolErrorKind::RepresentationExhausted.error(),
+                "CSP accounting size cannot be represented on this platform",
+                HtmlCspProtocolError::is_representation_exhausted,
+            ),
+            (
+                HtmlCspProtocolErrorKind::InvalidStorage.error(),
+                "CSP policy storage is invalid",
+                HtmlCspProtocolError::is_invalid_storage,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
+    }
+}

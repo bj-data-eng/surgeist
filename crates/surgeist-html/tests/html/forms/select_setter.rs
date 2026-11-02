@@ -1,7 +1,7 @@
 //! Literal Select setter outcomes from HTML877d40372–40385 and40411–40423.
 use surgeist_html::HtmlOptionFlags;
 use surgeist_html::bounded::{
-    HtmlSelectCursorError, HtmlSelectSetterAction as Action, HtmlSelectSetterCursor as Cursor,
+    HtmlSelectSetterAction as Action, HtmlSelectSetterCursor as Cursor,
     HtmlSelectSetterReply as Reply,
 };
 
@@ -201,7 +201,7 @@ fn wrong_replies_preserve_every_phase_and_allow_the_actual_continuation() {
             };
             for &reply in wrong {
                 let before = cursor;
-                assert_eq!(cursor.reply(reply), Err(HtmlSelectCursorError::Reply));
+                assert!(matches!(cursor.reply(reply), Err(ref e) if e.is_reply()));
                 assert_eq!(cursor, before);
                 assert_eq!(cursor.action(), pending);
             }

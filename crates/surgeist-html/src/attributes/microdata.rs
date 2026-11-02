@@ -600,3 +600,58 @@ impl HtmlMicrodataTokenAction<'_, '_> {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    /// Every cause states its documented meaning, and exactly one of the
+    /// cause predicates, its own, recognizes it.
+    #[test]
+    fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
+        type Predicate = fn(&HtmlMicrodataTokenInterpretationError) -> bool;
+        let cases: Vec<(HtmlMicrodataTokenInterpretationError, &str, Predicate)> = vec![
+            (
+                HtmlMicrodataTokenInterpretationErrorKind::Consumed.error(),
+                "microdata token interpretation was already consumed",
+                HtmlMicrodataTokenInterpretationError::is_consumed,
+            ),
+            (
+                HtmlMicrodataTokenInterpretationErrorKind::NotReady.error(),
+                "microdata token interpretation has an unfinished step",
+                HtmlMicrodataTokenInterpretationError::is_not_ready,
+            ),
+            (
+                HtmlMicrodataTokenInterpretationErrorKind::Stopped.error(),
+                "microdata token interpretation was stopped",
+                HtmlMicrodataTokenInterpretationError::is_stopped,
+            ),
+            (
+                HtmlMicrodataTokenInterpretationErrorKind::ReservationNotPerformed.error(),
+                "microdata token storage reservation was not performed",
+                HtmlMicrodataTokenInterpretationError::is_reservation_not_performed,
+            ),
+            (
+                HtmlMicrodataTokenInterpretationErrorKind::ReservationAlreadyAttempted.error(),
+                "microdata token storage reservation was already attempted",
+                HtmlMicrodataTokenInterpretationError::is_reservation_already_attempted,
+            ),
+            (
+                HtmlMicrodataTokenInterpretationErrorKind::RepresentationExhausted.error(),
+                "microdata token interpretation size cannot be represented on this platform",
+                HtmlMicrodataTokenInterpretationError::is_representation_exhausted,
+            ),
+            (
+                HtmlMicrodataTokenInterpretationErrorKind::AllocationFailed.error(),
+                "reserving microdata token storage failed",
+                HtmlMicrodataTokenInterpretationError::is_allocation_failed,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
+    }
+}

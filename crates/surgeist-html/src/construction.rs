@@ -440,7 +440,7 @@ impl fmt::Display for HtmlConstructionError {
                 attempted,
             } => write!(
                 f,
-                "{resource} limit of {limit} would be exceeded by {attempted}"
+                "{resource} limit of {limit} cannot admit a total of {attempted}"
             ),
         }
     }
@@ -1735,6 +1735,180 @@ mod tests {
                 stored.data().code_units(),
                 data.encode_utf16().collect::<Vec<_>>()
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    /// Every cause states its documented meaning, and exactly one of the
+    /// cause predicates, its own, recognizes it.
+    #[test]
+    fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
+        type Predicate = fn(&HtmlConstructionError) -> bool;
+        let cases: Vec<(HtmlConstructionError, &str, Predicate)> = vec![
+            (
+                HtmlConstructionErrorKind::ForeignBuilder.error(),
+                "node handle belongs to a different builder",
+                HtmlConstructionError::is_foreign_builder,
+            ),
+            (
+                HtmlConstructionErrorKind::ParentCannotHaveChildren.error(),
+                "text, comment, processing-instruction and doctype nodes cannot have children",
+                HtmlConstructionError::is_parent_cannot_have_children,
+            ),
+            (
+                HtmlConstructionErrorKind::TemplateContentsRequired.error(),
+                "template children must be appended to its separate contents",
+                HtmlConstructionError::is_template_contents_required,
+            ),
+            (
+                HtmlConstructionErrorKind::ShadowHostMustBeElement.error(),
+                "a shadow root requires an element host",
+                HtmlConstructionError::is_shadow_host_must_be_element,
+            ),
+            (
+                HtmlConstructionErrorKind::ShadowAlreadyAttached.error(),
+                "element already has a shadow root",
+                HtmlConstructionError::is_shadow_already_attached,
+            ),
+            (
+                HtmlConstructionErrorKind::UnknownNode.error(),
+                "node does not exist in this builder",
+                HtmlConstructionError::is_unknown_node,
+            ),
+            (
+                HtmlConstructionErrorKind::WrongNodeKind.error(),
+                "node kind cannot take part in this command",
+                HtmlConstructionError::is_wrong_node_kind,
+            ),
+            (
+                HtmlConstructionErrorKind::RootMove.error(),
+                "documents and fragments cannot be moved or detached",
+                HtmlConstructionError::is_root_move,
+            ),
+            (
+                HtmlConstructionErrorKind::AssociationMove.error(),
+                "template contents and shadow fragments cannot be moved as ordinary children",
+                HtmlConstructionError::is_association_move,
+            ),
+            (
+                HtmlConstructionErrorKind::WrongSibling.error(),
+                "reference node is not a child of the target parent",
+                HtmlConstructionError::is_wrong_sibling,
+            ),
+            (
+                HtmlConstructionErrorKind::Cycle.error(),
+                "move would make a node its own ancestor",
+                HtmlConstructionError::is_cycle,
+            ),
+            (
+                HtmlConstructionErrorKind::AssociationAlreadyOwned.error(),
+                "fragment is already associated with another owner",
+                HtmlConstructionError::is_association_already_owned,
+            ),
+            (
+                HtmlConstructionErrorKind::InvalidTemplateAssociation.error(),
+                "template contents association does not satisfy the template rules",
+                HtmlConstructionError::is_invalid_template_association,
+            ),
+            (
+                HtmlConstructionErrorKind::AttributeNameMismatch.error(),
+                "attribute candidate name does not match the planned name",
+                HtmlConstructionError::is_attribute_name_mismatch,
+            ),
+            (
+                HtmlConstructionErrorKind::AttributeOrderMismatch.error(),
+                "attribute candidates were not presented in order",
+                HtmlConstructionError::is_attribute_order_mismatch,
+            ),
+            (
+                HtmlConstructionErrorKind::InvalidShadowAssociation.error(),
+                "shadow association does not satisfy the shadow host rules",
+                HtmlConstructionError::is_invalid_shadow_association,
+            ),
+            (
+                HtmlConstructionErrorKind::InvalidContentsReference.error(),
+                "replacement template contents are the existing contents",
+                HtmlConstructionError::is_invalid_contents_reference,
+            ),
+            (
+                HtmlConstructionErrorKind::ParentChildConflict.error(),
+                "parent and child records disagree about their relationship",
+                HtmlConstructionError::is_parent_child_conflict,
+            ),
+            (
+                HtmlConstructionErrorKind::InvalidOutputRoot.error(),
+                "published output root is not a detached document or fragment",
+                HtmlConstructionError::is_invalid_output_root,
+            ),
+            (
+                HtmlConstructionErrorKind::OperationConsumed.error(),
+                "construction operation has already been consumed",
+                HtmlConstructionError::is_operation_consumed,
+            ),
+            (
+                HtmlConstructionErrorKind::OperationNotReady.error(),
+                "construction operation still has pending actions",
+                HtmlConstructionError::is_operation_not_ready,
+            ),
+            (
+                HtmlConstructionErrorKind::ForeignAllocation.error(),
+                "retired storage does not belong to this result",
+                HtmlConstructionError::is_foreign_allocation,
+            ),
+            (
+                HtmlConstructionErrorKind::CapacityMismatch.error(),
+                "observed capacity does not match the pending reservation",
+                HtmlConstructionError::is_capacity_mismatch,
+            ),
+            (
+                HtmlConstructionErrorKind::SharedAllocationAliased.error(),
+                "result storage is shared and cannot be recovered",
+                HtmlConstructionError::is_shared_allocation_aliased,
+            ),
+            (
+                HtmlConstructionErrorKind::ReleaseUnderflow.error(),
+                "released usage exceeds the admitted usage",
+                HtmlConstructionError::is_release_underflow,
+            ),
+            (
+                HtmlConstructionErrorKind::RepresentationExhausted.error(),
+                "storage count cannot be represented on this platform",
+                HtmlConstructionError::is_representation_exhausted,
+            ),
+            (
+                HtmlConstructionErrorKind::AllocationFailed.error(),
+                "reserving arena or edge storage failed",
+                HtmlConstructionError::is_allocation_failed,
+            ),
+            (
+                HtmlConstructionErrorKind::DuplicateAttribute {
+                    first: 0,
+                    duplicate: 1,
+                }
+                .error(),
+                "attribute at index 1 duplicates the namespace and local name of the attribute at index 0",
+                HtmlConstructionError::is_duplicate_attribute,
+            ),
+            (
+                HtmlConstructionErrorKind::LimitExceeded {
+                    resource: HtmlConstructionResource::Nodes,
+                    limit: 1,
+                    attempted: 2,
+                }
+                .error(),
+                "node limit of 1 cannot admit a total of 2",
+                HtmlConstructionError::is_limit_exceeded,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
         }
     }
 }

@@ -54,19 +54,53 @@ pub enum HtmlDialogFocusingReply {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlDialogFocusingError {
+pub struct HtmlDialogFocusingError {
+    kind: HtmlDialogFocusingErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlDialogFocusingErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlDialogFocusingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending Dialog focusing action",
-            Self::Terminal => "Dialog focusing is already complete",
-        })
+
+impl HtmlDialogFocusingErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlDialogFocusingError {
+        HtmlDialogFocusingError { kind: self }
     }
 }
+
+impl From<HtmlDialogFocusingErrorKind> for HtmlDialogFocusingError {
+    fn from(kind: HtmlDialogFocusingErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlDialogFocusingError {
+    /// Whether the cause is: reply does not match the pending Dialog focusing action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlDialogFocusingErrorKind::WrongReply)
+    }
+    /// Whether the cause is: Dialog focusing is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlDialogFocusingErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlDialogFocusingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlDialogFocusingErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending Dialog focusing action")
+            }
+            HtmlDialogFocusingErrorKind::Terminal => {
+                f.write_str("Dialog focusing is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlDialogFocusingError {}
 
 /// Constant-state, identity-free complete Dialog focusing language protocol.
@@ -93,7 +127,7 @@ impl HtmlDialogFocusingCursor {
         use HtmlDialogFocusingAction as A;
         use HtmlDialogFocusingReply as R;
         if self.pending == A::Complete {
-            return Err(HtmlDialogFocusingError::Terminal);
+            return Err(HtmlDialogFocusingErrorKind::Terminal.error());
         }
         let mut next = *self;
         next.pending = match (self.pending, reply) {
@@ -123,7 +157,7 @@ impl HtmlDialogFocusingCursor {
             (A::ReadSameOrigin { .. }, R::SameOrigin(true)) => A::EmptyAutofocusCandidates,
             (A::EmptyAutofocusCandidates, R::Applied) => A::SetAutofocusProcessed,
             (A::SetAutofocusProcessed, R::Applied) => A::Complete,
-            _ => return Err(HtmlDialogFocusingError::WrongReply),
+            _ => return Err(HtmlDialogFocusingErrorKind::WrongReply.error()),
         };
         *self = next;
         Ok(())
@@ -178,5 +212,33 @@ pub const fn dialog_subject_focusing_decision(
     ) {
         (Some(true), Some(false), Some(false)) => HtmlDialogSubjectFocusingDecision::NoChange,
         _ => HtmlDialogSubjectFocusingDecision::NeedsActualFocusing,
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_dialog_focusing_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlDialogFocusingError) -> bool;
+        let cases: Vec<(HtmlDialogFocusingError, &str, Predicate)> = vec![
+            (
+                HtmlDialogFocusingErrorKind::WrongReply.error(),
+                "reply does not match the pending Dialog focusing action",
+                HtmlDialogFocusingError::is_wrong_reply,
+            ),
+            (
+                HtmlDialogFocusingErrorKind::Terminal.error(),
+                "Dialog focusing is already complete",
+                HtmlDialogFocusingError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

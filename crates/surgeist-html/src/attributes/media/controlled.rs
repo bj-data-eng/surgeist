@@ -655,3 +655,63 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInputs<'ra
         &self.name
     }
 }
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    /// Every cause states its documented meaning, and exactly one of the
+    /// cause predicates, its own, recognizes it.
+    #[test]
+    fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
+        type Predicate = fn(&HtmlMediaInterpretationError) -> bool;
+        let cases: Vec<(HtmlMediaInterpretationError, &str, Predicate)> = vec![
+            (
+                HtmlMediaInterpretationErrorKind::Consumed.error(),
+                "media interpretation was already consumed",
+                HtmlMediaInterpretationError::is_consumed,
+            ),
+            (
+                HtmlMediaInterpretationErrorKind::NotReady.error(),
+                "media interpretation has an unfinished step",
+                HtmlMediaInterpretationError::is_not_ready,
+            ),
+            (
+                HtmlMediaInterpretationErrorKind::Stopped.error(),
+                "media interpretation was stopped",
+                HtmlMediaInterpretationError::is_stopped,
+            ),
+            (
+                HtmlMediaInterpretationErrorKind::WrongPhase.error(),
+                "media interpretation step was requested out of order",
+                HtmlMediaInterpretationError::is_wrong_phase,
+            ),
+            (
+                HtmlMediaInterpretationErrorKind::NameAlreadySupplied.error(),
+                "media interpretation already has its name attribute",
+                HtmlMediaInterpretationError::is_name_already_supplied,
+            ),
+            (
+                HtmlMediaInterpretationErrorKind::NameNotSupplied.error(),
+                "media interpretation has no name attribute yet",
+                HtmlMediaInterpretationError::is_name_not_supplied,
+            ),
+            (
+                HtmlMediaInterpretationErrorKind::WrongField.error(),
+                "attribute is not the field this interpretation expects",
+                HtmlMediaInterpretationError::is_wrong_field,
+            ),
+            (
+                HtmlMediaInterpretationErrorKind::RepresentationExhausted.error(),
+                "media interpretation size cannot be represented on this platform",
+                HtmlMediaInterpretationError::is_representation_exhausted,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
+    }
+}

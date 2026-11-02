@@ -3,19 +3,53 @@ use std::num::NonZeroUsize;
 
 /// Rejected transitions leave the original watcher state unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlCloseWatcherStateError {
+pub struct HtmlCloseWatcherStateError {
+    kind: HtmlCloseWatcherStateErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlCloseWatcherStateErrorKind {
     AlreadyRunning,
     NotRunning,
 }
-impl std::fmt::Display for HtmlCloseWatcherStateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::AlreadyRunning => "close watcher cancel action is already running",
-            Self::NotRunning => "close watcher cancel action is not running",
-        })
+
+impl HtmlCloseWatcherStateErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlCloseWatcherStateError {
+        HtmlCloseWatcherStateError { kind: self }
     }
 }
+
+impl From<HtmlCloseWatcherStateErrorKind> for HtmlCloseWatcherStateError {
+    fn from(kind: HtmlCloseWatcherStateErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlCloseWatcherStateError {
+    /// Whether the cause is: close watcher cancel action is already running.
+    pub fn is_already_running(&self) -> bool {
+        matches!(self.kind, HtmlCloseWatcherStateErrorKind::AlreadyRunning)
+    }
+    /// Whether the cause is: close watcher cancel action is not running.
+    pub fn is_not_running(&self) -> bool {
+        matches!(self.kind, HtmlCloseWatcherStateErrorKind::NotRunning)
+    }
+}
+
+impl std::fmt::Display for HtmlCloseWatcherStateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlCloseWatcherStateErrorKind::AlreadyRunning => {
+                f.write_str("close watcher cancel action is already running")
+            }
+            HtmlCloseWatcherStateErrorKind::NotRunning => {
+                f.write_str("close watcher cancel action is not running")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlCloseWatcherStateError {}
 
 /// Reads and effects on the actual original watcher and Window. The adapter
@@ -63,23 +97,66 @@ pub enum HtmlCloseWatcherRequestReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlCloseWatcherRequestError {
+pub struct HtmlCloseWatcherRequestError {
+    kind: HtmlCloseWatcherRequestErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlCloseWatcherRequestErrorKind {
     WrongReply,
     Terminal,
     /// Selected correction to the contradictory source cancel-action prose:
     /// a noncancelable action must return true. It cannot prevent Close.
     NoncancelableActionPreventedClose,
 }
-impl std::fmt::Display for HtmlCloseWatcherRequestError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending close watcher action",
-            Self::Terminal => "close watcher request is already complete",
-            Self::NoncancelableActionPreventedClose => "noncancelable action cannot prevent close",
-        })
+
+impl HtmlCloseWatcherRequestErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlCloseWatcherRequestError {
+        HtmlCloseWatcherRequestError { kind: self }
     }
 }
+
+impl From<HtmlCloseWatcherRequestErrorKind> for HtmlCloseWatcherRequestError {
+    fn from(kind: HtmlCloseWatcherRequestErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlCloseWatcherRequestError {
+    /// Whether the cause is: reply does not match the pending close watcher action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlCloseWatcherRequestErrorKind::WrongReply)
+    }
+    /// Whether the cause is: close watcher request is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlCloseWatcherRequestErrorKind::Terminal)
+    }
+    /// Whether the cause is: noncancelable action cannot prevent close.
+    pub fn is_noncancelable_action_prevented_close(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlCloseWatcherRequestErrorKind::NoncancelableActionPreventedClose
+        )
+    }
+}
+
+impl std::fmt::Display for HtmlCloseWatcherRequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlCloseWatcherRequestErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending close watcher action")
+            }
+            HtmlCloseWatcherRequestErrorKind::Terminal => {
+                f.write_str("close watcher request is already complete")
+            }
+            HtmlCloseWatcherRequestErrorKind::NoncancelableActionPreventedClose => {
+                f.write_str("noncancelable action cannot prevent close")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlCloseWatcherRequestError {}
 
 /// Allocation-free language cursor with no identity registry, event dispatcher,
@@ -112,7 +189,7 @@ impl HtmlCloseWatcherRequestCursor {
         reply: HtmlCloseWatcherRequestReply,
     ) -> Result<(), HtmlCloseWatcherRequestError> {
         if matches!(self.pending, HtmlCloseWatcherRequestAction::Complete(_)) {
-            return Err(HtmlCloseWatcherRequestError::Terminal);
+            return Err(HtmlCloseWatcherRequestErrorKind::Terminal.error());
         }
         let mut next = *self;
         next.advance(reply)?;
@@ -173,7 +250,9 @@ impl HtmlCloseWatcherRequestCursor {
             },
             (A::RunCancelAction { can_prevent_close }, R::CancelActionResult(should_continue)) => {
                 if !can_prevent_close && !should_continue {
-                    return Err(HtmlCloseWatcherRequestError::NoncancelableActionPreventedClose);
+                    return Err(
+                        HtmlCloseWatcherRequestErrorKind::NoncancelableActionPreventedClose.error(),
+                    );
                 }
                 self.should_continue = should_continue;
                 A::SetRunningCancelAction(false)
@@ -189,8 +268,64 @@ impl HtmlCloseWatcherRequestCursor {
             (A::ConsumeHistoryActionActivation, R::Applied) => A::Complete(false),
             (A::DestroyMembership, R::Applied) => A::RunCloseAction,
             (A::RunCloseAction, R::Applied) => A::Complete(true),
-            _ => return Err(HtmlCloseWatcherRequestError::WrongReply),
+            _ => return Err(HtmlCloseWatcherRequestErrorKind::WrongReply.error()),
         };
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_close_watcher_request_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlCloseWatcherRequestError) -> bool;
+        let cases: Vec<(HtmlCloseWatcherRequestError, &str, Predicate)> = vec![
+            (
+                HtmlCloseWatcherRequestErrorKind::WrongReply.error(),
+                "reply does not match the pending close watcher action",
+                HtmlCloseWatcherRequestError::is_wrong_reply,
+            ),
+            (
+                HtmlCloseWatcherRequestErrorKind::Terminal.error(),
+                "close watcher request is already complete",
+                HtmlCloseWatcherRequestError::is_terminal,
+            ),
+            (
+                HtmlCloseWatcherRequestErrorKind::NoncancelableActionPreventedClose.error(),
+                "noncancelable action cannot prevent close",
+                HtmlCloseWatcherRequestError::is_noncancelable_action_prevented_close,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
+    }
+
+    #[test]
+    fn html_close_watcher_state_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlCloseWatcherStateError) -> bool;
+        let cases: Vec<(HtmlCloseWatcherStateError, &str, Predicate)> = vec![
+            (
+                HtmlCloseWatcherStateErrorKind::AlreadyRunning.error(),
+                "close watcher cancel action is already running",
+                HtmlCloseWatcherStateError::is_already_running,
+            ),
+            (
+                HtmlCloseWatcherStateErrorKind::NotRunning.error(),
+                "close watcher cancel action is not running",
+                HtmlCloseWatcherStateError::is_not_running,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

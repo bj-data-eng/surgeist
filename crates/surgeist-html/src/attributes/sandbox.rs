@@ -322,7 +322,7 @@ pub enum HtmlSandboxValueError {
 impl fmt::Display for HtmlSandboxValueError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Duplicate(error) => error.fmt(f),
+            Self::Duplicate(_) => f.write_str("sandbox value contains a duplicate keyword"),
             Self::Redundant(error) => error.fmt(f),
         }
     }

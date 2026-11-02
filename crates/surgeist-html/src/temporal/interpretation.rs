@@ -1025,3 +1025,51 @@ impl HtmlTimeElementInterpretationAction<'_, '_> {
         }
     }
 }
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    /// Every cause states its documented meaning, and exactly one of the
+    /// cause predicates, its own, recognizes it.
+    #[test]
+    fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
+        type Predicate = fn(&HtmlTimeElementInterpretationError) -> bool;
+        let cases: Vec<(HtmlTimeElementInterpretationError, &str, Predicate)> = vec![
+            (
+                HtmlTimeElementInterpretationErrorKind::NotReady.error(),
+                "time-element interpretation has an unfinished step",
+                HtmlTimeElementInterpretationError::is_not_ready,
+            ),
+            (
+                HtmlTimeElementInterpretationErrorKind::Consumed.error(),
+                "time-element interpretation was already consumed",
+                HtmlTimeElementInterpretationError::is_consumed,
+            ),
+            (
+                HtmlTimeElementInterpretationErrorKind::RepresentationExhausted.error(),
+                "time-element interpretation size cannot be represented on this platform",
+                HtmlTimeElementInterpretationError::is_representation_exhausted,
+            ),
+            (
+                HtmlTimeElementInterpretationErrorKind::Processing(
+                    NumericMaterializationError::Digits(crate::HtmlDecimalDigitsError::Empty),
+                )
+                .error(),
+                "time-element value processing failed",
+                |e| e.processing_failure().is_some(),
+            ),
+            (
+                HtmlTimeElementInterpretationErrorKind::InvalidRecognizedPlan.error(),
+                "recognized time-element plan does not match its value",
+                HtmlTimeElementInterpretationError::is_invalid_recognized_plan,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
+    }
+}

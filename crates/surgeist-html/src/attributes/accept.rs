@@ -63,7 +63,7 @@ impl HtmlAcceptSpecifier {
     /// HTML requires only a leading dot, in addition to comma-token grammar.
     /// A suffix, registered type, filename grammar or scalar string is not required.
     pub fn extension(value: impl Into<DocumentString>) -> Result<Self, HtmlAcceptSpecifierError> {
-        let token = HtmlCommaToken::new(value).map_err(HtmlAcceptSpecifierError::Token)?;
+        let token = HtmlCommaToken::new(value)?;
         if token.value().code_units().first() != Some(&u16::from(b'.')) {
             return Err(HtmlAcceptSpecifierError::MissingLeadingDot);
         }
@@ -91,6 +91,11 @@ impl fmt::Display for HtmlAcceptSpecifierError {
             Self::Token(_) => "accept specifier is not a valid comma-separated token",
             Self::MissingLeadingDot => "accept file extension does not start with a full stop",
         })
+    }
+}
+impl From<HtmlTokenError> for HtmlAcceptSpecifierError {
+    fn from(error: HtmlTokenError) -> Self {
+        Self::Token(error)
     }
 }
 impl Error for HtmlAcceptSpecifierError {

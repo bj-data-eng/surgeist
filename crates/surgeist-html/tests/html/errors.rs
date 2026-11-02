@@ -1053,7 +1053,7 @@ fn construction_limit_refusals_report_the_resource_limit_and_attempted_total() {
     assert_eq!(refused.attempted(), Some(8));
     assert_eq!(
         message(&refused),
-        "UTF-16 unit limit of 2 would be exceeded by 8"
+        "UTF-16 unit limit of 2 cannot admit a total of 8"
     );
     for (resource, text) in [
         (HtmlConstructionResource::Nodes, "node"),
@@ -1296,4 +1296,85 @@ fn refused_pool_seal_returns_the_open_root_with_the_cause() {
     assert_eq!(error, HtmlValuePoolError::NotReady);
     pool.abort_root(root)
         .expect("the returned root is still open");
+}
+
+#[test]
+fn wrappers_describe_their_own_operation_and_expose_the_cause_once() {
+    use surgeist_html::{HtmlControlLengthError, HtmlInputNumericConstraintsError};
+    let admission = refused_admission();
+
+    let duplicate = HtmlSandboxValueError::Duplicate(duplicate_token());
+    assert_eq!(
+        message(&duplicate),
+        "sandbox value contains a duplicate keyword"
+    );
+    assert_eq!(cause(&duplicate), Some(duplicate_token().to_string()));
+
+    let control = HtmlControlLengthError::Admission(admission);
+    assert_eq!(
+        message(&control),
+        "control value was refused by raw-value admission"
+    );
+    assert_eq!(cause(&control), Some(admission.to_string()));
+    assert_eq!(
+        message(&HtmlControlLengthError::InputCodeUnitsOverflow),
+        "control input UTF-16 length cannot be represented"
+    );
+
+    let constraints = HtmlInputNumericConstraintsError::Admission(admission);
+    assert_eq!(
+        message(&constraints),
+        "input numeric constraint value was refused by raw-value admission"
+    );
+    assert_eq!(cause(&constraints), Some(admission.to_string()));
+    assert_eq!(
+        message(&HtmlInputNumericConstraintsError::InputCodeUnitsOverflow),
+        "input numeric UTF-16 length cannot be represented"
+    );
+
+    let protocol: HtmlCspError<HtmlValueAdmissionError> = {
+        let mut other = HtmlCspOwner::new_with(&mut |_| Ok::<(), Infallible>(())).unwrap();
+        let mut owner = HtmlCspOwner::new_with(&mut |_| Ok::<(), Infallible>(())).unwrap();
+        let association = owner
+            .initial_document_with(&mut |_| Ok::<(), Infallible>(()))
+            .unwrap();
+        let profile = HtmlCspProcessorAuthority::new_with(&mut |_| Ok::<(), Infallible>(()))
+            .unwrap()
+            .profile_with(1, &mut |_| Ok::<(), Infallible>(()))
+            .unwrap();
+        let rejected = other
+            .request_meta_insertion_with(
+                &association,
+                &profile,
+                DocumentString::from("default-src 'none'"),
+                &mut |_| Ok::<(), Infallible>(()),
+            )
+            .unwrap_err();
+        match rejected.error {
+            HtmlCspError::Protocol(error) => HtmlCspError::Protocol(error),
+            HtmlCspError::Interrupted(never) => match never {},
+        }
+    };
+    assert_eq!(message(&protocol), "CSP protocol was violated");
+    assert_eq!(
+        cause(&protocol).as_deref(),
+        Some("policy state belongs to a different CSP owner")
+    );
+    let interrupted: HtmlCspError<HtmlValueAdmissionError> = HtmlCspError::Interrupted(admission);
+    assert_eq!(
+        message(&interrupted),
+        "CSP processing was interrupted by the caller's admission"
+    );
+    assert_eq!(cause(&interrupted), Some(admission.to_string()));
+}
+
+#[test]
+fn accept_specifier_converts_a_token_failure_with_from() {
+    let token = HtmlTokenError::CommaTokenComma {
+        code_unit_offset: 0,
+    };
+    assert_eq!(
+        HtmlAcceptSpecifierError::from(token),
+        HtmlAcceptSpecifierError::Token(token)
+    );
 }

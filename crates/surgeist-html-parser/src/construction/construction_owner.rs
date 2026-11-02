@@ -92,8 +92,11 @@ enum OwnerFault {
     Unlisted,
 }
 
+/// A predicate of the owner's error cause.
+type CausePredicate = fn(&HtmlConstructionError) -> bool;
+
 /// The owner's cause predicates, each with the fault it names.
-const OWNER_CAUSES: [(fn(&HtmlConstructionError) -> bool, OwnerFault); 29] = [
+const OWNER_CAUSES: [(CausePredicate, OwnerFault); 29] = [
     (
         HtmlConstructionError::is_foreign_builder,
         OwnerFault::ForeignBuilder,

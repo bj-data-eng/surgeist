@@ -1569,23 +1569,27 @@ serialization implementation is copied into HTML or parser.
 ## Error conventions and enum evolution
 
 The crate documentation in [lib.rs](../../crates/surgeist-html/src/lib.rs) owns
-this policy; the table records how each family follows it.
+this policy. A reader predicts any error's shape by asking, in order, whether
+the refusal hands back owners, whether it misuses an owner or cursor protocol or
+merges many operations, whether a consumer matches every variant exhaustively,
+and otherwise that it names a rule or vocabulary.
 
 | Family | Shape | Evolution |
 | --- | --- | --- |
-| `HtmlConstructionError`, the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
-| Conformance, token, syntax and range verdicts such as `HtmlTokenError`, `HtmlAttributeConformanceError`, `HtmlTemporalError`, `HtmlSrcsetAuthorViolation` | Enum naming one rule or syntax class | `#[non_exhaustive]` |
-| Reply and cursor protocol misuse such as `HtmlFocusingError` and `HtmlDialogCursorError` | Enum of the misuse | `#[non_exhaustive]` |
-| Resource accounting such as `IntegerUnitStepError`, `FloatingPointAllocationError`, `AutocompleteMaterializationError`, `NumericMaterializationError`, `IntegerRecoveryError`, `RangeNumericError`, `HtmlSrcsetInterpretationError`, `HtmlPiPseudoAttributeError` | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
-| Two-source wrappers `HtmlCspError` and the rel, media and microdata-token action errors | Enum separating the caller's refusal from this crate's | Exhaustive |
+| `HtmlConstructionRejection`, `HtmlConstructionAttributeRejection`, `HtmlConstructionActionFailure`, `HtmlValuePoolSealRefusal` | Carrier struct with the reason and the recovered owners | Fields private |
+| `HtmlConstructionError`, the rel, media, microdata-token and time-element interpretation errors, `HtmlCspProtocolError`, and the cursor and reply errors such as `HtmlFocusingError`, `HtmlDialogCursorError`, `HtmlSelectCursorError`, `HtmlSlotAssignCursorError`, `HtmlFormOwnerResetCursorError`, `HtmlCloseWatcherRequestError` | Struct with a private cause, `is_*` predicates and fact accessors | New causes are non-breaking |
+| Resource accounting that a consumer matches exhaustively: `IntegerUnitStepError` and `NumericMaterializationError` (semantics `time_element.rs`, `natural_dimensions.rs`, `image_dimensions.rs`, `semantics.rs`), `FloatingPointAllocationError` (semantics `range.rs`), `IntegerRecoveryError` (semantics `semantics.rs`, `meta_pragma.rs`), `AutocompleteMaterializationError` (semantics `autocomplete.rs`), `HtmlPiPseudoAttributeError` (parser `pi.rs`, semantics `template.rs`) | Enum of the charged resource or integrity failure | Exhaustive: a driver must charge every resource |
+| Two-source wrappers `HtmlCspError` (DOM `store/csp.rs`) and the rel, media and microdata-token action errors (parser, semantics) | Enum separating the caller's refusal from this crate's | Exhaustive |
+| Rule, syntax, range and unavailability verdicts such as `HtmlTokenError`, `HtmlAttributeConformanceError`, `HtmlTemporalError`, `HtmlSrcsetAuthorViolation`, `RangeNumericError`, `HtmlSrcsetInterpretationError`, and vocabularies that drivers construct such as `HtmlValuePoolError` and `HtmlAttributeValidationError` | Enum naming one rule, syntax class or reason | `#[non_exhaustive]` |
 
 Keyword and state sets that the pinned standard enumerates, and the action,
 reply, outcome and step enums of the controlled operations, are exhaustive. Every
-error implements `Display` and `Error`; a wrapper exposes its cause through
-`source`. Errors capture no backtrace, because most are `Clone` and `Eq` values
-returned under exact allocation accounting. The `From` conversion of an owned
-cause replaces repeated `map_err`; the generic caller-error wrappers keep
-`map_err` because a blanket `From` would overlap the protocol conversion.
+error implements `Display` and `Error`; a wrapper's text describes its own
+operation and exposes its cause through `source`. Errors capture no backtrace,
+because most are `Clone` and `Eq` values returned under exact allocation
+accounting. The `From` conversion of an owned cause replaces repeated
+`map_err`; the generic caller-error wrappers keep `map_err` because a blanket
+`From` would overlap the protocol conversion.
 
 ## Consumer, generated-data and attribution changes
 

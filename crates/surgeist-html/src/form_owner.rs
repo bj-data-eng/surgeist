@@ -114,15 +114,45 @@ pub enum HtmlFormOwnerResetReply {
 
 /// A reply which does not match the current pending operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlFormOwnerResetCursorError {
+pub struct HtmlFormOwnerResetCursorError {
+    kind: HtmlFormOwnerResetCursorErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlFormOwnerResetCursorErrorKind {
     Reply,
 }
-impl std::fmt::Display for HtmlFormOwnerResetCursorError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("form-owner reply does not match its pending action")
+
+impl HtmlFormOwnerResetCursorErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlFormOwnerResetCursorError {
+        HtmlFormOwnerResetCursorError { kind: self }
     }
 }
+
+impl From<HtmlFormOwnerResetCursorErrorKind> for HtmlFormOwnerResetCursorError {
+    fn from(kind: HtmlFormOwnerResetCursorErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlFormOwnerResetCursorError {
+    /// Whether the cause is: form-owner reply does not match its pending action.
+    pub fn is_reply(&self) -> bool {
+        matches!(self.kind, HtmlFormOwnerResetCursorErrorKind::Reply)
+    }
+}
+
+impl std::fmt::Display for HtmlFormOwnerResetCursorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlFormOwnerResetCursorErrorKind::Reply => {
+                f.write_str("form-owner reply does not match its pending action")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlFormOwnerResetCursorError {}
 
 #[derive(Clone, Copy, Debug)]
@@ -258,8 +288,29 @@ impl HtmlFormOwnerResetCursor {
             }
             (Phase::Associate, R::Applied) => self.phase = Phase::EffectsAfterAssociate,
             (Phase::EffectsAfterAssociate, R::Applied) => self.phase = Phase::Complete,
-            _ => return Err(HtmlFormOwnerResetCursorError::Reply),
+            _ => return Err(HtmlFormOwnerResetCursorErrorKind::Reply.error()),
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_form_owner_reset_cursor_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlFormOwnerResetCursorError) -> bool;
+        let cases: Vec<(HtmlFormOwnerResetCursorError, &str, Predicate)> = vec![(
+            HtmlFormOwnerResetCursorErrorKind::Reply.error(),
+            "form-owner reply does not match its pending action",
+            HtmlFormOwnerResetCursorError::is_reply,
+        )];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

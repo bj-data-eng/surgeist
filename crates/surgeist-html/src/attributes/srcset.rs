@@ -638,6 +638,7 @@ impl HtmlSrcsetReport {
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlSrcsetInterpretationError {
     RawAdmission(HtmlValueAdmissionError),
     RepresentationExhausted,
