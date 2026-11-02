@@ -247,9 +247,9 @@ struct FirstStop {
     usage: ParseUsage,
 }
 
-/// Exclusively mutable owner. Only the cancellation handle can be cloned.
 /// How many parents' sibling hints a controller keeps.
 const SIBLING_HINTS: usize = 16;
+/// Exclusively mutable owner. Only the cancellation handle can be cloned.
 pub(crate) struct ParseControl {
     limits: ResourceTable<u64>,
     usage: ParseUsage,
