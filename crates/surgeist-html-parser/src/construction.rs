@@ -497,6 +497,9 @@ struct SessionStorage {
     /// The registry row listing the document tree's style elements while every
     /// change to that list since it was built has been applied to it.
     style_order: Option<pending_association::CurrentOrder>,
+    /// The subtree whose insertion or removal last walked each color selection;
+    /// see [`meta::MetaBatch`].
+    meta_batches: meta::MetaDomainTable<Option<meta::MetaBatch>>,
 }
 
 use crate::bounded::HtmlConstructionResult;
@@ -550,6 +553,8 @@ struct PayloadStorage {
     /// The generation of the cached tree roots in [`NodeJoins`]; `None` once no
     /// later generation can be named, when nothing is cached.
     tree_stamp: Option<NonZeroU32>,
+    /// How many topology changes have been announced; see [`tree_root`].
+    topology_changes: u64,
 }
 /// Derived joins into the actual payload registry, one cell per record
 /// position. Dense record positions are append-only; a join never substitutes
@@ -2216,6 +2221,7 @@ impl SessionStorage {
             construction,
             failed_text_append: None,
             style_order: Some(pending_association::CurrentOrder::empty_main_tree()),
+            meta_batches: meta::MetaDomainTable::filled(None),
             payloads: PayloadStorage {
                 values,
                 allocation,
@@ -2229,6 +2235,7 @@ impl SessionStorage {
                 selectedcontent_rows: 0,
                 repeated_unique_rows: 0,
                 tree_stamp: NonZeroU32::new(1),
+                topology_changes: 0,
             },
         };
         let kind = match root {
@@ -6397,6 +6404,7 @@ impl SessionStorage {
             payloads,
             failed_text_append,
             style_order: _,
+            meta_batches: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
         } = self;
@@ -8671,6 +8679,7 @@ impl ParserArenaSession {
             payloads,
             failed_text_append: _,
             style_order: _,
+            meta_batches: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,
         } = self.storage.take().ok_or(SessionError::Consumed)?;

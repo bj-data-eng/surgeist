@@ -59,6 +59,16 @@ enum Decision {
     /// The gap is already recorded; nothing is selected.
     Unsatisfied,
 }
+/// The insertion or removal of a subtree during which a selection was last
+/// walked. The topology count makes it one particular change: a later change
+/// of the same subtree has a different count.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(super) struct MetaBatch {
+    root: usize,
+    removal: bool,
+    detached: Option<usize>,
+    topology_changes: u64,
+}
 /// A change to one meta, as it bears on a selection.
 #[derive(Clone, Copy)]
 enum Change {
@@ -777,7 +787,7 @@ impl SessionStorage {
                 .child_count()
                 == 0;
         if !alone {
-            return self.meta_candidates(c, document, detached, theme, scheme);
+            return self.meta_walk_subtree(c, document, detached, effects, theme, scheme);
         }
         let effect = if removal {
             Change::Removed
@@ -841,6 +851,57 @@ impl SessionStorage {
             deciding, found,
             "{domain:?}: the recorded deciding candidate differs from the walk's"
         );
+        Ok(())
+    }
+    /// Settles the selections for one candidate of a larger subtree. The first
+    /// candidate's hook walks the tree, and that walk sees the whole subtree
+    /// as it now stands, so the hooks of the other candidates of the same
+    /// insertion or removal find the selection exact and walk nothing.
+    fn meta_walk_subtree(
+        &mut self,
+        c: &mut ParseControl,
+        document: usize,
+        detached: Option<usize>,
+        effects: &FormEffects,
+        theme: bool,
+        scheme: bool,
+    ) -> Result<(), SessionError> {
+        let batch = MetaBatch {
+            root: effects.root,
+            removal: effects.stage == FormEffectStage::Removal,
+            detached,
+            topology_changes: self.payloads.topology_changes,
+        };
+        let slot = self.document_slot(c, document)?;
+        for (enabled, domain) in [
+            (theme, MetaDomain::ThemeColor),
+            (scheme, MetaDomain::ColorScheme),
+        ] {
+            if !enabled {
+                continue;
+            }
+            c.charge(WorkCategory::RecordVisit, 1)?;
+            let settled = self.meta_batches.copy(domain) == Some(batch)
+                && self
+                    .meta_history(slot)
+                    .map_err(|_| latch_registry_row(c))?
+                    .selections
+                    .copy(domain)
+                    .deciding()
+                    .is_some();
+            if !settled {
+                self.meta_candidates(
+                    c,
+                    document,
+                    detached,
+                    domain == MetaDomain::ThemeColor,
+                    domain == MetaDomain::ColorScheme,
+                )?;
+                *self.meta_batches.get_mut(domain) = Some(batch);
+            }
+            #[cfg(test)]
+            self.assert_selection_matches_walk(c, document, detached, domain)?;
+        }
         Ok(())
     }
     /// Brings the selection `domain` up to date with a change to `node`, the

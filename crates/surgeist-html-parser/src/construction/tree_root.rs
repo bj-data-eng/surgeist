@@ -175,6 +175,7 @@ impl SessionStorage {
         node: usize,
         destination: Option<usize>,
     ) -> Result<Reroot, SessionError> {
+        self.payloads.topology_changes = self.payloads.topology_changes.wrapping_add(1);
         control.charge(WorkCategory::RecordVisit, 1)?;
         let bare = self
             .construction
@@ -204,6 +205,7 @@ impl SessionStorage {
     /// repeats the invalidation, so a cell filled between the two cannot
     /// outlive the topology it described.
     pub(super) fn end_reroot(&mut self, reroot: Reroot) {
+        self.payloads.topology_changes = self.payloads.topology_changes.wrapping_add(1);
         match reroot {
             Reroot::Bare(node) => self.payloads.forget_tree_root(node),
             Reroot::Same => {}
