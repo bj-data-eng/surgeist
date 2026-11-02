@@ -1,6 +1,21 @@
 //! Decoded-Unicode HTML ingestion, recovery and source-owning immutable reports.
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
+// No run-time panic is reachable from parsing, so production code carries none
+// of the operations that can panic. A site that is provably total says why in a
+// narrow `#[expect]`; test code is outside the gate.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::string_slice,
+        clippy::arithmetic_side_effects
+    )
+)]
 
 use surgeist_html::bounded;
 use surgeist_html::*;

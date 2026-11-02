@@ -69,13 +69,13 @@ pub(crate) struct ConsumedBoundaryAdvance {
 
 impl ConsumedBoundaryAdvance {
     pub(crate) fn source_reads(&self) -> usize {
-        self.end - self.start.offset
+        self.end.saturating_sub(self.start.offset)
     }
 
     pub(crate) fn comparison_bytes(&self) -> usize {
         match self.units {
             DecodedSourceUnits::Utf8 { length, .. } => length,
-            DecodedSourceUnits::Utf16 { length, .. } => length * 2,
+            DecodedSourceUnits::Utf16 { length, .. } => length.saturating_mul(2),
         }
     }
 }
@@ -604,7 +604,7 @@ impl HtmlSourceRange {
     }
     /// Returns the number of input units in this range.
     pub fn len(&self) -> usize {
-        self.end - self.start
+        self.end.saturating_sub(self.start)
     }
     /// Reports whether this is an empty range or end anchor.
     pub fn is_empty(&self) -> bool {

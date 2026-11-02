@@ -105,6 +105,10 @@ slots!(HtmlParseResource, RESOURCE_COUNT, {
     WorkCredits => 18,
 });
 // `RESOURCES` lists every resource once, in discriminant order.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "evaluated at compile time with i < RESOURCE_COUNT, the array length: an index out of range fails the build"
+)]
 const _: () = {
     let mut i = 0;
     while i < RESOURCE_COUNT {

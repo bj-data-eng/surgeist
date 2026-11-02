@@ -176,7 +176,10 @@ impl HeadState<'_> {
             .ok_or(HeadError::InvalidFormattingState)?;
         write(size_of::<Option<FormattingEntry>>(), 1, c)?;
         for shift in index..last {
-            if !self.formatting.swap_slots(shift, shift + 1, c)? {
+            if !self
+                .formatting
+                .swap_slots(shift, shift.saturating_add(1), c)?
+            {
                 return Err(HeadError::InvalidFormattingState);
             }
         }
@@ -221,14 +224,14 @@ impl HeadState<'_> {
         }
         while index > 0 {
             write(size_of::<usize>(), 1, c)?;
-            index -= 1;
+            index = index.saturating_sub(1);
             let stop = match self.format_node(index, c)? {
                 None => true,
                 Some(node) => self.before.kernel.stack_index(&node, c)?.is_some(),
             };
             if stop {
                 write(size_of::<usize>(), 1, c)?;
-                index += 1;
+                index = index.saturating_add(1);
                 break;
             }
         }
@@ -254,7 +257,7 @@ impl HeadState<'_> {
                 break;
             }
             write(size_of::<usize>(), 1, c)?;
-            index += 1;
+            index = index.saturating_add(1);
         }
         Ok(())
     }
@@ -293,7 +296,7 @@ impl HeadState<'_> {
                     2,
                     c,
                 )?;
-                matches += 1;
+                matches = matches.saturating_add(1);
                 earliest = Some(index);
             }
         }
@@ -554,7 +557,7 @@ impl HeadState<'_> {
             let mut furthest = None;
             write(size_of::<Option<(usize, ParserNode)>>(), 1, c)?;
             c.charge(WorkCategory::RecordVisit, 1)?;
-            for index in open_index + 1..self.before.kernel.stack()?.len() {
+            for index in open_index.saturating_add(1)..self.before.kernel.stack()?.len() {
                 let node = self.before.kernel.at(index, c)?;
                 if self.before.kernel.node_set(&node, NodeSet::Special, c)? {
                     write(size_of::<Option<(usize, ParserNode)>>(), 2, c)?;
@@ -587,7 +590,7 @@ impl HeadState<'_> {
             )?;
             loop {
                 write(const { size_of::<usize>() * 2 }, 2, c)?;
-                inner += 1;
+                inner = inner.saturating_add(1);
                 cursor = cursor
                     .checked_sub(1)
                     .ok_or(HeadError::InvalidFormattingState)?;
@@ -694,11 +697,10 @@ impl HeadState<'_> {
             self.remove_format(index, c)?;
             let insertion = match bookmark {
                 Bookmark::Replace => index,
-                Bookmark::After(after) => {
-                    self.format_index(&after, c)?
-                        .ok_or(HeadError::InvalidFormattingState)?
-                        + 1
-                }
+                Bookmark::After(after) => self
+                    .format_index(&after, c)?
+                    .ok_or(HeadError::InvalidFormattingState)?
+                    .saturating_add(1),
             };
             let stored = copy_node(&replacement, c)?;
             write(size_of::<Option<ParserNode>>(), 1, c)?;
@@ -728,7 +730,10 @@ impl HeadState<'_> {
                 .checked_sub(1)
                 .ok_or(HeadError::InvalidFormattingState)?;
             for shift in (insertion..last).rev() {
-                if !self.formatting.swap_slots(shift, shift + 1, c)? {
+                if !self
+                    .formatting
+                    .swap_slots(shift, shift.saturating_add(1), c)?
+                {
                     return Err(HeadError::InvalidFormattingState);
                 }
             }
@@ -744,7 +749,7 @@ impl HeadState<'_> {
                 .ok_or(HeadError::InvalidFormattingState)?;
             self.before
                 .kernel
-                .insert_stack(position + 1, &replacement, c)?;
+                .insert_stack(position.saturating_add(1), &replacement, c)?;
         }
         Ok(())
     }

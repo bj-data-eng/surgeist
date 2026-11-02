@@ -127,6 +127,10 @@ macro_rules! slots {
                 }
             }
         }
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "evaluated at compile time over the listed slots: an index out of range fails the build"
+        )]
         const _: () = {
             let slots: &[usize] = &[$($slot),+];
             let discriminants: &[usize] = &[$(<$key>::$variant as usize),+];

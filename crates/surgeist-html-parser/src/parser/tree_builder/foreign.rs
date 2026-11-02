@@ -654,7 +654,7 @@ impl HeadState<'_> {
                 }
                 return Ok(Some(self.discard(c)?));
             }
-            index -= 1;
+            index = index.saturating_sub(1);
             let node = self.before.kernel.at(index, c)?;
             let name = self
                 .before

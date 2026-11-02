@@ -448,7 +448,7 @@ impl HeadState<'_> {
                 .get_mut(index, c)?
                 .ok_or(HeadError::MissingInput)?
                 .take();
-            self.table.next += 1;
+            self.table.next = self.table.next.saturating_add(1);
             c.charge(WorkCategory::RecordVisit, 1)?;
             let entry = self
                 .table

@@ -262,7 +262,7 @@ impl LocationKernel {
                 .open
                 .as_mut()
                 .ok_or(KernelError::Consumed)?
-                .swap_slots(shift, shift + 1, c)?
+                .swap_slots(shift, shift.saturating_add(1), c)?
             {
                 return Err(KernelError::EmptyStack);
             }
@@ -376,13 +376,13 @@ impl LocationKernel {
                 if let Some(at) = self.template_position(index, c)? {
                     self.template_remove(at, c)?;
                 }
-                self.templates_shift(index + 1, false, c)?;
+                self.templates_shift(index.saturating_add(1), false, c)?;
                 for shift in index..top {
                     if !self
                         .open
                         .as_mut()
                         .ok_or(KernelError::Consumed)?
-                        .swap_slots(shift, shift + 1, c)?
+                        .swap_slots(shift, shift.saturating_add(1), c)?
                     {
                         return Err(KernelError::EmptyStack);
                     }
@@ -646,13 +646,13 @@ impl LocationKernel {
         while at > 0
             && templates
                 .as_slice()
-                .get(at - 1)
+                .get(at.saturating_sub(1))
                 .is_some_and(|below| *below > index)
         {
-            if !templates.swap_slots(at - 1, at, c)? {
+            if !templates.swap_slots(at.saturating_sub(1), at, c)? {
                 return Err(KernelError::EmptyStack);
             }
-            at -= 1;
+            at = at.saturating_sub(1);
         }
         Ok(())
     }
@@ -663,7 +663,7 @@ impl LocationKernel {
             return Err(KernelError::EmptyStack);
         }
         for shift in at..templates.len().saturating_sub(1) {
-            if !templates.swap_slots(shift, shift + 1, c)? {
+            if !templates.swap_slots(shift, shift.saturating_add(1), c)? {
                 return Err(KernelError::EmptyStack);
             }
         }
@@ -683,10 +683,10 @@ impl LocationKernel {
         while at > 0
             && templates
                 .as_slice()
-                .get(at - 1)
+                .get(at.saturating_sub(1))
                 .is_some_and(|index| *index >= from)
         {
-            at -= 1;
+            at = at.saturating_sub(1);
             let entry = templates.get_mut(at, c)?.ok_or(KernelError::EmptyStack)?;
             *entry = if up {
                 entry.saturating_add(1)

@@ -31,6 +31,10 @@ slots!(MetaDomain, META_DOMAIN_COUNT, {
     ColorScheme => 3,
 });
 // `ALL` lists every domain once, in discriminant order.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "evaluated at compile time with i < META_DOMAIN_COUNT, the array length: an index out of range fails the build"
+)]
 const _: () = {
     let mut i = 0;
     while i < META_DOMAIN_COUNT {

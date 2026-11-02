@@ -26,6 +26,10 @@ slots!(RangeScratchRole, SCRATCH_COUNT, {
     Trial => 7,
 });
 // The HTML owner's own index and role list agree with the table's slots.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "evaluated at compile time with i < SCRATCH_COUNT, the array length: an index out of range fails the build"
+)]
 const _: () = {
     let mut i = 0;
     while i < SCRATCH_COUNT {
