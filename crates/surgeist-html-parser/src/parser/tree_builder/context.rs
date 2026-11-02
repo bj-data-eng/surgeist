@@ -1785,6 +1785,98 @@ mod tests {
         );
     }
 
+    /// Characterisation: the flag is set only after the take, so a take that a
+    /// foreign controller refuses leaves the frozen owner's evidence in place.
+    #[test]
+    fn a_refused_frozen_evidence_take_leaves_the_flag_clear_and_the_evidence_releasable() {
+        let request = request(
+            "<!doctype html><p>A</p>",
+            "div",
+            HtmlScriptingStatus::Disabled,
+        );
+        let mut extent = None;
+        let mut credit = None;
+        let mut exercised = false;
+        loop {
+            let mut input = Some(initialized_driver(&request));
+            complete(input.as_mut().unwrap());
+            let mut completed = ContextFragmentDriver::take_completed(&mut input).unwrap();
+            let driver = completed.driver.as_mut().unwrap();
+            let before = driver
+                .control
+                .usage()
+                .resource(HtmlParseResource::WorkCredits)
+                .current;
+            if let Some(credit) = credit {
+                let remaining = request.limits().work_credits() - before;
+                driver
+                    .control
+                    .charge(WorkCategory::StateStep, remaining - credit)
+                    .unwrap();
+            }
+            match completed.freeze_parts() {
+                Ok(mut parts) => {
+                    if extent.is_none() {
+                        extent = Some(
+                            parts
+                                .control
+                                .usage()
+                                .resource(HtmlParseResource::WorkCredits)
+                                .current
+                                - before,
+                        );
+                    }
+                    if parts.release().is_err() {
+                        parts.release().unwrap();
+                    }
+                    super::super::tests::assert_released(&parts.control);
+                }
+                Err(_) if completed.frozen.is_some() => {
+                    let first = completed.driver.as_ref().unwrap().control.stop().unwrap();
+                    // A controller of another parse refuses the take, so the
+                    // evidence stays in the frozen owner and the flag stays clear.
+                    let mut foreign = ParseControl::new(
+                        super::super::tests::limits(100),
+                        crate::HtmlParseCancellation::new(),
+                    );
+                    foreign.fail_invariant(crate::parser::control::Invariant::ForeignControl);
+                    std::mem::swap(
+                        &mut completed.driver.as_mut().unwrap().control,
+                        &mut foreign,
+                    );
+                    assert!(completed.take_failed().is_err());
+                    let driver = completed.driver.as_mut().unwrap();
+                    assert!(!driver.evidence_taken);
+                    assert!(driver.failed_evidence.is_none());
+                    assert!(completed.frozen.is_some());
+                    std::mem::swap(
+                        &mut completed.driver.as_mut().unwrap().control,
+                        &mut foreign,
+                    );
+                    let mut failed = completed.take_failed().unwrap();
+                    assert_eq!(failed.stop(), first);
+                    failed.release().unwrap();
+                    super::super::tests::assert_released(&failed.control);
+                    exercised = true;
+                    break;
+                }
+                Err(_) => {
+                    let mut failed = completed.take_failed().unwrap();
+                    failed.release().unwrap();
+                    super::super::tests::assert_released(&failed.control);
+                }
+            }
+            credit = Some(match credit {
+                None => 0,
+                Some(value) => value + 32,
+            });
+            if credit.unwrap() > extent.unwrap() {
+                break;
+            }
+        }
+        assert!(exercised, "a cut after the arena transfer was reached");
+    }
+
     #[test]
     fn cancelled_frozen_fragment_partition_drops_native_effects_but_retains_committed_diagnostics()
     {

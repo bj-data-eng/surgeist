@@ -1730,6 +1730,31 @@ mod tests {
             1 + 7 + 2 + join_writes,
         )
     }
+    /// Characterisation: the flag is set only after the take, so a take that a
+    /// foreign controller refuses leaves the evidence in the session.
+    #[test]
+    fn a_refused_entry_evidence_take_leaves_the_flag_clear_and_the_evidence_releasable() {
+        let request = request("<p>A");
+        let mut entry =
+            FragmentEntry::new(&request, super::super::parse::InitializationTarget::Native);
+        request.cancellation().cancel();
+        assert!(entry.take_driver().is_err());
+        let first = entry.driver.as_ref().unwrap().control.stop().unwrap();
+        let mut foreign =
+            ParseControl::new(limits(100, 100_000), crate::HtmlParseCancellation::new());
+        foreign.fail_invariant(crate::parser::control::Invariant::ForeignControl);
+        std::mem::swap(&mut entry.driver.as_mut().unwrap().control, &mut foreign);
+        assert!(entry.cleanup_failure().is_err());
+        let driver = entry.driver.as_ref().unwrap();
+        assert!(!driver.evidence_taken);
+        assert!(driver.failed_evidence.is_none());
+        std::mem::swap(&mut entry.driver.as_mut().unwrap().control, &mut foreign);
+        entry.release_failure().unwrap();
+        let driver = entry.driver.as_ref().unwrap();
+        assert!(driver.evidence_taken);
+        assert_eq!(driver.control.stop(), Some(first));
+        super::super::super::tests::assert_released(&driver.control);
+    }
     #[test]
     fn the_lowered_fragment_failure_charges_are_the_listed_production_terms() {
         // A frozen failure is cleaned and detached into the carrier by value
