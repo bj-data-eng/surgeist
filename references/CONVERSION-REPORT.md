@@ -1208,3 +1208,18 @@ diagrams were retired: this capture's parsing sections match that source's
 imported block-contents text apart from formatting. The earlier batch records
 in this report describe that rendering historically.
 
+## HTML text-assistance defaults — 2026-11-02
+
+The [text-assistance capture](html-text-assistance--877d6146487f.md) retains
+complete §§6.8.6, 6.8.7 and 6.8.8 from the existing immutable HTML snapshot and
+adds a bounded representation of that existing source identity. The source bytes
+retrieved from the commit snapshot URL hash to the recorded complete-document
+SHA-256 `877d6cc00dae6c18c16d952fdcbf944acc58919579621b4257fa0ed1888a871f`.
+Pandoc was not available, so a small Python `html.parser` converter wrote the
+Markdown: block structure, tables, lists, the one literal example and the
+definition spans were converted, the MDN annotation block was omitted and
+relative links were made absolute. The multiset of words of the three sections
+was compared with the original markup; only list numbers, the code-fence
+language and the literal markup of the example differ by construction. Source
+scripts were not executed. Scope selects the attribute defaults and getter
+algorithms only; input methods and suggestion interfaces are outside it.
