@@ -4,12 +4,11 @@ use super::{fragments, syntax_bridge};
 use crate::component::values::CssComponentValueErrorKind;
 use crate::component::{CssComponentValueError, CssComponentValueLimits, CssValueOrigin};
 use crate::diagnostic::CssRecoveryAction;
-use crate::parser::recovery::StyleContextCaptures;
+use crate::parser::recovery::SharedNamespaces;
 use crate::rule::font_feature_values::CssFontFeatureValuesFamilyList;
 use crate::source::CssParsedOrigin;
 use crate::syntax_consumption::DocumentExt;
 use crate::{CssParseReport, CssParserContext};
-use cssparser::{Parser, ParserInput};
 
 pub(crate) fn parse_with_context(
     source: &str,
@@ -28,21 +27,15 @@ pub(crate) fn parse_with_context(
             .snapshot()
             .expect("original source document")
             .clone();
-        let state = RecoveryState::at_depth_with_snapshot(
-            source,
-            0,
-            StyleContextCaptures::default(),
-            snapshot.clone(),
-        )
-        .with_parser_context(context);
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
+        let state =
+            RecoveryState::at_depth_with_snapshot(0, SharedNamespaces::default(), snapshot.clone())
+                .with_parser_context(context);
         let mut origins = Vec::new();
-        let result = (|| {
-            let families = super::font_feature_values::parse_families_observed(
+        let result = {
+            let mut root = document.root();
+            super::font_feature_values::parse_families_observed(
                 source,
-                &mut input,
+                &mut root,
                 &state,
                 |range, location| {
                     let origin = CssParsedOrigin::from_range(&snapshot, range)
@@ -59,12 +52,8 @@ pub(crate) fn parse_with_context(
                     origins.push(origin);
                     Ok(())
                 },
-            )?;
-            input
-                .expect_exhausted()
-                .map_err(crate::diagnostic::error::basic)?;
-            Ok(families)
-        })();
+            )
+        };
         match result {
             Ok(families) => {
                 state.retain_component_closures(state.component_openings_in(0..source.len()));

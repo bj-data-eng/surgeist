@@ -18,8 +18,8 @@ use super::block_units::{
     Failure, NativeError, drive_units, dropped_unit, location_at, offset_of, refusal_diagnostic,
     refused_error,
 };
+use super::property_input::SiteExt;
 use super::property_input::StreamExt as _;
-use super::property_input::{SiteExt, advance_native_to, native_scope_end};
 use super::recovery::RecoveryState;
 use super::syntax_types::{Attached, Document, Site, Stream, StreamError, SyntaxError};
 use super::{
@@ -765,26 +765,76 @@ where
     items
 }
 
-/// Runs a value grammar over the whole scope of the native parser `input`,
-/// and leaves the parser where the grammar left the stream.
-pub(super) fn parse_scope<'i, T>(
-    input: &mut cssparser::Parser<'i, '_>,
+/// Runs a value grammar over the text `range` of the source, read as a
+/// document of its own: the scope a text front hands a ported grammar.
+pub(super) fn parse_text<T>(
     snapshot: &CssSourceSnapshot,
+    range: Range<usize>,
     parse: impl for<'d> FnOnce(&mut Stream<'d>, &NumericInputContext<'_>) -> Value<'d, T>,
-) -> Result<T, ParseError<'i, CssError>> {
-    let start = input.position().byte_index();
-    let end = native_scope_end(input);
+) -> Result<T, NativeValueError> {
     let numeric = NumericInputContext::parsed(snapshot);
-    let document = crate::syntax_consumption::source_scope_document(snapshot, start..end)
-        .map_err(|error| invalid_component_value(input.current_source_location(), error))?;
+    let document = scope_document(snapshot, range)?;
+    let mut stream = document.root();
+    parse(&mut stream, &numeric).map_err(|error| native(&numeric, &error))
+}
+
+/// [`parse_text`], and the components the text holds with the origin of the
+/// text: what a descriptor value retains of the text it was read from.
+pub(super) fn parse_collecting<T>(
+    snapshot: &CssSourceSnapshot,
+    range: Range<usize>,
+    parse: impl for<'d> FnOnce(&mut Stream<'d>, &NumericInputContext<'_>) -> Value<'d, T>,
+) -> Result<(T, CssComponentValues, crate::source::CssParsedOrigin), NativeValueError> {
+    let numeric = NumericInputContext::parsed(snapshot);
+    let document = scope_document(snapshot, range.clone())?;
     let mut stream = document.root();
     let value = parse(&mut stream, &numeric).map_err(|error| native(&numeric, &error))?;
-    let consumed = stream
-        .site()
-        .offset()
-        .map_or(end, surgeist_css_parser::Offset::value);
-    advance_native_to(input, consumed);
-    Ok(value)
+    let (components, origin) = collected(snapshot, &document, range)?;
+    Ok((value, components, origin))
+}
+
+/// The components the text `range` of the source holds, with the origin of the
+/// text.
+pub(super) fn collect_text(
+    snapshot: &CssSourceSnapshot,
+    range: Range<usize>,
+) -> Result<(CssComponentValues, crate::source::CssParsedOrigin), NativeValueError> {
+    let document = scope_document(snapshot, range.clone())?;
+    collected(snapshot, &document, range)
+}
+
+/// The text `range` of the source, read as a document of its own.
+fn scope_document(
+    snapshot: &CssSourceSnapshot,
+    range: Range<usize>,
+) -> Result<Document<'_>, NativeValueError> {
+    crate::syntax_consumption::source_scope_document(snapshot, range.clone())
+        .map_err(|error| invalid_component_value(location_at(snapshot, range.start), error))
+}
+
+fn collected(
+    snapshot: &CssSourceSnapshot,
+    document: &Document<'_>,
+    range: Range<usize>,
+) -> Result<(CssComponentValues, crate::source::CssParsedOrigin), NativeValueError> {
+    let components =
+        crate::component::values::parse::promote_window(document).map_err(|error| {
+            invalid_component_value(
+                component_failure_location(snapshot, document, &error, range.end),
+                error,
+            )
+        })?;
+    let origin = crate::source::CssParsedOrigin::from_range(snapshot, range.clone())
+        .ok_or_else(|| unexpected_syntax_end(location_at(snapshot, range.end)))?;
+    Ok((components, origin))
+}
+
+/// Where the first `!` at the root of the text `range` of the source is.
+pub(super) fn first_root_bang(
+    snapshot: &CssSourceSnapshot,
+    range: Range<usize>,
+) -> Result<Option<usize>, NativeValueError> {
+    Ok(first_bang(&scope_document(snapshot, range)?))
 }
 
 /// Runs a value grammar over the stream `input` from where it stands: the scope
@@ -1190,9 +1240,8 @@ mod tests {
             meter.0.set(admitted);
             let mut contents = document.root();
             let recovery = RecoveryState::at_depth_with_snapshot(
-                text,
                 0,
-                crate::parser::recovery::StyleContextCaptures::default(),
+                crate::parser::recovery::SharedNamespaces::default(),
                 snapshot.clone(),
             );
             let mut diagnostics = Vec::new();

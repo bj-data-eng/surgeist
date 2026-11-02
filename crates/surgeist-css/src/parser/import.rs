@@ -5,7 +5,7 @@ use super::descriptor_stream::{
     native, read_scope,
 };
 use super::property_input::StreamExt as _;
-use super::recovery::{RecoveryState, StyleContextCaptures};
+use super::recovery::{RecoveryState, SharedNamespaces};
 use super::syntax_types::{Mark, Site, Stream, SyntaxError};
 use super::url::parse_url;
 use super::{queries, supports};
@@ -165,7 +165,7 @@ fn classify_constructed_import(
     context: &CssNamespaceContext,
 ) -> Result<ConstructedImportSelection, crate::rule::CssRuleConstructionError> {
     let source = serialized.as_css();
-    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+    let recovery = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
     if let Some(name) = &context.0.default {
         recovery.activate_namespace(None, name.clone());
     }
@@ -537,7 +537,7 @@ pub(crate) fn import_boundaries_match(
     original_origin: &crate::component::CssValueOrigin,
 ) -> Result<bool, crate::rule::imports::ImportSerializationFailure> {
     let source = serialized.as_css();
-    let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+    let recovery = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
     let numeric = NumericInputContext::parsed(recovery.source_snapshot());
     let document = crate::syntax_consumption::source_scope_document(
         recovery.source_snapshot(),

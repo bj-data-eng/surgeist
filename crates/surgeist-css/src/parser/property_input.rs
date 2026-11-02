@@ -540,46 +540,6 @@ impl<'i> StreamExt<'i> for Stream<'i> {
     }
 }
 
-fn advance_native_component(input: &mut cssparser::Parser<'_, '_>) -> Result<(), ()> {
-    use cssparser::Token as Native;
-    let nested = matches!(
-        input
-            .next_including_whitespace_and_comments()
-            .map_err(|_| ())?,
-        Native::Function(_)
-            | Native::ParenthesisBlock
-            | Native::SquareBracketBlock
-            | Native::CurlyBracketBlock
-    );
-    if nested {
-        input
-            .parse_nested_block(|nested| {
-                while nested.next_including_whitespace_and_comments().is_ok() {}
-                Ok::<_, cssparser::ParseError<'_, ()>>(())
-            })
-            .map_err(|_| ())?;
-    }
-    Ok(())
-}
-/// The byte where the scope of the native parser `input` ends, which is the
-/// end of the last component it holds. The parser is left where it was.
-pub(super) fn native_scope_end(input: &mut cssparser::Parser<'_, '_>) -> usize {
-    let checkpoint = input.state();
-    while advance_native_component(input).is_ok() {}
-    let end = input.position().byte_index();
-    input.reset(&checkpoint);
-    end
-}
-
-pub(super) fn advance_native_to(input: &mut cssparser::Parser<'_, '_>, offset: usize) {
-    while input.position().byte_index() < offset && advance_native_component(input).is_ok() {}
-    assert_eq!(
-        input.position().byte_index(),
-        offset,
-        "portable cursor selects an actual native boundary"
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

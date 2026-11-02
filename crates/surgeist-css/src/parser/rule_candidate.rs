@@ -4,7 +4,7 @@ use crate::component::{CssComponentValueLimits, CssValueOrigin};
 use crate::diagnostic::error::invalid_syntax;
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::parser::nesting::admit_one_rule;
-use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
+use crate::parser::recovery::{RecoveryState, SharedNamespaces};
 use crate::parser::rule_list::RuleParser;
 use crate::parser::{ScopedBodyKind, fragments, recovery, syntax_bridge};
 use crate::rule::CssRule;
@@ -92,12 +92,8 @@ pub(crate) fn classify_rule_syntax_with_limits(
     } else {
         start
     };
-    let state = RecoveryState::at_depth_with_snapshot(
-        source,
-        0,
-        StyleContextCaptures::default(),
-        snapshot.clone(),
-    );
+    let state =
+        RecoveryState::at_depth_with_snapshot(0, SharedNamespaces::default(), snapshot.clone());
     state.retain_component_closures(state.component_openings_in(0..source.len()));
     let mut diagnostics = state.take_implicit_closure_diagnostics(source);
     for node in document.nodes() {
@@ -161,12 +157,9 @@ pub(super) fn admit_inner(
         CssRuleAdmissionContext::Group => admit_one_rule(source, &state, |source, state| {
             RuleParser::group(source, state)
         }),
-        CssRuleAdmissionContext::Style => {
-            state.record_style_context(0);
-            admit_one_rule(source, &state, |source, state| {
-                RuleParser::style(source, state)
-            })
-        }
+        CssRuleAdmissionContext::Style => admit_one_rule(source, &state, |source, state| {
+            RuleParser::style(source, state)
+        }),
         CssRuleAdmissionContext::Scope(ancestor)
         | CssRuleAdmissionContext::ScopedGroup(ancestor) => {
             let body = if matches!(context, CssRuleAdmissionContext::Scope(_)) {
@@ -175,9 +168,6 @@ pub(super) fn admit_inner(
                 ScopedBodyKind::OrdinaryGroup
             };
             let style_ancestor = ancestor == CssStyleAncestor::Present;
-            if style_ancestor {
-                state.record_style_context(0);
-            }
             admit_one_rule(source, &state, move |source, state| {
                 RuleParser::scoped(source, state, style_ancestor, body)
             })

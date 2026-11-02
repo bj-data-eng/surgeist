@@ -1,27 +1,24 @@
 use crate::diagnostic::CssError;
-use crate::diagnostic::error::basic;
-use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
-use crate::parser::{fragments, keyframes};
+use crate::parser::recovery::{RecoveryState, SharedNamespaces};
+use crate::parser::{descriptor_stream, fragments, keyframes};
 use crate::rule::keyframes::{CssParsedKeyframeRule, CssParsedKeyframeSelectors};
 use crate::source::CssParsedOrigin;
-use crate::syntax_consumption::DocumentExt;
-use cssparser::{ParseError, Parser, ParserInput};
+use cssparser::ParseError;
 
 #[must_use]
 pub(crate) fn parse_keyframe_selector_list(
     source: &str,
 ) -> crate::CssParseReport<Option<CssParsedKeyframeSelectors>> {
     fragments::bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
         let result = (|| {
             let openings =
-                state.check_component_values(source, &input, "baseline.keyframes.selector")?;
-            let selectors =
-                keyframes::parse_keyframe_selector_list(&mut input, state.source_snapshot())?;
-            input.expect_exhausted().map_err(basic)?;
+                state.check_component_values_from(source, 0, "baseline.keyframes.selector")?;
+            let selectors = descriptor_stream::parse_text(
+                state.source_snapshot(),
+                0..source.len(),
+                keyframes::read_keyframe_selector_list,
+            )?;
             state.retain_component_closures(openings);
             let origin = CssParsedOrigin::from_range(state.source_snapshot(), 0..source.len())
                 .expect("complete original selector input");
@@ -36,10 +33,10 @@ pub(crate) fn parse_keyframe_rule_with_context(
     context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<CssParsedKeyframeRule>> {
     fragments::bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default())
             .with_parser_context(context);
         let snapshot = state.source_snapshot().clone();
-        let document = match state.syntax_document(source) {
+        let document = match state.syntax_document() {
             Ok(document) => document,
             Err(error) => {
                 return finish::<CssParsedKeyframeRule>(
@@ -74,19 +71,8 @@ pub(crate) fn parse_keyframe_rule_with_context(
                         crate::parser::block_units::location_at(&snapshot, start),
                     )
                 };
-                // The generic single-rule driver consumes trailing trivia. The
-                // source arena supplies the exact admitted rule's end boundary.
-                let selected = crate::syntax_consumption::consume_one_rule(
-                    &mut document.cursor(document.root_list()),
-                )
-                .map_err(|_| unexpected())?;
-                let crate::syntax_consumption::GenericRule::Qualified(rule) = selected else {
-                    unreachable!("keyframe grammar admits only qualified rules")
-                };
-                let end = document
-                    .boundary(rule.range.list, rule.range.end)
-                    .offset
-                    .ok_or_else(unexpected)?;
+                // The driver hands the rule over with the boundary it ends at.
+                let end = grammar.rule_end.ok_or_else(unexpected)?;
                 let origin = CssParsedOrigin::from_range(state.source_snapshot(), start..end)
                     .ok_or_else(unexpected)?;
                 Ok(CssParsedKeyframeRule { block, origin })

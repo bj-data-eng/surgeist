@@ -1,4 +1,4 @@
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
 use super::block_units::{
@@ -183,7 +183,7 @@ impl BodyParser<'_> {
 
 /// The value of a descriptor from the text between `value_start` and `end`, an
 /// annotation at its end included.
-fn parse_text_value(
+pub(super) fn parse_text_value(
     snapshot: &crate::source::CssSourceSnapshot,
     value_start: usize,
     end: usize,
@@ -228,18 +228,6 @@ fn read_value<'d>(
     Ok(CssFontPaletteDescriptorValue::from_parts(
         kind, components, data,
     ))
-}
-
-pub(super) fn parse_descriptor_value_from_parser<'i>(
-    input: &mut Parser<'i, '_>,
-    kind: CssFontPaletteDescriptorKind,
-    recovery: &RecoveryState,
-) -> Result<CssFontPaletteDescriptorValue, ParseError<'i, CssError>> {
-    let start = input.position().byte_index();
-    let end = super::property_input::native_scope_end(input);
-    let value = parse_text_value(recovery.source_snapshot(), start, end, kind)?;
-    super::property_input::advance_native_to(input, end);
-    Ok(value)
 }
 
 /// The component-native constructor uses the same grammar with strict numeric admission.

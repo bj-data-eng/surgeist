@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 use surgeist_css_parser::{Offset, Token};
 
@@ -13,8 +13,8 @@ use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
     Boundary, DescriptorRecovery, NativeValueError, Value, comma_list, consume_remaining,
     declaration_position, drive_descriptors_into, expect_exhausted, fail, from_remaining, native,
-    parse_descriptor_checked, parse_descriptor_range, parse_descriptor_text, parse_scope,
-    read_scope, validate_root,
+    parse_descriptor_checked, parse_descriptor_range, parse_descriptor_text, read_scope,
+    validate_root,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -50,31 +50,26 @@ pub(super) fn parse_families<'i>(
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
 ) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, CssError>> {
-    recovery.check_specialized_components_from(
-        source,
-        offset_of(input.site()),
-        "later.rule.font-feature-values",
-    )?;
-    read_scope(input, recovery.source_snapshot(), |input, numeric| {
-        families(input, numeric, |_, _| Ok(()))
-    })
-    .map_err(families_context)
+    parse_families_observed(source, input, recovery, |_, _| Ok(()))
 }
 
 // One grammar for rule ingress and raw family-list ingress. Observation adds
 // provenance only; existing rule parsing needs no member-origin allocation.
 pub(super) fn parse_families_observed<'i>(
     source: &str,
-    input: &mut Parser<'i, '_>,
+    input: &mut Stream<'i>,
     recovery: &RecoveryState,
     observe: impl FnMut(
         std::ops::Range<usize>,
         cssparser::SourceLocation,
     ) -> Result<(), ParseError<'static, CssError>>,
 ) -> Result<Vec<CssFontFaceFamily>, ParseError<'i, CssError>> {
-    recovery.check_specialized_components(source, input, "later.rule.font-feature-values")?;
-    let snapshot = recovery.source_snapshot().clone();
-    parse_scope(input, &snapshot, |input, numeric| {
+    recovery.check_specialized_components_from(
+        source,
+        offset_of(input.site()),
+        "later.rule.font-feature-values",
+    )?;
+    read_scope(input, recovery.source_snapshot(), |input, numeric| {
         families(input, numeric, observe)
     })
     .map_err(families_context)
@@ -434,25 +429,21 @@ fn pending(input: &mut Stream<'_>) -> CssSubstitutionDependentValue {
     ))
 }
 
-/// The value of a `font-display` descriptor from the scope of the native
-/// parser `input`.
-pub(super) fn parse_display_value<'i>(
-    input: &mut Parser<'i, '_>,
+/// The value of a `font-display` descriptor from the text `range` of the
+/// source.
+pub(super) fn parse_display_text(
     snapshot: &CssSourceSnapshot,
-) -> Result<FontFeatureDisplayData, ParseError<'i, CssError>> {
-    let start = input.position().byte_index();
-    let end = super::property_input::native_scope_end(input);
-    let value = parse_descriptor_text(
+    range: std::ops::Range<usize>,
+) -> Result<FontFeatureDisplayData, ParseError<'static, CssError>> {
+    parse_descriptor_text(
         snapshot,
-        start,
-        end,
+        range.start,
+        range.end,
         "font-feature-values",
         "font-display",
         Boundary::ValidatedText,
         |input, components, numeric, _| display_data(input, &components, numeric),
-    )?;
-    super::property_input::advance_native_to(input, end);
-    Ok(value)
+    )
 }
 
 fn display_data<'i>(
@@ -499,19 +490,16 @@ pub(crate) fn construct_display_value(
     result.map_err(|error| crate::diagnostic::error::from_parse_error(serialized.as_css(), error))
 }
 
-/// The value of a feature of `kind` from the scope of the native parser
-/// `input`.
-pub(super) fn parse_feature_value<'i>(
-    input: &mut Parser<'i, '_>,
-    kind: CssFontFeatureValueKind,
+/// The value of a feature of `kind` from the text `range` of the source.
+pub(super) fn parse_feature_text(
     snapshot: &CssSourceSnapshot,
-) -> Result<FontFeatureValueData, ParseError<'i, CssError>> {
-    let start = input.position().byte_index();
-    let end = super::property_input::native_scope_end(input);
-    let value = parse_descriptor_text(
+    range: std::ops::Range<usize>,
+    kind: CssFontFeatureValueKind,
+) -> Result<FontFeatureValueData, ParseError<'static, CssError>> {
+    parse_descriptor_text(
         snapshot,
-        start,
-        end,
+        range.start,
+        range.end,
         "font-feature-values",
         kind.as_str(),
         Boundary::Text,
@@ -524,9 +512,7 @@ pub(super) fn parse_feature_value<'i>(
                 crate::diagnostic::error::unexpected_component_value,
             )
         },
-    )?;
-    super::property_input::advance_native_to(input, end);
-    Ok(value)
+    )
 }
 
 fn feature_data<'i>(

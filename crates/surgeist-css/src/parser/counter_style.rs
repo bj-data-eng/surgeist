@@ -1,4 +1,4 @@
-use cssparser::{BasicParseErrorKind, CowRcStr, ParseError, ParseErrorKind, Parser};
+use cssparser::{BasicParseErrorKind, CowRcStr, ParseError, ParseErrorKind};
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
@@ -534,26 +534,22 @@ fn parse_symbol_component<'i>(
     from_component(numeric, input, |input| parse_image(input, numeric)).map(CssCounterSymbol::Image)
 }
 
-/// The value of a counter-style descriptor from the scope of the native
-/// parser `input`.
-pub(super) fn parse_authored_value<'i>(
-    input: &mut Parser<'i, '_>,
-    kind: CssCounterStyleDescriptorKind,
+/// The value of a counter-style descriptor from the text `range` of the source,
+/// the part of the text of a front that ends where its annotation begins.
+pub(super) fn parse_text_value(
     snapshot: &crate::source::CssSourceSnapshot,
-) -> Result<CounterStyleValueData, ParseError<'i, CssError>> {
-    let start = input.position().byte_index();
-    let end = super::property_input::native_scope_end(input);
-    let value = parse_descriptor_text(
+    range: std::ops::Range<usize>,
+    kind: CssCounterStyleDescriptorKind,
+) -> Result<CounterStyleValueData, ParseError<'static, CssError>> {
+    parse_descriptor_text(
         snapshot,
-        start,
-        end,
+        range.start,
+        range.end,
         "counter-style",
         kind.as_str(),
         Boundary::ValidatedText,
         |input, components, numeric, _| parse_value_data(input, kind, &components, numeric),
-    )?;
-    super::property_input::advance_native_to(input, end);
-    Ok(value)
+    )
 }
 
 fn parse_value_data<'i>(

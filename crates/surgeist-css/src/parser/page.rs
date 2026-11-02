@@ -5,11 +5,11 @@ use super::block_units::{
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
 use super::descriptor_stream::{
     Value, ValueError, byte_offset, collect_scope, consume_remaining, drive_block_items,
-    expect_exhausted, fail, from_component, from_here, location, native, parse_scope,
+    expect_exhausted, fail, from_component, from_here, location, native,
 };
 use super::property_input::StreamExt;
 use super::syntax_types::{Attached, Site, Stream, SyntaxError};
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 use surgeist_css_parser::grammar::{
     AtRule, BlockGrammar, QualifiedRule, RuleEnd, RuleGrammar, UnitKind,
 };
@@ -44,17 +44,6 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("official.selector.logical-page-pseudo"),
 ];
 
-/// The selector list of a `@page` rule that the native parser `input` holds to
-/// its end.
-pub(crate) fn parse_page_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    snapshot: &crate::source::CssSourceSnapshot,
-) -> Result<CssPageSelectorList, ParseError<'i, CssError>> {
-    super::descriptor_stream::parse_scope(input, snapshot, |stream, numeric| {
-        page_selector_list(stream, numeric, snapshot)
-    })
-}
-
 /// The selector list of a `@page` rule that the stream `input` holds.
 pub(crate) fn read_page_selector<'i>(
     input: &mut Stream<'i>,
@@ -65,7 +54,7 @@ pub(crate) fn read_page_selector<'i>(
     })
 }
 
-fn page_selector_list<'i>(
+pub(super) fn page_selector_list<'i>(
     input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
     snapshot: &crate::source::CssSourceSnapshot,
@@ -532,7 +521,7 @@ pub(crate) fn admit_margin_rule(
             crate::diagnostic::CssRecoveryAction::RejectInput,
         )]
     };
-    let (margin, mut diagnostics) = match recovery.syntax_document(source) {
+    let (margin, mut diagnostics) = match recovery.syntax_document() {
         Ok(document) => match document.root().parse_rule(&mut parser) {
             Ok(margin) => (Some(margin), std::mem::take(&mut parser.diagnostics)),
             Err(failed) => (None, rejected(native_error(&snapshot, failed.error()))),
@@ -947,19 +936,7 @@ fn nonzero_unitless_page_length(
     }
 }
 
-/// The value of the page descriptor `kind` that the native parser `input` holds,
-/// to the end of its scope.
-pub(super) fn parse_descriptor_value<'i>(
-    input: &mut Parser<'i, '_>,
-    kind: CssPageDescriptorKind,
-    snapshot: &crate::source::CssSourceSnapshot,
-) -> Result<crate::rule::page::syntax::PageValueData, ParseError<'i, CssError>> {
-    parse_scope(input, snapshot, |value, numeric| {
-        read_descriptor_value(value, kind, numeric)
-    })
-}
-
-fn read_descriptor_value<'i>(
+pub(super) fn read_descriptor_value<'i>(
     input: &mut Stream<'i>,
     kind: CssPageDescriptorKind,
     numeric: &NumericInputContext<'_>,

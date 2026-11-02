@@ -1,24 +1,20 @@
 //! Context-specific parsing over the caller's unmodified source.
-use crate::component::CssComponentValues;
 use crate::declaration::{CssDeclaration, CssImportance};
 use crate::diagnostic::CssError;
 use crate::diagnostic::error::property::SyntaxErrorExt;
-use crate::diagnostic::error::{
-    basic, from_parse_error, from_rule_parse_error, with_media_query_context,
-};
+use crate::diagnostic::error::{from_parse_error, from_rule_parse_error, with_media_query_context};
 use crate::parser::block_units::{grammar_error, location_at, native_error, offset_of};
 use crate::parser::nesting::parse_style_contents;
 use crate::parser::reconstruction::{BoundedParseContext, BoundedParseSyntax, parse_bounded};
-use crate::parser::recovery::{RecoveryState, StyleContextCaptures, recovery_action_for_error};
+use crate::parser::recovery::{RecoveryState, SharedNamespaces, recovery_action_for_error};
 use crate::parser::rule_list::RuleParser;
 use crate::parser::selectors::SelectorRecovery;
 use crate::parser::syntax_types::{Stream, SyntaxError};
 use crate::parser::{
-    DeclarationMode, PropertyValueGrammar, ScopedBodyKind, collect_declaration_value,
-    color_profile, conditional_chains, counter_style, font_face, font_feature_values,
-    font_palette_values, keyframes, named_supports, page, parse_declaration_core,
-    parse_descriptor_boundary, parse_nested_group_rules, parse_property_value_from_parser,
-    parse_scoped_rule_list, queries, recovery, selectors,
+    DeclarationMode, PropertyValueGrammar, ScopedBodyKind, color_profile, conditional_chains,
+    counter_style, descriptor_stream, font_face, font_feature_values, font_palette_values,
+    keyframes, named_supports, page, parse_declaration_core, parse_nested_group_rules,
+    parse_property_value_from_parser, parse_scoped_rule_list, queries, recovery, selectors,
 };
 use crate::property::{CssPropertyGrammar, CssPropertyNameRef};
 use crate::query::media::{CssMediaQuery, CssMediaQueryList, CssNeverMediaQuery};
@@ -48,6 +44,30 @@ pub(super) fn bounded_or<T: Send>(
     parse: impl FnOnce() -> crate::CssParseReport<T> + Send,
 ) -> crate::CssParseReport<T> {
     recovery::finish_report(source, bounded_report(source, refused, parse))
+}
+
+/// Rule-list fragment parsing whose refusal retains no syntax. Rule lists recurse
+/// through their nested rules natively, so they are admitted on the caller's
+/// stack as stylesheets are.
+pub(super) fn bounded_rules<T: Send>(
+    source: &str,
+    parse: impl FnOnce() -> crate::CssParseReport<Option<T>> + Send,
+) -> crate::CssParseReport<Option<T>> {
+    recovery::finish_report(source, bounded_rules_report(source, || None, parse))
+}
+
+/// [`bounded_rules`] whose caller publishes tokenizer recovery itself.
+pub(crate) fn bounded_rules_report<T: Send>(
+    source: &str,
+    refused: impl FnOnce() -> T,
+    parse: impl FnOnce() -> crate::CssParseReport<T> + Send,
+) -> crate::CssParseReport<T> {
+    super::bounded_execution::report(
+        super::bounded_execution::StackProfile::Structural,
+        source,
+        refused,
+        parse,
+    )
 }
 
 /// Fragment-profile execution whose caller publishes tokenizer recovery itself.
@@ -87,27 +107,6 @@ fn reject_resolved(
         .expect("fragment errors originate within the complete source")
 }
 
-pub(super) fn finish_nested_component<'i>(
-    input: &mut Parser<'i, '_>,
-    token: &Token<'i>,
-) -> Result<(), ParseError<'i, CssError>> {
-    if matches!(
-        token,
-        Token::Function(_)
-            | Token::ParenthesisBlock
-            | Token::SquareBracketBlock
-            | Token::CurlyBracketBlock
-    ) {
-        // Finish this block now so the next root token's location and source
-        // slice begin after it, rather than before implicit tokenizer skipping.
-        input.parse_nested_block(|nested| {
-            while nested.next_including_whitespace_and_comments().is_ok() {}
-            Ok(())
-        })?;
-    }
-    Ok(())
-}
-
 /// Reads the one `{}`-block `source` holds in place in its token tree: the
 /// block is entered there, and `drive` reads the contents. The body, the
 /// block's origin and what the recovery of its contents reported, or the
@@ -139,7 +138,7 @@ fn read_document_block<T>(
             crate::diagnostic::CssRecoveryAction::RejectInput,
         )]
     };
-    let document = state.syntax_document(source).map_err(|error| {
+    let document = state.syntax_document().map_err(|error| {
         rejected(crate::diagnostic::error::invalid_component_value(
             location_at(&snapshot, 0),
             error,
@@ -219,7 +218,7 @@ fn document_brace_block<T: Send>(
     > + Send,
 ) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<T>>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default())
             .with_parser_context(parser_context);
         document_brace_block_inner(source, production, state, drive)
     })
@@ -230,14 +229,13 @@ pub(crate) fn parse_group_block_with_context(
     namespaces: &CssNamespaceContext,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>> {
-    bounded(source, || {
+    bounded_rules(source, || {
         let snapshot = CssSourceSnapshot::new(source);
         let (syntax, mut diagnostics) = parse_bounded(
             source,
             &snapshot,
-            0,
             BoundedParseContext::GroupBlock,
-            StyleContextCaptures::with_namespaces(namespaces),
+            SharedNamespaces::with_namespaces(namespaces),
             parser_context,
         )
         .into_parts();
@@ -304,18 +302,17 @@ fn scoped_block_with_context(
     body: ScopedBodyKind,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>> {
-    bounded(source, || {
+    bounded_rules(source, || {
         let snapshot = CssSourceSnapshot::new(source);
         let has_style_ancestor = matches!(ancestry, crate::rule::CssStyleAncestor::Present);
         let (syntax, mut diagnostics) = parse_bounded(
             source,
             &snapshot,
-            0,
             BoundedParseContext::ScopedBlock {
                 has_style_ancestor,
                 body,
             },
-            StyleContextCaptures::with_namespaces(namespaces),
+            SharedNamespaces::with_namespaces(namespaces),
             parser_context,
         )
         .into_parts();
@@ -582,12 +579,22 @@ pub(crate) fn parse_page_block_with_context(
     )
 }
 
+/// The document of the whole text of a front, read as its own scope: the
+/// nesting limits are judged by the recovery state, not by the tree.
+fn text_document(
+    snapshot: &CssSourceSnapshot,
+) -> Result<crate::parser::syntax_types::Document<'_>, ParseError<'static, CssError>> {
+    crate::syntax_consumption::source_scope_document(snapshot, 0..snapshot.as_str().len()).map_err(
+        |error| crate::diagnostic::error::invalid_component_value(location_at(snapshot, 0), error),
+    )
+}
+
 pub(crate) fn parse_declaration_with_context(
     source: &str,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<CssDeclaration>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default())
             .with_parser_context(parser_context);
         let working_source = crate::tokenization::prepare(source);
         let mut parser_input = ParserInput::new(&working_source);
@@ -597,7 +604,11 @@ pub(crate) fn parse_declaration_with_context(
             let declaration_start = input.state();
             let name = input.expect_ident_cloned()?;
             input.expect_colon()?;
-            let openings = state.check_component_values(source, &input, "css.declaration")?;
+            let openings = state.check_component_values_from(
+                source,
+                input.position().byte_index(),
+                "css.declaration",
+            )?;
             // RuleBodyParser normally supplies list boundaries. This singular
             // entry instead rejects all root delimiters, while letting the
             // tokenizer skip nested blocks (including custom-property braces).
@@ -654,46 +665,53 @@ fn selector_fragment<T>(
     context: &CssNamespaceContext,
     single: bool,
     parse: impl for<'i> FnOnce(
-        &mut Parser<'i, '_>,
+        &mut Stream<'i>,
         &mut SelectorRecovery<'_>,
     ) -> Result<T, ParseError<'i, CssError>>,
 ) -> crate::CssParseReport<Option<T>> {
-    let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
+    let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
     if let Some(name) = &context.0.default {
         state.activate_namespace(None, name.clone());
     }
     for (prefix, name) in &context.0.named {
         state.activate_namespace(Some(prefix.clone()), name.clone());
     }
-    selector_fragment_with_state(source, state, single, parse)
+    let snapshot = state.source_snapshot().clone();
+    match text_document(&snapshot) {
+        Ok(document) => selector_fragment_with_state(source, &document, state, single, parse),
+        Err(error) => crate::CssParseReport::new(
+            None,
+            vec![reject(
+                source,
+                error,
+                crate::diagnostic::CssRecoveryAction::RejectInput,
+            )],
+        ),
+    }
 }
 
+/// Reads the selectors of `document`, the tree of the whole source.
 pub(super) fn selector_fragment_with_state<T>(
     source: &str,
+    document: &crate::parser::syntax_types::Document<'_>,
     state: RecoveryState,
     single: bool,
     parse: impl for<'i> FnOnce(
-        &mut Parser<'i, '_>,
+        &mut Stream<'i>,
         &mut SelectorRecovery<'_>,
     ) -> Result<T, ParseError<'i, CssError>>,
 ) -> crate::CssParseReport<Option<T>> {
-    let working_source = crate::tokenization::prepare(source);
-    let mut input = ParserInput::new(&working_source);
-    let mut input = Parser::new(&mut input);
+    let mut input = document.root();
     let mut diagnostics = Vec::new();
     let openings = if single {
-        state.check_comma_member_components(source, &input, "baseline.selector.complex")
+        state.check_comma_member_components_from(source, 0, "baseline.selector.complex")
     } else {
-        state.check_specialized_components(source, &input, "baseline.selector.complex")
+        state.check_specialized_components_from(source, 0, "baseline.selector.complex")
     };
     let result = openings.and_then(|mut openings| {
-        let value = parse(
-            &mut input,
-            &mut SelectorRecovery::new(source, &mut diagnostics, state.clone()),
-        )?;
-        input
-            .expect_exhausted()
-            .map_err(crate::diagnostic::error::selector_basic)?;
+        let mut recovery = SelectorRecovery::new(source, &mut diagnostics, state.clone());
+        let value = parse(&mut input, &mut recovery)?;
+        selectors::finish(&mut input, &recovery)?;
         // Preflight sees every lexical opening. Forgiving recovery can discard
         // a whole member, so its functions must not claim semantic retention.
         openings.retain(|opening| {
@@ -763,16 +781,16 @@ fn never_media_query(snapshot: &crate::source::CssSourceSnapshot) -> CssMediaQue
 pub(crate) fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
     let refused = || never_media_query(&crate::source::CssSourceSnapshot::new(source));
     bounded_or(source, refused, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let working_source = crate::tokenization::prepare(source);
-        let mut input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut input);
-        let result = queries::parse_media_query_fragment(source, &mut input, &state).map(
-            |(query, openings)| {
-                state.retain_component_closures(openings);
-                query
-            },
-        );
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
+        let result = descriptor_stream::parse_text(
+            state.source_snapshot(),
+            0..source.len(),
+            |stream, numeric| queries::parse_media_query_fragment(source, stream, numeric, &state),
+        )
+        .map(|(query, openings)| {
+            state.retain_component_closures(openings);
+            query
+        });
         match result {
             Ok(query) => {
                 crate::CssParseReport::new(query, state.take_implicit_closure_diagnostics(source))
@@ -808,44 +826,35 @@ pub(crate) fn parse_media_query_list_snapshot(
     let source = snapshot.as_str();
     let refused = || CssMediaQueryList::new(vec![never_media_query(snapshot)]);
     let (mut list, mut diagnostics) = bounded_or(source, refused, || {
-        let state = RecoveryState::at_depth_with_snapshot(
-            source,
-            0,
-            StyleContextCaptures::default(),
-            snapshot.clone(),
-        )
-        .with_parser_context(context);
-        let working_source = crate::tokenization::prepare(source);
-        let mut input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut input);
+        let state =
+            RecoveryState::at_depth_with_snapshot(0, SharedNamespaces::default(), snapshot.clone())
+                .with_parser_context(context);
         let mut diagnostics = Vec::new();
-        let query = match queries::parse_media_query_list_with_closures(
-            source,
-            &mut input,
-            &mut diagnostics,
-            &state,
-        ) {
-            Ok(parsed) => {
-                state.retain_component_closures(parsed.implicit_closures);
-                parsed.queries
-            }
-            Err(error) => {
-                diagnostics.push(reject(
-                    source,
-                    error,
-                    crate::diagnostic::CssRecoveryAction::ReplaceMediaQueryWithNever,
-                ));
-                CssMediaQueryList::new(vec![CssMediaQuery::Never(CssNeverMediaQuery::new(
-                    crate::source::CssParsedOrigin::from_range(
-                        state.source_snapshot(),
-                        recovery::first_non_trivia_position(source, 0, source.len())
-                            .byte_offset()
-                            .value()..source.len(),
-                    )
-                    .expect("parsed media recovery origin"),
-                ))])
-            }
-        };
+        let query =
+            match descriptor_stream::parse_text(snapshot, 0..source.len(), |stream, numeric| {
+                queries::media_query_list(source, stream, numeric, &mut diagnostics, &state)
+            }) {
+                Ok(parsed) => {
+                    state.retain_component_closures(parsed.implicit_closures);
+                    parsed.queries
+                }
+                Err(error) => {
+                    diagnostics.push(reject(
+                        source,
+                        error,
+                        crate::diagnostic::CssRecoveryAction::ReplaceMediaQueryWithNever,
+                    ));
+                    CssMediaQueryList::new(vec![CssMediaQuery::Never(CssNeverMediaQuery::new(
+                        crate::source::CssParsedOrigin::from_range(
+                            state.source_snapshot(),
+                            recovery::first_non_trivia_position(source, 0, source.len())
+                                .byte_offset()
+                                .value()..source.len(),
+                        )
+                        .expect("parsed media recovery origin"),
+                    ))])
+                }
+            };
         diagnostics.extend(state.take_implicit_closure_diagnostics(source));
         crate::CssParseReport::new(query, diagnostics)
     })
@@ -905,31 +914,29 @@ pub(crate) fn parse_font_face_descriptor_value(
     descriptor: CssFontFaceDescriptorKind,
 ) -> crate::CssParseReport<Option<crate::rule::font_face::CssAuthoredFontFaceDescriptorValue>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
         let mut diagnostics = Vec::new();
         let result = (|| {
-            let mut openings = state.check_component_values(source, &input, "css.descriptor")?;
+            let mut openings = state.check_component_values_from(source, 0, "css.descriptor")?;
             // A stylesheet parser bounds descriptor values before semicolons. A raw
             // value has no such enclosing parser; reject its own delimiters before
             // src member recovery could discard them as part of an invalid member.
-            let value = font_face::parse_authored_font_face_value(
-                source,
-                &mut input,
-                descriptor,
+            let value = descriptor_stream::parse_text(
                 state.source_snapshot(),
-                &mut diagnostics,
-                &mut openings,
+                0..source.len(),
+                |value, numeric| {
+                    let at = value.site();
+                    font_face::read_authored_value(
+                        source,
+                        value,
+                        descriptor,
+                        numeric,
+                        &mut diagnostics,
+                        &mut openings,
+                    )
+                    .map_err(|error| SyntaxError::custom(at, error))
+                },
             )?;
-            input.expect_exhausted().map_err(|error| {
-                crate::diagnostic::error::with_descriptor_context(
-                    error.into(),
-                    "font-face",
-                    descriptor.as_str(),
-                )
-            })?;
             state.retain_component_closures(openings);
             Ok(value)
         })();
@@ -957,8 +964,10 @@ pub(crate) fn parse_font_face_descriptor_value(
 pub(crate) fn parse_page_selector_list(
     source: &str,
 ) -> crate::CssParseReport<Option<crate::rule::page::CssPageSelectorList>> {
-    descriptor_value_fragment(source, None, |input, state| {
-        page::parse_page_selector(input, state.source_snapshot())
+    descriptor_value_fragment(source, None, |snapshot, range| {
+        descriptor_stream::parse_text(snapshot, range, |stream, numeric| {
+            page::page_selector_list(stream, numeric, snapshot)
+        })
     })
 }
 #[must_use]
@@ -966,10 +975,10 @@ pub(crate) fn parse_page_descriptor_value(
     source: &str,
     kind: crate::rule::page::CssPageDescriptorKind,
 ) -> crate::CssParseReport<Option<crate::rule::page::CssPageDescriptorValue>> {
-    descriptor_value_fragment(source, Some(("page", kind.as_str())), |input, state| {
+    descriptor_value_fragment(source, Some(("page", kind.as_str())), |snapshot, range| {
         let (value, components, origin) =
-            collect_declaration_value(input, state.source_snapshot(), |input| {
-                page::parse_descriptor_value(input, kind, state.source_snapshot())
+            descriptor_stream::parse_collecting(snapshot, range, |stream, numeric| {
+                page::read_descriptor_value(stream, kind, numeric)
             })?;
         Ok(crate::rule::page::CssPageDescriptorValue::from_parsed(
             kind, value, components, origin,
@@ -988,33 +997,37 @@ pub(crate) fn parse_margin_block_with_context(
 }
 
 // These name-free fronts share whole-source rejection, descriptor annotation
-// policy and lexical/resource ownership; each closure uses its family provider.
+// policy and lexical/resource ownership; each closure uses its family provider
+// on the text it is given: the part of the source that ends where an
+// annotation begins, when the descriptor is named.
 fn descriptor_value_fragment<T: Send>(
     source: &str,
     descriptor: Option<(&str, &str)>,
-    parse: impl for<'i, 't> FnOnce(
-        &mut Parser<'i, 't>,
-        &RecoveryState,
-    ) -> Result<T, ParseError<'i, CssError>>
+    parse: impl FnOnce(
+        &CssSourceSnapshot,
+        std::ops::Range<usize>,
+    ) -> Result<T, ParseError<'static, CssError>>
     + Send,
 ) -> crate::CssParseReport<Option<T>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
+        let snapshot = state.source_snapshot();
         let result = (|| {
-            let openings = state.check_component_values(source, &input, "css.descriptor")?;
+            let openings = state.check_component_values_from(source, 0, "css.descriptor")?;
             let value = if let Some((owner, descriptor)) = descriptor {
-                parse_descriptor_boundary(&mut input, owner, descriptor, |input| {
-                    let value = parse(input, &state)?;
-                    input.expect_exhausted().map_err(basic)?;
-                    Ok(value)
-                })?
+                let bang = descriptor_stream::first_root_bang(snapshot, 0..source.len())?;
+                let value = parse(snapshot, 0..bang.unwrap_or(source.len()))?;
+                if let Some(bang) = bang {
+                    return Err(crate::diagnostic::error::invalid_descriptor_annotation(
+                        location_at(snapshot, bang),
+                        owner,
+                        descriptor,
+                    ));
+                }
+                value
             } else {
-                parse(&mut input, &state)?
+                parse(snapshot, 0..source.len())?
             };
-            input.expect_exhausted().map_err(basic)?;
             state.retain_component_closures(openings);
             Ok(value)
         })()
@@ -1047,14 +1060,13 @@ pub(crate) fn parse_counter_style_descriptor_value(
     descriptor_value_fragment(
         source,
         Some(("counter-style", descriptor.as_str())),
-        |input, state| {
-            let (value, components, origin) =
-                collect_declaration_value(input, state.source_snapshot(), |input| {
-                    // Keep the collector's complete source range, while an
-                    // empty grammar reports the EOF after leading trivia.
-                    input.skip_whitespace();
-                    counter_style::parse_authored_value(input, descriptor, state.source_snapshot())
-                })?;
+        |snapshot, range| {
+            // Keep the collector's complete source range, while an empty
+            // grammar reports the EOF after leading trivia.
+            let from =
+                super::structure::first_non_trivia(snapshot.as_str(), range.start, range.end);
+            let value = counter_style::parse_text_value(snapshot, from..range.end, descriptor)?;
+            let (components, origin) = descriptor_stream::collect_text(snapshot, range)?;
             Ok(
                 crate::rule::counter_style::CssCounterStyleDescriptorValue::from_parsed(
                     descriptor, value, components, origin,
@@ -1071,14 +1083,9 @@ pub(crate) fn parse_font_feature_display_value(
     descriptor_value_fragment(
         source,
         Some(("font-feature-values", "font-display")),
-        |input, state| {
-            let (value, components, origin) =
-                collect_declaration_value(input, state.source_snapshot(), |input| {
-                    let value =
-                        font_feature_values::parse_display_value(input, state.source_snapshot())?;
-                    input.expect_exhausted().map_err(basic)?;
-                    Ok(value)
-                })?;
+        |snapshot, range| {
+            let value = font_feature_values::parse_display_text(snapshot, range.clone())?;
+            let (components, origin) = descriptor_stream::collect_text(snapshot, range)?;
             Ok(
                 crate::rule::font_feature_values::CssFontFeatureDisplayValue::from_parsed(
                     value, components, origin,
@@ -1093,11 +1100,9 @@ pub(crate) fn parse_font_feature_value(
     source: &str,
     kind: crate::rule::font_feature_values::CssFontFeatureValueKind,
 ) -> crate::CssParseReport<Option<crate::rule::font_feature_values::CssFontFeatureValue>> {
-    descriptor_value_fragment(source, None, |input, state| {
-        let (value, components, origin) =
-            collect_declaration_value(input, state.source_snapshot(), |input| {
-                font_feature_values::parse_feature_value(input, kind, state.source_snapshot())
-            })?;
+    descriptor_value_fragment(source, None, |snapshot, range| {
+        let value = font_feature_values::parse_feature_text(snapshot, range.clone(), kind)?;
+        let (components, origin) = descriptor_stream::collect_text(snapshot, range)?;
         Ok(
             crate::rule::font_feature_values::CssFontFeatureValue::from_parsed(
                 kind, value, components, origin,
@@ -1111,16 +1116,15 @@ pub(crate) fn parse_font_palette_descriptor_value(
     descriptor: CssFontPaletteDescriptorKind,
 ) -> crate::CssParseReport<Option<CssFontPaletteDescriptorValue>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
         let result = (|| {
-            let openings = state.check_component_values(source, &input, "css.descriptor")?;
-            let value = font_palette_values::parse_descriptor_value_from_parser(
-                &mut input, descriptor, &state,
+            let openings = state.check_component_values_from(source, 0, "css.descriptor")?;
+            let value = font_palette_values::parse_text_value(
+                state.source_snapshot(),
+                0,
+                source.len(),
+                descriptor,
             )?;
-            input.expect_exhausted().map_err(basic)?;
             state.retain_component_closures(openings);
             Ok(value)
         })()
@@ -1151,15 +1155,15 @@ pub(crate) fn parse_color_profile_descriptor_value(
     descriptor: CssColorProfileDescriptorKind,
 ) -> crate::CssParseReport<Option<CssColorProfileDescriptorValue>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default());
         let result = (|| {
-            let openings = state.check_component_values(source, &input, "css.descriptor")?;
-            let value =
-                color_profile::parse_descriptor_value_from_parser(&mut input, descriptor, &state)?;
-            input.expect_exhausted().map_err(basic)?;
+            let openings = state.check_component_values_from(source, 0, "css.descriptor")?;
+            let value = color_profile::parse_text_value(
+                state.source_snapshot(),
+                0,
+                source.len(),
+                descriptor,
+            )?;
             state.retain_component_closures(openings);
             Ok(value)
         })()
@@ -1236,18 +1240,15 @@ fn property_value_text(
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<CssDeclaration>> {
     bounded(source, || {
-        let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
+        let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default())
             .with_parser_context(parser_context);
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
         let result = (|| {
-            let openings = state.check_component_values(source, &input, "css.declaration")?;
+            let openings = state.check_component_values_from(source, 0, "css.declaration")?;
             let document =
                 crate::syntax_consumption::source_document(source, state.source_snapshot(), 0)
                     .map_err(|error| {
                         crate::diagnostic::error::invalid_component_value(
-                            input.current_source_location(),
+                            location_at(state.source_snapshot(), 0),
                             error,
                         )
                     })?;
@@ -1269,16 +1270,19 @@ fn property_value_text(
             })?;
             // Retain owned source syntax only after grammar admission succeeds.
             let components =
-                CssComponentValues::collect_from_parser(&mut input, state.source_snapshot())
-                    .map_err(|error| {
-                        crate::diagnostic::error::invalid_component_value(
-                            input.current_source_location(),
-                            error,
-                        )
-                    })?;
+                crate::component::values::parse::promote_window(&document).map_err(|error| {
+                    crate::diagnostic::error::invalid_component_value(
+                        descriptor_stream::component_failure_location(
+                            state.source_snapshot(),
+                            &document,
+                            &error,
+                            source.len(),
+                        ),
+                        error,
+                    )
+                })?;
             let origin = CssParsedOrigin::from_range(state.source_snapshot(), 0..source.len())
                 .expect("complete raw property value belongs to its source");
-            input.expect_exhausted()?;
             state.retain_component_closures(openings);
             state.retain_navigation_diagnostic(&body);
             Ok(CssDeclaration::new_parsed_value(
@@ -1311,14 +1315,13 @@ pub(crate) fn parse_rule_with_context(
     context: &CssNamespaceContext,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<CssRule>> {
-    bounded(source, || {
+    bounded_rules(source, || {
         let snapshot = CssSourceSnapshot::new(source);
         let report = parse_bounded(
             source,
             &snapshot,
-            0,
             BoundedParseContext::OneRule,
-            StyleContextCaptures::with_namespaces(context),
+            SharedNamespaces::with_namespaces(context),
             parser_context,
         );
         let (syntax, diagnostics) = report.into_parts();
@@ -1337,7 +1340,7 @@ pub(super) fn parse_rule_inner(
     state: RecoveryState,
 ) -> crate::CssParseReport<Option<CssRule>> {
     let snapshot = state.source_snapshot().clone();
-    let document = match state.syntax_document(source) {
+    let document = match state.syntax_document() {
         Ok(document) => document,
         Err(error) => {
             let error =
@@ -1390,14 +1393,13 @@ pub(crate) fn parse_style_block_with_context(
     context: &CssNamespaceContext,
     parser_context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<CssStyleBlock>> {
-    bounded(source, || {
+    bounded_rules(source, || {
         let snapshot = CssSourceSnapshot::new(source);
         let report = parse_bounded(
             source,
             &snapshot,
-            0,
             BoundedParseContext::StyleBlock,
-            StyleContextCaptures::with_namespaces(context),
+            SharedNamespaces::with_namespaces(context),
             parser_context,
         );
         let (syntax, diagnostics) = report.into_parts();
@@ -1431,4 +1433,25 @@ pub(super) fn parse_style_block_inner(
         }
         Err(diagnostics) => crate::CssParseReport::new(None, diagnostics),
     }
+}
+
+pub(super) fn finish_nested_component<'i>(
+    input: &mut Parser<'i, '_>,
+    token: &Token<'i>,
+) -> Result<(), ParseError<'i, CssError>> {
+    if matches!(
+        token,
+        Token::Function(_)
+            | Token::ParenthesisBlock
+            | Token::SquareBracketBlock
+            | Token::CurlyBracketBlock
+    ) {
+        // Finish this block now so the next root token's location and source
+        // slice begin after it, rather than before implicit tokenizer skipping.
+        input.parse_nested_block(|nested| {
+            while nested.next_including_whitespace_and_comments().is_ok() {}
+            Ok(())
+        })?;
+    }
+    Ok(())
 }

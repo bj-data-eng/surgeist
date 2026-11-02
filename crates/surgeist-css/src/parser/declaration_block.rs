@@ -14,7 +14,7 @@ use crate::parser::block_units::{
     offset_of,
 };
 use crate::parser::declaration_unit::{DeclarationText, parse_declaration_unit};
-use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
+use crate::parser::recovery::{RecoveryState, SharedNamespaces};
 use crate::parser::syntax_types::{Attached, SyntaxError};
 use crate::parser::{
     DeclarationMode, block_item_diagnostic_from_start, fragments, recovery, syntax_bridge,
@@ -234,13 +234,9 @@ fn parse_contents_with_snapshot<R: Receiver>(
             .snapshot()
             .expect("original source document")
             .clone();
-        let recovery = RecoveryState::at_depth_with_snapshot(
-            source,
-            0,
-            StyleContextCaptures::default(),
-            snapshot.clone(),
-        )
-        .with_parser_context(parser_context);
+        let recovery =
+            RecoveryState::at_depth_with_snapshot(0, SharedNamespaces::default(), snapshot.clone())
+                .with_parser_context(parser_context);
         let mut receiver = make_receiver(recovery.clone());
         let mut stream = document.root();
         let mut declarations = Vec::new();

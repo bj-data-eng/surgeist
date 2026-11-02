@@ -1,5 +1,5 @@
 //! Raw selector admission in the actual style-rule grammar context.
-use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
+use crate::parser::recovery::{RecoveryState, SharedNamespaces};
 use crate::parser::{fragments, selectors, syntax_bridge};
 use crate::selector::{CssNamespaceContext, CssStyleSelectorList};
 use crate::selector::{CssParsedStyleSelectors, CssStyleSelectorContext};
@@ -29,28 +29,30 @@ pub(crate) fn parse_style_selector_list_with_limits(
             .expect("original selector input")
             .clone();
         let state = RecoveryState::at_depth_with_snapshot(
-            source,
             0,
-            StyleContextCaptures::with_namespaces(namespaces),
+            SharedNamespaces::with_namespaces(namespaces),
             snapshot.clone(),
         );
-        let (selectors, diagnostics) =
-            fragments::selector_fragment_with_state(source, state, false, |input, recovery| {
-                match context {
-                    CssStyleSelectorContext::Ordinary => {
-                        selectors::parse_rule_selector_list(input, recovery)
-                            .map(CssStyleSelectorList::absolute)
-                    }
-                    CssStyleSelectorContext::Nested => {
-                        selectors::parse_nested_style_selector_list(input, recovery)
-                            .map(CssStyleSelectorList::new)
-                    }
-                    CssStyleSelectorContext::Scoped(_) => {
-                        selectors::parse_scoped_style_selector_list(input, recovery)
-                    }
+        let (selectors, diagnostics) = fragments::selector_fragment_with_state(
+            source,
+            &document,
+            state,
+            false,
+            |input, recovery| match context {
+                CssStyleSelectorContext::Ordinary => {
+                    selectors::parse_rule_selector_list(input, recovery)
+                        .map(CssStyleSelectorList::absolute)
                 }
-            })
-            .into_parts();
+                CssStyleSelectorContext::Nested => {
+                    selectors::parse_nested_style_selector_list(input, recovery)
+                        .map(CssStyleSelectorList::new)
+                }
+                CssStyleSelectorContext::Scoped(_) => {
+                    selectors::parse_scoped_style_selector_list(input, recovery)
+                }
+            },
+        )
+        .into_parts();
         let syntax = selectors.map(|selectors| CssParsedStyleSelectors {
             selectors,
             context,

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use cssparser::{ParseError, ParseErrorKind, Parser};
+use cssparser::{ParseError, ParseErrorKind};
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
 use super::block_units::{
@@ -18,7 +18,7 @@ pub(crate) mod unicode_range;
 use super::descriptor_stream::{
     NativeValueError, Value, at_final_comma, byte_offset, collect_scope, consume_remaining,
     expect_exhausted, fail, from_component, from_here, from_remaining, inside_consumed, location,
-    native, parse_descriptor_checked, parse_scope, validate_root,
+    native, parse_descriptor_checked, validate_root,
 };
 use super::font_controls::parse_font_language_override;
 use super::font_settings::{parse_font_feature_settings, parse_font_variation_settings};
@@ -320,31 +320,8 @@ impl FontFaceDescriptorParser<'_> {
 }
 
 /// Applies the shared descriptor root and Env1 admission before ordinary grammar
-/// to the value the native parser `input` holds, to the end of its scope.
-pub(super) fn parse_authored_font_face_value<'i, 't>(
-    source: &str,
-    input: &mut Parser<'i, 't>,
-    kind: CssFontFaceDescriptorKind,
-    snapshot: &crate::source::CssSourceSnapshot,
-    member_diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
-    implicit_closures: &mut Vec<usize>,
-) -> Result<CssAuthoredFontFaceDescriptorValue, ParseError<'i, CssError>> {
-    parse_scope(input, snapshot, |value, numeric| {
-        let at = value.site();
-        read_authored_value(
-            source,
-            value,
-            kind,
-            numeric,
-            member_diagnostics,
-            implicit_closures,
-        )
-        .map_err(|error| SyntaxError::custom(at, error))
-    })
-}
-
-/// [`parse_authored_font_face_value`] over the stream of the value.
-fn read_authored_value<'i>(
+/// to the value the stream `input` holds, to the end of its scope.
+pub(super) fn read_authored_value<'i>(
     source: &str,
     input: &mut Stream<'i>,
     kind: CssFontFaceDescriptorKind,

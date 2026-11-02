@@ -10,14 +10,14 @@ pub(crate) fn construct_when_media_feature(
 ) -> Result<crate::query::CssWhenMediaFeature, crate::query::CssConditionConstructionError> {
     features::construct_when_media_feature(component, limits)
 }
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 use surgeist_css_parser::stream::StopToken;
 use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
 use super::boolean_condition::{BooleanConditionGrammar, parse_boolean_condition};
 use super::descriptor_stream::{
     Value, ValueError, at_final_comma, byte_offset, collect_scope, consume_remaining,
-    expect_exhausted, from_here, location, native, parse_scope,
+    expect_exhausted, from_here, location, native,
 };
 use super::recovery::{
     RecoveryState, comma_member_span, first_non_trivia_position, recovery_action_for_error,
@@ -117,17 +117,6 @@ pub(crate) fn parse_media_query_list<'i>(
 pub(super) struct ParsedMediaQueryList {
     pub(super) queries: CssMediaQueryList,
     pub(super) implicit_closures: Vec<usize>,
-}
-
-pub(super) fn parse_media_query_list_with_closures<'i, 't>(
-    source: &str,
-    input: &mut Parser<'i, 't>,
-    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
-    recovery: &RecoveryState,
-) -> std::result::Result<ParsedMediaQueryList, ParseError<'i, CssError>> {
-    parse_scope(input, recovery.source_snapshot(), |stream, numeric| {
-        media_query_list(source, stream, numeric, diagnostics, recovery)
-    })
 }
 
 pub(super) fn media_query_list<'i>(
@@ -252,17 +241,16 @@ pub(super) fn media_query_list<'i>(
 
 /// The media query that `input` holds to its end, with the openings its
 /// components leave to close at the end of the input.
-pub(super) fn parse_media_query_fragment<'i, 't>(
+pub(super) fn parse_media_query_fragment<'i>(
     source: &str,
-    input: &mut Parser<'i, 't>,
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
     recovery: &RecoveryState,
-) -> Result<(CssMediaQuery, Vec<usize>), ParseError<'i, CssError>> {
-    parse_scope(input, recovery.source_snapshot(), |stream, numeric| {
-        let openings = check_media_member_components(source, stream, numeric, recovery)?;
-        let query = parse_media_query(source, stream, numeric)?;
-        expect_exhausted(stream)?;
-        Ok((query, openings))
-    })
+) -> Value<'i, (CssMediaQuery, Vec<usize>)> {
+    let openings = check_media_member_components(source, input, numeric, recovery)?;
+    let query = parse_media_query(source, input, numeric)?;
+    expect_exhausted(input)?;
+    Ok((query, openings))
 }
 
 pub(super) fn parse_media_query<'i>(

@@ -31,7 +31,7 @@ use crate::parser::page::parse_page_rule;
 use crate::parser::queries::parse_media_query_list as parse_media_query_list_inner;
 use crate::parser::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use crate::parser::selectors::{
-    SelectorRecovery, parse_rule_selector_list_stream, parse_scoped_style_selector_list_stream,
+    SelectorRecovery, parse_rule_selector_list, parse_scoped_style_selector_list,
 };
 use crate::parser::supports::{parse_supports_condition, with_supports_prelude_context};
 use crate::parser::syntax_types::{Attached, Site, Stream, SyntaxError};
@@ -1406,7 +1406,7 @@ impl<'s> RuleParser<'s> {
                 self.unit.block_error = self.recovery.check_failed_rule_block_at(
                     self.source,
                     opening + 1,
-                    "css.at-rule",
+                    self.failed_at_rule_production(name),
                 );
                 return Err(error);
             }
@@ -1610,15 +1610,15 @@ impl<'s> RuleParser<'s> {
             SelectorRecovery::new(self.source, &mut self.diagnostics, self.recovery.clone());
         if self.scope.is_some() {
             // A scope body's selectors keep scope anchors, and are relative to the scope.
-            let result = parse_scoped_style_selector_list_stream(input, &mut recovery);
+            let result = parse_scoped_style_selector_list(input, &mut recovery);
             self.unit.record_qualified_failure(&result);
             return result;
         }
         if !self.style {
-            return parse_rule_selector_list_stream(input, &mut recovery)
+            return parse_rule_selector_list(input, &mut recovery)
                 .map(CssStyleSelectorList::absolute);
         }
-        let result = selectors::parse_nested_style_selector_list_stream(input, &mut recovery)
+        let result = selectors::parse_nested_style_selector_list(input, &mut recovery)
             .map(CssStyleSelectorList::new);
         self.unit.record_qualified_failure(&result);
         result
@@ -1649,7 +1649,7 @@ impl<'s> RuleParser<'s> {
                 self.unit.block_error = self.recovery.check_failed_rule_block_at(
                     self.source,
                     opening + 1,
-                    "css.qualified-rule",
+                    self.failed_qualified_rule_production(),
                 );
                 return Err(error);
             }
@@ -1694,6 +1694,39 @@ impl<'s> RuleParser<'s> {
         self.mark_successful_body_rule();
         depth.retain();
         Ok(RuleListItem::Rules(recovered.syntax))
+    }
+
+    /// The production a failed qualified rule's block is charged to. A rule
+    /// that stands at the nesting limit is charged as the style rule its block
+    /// would have entered, whatever became of its prelude.
+    fn failed_qualified_rule_production(&self) -> &'static str {
+        if self.recovery.structural_depth() >= crate::parser::recovery::STRUCTURAL_NESTING_LIMIT {
+            "baseline.rule.style"
+        } else {
+            "css.qualified-rule"
+        }
+    }
+
+    /// The production a failed at-rule's block is charged to. A group at-rule
+    /// that stands at the nesting limit is charged as the rule its block would
+    /// have entered, whatever became of its prelude.
+    fn failed_at_rule_production(&self, name: &str) -> &'static str {
+        const GROUPS: [&str; 7] = [
+            "layer",
+            "media",
+            "supports",
+            "container",
+            "when",
+            "else",
+            "scope",
+        ];
+        if self.recovery.structural_depth() >= crate::parser::recovery::STRUCTURAL_NESTING_LIMIT
+            && GROUPS.iter().any(|group| group.eq_ignore_ascii_case(name))
+        {
+            at_rule_production(name).unwrap_or("css.at-rule")
+        } else {
+            "css.at-rule"
+        }
     }
 
     /// The resource failure found in the block of the rule that failed, which

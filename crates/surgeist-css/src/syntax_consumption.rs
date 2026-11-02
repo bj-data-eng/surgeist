@@ -74,34 +74,6 @@ pub(crate) fn token_kind<'a>(token: Token<'a>) -> TokenKind<'a> {
     }
 }
 
-/// The rule-driver's reading of a token produced by the native provider, for
-/// the recovery code that still drives it.
-pub(crate) fn native_token_kind<'a>(token: &'a cssparser::Token<'_>) -> TokenKind<'a> {
-    use cssparser::Token as Native;
-    match token {
-        Native::Ident(name) => TokenKind::Ident(name),
-        Native::AtKeyword(name) => TokenKind::AtKeyword(name),
-        Native::Function(name) => TokenKind::Function(name),
-        Native::ParenthesisBlock => TokenKind::Opening(CssBlockKind::Parenthesis),
-        Native::SquareBracketBlock => TokenKind::Opening(CssBlockKind::SquareBracket),
-        Native::CurlyBracketBlock => TokenKind::Opening(CssBlockKind::CurlyBracket),
-        Native::CloseParenthesis => TokenKind::Closing(CssBlockKind::Parenthesis),
-        Native::CloseSquareBracket => TokenKind::Closing(CssBlockKind::SquareBracket),
-        Native::CloseCurlyBracket => TokenKind::Closing(CssBlockKind::CurlyBracket),
-        Native::WhiteSpace(_) => TokenKind::Whitespace,
-        Native::Comment(_) => TokenKind::Comment,
-        Native::Semicolon => TokenKind::Semicolon,
-        Native::Comma => TokenKind::Comma,
-        Native::Colon => TokenKind::Colon,
-        Native::CDO => TokenKind::Cdo,
-        Native::CDC => TokenKind::Cdc,
-        Native::Delim(value) => TokenKind::Delim(*value),
-        Native::BadString(_) => TokenKind::BadString,
-        Native::BadUrl(_) => TokenKind::BadUrl,
-        _ => TokenKind::Other,
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum GenericRuleDispatch {
     At,
@@ -159,6 +131,13 @@ impl SyntaxInputLimits {
 }
 
 // ----- building a document
+
+/// Counts the nodes of a document built from source text.
+fn built(document: Document<'_>) -> Document<'_> {
+    #[cfg(test)]
+    crate::parser::bounded_execution::work::add_built(document.node_count());
+    document
+}
 
 fn capacity() -> CssComponentValueError {
     CssComponentValueError::new(
@@ -238,7 +217,7 @@ fn build_source<'a>(
     )
     .map_err(|error| source_failure(&error, text, window, original))?;
     document.attach(Host::source(original).into_attached());
-    Ok(document)
+    Ok(built(document))
 }
 
 pub(crate) fn source_document<'a>(
@@ -331,7 +310,7 @@ pub(crate) fn source_scope_document(
     )
     .map_err(|error| source_failure(&error, text, range.start, original))?;
     document.attach(Host::source(original).into_attached());
-    Ok(document)
+    Ok(built(document))
 }
 
 /// How far past a token the lexer looks to decide where the token ends, in
@@ -431,7 +410,27 @@ pub(crate) fn recovery_source_document(
     )
     .map_err(|error| source_failure(&error, original.as_str(), 0, original))?;
     document.attach(Host::source(original).into_attached());
-    Ok(document)
+    Ok(built(document))
+}
+
+/// The tree of the whole text `text` of `original`, as it is lexed, which
+/// outlives the call that built it: no limit on nesting, and nothing masked.
+/// Recovery asks it where the blocks of the source nest and end; the limit on
+/// nesting is judged by the readers that ask.
+pub(crate) fn recovery_structure_document(
+    text: &str,
+    original: &CssSourceSnapshot,
+) -> Result<Document<'static>, CssComponentValueError> {
+    let mut document = Document::parse_owned(
+        text.to_owned(),
+        &Options::default(),
+        Limits::new(u32::MAX, usize::MAX, usize::MAX),
+        0,
+        DepthExcess::Fail,
+    )
+    .map_err(|error| source_failure(&error, original.as_str(), 0, original))?;
+    document.attach(Host::source(original).into_attached());
+    Ok(built(document))
 }
 
 /// The token of a checked component's leaf or opening lexeme.

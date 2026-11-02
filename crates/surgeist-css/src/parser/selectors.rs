@@ -1,4 +1,4 @@
-use cssparser::{ParseError, Parser};
+use cssparser::ParseError;
 use surgeist_css_parser::anb;
 use surgeist_css_parser::stream::StopToken;
 use surgeist_css_parser::token::HashKind;
@@ -6,7 +6,7 @@ use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
 use super::block_units::offset_of;
 use super::descriptor_stream::{
-    Value, ValueError, after_token, at_final_comma, consume_remaining, fail, native, parse_scope,
+    Value, ValueError, after_token, at_final_comma, consume_remaining, fail, native,
 };
 use super::property_input::StreamExt;
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
@@ -262,17 +262,6 @@ impl<'a> SelectorRecovery<'a> {
         }
     }
 
-    /// Reads the scope of the native parser `input` with `parse`, and leaves
-    /// the parser where the grammar left the stream.
-    fn read<'i, T>(
-        &mut self,
-        input: &mut Parser<'i, '_>,
-        parse: impl for<'d> FnOnce(&mut Stream<'d>, &mut Self) -> Value<'d, T>,
-    ) -> Result<T, ParseError<'i, CssError>> {
-        let snapshot = self.state.source_snapshot().clone();
-        parse_scope(input, &snapshot, |stream, _| parse(stream, self))
-    }
-
     /// Reads the stream `input` the driver delimited with `parse`, from where
     /// it stands.
     fn read_stream<'i, T>(
@@ -286,14 +275,7 @@ impl<'a> SelectorRecovery<'a> {
     }
 }
 
-pub(crate) fn parse_rule_selector_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssSelector>, ParseError<'i, CssError>> {
-    recovery.read(input, rule_selector_list)
-}
-
-pub(crate) fn parse_rule_selector_list_stream<'i>(
+pub(crate) fn parse_rule_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<Vec<CssSelector>, ParseError<'i, CssError>> {
@@ -357,14 +339,7 @@ pub(crate) fn scope_boundary_selector_list<'i>(
     CssScopeSelectorList::try_new(selectors).ok_or_else(|| recovery.invalid(input.site()))
 }
 
-pub(crate) fn parse_scoped_style_selector_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssStyleSelectorList, ParseError<'i, CssError>> {
-    recovery.read(input, scoped_style_selector_list)
-}
-
-pub(crate) fn parse_scoped_style_selector_list_stream<'i>(
+pub(crate) fn parse_scoped_style_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssStyleSelectorList, ParseError<'i, CssError>> {
@@ -391,14 +366,7 @@ fn scoped_style_selector_list<'i>(
     CssStyleSelectorList::try_new(selectors).ok_or_else(|| recovery.invalid(input.site()))
 }
 
-pub(super) fn parse_nested_style_selector_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
-    recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssStyleSelector>, ParseError<'i, CssError>> {
-    recovery.read(input, nested_style_selector_list)
-}
-
-pub(super) fn parse_nested_style_selector_list_stream<'i>(
+pub(super) fn parse_nested_style_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<Vec<CssStyleSelector>, ParseError<'i, CssError>> {
@@ -488,12 +456,21 @@ pub(super) fn read_rule_selector<'i>(
     parse_rule_selector_with_options(input, SelectorParseOptions::standard(), recovery)
 }
 
-/// The selector that the native parser `input` holds, to the end of its scope.
-pub(super) fn parse_rule_selector<'i, 't>(
-    input: &mut Parser<'i, 't>,
+/// The selector that the stream `input` holds, to the end of its scope.
+pub(super) fn parse_rule_selector<'i>(
+    input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssSelector, ParseError<'i, CssError>> {
-    recovery.read(input, |input, recovery| read_rule_selector(input, recovery))
+    recovery.read_stream(input, |input, recovery| read_rule_selector(input, recovery))
+}
+
+/// Requires that the stream `input` ends here, as the selector fragments do:
+/// the first token that remains is the failure.
+pub(super) fn finish<'i>(
+    input: &mut Stream<'i>,
+    recovery: &SelectorRecovery<'_>,
+) -> std::result::Result<(), ParseError<'i, CssError>> {
+    expect_exhausted(input, recovery).map_err(|error| native(&recovery.numeric(), &error))
 }
 
 #[derive(Clone, Copy)]
@@ -1840,11 +1817,11 @@ fn parse_has_relative_selector_list<'i>(
     )
 }
 
-pub(super) fn parse_general_relative_selector_list<'i, 't>(
-    input: &mut Parser<'i, 't>,
+pub(super) fn parse_general_relative_selector_list<'i>(
+    input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssRelativeSelectorList, ParseError<'i, CssError>> {
-    recovery.read(input, |input, recovery| {
+    recovery.read_stream(input, |input, recovery| {
         recovery.check_depth(input)?;
         parse_relative_selector_list_with_options(input, SelectorParseOptions::standard(), recovery)
     })
@@ -2034,7 +2011,7 @@ mod nth_tests {
             RecoveryState::at_depth(
                 source,
                 0,
-                crate::parser::recovery::StyleContextCaptures::default(),
+                crate::parser::recovery::SharedNamespaces::default(),
             ),
         );
         let pattern = parse_nth_pattern(&mut input, &recovery).unwrap();
