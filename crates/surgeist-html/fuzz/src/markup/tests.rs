@@ -58,7 +58,7 @@ fn document_seed_spells_references_newlines_quotes_and_the_shell() {
 
 #[test]
 fn document_seed_expects_references_decoded_and_newlines_normalized() {
-    // 13.2.5.72 `&amp;` is `&`; 13.2.3.5 CR LF is one LF; a missing doctype
+    // 13.2.5.78 `&amp;` is `&`; 13.2.3.5 CR LF is one LF; a missing doctype
     // identifier is the empty string; `<!DOCTYPE html>` is no-quirks.
     let case = seeds::case(0, false).unwrap();
     let div = element(
@@ -110,9 +110,10 @@ fn document_seed_expects_references_decoded_and_newlines_normalized() {
 
 #[test]
 fn svg_seed_spells_mixed_case_and_expects_adjusted_names_and_qualified_attributes() {
-    // 13.2.6.5: `viewbox` becomes `viewBox`, `foreignobject` becomes
-    // `foreignObject`, `xlink:href` and `xml:lang` take their namespaces and
-    // prefixes; the foreignObject is an HTML integration point.
+    // 13.2.6.5 adjusts the tag name `foreignobject` to `foreignObject`; 13.2.6.1
+    // adjusts the attribute `viewbox` to `viewBox` and gives `xlink:href` and
+    // `xml:lang` their namespaces and prefixes; the foreignObject is an HTML
+    // integration point.
     let case = seeds::case(3, false).unwrap();
     let Mode::Document { doctype, shell } = case.mode else {
         panic!("document seed")

@@ -87,8 +87,9 @@ in `?>` and in `>`, malformed paragraph recovery and foster parenting. Expected
 native values and selected exact source/diagnostic intervals are handwritten
 from the pinned HTML contract and existing public source-qualified examples, not
 sampled parser output. Each target has nine canonical `.case` files in its seed
-directory. The descriptor records both directories for provider hashing; select
-the matching target directory for replay/check. No fabricated defect regression
+directory. The descriptor records every seed directory (five in
+[fuzz.toml](fuzz.toml)) for provider hashing; select the matching target
+directory for replay/check. No fabricated defect regression
 is bundled.
 
 General success checks source identity/units and limits; bounded native parent,
@@ -173,11 +174,11 @@ hex), CR, CRLF and NUL. Source spelling varies independently of the tree: tag an
 attribute-name case, quoting, bare and empty attributes, self-closing foreign
 elements, the document shell, and ten prologues (none included). The expected tree comes from the
 pinned HTML Standard: tokenizer references and the numeric end-state table
-(13.2.5.72-84), newline preprocessing (13.2.3.5), duplicate-attribute removal
-(13.2.5.33), SVG/MathML tag and attribute adjustments with their namespaces and
-prefixes (13.2.6.5), the compatibility mode of each prologue (13.2.6.4.1, a
+(13.2.5.77-84), newline preprocessing (13.2.3.5), duplicate-attribute removal
+(13.2.5.33), SVG tag-name adjustment (13.2.6.5) and the SVG/MathML attribute
+adjustments with their namespaces and prefixes (13.2.6.1), the compatibility mode of each prologue (13.2.6.4.1, a
 missing doctype identifier being the empty string), template contents, and
-declarative shadow roots (with permission the template contents become the
+declarative shadow roots (13.2.6.4.4; with permission the template contents become the
 host's shadow root; without it the template is an ordinary first child that keeps
 its attributes). The model's own serialization and expected trees are tested
 against handwritten values with no parser involved, and tests show the tree
@@ -278,53 +279,81 @@ asserted, because the adapter does not claim them.
 ## Finite campaign record
 
 Source `63e350fa50c5a29e8e608818a356e7f2436a9688` (a clean detached checkout
-outside the active worktree), Apple Silicon macOS, one Cargo job, memory policy
-`unbounded` (RSS sampling is unavailable, so no memory bound is claimed). These
-are counts of attempted cases against the finished parser, builders and
-semantics adapter. They are not conformance percentages, performance baselines
-or resource guarantees, and `Sufficient` means only that the declared minimum
-number of evaluations ran.
+outside the active worktree; the only later source change, `989be0ac5`, replaces
+`chunks_exact(2)` with the equivalent `as_chunks::<2>()` in the native decoder),
+Apple Silicon macOS, one Cargo job, memory policy `unbounded` (RSS sampling is
+unavailable, so no memory bound is claimed). The counts are attempts against the
+finished parser, builders and semantics adapter. They are not conformance
+percentages, performance baselines or resource guarantees, and `Sufficient`
+means only that the declared minimum number of evaluations ran.
 
-| Campaign | Target | Seed | Attempts | Outcome |
-| --- | --- | --- | --- | --- |
-| `check`, fresh worker per case, rustc 1.97.0 | native authoring | 1172 | 5000 | sufficient |
-| | native authoring | 7001 | 2128 | stopped at the 1,500 s wall allowance |
-| | markup parse | 1172 | 5000 | sufficient |
-| | markup parse | 7001 | 2729 | stopped at the 1,500 s wall allowance |
-| | capture import | 1172 | 2913 | stopped at the 1,500 s wall allowance |
-| | capture import | 7001 | 2304 | stopped at the 1,500 s wall allowance |
-| `check --regressions` over the checked-in seeds | markup, capture, native | n/a | 12, 16, 8 | sufficient |
-| `run`, libFuzzer with AddressSanitizer and coverage level 4, nightly-2026-09-01 | each of the three | 1172 | 3000 | sufficient |
-| `run`, same engine, 46 finite rounds each | each of the three | 7001 | 150000 | sufficient |
+Every row is a summary the framework printed. `check` uses
+`--toolchain 1.97.0 --memory-policy unbounded --case-ms 5000 --input-bytes 16384`.
+The "Limits" column lists the remaining options of that run.
 
-No run produced a failure, an unexpected incomplete case or a cleanup error, so
-there is no retained failure, replay or reduction and no regression case is
-bundled. The campaign summaries do not
-count rejections and unsupported outcomes separately. A local, unrecorded sample
-of 6,000 to 20,000 generated cases per target gave 91% to 93% verified results
-and the rest expected resource or cancellation stops, with no unsupported
-outcomes. A stop on
-the wall allowance is a resource stop, not a finding. The tool does not name
-the bound that tripped; the wall allowance is the only configured bound the
-runs could have reached (entry and byte quotas were far from their ceilings).
+| Command | Target | Seed | Limits | Evaluated | Summary status |
+| --- | --- | --- | --- | --- | --- |
+| `check` | native authoring | 1172 | cases 5000, wall 1,200,000 ms, entries 30000, bytes 2 GiB | 5000 | sufficient |
+| `check` | markup parse | 1172 | cases 5000, wall 1,500,000 ms, entries 30000, bytes 2 GiB | 5000 | sufficient |
+| `check` | capture import | 1172 | same as the previous row | 3466 | resource-stop |
+| `check` | capture import | 1172 | cases 5000, wall 1,500,000 ms, entries 100000, bytes 8 GiB | 2913 | resource-stop |
+| `check` | markup parse | 7001 | same as the previous row | 2729 | resource-stop |
+| `check` | capture import | 7001 | same | 2304 | resource-stop |
+| `check` | native authoring | 7001 | same | 2128 | resource-stop |
+| `check --regressions` on `seeds/markup`, `seeds/capture`, `seeds/native` | one each | n/a | cases 64 | 12, 16, 8 | sufficient |
+| `run`, libFuzzer with AddressSanitizer and coverage level 4, `nightly-2026-09-01` | each of the three | 1172 | cases 3000, wall 900,000 ms | 3000 | sufficient |
+| `run`, same engine, 46 rounds each | each of the three | 7001 | cases 150000, wall 1,500,000 ms, round cases 10000, round 600,000 ms, retained entries 256 | 150000 | sufficient |
 
-Reproduce from a clean committed checkout, with the work directory outside the
-source and not yet existing:
+The summaries for the `resource-stop` rows say only `resource-stop` and "finite
+fresh owner evaluations; no exhaustive correctness claim"; they do not name the
+bound that stopped the run, and no reason is claimed here. The retained run
+record of the native seed-7001 stop shows `cases 5000`, `wall_millis 1500000`
+and 2128 evaluated. A further `check` was cancelled by an
+interrupt I sent after 221 markup evaluations (seed 7001), and a first native
+`check` with the default 1,024-entry quota ended `resource-stop` with 0
+evaluated and the detail "artifact quota exhausted". The `run` rows used
+`--build-ms 3000000 --input-bytes 16384 --storage-entries 100000 --storage-bytes 8589934592`.
+
+No run printed a failure; the failure artifact directories were empty and every
+run that evaluated cases printed `cleanup: complete`. There is therefore no retained failure, replay
+or reduction and no regression case is bundled. The campaign summaries do not
+count rejections or unsupported outcomes separately.
+
+Commands as run (the `check` work directory was created by the first command and
+reused by the later `check` commands; a separate directory was likewise reused by
+the `run` commands; each `$src` is the clean checkout):
 
 ```sh
 cargo build --offline --locked -j 1 -p surgeist-fuzz --features execution --bin surgeist-fuzz
 surgeist-fuzz check --source "$src" --work "$work" --target surgeist-html::capture-import \
   --toolchain 1.97.0 --memory-policy unbounded --cases 5000 --wall-ms 1500000 \
-  --case-ms 5000 --input-bytes 16384 --storage-entries 100000 --seed 1172
+  --case-ms 5000 --input-bytes 16384 --storage-entries 100000 \
+  --storage-bytes 8589934592 --seed 7001
 surgeist-fuzz run --source "$src" --work "$work2" --target surgeist-html::capture-import \
   --toolchain nightly-2026-09-01 --memory-policy unbounded --cases 150000 \
   --wall-ms 1500000 --case-ms 5000 --build-ms 3000000 --input-bytes 16384 \
-  --storage-entries 100000 --seed 7001 --round-cases 10000 --retained-entries 256
+  --storage-entries 100000 --storage-bytes 8589934592 --seed 7001 \
+  --round-cases 10000 --round-ms 600000 --retained-entries 256
 ```
 
+The work directory must be outside the source. A first attempt on a directory I
+had created empty failed with "campaign file operation: I/O failure"; the same
+command succeeded once the tool created the directory itself, and later commands
+reused that tool-created directory, so only that observation is recorded here.
 The default 4 KiB input ceiling and 1,024 stored entries are too small for these
-targets (a first run with the defaults stopped on the entry quota before
-evaluating a case); the entry quota may not exceed 100,000.
+targets; the entry quota may not exceed 100,000 (the tool rejects more with
+"invalid bounded storage quotas").
+
+Parser feed partitions have no public operation, so no target here exercises
+them. The parser's own private tests do, and this branch's source passes them:
+`cargo +1.97.0 test --offline --locked -j 1 -p surgeist-html-parser --lib feed`
+ran 11 tests: 10 passed, 1 ignored (the explicit
+`comparative_feed::artifact_tool::comparison_artifact_tool`). The modules are
+`parser::tree_builder::conformance::{comparative_feed, pi_recovery,
+reference_recovery, comment_diagnostic_corpus (with table_recovery_diagnostics
+and template_corpus)}` and `construction::text_append_tests`; their names state
+"every cut and unit feed" for processing instructions, references, comments,
+templates and table recovery.
 
 ## Native authoring
 

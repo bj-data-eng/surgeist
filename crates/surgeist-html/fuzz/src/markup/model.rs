@@ -4,8 +4,9 @@
 //! whose parsed shape does not depend on error recovery: well-nested elements in
 //! content positions where the HTML Standard's tree construction (13.2.6) only
 //! appends, character references from the tokenizer's reference tables
-//! (13.2.5.72-84), the newline preprocessing of 13.2.3.5, case folding of tag and
-//! attribute names, the SVG/MathML name adjustments of 13.2.6.5 and the
+//! (13.2.5.77-84), the newline preprocessing of 13.2.3.5, case folding of tag and
+//! attribute names, the SVG tag-name adjustment of 13.2.6.5, the SVG/MathML
+//! attribute adjustments of 13.2.6.1 and the
 //! compatibility-mode rules of 13.2.6.4.1. The expected tree is computed from the
 //! recipe alone; it is never read back from a parse.
 use surgeist_html::HtmlDocumentMode;
@@ -379,7 +380,11 @@ pub(crate) enum Item {
     Elem(Elem),
 }
 impl Elem {
-    /// 13.2.6.4.1 valid shadow host names reachable by this language.
+    /// Hosts reachable by this language that may take a declarative shadow root.
+    /// 13.2.6.4.4 (the "in head" template start tag) attaches the root through the
+    /// DOM Standard's attach-a-shadow-root, which owns the valid shadow host
+    /// names (div, section, span and p among them); that list is not in the
+    /// pinned HTML file.
     pub(crate) fn shadow_host(&self) -> bool {
         matches!(usize::from(self.tag), DIV | SECTION | SPAN | P)
     }
