@@ -53,6 +53,194 @@ enum_rule!(TH_SCOPE, HtmlTableHeaderScopeState, Scope,
      "rowgroup" => ("rowgroup", HtmlTableHeaderScopeState::Keyword(HtmlTableHeaderScope::RowGroup)),
      "colgroup" => ("colgroup", HtmlTableHeaderScopeState::Keyword(HtmlTableHeaderScope::ColumnGroup))]);
 
+// Borrowed scope processing has the bounded front door, not the report reader's one.
+pub(crate) mod bounded_scope {
+    use super::*;
+
+    /// Returns the th `scope` content state for `raw` without allocating.
+    ///
+    /// This is the `intrinsic` state of `HtmlValueInterpreter::th_scope` for the
+    /// same raw value (HTML 877d §4.9.10, the `scope` enumerated attribute): the
+    /// four keywords match ASCII case-insensitively, and an absent, empty or
+    /// unrecognized value selects Auto. It builds no report, clones no value, and
+    /// makes no element, table or association claim: the caller applies it to a th
+    /// element only. The caller admits the raw value's length against its own input
+    /// cap and charges [`th_scope_work_bound`] before the call.
+    pub fn th_scope_state(raw: Option<&DocumentString>) -> HtmlTableHeaderScopeState {
+        match th_scope_state_with(raw, |_| Ok::<_, std::convert::Infallible>(())) {
+            Ok(state) => state,
+            Err(never) => match never {},
+        }
+    }
+
+    /// The scope state with each keyword-comparison read admitted just before it.
+    fn th_scope_state_with<E>(
+        raw: Option<&DocumentString>,
+        admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
+    ) -> Result<HtmlTableHeaderScopeState, E> {
+        // The rule defines both the missing and invalid defaults as Auto, so every
+        // selection carries a state; Auto is that default, not a masked failure.
+        Ok(enum_value_selection_with(&TH_SCOPE, raw, admit)?
+            .intrinsic
+            .unwrap_or(HtmlTableHeaderScopeState::Auto))
+    }
+
+    /// Returns an upper bound on the work units [`th_scope_state`] performs for a raw
+    /// value of `input_units` UTF-16 code units, or `None` when it is not
+    /// representable.
+    ///
+    /// One unit is one admitted read (`HtmlAttributeKeywordRead`): the value header,
+    /// each of the four keywords' headers, and one per raw unit compared against a
+    /// keyword of the same length. Only `row` and `col` share a length (3), and only
+    /// `rowgroup` and `colgroup` share another (8), so at most two keywords compare
+    /// at most n units each: the total is at most 2n + 5. An absent attribute costs
+    /// one unit, and a mismatch stops a comparison early.
+    pub fn th_scope_work_bound(input_units: usize) -> Option<usize> {
+        input_units.checked_mul(2)?.checked_add(5)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use HtmlTableHeaderScope::{ColumnGroup, Row, RowGroup};
+
+        const KEYWORDS: [&str; 4] = ["row", "col", "rowgroup", "colgroup"];
+
+        /// HTML 877d §4.9.10, the th scope attribute: the four keywords select
+        /// their states, matched ASCII case-insensitively (§2.3.2.2 enumerated
+        /// attributes); the missing and invalid value defaults are Auto.
+        fn oracle(raw: Option<&[u16]>) -> HtmlTableHeaderScopeState {
+            let Some(raw) = raw else {
+                return HtmlTableHeaderScopeState::Auto;
+            };
+            let Ok(text) = String::from_utf16(raw) else {
+                return HtmlTableHeaderScopeState::Auto;
+            };
+            // Only ASCII letters fold: Kelvin sign and long s are different units.
+            let lowered: String = text
+                .chars()
+                .map(|c| {
+                    if c.is_ascii() {
+                        c.to_ascii_lowercase()
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+            match lowered.as_str() {
+                "row" => HtmlTableHeaderScopeState::Keyword(Row),
+                "col" => HtmlTableHeaderScopeState::Keyword(HtmlTableHeaderScope::Column),
+                "rowgroup" => HtmlTableHeaderScopeState::Keyword(RowGroup),
+                "colgroup" => HtmlTableHeaderScopeState::Keyword(ColumnGroup),
+                _ => HtmlTableHeaderScopeState::Auto,
+            }
+        }
+
+        fn counted(raw: Option<&DocumentString>) -> (HtmlTableHeaderScopeState, usize) {
+            let mut count = 0;
+            let state = th_scope_state_with(raw, |_| {
+                count += 1;
+                Ok::<_, std::convert::Infallible>(())
+            })
+            .unwrap_or_else(|never| match never {});
+            (state, count)
+        }
+
+        /// Keyword spellings in every ASCII case pattern of every prefix length
+        /// up to two past the end, every single-unit substitution, long runs, and
+        /// the non-keyword values the Standard's tests use.
+        fn corpus() -> Vec<Vec<u16>> {
+            let mut all: Vec<Vec<u16>> = vec![Vec::new()];
+            for keyword in KEYWORDS {
+                let units: Vec<u16> = keyword.encode_utf16().collect();
+                for mask in 0..(1_u32 << units.len()) {
+                    let cased: Vec<u16> = units
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &u)| if mask >> i & 1 == 1 { u - 32 } else { u })
+                        .collect();
+                    for length in 0..=cased.len() {
+                        all.push(cased[..length].to_vec());
+                    }
+                    for tail in *b"x 0" {
+                        let mut extended = cased.clone();
+                        extended.push(u16::from(tail));
+                        all.push(extended);
+                    }
+                    for position in 0..cased.len() {
+                        for substitute in [u16::from(b'x'), 0x212a, 0x17f, 0x0] {
+                            let mut changed = cased.clone();
+                            changed[position] = substitute;
+                            all.push(changed);
+                        }
+                    }
+                }
+            }
+            for length in [1_usize, 2, 3, 8, 9, 1000, 100_000] {
+                all.push(vec![u16::from(b'r'); length]);
+                all.push(vec![u16::from(b'c'); length]);
+            }
+            for other in ["auto", "AUTO", " row", "row ", "rows", "", "r\u{ff4f}w"] {
+                all.push(other.encode_utf16().collect());
+            }
+            all
+        }
+
+        #[test]
+        fn states_match_the_standard_and_the_report_reader() {
+            assert_eq!(th_scope_state(None), HtmlTableHeaderScopeState::Auto);
+            let interpreter = HtmlValueInterpreter::new(1_000_000);
+            let th = KnownHtmlElement::Th.qualified_name();
+            for units in corpus() {
+                let raw = DocumentString::from_utf16(units.clone());
+                let attribute =
+                    Attribute::new(KnownHtmlAttribute::Scope.qualified_name(), raw.clone());
+                let state = th_scope_state(Some(&raw));
+                assert_eq!(state, oracle(Some(&units)), "{units:?}");
+                assert_eq!(
+                    interpreter
+                        .th_scope(&th, Some(&attribute))
+                        .unwrap()
+                        .intrinsic()
+                        .copied(),
+                    Some(state),
+                    "{units:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn work_never_exceeds_the_published_bound_and_the_bound_is_reached() {
+            assert_eq!(counted(None), (HtmlTableHeaderScopeState::Auto, 1));
+            for units in corpus() {
+                let raw = DocumentString::from_utf16(units.clone());
+                let (_, work) = counted(Some(&raw));
+                let bound = th_scope_work_bound(units.len()).unwrap();
+                assert!(work <= bound, "{units:?}: {work} units, bound {bound}");
+            }
+            // The bound is the sum below, not a loose multiple. An input of the
+            // keywords' common length that matches nothing reads: the value
+            // header, the four keyword headers and, for each of the two keywords
+            // of that length, its first unit pair.
+            let row = DocumentString::from("xxx");
+            assert_eq!(counted(Some(&row)).1, 1 + 4 + 2);
+            // `colgroup` fully matches the second eight-unit keyword after
+            // failing the first at its first unit: 1 + 4 + 1 + 8.
+            let colgroup = DocumentString::from("colgroup");
+            assert_eq!(counted(Some(&colgroup)).1, 1 + 4 + 1 + 8);
+            assert!(1 + 4 + 1 + 8 <= th_scope_work_bound(8).unwrap());
+            assert_eq!(th_scope_work_bound(0), Some(5));
+            assert_eq!(th_scope_work_bound(8), Some(21));
+        }
+
+        #[test]
+        fn unrepresentable_bounds_are_none() {
+            assert_eq!(th_scope_work_bound(usize::MAX), None);
+            assert_eq!(th_scope_work_bound(usize::MAX / 2), None);
+        }
+    }
+}
+
 impl HtmlValueInterpreter {
     /// Interprets th scope content through the shared enumeration owner.
     ///

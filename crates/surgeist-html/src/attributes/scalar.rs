@@ -263,6 +263,287 @@ const COLGROUP_SPAN: BoundedSpanRule = BoundedSpanRule {
     maximum: 1000,
 };
 
+// Borrowed span processing has the bounded front door, not the report readers' one.
+pub(crate) mod table_span {
+    use super::*;
+
+    /// The td/th colspan, td/th rowspan, col span and colgroup span content rules.
+    ///
+    /// Each shares one recovery: the span attribute's value is parsed with the
+    /// rules for parsing non-negative integers (HTML 877d §2.3.4.2); an absent
+    /// attribute, a parse error, or (for the positive rules) zero selects 1; a
+    /// larger value is capped at the rule's maximum. The maximum and zero handling
+    /// come from the same declarations the `HtmlValueInterpreter` readers use, so
+    /// the report-bearing and borrowed entry points cannot diverge. This enum
+    /// establishes no element, parent or table-model evidence: callers apply the
+    /// rule only to the element it names.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum HtmlTableSpanRule {
+        /// td/th `colspan`: 1..=1000, zero selects 1 (forming a table, step 8).
+        CellColspan,
+        /// td/th `rowspan`: 0..=65534, zero preserved as "remaining rows" (step 9).
+        CellRowspan,
+        /// col `span`: 1..=1000, zero selects 1 (forming a table, column groups).
+        ColSpan,
+        /// colgroup `span`: 1..=1000, zero selects 1 (forming a table, column groups).
+        ColgroupSpan,
+    }
+
+    impl HtmlTableSpanRule {
+        fn declaration(self) -> BoundedSpanRule {
+            match self {
+                Self::CellColspan => CELL_COLSPAN,
+                Self::CellRowspan => CELL_ROWSPAN,
+                Self::ColSpan => COL_SPAN,
+                Self::ColgroupSpan => COLGROUP_SPAN,
+            }
+        }
+
+        /// Returns the content value selected for `raw` without allocating.
+        ///
+        /// This equals the `intrinsic` value of the matching `HtmlValueInterpreter`
+        /// reader (`cell_colspan`, `cell_rowspan`, `col_span`, `colgroup_span`) for
+        /// the same raw value, but builds no report and clones neither the raw value
+        /// nor its digits. The caller admits the raw value's length against its own
+        /// input cap and charges [`Self::work_bound`] before the call.
+        pub fn content_value(self, raw: Option<&DocumentString>) -> u16 {
+            self.content_value_steps(raw, &mut || {})
+        }
+
+        /// Returns an upper bound on the work units [`Self::content_value`] performs
+        /// for a raw value of `input_units` UTF-16 code units, or `None` when the
+        /// bound is not representable.
+        ///
+        /// One unit is one raw-unit inspection or digit projection step, plus one
+        /// for reading the attribute's presence and length and one for selecting the
+        /// result. For n units the prefix scan feeds at most n units, a negative
+        /// prefix is checked for a nonzero digit in at most n - 1 steps, and the
+        /// projection takes at most n - 1 steps, so the total is at most 3n + 2. An
+        /// absent attribute costs one unit. Early stops (a non-digit, a capped
+        /// value, a nonzero negative digit) only reduce the work.
+        pub fn work_bound(self, input_units: usize) -> Option<usize> {
+            match self {
+                Self::CellColspan | Self::CellRowspan | Self::ColSpan | Self::ColgroupSpan => {
+                    input_units.checked_mul(3)?.checked_add(2)
+                }
+            }
+        }
+
+        fn content_value_steps(self, raw: Option<&DocumentString>, step: &mut impl FnMut()) -> u16 {
+            let rule = self.declaration();
+            step();
+            let Some(raw) = raw else {
+                return 1;
+            };
+            let parsed = crate::numeric::parse_nonnegative_integer_capped_steps(
+                raw.code_units(),
+                usize::from(rule.maximum),
+                step,
+            );
+            step();
+            match parsed {
+                Ok(0) if rule.positive => 1,
+                Ok(value) => u16::try_from(value).unwrap_or(rule.maximum),
+                Err(_) => 1,
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        const RULES: [HtmlTableSpanRule; 4] = [
+            HtmlTableSpanRule::CellColspan,
+            HtmlTableSpanRule::CellRowspan,
+            HtmlTableSpanRule::ColSpan,
+            HtmlTableSpanRule::ColgroupSpan,
+        ];
+
+        /// The pinned algorithms, written from the Standard's steps rather than
+        /// from the implementation: HTML 877d §2.3.4.1 (rules for parsing
+        /// integers: skip ASCII whitespace, optional sign, digits, stop at the
+        /// first non-digit, error without a digit), §2.3.4.2 (negative is an
+        /// error, `-0` is zero) and §4.9.12 forming a table (the cap, and zero
+        /// selecting 1 except for rowspan).
+        fn oracle(rule: HtmlTableSpanRule, raw: Option<&[u16]>) -> u16 {
+            let (maximum, zero_is_one) = match rule {
+                HtmlTableSpanRule::CellColspan => (1000_u64, true),
+                HtmlTableSpanRule::CellRowspan => (65534, false),
+                HtmlTableSpanRule::ColSpan | HtmlTableSpanRule::ColgroupSpan => (1000, true),
+            };
+            let Some(raw) = raw else { return 1 };
+            let mut chars = raw.iter().copied().peekable();
+            while chars
+                .peek()
+                .is_some_and(|c| [9, 10, 12, 13, 32].contains(c))
+            {
+                chars.next();
+            }
+            let mut negative = false;
+            if let Some(&c) = chars.peek()
+                && (c == u16::from(b'-') || c == u16::from(b'+'))
+            {
+                negative = c == u16::from(b'-');
+                chars.next();
+            }
+            let digits: Vec<u64> = chars
+                .take_while(|c| (u16::from(b'0')..=u16::from(b'9')).contains(c))
+                .map(|c| u64::from(c - u16::from(b'0')))
+                .collect();
+            if digits.is_empty() {
+                return 1;
+            }
+            let mut value = 0_u64;
+            for digit in &digits {
+                value = (value * 10 + digit).min(maximum + 1);
+            }
+            let any_nonzero = digits.iter().any(|d| *d != 0);
+            if negative && any_nonzero {
+                return 1;
+            }
+            if value == 0 && zero_is_one {
+                return 1;
+            }
+            u16::try_from(value.min(maximum)).expect("the cap fits u16")
+        }
+
+        fn steps(rule: HtmlTableSpanRule, raw: Option<&DocumentString>) -> (u16, usize) {
+            let mut count = 0;
+            let value = rule.content_value_steps(raw, &mut || count += 1);
+            (value, count)
+        }
+
+        /// Every string up to `length` over the alphabet, plus structured long
+        /// values that stress each pass: whitespace, signs, zeros and nines.
+        fn corpus() -> Vec<Vec<u16>> {
+            let alphabet: Vec<u16> = " -+019x\u{a0}".encode_utf16().collect();
+            let mut all = vec![Vec::new()];
+            let mut frontier = vec![Vec::new()];
+            for _ in 0..6 {
+                let mut next = Vec::new();
+                for prefix in &frontier {
+                    for &unit in &alphabet {
+                        let mut value: Vec<u16> = prefix.clone();
+                        value.push(unit);
+                        next.push(value);
+                    }
+                }
+                all.extend(next.iter().cloned());
+                frontier = next;
+            }
+            for length in [1_usize, 2, 3, 999, 1000, 1001, 4096, 100_000] {
+                let unit = |c: char| c.to_string().encode_utf16().collect::<Vec<u16>>();
+                let repeat = |c: char, n: usize| unit(c).repeat(n);
+                all.push(repeat('0', length));
+                all.push(repeat('9', length));
+                all.push(repeat(' ', length));
+                all.push([unit('-'), repeat('0', length - 1)].concat());
+                all.push([unit('+'), repeat('9', length - 1)].concat());
+                all.push([unit('1'), repeat('0', length - 1)].concat());
+                all.push([unit('-'), repeat('0', length - 1), unit('1')].concat());
+                all.push([repeat(' ', length / 2), repeat('7', length - length / 2)].concat());
+            }
+            all
+        }
+
+        #[test]
+        fn values_match_the_standard_for_every_rule_and_input() {
+            for rule in RULES {
+                assert_eq!(rule.content_value(None), 1, "{rule:?} absent");
+                for units in corpus() {
+                    let raw = DocumentString::from_utf16(units.clone());
+                    assert_eq!(
+                        rule.content_value(Some(&raw)),
+                        oracle(rule, Some(&units)),
+                        "{rule:?} {:?}",
+                        String::from_utf16_lossy(
+                            &units.iter().copied().take(24).collect::<Vec<_>>()
+                        )
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn borrowed_values_equal_the_report_readers_intrinsic_values() {
+            let interpreter = HtmlValueInterpreter::new(1_000_000);
+            let td = KnownHtmlElement::Td.qualified_name();
+            let col = KnownHtmlElement::Col.qualified_name();
+            let colgroup = KnownHtmlElement::Colgroup.qualified_name();
+            for units in corpus() {
+                let raw = DocumentString::from_utf16(units);
+                let attribute =
+                    |name: KnownHtmlAttribute| Attribute::new(name.qualified_name(), raw.clone());
+                let colspan = attribute(KnownHtmlAttribute::Colspan);
+                let rowspan = attribute(KnownHtmlAttribute::Rowspan);
+                let span = attribute(KnownHtmlAttribute::Span);
+                for (rule, report) in [
+                    (
+                        HtmlTableSpanRule::CellColspan,
+                        interpreter.cell_colspan(&td, Some(&colspan)),
+                    ),
+                    (
+                        HtmlTableSpanRule::CellRowspan,
+                        interpreter.cell_rowspan(&td, Some(&rowspan)),
+                    ),
+                    (
+                        HtmlTableSpanRule::ColSpan,
+                        interpreter.col_span(&col, Some(&span)),
+                    ),
+                    (
+                        HtmlTableSpanRule::ColgroupSpan,
+                        interpreter.colgroup_span(&colgroup, Some(&span)),
+                    ),
+                ] {
+                    assert_eq!(
+                        report.unwrap().intrinsic().copied(),
+                        Some(rule.content_value(Some(&raw))),
+                        "{rule:?}"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn work_never_exceeds_the_published_bound_and_the_bound_is_reached() {
+            for rule in RULES {
+                assert_eq!(steps(rule, None), (1, 1));
+                assert_eq!(rule.work_bound(0), Some(2));
+                for units in corpus() {
+                    let raw = DocumentString::from_utf16(units.clone());
+                    let (_, work) = steps(rule, Some(&raw));
+                    let bound = rule.work_bound(units.len()).unwrap();
+                    assert!(
+                        work <= bound,
+                        "{rule:?} did {work} units for {} input units, bound {bound}",
+                        units.len()
+                    );
+                }
+                // A negative zero run takes every pass at full length: the header
+                // read, n scans, n - 1 sign-prefix checks, n - 1 projection steps
+                // and the result selection, which is 3n.
+                for length in [1_usize, 2, 1000, 100_000] {
+                    let mut units = vec![u16::from(b'-')];
+                    units.extend(std::iter::repeat_n(u16::from(b'0'), length - 1));
+                    let raw = DocumentString::from_utf16(units);
+                    let (_, work) = steps(rule, Some(&raw));
+                    assert_eq!(work, 3 * length, "{rule:?} at {length}");
+                    assert_eq!(rule.work_bound(length), Some(3 * length + 2));
+                }
+            }
+        }
+
+        #[test]
+        fn unrepresentable_bounds_are_none() {
+            for rule in RULES {
+                assert_eq!(rule.work_bound(usize::MAX), None);
+                assert_eq!(rule.work_bound(usize::MAX / 3 + 1), None);
+            }
+        }
+    }
+}
+
 const TABINDEX: RuleMetadata = RuleMetadata {
     attribute: KnownHtmlAttribute::Tabindex,
     rows: &[156],

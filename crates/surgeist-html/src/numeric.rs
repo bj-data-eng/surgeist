@@ -1912,16 +1912,45 @@ pub fn integer_long_work_bound(input_units: usize) -> Option<usize> {
 /// §2.3.4.2 recovery projected to `min(exact_value, cap)` without allocation.
 ///
 /// Negative nonzero input is rejected before projection, including when the cap
-/// is zero. The caller admits and precharges raw input inspection; two scans of
-/// its units suffice, and the fixed-width arithmetic cannot overflow.
+/// is zero. The caller admits and precharges raw input inspection. For n input
+/// units the operation makes at most n prefix-scan steps, at most n - 1 steps
+/// checking a negative prefix for nonzero digits, and at most n - 1 projection
+/// steps, so 3n steps suffice; the fixed-width arithmetic cannot overflow.
 pub fn parse_nonnegative_integer_capped(
     input: &DocumentString,
     cap: usize,
 ) -> Result<usize, NumericParseError> {
-    let prefix = integer_prefix(input.code_units(), true)?;
-    let digits = nonnegative_prefix_digits(prefix.negative, prefix.digits)?;
+    parse_nonnegative_integer_capped_steps(input.code_units(), cap, &mut || {})
+}
+
+/// The capped recovery with each unit of work reported to `step` just before
+/// it is performed: one per unit fed to the prefix scanner, one per digit of a
+/// negative prefix checked for a nonzero digit, and one per digit projected.
+pub(crate) fn parse_nonnegative_integer_capped_steps(
+    units: &[u16],
+    cap: usize,
+    step: &mut impl FnMut(),
+) -> Result<usize, NumericParseError> {
+    let mut scanner = IntegerPrefixScanner::new(true);
+    for &unit in units {
+        step();
+        if !scanner.feed(unit) {
+            break;
+        }
+    }
+    let prefix = scanner.finish()?;
+    let digits = &units[prefix.start..prefix.end];
+    if prefix.negative {
+        for &unit in digits {
+            step();
+            if unit != b'0' as u16 {
+                return Err(NumericParseError::Negative);
+            }
+        }
+    }
     let mut value = 0_usize;
     for &unit in digits {
+        step();
         let digit = usize::from(unit - b'0' as u16);
         value = value
             .checked_mul(10)

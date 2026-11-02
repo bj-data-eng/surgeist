@@ -618,6 +618,14 @@ pub surgeist_html::bounded::HtmlStringPoolResult::Bypassed
 pub surgeist_html::bounded::HtmlStringPoolResult::Hit(surgeist_html::bounded::HtmlStringPoolCandidate)
 pub surgeist_html::bounded::HtmlStringPoolResult::Miss
 pub surgeist_html::bounded::HtmlStringPoolResult::Offered(surgeist_html::bounded::HtmlValuePoolChange)
+pub enum surgeist_html::bounded::HtmlTableSpanRule
+pub surgeist_html::bounded::HtmlTableSpanRule::CellColspan
+pub surgeist_html::bounded::HtmlTableSpanRule::CellRowspan
+pub surgeist_html::bounded::HtmlTableSpanRule::ColSpan
+pub surgeist_html::bounded::HtmlTableSpanRule::ColgroupSpan
+impl surgeist_html::bounded::HtmlTableSpanRule
+pub fn surgeist_html::bounded::HtmlTableSpanRule::content_value(self, raw: core::option::Option<&surgeist_html::DocumentString>) -> u16
+pub fn surgeist_html::bounded::HtmlTableSpanRule::work_bound(self, input_units: usize) -> core::option::Option<usize>
 pub enum surgeist_html::bounded::HtmlTemplateMarkerFirst
 pub surgeist_html::bounded::HtmlTemplateMarkerFirst::Continue
 pub surgeist_html::bounded::HtmlTemplateMarkerFirst::Marker
@@ -1603,6 +1611,8 @@ pub fn surgeist_html::bounded::selectedcontent_update(multiple: bool, disabled: 
 pub fn surgeist_html::bounded::stack_reset_insertion_mode<E>(compare: impl core::ops::function::FnMut(&'static str) -> core::result::Result<bool, E>) -> core::result::Result<core::option::Option<surgeist_html::HtmlFragmentInsertionMode>, E>
 pub fn surgeist_html::bounded::stylesheet_link_context_work_bound(input_code_units: usize) -> core::option::Option<usize>
 pub fn surgeist_html::bounded::template_marker_first(target: surgeist_html::bounded::HtmlTemplateMarkerTarget, name_matches: bool) -> surgeist_html::bounded::HtmlTemplateMarkerFirst
+pub fn surgeist_html::bounded::th_scope_state(raw: core::option::Option<&surgeist_html::DocumentString>) -> surgeist_html::HtmlTableHeaderScopeState
+pub fn surgeist_html::bounded::th_scope_work_bound(input_units: usize) -> core::option::Option<usize>
 pub fn surgeist_html::bounded::try_floating_point_number(input: &surgeist_html::DocumentString, mode: surgeist_html::bounded::FloatingPointParseMode, max_capacity_bytes: usize) -> core::result::Result<surgeist_html::bounded::FloatingPointParseResult, surgeist_html::bounded::FloatingPointAllocationError>
 pub fn surgeist_html::bounded::try_parse_integer(input: &surgeist_html::DocumentString, max_result_digits: usize, max_capacity_bytes: usize) -> core::result::Result<surgeist_html::bounded::IntegerUnitStepResult, surgeist_html::bounded::IntegerRecoveryError>
 pub fn surgeist_html::bounded::validate_custom_element_name(name: &surgeist_html::DocumentString) -> core::result::Result<(), surgeist_html::HtmlCustomElementNameError>
