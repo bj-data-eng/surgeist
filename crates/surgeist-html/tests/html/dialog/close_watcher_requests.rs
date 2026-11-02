@@ -40,6 +40,17 @@ fn cancel(c: &mut C, can_prevent: bool, result: bool) {
     c.reply(R::CancelActionResult(result)).unwrap();
     step(c, A::SetRunningCancelAction(false), R::Applied);
 }
+fn cancel_without_continuing(c: &mut C) {
+    step(c, A::SetRunningCancelAction(true), R::Applied);
+    assert_eq!(
+        c.action(),
+        A::RunCancelAction {
+            can_prevent_close: true
+        }
+    );
+    c.reply(R::CancelActionResult(false)).unwrap();
+    step(c, A::SetRunningCancelAction(false), R::Applied);
+}
 #[test]
 fn request_guards_short_circuit_in_source_order() {
     for guard in 0..4 {
@@ -112,6 +123,68 @@ fn group_strict_inequality_and_activation_determine_cancelability() {
         cancel(&mut c, expected, true);
         step(&mut c, A::ReadActive, R::Active(false));
         complete(&mut c, true);
+    }
+}
+#[test]
+fn history_activation_cancel_that_does_not_continue_consumes_activation_and_returns_false() {
+    // Request to close steps 6-10 (references/html-close-watcher-cancel-result--877d6146487f.md
+    // lines 20-27): with requireHistoryActionActivation true, groups below the
+    // allowed number and history-action activation make canPreventClose true;
+    // shouldContinue false then consumes the activation and returns false
+    // without the close algorithm (no guard re-reads, no membership destruction).
+    let mut c = C::new(true);
+    request_guards(&mut c);
+    step(
+        &mut c,
+        A::ReadManagerGroups,
+        R::ManagerGroups {
+            groups: 1,
+            allowed_groups: NonZeroUsize::new(2).unwrap(),
+        },
+    );
+    step(
+        &mut c,
+        A::ReadHistoryActionActivation,
+        R::HistoryActionActivation(true),
+    );
+    cancel_without_continuing(&mut c);
+    step(&mut c, A::ConsumeHistoryActionActivation, R::Applied);
+    complete(&mut c, false);
+}
+#[test]
+fn cancel_that_does_not_continue_is_refused_when_close_cannot_be_prevented() {
+    // Request to close step 10.1 asserts canPreventClose when shouldContinue is
+    // false (references/html-close-watcher-cancel-result--877d6146487f.md line
+    // 25). Both ways to make canPreventClose false (no history-action
+    // activation, group limit reached) therefore refuse a false result, using
+    // the corrected cancel-action boolean selected in issue #1225 (the pinned
+    // "Cancel action" paragraph's "always false" is the preserved source
+    // contradiction); the cursor stays untouched.
+    for (groups, allowed, activation) in [(1, 2, Some(false)), (2, 2, None)] {
+        let mut c = C::new(true);
+        request_guards(&mut c);
+        step(
+            &mut c,
+            A::ReadManagerGroups,
+            R::ManagerGroups {
+                groups,
+                allowed_groups: NonZeroUsize::new(allowed).unwrap(),
+            },
+        );
+        if let Some(active) = activation {
+            step(
+                &mut c,
+                A::ReadHistoryActionActivation,
+                R::HistoryActionActivation(active),
+            );
+        }
+        step(&mut c, A::SetRunningCancelAction(true), R::Applied);
+        let before = c;
+        assert_eq!(
+            c.reply(R::CancelActionResult(false)),
+            Err(E::NoncancelableActionPreventedClose)
+        );
+        assert_eq!(c, before);
     }
 }
 #[test]
