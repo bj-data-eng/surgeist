@@ -1,6 +1,6 @@
 use crate::semantics::support::{
-    builder, context, scalar_limits as resource_limits,
-    semantic_limits_with_integer_digits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context,
+    scalar_limits as resource_limits, semantic_limits_with_integer_digits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -368,56 +368,48 @@ fn wrong_roles_and_non_elements_are_inapplicable_foreign_tables_unsupported() {
     }
 }
 
+/// Work of one table-caption request for a table whose first child is its
+/// caption, excluding the batch's shared result reservation: the request lookup
+/// (1) and the dispatcher's HTML namespace test (29); the table lookup (1),
+/// namespace test (29) and "table" recognition; the child scan's lookup and
+/// entry (2); the first child's loop charge (1), lookup (1) and "caption"
+/// recognition; and the result write (1).
+fn caption_request_work() -> usize {
+    let n = KnownHtmlElement::ALL.len();
+    let ns = "http://www.w3.org/1999/xhtml".len();
+    (1 + 1 + ns)
+        + (1 + 1 + ns + (("table".len() + 1) * n + ns))
+        + 2
+        + (1 + 1 + (("caption".len() + 1) * n + ns))
+        + 1
+}
+
 #[test]
 fn physical_outer_result_and_work_exact_one_short_stops_are_qualified_and_sticky() {
     let (c, id, expected) = simple();
     let cx = context(&c);
-    let baseline = report(&c, &id);
-    let u = baseline.usage();
-    assert_eq!(u.output_records(), 1);
-    assert_eq!(
-        u.allocated_bytes(),
-        std::mem::size_of::<HtmlSemanticResult>()
+    // The shared result reservation (1) plus the one request.
+    let work = 1 + caption_request_work();
+    let req = request(&id, HtmlSemanticQuery::TableCaption);
+    let baseline = assert_exact_and_one_short_caps(
+        "table caption",
+        &c,
+        &cx,
+        0,
+        limits(),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
     );
-    assert_eq!(u.scratch_records(), 0);
-    assert_eq!(u.peak_scratch_records(), 0);
-    assert_eq!(u.nested_output_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, 1),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        let req = request(&id, HtmlSemanticQuery::TableCaption);
-        let r = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact),
-            0,
-            HtmlSemanticCancellation::new(),
-        )
-        .query(std::slice::from_ref(&req))
-        .unwrap();
-        assert_eq!(value(&r), &HtmlSemanticValue::Known(Some(expected.clone())));
-        let mut s = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact - 1),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = s.query(std::slice::from_ref(&req)).unwrap_err();
-        assert!(
-            matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if *actual==resource)
-        );
-        assert_eq!(s.query(&[]).unwrap_err(), f);
-        assert_eq!(s.usage().scratch_records(), 0);
-        let q = f.qualification().unwrap();
-        assert_eq!(q.capture(), baseline.qualification().capture());
-        assert_eq!(q.context(), cx.identity());
-        assert_eq!(q.host_revision(), baseline.qualification().host_revision());
-        assert_eq!(q.limits(), resource_limits(resource, exact - 1));
-        assert_eq!(q.attribute_input_limit(), 0);
-    }
+    assert_eq!(
+        value(&baseline),
+        &HtmlSemanticValue::Known(Some(expected.clone()))
+    );
+    assert_eq!(baseline.qualification().attribute_input_limit(), 0);
 }
 
 #[test]
@@ -588,54 +580,22 @@ fn physical_batch_bytes_and_output_admission_are_exact_and_one_short_atomic() {
         request(&id, HtmlSemanticQuery::TableCaption),
         request(&id, HtmlSemanticQuery::TableCaption),
     ];
-    let r = session(
+    // One shared result reservation (1), then two requests each costing the
+    // single-request amount without its own reservation.
+    let one = caption_request_work();
+    let r = assert_exact_and_one_short_caps(
+        "duplicate table caption",
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, 20000000),
         0,
-        HtmlSemanticCancellation::new(),
-    )
-    .query(&reqs)
-    .unwrap();
-    assert_eq!(r.usage().output_records(), 2);
-    assert_eq!(
-        r.usage().allocated_bytes(),
-        2 * std::mem::size_of::<HtmlSemanticResult>()
+        limits(),
+        &reqs,
+        ExpectedUsage {
+            work: Charge::Exactly(1 + 2 * one),
+            output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::Exactly(2 * std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
     );
-    for (resource, exact) in [
-        (HtmlSemanticResource::OutputRecords, 2),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            r.usage().allocated_bytes(),
-        ),
-    ] {
-        assert_eq!(
-            session(
-                &c,
-                &cx,
-                resource_limits(resource, exact),
-                0,
-                HtmlSemanticCancellation::new()
-            )
-            .query(&reqs)
-            .unwrap()
-            .results()
-            .len(),
-            2
-        );
-        let mut s = session(
-            &c,
-            &cx,
-            resource_limits(resource, exact - 1),
-            0,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = s.query(&reqs).unwrap_err();
-        assert!(
-            matches!(f.kind(), HtmlSemanticFailureKind::LimitExceeded { resource: actual, .. } if *actual == resource)
-        );
-        assert_eq!(s.query(&[]).unwrap_err(), f);
-        assert_eq!(s.usage().scratch_records(), 0);
-        assert_eq!(s.usage().nested_output_records(), 0);
-    }
+    assert_eq!(r.results().len(), 2);
 }

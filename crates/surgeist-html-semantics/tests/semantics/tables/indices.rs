@@ -1,5 +1,6 @@
 use crate::semantics::support::{
-    builder, context, scalar_limits as resource_limits, scalar_semantic_limits as limits,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
+    scalar_limits as resource_limits, scalar_semantic_limits as limits,
     session_without_raw_values as session,
 };
 use surgeist_html::*;
@@ -432,38 +433,33 @@ fn exact_one_short_work_output_and_physical_batch_bytes_stop_stickily_without_in
         HtmlSemanticQuery::TableRowIndex,
         HtmlSemanticQuery::TableSectionRowIndex,
     ] {
-        let report = query(&c, &cx, &ids[6], q);
-        let u = report.usage();
-        assert_eq!(u.nested_output_records(), 0);
-        assert_eq!(u.scratch_records(), 0);
-        assert_eq!(u.peak_scratch_records(), 0);
-        for (resource, exact) in [
-            (HtmlSemanticResource::Work, u.work()),
-            (HtmlSemanticResource::OutputRecords, u.output_records()),
-            (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-        ] {
-            assert!(exact > 0);
-            for cap in [exact, exact - 1] {
-                let mut ss = session(
-                    &c,
-                    &cx,
-                    resource_limits(resource, cap),
-                    HtmlSemanticCancellation::new(),
-                );
-                let result = ss.query(&[request(&ids[6], q)]);
-                if cap == exact {
-                    assert_eq!(value(&result.unwrap()), value(&report));
-                } else {
-                    let f = result.unwrap_err();
-                    assert!(
-                        matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                        "{f:?}"
-                    );
-                    assert_eq!(ss.query(&[]).unwrap_err(), f);
-                }
-                assert_eq!(ss.usage().scratch_records(), 0);
-            }
-        }
+        // An ordinal is a scalar answer: one result record and no nested or
+        // scratch storage. The visits of the three row passes are private
+        // step layout, so work must be charged but is not pinned.
+        let report = assert_exact_and_one_short_caps(
+            &format!("{q:?}"),
+            &c,
+            &cx,
+            0,
+            limits(),
+            &[request(&ids[6], q)],
+            ExpectedUsage {
+                output_records: Charge::Exactly(1),
+                allocated_bytes: Charge::Exactly(result_record_bytes()),
+                ..ExpectedUsage::none()
+            },
+        );
+        // The last footer row is the final row of the footer section and of
+        // the reordered table collection (headers, direct and body rows,
+        // footers).
+        assert_eq!(
+            value(&report),
+            &HtmlSemanticValue::Known(Some(if q == HtmlSemanticQuery::TableRowIndex {
+                6
+            } else {
+                1
+            }))
+        );
     }
 }
 #[test]
@@ -626,36 +622,20 @@ fn cell_exact_one_short_budgets_and_duplicate_batch_keep_zero_nested_and_scratch
     let cx = context(&c);
     let id = c.subject_id(&target).unwrap();
     let q = HtmlSemanticQuery::TableCellIndex;
-    let report = query(&c, &cx, &id, q);
-    let u = report.usage();
+    let report = assert_exact_and_one_short_caps(
+        "cell index",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&id, q)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_record_bytes()),
+            ..ExpectedUsage::none()
+        },
+    );
     assert_eq!(value(&report), &HtmlSemanticValue::Known(Some(1)));
-    for (r, n) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        let ok = session(
-            &c,
-            &cx,
-            resource_limits(r, n),
-            HtmlSemanticCancellation::new(),
-        )
-        .query(&[request(&id, q)])
-        .unwrap();
-        assert_eq!(value(&ok), value(&report));
-        let mut ss = session(
-            &c,
-            &cx,
-            resource_limits(r, n - 1),
-            HtmlSemanticCancellation::new(),
-        );
-        let f = ss.query(&[request(&id, q)]).unwrap_err();
-        assert!(
-            matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource,..} if *resource==r)
-        );
-        assert_eq!(ss.query(&[]).unwrap_err(), f);
-        assert_eq!(ss.usage().scratch_records(), 0);
-    }
     let pair = session(&c, &cx, limits(), HtmlSemanticCancellation::new())
         .query(&[request(&id, q), request(&id, q)])
         .unwrap();

@@ -1,5 +1,6 @@
 use crate::semantics::support::{
-    SCALAR_AND_NESTED_RESOURCES, builder, cap_resources, context, semantic_limits as limits,
+    Charge, ExpectedUsage, SCALAR_AND_NESTED_RESOURCES, assert_exact_and_one_short_caps, builder,
+    cap_resources, context, result_record_bytes, semantic_limits as limits,
     semantic_limits_without_scratch, session,
 };
 use surgeist_html::*;
@@ -441,40 +442,47 @@ fn resource_limits(resource: HtmlSemanticResource, cap: usize) -> HtmlSemanticLi
 fn exact_one_short_work_output_actual_capacity_and_bytes_are_sticky_with_zero_scratch() {
     let (c, t, expected, _) = ordered();
     let cx = context(&c);
-    let u = query(&c, &cx, &t, HtmlSemanticQuery::TableRows).usage();
-    assert_eq!(u.peak_scratch_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                0,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = ss.query(&[request(&t, HtmlSemanticQuery::TableRows)]);
-            if cap == exact {
-                assert_eq!(ids(&result.unwrap()), expected);
-            } else {
-                let failure = result.unwrap_err();
-                assert!(
-                    matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{failure:?}"
-                );
-                assert_eq!(ss.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    let n = KnownHtmlElement::ALL.len();
+    let ns = "http://www.w3.org/1999/xhtml".len();
+    // Vocabulary recognition of a name of `l` units.
+    let known = |l: usize| (l + 1) * n + ns;
+    // Eight children: six five-unit sections ("tfoot", "tbody", "thead") and
+    // two "tr" direct rows; every section holds one "tr".
+    let (section, row) = (known(5), known(2));
+    // Each of the three fixed passes charges its entry (1), the child list
+    // lookup (2) and the terminating step (1), plus per child its loop charge
+    // (1), lookup (1), recognition and visit charge (1).
+    let passes = 3 * (1 + 2 + 1) + 3 * (8 * 3 + 6 * section + 2 * row);
+    // Entering one section's row list costs the list lookup (2) and, for its
+    // single row, a loop charge (1), lookup (1), recognition, visit charge (1)
+    // and a pushed id (growth 1, push 1), then the terminating step (1).
+    let per_section = 2 + (1 + 1 + row + 1 + 2) + 1;
+    // Two headers, two bodies and two footers are entered; the two direct
+    // rows are pushed from the body pass (growth 1, push 1 each).
+    let collection = passes + 6 * per_section + 2 * 2;
+    // Reservation (1), request lookup (1), dispatcher namespace test (29),
+    // table lookup (1), namespace test (29), "table" recognition, the
+    // collection, and the result write (1).
+    let work = 1 + 1 + (1 + ns) + 1 + (1 + ns) + known(5) + collection + 1;
+    // Eight ids are retained one record at a time.
+    let report = assert_exact_and_one_short_caps(
+        "table rows",
+        &c,
+        &cx,
+        0,
+        semantic_limits_without_scratch(),
+        &[request(&t, HtmlSemanticQuery::TableRows)],
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(8),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes() + 8 * std::mem::size_of::<HtmlCaptureSubjectId>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(ids(&report), expected);
 }
 #[test]
 fn repeated_queries_admit_cumulative_member_capacity_and_do_not_return_partial_batches() {
