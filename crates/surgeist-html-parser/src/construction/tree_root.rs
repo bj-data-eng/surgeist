@@ -52,7 +52,7 @@ impl PayloadStorage {
         if cell.stamp != Some(stamp) {
             return None;
         }
-        cell.root.map(|root| root.get() as usize - 1)
+        cell.root.and_then(cell_slot)
     }
     /// Climbs from `node` to its root or to the first record with a current
     /// cached root that is still a root, returning that root and the record
@@ -126,13 +126,7 @@ impl PayloadStorage {
         node: usize,
     ) -> Result<usize, SessionError> {
         let (root, stop) = self.climb_to_root(control, storage, node)?;
-        let (Some(stamp), Some(cell_root)) = (
-            self.tree_stamp,
-            u32::try_from(root)
-                .ok()
-                .and_then(|root| root.checked_add(1))
-                .and_then(NonZeroU32::new),
-        ) else {
+        let (Some(stamp), Some(cell_root)) = (self.tree_stamp, joined_cell(root).ok()) else {
             return Ok(root);
         };
         let mut at = node;

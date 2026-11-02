@@ -124,8 +124,28 @@ pub(super) struct MetaHistory {
 pub(super) enum SelectionIndex {
     /// No walk has run, or a document fact the readings depend on changed.
     Stale,
-    /// The first candidate in tree order that selected a value, if any.
-    Current(Option<usize>),
+    /// The first candidate in tree order that selected a value, if any, as a
+    /// record position plus one.
+    Current(Option<NonZeroU32>),
+}
+impl SelectionIndex {
+    /// The state after a walk found `deciding`. A record too far along to be
+    /// named by the cell leaves the state stale, which only costs a walk.
+    fn after_walk(deciding: Option<usize>) -> Self {
+        match deciding {
+            None => Self::Current(None),
+            Some(node) => joined_cell(node).map_or(Self::Stale, |cell| Self::Current(Some(cell))),
+        }
+    }
+    /// The deciding candidate the last walk found, or `None` when the state is
+    /// stale.
+    fn deciding(self) -> Option<Option<usize>> {
+        match self {
+            Self::Stale => None,
+            Self::Current(None) => Some(None),
+            Self::Current(Some(cell)) => cell_slot(cell).map(Some),
+        }
+    }
 }
 impl MetaHistory {
     /// The first unsatisfied operation recorded for `domain`; the table has one
@@ -665,7 +685,7 @@ impl SessionStorage {
                 Decision::Theme(_, color) => Some(color),
                 _ => None,
             };
-            *meta.selections.get_mut(domain) = SelectionIndex::Current(deciding);
+            *meta.selections.get_mut(domain) = SelectionIndex::after_walk(deciding);
             // This original constructor has no associated UI recipients.
             // Selection above still performed all reached CSS work.
             #[cfg(test)]
@@ -694,7 +714,7 @@ impl SessionStorage {
         let meta = self
             .meta_history_mut(slot)
             .map_err(|_| latch_registry_row(c))?;
-        *meta.selections.get_mut(domain) = SelectionIndex::Current(deciding);
+        *meta.selections.get_mut(domain) = SelectionIndex::after_walk(deciding);
         let old = std::mem::replace(&mut meta.scheme, selected_scheme);
         #[cfg(test)]
         if self
@@ -789,7 +809,7 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let slot = self.document_slot(c, document)?;
         let history = self.meta_history(slot).map_err(|_| latch_registry_row(c))?;
-        let SelectionIndex::Current(deciding) = history.selections.copy(domain) else {
+        let Some(deciding) = history.selections.copy(domain).deciding() else {
             return Ok(());
         };
         if history.gap(domain).is_some() {
@@ -845,7 +865,7 @@ impl SessionStorage {
             domain == MetaDomain::ThemeColor,
             domain == MetaDomain::ColorScheme,
         );
-        let SelectionIndex::Current(deciding) = known else {
+        let Some(deciding) = known.deciding() else {
             return self.meta_candidates(c, document, detached, theme, scheme);
         };
         c.charge(WorkCategory::RecordVisit, 1)?;
@@ -919,7 +939,7 @@ impl SessionStorage {
             let (mut left_depth, mut right_depth) = (depth(c, left)?, depth(c, right)?);
             while left_depth > right_depth {
                 left = parent(c, left)?.ok_or(SessionError::Cycle)?;
-                left_depth -= 1;
+                left_depth = left_depth.saturating_sub(1);
                 if left == right {
                     // `second` is an ancestor of `first`, so it comes first.
                     return Ok(false);
@@ -927,7 +947,7 @@ impl SessionStorage {
             }
             while right_depth > left_depth {
                 right = parent(c, right)?.ok_or(SessionError::Cycle)?;
-                right_depth -= 1;
+                right_depth = right_depth.saturating_sub(1);
                 if left == right {
                     // `first` is an ancestor of `second`.
                     return Ok(true);
@@ -1489,7 +1509,7 @@ mod tests {
 
     #[test]
     fn theme_color_follows_the_first_color_in_tree_order_through_every_kind_of_change() {
-        let (mut c, mut session, root, nodes, mut lexer) = detached_metas(
+        let (mut c, mut session, root, nodes, lexer) = detached_metas(
             "<meta name=theme-color content=bogus><meta name=theme-color content=red>\
              <meta name=theme-color content=blue><meta name=theme-color content=green>\
              <meta name=viewport content=x><div>",
@@ -1543,7 +1563,7 @@ mod tests {
     #[test]
     fn color_scheme_follows_the_first_scheme_in_tree_order_through_every_kind_of_change() {
         let utf16 = |text: &str| Some(text.encode_utf16().collect::<Vec<_>>());
-        let (mut c, mut session, root, nodes, mut lexer) = detached_metas(
+        let (mut c, mut session, root, nodes, lexer) = detached_metas(
             "<meta name=color-scheme content=1><meta name=color-scheme content=dark>\
              <meta name=color-scheme content=light>",
         );
@@ -1577,7 +1597,7 @@ mod tests {
 
     #[test]
     fn a_theme_color_that_cannot_be_satisfied_ends_the_selection_when_the_walk_reaches_it() {
-        let (mut c, mut session, root, nodes, mut lexer) = detached_metas(
+        let (mut c, mut session, root, nodes, lexer) = detached_metas(
             "<meta name=theme-color content=red media=print>\
              <meta name=theme-color content=blue><meta name=theme-color content=green>",
         );
