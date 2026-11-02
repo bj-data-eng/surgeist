@@ -445,7 +445,12 @@ fn root_annotations_fail_before_environment_deferral() {
         ] {
             let report = fragment(source, kind);
             assert!(report.syntax().is_none(), "{source}");
-            rejected(token).assert_first(&report);
+            // Value text holds no importance flag: its root `!` is a
+            // delimiter that `<declaration-value>` excludes, rejected as the
+            // descriptor's value (Syntax 3 sections 5.4.1 and 5.4.9).
+            invalid_descriptor("color-profile", kind.as_str())
+                .at(token)
+                .assert_first(&report);
             if let Ok(components) = CssComponentValues::parse(&CssParser::default(), source) {
                 let error = Value::try_new(kind, components, Default::default()).unwrap_err();
                 let Some(detail) = error.diagnostic() else {

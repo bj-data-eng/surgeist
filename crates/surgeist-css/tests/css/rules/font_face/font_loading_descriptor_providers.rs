@@ -5,8 +5,8 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use crate::css::support::rules::descriptor_rejected_at;
 use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
+use crate::css::support::rules::{descriptor_rejected_at, invalid_descriptor};
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::CssParser;
 use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
@@ -191,7 +191,16 @@ fn descriptor_boundaries_and_stylesheet_only_substitution_do_not_become_ordinary
             let report =
                 CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), &invalid, kind);
             assert!(report.syntax().is_none(), "{kind:?}: {invalid}: {report:?}");
-            expected.assert_first(&report);
+            // Value text holds no importance flag: its root `!` is a delimiter
+            // that `<declaration-value>` excludes, rejected as the descriptor's
+            // value (Syntax 3 sections 5.4.1 and 5.4.9).
+            if token == "!" {
+                invalid_descriptor("font-face", kind.as_str())
+                    .at("!")
+                    .assert_first(&report);
+            } else {
+                expected.assert_first(&report);
+            }
             let error = Authored::try_from_components(
                 kind,
                 CssComponentValues::parse(&CssParser::default(), &invalid).unwrap(),

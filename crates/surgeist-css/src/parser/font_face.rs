@@ -16,9 +16,9 @@ use surgeist_css_parser::stream::StopToken;
 pub(crate) mod unicode_range;
 
 use super::descriptor_stream::{
-    NativeValueError, Value, at_final_comma, byte_offset, collect_scope, consume_remaining,
-    expect_exhausted, fail, from_component, from_here, from_remaining, inside_consumed, location,
-    native, parse_descriptor_checked, validate_root,
+    NativeValueError, Value, ValueScope, at_final_comma, byte_offset, collect_scope,
+    consume_remaining, expect_exhausted, fail, from_component, from_here, from_remaining,
+    inside_consumed, location, native, parse_descriptor_scope, validate_root,
 };
 use super::font_controls::parse_font_language_override;
 use super::font_settings::{parse_font_feature_settings, parse_font_variation_settings};
@@ -304,6 +304,7 @@ impl FontFaceDescriptorParser<'_> {
             self.source,
             &mut value,
             kind,
+            ValueScope::Declared,
             &numeric,
             member_diagnostics,
             implicit_closures,
@@ -325,6 +326,7 @@ pub(super) fn read_authored_value<'i>(
     source: &str,
     input: &mut Stream<'i>,
     kind: CssFontFaceDescriptorKind,
+    scope: ValueScope,
     numeric: &NumericInputContext<'_>,
     member_diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
@@ -349,6 +351,7 @@ pub(super) fn read_authored_value<'i>(
                 source,
                 input,
                 kind,
+                scope,
                 numeric,
                 member_diagnostics,
                 implicit_closures,
@@ -363,7 +366,7 @@ pub(super) fn read_authored_value<'i>(
     read_value_with_components(
         source,
         input,
-        kind,
+        (kind, scope),
         components,
         numeric,
         member_diagnostics,
@@ -374,7 +377,7 @@ pub(super) fn read_authored_value<'i>(
 fn read_value_with_components<'i>(
     source: &str,
     input: &mut Stream<'i>,
-    kind: CssFontFaceDescriptorKind,
+    (kind, scope): (CssFontFaceDescriptorKind, ValueScope),
     components: crate::component::CssComponentValues,
     numeric: &NumericInputContext<'_>,
     member_diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
@@ -385,17 +388,25 @@ fn read_value_with_components<'i>(
         crate::diagnostic::error::invalid_component_value(location(numeric, input.site()), error)
     })?;
     if pending {
-        return parse_descriptor_checked(input, numeric, "font-face", kind.as_str(), |input| {
-            consume_remaining(input);
-            Ok(CssAuthoredFontFaceDescriptorValue::pending(
-                kind, components,
-            ))
-        });
+        return parse_descriptor_scope(
+            scope,
+            input,
+            numeric,
+            "font-face",
+            kind.as_str(),
+            |input| {
+                consume_remaining(input);
+                Ok(CssAuthoredFontFaceDescriptorValue::pending(
+                    kind, components,
+                ))
+            },
+        );
     }
     read_font_face_value(
         source,
         input,
         kind,
+        scope,
         numeric,
         member_diagnostics,
         implicit_closures,
@@ -431,7 +442,7 @@ pub(crate) fn construct_font_face_descriptor_value(
         let value = read_value_with_components(
             source,
             &mut input,
-            kind,
+            (kind, ValueScope::Declared),
             components.clone(),
             &numeric,
             &mut member_diagnostics,
@@ -452,11 +463,12 @@ fn read_font_face_value<'i>(
     source: &str,
     input: &mut Stream<'i>,
     kind: CssFontFaceDescriptorKind,
+    scope: ValueScope,
     numeric: &NumericInputContext<'_>,
     member_diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
 ) -> Result<CssFontFaceDescriptorValue, NativeValueError> {
-    parse_descriptor_checked(input, numeric, "font-face", kind.as_str(), |input| {
+    parse_descriptor_scope(scope, input, numeric, "font-face", kind.as_str(), |input| {
         Ok(match kind {
             CssFontFaceDescriptorKind::FontFamily => {
                 CssFontFaceDescriptorValue::FontFamily(parse_font_face_family(input, numeric)?)

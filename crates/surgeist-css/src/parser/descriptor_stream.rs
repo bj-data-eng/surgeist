@@ -466,6 +466,37 @@ pub(super) fn validate_root<'i>(
     owner: &str,
     descriptor: &str,
 ) -> Result<(), ValueError<'i>> {
+    scan_root(input, numeric, owner, descriptor, |token| {
+        matches!(
+            token,
+            Token::Semicolon | Token::CloseCurly | Token::CloseParen | Token::CloseSquare
+        )
+    })
+}
+
+/// Refuses a `!` at the root of value text that a grammar has read to its end:
+/// `<declaration-value>` excludes it, which only a value that defers to
+/// substitution could otherwise admit, and the root of value text holds no
+/// importance flag that could account for one. The stream is left where it was.
+pub(super) fn refuse_root_bang<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+    owner: &str,
+    descriptor: &str,
+) -> Result<(), ValueError<'i>> {
+    scan_root(input, numeric, owner, descriptor, |token| {
+        matches!(token, Token::Delim('!'))
+    })
+}
+
+/// Fails at the first token of the root of `input` that `refused` names.
+fn scan_root<'i>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+    owner: &str,
+    descriptor: &str,
+    refused: impl Fn(&Token<'_>) -> bool,
+) -> Result<(), ValueError<'i>> {
     let start = input.mark();
     loop {
         let at = input.site();
@@ -475,10 +506,7 @@ pub(super) fn validate_root<'i>(
             Err(error) if error.unexpected_token().is_none() => break,
             Err(error) => return Err(error.into()),
         };
-        if matches!(
-            token,
-            Token::Semicolon | Token::CloseCurly | Token::CloseParen | Token::CloseSquare
-        ) {
+        if refused(&token) {
             return Err(fail(numeric, at, |location| {
                 invalid_descriptor_syntax_token_at(location, owner, descriptor, token)
             }));
@@ -488,105 +516,27 @@ pub(super) fn validate_root<'i>(
     Ok(())
 }
 
-/// The boundary the first `!` at the root of `document` is at, if there is one.
-fn first_bang(document: &Document<'_>) -> Option<usize> {
-    let list = document.root_list();
-    let nodes = document.list(list);
-    let index = nodes
-        .iter()
-        .position(|node| matches!(document.token(*node), Token::Delim('!')))?;
-    Some(offset_of(document.site(list, index)?))
-}
-
-/// How the text of a descriptor's value is bounded.
+/// Whether the root of the text of a descriptor's value is admitted before its
+/// components are collected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Boundary {
-    /// The root of the whole text is admitted first, and the value ends at `!`.
-    Whole,
-    /// The value ends at `!`, and its root is admitted before its components
-    /// are collected.
-    ValidatedValue,
-    /// The value ends at `!`, and its grammar admits its own root.
-    Value,
-    /// The text is the value, and its root is admitted first.
+    /// No `;` and no closing token may end a component of the value.
+    Validated,
+    /// [`Validated`](Self::Validated), and the value read admits no `!` at its
+    /// root: the value is text and not a declaration.
     ValidatedText,
-    /// The text is the value: no annotation is looked for.
-    Text,
+    /// The value's grammar admits its own root.
+    Unvalidated,
 }
 
 impl Boundary {
-    /// Whether the root of the whole text is admitted before the value is split.
-    const fn validates_scope(self) -> bool {
-        matches!(self, Self::Whole)
-    }
-
-    /// Whether the root of the value is admitted before its components are
-    /// collected.
     const fn validates_value(self) -> bool {
-        matches!(
-            self,
-            Self::Whole | Self::ValidatedValue | Self::ValidatedText
-        )
+        matches!(self, Self::Validated | Self::ValidatedText)
     }
 
-    /// Whether the value ends at the first `!`, which is then an annotation no
-    /// descriptor admits.
-    const fn splits_annotation(self) -> bool {
-        matches!(self, Self::Whole | Self::ValidatedValue | Self::Value)
+    const fn refuses_bang(self) -> bool {
+        matches!(self, Self::ValidatedText)
     }
-}
-
-/// Parses the value of a descriptor from the bare value text `value_start..end`
-/// of the source, as the text fronts read it: the text is no declaration (it
-/// has no name and no colon), so it is not handed through the parser crate's
-/// declaration step. The value is what precedes the first `!` of the text, and
-/// a `!` is an annotation no descriptor admits, judged once the value has been
-/// read. The value of a declaration is read by [`parse_descriptor_range`].
-/// `parse` reads the value from a stream of its own and gets the components it
-/// holds.
-pub(super) fn parse_descriptor_text<T>(
-    snapshot: &CssSourceSnapshot,
-    value_start: usize,
-    end: usize,
-    owner: &str,
-    descriptor: &str,
-    boundary: Boundary,
-    parse: impl for<'d> FnOnce(
-        &mut Stream<'d>,
-        CssComponentValues,
-        &NumericInputContext<'_>,
-        Range<usize>,
-    ) -> Value<'d, T>,
-) -> Result<T, NativeValueError> {
-    let numeric = NumericInputContext::parsed(snapshot);
-    // The whole text is read only to admit its root or to find the annotation.
-    let scope = if boundary.validates_scope() || boundary.splits_annotation() {
-        Some(
-            crate::syntax_consumption::source_scope_document(snapshot, value_start..end)
-                .map_err(|error| invalid_component_value(location_at(snapshot, end), error))?,
-        )
-    } else {
-        None
-    };
-    if boundary.validates_scope()
-        && let Some(scope) = &scope
-    {
-        validate_root(&mut scope.root(), &numeric, owner, descriptor)
-            .map_err(|error| native(&numeric, &error))?;
-    }
-    let bang = scope
-        .as_ref()
-        .filter(|_| boundary.splits_annotation())
-        .and_then(first_bang);
-    parse_descriptor_range(
-        snapshot,
-        value_start..bang.unwrap_or(end),
-        bang,
-        owner,
-        descriptor,
-        boundary,
-        parse,
-    )
 }
 
 /// Parses the value of a descriptor that is the text `range` of the source: the
@@ -631,6 +581,10 @@ pub(super) fn parse_descriptor_range<T>(
     let range = value_start..value_end;
     let parsed = parse(&mut value.root(), components, &numeric, range)
         .map_err(|error| native(&numeric, &error))?;
+    if boundary.refuses_bang() {
+        refuse_root_bang(&mut value.root(), &numeric, owner, descriptor)
+            .map_err(|error| native(&numeric, &error))?;
+    }
     match bang {
         Some(bang) => Err(invalid_descriptor_annotation(
             location_at(snapshot, bang),
@@ -641,8 +595,58 @@ pub(super) fn parse_descriptor_range<T>(
     }
 }
 
+/// What the stream a value grammar reads from holds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ValueScope {
+    /// The value of a declaration, which the driver has taken the importance
+    /// off: a `!` that remains is an annotation no descriptor admits.
+    Declared,
+    /// Value text, which is no declaration (Syntax 3 sections 5.4.1 and 5.4.9):
+    /// a `!` is a delimiter the grammar judges, and a value that defers to
+    /// substitution is refused a root `!`, which `<declaration-value>` excludes.
+    Text,
+}
+
+/// Parses the value of a descriptor from the stream `input` as `scope` says.
+pub(super) fn parse_descriptor_scope<'i, T>(
+    scope: ValueScope,
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+    owner: &str,
+    descriptor: &str,
+    parse: impl FnOnce(&mut Stream<'i>) -> Value<'i, T>,
+) -> Result<T, NativeValueError> {
+    match scope {
+        ValueScope::Declared => parse_descriptor_checked(input, numeric, owner, descriptor, parse),
+        ValueScope::Text => reading_value_text(input, numeric, owner, descriptor, |input| {
+            let parsed = parse(input)?;
+            expect_exhausted(input)?;
+            Ok(parsed)
+        })
+        .map_err(|error| native(numeric, &error)),
+    }
+}
+
+/// Reads the value text of `input` with `parse`, and then refuses a `!` at its
+/// root: the stream is left where `parse` left it.
+pub(super) fn reading_value_text<'i, T>(
+    input: &mut Stream<'i>,
+    numeric: &NumericInputContext<'_>,
+    owner: &str,
+    descriptor: &str,
+    parse: impl FnOnce(&mut Stream<'i>) -> Value<'i, T>,
+) -> Value<'i, T> {
+    let start = input.mark();
+    let parsed = parse(input)?;
+    let end = input.mark();
+    input.restore(start);
+    refuse_root_bang(input, numeric, owner, descriptor)?;
+    input.restore(end);
+    Ok(parsed)
+}
+
 /// Parses the value of a descriptor from the checked components of a document:
-/// the same boundary [`parse_descriptor_text`] draws, drawn with the stream.
+/// the same boundary [`parse_descriptor_range`] draws, drawn with the stream.
 pub(super) fn parse_descriptor_checked<'i, T>(
     input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
@@ -827,14 +831,6 @@ fn collected(
     let origin = crate::source::CssParsedOrigin::from_range(snapshot, range.clone())
         .ok_or_else(|| unexpected_syntax_end(location_at(snapshot, range.end)))?;
     Ok((components, origin))
-}
-
-/// Where the first `!` at the root of the text `range` of the source is.
-pub(super) fn first_root_bang(
-    snapshot: &CssSourceSnapshot,
-    range: Range<usize>,
-) -> Result<Option<usize>, NativeValueError> {
-    Ok(first_bang(&scope_document(snapshot, range)?))
 }
 
 /// Runs a value grammar over the stream `input` from where it stands: the scope

@@ -8,8 +8,7 @@ use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
     Boundary, DescriptorRecovery, Value, comma_list, consume_remaining, declaration_position,
     drive_descriptors, expect_exhausted, fail, from_component, from_remaining, native,
-    parse_descriptor_checked, parse_descriptor_range, parse_descriptor_text, read_scope,
-    validate_root,
+    parse_descriptor_checked, parse_descriptor_range, read_scope, validate_root,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -181,21 +180,22 @@ impl BodyParser<'_> {
     }
 }
 
-/// The value of a descriptor from the text between `value_start` and `end`, an
-/// annotation at its end included.
+/// The value of a descriptor from the value text between `value_start` and
+/// `end`. The text is a value, not a declaration: a `!` in it is a delimiter
+/// that the descriptor's grammar judges.
 pub(super) fn parse_text_value(
     snapshot: &crate::source::CssSourceSnapshot,
     value_start: usize,
     end: usize,
     kind: CssFontPaletteDescriptorKind,
 ) -> Result<CssFontPaletteDescriptorValue, ParseError<'static, CssError>> {
-    parse_descriptor_text(
+    parse_descriptor_range(
         snapshot,
-        value_start,
-        end,
+        value_start..end,
+        None,
         "font-palette-values",
         kind.as_str(),
-        Boundary::Whole,
+        Boundary::ValidatedText,
         |input, components, numeric, _| read_value(input, components, numeric, kind),
     )
 }
@@ -212,7 +212,7 @@ fn parse_declared_value(
         text.bang(),
         "font-palette-values",
         kind.as_str(),
-        Boundary::Whole,
+        Boundary::Validated,
         |input, components, numeric, _| read_value(input, components, numeric, kind),
     )
 }

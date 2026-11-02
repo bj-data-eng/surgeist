@@ -277,6 +277,13 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
             CssFontFaceDescriptorKind::Src,
         );
         assert!(report.syntax().is_none(), "{invalid}: {report:?}");
-        expected.assert_first(&report);
+        // Value text holds no importance flag: its root `!` is a delimiter that
+        // `<declaration-value>` excludes, rejected as the descriptor's value
+        // (Syntax 3 sections 5.4.1 and 5.4.9).
+        if invalid.contains('!') {
+            rejected.clone().at("!").assert_first(&report);
+        } else {
+            expected.assert_first(&report);
+        }
     }
 }

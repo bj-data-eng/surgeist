@@ -195,7 +195,15 @@ fn pending_recovery_and_provenance(name: &str, first: &str, last: &str, invalid:
     ] {
         let raw = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), text, kind);
         assert!(raw.syntax().is_none(), "{name}: {text}: {raw:?}");
-        expected.assert_first(&raw);
+        // Value text holds no importance flag: its root `!` is a delimiter that
+        // `<declaration-value>` excludes, rejected as the descriptor's value
+        // (Syntax 3 sections 5.4.1 and 5.4.9). The constructor below reads a
+        // declaration's value.
+        if text.contains('!') {
+            rejected.clone().at("!").assert_first(&raw);
+        } else {
+            expected.assert_first(&raw);
+        }
         let error = Authored::try_from_components(
             kind,
             CssComponentValues::parse(&CssParser::default(), text).unwrap(),

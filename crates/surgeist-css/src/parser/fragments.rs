@@ -992,6 +992,7 @@ pub(crate) fn parse_font_face_descriptor_value(
                         source,
                         value,
                         descriptor,
+                        descriptor_stream::ValueScope::Text,
                         numeric,
                         &mut diagnostics,
                         &mut openings,
@@ -1040,7 +1041,13 @@ pub(crate) fn parse_page_descriptor_value(
     descriptor_value_fragment(source, Some(("page", kind.as_str())), |snapshot, range| {
         let (value, components, origin) =
             descriptor_stream::parse_collecting(snapshot, range, |stream, numeric| {
-                page::read_descriptor_value(stream, kind, numeric)
+                descriptor_stream::reading_value_text(
+                    stream,
+                    numeric,
+                    "page",
+                    kind.as_str(),
+                    |stream| page::read_descriptor_value(stream, kind, numeric),
+                )
             })?;
         Ok(crate::rule::page::CssPageDescriptorValue::from_parsed(
             kind, value, components, origin,
@@ -1058,10 +1065,9 @@ pub(crate) fn parse_margin_block_with_context(
     })
 }
 
-// These name-free fronts share whole-source rejection, descriptor annotation
-// policy and lexical/resource ownership; each closure uses its family provider
-// on the text it is given: the part of the source that ends where an
-// annotation begins, when the descriptor is named.
+// These name-free fronts share whole-source rejection and lexical/resource
+// ownership; each closure uses its family provider on the whole text it is
+// given.
 fn descriptor_value_fragment<T: Send>(
     source: &str,
     descriptor: Option<(&str, &str)>,
@@ -1076,20 +1082,10 @@ fn descriptor_value_fragment<T: Send>(
         let snapshot = state.source_snapshot();
         let result = (|| {
             let openings = state.check_component_values_from(source, 0, "css.descriptor")?;
-            let value = if let Some((owner, descriptor)) = descriptor {
-                let bang = descriptor_stream::first_root_bang(snapshot, 0..source.len())?;
-                let value = parse(snapshot, 0..bang.unwrap_or(source.len()))?;
-                if let Some(bang) = bang {
-                    return Err(crate::diagnostic::error::invalid_descriptor_annotation(
-                        location_at(snapshot, bang),
-                        owner,
-                        descriptor,
-                    ));
-                }
-                value
-            } else {
-                parse(snapshot, 0..source.len())?
-            };
+            // The text is a value, not a declaration: no annotation is looked
+            // for, and a `!` is a delimiter inside the value that the
+            // descriptor's grammar judges (Syntax 3 sections 5.4.1 and 5.4.9).
+            let value = parse(snapshot, 0..source.len())?;
             state.retain_component_closures(openings);
             Ok(value)
         })()
