@@ -1,6 +1,6 @@
 use crate::semantics::support::{
-    builder, context, scalar_limits as capped, semantic_limits_with_integer_digits as limits,
-    session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
+    scalar_limits as capped, semantic_limits_with_integer_digits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -541,36 +541,23 @@ fn exact_one_short_work_output_bytes_and_type_raw_caps_are_qualified_sticky() {
     let (c, id) = fixture("input", &[("type", "text")], true);
     let cx = context(&c);
     let req = request(&id);
-    let base = report(&c, &cx, &id, 4).usage();
-    for (resource, cap) in [
-        (HtmlSemanticResource::Work, base.work()),
-        (HtmlSemanticResource::OutputRecords, 1),
-        (HtmlSemanticResource::AllocatedBytes, base.allocated_bytes()),
-    ] {
-        session(
-            &c,
-            &cx,
-            capped(resource, cap),
-            4,
-            HtmlSemanticCancellation::new(),
-        )
-        .query(std::slice::from_ref(&req))
-        .unwrap();
-        let mut ss = session(
-            &c,
-            &cx,
-            capped(resource, cap - 1),
-            4,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = ss.query(std::slice::from_ref(&req)).unwrap_err();
-        assert!(
-            matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..}if *r==resource)
-        );
-        assert_eq!(f.qualification().unwrap().capture(), c.identity());
-        assert_eq!(ss.query(&[]).unwrap_err(), f);
-        assert_eq!(ss.usage().scratch_records(), 0);
-    }
+    // The candidate decision climbs ancestors without frames or nested
+    // storage, so the one result record is the only allocation. The ancestor
+    // visits, type read and datalist checks are private step layout: work is
+    // required to be charged but is not pinned.
+    assert_exact_and_one_short_caps(
+        "validation candidate",
+        &c,
+        &cx,
+        4,
+        limits(),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_record_bytes()),
+            ..ExpectedUsage::none()
+        },
+    );
     let f = session(&c, &cx, limits(), 3, HtmlSemanticCancellation::new())
         .query(&[req])
         .unwrap_err();
