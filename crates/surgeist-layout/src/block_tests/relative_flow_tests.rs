@@ -217,6 +217,89 @@ fn relative_flow_fixed_inline_size_overflow_f64() {
     inline_size_and_visual_overflow::<f64>(true);
 }
 
+// A fixed-size intermediate box does not transfer its descendant's visual
+// overflow into its own normal contribution to an auto-sized ancestor.
+fn nested_visual_overflow<S: LayoutScalar>() {
+    for direction in [Direction::Ltr, Direction::Rtl] {
+        for offset in [4.0, -4.0] {
+            let fixed_box = NodeInputOf {
+                display: Display::Block,
+                direction,
+                size: Size::new(
+                    PreferredSizeOf::px(px::<S>(10.0)),
+                    PreferredSizeOf::px(px::<S>(10.0)),
+                ),
+                ..NodeInputOf::default()
+            };
+            let mut tree = PublicLayoutTreeOf::new()
+                .children(0, [1])
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Block,
+                        direction,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(1, fixed_box.clone())
+                .style(
+                    2,
+                    NodeInputOf {
+                        position: Position::Relative,
+                        ..fixed_box
+                    },
+                );
+            let run = |tree: &PublicLayoutTreeOf<S>| {
+                compute_layout(
+                    tree,
+                    0,
+                    LayoutRootRequestOf::viewport(Size::new(
+                        AvailableOf::MAX_CONTENT,
+                        AvailableOf::MAX_CONTENT,
+                    ))
+                    .unwrap(),
+                )
+                .unwrap()
+            };
+            let control = run(&tree);
+            for node in [0, 1, 2] {
+                assert_box(&control, node, (0.0, 0.0), (10.0, 10.0));
+            }
+            replace_inset(
+                &mut tree,
+                2,
+                Edges {
+                    left: LengthAutoOf::px(px::<S>(offset)),
+                    ..Edges::all(LengthAutoOf::AUTO)
+                },
+            );
+            let batch = run(&tree);
+            assert_box(&batch, 0, (0.0, 0.0), (10.0, 10.0));
+            assert_box(&batch, 1, (0.0, 0.0), (10.0, 10.0));
+            assert_box(&batch, 2, (offset, 0.0), (10.0, 10.0));
+            let overflow = output(&batch, 0)
+                .scroll_geometry
+                .unwrap()
+                .scrollable_overflow();
+            assert_eq!(
+                overflow.origin(),
+                Point::new(px::<S>(offset.min(0.0)), S::ZERO)
+            );
+            assert_eq!(overflow.size(), Size::new(px::<S>(14.0), px::<S>(10.0)));
+        }
+    }
+}
+#[test]
+fn relative_flow_nested_visual_overflow_f32() {
+    nested_visual_overflow::<f32>();
+}
+#[test]
+fn relative_flow_nested_visual_overflow_f64() {
+    nested_visual_overflow::<f64>();
+}
+
 fn named_offsets<S: LayoutScalar>(display: Display, direction: Direction, box_sizing: BoxSizing) {
     for decorated in [false, true] {
         let mut tree = three_boxes::<S>(display, direction, box_sizing, decorated);

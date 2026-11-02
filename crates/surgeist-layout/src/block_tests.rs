@@ -34,3 +34,6 @@ mod sizing_scroll;
 
 #[path = "block_tests/balance_provider_tests.rs"]
 mod balance_provider;
+
+#[path = "block_tests/scroll_terminal_tests.rs"]
+mod scroll_terminal;
