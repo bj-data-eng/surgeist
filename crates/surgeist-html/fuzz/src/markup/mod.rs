@@ -20,7 +20,9 @@ use surgeist_fuzz::{
     *,
 };
 
-pub(crate) const MAX_SEGMENTS: usize = 64;
+/// Soup segments, so that one credited slot per segment plus the fixed four stays
+/// inside the 64-node descriptor ceiling.
+pub(crate) const MAX_SEGMENTS: usize = 56;
 pub(crate) const MAX_SEGMENT_UNITS: usize = 16;
 pub(crate) const MAX_SOURCE_UNITS: usize = 4096;
 /// Closed token vocabulary of the free-form lane: tags that exercise table,
@@ -307,13 +309,20 @@ impl MarkupTarget {
             let class = case.root_class().unwrap_or(Class::Flow);
             check_items(items, class, false, true, 0, &mut counts).map_err(error)?;
         }
-        // Two source copies, the expected tree and observation slots are
-        // conservatively charged per unit; node slots per recipe item.
+        // The credit covers consumer-owned structures: two source copies and
+        // observation slots per unit, and one expected-tree node (a balanced
+        // recipe item) or one soup segment per slot. It does not bound the
+        // parser's published tree, which the parse caps (managed nodes at most
+        // 100000) and the observer's own 100000-node ceiling bound.
         let units = case.units().len() as u64;
+        let slots = match &case.body {
+            Body::Exact(_) => counts.items,
+            Body::Soup(segments) => segments.len(),
+        } as u64;
         Budget::new(self.descriptor.limits()).credit(BudgetCharge {
-            bytes: 2 * encoded as u64 + units * 8 + counts.items as u64 * 256 + 2048,
-            nodes: counts.items as u64 + 4,
-            edges: counts.items as u64 + 2,
+            bytes: 2 * encoded as u64 + units * 8 + slots * 256 + 2048,
+            nodes: slots + 4,
+            edges: slots + 2,
             depth: counts.depth as u64 + 2,
             text_units: units * 2,
             operations: 8,

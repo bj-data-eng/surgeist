@@ -206,7 +206,12 @@ its tree. Resource, allocation and representation stops, pre-cancellation and
 lowered caps are `ExpectedRejection` with terminal ownership checked; unsupported
 states are `Unsupported`; a source, report, ownership or tree disagreement is a
 property failure with a stable discriminator. Generation limits (4096 source
-units, 48 items, depth 6, four attributes per element) are generation rejections.
+units, 48 items, depth 6, four attributes per element, 56 soup segments) are
+generation rejections. The framework credit charges one slot per recipe item or
+soup segment plus a fixed four, per-unit byte costs and two text copies; it
+bounds the consumer's own recipe, expectation and observation slots, not the
+parser's published tree, which the parse caps (managed nodes at most 100000) and
+the observer's 100000-node ceiling bound.
 
 Reduction removes items, unwraps elements, drops attributes or shadows, halves a
 text and, for soup, removes or halves segments; each proposal is revalidated and
