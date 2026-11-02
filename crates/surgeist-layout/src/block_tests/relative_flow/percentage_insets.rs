@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "fractional_inset_basis.rs"]
+mod fractional_inset_basis;
+
 fn inset_percent<S: LayoutScalar>(fraction: f64) -> LengthAutoOf<S> {
     LengthAutoOf::value(LengthPercentageOf::from_percent_fraction(px::<S>(fraction)).unwrap())
 }
