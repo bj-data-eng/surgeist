@@ -632,6 +632,24 @@ fn ending_the_session_on_an_error_pairs_the_error_with_the_stop_of_its_class() {
     assert_eq!(end_session_on(&mut c, fact), fact);
     assert_eq!(c.stop(), Some(provenance));
 
+    // A different stop that is already the first one is what the error
+    // reports, for a fault and for an outcome alike.
+    let earlier = ParseStop::InvalidAssociatedFacts;
+    for error in [fact, SessionError::WrongToken, SessionError::CspService] {
+        let mut c = control();
+        c.stop_invalid_associated_facts();
+        assert_eq!(
+            end_session_on(&mut c, error),
+            SessionError::Stop(earlier),
+            "{error:?}"
+        );
+        assert_eq!(c.stop(), Some(earlier), "{error:?}");
+    }
+    // The error's own stop is the first one: the outcome keeps its reason.
+    let mut c = control();
+    c.stop_unsupported_standalone(crate::parser::control::StandaloneUnsupported::Provenance);
+    assert_eq!(end_session_on(&mut c, fact), fact);
+
     for (fault, invariant) in [
         (SessionError::WrongToken, registry_row()),
         (SessionError::ContextUnavailable, registry_row()),
