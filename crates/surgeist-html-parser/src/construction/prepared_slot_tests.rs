@@ -493,3 +493,15 @@ fn an_armed_stop_does_not_outlive_a_sweep_that_unwinds() {
     // A stop left armed would cancel this parse at its first prepared slot.
     assert!(document("<!doctype html><p>x")(limits(100)).is_ok());
 }
+
+#[test]
+fn processing_instruction_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document("<!doctype html><?target data?><p>x"));
+}
+
+#[test]
+fn merged_text_rows_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    assert_nothing_retained(&document(
+        "<!doctype html><textarea>a&amp;b&lt;c</textarea><style>x&amp;y</style><p>a&amp;b</p>",
+    ));
+}
