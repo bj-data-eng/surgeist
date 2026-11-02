@@ -161,6 +161,8 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     line_control_participation: Option<WireControl>,
     #[serde(default, deserialize_with = "present")]
+    browser_br_observation: Option<BrowserBrObservation>,
+    #[serde(default, deserialize_with = "present")]
     atomic_inline_participation: Option<WireAtomic>,
     #[serde(default, deserialize_with = "present")]
     shape_bands: Option<Vec<WireBand>>,
@@ -182,6 +184,11 @@ enum LayoutInput {
     PreparedText,
     InlineBoundary,
     Unsupported,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum BrowserBrObservation {
+    FontBand,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -371,6 +378,7 @@ pub(super) struct Node {
     atomic: Option<Attributes>,
     bands: Option<Vec<Attributes>>,
     control_expectation: Option<Attributes>,
+    br_font_band: Option<Geometry>,
 }
 #[derive(Debug)]
 pub(super) enum NodeKind {
@@ -515,6 +523,29 @@ impl WireNode {
         })
     }
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        context.compatible(
+            self.browser_br_observation.is_none()
+                || (self.layout_input == LayoutInput::Box
+                    && self.tag_name.as_deref() == Some("br")
+                    && self
+                        .style
+                        .as_ref()
+                        .and_then(|style| style.display.as_deref())
+                        == Some("inline")
+                    && self.children.as_ref().is_none_or(Vec::is_empty)
+                    && self.text_content.is_none()
+                    && self.inline_segments.is_none()
+                    && self.prepared_paragraph.is_none()
+                    && self.prepared_occurrence.is_none()
+                    && self.inline_boundary.is_none()
+                    && self.atomic_inline_participation.is_none()
+                    && self.range_rectangles.is_none()
+                    && self.range_fragments.is_none()
+                    && self.fragments.is_none()
+                    && self.shape_bands.is_none()),
+            "browserBrObservation",
+            "a BR font-band request requires an actual visible inline BR leaf",
+        )?;
         if let Some(paragraph) = &self.prepared_paragraph {
             paragraph.validate(context, self.children.as_ref().map_or(0, Vec::len))?;
         }
@@ -556,6 +587,7 @@ impl WireNode {
                     && self.inline_segments.is_none()
                     && self.inline_boundary.is_none()
                     && self.line_control_participation.is_none()
+                    && self.browser_br_observation.is_none()
                     && self.atomic_inline_participation.is_none()
                     && self.shape_bands.is_none()
                     && self.fragments.is_none()
@@ -719,6 +751,7 @@ impl WireNode {
                 atomic: None,
                 bands: None,
                 control_expectation: None,
+                br_font_band: None,
             });
         }
         context.compatible(
@@ -1042,10 +1075,38 @@ impl WireNode {
                 fragments,
             }
         };
+        let br_font_band = if self.browser_br_observation.is_some() {
+            context.ensure(
+                !is_root,
+                "browserBrObservation",
+                "a BR font-band request requires an inline child in its actual container",
+            )?;
+            let Observation::Geometry {
+                selected,
+                scroll: None,
+                fragments: None,
+                ..
+            } = &observation
+            else {
+                return Err(context.error(
+                    "browserBrObservation",
+                    MeasurementErrorKind::InvalidValue,
+                    "a BR font-band observation requires measured geometry",
+                ));
+            };
+            Some(*selected)
+        } else {
+            None
+        };
         let prepared_paragraph = self
             .prepared_paragraph
             .as_ref()
             .map(|paragraph| {
+                paragraph.validate_frame(
+                    context,
+                    &writing_mode,
+                    style.direction.as_deref().unwrap_or("ltr"),
+                )?;
                 let encoded = paragraph.validate(context, children.len())?;
                 for (origin, row) in paragraph.origins.iter().enumerate() {
                     context.ensure(
@@ -1088,6 +1149,13 @@ impl WireNode {
                         "preparedParagraph.atomics",
                         "captured atomic flow role requires the corresponding actual box without control or measured-level authority",
                     )?;
+                    if !matches!(paragraph.writing_mode, prepared_text::WritingMode::HorizontalTb) {
+                        context.ensure(
+                            display == Some("inline-block"),
+                            "preparedParagraph.atomics",
+                            "vertical capture requires an actual inline-block",
+                        )?;
+                    }
                 }
                 for row in &paragraph.controls {
                     let child = &children[row.child];
@@ -1154,6 +1222,7 @@ impl WireNode {
             atomic,
             bands: shape,
             control_expectation: None,
+            br_font_band,
         })
     }
 }
@@ -1593,6 +1662,9 @@ impl Node {
     pub fn control_expectation(&self) -> Option<&Attributes> {
         self.control_expectation.as_ref()
     }
+    pub fn br_font_band(&self) -> Option<&Geometry> {
+        self.br_font_band.as_ref()
+    }
     pub fn bands(&self) -> Option<&[Attributes]> {
         self.bands.as_deref()
     }
@@ -1690,7 +1762,9 @@ fn prepare_control_expectations(
         .filter_map(|(index, node)| (!matches!(node.kind, NodeKind::Boundary(_))).then_some(index))
         .collect::<Vec<_>>();
     for (source_index, &index) in indices.iter().enumerate() {
-        if !matches!(children[index].kind, NodeKind::Control) {
+        if !matches!(children[index].kind, NodeKind::Control)
+            && children[index].br_font_band.is_none()
+        {
             continue;
         }
         let control = block_interval(writing_mode, &children[index]).ok_or_else(|| {
@@ -1703,7 +1777,10 @@ fn prepare_control_expectations(
         let candidates = indices[..source_index]
             .iter()
             .rev()
-            .take_while(|&&index| !matches!(children[index].kind, NodeKind::Control))
+            .take_while(|&&index| {
+                !matches!(children[index].kind, NodeKind::Control)
+                    && children[index].br_font_band.is_none()
+            })
             .map(|&index| &children[index])
             .collect::<Vec<_>>();
         let terminal = candidates
