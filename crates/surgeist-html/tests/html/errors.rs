@@ -23,12 +23,12 @@ use surgeist_html::{
     HtmlMeterNumberRole, HtmlMicrodataTokenListError, HtmlNavigableTargetError,
     HtmlNonNegativeInteger, HtmlNonNegativeRational, HtmlNumericAttributeConformanceError,
     HtmlOrderedTokenSet, HtmlProcessingInstructionError, HtmlProgressNumberAuthorError,
-    HtmlRationalError, HtmlSandboxValueError, HtmlSpaceToken, HtmlSrcsetAuthorViolation,
-    HtmlSrcsetContextViolation, HtmlSrcsetDensityError, HtmlSrcsetInterpretationError,
-    HtmlSrcsetParseError, HtmlSrcsetUrlTokenError, HtmlTemporalError, HtmlTokenComparison,
-    HtmlTokenDeclarationError, HtmlTokenError, HtmlUtf8EncodingLabel, HtmlValueAdmissionError,
-    HtmlValueFailure, HtmlValueInterpreter, HtmlValueRepresentationError, HtmlValueSyntaxError,
-    input_filename_setter,
+    HtmlRationalError, HtmlSandboxRedundancy, HtmlSandboxValueError, HtmlSpaceToken,
+    HtmlSrcsetAuthorViolation, HtmlSrcsetContextViolation, HtmlSrcsetDensityError,
+    HtmlSrcsetInterpretationError, HtmlSrcsetParseError, HtmlSrcsetUrlTokenError,
+    HtmlTemporalError, HtmlTokenComparison, HtmlTokenDeclarationError, HtmlTokenError,
+    HtmlUtf8EncodingLabel, HtmlValueAdmissionError, HtmlValueFailure, HtmlValueInterpreter,
+    HtmlValueRepresentationError, HtmlValueSyntaxError, input_filename_setter,
 };
 
 use surgeist_html::bounded::{
@@ -1195,5 +1195,84 @@ fn action_errors_distinguish_the_callers_refusal_from_protocol_misuse() {
     assert_eq!(
         message(&refused),
         "microdata token interpretation was refused by the caller's admission"
+    );
+}
+
+#[test]
+fn natural_arithmetic_and_value_pool_errors_state_the_misuse() {
+    use surgeist_html::bounded::{HtmlValuePoolError, NaturalArithmeticError as Natural};
+    assert_eq!(
+        message(&Natural::NonCanonical),
+        "natural number digits are empty or have a leading zero"
+    );
+    assert_eq!(
+        message(&Natural::InvalidDigit {
+            index: 2,
+            value: 12
+        }),
+        "natural number digit 12 at index 2 exceeds 9"
+    );
+    assert_eq!(
+        message(&Natural::ScratchNotEmpty),
+        "arithmetic scratch storage is not empty"
+    );
+    assert_eq!(
+        message(&Natural::ScratchCapacity {
+            required: 9,
+            capacity: 4
+        }),
+        "arithmetic scratch storage holds 4 digits but 9 are required"
+    );
+    assert_eq!(
+        message(&Natural::RepresentationExhausted),
+        "arithmetic size cannot be represented on this platform"
+    );
+    assert_eq!(
+        message(&Natural::NotReady),
+        "arithmetic operation has an unfinished step"
+    );
+    assert_eq!(
+        message(&Natural::EmptySlot),
+        "arithmetic operation was already consumed"
+    );
+    assert_eq!(
+        message(&HtmlValuePoolError::ForeignOwner),
+        "value pool action belongs to a different pool owner"
+    );
+    assert_eq!(
+        message(&HtmlValuePoolError::WrongAction),
+        "action does not match the pending value pool operation"
+    );
+    assert_eq!(
+        message(&HtmlValuePoolError::NotReady),
+        "value pool operation has an unfinished step"
+    );
+    assert_eq!(
+        message(&HtmlValuePoolError::RepresentationExhausted),
+        "value pool accounting size cannot be represented on this platform"
+    );
+}
+
+#[test]
+fn duplicate_token_and_redundant_sandbox_errors_state_the_conflict_in_prose() {
+    let duplicate = duplicate_token();
+    assert_eq!(
+        message(&duplicate),
+        "token at index 1 duplicates the token at index 0 under ASCII case-insensitive comparison"
+    );
+    let case_sensitive = HtmlOrderedTokenSet::new(
+        HtmlTokenComparison::CaseSensitive,
+        ["a", "a"].map(|token| HtmlSpaceToken::new(token).expect("valid token")),
+    )
+    .expect_err("equal spellings collide");
+    assert_eq!(
+        message(&case_sensitive),
+        "token at index 1 duplicates the token at index 0 under case-sensitive comparison"
+    );
+    let redundant =
+        HtmlSandboxValueError::Redundant(HtmlSandboxRedundancy::TopNavigationAndByUserActivation);
+    assert_eq!(
+        message(&redundant),
+        "sandbox lists both allow-top-navigation and allow-top-navigation-by-user-activation, which is redundant"
     );
 }
