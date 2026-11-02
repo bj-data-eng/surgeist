@@ -1193,6 +1193,54 @@ pub(super) mod tests {
         }
     }
 
+    /// The fragment driver ends on a stage state the environment does not
+    /// support as the state it names, as the ordinary driver does: an SVG
+    /// script whose end the parser has not finished (a script pause), and a
+    /// head owner without the construction capability.
+    #[test]
+    fn a_fragment_stage_state_the_environment_does_not_support_latches_its_stop() {
+        for (capability, state) in [
+            (false, StandaloneUnsupported::ScriptPause),
+            (true, StandaloneUnsupported::Provenance),
+        ] {
+            let request = request("<script>x</script>", "div", HtmlScriptingStatus::Disabled);
+            let mut driver = initialized_driver(&request);
+            let stage = driver.head.as_mut().unwrap().state.as_mut().unwrap();
+            if capability {
+                stage.script = None;
+            } else {
+                let root = stage
+                    .before
+                    .kernel
+                    .session
+                    .root(&mut driver.control)
+                    .unwrap();
+                stage.svg_pending = Some(root);
+            }
+            let mut ended = false;
+            for _ in 0..100 {
+                if driver.step().is_err() {
+                    ended = true;
+                    break;
+                }
+            }
+            assert!(ended, "{state:?}");
+            assert_eq!(
+                driver.control.stop(),
+                Some(ParseStop::UnsupportedStandaloneState(state))
+            );
+            driver
+                .head
+                .as_mut()
+                .unwrap()
+                .state
+                .as_mut()
+                .unwrap()
+                .svg_pending = None;
+            driver.release().unwrap();
+        }
+    }
+
     /// Frozen parts of a finished fragment parse and the carrier that owns its
     /// request, stopped as a refused seal would stop them.
     fn frozen_fragment_parts() -> (FragmentInitialization, FrozenContextFragmentParts) {

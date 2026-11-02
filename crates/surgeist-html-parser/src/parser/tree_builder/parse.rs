@@ -1278,4 +1278,24 @@ mod tests {
             }
         }
     }
+
+    /// A stage error that stands for a state the closed environment does not
+    /// support reports that state as its reason, in both drivers, which is the
+    /// state the first stop names.
+    #[test]
+    fn a_stage_state_the_environment_does_not_support_reports_it_as_its_reason() {
+        for (error, state) in super::super::outcome_tests::stage_states() {
+            let reason = HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(state));
+            assert_eq!(
+                ordinary_reason(&StandaloneError::Head(error())),
+                reason,
+                "{state:?}"
+            );
+            assert_eq!(
+                fragment_reason(&FragmentExecutionError::Head(error())),
+                reason,
+                "{state:?}"
+            );
+        }
+    }
 }

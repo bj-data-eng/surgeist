@@ -325,3 +325,37 @@ pub(super) fn every_session_error() -> Vec<SessionError> {
     }
     all
 }
+
+/// The stage states the closed environment cannot continue from, with the
+/// unsupported state each ends a parse as: a script that asks the parser to
+/// pause, a blocking script it would have to wait for, and a head owner that
+/// holds no proof of the construction capability.
+pub(super) fn stage_states() -> [(fn() -> HeadError, StandaloneUnsupported); 3] {
+    [
+        (
+            || HeadError::UnsupportedScriptPause,
+            StandaloneUnsupported::ScriptPause,
+        ),
+        (
+            || HeadError::UnsupportedPendingScript,
+            StandaloneUnsupported::PendingScript,
+        ),
+        (
+            || HeadError::ConstructionCapabilityUnavailable,
+            StandaloneUnsupported::Provenance,
+        ),
+    ]
+}
+
+/// The ordinary driver ends on each of these states as the state it names.
+#[test]
+fn an_unsupported_stage_state_latches_its_stop_in_the_ordinary_driver() {
+    for (error, state) in stage_states() {
+        let request =
+            HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), super::tests::limits(100));
+        let mut driver = super::entry::initialized_driver(&request);
+        driver.retain_terminal_failure(&Err::<(), _>(StandaloneError::Head(error())));
+        assert_eq!(driver.control.stop(), Some(unsupported(state)));
+        driver.release().unwrap();
+    }
+}
