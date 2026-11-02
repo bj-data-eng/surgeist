@@ -2232,3 +2232,46 @@ fn a_replacement_on_a_non_element_is_refused_with_the_container_frozen() {
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+/// Script and completion metadata that effect work cannot find are named by
+/// the driver as the unsupported document states they stand for. The mapping
+/// latches no invariant on the way: these are outcomes of the document, not
+/// faults of the parser, so the whole parse ends as that unsupported state.
+/// The fault is raised by the last effect drain of an ordinary parse, which
+/// runs under the head stage that classifies it.
+#[test]
+fn script_and_completion_metadata_errors_from_effect_work_stop_the_parse_as_unsupported_states() {
+    use crate::parser::control::StandaloneUnsupported as Unsupported;
+    let source = "<!doctype html><p>x</p>";
+    // Nothing is raised here: the armed position is never reached, and the
+    // drains that did run are counted.
+    super::fault_effect_drain(usize::MAX, SessionError::CompletionIncomplete);
+    request(source).parse().unwrap();
+    let (unreached, drains) = super::take_effect_fault();
+    assert_eq!(unreached, Some(SessionError::CompletionIncomplete));
+    assert!(drains > 0, "an ordinary parse runs effect drains");
+    for (error, expected) in [
+        (
+            SessionError::ScriptMetadataUnavailable,
+            Unsupported::ScriptDocument,
+        ),
+        (
+            SessionError::SvgScriptMetadataUnavailable,
+            Unsupported::ScriptDocument,
+        ),
+        (
+            SessionError::CompletionMetadataUnavailable,
+            Unsupported::Completion,
+        ),
+        (SessionError::CompletionIncomplete, Unsupported::Completion),
+    ] {
+        super::fault_effect_drain(drains - 1, error);
+        let failure = request(source).parse().err();
+        assert_eq!(super::take_effect_fault().0, None, "{error:?} was raised");
+        assert_eq!(
+            failure.and_then(|failure| failure.first_stop()),
+            Some(ParseStop::UnsupportedStandaloneState(expected)),
+            "{error:?}"
+        );
+    }
+}

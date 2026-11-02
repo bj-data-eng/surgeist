@@ -77,7 +77,8 @@ pub enum Invariant {
     NonReclaimableNodes,
     /// A buffer, ticket or allocation differs from what was charged for it: its
     /// capacity, layout, ownership or finalization state, or a byte extent that
-    /// no charged allocation could have.
+    /// no charged allocation could have. A work plan that counts less than was
+    /// already charged for it is the same disagreement.
     CapacityMismatch,
     /// Storage was requested for a zero-sized element type.
     ZeroSizedStorage,
@@ -102,14 +103,53 @@ pub enum Invariant {
     /// not yet performed, or a base response not yet returned.
     PendingFormEffects,
     /// A creation that holds a form, link, select or details association
-    /// failed with an error other than a stop.
+    /// returned the outcome of script, SVG-wrapper or completion work, which
+    /// none of its steps runs, so the association it registered stays unbound.
+    /// Outcomes of the creation's own image, associated-fact, nonce and context
+    /// work keep the classification the driver gives them, and a creation that
+    /// fails for a fault of its own reports what that fault violates instead: a
+    /// missing row, an aliased allocation, a pending operation.
     IncompleteFormAssociationCreation,
-    /// A construction registry row, record, child or payload that internal
-    /// state names is missing, out of range or of another kind, a construction
-    /// owner that the registry keeps in a slot is not there, or construction
-    /// bookkeeping that its algorithms keep consistent (staged buffers, range
-    /// machine state, counts) contradicts its own sequencing.
+    /// A construction registry row or retained step is not in the state that
+    /// internal sequencing leaves it, in one of these ways:
+    ///
+    /// - a row, record, child or payload that internal state names is missing,
+    ///   out of range or of another kind, or a node handle does not resolve;
+    /// - a join or binding between rows and records cannot be made or
+    ///   disagrees, or a new row cannot be registered;
+    /// - a position, count or text extent is outside what it indexes, or
+    ///   registry arithmetic over one overflows;
+    /// - an owner, lease, pool, ticket, attribute edit, pending operation,
+    ///   terminal slot or finalization state that is kept in a slot is absent,
+    ///   or is occupied when the step needs it free;
+    /// - a retained step lacks the value its stage consumes: the form-owner
+    ///   reset's owner or stage, the stage of an attribute bank, a text-run
+    ///   scan's run kind, a recognition cursor's result, or an image-source
+    ///   guard.
+    ///
+    /// The range-input machine, HTML's construction owner refusing a request
+    /// or answering unexpectedly, and a work plan that disagrees with what was
+    /// charged are reported separately.
     RegistryRow,
+    /// The range-input machine is in a state its own protocol excludes: a
+    /// staged scratch or output buffer is missing, mis-sized or not where the
+    /// step expects it, the machine or its numeric request is not the one the
+    /// step drives, or the number grammar or constraint policy returned a result
+    /// that the parser's well-formed requests cannot produce.
+    RangeMachineState,
+    /// HTML's construction owner refused a request that the parser's own
+    /// sequencing guarantees valid: a record of the wrong kind, a placement the
+    /// tree cannot take (a root or association move, a parent that cannot hold
+    /// children, a cycle), a shadow, template or contents association that is
+    /// already held or malformed, an attribute that is duplicated or out of
+    /// order, an invalid output root, or an operation that was already
+    /// consumed or is not ready. It is also reported when the owner answers a
+    /// step with an action or observation the parser's sequencing does not
+    /// expect, such as an action of another kind or an observation without the
+    /// allocation, capacity or backing the step was planned around. The
+    /// owner's error enum is open, so an error this parser does not yet
+    /// classify reports the same fault.
+    ConstructionOwnerRefusal,
     /// The tree-builder drivers or algorithm are in a state their sequencing
     /// excludes: a driver, stage or prologue owner that the sequencing keeps in
     /// a slot is gone, the formatting list is invalid, script nesting or the

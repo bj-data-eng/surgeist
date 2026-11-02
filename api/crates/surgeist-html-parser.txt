@@ -247,6 +247,7 @@ pub surgeist_html_parser::HtmlParseImageUpdate::Waiting::generation: u64
 pub surgeist_html_parser::HtmlParseInvariant::CapacityMismatch
 pub surgeist_html_parser::HtmlParseInvariant::CleanupWhileRunning
 pub surgeist_html_parser::HtmlParseInvariant::ColorConversionState
+pub surgeist_html_parser::HtmlParseInvariant::ConstructionOwnerRefusal
 pub surgeist_html_parser::HtmlParseInvariant::ForeignControl
 pub surgeist_html_parser::HtmlParseInvariant::ForeignEvidence
 pub surgeist_html_parser::HtmlParseInvariant::ForeignSource
@@ -256,6 +257,7 @@ pub surgeist_html_parser::HtmlParseInvariant::MissingSource
 pub surgeist_html_parser::HtmlParseInvariant::NonReclaimableNodes
 pub surgeist_html_parser::HtmlParseInvariant::NonStorageResource
 pub surgeist_html_parser::HtmlParseInvariant::PendingFormEffects
+pub surgeist_html_parser::HtmlParseInvariant::RangeMachineState
 pub surgeist_html_parser::HtmlParseInvariant::ReentrantProviderCallback
 pub surgeist_html_parser::HtmlParseInvariant::RegistryRow
 pub surgeist_html_parser::HtmlParseInvariant::ReleaseUnderflow

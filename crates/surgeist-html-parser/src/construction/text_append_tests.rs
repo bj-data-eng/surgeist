@@ -751,3 +751,30 @@ fn a_failed_backing_initialization_keeps_the_stop_and_releases_the_prepared_tick
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+/// The dimensions an append operation observes on the real text of a node, as
+/// the controller receives them. Only the observation is kept: the session that
+/// produced it is released here, so the value carries no custody.
+pub(crate) fn observed_capacity() -> crate::bounded::HtmlConstructionTextAppendCapacity {
+    use crate::bounded::HtmlConstructionTextAppend as Append;
+    let mut c = control();
+    let (mut session, _root, node) = aggregate(&mut c);
+    let storage = session.active_mut().unwrap();
+    let mut operation = Some(Append::begin(
+        storage.construction.owner.take().unwrap(),
+        node.handle.clone(),
+        DocumentString::from("C"),
+    ));
+    let capacity = {
+        let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+        let observation = action.perform(None).unwrap();
+        let capacity = observation.capacity().unwrap();
+        observation.accept();
+        capacity
+    };
+    let (owner, ..) = operation.take().unwrap().abort().into_parts();
+    storage.construction.owner = Some(owner);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+    capacity
+}
