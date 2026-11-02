@@ -6,6 +6,21 @@ pub(crate) const HTML_NAMESPACE_URI: &str = "http://www.w3.org/1999/xhtml";
 pub(crate) const SVG_NAMESPACE_URI: &str = "http://www.w3.org/2000/svg";
 pub(crate) const MATHML_NAMESPACE_URI: &str = "http://www.w3.org/1998/Math/MathML";
 
+/// Exact UTF-16 comparison with the HTML namespace, without allocating.
+///
+/// An absent namespace is not the HTML namespace. The URI is ASCII, so a unit
+/// count different from its byte length rejects before any unit is compared.
+pub(crate) fn is_html_namespace_uri(uri: Option<&DocumentString>) -> bool {
+    uri.is_some_and(|uri| {
+        uri.len() == HTML_NAMESPACE_URI.len()
+            && uri
+                .code_units()
+                .iter()
+                .copied()
+                .eq(HTML_NAMESPACE_URI.encode_utf16())
+    })
+}
+
 /// An immutable sequence of exact UTF-16 code units.
 ///
 /// Isolated surrogates, whitespace, and null code units are preserved. Lengths
@@ -171,6 +186,15 @@ impl Namespace {
     /// Returns the exact URI, or `None` for no namespace.
     pub fn uri(&self) -> Option<&DocumentString> {
         self.uri.as_ref()
+    }
+
+    /// Reports whether this is exactly the HTML namespace, without allocating.
+    ///
+    /// The comparison is by exact UTF-16 identity: no namespace, other
+    /// namespaces, and any case, prefix, suffix or whitespace variation of the
+    /// HTML namespace URI are all `false`.
+    pub fn is_html(&self) -> bool {
+        is_html_namespace_uri(self.uri())
     }
 }
 

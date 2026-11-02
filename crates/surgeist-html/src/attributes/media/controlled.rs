@@ -214,7 +214,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         self.require(self.media_admitted && self.html_namespace.is_none())
             .map_err(HtmlMediaActionError::Protocol)?;
         self.execute(|| admit(1))?;
-        let expected = b"http://www.w3.org/1999/xhtml";
+        let expected = crate::values::HTML_NAMESPACE_URI.as_bytes();
         let result = if let Some(uri) = self.element.namespace_uri() {
             self.namespace_code_units = uri.len();
             if uri.len() != expected.len() {
