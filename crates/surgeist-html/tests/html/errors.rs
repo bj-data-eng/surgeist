@@ -1276,3 +1276,24 @@ fn duplicate_token_and_redundant_sandbox_errors_state_the_conflict_in_prose() {
         "sandbox lists both allow-top-navigation and allow-top-navigation-by-user-activation, which is redundant"
     );
 }
+
+#[test]
+fn refused_pool_seal_returns_the_open_root_with_the_cause() {
+    use surgeist_html::bounded::{HtmlStringPool, HtmlValuePoolError};
+    let mut pool = HtmlStringPool::new();
+    let root = pool.begin_root().expect("fresh pool root");
+    let _unresolved = pool.mark(&root).expect("nested mark");
+    let refusal = match pool.prepare_seal(root) {
+        Err(refusal) => refusal,
+        Ok(_) => panic!("a root with an unresolved mark was sealed"),
+    };
+    assert_eq!(refusal.error(), HtmlValuePoolError::NotReady);
+    assert_eq!(
+        message(&refusal),
+        "value pool seal refused: value pool operation has an unfinished step"
+    );
+    let (error, root) = refusal.into_parts();
+    assert_eq!(error, HtmlValuePoolError::NotReady);
+    pool.abort_root(root)
+        .expect("the returned root is still open");
+}

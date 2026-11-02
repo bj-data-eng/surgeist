@@ -490,7 +490,8 @@ impl Pools {
         };
         match self.strings.prepare_seal(root) {
             Ok(seal) => self.strings_root = Authority::Prepared(seal),
-            Err((error, root)) => {
+            Err(refusal) => {
+                let (error, root) = refusal.into_parts();
                 self.strings_root = Authority::Open(root);
                 return Err(pool_error(c, error));
             }
@@ -505,7 +506,8 @@ impl Pools {
         };
         match self.attributes.prepare_seal(root) {
             Ok(seal) => self.attributes_root = Authority::Prepared(seal),
-            Err((error, root)) => {
+            Err(refusal) => {
+                let (error, root) = refusal.into_parts();
                 self.attributes_root = Authority::Open(root);
                 return Err(pool_error(c, error));
             }
@@ -2315,7 +2317,7 @@ mod tests {
         let root = other.begin_root().expect("fresh pool root");
         match other.prepare_seal(root) {
             Ok(seal) => seal,
-            Err((error, _)) => panic!("fresh pool seal: {error:?}"),
+            Err(refusal) => panic!("fresh pool seal: {refusal}"),
         }
     }
 

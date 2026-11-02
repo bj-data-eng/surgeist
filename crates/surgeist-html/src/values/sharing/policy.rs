@@ -1019,7 +1019,7 @@ impl<T: Value> Pool<T> {
     pub(super) fn prepare_seal(
         &mut self,
         token: HtmlValuePoolRoot,
-    ) -> Result<HtmlValuePoolSeal, (HtmlValuePoolError, HtmlValuePoolRoot)> {
+    ) -> Result<HtmlValuePoolSeal, HtmlValuePoolSealRefusal> {
         match self.root_matches(token.owner, token.id) {
             Ok(true)
                 if self
@@ -1032,8 +1032,11 @@ impl<T: Value> Pool<T> {
                 self.operation = None;
                 Ok(HtmlValuePoolSeal { root: token })
             }
-            Ok(_) => Err((HtmlValuePoolError::NotReady, token)),
-            Err(error) => Err((error, token)),
+            Ok(_) => Err(HtmlValuePoolSealRefusal::new(
+                HtmlValuePoolError::NotReady,
+                token,
+            )),
+            Err(error) => Err(HtmlValuePoolSealRefusal::new(error, token)),
         }
     }
     pub(super) fn validate_seal(&self, seal: &HtmlValuePoolSeal) -> Result<(), HtmlValuePoolError> {

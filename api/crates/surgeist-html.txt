@@ -846,7 +846,7 @@ pub fn surgeist_html::bounded::HtmlAttributePool::next_action(&mut self, operati
 pub fn surgeist_html::bounded::HtmlAttributePool::offer<'a>(&mut self, input: &'a surgeist_html::OrderedAttributes) -> surgeist_html::bounded::HtmlAttributePoolOperation<'a>
 pub fn surgeist_html::bounded::HtmlAttributePool::offer_miss(&mut self, operation: &mut surgeist_html::bounded::HtmlAttributePoolOperation<'_>) -> core::result::Result<bool, surgeist_html::bounded::HtmlValuePoolError>
 pub fn surgeist_html::bounded::HtmlAttributePool::perform(&mut self, operation: &mut surgeist_html::bounded::HtmlAttributePoolOperation<'_>, action: surgeist_html::bounded::HtmlValuePoolAction) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolProgress, surgeist_html::bounded::HtmlValuePoolError>
-pub fn surgeist_html::bounded::HtmlAttributePool::prepare_seal(&mut self, root: surgeist_html::bounded::HtmlValuePoolRoot) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolSeal, (surgeist_html::bounded::HtmlValuePoolError, surgeist_html::bounded::HtmlValuePoolRoot)>
+pub fn surgeist_html::bounded::HtmlAttributePool::prepare_seal(&mut self, root: surgeist_html::bounded::HtmlValuePoolRoot) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolSeal, surgeist_html::bounded::HtmlValuePoolSealRefusal>
 pub fn surgeist_html::bounded::HtmlAttributePool::probe<'a>(&mut self, input: &'a surgeist_html::OrderedAttributes) -> surgeist_html::bounded::HtmlAttributePoolOperation<'a>
 pub fn surgeist_html::bounded::HtmlAttributePool::restore_mark(&mut self, mark: surgeist_html::bounded::HtmlValuePoolMark) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolChange, surgeist_html::bounded::HtmlValuePoolError>
 pub fn surgeist_html::bounded::HtmlAttributePool::root_work() -> surgeist_html::bounded::HtmlValuePoolWork
@@ -1380,7 +1380,7 @@ pub fn surgeist_html::bounded::HtmlStringPool::next_action(&mut self, operation:
 pub fn surgeist_html::bounded::HtmlStringPool::offer<'a>(&mut self, input: &'a surgeist_html::DocumentString) -> surgeist_html::bounded::HtmlStringPoolOperation<'a>
 pub fn surgeist_html::bounded::HtmlStringPool::offer_miss(&mut self, operation: &mut surgeist_html::bounded::HtmlStringPoolOperation<'_>) -> core::result::Result<bool, surgeist_html::bounded::HtmlValuePoolError>
 pub fn surgeist_html::bounded::HtmlStringPool::perform(&mut self, operation: &mut surgeist_html::bounded::HtmlStringPoolOperation<'_>, action: surgeist_html::bounded::HtmlValuePoolAction) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolProgress, surgeist_html::bounded::HtmlValuePoolError>
-pub fn surgeist_html::bounded::HtmlStringPool::prepare_seal(&mut self, root: surgeist_html::bounded::HtmlValuePoolRoot) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolSeal, (surgeist_html::bounded::HtmlValuePoolError, surgeist_html::bounded::HtmlValuePoolRoot)>
+pub fn surgeist_html::bounded::HtmlStringPool::prepare_seal(&mut self, root: surgeist_html::bounded::HtmlValuePoolRoot) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolSeal, surgeist_html::bounded::HtmlValuePoolSealRefusal>
 pub fn surgeist_html::bounded::HtmlStringPool::probe<'a>(&mut self, input: &'a surgeist_html::DocumentString) -> surgeist_html::bounded::HtmlStringPoolOperation<'a>
 pub fn surgeist_html::bounded::HtmlStringPool::restore_mark(&mut self, mark: surgeist_html::bounded::HtmlValuePoolMark) -> core::result::Result<surgeist_html::bounded::HtmlValuePoolChange, surgeist_html::bounded::HtmlValuePoolError>
 pub fn surgeist_html::bounded::HtmlStringPool::root_work() -> surgeist_html::bounded::HtmlValuePoolWork
@@ -1465,6 +1465,13 @@ pub struct surgeist_html::bounded::HtmlValuePoolMark
 pub struct surgeist_html::bounded::HtmlValuePoolOccurrence
 pub struct surgeist_html::bounded::HtmlValuePoolRoot
 pub struct surgeist_html::bounded::HtmlValuePoolSeal
+pub struct surgeist_html::bounded::HtmlValuePoolSealRefusal
+impl surgeist_html::bounded::HtmlValuePoolSealRefusal
+pub fn surgeist_html::bounded::HtmlValuePoolSealRefusal::error(&self) -> surgeist_html::bounded::HtmlValuePoolError
+pub fn surgeist_html::bounded::HtmlValuePoolSealRefusal::into_parts(self) -> (surgeist_html::bounded::HtmlValuePoolError, surgeist_html::bounded::HtmlValuePoolRoot)
+impl core::error::Error for surgeist_html::bounded::HtmlValuePoolSealRefusal
+impl core::fmt::Display for surgeist_html::bounded::HtmlValuePoolSealRefusal
+pub fn surgeist_html::bounded::HtmlValuePoolSealRefusal::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::bounded::HtmlValuePoolUsage
 impl surgeist_html::bounded::HtmlValuePoolUsage
 pub fn surgeist_html::bounded::HtmlValuePoolUsage::bytes(self) -> usize
