@@ -2911,7 +2911,9 @@ mod tests {
     fn both_day_counts_agree_with_an_independent_calendar_walk() {
         // Walk the proleptic Gregorian calendar from 0001-01-01 one day at a
         // time, so the zero-based day index is the expected ordinal.
-        let leap = |year: u32| year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        let leap = |year: u32| {
+            year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
+        };
         let length = |year: u32, month: u8| match month {
             2 if leap(year) => 29,
             2 => 28,
