@@ -285,12 +285,19 @@ asserted, because the adapter does not claim them.
 
 Campaigns ran against clean detached checkouts outside the active worktree, on
 Apple Silicon macOS, with one Cargo job and memory policy `unbounded` (RSS
-sampling is unavailable, so no memory bound is claimed). The counts are attempts
-against the finished parser, builders and semantics adapter. They are not
+sampling is unavailable, so no memory bound is claimed). The runs exercised the
+finished parser, builders and semantics adapter. Their counts are not
 conformance percentages, performance baselines or resource guarantees, and
 `Sufficient` means only that the declared minimum number of evaluations ran.
 Every row is a summary the framework printed; "Source" is the commit its run
 record names.
+
+"Evaluated" is the framework's count of attempts whose outcome checked at least
+one property. It includes `ExpectedRejection` outcomes (cancelled, lowered-cap,
+allocation and representation stops) and excludes `Unsupported` outcomes and
+generation rejections. A summary's `rejected` is the number of generation
+rejections only. Where "Evaluated" equals the case count, every attempt produced
+a checked outcome.
 
 The earlier runs (first table) executed the harness at `63e350fa5`. Harness
 changes made after them, and therefore not exercised by them, are:
@@ -359,7 +366,8 @@ and the run records name this commit as the build source. The `check` runs used
 No run printed a failure; the failure artifact directories were empty and every
 run that evaluated cases printed `cleanup: complete`. There is therefore no
 retained failure, replay or reduction and no regression case is bundled. The
-campaign summaries do not count rejections or unsupported outcomes separately.
+summaries do not separate verified outcomes from expected rejections, and do not
+count `Unsupported` outcomes.
 
 Commands as run (each `$src` is a clean checkout, and each work directory was
 created by the tool and reused by the later commands of the same kind):
