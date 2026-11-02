@@ -1,5 +1,5 @@
 //! Explicit fitting authority for one actual in-flow atomic allocation.
-use super::{AtomicBoxAllocation, AtomicFlowAllocation};
+use super::AtomicFlowAllocation;
 use crate::{Result, TextNumericError, TextNumericPhase};
 
 /// The operation that determines this atomic's line-fit contribution.
@@ -12,7 +12,8 @@ pub enum AtomicFitAllocation {
 
 /// Actual used CSS inline margins and border size in the allocation's local
 /// line axis. Construction checks their canonical signed margin-box advance;
-/// selection couples the receipt to the issued atomic's flow and geometry.
+/// selection couples the receipt to the issued atomic's normal flow. Its visual
+/// border may have a different width after relative placement and snapping.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CssMarginBoxFit {
     margin_start: f64,
@@ -78,10 +79,10 @@ impl CssMarginBoxFit {
                 .max(self.advance),
         )
     }
-    pub(crate) fn matches(self, flow: AtomicFlowAllocation, geometry: AtomicBoxAllocation) -> bool {
+    pub(crate) fn matches(self, flow: AtomicFlowAllocation) -> bool {
         let (start, end) = self.occupied_inline_bounds();
         self.advance == flow.advance
-            && self.border_inline_size == geometry.border.size.width
+            && self.border_inline_size == flow.normal_border_inline_size
             && start == flow.occupied_start
             && end == flow.occupied_end
     }
@@ -103,47 +104,34 @@ fn sum(field: &'static str, a: f64, b: f64) -> Result<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ErrorDetail, Rect};
+    use crate::ErrorDetail;
 
     #[test]
     fn used_css_margin_receipt_preserves_signed_flow_and_real_envelope() {
         let css = CssMarginBoxFit::try_new(3.0, 10.0, -5.0).unwrap();
         assert_eq!(css.advance(), 8.0);
         assert_eq!(css.occupied_inline_bounds(), (0.0, 13.0));
-        let geometry = AtomicBoxAllocation {
-            border: Rect::new(3.0, -8.0, 10.0, 10.0),
-            content: Rect::new(3.0, -8.0, 10.0, 10.0),
-            baseline: 0.0,
-        };
         let flow = AtomicFlowAllocation {
             advance: 8.0,
+            normal_border_inline_size: 10.0,
             before_baseline: 8.0,
             after_baseline: 2.0,
             occupied_start: 0.0,
             occupied_end: 13.0,
         };
-        assert!(css.matches(flow, geometry));
-        assert!(!css.matches(
-            AtomicFlowAllocation {
-                advance: 9.0,
-                ..flow
-            },
-            geometry
-        ));
-        assert!(!css.matches(
-            AtomicFlowAllocation {
-                occupied_end: 12.0,
-                ..flow
-            },
-            geometry
-        ));
-        assert!(!css.matches(
-            flow,
-            AtomicBoxAllocation {
-                border: Rect::new(3.0, -8.0, 9.0, 10.0),
-                ..geometry
-            }
-        ));
+        assert!(css.matches(flow));
+        assert!(!css.matches(AtomicFlowAllocation {
+            advance: 9.0,
+            ..flow
+        }));
+        assert!(!css.matches(AtomicFlowAllocation {
+            occupied_end: 12.0,
+            ..flow
+        }));
+        assert!(!css.matches(AtomicFlowAllocation {
+            normal_border_inline_size: 9.0,
+            ..flow
+        }));
         let cancelled = CssMarginBoxFit::try_new(-5.0, 5.0, 0.0).unwrap();
         assert_eq!(cancelled.advance(), 0.0);
         assert_eq!(cancelled.occupied_inline_bounds(), (-5.0, 0.0));

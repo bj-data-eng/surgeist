@@ -131,9 +131,14 @@ fn creation_script_and_render_blocking_preserve_source_acknowledgement_order() {
         (A::BlockRendering, R::Applied),
     ] {
         assert_eq!(c.action(), action);
+        // The projection answer belongs only to the no-executable-JavaScript
+        // profile, so it is refused at every step here and leaves the cursor equal.
         let before = c;
-        assert!(c.reply(R::Connected(false)).is_err() || action == A::ReadConnected);
-        c = before;
+        assert_eq!(
+            c.reply(R::ScriptBookkeepingExcluded),
+            Err(HtmlStyleProtocolError)
+        );
+        assert_eq!(c, before);
         c.reply(reply).unwrap();
     }
     assert_eq!(c.action(), A::Complete);

@@ -5264,7 +5264,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
     #[derive(Default)]
     struct HiddenTree {
         children: HashMap<u32, Vec<u32>>,
-        layouts: HashMap<u32, NodeOutput>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         caches: HashMap<u32, Cache>,
         inputs: HashMap<u32, LayoutInput>,
         hidden_children: Vec<u32>,
@@ -5293,7 +5293,7 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
 
     struct HiddenTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
-        layouts: &'input mut HashMap<u32, NodeOutput>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         caches: &'input mut HashMap<u32, Cache>,
         inputs: &'input HashMap<u32, LayoutInput>,
         hidden_children: &'input mut Vec<u32>,
@@ -5358,8 +5358,23 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
             self.inputs[&node].as_view()
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
-            self.layouts.insert(node, layout);
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -5454,11 +5469,11 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
     );
     assert_eq!(tree.hidden_children, vec![2]);
     assert_eq!(
-        tree.layouts[&1],
+        tree.layouts[&1].output(),
         NodeOutput::with_source_index(crate::SourceIndex::new(0))
     );
     assert_eq!(
-        tree.layouts[&3],
+        tree.layouts[&3].output(),
         NodeOutput::with_source_index(crate::SourceIndex::new(1))
     );
     assert!(tree.caches[&1].is_empty());
@@ -5470,7 +5485,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
     #[derive(Default)]
     struct HiddenTree {
         children: HashMap<u32, Vec<u32>>,
-        layouts: HashMap<u32, NodeOutput>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         caches: HashMap<u32, Cache>,
         inputs: HashMap<u32, LayoutInput>,
         hidden_children: Vec<u32>,
@@ -5499,7 +5514,7 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
 
     struct HiddenTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
-        layouts: &'input mut HashMap<u32, NodeOutput>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         caches: &'input mut HashMap<u32, Cache>,
         inputs: &'input HashMap<u32, LayoutInput>,
         hidden_children: &'input mut Vec<u32>,
@@ -5564,8 +5579,23 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             self.inputs[&node].as_view()
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
-            self.layouts.insert(node, layout);
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -5675,11 +5705,11 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
     );
     assert_eq!(tree.hidden_children, vec![2]);
     assert_eq!(
-        tree.layouts[&1],
+        tree.layouts[&1].output(),
         NodeOutput::with_source_index(crate::SourceIndex::new(0))
     );
     assert_eq!(
-        tree.layouts[&3],
+        tree.layouts[&3].output(),
         NodeOutput::with_source_index(crate::SourceIndex::new(1))
     );
     assert!(tree.caches[&1].is_empty());

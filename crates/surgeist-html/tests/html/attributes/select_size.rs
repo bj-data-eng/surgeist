@@ -144,16 +144,21 @@ fn negative_zero_and_recovery_only_prefixes_keep_independent_author_evidence() {
     ] {
         for multiple in [None, Some("")] {
             let report = read(Some(raw), multiple);
-            assert!(matches!(
+            // Valid non-negative integers are only ASCII digits (§2.3.4.2), so a
+            // sign, surrounding whitespace or trailing text fails the grammar
+            // though the parsing rules still recover a number.
+            assert_eq!(
                 report.common().unwrap().author(),
-                HtmlValueAuthorState::Invalid(_)
-            ));
-            assert!(matches!(
+                &HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::InvalidNumericSyntax)
+            );
+            assert_eq!(
                 report.author(),
                 HtmlNumericAttributeAuthorState::Nonconforming(
-                    HtmlNumericAttributeConformanceError::CommonValue(_)
+                    HtmlNumericAttributeConformanceError::CommonValue(HtmlValueFailure::Syntax(
+                        HtmlValueSyntaxError::InvalidNumericSyntax
+                    ))
                 )
-            ));
+            );
             known(
                 &report,
                 expected,

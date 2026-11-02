@@ -82,6 +82,7 @@ enum Phase {
 }
 /// Allocation-free grammar state; source and emitted fields stay with the caller.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct Cursor {
     action: Option<Action>,
     phase: Phase,
@@ -538,7 +539,7 @@ mod tests {
         let mut value = vec![];
         let mut seen = [false; 12];
         while let Some(action) = cursor.action() {
-            let before = format!("{cursor:?}");
+            let before = cursor;
             let invalid = if matches!(
                 action,
                 Action::Read(_) | Action::NameUnit(..) | Action::NameLength(_)
@@ -548,7 +549,7 @@ mod tests {
                 Reply::Length(0)
             };
             assert_eq!(cursor.reply(invalid), Err(Error::Integrity));
-            assert_eq!(format!("{cursor:?}"), before);
+            assert_eq!(cursor, before);
             let reply = match action {
                 Action::Read(i) => {
                     seen[0] = true;
@@ -630,9 +631,9 @@ mod tests {
     fn impossible_original_unit_presence_is_integrity_and_transactional() {
         for (len, reply) in [(0, Reply::Unit(Some(65))), (1, Reply::Unit(None))] {
             let mut c = Cursor::new(len);
-            let old = format!("{c:?}");
+            let old = c;
             assert_eq!(c.reply(reply), Err(Error::Integrity));
-            assert_eq!(format!("{c:?}"), old);
+            assert_eq!(c, old);
         }
     }
     #[test]

@@ -415,6 +415,10 @@ impl FormattedLineUsage {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AtomicFlowAllocation {
     pub advance: f64,
+    /// Finite nonnegative normal canonical border extent in the local inline
+    /// axis. Relative visual placement/snapping can produce a different border
+    /// width in `AtomicBoxAllocation` without changing this normal flow fact.
+    pub normal_border_inline_size: f64,
     pub before_baseline: f64,
     pub after_baseline: f64,
     pub occupied_start: f64,
@@ -427,9 +431,9 @@ pub struct AtomicFlowAllocation {
 /// this cell-coordinate conversion does not rotate the child's content.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AtomicBoxAllocation {
-    /// Border rectangle in the local inline/line-under frame.
+    /// Visual border rectangle in the local inline/line-under frame.
     pub border: Rect,
-    /// Content rectangle in the same local frame.
+    /// Visual content rectangle in the same local frame.
     pub content: Rect,
     /// Signed local line-under baseline offset relative to the flow slot.
     pub baseline: f64,

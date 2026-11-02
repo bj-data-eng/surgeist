@@ -449,18 +449,25 @@ fn whole_selected_raw_cap_precedes_processing_and_ignores_unselected_values() {
 }
 
 #[test]
-fn literal_work_costs_cover_exact_normalization_and_boundary_reads() {
-    // Batch reserve1 + subject1 + namespace(1+28)=31. Own title lookup6,
-    // presence1 + raw length/admission1=39; normalization U+2N+finish1;
-    // record construction1 + batch slot1. Empty title:42; x:45;
-    // A CR LF B:52. Absent p:31+presence1+name length1+parent1+empty1+slot1=36.
-    // Absent link adds its four exact local-unit comparisons:39.
+fn documented_work_covers_exact_normalization_and_boundary_reads() {
+    // From the semantic query work reference (AdvisoryInformation): the query prefix (reservation
+    // 1, lookup 1, namespace test 29) = 31. A present `title` costs the attribute
+    // scan (1 + 5 compared units), presence 1 and raw admission 1, then
+    // normalization (a read per raw unit, 2 per kept unit, closing 1), the
+    // record 1 and the result write 1.
+    let prefix = 1 + 1 + 29;
+    let present = |units: usize, kept: usize| prefix + 6 + 1 + 1 + units + 2 * kept + 1 + 1 + 1;
+    // An absent `title` on a parentless non-boundary element: presence 1, a
+    // boundary test of 1, the parent step 1, the empty answer 1 and the write 1.
+    // A `link` instead matches its four boundary units and ends without the
+    // parent step.
+    let absent = prefix + 1 + 1 + 1 + 1 + 1;
     for (local, title, work) in [
-        ("p", Some(""), 42),
-        ("p", Some("x"), 45),
-        ("p", Some("A\r\nB"), 52),
-        ("p", None, 36),
-        ("link", None, 39),
+        ("p", Some(""), present(0, 0)),
+        ("p", Some("x"), present(1, 1)),
+        ("p", Some("A\r\nB"), present(4, 3)),
+        ("p", None, absent),
+        ("link", None, prefix + 1 + (1 + 4) + 1 + 1),
     ] {
         let (c, id) = fixture(local, title.map(DocumentString::from), true);
         let cx = context(&c);
@@ -491,22 +498,140 @@ fn literal_work_costs_cover_exact_normalization_and_boundary_reads() {
 }
 
 #[test]
+fn documented_work_covers_each_ancestor_step_including_a_non_element_parent() {
+    // Reference: semantic query work, AdvisoryInformation. The query prefix is
+    // 31 (reservation 1, lookup 1, namespace test 29). An absent `title` on a
+    // non-boundary element costs presence 1, boundary 1, parent step 1, parent
+    // lookup 1 and the unconditional 1 charged for any parent: 5.
+    let prefix = 1 + 1 + 29;
+    let climb = 1 + 1 + 1 + 1 + 1;
+    let work_of = |c: &HtmlCapture, id: &HtmlCaptureSubjectId, expected: usize| {
+        let r = session(
+            c,
+            &context(c),
+            limits(expected),
+            100,
+            HtmlSemanticCancellation::new(),
+        )
+        .query(&[request(id)])
+        .unwrap();
+        assert_eq!(r.usage().work(), expected);
+        let cx = context(c);
+        let mut short = session(
+            c,
+            &cx,
+            limits(expected - 1),
+            100,
+            HtmlSemanticCancellation::new(),
+        );
+        assert!(short.query(&[request(id)]).is_err());
+        r
+    };
+    // A document parent is not an element: it ends with the empty answer (1) and
+    // the write (1).
+    let (mut b, d) = builder();
+    let e = element(&mut b, &d, "p", vec![]);
+    b.establish_children(&d, std::slice::from_ref(&e)).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&e).unwrap();
+    let r = work_of(&c, &id, prefix + climb + 1 + 1);
+    assert_eq!(known(&r).source(), None);
+    // An HTML element parent costs its namespace test (29), then repeats: its
+    // `title` scan (6), presence 1, admission 1, normalization of "x" (read 1,
+    // reservation and push 2, closing 1), the record 1 and the write 1.
+    let (mut b, d) = builder();
+    let parent = element(&mut b, &d, "div", vec![attr("title", "x")]);
+    let e = element(&mut b, &d, "p", vec![]);
+    b.establish_children(&parent, std::slice::from_ref(&e))
+        .unwrap();
+    b.establish_root(&parent).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&e).unwrap();
+    let r = work_of(
+        &c,
+        &id,
+        prefix + climb + 29 + 6 + 1 + 1 + (1 + 2 + 1) + 1 + 1,
+    );
+    assert_eq!(known(&r).source(), Some(&c.subject_id(&parent).unwrap()));
+    // A non-HTML element parent fails its namespace test at the length check (1),
+    // skips the `title` scan, steps to its absent parent (1), and ends with the
+    // empty answer (1) and the write (1).
+    let (mut b, d) = builder();
+    let parent = expanded(
+        &mut b,
+        &d,
+        QualifiedName::new(Namespace::svg(), None, "g"),
+        vec![attr("title", "ignored")],
+    );
+    let e = element(&mut b, &d, "p", vec![]);
+    b.establish_children(&parent, std::slice::from_ref(&e))
+        .unwrap();
+    b.establish_root(&parent).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&e).unwrap();
+    let r = work_of(&c, &id, prefix + climb + 1 + 1 + 1 + 1);
+    assert_eq!(known(&r).source(), None);
+}
+#[test]
+fn documented_work_covers_each_boundary_name_comparison() {
+    // Reference: semantic query work, AdvisoryInformation. An absent `title` on a
+    // parentless element: the query prefix (31), presence 1, the boundary test
+    // (1 plus one per compared unit, only for names of 4 or 5 units), then either
+    // a boundary, which ends with the empty answer (1), or the parent step (1)
+    // that finds no parent and the empty answer (1); then the write (1).
+    let prefix = 1 + 1 + 29;
+    for (local, boundary, compared) in [
+        ("style", true, 5),
+        ("link", true, 4),
+        // Four units mismatching at the third: `l`, `i` equal, `x` differs.
+        ("lixk", false, 3),
+        // Five units mismatching at the third: `s`, `t` equal, `z` differs.
+        ("stzle", false, 3),
+        // A name of another length stops at the length check.
+        ("styles", false, 0),
+    ] {
+        let (c, id) = fixture(local, None, true);
+        let work = prefix + 1 + (1 + compared) + if boundary { 1 } else { 1 + 1 } + 1;
+        let r = session(
+            &c,
+            &context(&c),
+            limits(work),
+            100,
+            HtmlSemanticCancellation::new(),
+        )
+        .query(&[request(&id)])
+        .unwrap_or_else(|f| panic!("{local}: {f:?}"));
+        assert_eq!(r.usage().work(), work, "{local}");
+        assert_eq!(known(&r).source(), None);
+    }
+}
+
+#[test]
 fn partial_normalization_stops_before_an_unadmitted_write_and_drops_local_storage() {
     let (c, id) = fixture("p", Some("AB".into()), false);
     let cx = context(&c);
-    // Own selection39, A read/reserve/write3, B read/reserve2=44;
-    // the B slot requires45 and must not execute. No scratch is introduced.
-    let mut s = session(&c, &cx, limits(44), 2, HtmlSemanticCancellation::new());
+    // From the semantic query work reference: prefix 31, own selection (scan 6, presence 1,
+    // admission 1), A (read 1, reservation 1, push 1) and B (read 1,
+    // reservation 1) = 44; the push of B requires 45 and must not execute. No
+    // scratch is introduced.
+    let before_b_push = 31 + 6 + 1 + 1 + 3 + 2;
+    let mut s = session(
+        &c,
+        &cx,
+        limits(before_b_push),
+        2,
+        HtmlSemanticCancellation::new(),
+    );
     let failure = s.query(&[request(&id)]).unwrap_err();
     assert_eq!(
         failure.kind(),
         &HtmlSemanticFailureKind::LimitExceeded {
             resource: HtmlSemanticResource::Work,
-            limit: 44,
-            required: 45
+            limit: before_b_push,
+            required: before_b_push + 1
         }
     );
-    assert_eq!(failure.usage().work(), 44);
+    assert_eq!(failure.usage().work(), before_b_push);
     assert_eq!(failure.usage().nested_output_records(), 2);
     assert_eq!(failure.usage().scratch_records(), 0);
     assert_eq!(s.query(&[]).unwrap_err(), failure);
@@ -563,11 +688,14 @@ fn actual_output_capacity_limits_and_repeated_queries_are_cumulative() {
     let req = request(&id);
     let r = report(&c, &id, 4);
     let u = r.usage();
+    // The caps below are derived, not measured: one result record, three
+    // normalized text units grown one `u16` at a time, and exactly the bytes
+    // of those two allocations.
+    assert_eq!(u.output_records(), 1);
     assert_eq!(u.nested_output_records(), 3);
     assert_eq!(
         u.allocated_bytes(),
-        u.output_records() * std::mem::size_of::<HtmlSemanticResult>()
-            + 3 * std::mem::size_of::<u16>()
+        std::mem::size_of::<HtmlSemanticResult>() + 3 * std::mem::size_of::<u16>()
     );
     let make =
         |bytes, nested| HtmlSemanticLimits::new(10000, u.output_records(), 0, 0, bytes, nested);

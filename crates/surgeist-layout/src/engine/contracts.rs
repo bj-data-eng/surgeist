@@ -1,7 +1,7 @@
 use crate::error::LayoutResultOf;
 use crate::{
     CacheKeyContext, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputOf, LayoutInputViewOf,
-    LayoutScalar, NodeInputOf, NodeOutputOf, RunMode, Traverse,
+    LayoutOutputEntryOf, LayoutScalar, NodeInputOf, RunMode, Traverse,
 };
 
 pub(crate) type WrappingContextLoan<'a, Node> = (
@@ -11,6 +11,9 @@ pub(crate) type WrappingContextLoan<'a, Node> = (
 
 pub(crate) type FloatContextChildResult<Node, S, M> =
     LayoutResultOf<Node, crate::block::float_context::ChildOutput<Node, S>, S, M>;
+
+pub(crate) type UnroundedEntryResult<Node, S, M> =
+    LayoutResultOf<Node, LayoutOutputEntryOf<Node, S>, S, M>;
 
 // Input loans refer to immutable request storage, independently of temporary
 // borrows of the mutable output/cache computation facade.
@@ -59,7 +62,12 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         }
         Ok(crate::block::float_context::ChildOutput { output, floats })
     }
-    fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>);
+    /// Actual accepted current-trial custody; never a host/cache reconstruction.
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> UnroundedEntryResult<Self::Node, Self::Scalar, M>;
+    fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>);
     // Absence is the actual box-only profile, not a successful no-op finalizer.
     fn text_computation(
         &mut self,
@@ -146,15 +154,9 @@ pub(crate) trait Round<M = core::convert::Infallible>: Traverse {
     fn is_prepared_text(&self, _node: Self::Node) -> bool {
         false
     }
-    fn canonical_text_atomic_origin(&self, _node: Self::Node) -> Option<crate::Point<f64>> {
-        None
-    }
 
-    fn unrounded(
-        &self,
-        node: Self::Node,
-    ) -> LayoutResultOf<Self::Node, NodeOutputOf<Self::Scalar>, Self::Scalar, M>;
-    fn set_final(&mut self, node: Self::Node, layout: NodeOutputOf<Self::Scalar>);
+    fn unrounded(&self, node: Self::Node) -> UnroundedEntryResult<Self::Node, Self::Scalar, M>;
+    fn set_final(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>);
 
     fn unrounded_inline_fragment_state(
         &self,

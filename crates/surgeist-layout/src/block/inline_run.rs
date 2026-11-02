@@ -1,5 +1,5 @@
 use super::absolute::absolute_static_position;
-use super::in_flow::relative_inset_offset;
+use super::relative::{self, InsetReference};
 use super::scroll::{
     BlockScrollContributions, child_scrollbar_size, retained_child_scroll_geometry,
 };
@@ -14,6 +14,8 @@ mod baseline_offset_tests;
 type TextFragmentGroup<Node, S> = (
     Node,
     Vec<InlineFragmentOutputOf<S>>,
+    Option<Point<S>>,
+    Option<Point<S>>,
     Option<Point<S>>,
     Option<Point<S>>,
 );
@@ -327,7 +329,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) cursor_block: &'a mut S,
     pub(super) intrinsic_inline_demand: &'a mut S,
     pub(super) baselines: &'a mut super::baseline_frame::PendingBaselines,
-    pub(super) static_positions: &'a mut Vec<(Node, Point<S>)>,
+    pub(super) static_positions: &'a mut Vec<(Node, StaticPositionOf<S>)>,
     pub(super) resolved_terminal_float_block_end: &'a mut Option<S>,
     pub(super) active_margin: &'a mut CollapsibleMarginOf<S>,
     pub(super) is_collapsing_first_margin: &'a mut bool,
@@ -359,7 +361,7 @@ struct InlineRunPlacement<Node, S: LayoutScalar> {
     indent_state: Option<crate::text_indent::IndentLineState>,
     hyphenation_state: crate::hyphenation::LineHyphenationState,
     size: Size<S>,
-    static_positions: Vec<(Node, Point<S>)>,
+    static_positions: Vec<(Node, StaticPositionOf<S>)>,
     baselines: crate::inline::PhysicalBaselineReport,
     resolved_float_terminal_block_end: Option<S>,
 }
@@ -500,6 +502,12 @@ where
             .and_then(|state| state.run(container, run))
     });
     let text_binding = text_run.as_ref().map(|run| run.binding);
+    let inset_reference = tree
+        .text_computation()
+        .and_then(|state| state.frame(container))
+        .map_or(InsetReference::Measurement(node_inner_size), |frame| {
+            InsetReference::Accepted(frame.measured_inset_basis)
+        });
     if text_run.as_ref().is_some_and(|run| {
         run.nodes().is_empty()
             && run.binding.line_strut.is_none()
@@ -564,12 +572,16 @@ where
             InlineParticipantKindOf::LineBreak(line_break) => {
                 if line_break.display().is_none() {
                     if set_layout {
-                        tree.set_unrounded(
+                        tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                             child,
+                            crate::output::NormalGeometryOf::metadata(
+                                crate::Point::ZERO,
+                                crate::Size::ZERO,
+                            ),
                             NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(
                                 source_index,
                             )),
-                        );
+                        ));
                     }
                     continue;
                 }
@@ -609,10 +621,14 @@ where
         };
         if child_style.display == crate::Display::None {
             if set_layout {
-                tree.set_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                     child,
+                    crate::output::NormalGeometryOf::metadata(
+                        crate::Point::ZERO,
+                        crate::Size::ZERO,
+                    ),
                     NodeOutputOf::<S>::with_source_index(crate::SourceIndex::new(source_index)),
-                );
+                ));
                 tree.compute_child(
                     child,
                     ComputeInputOf::<S>::hidden_in_containing_pass(
@@ -814,17 +830,13 @@ where
             });
         }
         if text_binding.is_some() {
-            let relative_offset = relative_inset_offset(
-                constants
-                    .flow_axes
-                    .zip_physical_edges_with_inline_extent(
-                        *child_style.common.inset,
-                        node_inner_size,
-                        |length, basis| resolve_auto_optional(length, basis),
-                    )
-                    .transpose_with_node(tree, child)?,
+            let relative_offset = relative::resolve(
+                tree,
+                child,
+                *child_style.common.inset,
+                inset_reference,
                 constants.flow_axes,
-            );
+            )?;
             let content_box = output
                 .scroll_geometry
                 .map(|geometry| geometry.content_box())
@@ -889,17 +901,15 @@ where
             .canonical_for_text(container, &frames)
             .map_err(|error| text_run_error(container, error))?;
         let exclusions = canonical_exclusions.as_ref().unwrap_or(float_exclusions);
-        let actual_content = frame
-            .and_then(|frame| frame.output.scroll_geometry)
-            .map(|geometry| geometry.content_box());
+        let actual_content = frame.and_then(|frame| frame.normal.content_box);
         let content_insets =
             frame
                 .zip(actual_content)
                 .map_or(constants.content_box_inset, |(frame, rect)| {
                     Edges::new(
                         rect.origin().y,
-                        frame.output.size.width - rect.origin().x - rect.size().width,
-                        frame.output.size.height - rect.origin().y - rect.size().height,
+                        frame.normal.size.width - rect.origin().x - rect.size().width,
+                        frame.normal.size.height - rect.origin().y - rect.size().height,
                         rect.origin().x,
                     )
                 });
@@ -936,6 +946,47 @@ where
             .group_computation()
             .map(|groups| groups.snapshot())
             .unwrap_or_default();
+        let actual_frame = if let Some(frame) = frame {
+            let visual_content = frame
+                .output
+                .scroll_geometry
+                .map(|geometry| geometry.content_box())
+                .ok_or_else(|| {
+                    text_run_error(
+                        container,
+                        crate::text_layout::fit::FitError::InvalidGeometry,
+                    )
+                })?;
+            if frame.normal.content_box.is_none() {
+                return Err(text_run_error(
+                    container,
+                    crate::text_layout::fit::FitError::InvalidGeometry,
+                ));
+            }
+            crate::text_layout::run::Frame::Canonical {
+                normal: crate::text_layout::run::CanonicalLineFrame {
+                    origin: frame.normal_origin,
+                    size: frame.normal.size,
+                    content_insets,
+                },
+                visual: crate::text_layout::run::CanonicalLineFrame {
+                    origin: frame.origin,
+                    size: frame.output.size,
+                    content_insets: Edges::new(
+                        visual_content.origin().y,
+                        frame.output.size.width
+                            - visual_content.origin().x
+                            - visual_content.size().width,
+                        frame.output.size.height
+                            - visual_content.origin().y
+                            - visual_content.size().height,
+                        visual_content.origin().x,
+                    ),
+                },
+            }
+        } else {
+            crate::text_layout::run::Frame::Measurement
+        };
         let context = crate::text_layout::run::Context {
             scope_alignments,
             orientation: text_orientation
@@ -952,12 +1003,7 @@ where
                 .map(|projection| projection.with_incoming(box_frontier.clone()))
             }),
             formatted,
-            frame: frame.map_or(crate::text_layout::run::Frame::Measurement, |frame| {
-                crate::text_layout::run::Frame::Canonical {
-                    origin: frame.origin,
-                    size: frame.output.size,
-                }
-            }),
+            frame: actual_frame,
             containing_size,
             content_insets,
             cursor_block,
@@ -1430,7 +1476,15 @@ where
             InlineSourcePositionOf::Logical(point) => {
                 project_point(point.inline, point.block, size)
             }
-            InlineSourcePositionOf::Physical(point) => point,
+            InlineSourcePositionOf::Physical { visual, .. } => visual,
+        };
+
+    let project_normal_source =
+        |position: InlineSourcePositionOf<S>, size: LogicalSizeOf<S>| match position {
+            InlineSourcePositionOf::Logical(point) => {
+                project_point(point.inline, point.block, size)
+            }
+            InlineSourcePositionOf::Physical { normal, .. } => normal,
         };
 
     // Numeric geometry has no grid conversion. Validate every newly consumed
@@ -1557,26 +1611,45 @@ where
             for rect in output
                 .fragments
                 .iter()
-                .filter_map(|(_, fragment)| fragment.rect())
+                .filter_map(|source| source.fragment.rect())
             {
                 contributions.geometry.include_direct_line(rect);
             }
         }
         let mut groups: Vec<TextFragmentGroup<Tree::Node, S>> = Vec::new();
         let mut scope_fragments = Vec::new();
-        for (owner, fragment) in output.fragments {
+        for crate::text_layout::run::SourceFragment {
+            owner,
+            normal_rect,
+            fragment,
+        } in output.fragments
+        {
             let crate::InlineFragmentOwner::Node(node) = owner else {
                 scope_fragments.push(crate::InlineFragmentOutputEntryOf::new(owner, fragment));
                 continue;
             };
             let index = groups
                 .iter()
-                .position(|(subject, _, _, _)| *subject == node);
+                .position(|(subject, _, _, _, _, _)| *subject == node);
             let index = index.unwrap_or_else(|| {
-                groups.push((node, Vec::new(), None, None));
+                groups.push((node, Vec::new(), None, None, None, None));
                 groups.len() - 1
             });
-            let (_, fragments, minimum, maximum) = &mut groups[index];
+            let (_, fragments, minimum, maximum, normal_minimum, normal_maximum) =
+                &mut groups[index];
+            if let Some(rect) = normal_rect {
+                let location = rect.origin();
+                let end = Point::new(
+                    location.x + rect.size().width,
+                    location.y + rect.size().height,
+                );
+                *normal_minimum = Some(normal_minimum.map_or(location, |p| {
+                    Point::new(p.x.min(location.x), p.y.min(location.y))
+                }));
+                *normal_maximum = Some(
+                    normal_maximum.map_or(end, |p| Point::new(p.x.max(end.x), p.y.max(end.y))),
+                );
+            }
             if let Some(rect) = fragment.rect() {
                 let location = rect.origin();
                 let end = Point::new(
@@ -1603,7 +1676,7 @@ where
             }
         }
         if set_layout {
-            for (child, location) in output.nonformatted_controls {
+            for (child, normal_location, location) in output.nonformatted_controls {
                 let source_index = source_index_start
                     + run
                         .iter()
@@ -1615,8 +1688,9 @@ where
                     }
                     _ => (Edges::ZERO, Edges::ZERO),
                 };
-                tree.set_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                     child,
+                    crate::output::NormalGeometryOf::metadata(normal_location, crate::Size::ZERO),
                     NodeOutputOf::<S> {
                         source_index: crate::SourceIndex::new(source_index),
                         location,
@@ -1624,7 +1698,7 @@ where
                         padding,
                         ..NodeOutputOf::new()
                     },
-                );
+                ));
             }
         }
         if set_layout {
@@ -1633,11 +1707,17 @@ where
                 .flat_map(|binding| binding.origins.iter())
                 .filter(|row| run.contains(&row.node))
             {
-                if !groups.iter().any(|(node, _, _, _)| *node == row.node) {
-                    groups.push((row.node, Vec::new(), None, None));
+                if !groups.iter().any(|(node, _, _, _, _, _)| *node == row.node) {
+                    groups.push((row.node, Vec::new(), None, None, None, None));
                 }
             }
-            for (node, fragments, minimum, maximum) in groups {
+            for (node, fragments, minimum, maximum, normal_minimum, normal_maximum) in groups {
+                let (normal_location, normal_size) = match (normal_minimum, normal_maximum) {
+                    (Some(start), Some(end)) => {
+                        (start, Size::new(end.x - start.x, end.y - start.y))
+                    }
+                    _ => (Point::ZERO, Size::ZERO),
+                };
                 let (location, size) = match (minimum, maximum) {
                     (Some(minimum), Some(maximum)) => (
                         minimum,
@@ -1650,8 +1730,9 @@ where
                         .iter()
                         .position(|child| *child == node)
                         .expect("capture admitted this source node");
-                tree.set_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                     node,
+                    crate::output::NormalGeometryOf::metadata(normal_location, normal_size),
                     NodeOutputOf {
                         source_index: crate::SourceIndex::new(source_index),
                         location,
@@ -1659,7 +1740,7 @@ where
                         content_size: size,
                         ..NodeOutputOf::new()
                     },
-                );
+                ));
                 tree.set_unrounded_inline_fragment_state(node, Some(fragments));
             }
             let state = tree
@@ -1671,7 +1752,6 @@ where
                 output.paragraph.nodes.clone(),
                 scope_fragments,
             );
-            state.record_atomic_origins(output.atomic_origins);
             state.record(output.paragraph);
         }
     }
@@ -1689,6 +1769,7 @@ where
         let InlineParticipantKindOf::Box(child_projection) = child_style.kind() else {
             unreachable!("atomic child retains its settled box projection");
         };
+        let normal_location = project_normal_source(source.position, logical_size);
         let location = if let Some(location) = shifted_atomic_locations.get(&source_index) {
             *location
         } else {
@@ -1720,24 +1801,51 @@ where
                 },
             )
             .map_err(|error| layout_child_geometry_error(container, child, error))?;
-            contributions
-                .include_in_flow_geometry(location, source.item.margin, scroll_geometry)
-                .map_err(|error| layout_child_geometry_error(container, child, error))?;
-            tree.set_unrounded(
-                child,
-                NodeOutputOf::<S> {
-                    source_index: crate::SourceIndex::new(source_index),
-                    location,
-                    size: source.item.size,
-                    named_baselines: output.named_baselines,
-                    content_size: source.item.content_size,
-                    border: source.item.border,
-                    padding: source.item.padding,
-                    margin: source.item.margin,
-                    ..NodeOutputOf::new()
-                }
-                .with_scroll_geometry(Some(scroll_geometry)),
-            );
+            if text_binding.is_some() || !relative::needs_basis(*child_projection.common.inset) {
+                contributions
+                    .include_in_flow_geometry(location, source.item.margin, scroll_geometry)
+                    .map_err(|error| layout_child_geometry_error(container, child, error))?;
+            }
+            let named_baselines = match source.canonical_geometry {
+                Some(canonical) => crate::text_layout::run::pending_visual_named_baselines(
+                    output.named_baselines,
+                    canonical.visual_readback_offset,
+                )
+                .map_err(|error| text_run_error(container, error))?,
+                None => output.named_baselines,
+            };
+            let visual = NodeOutputOf::<S> {
+                source_index: crate::SourceIndex::new(source_index),
+                location,
+                size: source.item.size,
+                named_baselines,
+                content_size: source.item.content_size,
+                border: source.item.border,
+                padding: source.item.padding,
+                margin: source.item.margin,
+                ..NodeOutputOf::new()
+            }
+            .with_scroll_geometry(Some(scroll_geometry));
+            let entry = match source.canonical_geometry {
+                Some(canonical) => crate::LayoutOutputEntryOf::canonical_atomic(
+                    child,
+                    canonical.measured_normal,
+                    canonical.normal,
+                    canonical.normal_origin,
+                    canonical.visual_origin,
+                    visual,
+                ),
+                None => crate::LayoutOutputEntryOf::ordinary_unrounded(
+                    child,
+                    crate::output::NormalGeometryOf::box_geometry(
+                        normal_location,
+                        source.item.size,
+                        scroll_geometry.content_box(),
+                    ),
+                    visual,
+                ),
+            };
+            tree.set_unrounded(entry);
         }
     }
 
@@ -1778,6 +1886,7 @@ where
             let (border, padding) = endpoint.map_or((Edges::ZERO, Edges::ZERO), |endpoint| {
                 endpoint.physical_components()
             });
+            let normal_location = project_normal_source(position, logical_size);
             let location = shifted_control_locations
                 .get(&source_index)
                 .copied()
@@ -1850,8 +1959,9 @@ where
                     )
                     .map_err(|error| layout_child_geometry_error(container, child, error))?;
             }
-            tree.set_unrounded(
+            tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                 child,
+                crate::output::NormalGeometryOf::metadata(normal_location, size),
                 NodeOutputOf::<S> {
                     source_index: crate::SourceIndex::new(source_index),
                     location,
@@ -1864,7 +1974,7 @@ where
                     ),
                     ..NodeOutputOf::new()
                 },
-            );
+            ));
         }
     }
 
@@ -1974,18 +2084,18 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    if captured {
+    if captured || relative::needs_basis(*projection.common.inset) {
+        // Captured offsets are sealed by the real converter. Native percentage
+        // offsets are deferred until this parent's performed normal size exists.
         return Ok(Point::ZERO);
     }
-    Ok(relative_inset_offset(
-        axes.zip_physical_edges_with_inline_extent(
-            *projection.common.inset,
-            inner_size,
-            |length, basis| resolve_auto_optional(length, basis),
-        )
-        .transpose_with_node(tree, child)?,
+    relative::resolve(
+        tree,
+        child,
+        *projection.common.inset,
+        InsetReference::Measurement(inner_size),
         axes,
-    ))
+    )
 }
 
 /// Compare the actual post-match displacement inside the same retained frame.

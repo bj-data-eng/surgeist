@@ -1315,3 +1315,9 @@ fn precision_atomic_tiny_shift_can_reach_its_canonical_pixel_edge_before_scalar_
     precision_tiny_atomic::<f32>();
     precision_tiny_atomic::<f64>();
 }
+
+#[path = "relative_oriented.rs"]
+mod relative_oriented;
+
+#[path = "baseline_offsets/relative_static_ports.rs"]
+mod relative_static_ports;

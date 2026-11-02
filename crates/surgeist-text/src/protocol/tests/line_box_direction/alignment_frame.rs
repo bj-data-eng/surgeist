@@ -439,6 +439,7 @@ fn real_atomic_and_positive_endpoint_allocations_follow_the_same_alignment_trans
         fit: crate::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: 20.0,
+            normal_border_inline_size: 20.0,
             before_baseline: 8.0,
             after_baseline: 2.0,
             occupied_start: 0.0,

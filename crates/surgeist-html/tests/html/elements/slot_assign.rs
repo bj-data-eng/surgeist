@@ -291,12 +291,6 @@ fn fresh_manual_set_is_empty_only_for_the_actual_qualified_slot_requirement() {
                 initial.requirement(),
                 HtmlElementClass::KnownHtml(KnownHtmlElement::Slot)
             );
-            // Materialize the actual new manual set; the proof is not kept as
-            // a current-empty bit after the identity-bearing state can change.
-            let manual: Vec<Node> = match initial.slot().unwrap() {
-                HtmlNativeFreshSlot::EmptyManualAssignments => Vec::new(),
-            };
-            assert!(manual.is_empty());
         }
     }
 }

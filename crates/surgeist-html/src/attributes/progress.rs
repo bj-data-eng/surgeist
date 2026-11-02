@@ -284,7 +284,7 @@ impl HtmlProgressAttributes {
     ) -> Result<Self, HtmlProgressNativeError> {
         let key = |number: Option<HtmlFloatingPointNumber>| {
             number
-                .map(|number| strict_scientific_decimal_key(&number.as_document_string()))
+                .map(|number| strict_scientific_decimal_key(&number.to_plain_decimal_string()))
                 .transpose()
                 .map_err(|_| HtmlProgressNativeError::RepresentationUnavailable)
         };
@@ -327,13 +327,13 @@ impl HtmlProgressAttributes {
         if let Some(value) = self.value {
             attributes.push(Attribute::new(
                 KnownHtmlAttribute::Value.qualified_name(),
-                value.as_document_string(),
+                value.to_plain_decimal_string(),
             ));
         }
         if let Some(maximum) = self.maximum {
             attributes.push(Attribute::new(
                 KnownHtmlAttribute::Max.qualified_name(),
-                maximum.as_document_string(),
+                maximum.to_plain_decimal_string(),
             ));
         }
         attributes

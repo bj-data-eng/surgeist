@@ -120,7 +120,7 @@ impl HtmlSrcsetDensity {
 impl TryFrom<HtmlFloatingPointNumber> for HtmlSrcsetDensity {
     type Error = HtmlSrcsetDensityError;
     fn try_from(value: HtmlFloatingPointNumber) -> Result<Self, Self::Error> {
-        Self::from_decimal_syntax(value.as_document_string())
+        Self::from_decimal_syntax(value.to_plain_decimal_string())
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

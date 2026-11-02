@@ -2236,7 +2236,7 @@ fn block_fixed_parent_height_keeps_orthogonal_child_inline_known() {
 struct CalcLeafTree {
     children: HashMap<u32, Vec<u32>>,
     styles: HashMap<u32, NodeInput>,
-    layouts: HashMap<u32, NodeOutput>,
+    layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
     invalid_leaf_measurement: bool,
 }
 
@@ -2268,7 +2268,7 @@ impl Traverse for CalcLeafTree {
 struct CalcLeafTreeCompute<'input> {
     children: &'input HashMap<u32, Vec<u32>>,
     styles: &'input HashMap<u32, NodeInput>,
-    layouts: &'input mut HashMap<u32, NodeOutput>,
+    layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
     invalid_leaf_measurement: bool,
 }
 
@@ -2332,8 +2332,23 @@ impl<'input> Compute<'input> for CalcLeafTreeCompute<'input> {
         crate::LayoutInputViewOf::Box(self.node_input(node))
     }
 
-    fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
-        self.layouts.insert(node, layout);
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> crate::engine::contracts::UnroundedEntryResult<
+        Self::Node,
+        Self::Scalar,
+        core::convert::Infallible,
+    > {
+        self.layouts
+            .get(&node)
+            .copied()
+            .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+            .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+    }
+
+    fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        self.layouts.insert(entry.node(), entry);
     }
 
     fn compute_child(
@@ -2464,7 +2479,7 @@ fn block_inline_affine_leaf_uses_public_leaf_path() {
     )
     .unwrap();
 
-    assert_eq!(tree.layouts[&1].size.width, 60.0);
+    assert_eq!(tree.layouts[&1].output().size.width, 60.0);
     assert_eq!(output.content_size.width, 100.0);
 }
 
@@ -2531,7 +2546,7 @@ struct Fri05C03BlockPassTree {
     styles: HashMap<u32, NodeInput>,
     child_output: Option<ComputeOutput>,
     child_inputs: Vec<ComputeInput>,
-    layouts: Vec<(u32, NodeOutput)>,
+    layouts: Vec<(u32, crate::LayoutOutputEntryOf<u32, Scalar>)>,
 }
 
 impl Traverse for Fri05C03BlockPassTree {
@@ -2565,7 +2580,7 @@ struct Fri05C03BlockPassTreeCompute<'input> {
     styles: &'input HashMap<u32, NodeInput>,
     child_output: Option<ComputeOutput>,
     child_inputs: &'input mut Vec<ComputeInput>,
-    layouts: &'input mut Vec<(u32, NodeOutput)>,
+    layouts: &'input mut Vec<(u32, crate::LayoutOutputEntryOf<u32, Scalar>)>,
 }
 
 impl Fri05C03BlockPassTree {
@@ -2630,8 +2645,25 @@ impl<'input> Compute<'input> for Fri05C03BlockPassTreeCompute<'input> {
         crate::LayoutInputViewOf::Box(&self.styles[&node])
     }
 
-    fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
-        self.layouts.push((node, layout));
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> crate::engine::contracts::UnroundedEntryResult<
+        Self::Node,
+        Self::Scalar,
+        core::convert::Infallible,
+    > {
+        self.layouts
+            .iter()
+            .rev()
+            .find(|(subject, _)| *subject == node)
+            .map(|(_, entry)| *entry)
+            .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+            .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+    }
+
+    fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        self.layouts.push((entry.node(), entry));
     }
 
     fn compute_child(
@@ -3023,7 +3055,7 @@ fn fri05_c03_block_tiny_max_size_below_raw_edges_keeps_layout_geometry_coherent(
     let child = tree
         .layouts
         .iter()
-        .find_map(|(node, layout)| (*node == 1).then_some(*layout))
+        .find_map(|(node, layout)| (*node == 1).then_some(layout.output()))
         .expect("the coherent pass stages its child");
     assert_eq!(child.location, Point::new(0.0, 15.0));
 
@@ -3132,7 +3164,7 @@ fn fri05_c03_block_tiny_max_inline_size_below_raw_edges_keeps_child_space_zero()
     let child = tree
         .layouts
         .iter()
-        .find_map(|(node, layout)| (*node == 1).then_some(*layout))
+        .find_map(|(node, layout)| (*node == 1).then_some(layout.output()))
         .expect("the final coherent pass stages its child");
     assert_eq!(child.location, Point::new(15.0, 0.0));
 
@@ -3529,7 +3561,7 @@ fn fri05_c06_block_reserved_gutter_retained_child_fallback_excludes_horizontal_r
         .layouts
         .iter()
         .rev()
-        .find_map(|(node, output)| (*node == 1).then_some(*output))
+        .find_map(|(node, output)| (*node == 1).then_some(output.output()))
         .expect("the retained child is staged");
 
     fri05_c06_assert_block_reserved_gutter_geometry(

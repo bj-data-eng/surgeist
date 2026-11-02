@@ -7,7 +7,7 @@ enum Coupling {
     FlowAdvance,
     OccupiedStart,
     OccupiedEnd,
-    BorderInlineSize,
+    NormalBorderInlineSize,
 }
 impl Coupling {
     fn change(self, request: &mut text::LineSelectionRequest) {
@@ -23,20 +23,20 @@ impl Coupling {
             Self::FlowAdvance => flow.advance = -99.0,
             Self::OccupiedStart => flow.occupied_start = -101.0,
             Self::OccupiedEnd => flow.occupied_end = 11.0,
-            Self::BorderInlineSize => {
-                // Keep a genuine contained content box and conservative Native
-                // occupied[-100,10] while changing the CSS-coupled border size.
-                box_geometry.border.size.width = 9.0;
-                box_geometry.content.size.width = 9.0;
+            Self::NormalBorderInlineSize => {
+                // CSS FIT couples to the normal border receipt. Preserve the
+                // independently valid visual border/content and Native envelope.
+                flow.normal_border_inline_size = 9.0;
             }
         }
         // Every changed quantity is finite and every occupied interval remains
-        // ordered; the width case leaves a positive border containing content.
+        // ordered; the width case leaves both normal and visual borders positive.
         // Refusal must be the receipt-to-allocation coupling, not constructor
         // validation, a numeric failure, negative size or a reversed envelope.
         assert!(flow.advance.is_finite());
         assert!(flow.occupied_start.is_finite() && flow.occupied_end.is_finite());
         assert!(flow.occupied_start <= flow.occupied_end);
+        assert!(flow.normal_border_inline_size > 0.0);
         assert!(box_geometry.border.size.width > 0.0);
     }
 }
@@ -56,7 +56,7 @@ fn invalid_css_geometry(prepared: &text::PreparedText, request: text::LineSelect
 }
 
 #[test]
-fn css_atomic_fit_receipt_must_match_actual_flow_envelope_and_border_at_selection() {
+fn css_atomic_fit_receipt_must_match_actual_flow_envelope_and_normal_border_at_selection() {
     // These exact literals come from the parent's independent signed-position
     // table. The CSS slot is incoming6, border10, end margin-110 => local
     // advance-100 and RAW local occupied[-100,10]. The last Native slot starts
@@ -96,7 +96,7 @@ fn css_atomic_fit_receipt_must_match_actual_flow_envelope_and_border_at_selectio
         Coupling::FlowAdvance,
         Coupling::OccupiedStart,
         Coupling::OccupiedEnd,
-        Coupling::BorderInlineSize,
+        Coupling::NormalBorderInlineSize,
     ] {
         let mut mismatch = issued.clone();
         coupling.change(&mut mismatch);

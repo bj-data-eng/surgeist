@@ -1,14 +1,16 @@
 use crate::semantics::support::{
-    compact_builder_without_registries as builder, session_without_raw_values as session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
+    compact_builder_without_registries as builder, result_record_bytes,
+    session_without_raw_values as session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlFacts, HtmlControlFactsLimits,
-    HtmlControlFlag, HtmlOptionControlState, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticResource,
-    HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlControlFacts,
+    HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -133,6 +135,7 @@ fn complete_source_order_prunes_all_html_barriers_and_nested_optgroups() {
     let og = html(&mut b, &d, "option");
     let select = html(&mut b, &d, "select");
     let oh = html(&mut b, &d, "option");
+    let oh2 = html(&mut b, &d, "option");
     let foreign = element(&mut b, &d, Namespace::svg(), "select", &[]);
     let oi = html(&mut b, &d, "option");
     children(&mut b, &wrapper, std::slice::from_ref(&a));
@@ -141,7 +144,7 @@ fn complete_source_order_prunes_all_html_barriers_and_nested_optgroups() {
     children(&mut b, &dl, std::slice::from_ref(&oe));
     children(&mut b, &nested, std::slice::from_ref(&og));
     children(&mut b, &group, &[of.clone(), nested]);
-    children(&mut b, &select, std::slice::from_ref(&oh));
+    children(&mut b, &select, &[oh.clone(), oh2.clone()]);
     children(&mut b, &foreign, std::slice::from_ref(&oi));
     children(
         &mut b,
@@ -176,7 +179,9 @@ fn complete_source_order_prunes_all_html_barriers_and_nested_optgroups() {
             HtmlSemanticFact::OptionIndex(HtmlSemanticValue::Known(index))
         );
     }
-    for o in [oc, od, oe, og, oh] {
+    // Options that are not in any list of options (inside an option, an hr, a
+    // datalist or a second nested optgroup) report the not-in-a-list value 0.
+    for o in [oc, od, oe, og] {
         assert_eq!(
             query(
                 &c,
@@ -185,6 +190,20 @@ fn complete_source_order_prunes_all_html_barriers_and_nested_optgroups() {
                 HtmlSemanticQuery::OptionIndex
             ),
             HtmlSemanticFact::OptionIndex(HtmlSemanticValue::Known(0))
+        );
+    }
+    // The inner select's own list holds two options, so the second one is at
+    // index 1: its index is the position in that list, not the not-in-a-list
+    // value.
+    for (o, index) in [(oh, 0), (oh2, 1)] {
+        assert_eq!(
+            query(
+                &c,
+                &cx,
+                &c.subject_id(&o).unwrap(),
+                HtmlSemanticQuery::OptionIndex
+            ),
+            HtmlSemanticFact::OptionIndex(HtmlSemanticValue::Known(index))
         );
     }
 }
@@ -443,78 +462,35 @@ fn state_only_context_changes_are_qualified_and_recomputed() {
 
 #[test]
 fn all_actual_work_capacity_and_byte_limits_have_exact_and_one_short_boundaries() {
-    let (c, s, _) = simple(3);
+    let (c, s, options_expected) = simple(3);
     let cx = context(&c, &[]);
     let req = request(&s, HtmlSemanticQuery::SelectOptions);
-    let baseline = session(&c, &cx, limits(), HtmlSemanticCancellation::new())
-        .query(std::slice::from_ref(&req))
-        .unwrap()
-        .usage();
-    let dimensions = [
-        (HtmlSemanticResource::Work, baseline.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            baseline.output_records(),
-        ),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            baseline.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            baseline.nested_output_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            baseline.allocated_bytes(),
-        ),
-    ];
-    for (resource, exact) in dimensions {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let l = HtmlSemanticLimits::new(
-                if resource == HtmlSemanticResource::Work {
-                    cap
-                } else {
-                    limits().work()
-                },
-                if resource == HtmlSemanticResource::OutputRecords {
-                    cap
-                } else {
-                    100
-                },
-                if resource == HtmlSemanticResource::ScratchRecords {
-                    cap
-                } else {
-                    1000
-                },
-                0,
-                if resource == HtmlSemanticResource::AllocatedBytes {
-                    cap
-                } else {
-                    1000000
-                },
-                if resource == HtmlSemanticResource::NestedOutputRecords {
-                    cap
-                } else {
-                    1000
-                },
-            );
-            let mut ss = session(&c, &cx, l, HtmlSemanticCancellation::new());
-            let result = ss.query(std::slice::from_ref(&req));
-            if cap == exact {
-                assert!(result.is_ok(), "{resource:?}: {result:?}");
-            } else {
-                let failure = result.unwrap_err();
-                assert!(
-                    matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{resource:?}: {failure:?}"
-                );
-                assert_eq!(ss.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    // Three option ids are retained one record at a time and the walk keeps
+    // the select's child list as its one iterator record. The walk stores each
+    // iterator beside a private optgroup flag, so the byte charge needs only
+    // cover the result record, the ids and one iterator per frame, and the
+    // visit layout of the barrier-pruning walk is private, so work is required
+    // to be charged but is not pinned.
+    let report = assert_exact_and_one_short_caps(
+        "select options",
+        &c,
+        &cx,
+        0,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 1000),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(3),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes()
+                    + 3 * std::mem::size_of::<HtmlCaptureSubjectId>()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(options(report.results()[0].fact()), options_expected);
 }
 #[test]
 fn known_empty_needs_no_scratch_nested_output_or_integer_budget() {

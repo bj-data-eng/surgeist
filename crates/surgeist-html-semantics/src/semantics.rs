@@ -142,6 +142,49 @@ use surgeist_html::bounded::{
 /// atomic provider operations; work charges their visits and owned inspection
 /// envelopes, without claiming internal instruction counts. Capture retention
 /// and parsing have their separate controls.
+///
+/// # Shared tariffs
+///
+/// Every query's usage is the sum of these shared primitives and of the
+/// query's own steps, which are charged one unit per visit, unit read or write:
+///
+/// - A batch reserves its whole result vector once (1 work, one output record
+///   and `size_of::<HtmlSemanticResult>()` bytes per request) and charges 1 work
+///   per result written. An empty batch reserves nothing.
+/// - A subject lookup charges 1.
+/// - A namespace test charges 1, plus one per compared UTF-16 unit when the
+///   namespace length equals the expected length, stopping at the first
+///   mismatch. The 28-unit HTML namespace therefore costs 29 on a match.
+/// - Recognizing an element name in the HTML vocabulary charges
+///   `(local-name units + 1) * KnownHtmlElement::ALL.len() + namespace units`
+///   before the existing recognizer runs.
+/// - An attribute lookup charges 1 per attribute scanned. When an attribute has
+///   a namespace URI of the expected length it also charges one per compared URI
+///   unit up to the first mismatch, and, for a length-matching local name, one
+///   per compared local-name unit.
+/// - Reserving record capacity charges nothing for zero additional records.
+///   When the request fits the vector's existing capacity it charges 1 work and
+///   grows nothing. Otherwise it checks the resource and byte limits and then
+///   charges 1 work, adds the actual capacity growth to the usage of its
+///   resource and `growth * size_of::<element>()` to allocated bytes. Output and
+///   nested records use exact reservation, so reserving one record at a time
+///   grows capacity one record at a time.
+///
+/// Scratch records count the live capacity of any transient working vector
+/// reserved for a query, whatever it holds, and are released when that query
+/// step finishes; the peak is reported separately. Examples are the iterator
+/// frame stacks of the tree walks (one `HtmlCapturedChildIds` per entered
+/// element, document or fragment), a list owner's item vector, template-for
+/// names, the microdata visited, on-path, contributor and key vectors, the table
+/// scope and output vectors, the natural-dimension product and difference
+/// buffers, and the language task stack.
+///
+/// A query that composes further owner steps (intrinsic envelopes, form
+/// association, option text) charges them under the same one-unit-per-visit
+/// rule. The stable per-query charges that tests pin are stated by request name
+/// in the handwritten reference documentation, `docs/reference/html-operations.md`
+/// (anchor `semantic-query-work`); the work of any query not stated there is only
+/// required to be charged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticLimits {
     work: usize,

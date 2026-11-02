@@ -63,8 +63,18 @@ fn native_constructors_preserve_exact_symbols_and_reject_intrinsic_invalid_value
     ] {
         assert_eq!(HtmlSrcsetUrlToken::new(value), Err(error));
     }
-    assert!(HtmlSrcsetUrlToken::new("../relative,a").is_ok());
-    assert!(HtmlSrcsetUrlToken::new(DocumentString::from_utf16(vec![0, 0xd800])).is_ok());
+    // An interior comma is kept, and NUL and a lone surrogate are not repaired.
+    assert_eq!(
+        HtmlSrcsetUrlToken::new("../relative,a").unwrap().value(),
+        &DocumentString::from("../relative,a")
+    );
+    assert_eq!(
+        HtmlSrcsetUrlToken::new(DocumentString::from_utf16(vec![0, 0xd800]))
+            .unwrap()
+            .value()
+            .code_units(),
+        &[0, 0xd800]
+    );
     assert_eq!(
         HtmlSrcsetWidth::new(HtmlNonNegativeInteger::from(0)),
         Err(HtmlSrcsetWidthError)
@@ -120,7 +130,10 @@ fn native_constructors_preserve_exact_symbols_and_reject_intrinsic_invalid_value
         HtmlSrcsetValue::new(vec![]),
         Err(HtmlSrcsetAuthorViolation::EmptyList)
     );
-    assert!(HtmlSrcsetDensity::try_from(HtmlFloatingPointNumber::try_from(2.5).unwrap()).is_ok());
+    let density =
+        HtmlSrcsetDensity::try_from(HtmlFloatingPointNumber::try_from(2.5).unwrap()).unwrap();
+    assert_eq!(density.syntax(), &DocumentString::from("2.5"));
+    assert_eq!(density.to_floating_point_number().unwrap().value(), 2.5);
 }
 
 #[test]

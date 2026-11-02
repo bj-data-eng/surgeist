@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use crate::LayoutOutputEntryOf;
+use crate::output::NormalGeometryOf;
+
 use crate::{
     AvailableOf, Compute, ComputeInputOf, ComputeOutputOf, DefaultScalar, Display,
     InlineBoundaryInputOf, LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInputOf,
@@ -7,6 +10,42 @@ use crate::{
     LineBreakInput, LineBreakInputOf, NodeInputOf, NodeOutputOf, RequestedAxis, Round, RunMode,
     Size, SizingMode, Traverse, compute_block, compute_flex, compute_grid,
 };
+
+/// The fake retained no current-trial custody for this actual request.
+pub(crate) fn missing_staged_unrounded<Node, S: LayoutScalar, M>(
+    node: Node,
+) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(
+        LayoutErrorSiteOf::Node(node),
+        LayoutOperation::ChildLayout,
+        LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::MissingStagedUnroundedOutput),
+    )
+}
+
+/// Authors an ordinary box fixture with no relative visual displacement.
+pub(crate) fn ordinary_unrounded_box<S: LayoutScalar>(
+    node: u32,
+    layout: NodeOutputOf<S>,
+) -> LayoutOutputEntryOf<u32, S> {
+    let content = layout
+        .scroll_geometry
+        .map(|geometry| geometry.content_box())
+        .unwrap_or_else(|| {
+            crate::ScrollRectOf::try_new(
+                crate::Point::new(
+                    layout.border.left + layout.padding.left,
+                    layout.border.top + layout.padding.top,
+                ),
+                layout.content_box_size(),
+            )
+            .expect("ordinary oracle box has valid local content geometry")
+        });
+    LayoutOutputEntryOf::ordinary_unrounded(
+        node,
+        NormalGeometryOf::box_geometry(layout.location, layout.size, content),
+        layout,
+    )
+}
 
 pub type OracleTree = OracleTreeOf<DefaultScalar>;
 pub type OracleMeasurement = OracleMeasurementOf<DefaultScalar>;
@@ -128,8 +167,8 @@ pub struct OracleTreeOf<S: LayoutScalar = DefaultScalar> {
     layout_inputs: HashMap<u32, LayoutInputOf<S>>,
     measurements: HashMap<u32, Vec<OracleMeasurementOf<S>>>,
     compute_inputs: HashMap<u32, Vec<ComputeInputOf<S>>>,
-    layouts: HashMap<u32, NodeOutputOf<S>>,
-    final_layouts: HashMap<u32, NodeOutputOf<S>>,
+    layouts: HashMap<u32, LayoutOutputEntryOf<u32, S>>,
+    final_layouts: HashMap<u32, LayoutOutputEntryOf<u32, S>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -259,7 +298,8 @@ impl<S: LayoutScalar> OracleTreeOf<S> {
     }
 
     pub fn unrounded(mut self, node: u32, layout: NodeOutputOf<S>) -> Self {
-        self.layouts.insert(node, layout);
+        self.layouts
+            .insert(node, ordinary_unrounded_box(node, layout));
         self
     }
 
@@ -271,11 +311,13 @@ impl<S: LayoutScalar> OracleTreeOf<S> {
     }
 
     pub fn layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
-        self.layouts.get(&node).copied()
+        self.layouts.get(&node).map(LayoutOutputEntryOf::output)
     }
 
     pub fn final_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
-        self.final_layouts.get(&node).copied()
+        self.final_layouts
+            .get(&node)
+            .map(LayoutOutputEntryOf::output)
     }
 
     pub fn output(&self, node: u32) -> Option<NodeOutputOf<S>> {
@@ -315,8 +357,8 @@ pub struct OracleComputeOf<'input, 'output, S: LayoutScalar = DefaultScalar> {
     layout_inputs: &'input HashMap<u32, LayoutInputOf<S>>,
     measurements: &'input HashMap<u32, Vec<OracleMeasurementOf<S>>>,
     compute_inputs: &'output mut HashMap<u32, Vec<ComputeInputOf<S>>>,
-    layouts: &'output mut HashMap<u32, NodeOutputOf<S>>,
-    final_layouts: &'output mut HashMap<u32, NodeOutputOf<S>>,
+    layouts: &'output mut HashMap<u32, LayoutOutputEntryOf<u32, S>>,
+    final_layouts: &'output mut HashMap<u32, LayoutOutputEntryOf<u32, S>>,
 }
 
 impl<S: LayoutScalar> OracleTreeOf<S> {
@@ -401,8 +443,23 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
             .unwrap_or_else(|| panic!("oracle node {node} must define a layout input"))
     }
 
-    fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutputOf<S>) {
-        self.layouts.insert(node, layout);
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> crate::engine::contracts::UnroundedEntryResult<
+        Self::Node,
+        Self::Scalar,
+        core::convert::Infallible,
+    > {
+        self.layouts
+            .get(&node)
+            .copied()
+            .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+            .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+    }
+
+    fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, S>) {
+        self.layouts.insert(entry.node(), entry);
     }
 
     fn observe_grid_overflow(
@@ -451,10 +508,11 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
             Display::Flex => compute_flex(self, node, input),
             Display::Grid | Display::GridLanes => compute_grid(self, node, input),
             Display::None => {
-                self.set_unrounded(
+                self.set_unrounded(LayoutOutputEntryOf::ordinary_unrounded(
                     node,
+                    NormalGeometryOf::metadata(crate::Point::ZERO, Size::ZERO),
                     NodeOutputOf::with_source_index(crate::SourceIndex::ZERO),
-                );
+                ));
                 Ok(ComputeOutputOf::HIDDEN)
             }
             Display::InlineBlock | Display::InlineGrid | Display::InlineGridLanes => {
@@ -465,7 +523,10 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
 }
 
 impl<'input, S: LayoutScalar> Round for OracleComputeOf<'input, '_, S> {
-    fn unrounded(&self, node: Self::Node) -> crate::LayoutResultOf<Self::Node, NodeOutputOf<S>, S> {
+    fn unrounded(
+        &self,
+        node: Self::Node,
+    ) -> crate::LayoutResultOf<Self::Node, LayoutOutputEntryOf<Self::Node, S>, S> {
         self.layouts.get(&node).copied().ok_or_else(|| {
             LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(node),
@@ -477,8 +538,8 @@ impl<'input, S: LayoutScalar> Round for OracleComputeOf<'input, '_, S> {
         })
     }
 
-    fn set_final(&mut self, node: Self::Node, layout: NodeOutputOf<S>) {
-        self.final_layouts.insert(node, layout);
+    fn set_final(&mut self, entry: LayoutOutputEntryOf<Self::Node, S>) {
+        self.final_layouts.insert(entry.node(), entry);
     }
 }
 

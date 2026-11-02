@@ -36,16 +36,24 @@ where
 {
     tree.cache_clear(node);
     tree.set_unrounded_inline_fragment_state(node, None);
-    tree.set_unrounded(node, NodeOutputOf::with_source_index(source_index));
+    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        node,
+        crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
+        NodeOutputOf::with_source_index(source_index),
+    ));
 
     for index in 0..tree.child_count(node) {
         let child = tree.child(node, index);
         match tree.layout_input(child) {
             LayoutInputViewOf::Box(_) => {
-                tree.set_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                     child,
+                    crate::output::NormalGeometryOf::metadata(
+                        crate::Point::ZERO,
+                        crate::Size::ZERO,
+                    ),
                     NodeOutputOf::with_source_index(crate::SourceIndex::new(index)),
-                );
+                ));
                 let descendant_context = crate::ContainingLayoutContext::new(
                     containing_layout_context.flow_axes(),
                     crate::ParentFormattingContext::NoParent,
@@ -64,10 +72,14 @@ where
             | LayoutInputViewOf::TextControl(_) => {
                 tree.cache_clear(child);
                 tree.set_unrounded_inline_fragment_state(child, None);
-                tree.set_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
                     child,
+                    crate::output::NormalGeometryOf::metadata(
+                        crate::Point::ZERO,
+                        crate::Size::ZERO,
+                    ),
                     NodeOutputOf::with_source_index(crate::SourceIndex::new(index)),
-                );
+                ));
             }
         }
     }
@@ -100,8 +112,13 @@ where
     let scroll_geometry = root_scroll_geometry(root, style, output, &root_edges)?;
     let location = root_start_location(containing_flow_axes, output.size, available);
 
-    tree.set_unrounded(
+    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
         root,
+        crate::output::NormalGeometryOf {
+            location,
+            size: output.size,
+            content_box: scroll_geometry.map(|geometry| geometry.content_box()),
+        },
         NodeOutputOf {
             source_index: crate::SourceIndex::ZERO,
             location,
@@ -114,7 +131,7 @@ where
             ..NodeOutputOf::new()
         }
         .with_scroll_geometry(scroll_geometry),
-    );
+    ));
     Ok(())
 }
 
@@ -142,8 +159,13 @@ where
     )?;
     let root_edges = resolve_root_edges(tree, root, style, containing_flow_axes, parent)?;
     let scroll_geometry = root_scroll_geometry(root, style, output, &root_edges)?;
-    tree.set_unrounded(
+    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
         root,
+        crate::output::NormalGeometryOf {
+            location: Point::ZERO,
+            size: output.size,
+            content_box: scroll_geometry.map(|geometry| geometry.content_box()),
+        },
         NodeOutputOf {
             source_index: crate::SourceIndex::ZERO,
             location: Point::ZERO,
@@ -156,7 +178,7 @@ where
             ..NodeOutputOf::new()
         }
         .with_scroll_geometry(scroll_geometry),
-    );
+    ));
     Ok(())
 }
 

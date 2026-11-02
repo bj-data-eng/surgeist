@@ -1,5 +1,6 @@
 use crate::semantics::support::{
-    compact_builder_without_registries as builder,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps,
+    compact_builder_without_registries as builder, result_record_bytes,
     small_semantic_limits_with_integer_digits as limits,
 };
 use surgeist_html::*;
@@ -313,6 +314,74 @@ fn explicit_direction_is_ascii_insensitive_foreign_dir_inherits_and_tel_defaults
         direction(&query(&c, &cx, &tel, HtmlSemanticQuery::Directionality)),
         HtmlDirectionality::Ltr
     );
+}
+
+#[test]
+fn telephone_input_defaults_ltr_only_when_dir_is_undefined_and_obeys_defined_dir_states() {
+    // HTML "The dir attribute" directionality algorithm
+    // (references/html-language-foundations--877d6146487f--b55e73c31978.md
+    // lines 7405-7433): LTR and RTL states return their value, Auto returns the
+    // auto directionality (null gives ltr), and only the Undefined state gives
+    // a Telephone-state input ltr instead of the parent directionality.
+    // Telephone is an auto-directionality form-associated element (line 7442).
+    let (mut b, d) = builder();
+    let parent = element(&mut b, &d, "div", &[("dir", "rtl")]);
+    let rtl = element(&mut b, &d, "input", &[("type", "tel"), ("dir", "rtl")]);
+    let rtl_mixed = element(&mut b, &d, "input", &[("type", "TeL"), ("dir", "RTL")]);
+    let ltr = element(&mut b, &d, "input", &[("type", "tel"), ("dir", "ltr")]);
+    let invalid = element(&mut b, &d, "input", &[("type", "tel"), ("dir", "sideways")]);
+    let auto = element(&mut b, &d, "input", &[("type", "tel"), ("dir", "auto")]);
+    b.establish_children(
+        &parent,
+        &[
+            rtl.clone(),
+            rtl_mixed.clone(),
+            ltr.clone(),
+            invalid.clone(),
+            auto.clone(),
+        ],
+    )
+    .unwrap();
+    let c = b.finish().unwrap();
+    let value = |text: Option<&str>| {
+        vec![HtmlControlCurrentValue::new(
+            c.subject_id(&auto).unwrap(),
+            text.map(DocumentString::from),
+        )]
+    };
+    // dir=rtl on a tel input is rtl although its undefined-state default is ltr.
+    let cx = context(&c, None);
+    for e in [&rtl, &rtl_mixed] {
+        assert_eq!(
+            direction(&query(&c, &cx, e, HtmlSemanticQuery::Directionality)),
+            HtmlDirectionality::Rtl
+        );
+    }
+    // dir=ltr stays ltr below an rtl parent; an invalid value is the Undefined
+    // state, so the Telephone rule gives ltr rather than the parent's rtl.
+    for e in [&ltr, &invalid] {
+        assert_eq!(
+            direction(&query(&c, &cx, e, HtmlSemanticQuery::Directionality)),
+            HtmlDirectionality::Ltr
+        );
+    }
+    // dir=auto uses the value: first strong AL gives rtl; a Latin letter before
+    // the Arabic one, a neutral-only value and the empty value (null result)
+    // all give ltr, never the rtl parent.
+    for (text, expected) in [
+        ("ع", HtmlDirectionality::Rtl),
+        ("123 ع", HtmlDirectionality::Rtl),
+        ("aع", HtmlDirectionality::Ltr),
+        ("123", HtmlDirectionality::Ltr),
+        ("", HtmlDirectionality::Ltr),
+    ] {
+        let cx = context(&c, Some(supplement(&c, vec![], value(Some(text)), vec![])));
+        assert_eq!(
+            direction(&query(&c, &cx, &auto, HtmlSemanticQuery::Directionality)),
+            expected,
+            "tel dir=auto value {text:?}"
+        );
+    }
 }
 
 #[test]
@@ -920,12 +989,28 @@ fn session_work_scratch_bytes_cancellation_and_failed_batches_are_qualified_and_
     let make = |l, cancel| {
         HtmlSemanticSession::new(&c, &cx, HtmlValueInterpreter::new(100), l, cancel).unwrap()
     };
-    let report = make(limits(), HtmlSemanticCancellation::new())
-        .query(std::slice::from_ref(&request))
-        .unwrap();
+    // The auto-direction scan keeps a task stack for the element and its text
+    // (scratch required, depth private) and answers with a plain classification:
+    // one result record and no nested storage. The scan's visit layout is
+    // private, so work is required to be charged without being pinned. The
+    // helper proves the reported work is the least admitting cap before the
+    // stops below reuse it.
+    let report = assert_exact_and_one_short_caps(
+        "directionality of a dir=auto element",
+        &c,
+        &cx,
+        100,
+        limits(),
+        std::slice::from_ref(&request),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 1),
+            ..ExpectedUsage::none()
+        },
+    );
     let work = report.usage().work();
     assert_eq!(report.usage().scratch_records(), 0);
-    assert!(report.usage().peak_scratch_records() > 0);
     let mut short = make(
         HtmlSemanticLimits::new(work - 1, 100, 1000, 1000, 1000000, 1000),
         HtmlSemanticCancellation::new(),

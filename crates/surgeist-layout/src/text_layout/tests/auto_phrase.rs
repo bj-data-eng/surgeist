@@ -658,7 +658,7 @@ struct ShapeTree<S: LayoutScalar> {
     inner: PublicLayoutTreeOf<S>,
     queries: std::cell::RefCell<Vec<(f64, f64)>>,
     caches: std::collections::HashMap<u32, CacheOf<S>>,
-    committed: std::collections::HashMap<u32, NodeOutputOf<S>>,
+    committed: std::collections::HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     hits: std::cell::Cell<usize>,
 }
 impl<S: LayoutScalar> Traverse for ShapeTree<S> {
@@ -700,7 +700,7 @@ impl<S: LayoutScalar> LayoutTree for ShapeTree<S> {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
         self.committed.get(&node).copied()
     }
     fn float_exclusion_interval(
@@ -734,7 +734,7 @@ impl<S: LayoutScalar> ShapeTree<S> {
         self.committed = batch
             .unrounded_entries()
             .iter()
-            .map(|row| (row.node(), row.output()))
+            .map(|row| (row.node(), *row))
             .collect();
     }
 }

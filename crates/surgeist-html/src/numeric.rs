@@ -1228,11 +1228,22 @@ impl HtmlFloatingPointNumber {
         self.value
     }
 
-    /// Returns deterministic valid HTML author syntax for this binary64 value.
+    /// Returns this value as plain decimal digits in valid HTML author syntax.
     ///
-    /// This is native Rust decimal serialization, not the ECMAScript
-    /// `ToString` operation used by HTML's separate best-representation rule.
-    pub fn as_document_string(&self) -> DocumentString {
+    /// This is Rust's shortest round-trip decimal expansion, which never uses an
+    /// exponent: `1e21` is a 1 followed by twenty-one zeros, and the smallest
+    /// subnormal has over three hundred fraction digits. The output has no
+    /// work bound beyond the value's own expansion and always parses back to
+    /// the same value. Native attribute construction uses this spelling: the
+    /// input `min`, `max` and `step` attributes, native `progress` values and
+    /// `srcset` densities.
+    ///
+    /// It is not the ECMAScript `ToString` operation that HTML's value
+    /// sanitization algorithm calls "best representation". That serialization
+    /// is `bounded::BestFiniteNumberCursor`, which the parser and DOM input
+    /// range sanitization use over caller-owned storage; the two spellings
+    /// differ for large and small magnitudes (`1e21`).
+    pub fn to_plain_decimal_string(&self) -> DocumentString {
         DocumentString::from(self.value.to_string())
     }
 }
@@ -1284,8 +1295,9 @@ impl HtmlFloatingPointList {
         &self.values
     }
 
-    /// Returns valid author syntax with commas and no whitespace.
-    pub fn as_document_string(&self) -> DocumentString {
+    /// Returns valid author syntax with commas and no whitespace, spelling
+    /// each value as [`HtmlFloatingPointNumber::to_plain_decimal_string`] does.
+    pub fn to_plain_decimal_string(&self) -> DocumentString {
         DocumentString::from(
             self.values
                 .iter()
@@ -4463,7 +4475,7 @@ mod tests {
     }
 
     #[test]
-    fn checked_native_floats_reject_nonfinite_values_and_serialize_author_syntax() {
+    fn checked_native_floats_reject_nonfinite_values_and_serialize_plain_decimal_syntax() {
         for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert_eq!(
                 HtmlFloatingPointNumber::try_from(value),
@@ -4473,15 +4485,23 @@ mod tests {
         for value in [-0.0, -1.25, f64::MAX, f64::MIN_POSITIVE, f64::from_bits(1)] {
             let number = HtmlFloatingPointNumber::try_from(value).unwrap();
             assert_eq!(
-                validate_floating_point_number(&number.as_document_string()),
+                validate_floating_point_number(&number.to_plain_decimal_string()),
                 Ok(number)
             );
         }
         assert_eq!(
             HtmlFloatingPointNumber::try_from(-0.0)
                 .unwrap()
-                .as_document_string(),
+                .to_plain_decimal_string(),
             text("0")
+        );
+        // Plain decimal expansion never switches to an exponent, unlike the
+        // ECMAScript best representation, which spells 1e21 as 1e+21.
+        assert_eq!(
+            HtmlFloatingPointNumber::try_from(1e21)
+                .unwrap()
+                .to_plain_decimal_string(),
+            text("1000000000000000000000")
         );
     }
 
@@ -4517,7 +4537,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![2.0, 0.0, 0.0, -3.0, 0.0]
         );
-        assert_eq!(recovered.as_document_string(), text("2,0,0,-3,0"));
+        assert_eq!(recovered.to_plain_decimal_string(), text("2,0,0,-3,0"));
         assert_eq!(
             parse_floating_point_list(&text("garbage")).values()[0].value(),
             0.0
@@ -4915,6 +4935,23 @@ mod tests {
             Ordering::Less
         );
     }
+    /// Advances a grammar cursor to its terminal step. `HANG_GUARD` is only a
+    /// generous fixed ceiling so a non-terminating regression fails with a clear
+    /// message instead of hanging; it is not a cost contract, and the grammar
+    /// declares no total action count.
+    fn finish_grammar(cursor: &mut FloatingPointGrammarCursor<'_>) {
+        const HANG_GUARD: usize = 100_000;
+        for _ in 0..HANG_GUARD {
+            if cursor.is_finished() {
+                return;
+            }
+            cursor.advance();
+        }
+        assert!(
+            cursor.is_finished(),
+            "grammar cursor did not finish within the hang guard"
+        );
+    }
     #[test]
     fn bounded_floating_grammar_keeps_author_and_recovery_components_and_conversion_distinct() {
         for (raw, token, integer, fraction, exponent) in [
@@ -4925,12 +4962,7 @@ mod tests {
             let units = raw.encode_utf16().collect::<Vec<_>>();
             let mut cursor =
                 FloatingPointGrammarCursor::new(&units, FloatingPointParseMode::Recovery);
-            let mut actions = 0;
-            while !cursor.is_finished() {
-                cursor.advance();
-                actions += 1;
-                assert!(actions <= units.len() * 4 + 12);
-            }
+            finish_grammar(&mut cursor);
             let prefix = cursor.prefix().unwrap();
             assert_eq!(prefix.token, token.encode_utf16().collect::<Vec<_>>());
             assert_eq!(
@@ -4945,17 +4977,15 @@ mod tests {
                 prefix.exponent.map(|e| e.digits.to_vec()),
                 exponent.map(|e| e.encode_utf16().collect::<Vec<_>>())
             );
-            assert!(matches!(
-                floating_point_prefix(&units, FloatingPointParseMode::Author),
-                Err(NumericParseError::InvalidSyntax)
-            ));
+            assert_eq!(
+                floating_point_prefix(&units, FloatingPointParseMode::Author).err(),
+                Some(NumericParseError::InvalidSyntax)
+            );
         }
         let units = text("1e999");
         let mut cursor =
             FloatingPointGrammarCursor::new(units.code_units(), FloatingPointParseMode::Author);
-        while !cursor.is_finished() {
-            cursor.advance();
-        }
+        finish_grammar(&mut cursor);
         assert!(cursor.is_valid());
         assert_eq!(cursor.prefix().unwrap().token, units.code_units());
         assert_eq!(

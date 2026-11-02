@@ -1,13 +1,15 @@
-use crate::semantics::support::{builder, session};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, result_record_bytes, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState, HtmlFormOwnerOrigin,
-    HtmlOptionFormOwner, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
+    HtmlFormOwnerOrigin, HtmlOptionFormOwner, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -523,65 +525,26 @@ fn exact_and_one_short_work_output_reset_scratch_and_bytes_limits_are_sticky() {
     let (c, o, s, _, _) = external_reset(false, false);
     let cx = context(&c, &[(s, HtmlFormAssociationState::ResetAgainstCapture)]);
     let req = request(&o);
-    let baseline = report(&c, &cx, &o).usage();
-    assert_eq!(baseline.nested_output_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, baseline.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            baseline.output_records(),
-        ),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            baseline.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            baseline.allocated_bytes(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let l = HtmlSemanticLimits::new(
-                if resource == HtmlSemanticResource::Work {
-                    cap
-                } else {
-                    limits().work()
-                },
-                if resource == HtmlSemanticResource::OutputRecords {
-                    cap
-                } else {
-                    100
-                },
-                if resource == HtmlSemanticResource::ScratchRecords {
-                    cap
-                } else {
-                    1000
-                },
-                0,
-                if resource == HtmlSemanticResource::AllocatedBytes {
-                    cap
-                } else {
-                    1000000
-                },
-                0,
-            );
-            let mut ss = session(&c, &cx, l, 6, HtmlSemanticCancellation::new());
-            let r = ss.query(std::slice::from_ref(&req));
-            if cap == exact {
-                assert!(r.is_ok(), "{resource:?}: {r:?}");
-            } else {
-                let f = r.unwrap_err();
-                assert!(
-                    matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{resource:?}: {f:?}"
-                );
-                assert_eq!(f.qualification().unwrap().context(), cx.identity());
-                assert_eq!(ss.query(&[]).unwrap_err(), f);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    // The id lookup enters the document's child list (one iterator record)
+    // and finds the form there first; the owner is cloned, so there is no
+    // nested payload. The select, option and form-association checks are of
+    // private step layout, so work is required to be charged but not pinned.
+    assert_exact_and_one_short_caps(
+        "option form owner",
+        &c,
+        &cx,
+        6,
+        HtmlSemanticLimits::new(limits().work(), 100, 1000, 0, 1000000, 0),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
 }
 
 #[test]

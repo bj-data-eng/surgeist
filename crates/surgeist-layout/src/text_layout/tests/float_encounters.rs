@@ -295,13 +295,13 @@ impl<S: LayoutScalar> LayoutTree for CachedHost<S> {
         }
         value
     }
-    fn unrounded_layout(&self, n: u32) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(&self, n: u32) -> Option<LayoutOutputEntryOf<u32, S>> {
         self.published
             .as_ref()?
             .unrounded_entries()
             .iter()
             .find(|row| row.node() == n)
-            .map(|row| row.output())
+            .copied()
     }
     fn float_exclusion_interval(
         &self,
@@ -2365,3 +2365,6 @@ mod zone_cache;
 
 #[path = "last_tail_retry.rs"]
 mod last_tail_retry;
+
+#[path = "relative_warm_custody.rs"]
+mod relative_warm_custody;

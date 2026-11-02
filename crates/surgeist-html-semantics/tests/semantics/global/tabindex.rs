@@ -1,7 +1,8 @@
 use crate::semantics::support::{
-    builder, context, scalar_limits as capped, semantic_limits_with_integer_digits as limits,
-    session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
+    scalar_limits as capped, semantic_limits_with_integer_digits as limits, session,
 };
+use surgeist_html::bounded::integer_long_work_bound;
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
@@ -318,40 +319,28 @@ fn fixed_numeric_projection_ignores_digit_and_scratch_caps_including_huge_inputs
 fn exact_and_one_short_work_output_and_observed_bytes_retain_qualified_stop() {
     let (c, id) = fixture(Namespace::html(), "input", Some("+7tail".into()));
     let cx = context(&c);
-    let req = request(&id, HtmlSemanticQuery::TabIndex);
-    let baseline = get(&c, &id, 6).usage();
-    for (resource, cap) in [
-        (HtmlSemanticResource::Work, baseline.work()),
-        (HtmlSemanticResource::OutputRecords, 1),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            baseline.allocated_bytes(),
-        ),
-    ] {
-        session(
-            &c,
-            &cx,
-            capped(resource, cap),
-            6,
-            HtmlSemanticCancellation::new(),
-        )
-        .query(std::slice::from_ref(&req))
-        .unwrap();
-        let mut ss = session(
-            &c,
-            &cx,
-            capped(resource, cap - 1),
-            6,
-            HtmlSemanticCancellation::new(),
-        );
-        let f = ss.query(std::slice::from_ref(&req)).unwrap_err();
-        assert!(
-            matches!(f.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..}if *r==resource)
-        );
-        assert_eq!(f.qualification().unwrap().capture(), c.identity());
-        assert_eq!(ss.query(&[]).unwrap_err(), f);
-        assert_eq!(ss.usage().scratch_records(), 0);
-    }
+    // Reservation (1), request lookup (1), dispatcher namespace test (29),
+    // element lookup (1), namespace test (29), the attribute scan (1 for the
+    // one attribute plus 8 compared units of "tabindex"), the owner's
+    // published work bound for the six-unit raw value, the recovered-value
+    // charge (1) and the result write (1). Parsing allocates nothing.
+    let bound = integer_long_work_bound("+7tail".len()).unwrap();
+    let r = assert_exact_and_one_short_caps(
+        "tabindex",
+        &c,
+        &cx,
+        6,
+        limits(),
+        &[request(&id, HtmlSemanticQuery::TabIndex)],
+        ExpectedUsage {
+            work: Charge::Exactly(1 + 1 + 29 + 1 + 29 + (1 + 8) + bound + 1 + 1),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_record_bytes()),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(readback(&r).value(), 7);
+    assert_eq!(readback(&r).origin(), HtmlTabIndexOrigin::Recovered);
 }
 #[test]
 fn cancellation_and_late_batch_failure_are_atomic_and_sticky() {
@@ -490,7 +479,7 @@ fn configurations_and_missing_topology_recompute_without_cached_defaults() {
     let b = session(
         &c,
         &cx,
-        capped(HtmlSemanticResource::Work, a.usage().work()),
+        capped(HtmlSemanticResource::Work, 1_000_000),
         2,
         HtmlSemanticCancellation::new(),
     )
