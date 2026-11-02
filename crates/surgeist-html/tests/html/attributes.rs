@@ -35,6 +35,7 @@ mod scalar;
 mod script_type;
 mod select_size;
 mod srcset;
+mod table_borrowed_rules;
 mod table_header_scope;
 mod textarea_wrap;
 mod token_declarations;
