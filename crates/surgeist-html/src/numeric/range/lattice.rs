@@ -14,6 +14,7 @@ const SIGN: u64 = 1_u64 << 63;
 const BANDS: u16 = 4094;
 
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 struct Dyadic {
     magnitude: u64,
     exponent: i16,
@@ -53,6 +54,7 @@ impl Dyadic {
 /// and one nearest/even binary64 rounding. Each reply reads only two fixed
 /// mantissas at one binary position; the receiver never owns a bigint.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct RangeMidpointCursor {
     first: Dyadic,
     second: Dyadic,
@@ -175,6 +177,7 @@ impl RangeMidpointCursor {
 /// uses Euclidean division, so final negative carry distinguishes a negative
 /// integer from its nonnegative low bits without a temporary bigint.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 struct DistanceComparison {
     terms: [Dyadic; 3],
     bit: i16,
@@ -247,6 +250,7 @@ enum Phase {
 /// Fixed scalar machine. The caller admits the actual Copy receiver and fixed
 /// transition before each Ack; no request can read a source/scratch cell.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct RangeLatticeCursor {
     current: u64,
     minimum: u64,
@@ -756,17 +760,27 @@ mod tests {
 
     #[test]
     fn invalid_request_reply_and_nonfinite_inputs_never_advance() {
-        assert!(
-            RangeLatticeCursor::new(f64::INFINITY.to_bits(), 0, None, 0, 1.0f64.to_bits()).is_err()
+        assert_eq!(
+            RangeLatticeCursor::new(f64::INFINITY.to_bits(), 0, None, 0, 1.0f64.to_bits()),
+            Err(RangeNumericError::Integrity)
         );
-        assert!(RangeLatticeCursor::new(0, 0, None, 0, 0).is_err());
+        assert_eq!(
+            RangeLatticeCursor::new(0, 0, None, 0, 0),
+            Err(RangeNumericError::Integrity)
+        );
         let mut cursor = RangeLatticeCursor::new(0, 0, None, 0, 1.0f64.to_bits()).unwrap();
         let before = cursor;
-        assert!(cursor.reply(RangeNumericReply::Unit(0)).is_err());
-        assert_eq!(format!("{cursor:?}"), format!("{before:?}"));
+        assert_eq!(
+            cursor.reply(RangeNumericReply::Unit(0)),
+            Err(RangeNumericError::Integrity)
+        );
+        assert_eq!(cursor, before);
         while cursor.request().is_some() {
             cursor.reply(RangeNumericReply::Ack).unwrap();
         }
-        assert!(cursor.reply(RangeNumericReply::Ack).is_err());
+        assert_eq!(
+            cursor.reply(RangeNumericReply::Ack),
+            Err(RangeNumericError::Integrity)
+        );
     }
 }
