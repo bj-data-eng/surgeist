@@ -2692,15 +2692,24 @@ mod tests {
                 HtmlTemporalError::WeekOutOfRange
             );
         }
-        assert_eq!(
-            borrowed(
-                &DocumentString::from("2021-W53x"),
-                TemporalPhase::Recovery,
-                TemporalAlternative::Week
-            )
-            .unwrap_err(),
-            HtmlTemporalError::InvalidSyntax
-        );
+        // §2.3.5.8 checks the week range at step 9 and trailing input at step 10.
+        for (raw, error) in [
+            ("2021-W53x", HtmlTemporalError::WeekOutOfRange),
+            ("2020-W00x", HtmlTemporalError::WeekOutOfRange),
+            ("2020-W53x", HtmlTemporalError::InvalidSyntax),
+            ("2020-W5", HtmlTemporalError::InvalidSyntax),
+        ] {
+            assert_eq!(
+                borrowed(
+                    &DocumentString::from(raw),
+                    TemporalPhase::Recovery,
+                    TemporalAlternative::Week
+                )
+                .unwrap_err(),
+                error,
+                "{raw}"
+            );
+        }
     }
     #[test]
     fn duration_cursor_preserves_components_calendar_state_and_exact_fractions() {
@@ -2875,7 +2884,7 @@ mod tests {
                 "borrowed {raw}"
             );
         }
-        let yearless_cases: [(&str, Result<HtmlYearlessDate, HtmlTemporalError>); 12] = [
+        let yearless_cases: [(&str, Result<HtmlYearlessDate, HtmlTemporalError>); 18] = [
             ("02-29", Ok(HtmlYearlessDate::new(2, 29).unwrap())),
             ("--02-29", Ok(HtmlYearlessDate::new(2, 29).unwrap())),
             ("12-31", Ok(HtmlYearlessDate::new(12, 31).unwrap())),
@@ -2887,8 +2896,15 @@ mod tests {
             ("-02-29", Err(HtmlTemporalError::InvalidSyntax)),
             ("0229", Err(HtmlTemporalError::InvalidSyntax)),
             ("02-29x", Err(HtmlTemporalError::InvalidSyntax)),
-            // Trailing input is rejected before the month or day range applies.
-            ("13-01x", Err(HtmlTemporalError::InvalidSyntax)),
+            // §2.3.5.3 checks the month range at step 3, before the hyphen and
+            // day, and the day range at step 7, before trailing input.
+            ("13-01x", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("13", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("--00-xx", Err(HtmlTemporalError::MonthOutOfRange)),
+            ("02-30x", Err(HtmlTemporalError::DayOutOfRange)),
+            ("04-31x", Err(HtmlTemporalError::DayOutOfRange)),
+            ("1", Err(HtmlTemporalError::InvalidSyntax)),
+            ("12-3", Err(HtmlTemporalError::InvalidSyntax)),
         ];
         for (raw, expected) in yearless_cases {
             let input = text(raw);
@@ -3440,6 +3456,11 @@ mod tests {
             (
                 TemporalInputFormat::Week,
                 "2021-W53X",
+                HtmlTemporalError::WeekOutOfRange,
+            ),
+            (
+                TemporalInputFormat::Week,
+                "2020-W53X",
                 HtmlTemporalError::InvalidSyntax,
             ),
             (
