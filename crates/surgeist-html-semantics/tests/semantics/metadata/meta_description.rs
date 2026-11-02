@@ -1,10 +1,11 @@
 use crate::semantics::support::{
-    builder, collection_limits as capped, context, semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, collection_limits as capped,
+    context, result_record_bytes, semantic_limits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlMetaDescriptionAuthorReport, HtmlMetaDescriptionContentRequirement,
     HtmlMetaDescriptionUniqueness, HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticFact,
     HtmlSemanticFailureKind, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
@@ -210,11 +211,22 @@ fn namespaced_or_case_changed_attribute_names_do_not_select_description() {
 }
 #[test]
 fn prefix_does_not_replace_namespace_or_exact_local_name() {
-    for (ns, local, foreign) in [
-        (Namespace::html(), "meta", false),
-        (Namespace::html(), "META", false),
-        (Namespace::svg(), "meta", true),
+    #[derive(Debug, PartialEq)]
+    enum Applicability {
+        Known,
+        Inapplicable,
+        ForeignNamespace,
+    }
+    // Each row has one outcome: only the HTML-namespace element with the exact
+    // local name "meta" is a description meta, whatever its prefix; the same
+    // local name in the SVG namespace is a foreign element, and a case
+    // variant is a different HTML element.
+    for (ns, local, expected) in [
+        (Namespace::html(), "meta", Applicability::Known),
+        (Namespace::html(), "META", Applicability::Inapplicable),
+        (Namespace::svg(), "meta", Applicability::ForeignNamespace),
     ] {
+        let row = format!("{ns:?} {local}");
         let (mut b, d) = builder();
         let n = element(
             &mut b,
@@ -226,18 +238,19 @@ fn prefix_does_not_replace_namespace_or_exact_local_name() {
         children(&mut b, &d, std::slice::from_ref(&n));
         let c = b.finish().unwrap();
         let r = report(&c, &c.subject_id(&n).unwrap(), 11);
-        match r.results()[0].fact() {
+        let actual = match r.results()[0].fact() {
             HtmlSemanticFact::MetaDescriptionAuthor(HtmlSemanticValue::Known(_)) => {
-                assert_eq!(local, "meta")
+                Applicability::Known
             }
             HtmlSemanticFact::MetaDescriptionAuthor(HtmlSemanticValue::Unsupported(
                 HtmlSemanticUnsupported::ForeignNamespace,
-            )) => assert!(foreign),
+            )) => Applicability::ForeignNamespace,
             HtmlSemanticFact::MetaDescriptionAuthor(HtmlSemanticValue::Inapplicable) => {
-                assert_eq!(local, "META")
+                Applicability::Inapplicable
             }
             x => panic!("{x:?}"),
-        }
+        };
+        assert_eq!(actual, expected, "{row}");
     }
 }
 #[test]
@@ -512,51 +525,52 @@ fn competitor_content_is_irrelevant_to_duplicate_proof_even_when_over_raw_cap() 
 fn actual_work_and_capacities_accept_exact_and_reject_one_short_with_balanced_scratch() {
     let (c, id) = single(Some("description"), Some("x"));
     let cx = context(&c);
-    let usage = report(&c, &id, 11).usage();
-    assert_eq!(usage.nested_output_records(), 1);
-    assert_eq!(usage.scratch_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, usage.work()),
-        (HtmlSemanticResource::OutputRecords, usage.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            usage.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            usage.allocated_bytes(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            usage.nested_output_records(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut s = session(
-                &c,
-                &cx,
-                capped(resource, cap),
-                11,
-                HtmlSemanticCancellation::new(),
-            );
-            let r = s.query(&[request(&id)]);
-            if cap == exact {
-                assert_eq!(
-                    value(&r.unwrap()).uniqueness(),
-                    &HtmlMetaDescriptionUniqueness::Unique
-                );
-            } else {
-                let fail = r.unwrap_err();
-                assert!(
-                    matches!(fail.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..}if *r==resource),
-                    "{fail:?}"
-                );
-                assert_eq!(s.query(&[]).unwrap_err(), fail);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
+    let n = KnownHtmlElement::ALL.len();
+    let ns = "http://www.w3.org/1999/xhtml".len();
+    // Reservation (1), request lookup (1), dispatcher namespace test (29),
+    // element lookup (1), namespace test (29) and "meta" recognition; the name
+    // lookup (1 + 4 compared units), its admission (1), length check (1) and 11
+    // keyword units; the content lookup (1 for the name attribute, 1 + 7 for
+    // content) and admission (1); the uniqueness walk: root climb (4), root
+    // lookup and visit (2), the document (lookup 1, visit 1, entry 4), the meta
+    // itself (lookup 1, visit 1, entry and exit 6), the closing charge (1); the
+    // retained report (growth 1, push 1); and the result write (1).
+    let work = 1
+        + 1
+        + (1 + ns)
+        + 1
+        + (1 + ns)
+        + (("meta".len() + 1) * n + ns)
+        + (1 + 4 + 1 + 1 + 11)
+        + (1 + 1 + 7)
+        + 1
+        + (4 + 2 + (1 + 1 + 4) + (1 + 1 + 6) + 1)
+        + 2
+        + 1;
+    // The walk keeps the document's child list and the meta's own (empty)
+    // list live together: two iterator records. One report record is
+    // retained; its payload type is private, so only a lower bound is pinned
+    // for the bytes.
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let r = assert_exact_and_one_short_caps(
+        "meta description",
+        &c,
+        &cx,
+        11,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 2 * frame + 1),
+        },
+    );
+    assert_eq!(
+        value(&r).uniqueness(),
+        &HtmlMetaDescriptionUniqueness::Unique
+    );
 }
 #[test]
 fn cancellation_is_sticky_and_preserves_exact_qualification() {

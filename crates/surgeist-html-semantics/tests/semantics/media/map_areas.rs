@@ -1,10 +1,12 @@
 use crate::semantics::support::{
-    builder, collection_limits as resource_limits, context, semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder,
+    collection_limits as resource_limits, context, result_record_bytes, semantic_limits as limits,
+    session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlAreaCollection, HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject,
-    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
+    HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
     HtmlCapturedShadowProperties, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticMissing,
     HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource,
@@ -354,43 +356,51 @@ fn map_role_case_namespace_and_non_element_subjects_have_typed_outcomes() {
 fn full_collection_has_exact_one_short_work_output_scratch_nested_capacity_and_bytes() {
     let (c, m, expected) = direct(3);
     let cx = context(&c);
-    let u = report(&c, &cx, &m, 0).usage();
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, u.work()),
-        (HtmlSemanticResource::OutputRecords, u.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            u.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            u.nested_output_records(),
-        ),
-        (HtmlSemanticResource::AllocatedBytes, u.allocated_bytes()),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut ss = session(
-                &c,
-                &cx,
-                resource_limits(resource, cap),
-                0,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = ss.query(&[request(&m)]);
-            if cap == exact {
-                assert_eq!(areas(&result.unwrap()).areas(), expected);
-            } else {
-                let failure = result.unwrap_err();
-                assert!(
-                    matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..} if *r==resource),
-                    "{failure:?}"
-                );
-                assert_eq!(ss.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(ss.usage().scratch_records(), 0);
-        }
-    }
+    let n = KnownHtmlElement::ALL.len();
+    let ns = "http://www.w3.org/1999/xhtml".len();
+    let known = |l: usize| (l + 1) * n + ns;
+    // Reservation (1), request lookup (1), dispatcher namespace test (29),
+    // map lookup (1), namespace test (29) and "map" recognition; entering the
+    // map (visit 1, frame growth 1, push 1, first step 1); then for each of
+    // the three empty areas its lookup (1), "area" recognition and a retained
+    // id (growth 1, push 1) plus the descent past it. Descending into an area
+    // charges a visit, a frame (2) and the exhausted area's step (1, then the
+    // parent's next step 1): 5 for the first two areas; the last area also
+    // pops the map's frame (one more step). Finally the closing charge (1) and
+    // the result write (1).
+    let work = 1
+        + 1
+        + (1 + ns)
+        + 1
+        + (1 + ns)
+        + known("map".len())
+        + 4
+        + 3 * (1 + known("area".len()) + 2)
+        + (5 + 5 + 6)
+        + 1
+        + 1;
+    // Two iterator records are live at most (the map's and one area's); three
+    // ids are retained one record at a time.
+    let report = assert_exact_and_one_short_caps(
+        "map areas",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&m)],
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(3),
+            allocated_bytes: Charge::Exactly(
+                result_record_bytes()
+                    + 3 * std::mem::size_of::<HtmlCaptureSubjectId>()
+                    + 2 * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+        },
+    );
+    assert_eq!(areas(&report).areas(), expected);
 }
 #[test]
 fn duplicate_queries_charge_cumulative_member_capacity_and_cannot_reuse_a_discarded_prefix() {

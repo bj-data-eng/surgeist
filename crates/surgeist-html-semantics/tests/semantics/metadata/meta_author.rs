@@ -1,10 +1,11 @@
 use crate::semantics::support::{
-    builder, collection_limits as capped, context, semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, collection_limits as capped,
+    context, result_record_bytes, semantic_limits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlMetaAttributeAuthorStructureReport, HtmlMetaCharsetUniqueness,
     HtmlMetaContentPresenceRequirement, HtmlMetaDiscriminatorRequirement, HtmlScriptingStatus,
     HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticMissing,
@@ -326,12 +327,23 @@ fn namespaced_and_case_changed_attribute_names_do_not_become_discriminators() {
 }
 #[test]
 fn namespace_and_exact_meta_element_name_define_applicability() {
-    for (ns, local, expected_foreign) in [
-        (Namespace::html(), "meta", false),
-        (Namespace::html(), "META", false),
-        (Namespace::html(), "div", false),
-        (Namespace::svg(), "meta", true),
+    #[derive(Debug, PartialEq)]
+    enum Applicability {
+        Known,
+        Inapplicable,
+        ForeignNamespace,
+    }
+    // Each row has one outcome: only the HTML-namespace element with the exact
+    // local name "meta" is classified, whatever its prefix. Another HTML name
+    // or a case variant is inapplicable, and the same local name in the SVG
+    // namespace is a foreign element, never a known meta.
+    for (ns, local, expected) in [
+        (Namespace::html(), "meta", Applicability::Known),
+        (Namespace::html(), "META", Applicability::Inapplicable),
+        (Namespace::html(), "div", Applicability::Inapplicable),
+        (Namespace::svg(), "meta", Applicability::ForeignNamespace),
     ] {
+        let row = format!("{ns:?} {local}");
         let (mut b, d) = builder();
         let a = element(
             &mut b,
@@ -343,18 +355,19 @@ fn namespace_and_exact_meta_element_name_define_applicability() {
         children(&mut b, &d, std::slice::from_ref(&a));
         let c = b.finish().unwrap();
         let r = report(&c, &c.subject_id(&a).unwrap(), 0);
-        match r.results()[0].fact() {
+        let actual = match r.results()[0].fact() {
             HtmlSemanticFact::MetaAttributeAuthorStructure(HtmlSemanticValue::Known(_)) => {
-                assert_eq!(local, "meta")
+                Applicability::Known
             }
             HtmlSemanticFact::MetaAttributeAuthorStructure(HtmlSemanticValue::Unsupported(
                 HtmlSemanticUnsupported::ForeignNamespace,
-            )) => assert!(expected_foreign),
+            )) => Applicability::ForeignNamespace,
             HtmlSemanticFact::MetaAttributeAuthorStructure(HtmlSemanticValue::Inapplicable) => {
-                assert!(local == "META" || local == "div")
+                Applicability::Inapplicable
             }
             x => panic!("{x:?}"),
-        }
+        };
+        assert_eq!(actual, expected, "{row}");
     }
 }
 #[test]
@@ -700,51 +713,32 @@ fn each_original_own_retained_raw_field_obeys_cap_before_delivery() {
 fn actual_work_and_capacity_limits_accept_exact_and_reject_one_short() {
     let (c, id) = single(&[("charset", "utf-8"), ("content", "")]);
     let cx = context(&c);
-    let usage = report(&c, &id, 5).usage();
-    assert_eq!(usage.nested_output_records(), 1);
-    assert_eq!(usage.scratch_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, usage.work()),
-        (HtmlSemanticResource::OutputRecords, usage.output_records()),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            usage.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            usage.allocated_bytes(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            usage.nested_output_records(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut s = session(
-                &c,
-                &cx,
-                capped(resource, cap),
-                5,
-                HtmlSemanticCancellation::new(),
-            );
-            let r = s.query(&[request(&id)]);
-            if cap == exact {
-                assert_eq!(
-                    value(&r.unwrap()).charset_uniqueness(),
-                    &HtmlMetaCharsetUniqueness::Unique
-                );
-            } else {
-                let fail = r.unwrap_err();
-                assert!(
-                    matches!(fail.kind(),HtmlSemanticFailureKind::LimitExceeded{resource:r,..}if *r==resource),
-                    "{fail:?}"
-                );
-                assert_eq!(s.query(&[]).unwrap_err(), fail);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
+    // The uniqueness walk keeps the document's child list and the meta's own
+    // (empty) list live together: two iterator records. One report record is
+    // retained. The report payload and the author checks' visit layout are
+    // private, so the byte charge needs only cover the result record, both
+    // frames and one payload byte, and work is required to be charged without
+    // being pinned.
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let r = assert_exact_and_one_short_caps(
+        "meta author",
+        &c,
+        &cx,
+        5,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 2 * frame + 1),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(
+        value(&r).charset_uniqueness(),
+        &HtmlMetaCharsetUniqueness::Unique
+    );
 }
 #[test]
 fn terminal_work_cuts_cannot_be_rescued_by_a_later_duplicate() {

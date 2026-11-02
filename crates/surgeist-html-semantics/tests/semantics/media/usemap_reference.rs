@@ -1,5 +1,6 @@
 use crate::semantics::support::{
-    context, semantic_limits_without_nested_output as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, context, result_record_bytes,
+    semantic_limits_without_nested_output as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
@@ -595,15 +596,22 @@ fn literal_public_work_ledger_admits_completion_and_rejects_one_short_without_pa
     // attr(1+6) + admission1 + scanner21 + classifications/guard3 +
     // raw/result retention2 + outer write1 = 4V+124.
     let work = 4 * KnownHtmlElement::ALL.len() + 124;
-    let mut exact = session(
+    // The exact cap on every resource reproduces the baseline report; the one
+    // result record is the only allocation and nothing is nested or scratch.
+    let report = assert_exact_and_one_short_caps(
+        "usemap reference",
         &capture,
         &cx,
-        HtmlSemanticLimits::new(work, 1, 0, 0, 1000000, 0),
         4,
-        HtmlSemanticCancellation::new(),
+        HtmlSemanticLimits::new(1000000, 1, 0, 0, 1000000, 0),
+        &[request(&image)],
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_record_bytes()),
+            ..ExpectedUsage::none()
+        },
     );
-    let report = exact.query(&[request(&image)]).unwrap();
-    assert_eq!(report.usage().work(), work);
     assert_eq!(report.usage().scratch_records(), 0);
     let mut short = session(
         &capture,

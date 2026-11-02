@@ -1,4 +1,6 @@
-use crate::semantics::support::{builder, context};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlCaptureDocumentId;
 use surgeist_html_semantics::{
@@ -1551,39 +1553,48 @@ fn exact_work_on_inapplicable_text_is_three_and_one_short_denies_result_write() 
     let c = b.finish().unwrap();
     let id = c.subject_id(&n).unwrap();
     let cx = context(&c);
-    for work in [3, 2] {
-        let mut s = HtmlSemanticSession::new(
-            &c,
-            &cx,
-            HtmlValueInterpreter::new(0),
-            HtmlSemanticLimits::new(work, 1, 0, 0, 100000, 0),
-            HtmlSemanticCancellation::new(),
-        )
-        .unwrap();
-        let result = s.query(&[HtmlSemanticRequest::new(
-            id.clone(),
-            HtmlSemanticQuery::MicrodataItem,
-        )]);
-        if work == 3 {
-            assert!(matches!(
-                result.unwrap().results()[0].fact(),
-                HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)
-            ));
-            assert_eq!(s.usage().work(), 3);
-        } else {
-            let err = result.unwrap_err();
-            assert_eq!(
-                err.kind(),
-                &HtmlSemanticFailureKind::LimitExceeded {
-                    resource: HtmlSemanticResource::Work,
-                    limit: 2,
-                    required: 3
-                }
-            );
-            assert_eq!(s.usage().work(), 2);
-            assert_eq!(s.query(&[]).unwrap_err(), err);
+    let request = HtmlSemanticRequest::new(id, HtmlSemanticQuery::MicrodataItem);
+    // The documented shared tariffs alone apply to a non-element subject: the
+    // result reservation (1), the subject lookup (1) and the result write (1).
+    let report = assert_exact_and_one_short_caps(
+        "microdata item on text",
+        &c,
+        &cx,
+        0,
+        HtmlSemanticLimits::new(1000000, 1, 0, 0, 100000, 0),
+        std::slice::from_ref(&request),
+        ExpectedUsage {
+            work: Charge::Exactly(3),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_record_bytes()),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert!(matches!(
+        report.results()[0].fact(),
+        HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)
+    ));
+    // One short of three stops exactly at the result write: the reservation
+    // and lookup were already charged.
+    let mut s = HtmlSemanticSession::new(
+        &c,
+        &cx,
+        HtmlValueInterpreter::new(0),
+        HtmlSemanticLimits::new(2, 1, 0, 0, 100000, 0),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    let err = s.query(std::slice::from_ref(&request)).unwrap_err();
+    assert_eq!(
+        err.kind(),
+        &HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::Work,
+            limit: 2,
+            required: 3
         }
-    }
+    );
+    assert_eq!(s.usage().work(), 2);
+    assert_eq!(s.query(&[]).unwrap_err(), err);
 }
 #[test]
 fn own_type_override_does_not_consult_unavailable_children_or_ancestry() {

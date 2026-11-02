@@ -1,10 +1,11 @@
 use crate::semantics::support::{
-    builder, collection_limits as capped, context, semantic_limits as limits, session,
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, collection_limits as capped,
+    context, result_record_bytes, semantic_limits as limits, session,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
     HtmlMapNameAuthorReport, HtmlMapNameIdRelation, HtmlMapNameUniqueness,
     HtmlSemanticCancellation, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
@@ -384,55 +385,29 @@ fn wrong_roles_and_non_element_subjects_are_distinct_from_foreign_namespace() {
 fn exact_and_one_short_caps_account_for_single_record_and_actual_scratch_storage() {
     let (c, m, _) = pair("x", "y");
     let cx = context(&c);
-    let observed = report(&c, &m, 1).usage();
-    eprintln!("complete pair map-name cost: {observed:?}");
-    assert_eq!(observed.nested_output_records(), 1);
-    assert_eq!(observed.scratch_records(), 0);
-    for (resource, exact) in [
-        (HtmlSemanticResource::Work, observed.work()),
-        (
-            HtmlSemanticResource::OutputRecords,
-            observed.output_records(),
-        ),
-        (
-            HtmlSemanticResource::ScratchRecords,
-            observed.peak_scratch_records(),
-        ),
-        (
-            HtmlSemanticResource::NestedOutputRecords,
-            observed.nested_output_records(),
-        ),
-        (
-            HtmlSemanticResource::AllocatedBytes,
-            observed.allocated_bytes(),
-        ),
-    ] {
-        assert!(exact > 0);
-        for cap in [exact, exact - 1] {
-            let mut s = session(
-                &c,
-                &cx,
-                capped(resource, cap),
-                1,
-                HtmlSemanticCancellation::new(),
-            );
-            let result = s.query(&[request(&m)]);
-            if cap == exact {
-                assert_eq!(
-                    value(&result.unwrap()).uniqueness(),
-                    &HtmlMapNameUniqueness::Unique
-                );
-            } else {
-                let failure = result.unwrap_err();
-                assert!(
-                    matches!(failure.kind(),HtmlSemanticFailureKind::LimitExceeded {resource:r,..} if *r==resource),
-                    "{failure:?}"
-                );
-                assert_eq!(s.query(&[]).unwrap_err(), failure);
-            }
-            assert_eq!(s.usage().scratch_records(), 0);
-        }
-    }
+    // The uniqueness walk climbs to the wrapper div and descends: the div's
+    // child list and the subject's own (empty) child list are live together,
+    // two iterator records. One report record is retained. The payload type
+    // and the walk's visit layout are private, so the byte charge must cover
+    // the result record, both frames and one payload byte, and work must be
+    // charged without being pinned.
+    let frame = std::mem::size_of::<HtmlCapturedChildIds<'static>>();
+    let r = assert_exact_and_one_short_caps(
+        "map name",
+        &c,
+        &cx,
+        1,
+        limits(),
+        &[request(&m)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 2 * frame + 1),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(value(&r).uniqueness(), &HtmlMapNameUniqueness::Unique);
 }
 #[test]
 fn raw_exact_and_one_short_length_are_independent_of_physical_budgets() {
