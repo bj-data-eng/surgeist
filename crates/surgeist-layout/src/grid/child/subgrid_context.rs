@@ -1094,11 +1094,8 @@ where
         let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
         let first_baseline =
             baselines.first_or_synthesize_block_baseline(child_flow_axes, output.size);
-        let last_baseline = baselines
-            .last_block_baseline(child_flow_axes)
-            .unwrap_or_else(|| {
-                baselines.first_or_synthesize_block_baseline(child_flow_axes, output.size)
-            });
+        let last_baseline =
+            baselines.last_or_synthesize_block_baseline(child_flow_axes, output.size);
         let block_auto_margins = child_flow_axes
             .line_over_edge(sizing.unresolved_margin)
             .is_none()
