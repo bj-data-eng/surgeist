@@ -340,9 +340,8 @@ impl StorageOwner {
 /// A pending operation retains its exact storage and command through refusal.
 pub struct HtmlConstructionOperation {
     owner: Option<StorageOwner>,
-    command: Option<HtmlConstructionCommand>,
+    command: HtmlConstructionCommand,
     phase: Phase,
-    next: Option<Phase>,
     failure: Option<HtmlConstructionError>,
     plan: Plan,
     snapshot: Option<HtmlConstructionAllocationSnapshot>,
@@ -399,6 +398,8 @@ pub struct HtmlConstructionAction<'a> {
 }
 pub struct HtmlConstructionObservation<'a> {
     operation: &'a mut HtmlConstructionOperation,
+    /// The phase this accepted observation resumes.
+    next: Phase,
     allocation: Option<HtmlConstructionAllocationSnapshot>,
 }
 #[derive(Debug)]
@@ -427,11 +428,7 @@ impl<'a> HtmlConstructionObservation<'a> {
         self.allocation.as_ref()
     }
     pub fn accept(self) {
-        self.operation.phase = self
-            .operation
-            .next
-            .take()
-            .expect("one outstanding observation");
+        self.operation.phase = self.next;
     }
 }
 
@@ -444,9 +441,8 @@ impl HtmlConstructionOperation {
         };
         Self {
             owner: Some(StorageOwner::Mutable(storage)),
-            command: Some(command),
+            command,
             phase,
-            next: None,
             failure: None,
             plan: Plan::default(),
             snapshot: None,
@@ -471,7 +467,7 @@ impl HtmlConstructionOperation {
             .map_or(usize::MAX, |parent| parent.children.len().saturating_add(1))
     }
     fn command(&self) -> &HtmlConstructionCommand {
-        self.command.as_ref().expect("pending command")
+        &self.command
     }
     fn name(&self) -> Option<&QualifiedName> {
         match self.command() {
@@ -549,7 +545,7 @@ impl HtmlConstructionOperation {
         };
         HtmlConstructionAbort {
             storage,
-            command: self.command.take().expect("pending command"),
+            command: self.command,
             retired,
         }
     }
@@ -717,10 +713,10 @@ impl<'a> HtmlConstructionAction<'a> {
         let operation = self.operation;
         match operation.advance() {
             Ok((next, allocation)) => {
-                operation.next = Some(next);
                 operation.phase = Phase::Observing;
                 Ok(HtmlConstructionObservation {
                     operation,
+                    next,
                     allocation,
                 })
             }
@@ -1863,9 +1859,9 @@ impl HtmlConstructionReadyOperation {
         self.operation.abort()
     }
     /// Applies only the fixed writes and owning moves described before readiness.
-    pub fn commit(mut self) -> HtmlConstructionCommit {
+    pub fn commit(self) -> HtmlConstructionCommit {
         use HtmlConstructionCommand as Command;
-        let operation = &mut self.operation;
+        let mut operation = self.operation;
         if matches!(operation.command(), Command::Publish { .. }) {
             let StorageOwner::Shared(arena) = operation.owner.take().expect("ready publication")
             else {
@@ -1886,7 +1882,7 @@ impl HtmlConstructionReadyOperation {
         else {
             unreachable!("only publication shares an arena");
         };
-        let command = match operation.command.take().expect("ready command") {
+        let command = match operation.command {
             Command::CreateElement {
                 name,
                 attributes,

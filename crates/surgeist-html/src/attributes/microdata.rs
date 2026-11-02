@@ -55,16 +55,21 @@ impl HtmlMicrodataTokenReport {
     pub fn tokens(&self) -> &[HtmlMicrodataToken] {
         &self.tokens
     }
+    /// The raw units the tokens index; empty exactly when no raw was present,
+    /// in which case there are no tokens either.
+    fn units(&self) -> &[u16] {
+        self.raw.as_ref().map_or(&[], DocumentString::code_units)
+    }
     pub fn token_units(&self, index: usize) -> Option<&[u16]> {
         self.tokens
             .get(index)
-            .map(|t| &self.raw.as_ref().expect("token has raw").code_units()[t.start..t.end])
+            .map(|t| &self.units()[t.start..t.end])
     }
     pub fn processing_tokens(&self) -> impl Iterator<Item = &[u16]> {
         self.tokens
             .iter()
             .filter(|t| self.kind != HtmlMicrodataTokenKind::ItemProp || t.duplicate_of.is_none())
-            .map(|t| &self.raw.as_ref().expect("token has raw").code_units()[t.start..t.end])
+            .map(|t| &self.units()[t.start..t.end])
     }
     /// Local presence/nonempty/uniqueness only; contextual conformance is separate.
     pub fn local_author_conforming(&self) -> bool {
@@ -259,7 +264,10 @@ enum Phase {
 pub struct HtmlMicrodataTokenInterpretation<'raw> {
     kind: HtmlMicrodataTokenKind,
     raw: Option<&'raw DocumentString>,
-    cursor: Option<SpaceTokenCursor<'raw>>,
+    /// The scanned units: the raw's, or empty when no raw is present, in which
+    /// case no scanning phase is ever issued.
+    units: &'raw [u16],
+    cursor: SpaceTokenCursor<'raw>,
     tokens: Vec<HtmlMicrodataToken>,
     start: usize,
     end: usize,
@@ -271,10 +279,12 @@ pub struct HtmlMicrodataTokenInterpretation<'raw> {
 impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
     /// Allocation-free setup. The consumer admits the original raw before driving.
     pub fn new(kind: HtmlMicrodataTokenKind, raw: Option<&'raw DocumentString>) -> Self {
+        let units = raw.map_or(&[][..], DocumentString::code_units);
         Self {
             kind,
             raw,
-            cursor: None,
+            units,
+            cursor: SpaceTokenCursor::new(units),
             tokens: Vec::new(),
             start: 0,
             end: 0,
@@ -338,13 +348,11 @@ impl HtmlMicrodataTokenAction<'_, '_> {
         use HtmlMicrodataTokenActionKind::{Reserve, Work};
         match self.owner.phase {
             Phase::Begin => Work(SpaceTokenCursor::BEGIN_WORK),
-            Phase::Scan => Work(
-                if self.owner.cursor.as_ref().expect("begun").inspects_unit() {
-                    SpaceTokenCursor::STEP_WORK
-                } else {
-                    2
-                },
-            ),
+            Phase::Scan => Work(if self.owner.cursor.inspects_unit() {
+                SpaceTokenCursor::STEP_WORK
+            } else {
+                2
+            }),
             Phase::PriorUnit(_, _) => Work(2),
             Phase::Reserve => Reserve,
             _ => Work(1),
@@ -386,12 +394,9 @@ impl HtmlMicrodataTokenAction<'_, '_> {
         }
         let mut result = HtmlMicrodataTokenStep::Continue;
         match o.phase {
-            Phase::Begin => {
-                o.cursor = Some(SpaceTokenCursor::new(o.raw.expect("present").code_units()));
-                o.phase = Phase::Header;
-            }
+            Phase::Begin => o.phase = Phase::Header,
             Phase::Header => o.phase = Phase::Scan,
-            Phase::Scan => match o.cursor.as_mut().expect("begun").step() {
+            Phase::Scan => match o.cursor.step() {
                 SpaceTokenStep::Continue => o.phase = Phase::Header,
                 SpaceTokenStep::Done => o.phase = Phase::Assemble,
                 SpaceTokenStep::Token { start, end } => {
@@ -412,7 +417,7 @@ impl HtmlMicrodataTokenAction<'_, '_> {
                 }
             }
             Phase::PriorUnit(index, offset) => {
-                let raw = o.raw.expect("present").code_units();
+                let raw = o.units;
                 if raw[o.tokens[index].start + offset] != raw[o.start + offset] {
                     o.next_prior(index + 1);
                 } else if offset + 1 == o.end - o.start {
@@ -423,10 +428,7 @@ impl HtmlMicrodataTokenAction<'_, '_> {
                 }
             }
             Phase::Punctuation(offset) => {
-                o.dot_or_colon |= matches!(
-                    o.raw.expect("present").code_units()[o.start + offset],
-                    0x2e | 0x3a
-                );
+                o.dot_or_colon |= matches!(o.units[o.start + offset], 0x2e | 0x3a);
                 o.phase = if o.start + offset + 1 == o.end {
                     Phase::Reserve
                 } else {
