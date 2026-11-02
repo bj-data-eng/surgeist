@@ -569,7 +569,7 @@ fn work_output_scratch_utf16_capacity_and_bytes_have_exact_one_short_limits() {
 fn documented_work_covers_each_descended_and_skipped_element_kind() {
     // Reference: semantic query work, OptionText. The option's children are text,
     // an HTML span holding text, a childless HTML br, an HTML script, an HTML img,
-    // an SVG g holding text and an SVG script. The script, the img and the SVG
+    // a comment, an SVG g holding text and an SVG script. The script, the img and the SVG
     // script end after recognition (the SVG script after the svg-script test);
     // every other element is entered, with a frame only when it has children.
     let (mut b, d) = builder();
@@ -585,13 +585,18 @@ fn documented_work_covers_each_descended_and_skipped_element_kind() {
     children(&mut b, &script, &[hidden]);
     let img = html(&mut b, &d, "img", &[]);
     children(&mut b, &img, &[]);
+    let comment = b.add_comment(&d, "c".into()).unwrap();
     let g = element(&mut b, &d, Namespace::svg(), "g", attrs(&[]));
     let g_text = text(&mut b, &d, "c");
     children(&mut b, &g, &[g_text]);
     let svg_script = element(&mut b, &d, Namespace::svg(), "script", attrs(&[]));
     let skipped = text(&mut b, &d, "skipped");
     children(&mut b, &svg_script, &[skipped]);
-    children(&mut b, &o, &[a, span, br, script, img, g, svg_script]);
+    children(
+        &mut b,
+        &o,
+        &[a, span, br, script, img, comment, g, svg_script],
+    );
     b.establish_root(&o).unwrap();
     let c = b.finish().unwrap();
     let id = c.subject_id(&o).unwrap();
@@ -619,6 +624,7 @@ fn documented_work_covers_each_descended_and_skipped_element_kind() {
         + (1 + 1 + k(2, html_ns) + html_svg_test + 1) // br: entered, no frame
         + (1 + 1 + k(6, html_ns)) // script ends after recognition
         + (1 + 1 + k(3, html_ns)) // img ends after recognition
+        + (1 + 1) // comment: iteration and lookup only
         + (1 + 1 + k(1, svg_ns) + svg_g_test + 1 + 2) // svg g: entered with a frame
         + one_unit_text // c
         + 2 // g's exhausted frame

@@ -862,6 +862,45 @@ fn documented_work_distinguishes_childless_and_parent_nodes_in_descendant_text()
 }
 
 #[test]
+fn documented_work_does_not_enter_an_element_in_direct_child_text() {
+    // Reference: semantic query work, text content (direct-child mode). A
+    // textarea holding one unit of text and a span: the span costs its loop
+    // charge and lookup like any child but is not entered, so its own text is
+    // ignored and no frame is needed.
+    let (mut b, d) = builder();
+    let textarea = html(&mut b, &d, "textarea");
+    let note = text(&mut b, &d, "a");
+    let span = html(&mut b, &d, "span");
+    let ignored = text(&mut b, &d, "ignored");
+    children(&mut b, &span, &[ignored]);
+    children(&mut b, &textarea, &[note, span]);
+    let c = b.finish().unwrap();
+    let id = c.subject_id(&textarea).unwrap();
+    let cx = context(&c, None);
+    let work = shared_prefix_work("textarea".len())
+        + 3 // loop charges: one per child and the end of the list
+        + 2 // child lookups
+        + 3 // the unit of text
+        + 1 // closing
+        + 1; // result write
+    let r = check_caps(
+        "direct-child text with an element child",
+        &c,
+        &cx,
+        &id,
+        HtmlSemanticQuery::TextareaDefaultValue,
+        ExpectedUsage {
+            work: Charge::Exactly(work),
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(result_record_bytes() + 2),
+            ..ExpectedUsage::none()
+        },
+    );
+    assert_eq!(value(&r).value().code_units(), [97]);
+}
+
+#[test]
 fn late_mixed_batch_failure_returns_no_prefix_and_releases_scratch() {
     let (c, id) = leaf("output", &["ABC".into()]);
     let cx = context(&c, None);

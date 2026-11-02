@@ -573,6 +573,40 @@ fn documented_work_covers_each_ancestor_step_including_a_non_element_parent() {
     assert_eq!(known(&r).source(), None);
 }
 #[test]
+fn documented_work_covers_each_boundary_name_comparison() {
+    // Reference: semantic query work, AdvisoryInformation. An absent `title` on a
+    // parentless element: the query prefix (31), presence 1, the boundary test
+    // (1 plus one per compared unit, only for names of 4 or 5 units), then either
+    // a boundary, which ends with the empty answer (1), or the parent step (1)
+    // that finds no parent and the empty answer (1); then the write (1).
+    let prefix = 1 + 1 + 29;
+    for (local, boundary, compared) in [
+        ("style", true, 5),
+        ("link", true, 4),
+        // Four units mismatching at the third: `l`, `i` equal, `x` differs.
+        ("lixk", false, 3),
+        // Five units mismatching at the third: `s`, `t` equal, `z` differs.
+        ("stzle", false, 3),
+        // A name of another length stops at the length check.
+        ("styles", false, 0),
+    ] {
+        let (c, id) = fixture(local, None, true);
+        let work = prefix + 1 + (1 + compared) + if boundary { 1 } else { 1 + 1 } + 1;
+        let r = session(
+            &c,
+            &context(&c),
+            limits(work),
+            100,
+            HtmlSemanticCancellation::new(),
+        )
+        .query(&[request(&id)])
+        .unwrap_or_else(|f| panic!("{local}: {f:?}"));
+        assert_eq!(r.usage().work(), work, "{local}");
+        assert_eq!(known(&r).source(), None);
+    }
+}
+
+#[test]
 fn partial_normalization_stops_before_an_unadmitted_write_and_drops_local_storage() {
     let (c, id) = fixture("p", Some("AB".into()), false);
     let cx = context(&c);

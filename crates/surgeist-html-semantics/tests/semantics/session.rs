@@ -474,6 +474,48 @@ fn complete_batch_limits_and_first_terminal_failure_are_sticky() {
 }
 
 #[test]
+fn documented_work_of_disabledness_covers_each_documented_element() {
+    // Reference: semantic query work, Disabledness. The same parentless,
+    // attribute-free shape as the input above for the other four elements: the
+    // query prefix, recognition of the name, the form-disabled lookup (1), the
+    // intrinsic envelope (three element searches over the name, one attribute
+    // search over an absent name, three namespace passes), the parent step (1)
+    // and the result write (1).
+    let n = KnownHtmlElement::ALL.len();
+    for name in ["button", "select", "textarea", "fieldset"] {
+        let (mut b, d) = builder();
+        let e = element(&mut b, &d, name, &[]);
+        b.establish_root(&e).unwrap();
+        let c = b.finish().unwrap();
+        let cx = context(&c);
+        let request = request(&c, &e, HtmlSemanticQuery::Disabledness);
+        let units = name.len();
+        let work = 1
+            + 1
+            + (1 + 28)
+            + ((units + 1) * n + 28)
+            + 1
+            + ((units + 1) * n * 3 + KnownHtmlAttribute::ALL.len() + (28 + 1) * 3)
+            + 1
+            + 1;
+        assert_exact_and_one_short_caps(
+            name,
+            &c,
+            &cx,
+            10000,
+            HtmlSemanticLimits::new(1000000, 1, 10000, 10000, 1000000, 100000),
+            std::slice::from_ref(&request),
+            ExpectedUsage {
+                work: Charge::Exactly(work),
+                output_records: Charge::Exactly(1),
+                allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+                ..ExpectedUsage::none()
+            },
+        );
+    }
+}
+
+#[test]
 fn cancellation_empty_batch_and_foreign_capture_fail_without_results() {
     let (b, _) = builder();
     let c = b.finish().unwrap();
