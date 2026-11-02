@@ -287,7 +287,6 @@ impl HtmlConstructionAttributeEdit {
             edit: self,
             index,
             name,
-            prior_name: None,
             phase: CandidatePhase::Target(0),
             found: false,
             complete: false,
@@ -484,11 +483,19 @@ impl HtmlConstructionAttributeObservation<'_> {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum CandidatePhase {
+enum CandidatePhase<'n> {
     Target(usize),
-    TargetName { index: usize, name: NamePhase },
+    TargetName {
+        index: usize,
+        name: NamePhase,
+    },
     Prior(usize),
-    PriorName { index: usize, name: NamePhase },
+    /// Comparing the candidate with the qualified prior name it carries.
+    PriorName {
+        index: usize,
+        name: NamePhase,
+        prior: &'n DocumentString,
+    },
     Reserve,
     Witness,
     Observing,
@@ -498,8 +505,7 @@ pub struct HtmlConstructionAttributeCandidate<'e, 'n> {
     edit: &'e mut HtmlConstructionAttributeEdit,
     index: usize,
     name: &'n DocumentString,
-    prior_name: Option<&'n DocumentString>,
-    phase: CandidatePhase,
+    phase: CandidatePhase<'n>,
     found: bool,
     complete: bool,
     failure: Option<HtmlConstructionError>,
@@ -510,7 +516,7 @@ pub struct HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
 pub struct HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n> {
     candidate: &'a mut HtmlConstructionAttributeCandidate<'e, 'n>,
     /// The phase this accepted observation resumes.
-    next: CandidatePhase,
+    next: CandidatePhase<'n>,
     allocation: bool,
 }
 impl Drop for HtmlConstructionAttributeCandidate<'_, '_> {
@@ -690,29 +696,21 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                         {
                             return Err(HtmlConstructionError::AttributeNameMismatch);
                         }
-                        c.prior_name = Some(prior);
                         CandidatePhase::PriorName {
                             index,
                             name: NamePhase::LocalLength,
+                            prior,
                         }
                     }
                 }
-                CandidatePhase::PriorName { index, name } => {
-                    match advance_comparison(
-                        name,
-                        None,
-                        c.prior_name.expect("qualified prior"),
-                        None,
-                        c.name,
-                    ) {
-                        ComparisonStep::Continue(name) => CandidatePhase::PriorName { index, name },
-                        ComparisonStep::Different => {
-                            c.prior_name = None;
-                            CandidatePhase::Prior(index + 1)
+                CandidatePhase::PriorName { index, name, prior } => {
+                    match advance_comparison(name, None, prior, None, c.name) {
+                        ComparisonStep::Continue(name) => {
+                            CandidatePhase::PriorName { index, name, prior }
                         }
+                        ComparisonStep::Different => CandidatePhase::Prior(index + 1),
                         ComparisonStep::Equal => {
                             c.found = true;
-                            c.prior_name = None;
                             if c.edit.decisions.len() == c.edit.decisions.capacity() {
                                 CandidatePhase::Reserve
                             } else {
