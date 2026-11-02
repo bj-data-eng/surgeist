@@ -2,7 +2,6 @@ use super::*;
 
 use super::flexible::span_contribution_with_gutters;
 use crate::geometry::FlowAxes;
-use crate::scroll::UsedOverflowAxis;
 
 fn axis_margin_sum<S: LayoutScalar>(margin: Edges<S>, axis: GridAxisKind) -> S {
     match axis {
