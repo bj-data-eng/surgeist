@@ -103,11 +103,14 @@ pub(crate) mod bounded_scope {
     /// Among the keywords of the input's length, the worst input is a keyword
     /// altered at its last unit: it costs `n` pair reads against that keyword
     /// and, against each other keyword, the ASCII case-insensitive common prefix
-    /// of the two spellings plus one mismatching pair (at most `n`). An input's
-    /// longest-agreeing keyword agrees with every other keyword at least as much
-    /// as the input does, so the maximum over keywords bounds every input. The
-    /// bound is computed from the keyword table, so a changed table stays
-    /// correct. Matching earlier or an absent attribute only reduces the work.
+    /// of the two spellings plus one mismatching pair (at most `n`). Every input
+    /// is bounded by this sum for a keyword `k` it agrees with longest: against
+    /// `k` it costs at most `n` pairs, and against any other keyword `j` at most
+    /// their common prefix plus one, because an input agreeing with `k` past that
+    /// prefix mismatches `j` right after it, and otherwise its agreement with
+    /// `j`, no longer than with `k`, ends within the prefix. The bound is
+    /// computed from the keyword table, so a changed table stays correct.
+    /// Matching earlier or an absent attribute only reduces the work.
     pub fn th_scope_work_bound(input_units: usize) -> Option<usize> {
         let keywords = TH_SCOPE.keywords;
         let mut worst_pairs = 0_usize;
