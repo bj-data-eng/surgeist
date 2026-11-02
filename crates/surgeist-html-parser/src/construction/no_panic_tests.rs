@@ -472,3 +472,38 @@ fn a_textarea_without_its_state_row_reports_the_registry_row_when_it_leaves_the_
     session.release(&mut c).unwrap();
     storage_zero(&c);
 }
+
+#[test]
+fn a_textarea_whose_state_join_names_another_row_kind_reports_the_registry_row() {
+    let request = request("<body><textarea>x</textarea><input type=text>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let textarea = named(&nodes, "textarea", 0).clone();
+    let input = named(&nodes, "input", 0).index;
+    let storage = session.active_mut().unwrap();
+    // Private-state fault injection: the join names an input's metadata row.
+    let other = input_slot(storage, input);
+    storage.payloads.node_joins[textarea.index].textarea = Some(joined_cell(other).unwrap());
+    let result = session.parser_stack_removed(&mut c, &textarea, None);
+    assert_registry_row(result, &c);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_registry_row() {
+    let request = request("<body><textarea>x</textarea>");
+    let (mut c, mut session, _proof, nodes) = graph(&request);
+    let textarea = named(&nodes, "textarea", 0).clone();
+    // A second owner of the raw value makes it impossible to replace in place.
+    let held = std::sync::Arc::clone(
+        session
+            .textarea_raw_value(&mut c, &textarea)
+            .unwrap()
+            .shared_code_units(),
+    );
+    let result = session.parser_stack_removed(&mut c, &textarea, None);
+    assert_registry_row(result, &c);
+    drop(held);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}

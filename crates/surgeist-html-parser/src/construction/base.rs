@@ -785,6 +785,60 @@ pub(super) mod tests {
         }
     }
 
+    /// Validation of a frozen base whose row is inconsistent. A row naming no
+    /// node, or a node that is not a base element, is a row of another kind
+    /// (the registry row); a response that is still owed is a pending effect.
+    #[test]
+    fn validating_a_frozen_base_labels_row_faults_and_a_pending_response_apart() {
+        use crate::parser::control::Invariant;
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
+        for (case, expected) in [(0, registry_row), (1, registry_row), (2, pending)] {
+            let request = request("<base href=A>");
+            let (mut c, mut session, capability) =
+                super::super::tests::fresh_script_owner(&request);
+            let root = session.root(&mut c).unwrap();
+            let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+            let base = node(&mut session, &mut c, &mut lexer);
+            session
+                .insert_parser(&mut c, &root, &base, None, &capability)
+                .unwrap();
+            session
+                .active()
+                .unwrap()
+                .validate_base_facts(&mut c)
+                .unwrap();
+            let storage = session.active_mut().unwrap();
+            let row = storage
+                .payloads
+                .values
+                .iter_mut()
+                .find_map(|payload| match payload {
+                    RetainedPayload::Base {
+                        node: owner,
+                        frozen: BaseValue::Frozen(frozen),
+                        ..
+                    } if *owner == Some(base.index) => Some((owner, frozen)),
+                    _ => None,
+                })
+                .unwrap();
+            match case {
+                // The row names no node at all.
+                0 => *row.0 = None,
+                // The row names a node that is not a base element.
+                1 => *row.0 = Some(root.index),
+                // The base response is still owed.
+                _ => row.1.response = Response::Pending,
+            }
+            let result = session.active().unwrap().validate_base_facts(&mut c);
+            assert_eq!(result, Err(SessionError::Stop(expected)), "case {case}");
+            assert_eq!(c.stop(), Some(expected), "case {case}");
+            lexer.release(&mut c).unwrap();
+            session.release(&mut c).unwrap();
+            super::super::tests::storage_zero(&c);
+        }
+    }
+
     #[test]
     fn real_insert_reorder_remove_href_change_and_clone_bind_the_immediate_first() {
         let request = request("<base href=A><base href=B><i href=C>");
