@@ -8,6 +8,9 @@ use surgeist_text::{PlacementCoverage, PlacementEntry, PlacementRequest};
 pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
     pub node: Node,
     pub origin: Point<f64>,
+    pub normal_origin: Point<f64>,
+    pub normal: crate::output::NormalGeometryOf<S>,
+    pub measured_inset_basis: Option<crate::output::MeasuredInsetBasisOf<S>>,
     pub output: NodeOutputOf<S>,
 }
 
@@ -173,7 +176,6 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub pending: Vec<PendingParagraph<Node>>,
     pub boxes: Vec<super::boxes::BoxRunUse<Node, S>>,
     pub reusable: std::sync::Arc<[super::fit::ReusableLine]>,
-    pub atomic_origins: Vec<(Node, Point<f64>)>,
     pub absolute_baselines: Vec<(Node, f64)>,
     pub scope_fragments: Vec<ScopeFragmentGroup<Node, S>>,
 }
@@ -445,7 +447,6 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             pending: Vec::new(),
             boxes: Vec::new(),
             reusable: std::sync::Arc::from([]),
-            atomic_origins: Vec::new(),
             absolute_baselines: Vec::new(),
             scope_fragments: Vec::new(),
         }
@@ -618,20 +619,6 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                 nodes,
                 fragments,
             });
-        }
-    }
-
-    pub fn record_atomic_origins(&mut self, origins: Vec<(Node, Point<f64>)>) {
-        for (node, origin) in origins {
-            if let Some((_, current)) = self
-                .atomic_origins
-                .iter_mut()
-                .find(|(subject, _)| *subject == node)
-            {
-                *current = origin;
-            } else {
-                self.atomic_origins.push((node, origin));
-            }
         }
     }
 

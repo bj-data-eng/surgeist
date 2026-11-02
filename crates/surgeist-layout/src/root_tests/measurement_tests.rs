@@ -6,6 +6,8 @@ use super::fixtures::{
 };
 use super::*;
 
+mod relative_percentage_shape;
+
 #[test]
 fn prepared_text_provider_fresh_invocation_requeries_actual_bands_without_geometry_drift_both_scalars()
  {

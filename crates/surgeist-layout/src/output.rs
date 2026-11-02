@@ -1512,21 +1512,202 @@ impl PlacedInlineBoxFragments<'_> {
     }
 }
 
+/// Normal border geometry retained by its actual placement producer.
+/// Metadata has no content box; a real zero-area box retains its zero rectangle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct NormalGeometryOf<S: LayoutScalar> {
+    pub(crate) location: Point<S>,
+    pub(crate) size: Size<S>,
+    pub(crate) content_box: Option<crate::ScrollRectOf<S>>,
+}
+
+impl<S: LayoutScalar> NormalGeometryOf<S> {
+    pub(crate) const fn box_geometry(
+        location: Point<S>,
+        size: Size<S>,
+        content_box: crate::ScrollRectOf<S>,
+    ) -> Self {
+        Self {
+            location,
+            size,
+            content_box: Some(content_box),
+        }
+    }
+
+    pub(crate) const fn metadata(location: Point<S>, size: Size<S>) -> Self {
+        Self {
+            location,
+            size,
+            content_box: None,
+        }
+    }
+}
+
+/// Final used normal content extent before publication corner rounding.
+/// Issued only from accepted measured geometry, never canonical pixel extents.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct MeasuredInsetBasisOf<S: LayoutScalar> {
+    size: Size<S>,
+}
+
+impl<S: LayoutScalar> MeasuredInsetBasisOf<S> {
+    pub(crate) const fn from_used_content_size(size: Size<S>) -> Self {
+        Self { size }
+    }
+
+    pub(crate) const fn size(self) -> Size<S> {
+        self.size
+    }
+}
+
+/// The actual paired corner evaluation retained in an accepted atomic source.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct CanonicalAtomicGeometryOf<S: LayoutScalar> {
+    pub(crate) visual_readback_offset: Point<f64>,
+    pub(crate) measured_normal: NormalGeometryOf<S>,
+    pub(crate) normal: NormalGeometryOf<S>,
+    pub(crate) normal_origin: Point<f64>,
+    pub(crate) visual_origin: Point<f64>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AtomicReadbackPhase {
+    Pending,
+    Finalized,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum GeometryStateOf<S: LayoutScalar> {
+    OrdinaryUnrounded {
+        measured_normal: NormalGeometryOf<S>,
+    },
+    OrdinaryCanonical {
+        normal: NormalGeometryOf<S>,
+    },
+    CanonicalAtomic {
+        measured_normal: NormalGeometryOf<S>,
+        normal: NormalGeometryOf<S>,
+        normal_origin: Point<f64>,
+        visual_origin: Point<f64>,
+        readback: AtomicReadbackPhase,
+    },
+}
+
+impl<S: LayoutScalar> GeometryStateOf<S> {
+    pub(crate) const fn is_unrounded(self) -> bool {
+        matches!(
+            self,
+            Self::OrdinaryUnrounded { .. }
+                | Self::CanonicalAtomic {
+                    readback: AtomicReadbackPhase::Pending,
+                    ..
+                }
+        )
+    }
+}
+
+/// One node's coupled geometry and private rounding custody.
+/// Public readback exposes the visual packet; warm restoration retains this
+/// complete opaque entry rather than reconstructing it from that packet.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayoutOutputEntryOf<Node, S: LayoutScalar = DefaultScalar> {
     node: Node,
     output: NodeOutputOf<S>,
+    geometry: GeometryStateOf<S>,
 }
 
 pub type LayoutOutputEntry<Node> = LayoutOutputEntryOf<Node, DefaultScalar>;
 
-impl<Node, S> LayoutOutputEntryOf<Node, S>
-where
-    Node: Copy,
-    S: LayoutScalar,
-{
-    pub(crate) const fn new(node: Node, output: NodeOutputOf<S>) -> Self {
-        Self { node, output }
+impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
+    pub(crate) const fn ordinary_unrounded(
+        node: Node,
+        measured_normal: NormalGeometryOf<S>,
+        output: NodeOutputOf<S>,
+    ) -> Self {
+        Self {
+            node,
+            output,
+            geometry: GeometryStateOf::OrdinaryUnrounded { measured_normal },
+        }
+    }
+
+    pub(crate) const fn ordinary_canonical(
+        node: Node,
+        normal: NormalGeometryOf<S>,
+        output: NodeOutputOf<S>,
+    ) -> Self {
+        Self {
+            node,
+            output,
+            geometry: GeometryStateOf::OrdinaryCanonical { normal },
+        }
+    }
+
+    pub(crate) const fn canonical_atomic(
+        node: Node,
+        measured_normal: NormalGeometryOf<S>,
+        normal: NormalGeometryOf<S>,
+        normal_origin: Point<f64>,
+        visual_origin: Point<f64>,
+        output: NodeOutputOf<S>,
+    ) -> Self {
+        Self {
+            node,
+            output,
+            geometry: GeometryStateOf::CanonicalAtomic {
+                measured_normal,
+                normal,
+                normal_origin,
+                visual_origin,
+                readback: AtomicReadbackPhase::Pending,
+            },
+        }
+    }
+
+    /// Extract measured custody only from a current unrounded stage. The outer
+    /// Option distinguishes wrong phase from genuine non-box metadata.
+    pub(crate) fn measured_inset_basis(&self) -> Option<Option<MeasuredInsetBasisOf<S>>> {
+        let measured = match self.geometry {
+            GeometryStateOf::OrdinaryUnrounded { measured_normal }
+            | GeometryStateOf::CanonicalAtomic {
+                measured_normal,
+                readback: AtomicReadbackPhase::Pending,
+                ..
+            } => measured_normal,
+            _ => return None,
+        };
+        Some(
+            measured
+                .content_box
+                .map(|rect| MeasuredInsetBasisOf::from_used_content_size(rect.size())),
+        )
+    }
+
+    pub(crate) const fn geometry_state(&self) -> GeometryStateOf<S> {
+        self.geometry
+    }
+
+    pub(crate) const fn finalized_atomic(self, output: NodeOutputOf<S>) -> Option<Self> {
+        match self.geometry {
+            GeometryStateOf::CanonicalAtomic {
+                measured_normal,
+                normal,
+                normal_origin,
+                visual_origin,
+                readback: AtomicReadbackPhase::Pending,
+            } => Some(Self {
+                output,
+                geometry: GeometryStateOf::CanonicalAtomic {
+                    measured_normal,
+                    normal,
+                    normal_origin,
+                    visual_origin,
+                    readback: AtomicReadbackPhase::Finalized,
+                },
+                ..self
+            }),
+            _ => None,
+        }
     }
 
     #[must_use]

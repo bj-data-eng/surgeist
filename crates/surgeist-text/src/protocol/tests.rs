@@ -6,6 +6,7 @@ mod alignment_insets;
 mod allocated_box_metrics;
 mod allocated_signed_bounds;
 mod allocation_identity;
+mod atomic_normal_geometry;
 mod auto_phrase;
 mod automatic_model;
 mod automatic_opportunities;

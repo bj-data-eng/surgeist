@@ -2,7 +2,7 @@ use crate::measurement::LeafMeasureInputOf;
 use crate::{
     CacheKeyContext, CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf,
     FloatExclusionIntervalOf, FloatExclusionQueryOf, LayoutInputViewOf, LayoutScalar, NodeInputOf,
-    NodeOutputOf, Size,
+    Size,
 };
 
 type FloatExclusionProviderResultOf<S, M> = Result<Option<FloatExclusionIntervalOf<S>>, M>;
@@ -55,11 +55,17 @@ pub trait LayoutTree: Traverse {
         None
     }
 
-    /// Returns committed unrounded output for a node in a warm cached subtree.
+    /// Returns the original committed unrounded entry of a warm cached subtree.
     ///
-    /// `None` prevents reuse of a container cache hit whose descendants could
-    /// not otherwise be restored for source-ordered rounding and publication.
-    fn unrounded_layout(&self, _node: Self::Node) -> Option<NodeOutputOf<Self::Scalar>> {
+    /// Retain the opaque entry from the batch's unrounded entries, including its
+    /// actual normal/visual geometry and readback phase. A final entry or a
+    /// visual output alone is not unrounded custody. Missing, wrong-node,
+    /// wrong-phase or mismatched canonical-frame custody prevents reuse; the
+    /// existing compute-input and cache-context checks still apply.
+    fn unrounded_layout(
+        &self,
+        _node: Self::Node,
+    ) -> Option<crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>> {
         None
     }
 

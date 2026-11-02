@@ -1613,7 +1613,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, NodeOutput>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         outputs: HashMap<u32, ComputeOutput>,
     }
 
@@ -1665,7 +1665,7 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, NodeOutput>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
         outputs: &'input mut HashMap<u32, ComputeOutput>,
     }
 
@@ -1726,8 +1726,23 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
-            self.layouts.insert(node, layout);
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -1786,8 +1801,11 @@ fn grid_lanes_display_uses_separate_placement_path_before_child_layout() {
         .unwrap();
 
     assert_eq!(output.content_size, Size::new(20.0, 10.0));
-    assert_eq!(tree.layouts[&2].size, Size::new(20.0, 10.0));
-    assert_eq!(tree.layouts[&2].scrollbar_size(), Size::new(10.0, 10.0));
+    assert_eq!(tree.layouts[&2].output().size, Size::new(20.0, 10.0));
+    assert_eq!(
+        tree.layouts[&2].output().scrollbar_size(),
+        Size::new(10.0, 10.0)
+    );
 }
 
 #[test]
@@ -2542,7 +2560,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     struct RecursiveTree {
         children: HashMap<u32, Vec<u32>>,
         styles: HashMap<u32, NodeInput>,
-        layouts: HashMap<u32, NodeOutput>,
+        layouts: HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
     }
 
     impl<'input> RecursiveTreeCompute<'input> {
@@ -2593,7 +2611,7 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     struct RecursiveTreeCompute<'input> {
         children: &'input HashMap<u32, Vec<u32>>,
         styles: &'input HashMap<u32, NodeInput>,
-        layouts: &'input mut HashMap<u32, NodeOutput>,
+        layouts: &'input mut HashMap<u32, crate::LayoutOutputEntryOf<u32, Scalar>>,
     }
 
     impl RecursiveTree {
@@ -2652,8 +2670,23 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
             crate::LayoutInputViewOf::Box(self.node_input(node))
         }
 
-        fn set_unrounded(&mut self, node: Self::Node, layout: NodeOutput) {
-            self.layouts.insert(node, layout);
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::engine::contracts::UnroundedEntryResult<
+            Self::Node,
+            Self::Scalar,
+            core::convert::Infallible,
+        > {
+            self.layouts
+                .get(&node)
+                .copied()
+                .filter(|entry| entry.node() == node && entry.geometry_state().is_unrounded())
+                .ok_or_else(|| crate::test_support::layout_tree::missing_staged_unrounded(node))
+        }
+
+        fn set_unrounded(&mut self, entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+            self.layouts.insert(entry.node(), entry);
         }
 
         fn compute_child(
@@ -2711,8 +2744,8 @@ fn assert_non_grid_child_with_subgrid_tracks_lays_out_as_ordinary_child(display:
     )
     .unwrap();
 
-    assert_eq!(tree.layouts[&2].size.width, 40.0);
-    assert_eq!(tree.layouts[&3].size, Size::new(30.0, 12.0));
+    assert_eq!(tree.layouts[&2].output().size.width, 40.0);
+    assert_eq!(tree.layouts[&3].output().size, Size::new(30.0, 12.0));
 }
 
 #[test]
@@ -4394,14 +4427,15 @@ fn column_subgrid_baseline_alignment_does_not_grow_auto_parent_row_twice() {
         ),
     )
     .unwrap();
-    tree.borrow_compute().set_unrounded(
-        1,
-        NodeOutput {
-            size: output.size,
-            content_size: output.content_size,
-            ..NodeOutput::new()
-        },
-    );
+    tree.borrow_compute()
+        .set_unrounded(crate::test_support::layout_tree::ordinary_unrounded_box(
+            1,
+            NodeOutput {
+                size: output.size,
+                content_size: output.content_size,
+                ..NodeOutput::new()
+            },
+        ));
     round_layout(&mut tree.borrow_compute(), 1).unwrap();
 
     assert_eq!(output.size, Size::new(45.0, 30.0));

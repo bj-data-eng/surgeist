@@ -16,7 +16,7 @@ struct LeafFailure(u32);
 #[derive(Clone)]
 struct Committed<S: LayoutScalar> {
     caches: HashMap<u32, CacheOf<S>>,
-    unrounded: HashMap<u32, NodeOutputOf<S>>,
+    unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
     batch: Option<CompletedLayoutBatchOf<u32, S>>,
 }
 struct Host<S: LayoutScalar> {
@@ -109,7 +109,7 @@ impl<S: LayoutScalar> LayoutTree for Host<S> {
         }
         output
     }
-    fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<S>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, S>> {
         self.committed.borrow().unrounded.get(&node).copied()
     }
     fn float_exclusion_interval(
@@ -167,7 +167,7 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Sink<S> {
                 .store_with_context(entry.input(), entry.context(), entry.output());
         }
         for entry in batch.unrounded_entries() {
-            next.unrounded.insert(entry.node(), entry.output());
+            next.unrounded.insert(entry.node(), *entry);
         }
         next.batch = Some(batch.clone());
         Ok(next)

@@ -788,7 +788,7 @@ fn execute(
                             fit,
                             alignment,
                             box_geometry: geometry,
-                            rect,
+                            border_origin: rect.origin,
                         },
                     },
                 )?;
@@ -3842,6 +3842,7 @@ mod tests {
                             alignment: LineBoxAlignment::Baseline,
                             flow: AtomicFlowAllocation {
                                 advance: 5.0,
+                                normal_border_inline_size: 5.0,
                                 before_baseline: 8.0,
                                 after_baseline: 2.0,
                                 occupied_start: 0.0,
@@ -4297,6 +4298,7 @@ mod tests {
                         // before=-10+3=-7; after=(4-3)-10=-9.
                         flow: AtomicFlowAllocation {
                             advance: 4.0,
+                            normal_border_inline_size: 4.0,
                             before_baseline: -7.0,
                             after_baseline: -9.0,
                             occupied_start: 0.0,

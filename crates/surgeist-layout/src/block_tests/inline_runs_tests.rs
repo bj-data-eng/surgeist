@@ -127,7 +127,16 @@ impl<'input, S: LayoutScalar> Compute<'input, ()> for Fri06C03FixedSizeTreeCompu
         }
     }
 
-    fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutputOf<S>) {}
+    fn staged_unrounded(
+        &self,
+        node: Self::Node,
+    ) -> crate::engine::contracts::UnroundedEntryResult<Self::Node, Self::Scalar, ()> {
+        Err(crate::test_support::layout_tree::missing_staged_unrounded(
+            node,
+        ))
+    }
+
+    fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>) {}
 
     fn compute_child(
         &mut self,

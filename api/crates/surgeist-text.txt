@@ -1762,6 +1762,7 @@ pub struct surgeist_text::AtomicFlowAllocation
 pub surgeist_text::AtomicFlowAllocation::advance: f64
 pub surgeist_text::AtomicFlowAllocation::after_baseline: f64
 pub surgeist_text::AtomicFlowAllocation::before_baseline: f64
+pub surgeist_text::AtomicFlowAllocation::normal_border_inline_size: f64
 pub surgeist_text::AtomicFlowAllocation::occupied_end: f64
 pub surgeist_text::AtomicFlowAllocation::occupied_start: f64
 pub struct surgeist_text::AtomicPlacement

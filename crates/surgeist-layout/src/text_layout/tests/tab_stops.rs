@@ -334,8 +334,16 @@ fn intrinsic_with_indent(
                 },
             ),
             frame: super::super::run::Frame::Canonical {
-                origin: Point::ZERO,
-                size: Size::new(width, 10.0),
+                normal: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size: Size::new(width, 10.0),
+                    content_insets: crate::Edges::ZERO,
+                },
+                visual: crate::text_layout::run::CanonicalLineFrame {
+                    origin: Point::ZERO,
+                    size: Size::new(width, 10.0),
+                    content_insets: crate::Edges::ZERO,
+                },
             },
             containing_size: Size::new(width, 10.0),
             content_insets: crate::Edges::ZERO,

@@ -400,8 +400,13 @@ where
         output.scroll_geometry,
     )
     .map_err(|error| layout_child_geometry_error(child, child, error))?;
-    tree.set_unrounded(
+    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
         child,
+        crate::output::NormalGeometryOf::box_geometry(
+            location,
+            final_size,
+            scroll_geometry.content_box(),
+        ),
         NodeOutputOf {
             source_index: crate::SourceIndex::new(source_index),
             location,
@@ -413,7 +418,7 @@ where
             padding,
             margin,
         },
-    );
+    ));
 
     Ok(GridChildContribution {
         source_index: crate::SourceIndex::new(source_index),

@@ -394,7 +394,7 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Retained {
     caches: HashMap<u32, CacheOf<f64>>,
-    unrounded: HashMap<u32, NodeOutputOf<f64>>,
+    unrounded: HashMap<u32, crate::LayoutOutputEntryOf<u32, f64>>,
     fragments: Vec<InlineFragmentOutputEntryOf<u32, f64>>,
 }
 
@@ -443,7 +443,7 @@ impl LayoutTree for CachedTree {
         }
         result
     }
-    fn unrounded_layout(&self, node: u32) -> Option<NodeOutputOf<f64>> {
+    fn unrounded_layout(&self, node: u32) -> Option<crate::LayoutOutputEntryOf<u32, f64>> {
         self.retained.unrounded.get(&node).copied()
     }
 }
@@ -468,7 +468,7 @@ impl LayoutBatchSink<u32, f64> for CachedTree {
                 .store_with_context(entry.input(), entry.context(), entry.output());
         }
         for entry in batch.unrounded_entries() {
-            next.unrounded.insert(entry.node(), entry.output());
+            next.unrounded.insert(entry.node(), *entry);
         }
         next.fragments = batch.final_inline_fragments().to_vec();
         Ok(next)

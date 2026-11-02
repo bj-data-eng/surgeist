@@ -3,6 +3,7 @@ use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
     LayoutResultOf,
 };
+use crate::output::{AtomicReadbackPhase, GeometryStateOf, LayoutOutputEntryOf, NormalGeometryOf};
 use crate::scalar::round_layout_coordinate;
 use crate::scroll::rounding::rebuild_rounded_canonical_scroll_geometry;
 use crate::{LayoutScalar, Point, Traverse};
@@ -17,24 +18,47 @@ where
     round_layout_inner(
         tree,
         root,
-        Tree::Scalar::ZERO,
-        Tree::Scalar::ZERO,
-        NamedRoundingContext::ROOT,
+        RoundingFrames {
+            visual: Point::ZERO,
+            normal: Point::ZERO,
+            named: NamedRoundingContext::ROOT,
+        },
     )
+}
+
+#[derive(Clone, Copy)]
+struct RoundingFrames<S: LayoutScalar> {
+    visual: Point<S>,
+    normal: Point<S>,
+    named: NamedRoundingContext,
 }
 
 fn round_layout_inner<Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    cumulative_x: Tree::Scalar,
-    cumulative_y: Tree::Scalar,
-    named_ancestor: NamedRoundingContext,
+    ancestors: RoundingFrames<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), <Tree as Traverse>::Scalar, M>
 where
     Tree: Round<M>,
 {
-    let unrounded = tree.unrounded(node)?;
-    if let Some(origin) = tree.canonical_text_atomic_origin(node) {
+    let entry = tree.unrounded(node)?;
+    if entry.node() != node || !entry.geometry_state().is_unrounded() {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::RoundingFinalization,
+            LayoutErrorKindOf::InternalInvariant(
+                LayoutInternalInvariant::InvalidOutputGeometryPhase,
+            ),
+        ));
+    }
+    let unrounded = entry.output();
+    if let GeometryStateOf::CanonicalAtomic {
+        normal_origin,
+        visual_origin: origin,
+        readback: AtomicReadbackPhase::Pending,
+        ..
+    } = entry.geometry_state()
+    {
         // This actual atomic allocation was finalized against the same line
         // anchor. Reapplying independent endpoint snapping would invalidate it.
         // This owning allocation is already canonical. Only its actual CSS
@@ -67,18 +91,41 @@ where
                     ),
                 )
             })?;
-        tree.set_final(node, layout);
+        let finalized = entry.finalized_atomic(layout).ok_or_else(|| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::RoundingFinalization,
+                LayoutErrorKindOf::InternalInvariant(
+                    LayoutInternalInvariant::InvalidOutputGeometryPhase,
+                ),
+            )
+        })?;
+        tree.set_final(finalized);
         for index in 0..tree.child_count(node) {
             round_layout_inner(
                 tree,
                 tree.child(node, index),
-                scalar_phase.x,
-                scalar_phase.y,
-                named_context,
+                RoundingFrames {
+                    visual: scalar_phase,
+                    normal: Point::new(
+                        Tree::Scalar::from_f64(normal_origin.x - normal_origin.x.floor()),
+                        Tree::Scalar::from_f64(normal_origin.y - normal_origin.y.floor()),
+                    ),
+                    named: named_context,
+                },
             )?;
         }
         return Ok(());
     }
+    let GeometryStateOf::OrdinaryUnrounded { measured_normal } = entry.geometry_state() else {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::RoundingFinalization,
+            LayoutErrorKindOf::InternalInvariant(
+                LayoutInternalInvariant::InvalidOutputGeometryPhase,
+            ),
+        ));
+    };
     if tree.is_prepared_text(node) {
         // The new Text path supplies geometry from one canonical line anchor.
         // Its local metrics and fragments must never be independently snapped.
@@ -86,17 +133,34 @@ where
             UnroundedInlineFragmentState::Present(fragments) => fragments.to_vec(),
             UnroundedInlineFragmentState::Absent => Vec::new(),
         };
-        tree.set_final(node, unrounded);
+        tree.set_final(LayoutOutputEntryOf::ordinary_canonical(
+            node,
+            measured_normal,
+            unrounded,
+        ));
         tree.set_final_inline_fragments(node, fragments.clone(), fragments);
         return Ok(());
     }
     let mut layout = unrounded;
-    let cumulative_x = cumulative_x + unrounded.location.x;
-    let cumulative_y = cumulative_y + unrounded.location.y;
+    let cumulative_x = ancestors.visual.x + unrounded.location.x;
+    let cumulative_y = ancestors.visual.y + unrounded.location.y;
+    let normal_cumulative = Point::new(
+        ancestors.normal.x + measured_normal.location.x,
+        ancestors.normal.y + measured_normal.location.y,
+    );
+    let normal = round_normal_geometry(measured_normal, normal_cumulative).map_err(|_| {
+        LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::RoundingFinalization,
+            LayoutErrorKindOf::InternalInvariant(
+                LayoutInternalInvariant::InvalidRoundedScrollGeometry,
+            ),
+        )
+    })?;
 
     layout.location.x = round_layout_coordinate(unrounded.location.x);
     layout.location.y = round_layout_coordinate(unrounded.location.y);
-    let named_context = named_ancestor.descend(unrounded.location, layout.location);
+    let named_context = ancestors.named.descend(unrounded.location, layout.location);
     layout.named_baselines = finalize_named_baselines(unrounded.named_baselines, named_context)
         .map_err(|kind| {
             LayoutErrorOf::new(
@@ -160,16 +224,59 @@ where
         }
     };
 
-    tree.set_final(node, layout);
+    tree.set_final(LayoutOutputEntryOf::ordinary_canonical(
+        node, normal, layout,
+    ));
     if let Some((unrounded_fragments, final_fragments)) = fragment_phases {
         tree.set_final_inline_fragments(node, unrounded_fragments, final_fragments);
     }
 
     for index in 0..tree.child_count(node) {
         let child = tree.child(node, index);
-        round_layout_inner(tree, child, cumulative_x, cumulative_y, named_context)?;
+        round_layout_inner(
+            tree,
+            child,
+            RoundingFrames {
+                visual: Point::new(cumulative_x, cumulative_y),
+                normal: normal_cumulative,
+                named: named_context,
+            },
+        )?;
     }
     Ok(())
+}
+
+fn round_normal_geometry<S: LayoutScalar>(
+    measured: NormalGeometryOf<S>,
+    origin: Point<S>,
+) -> Result<NormalGeometryOf<S>, crate::ScrollRectErrorOf<S>> {
+    let extent = |base, size| round_layout_coordinate(base + size) - round_layout_coordinate(base);
+    Ok(NormalGeometryOf {
+        location: Point::new(
+            round_layout_coordinate(measured.location.x),
+            round_layout_coordinate(measured.location.y),
+        ),
+        size: crate::Size::new(
+            extent(origin.x, measured.size.width),
+            extent(origin.y, measured.size.height),
+        ),
+        content_box: measured
+            .content_box
+            .map(|content| {
+                let local = content.origin();
+                let size = content.size();
+                let x = origin.x + local.x;
+                let y = origin.y + local.y;
+                crate::ScrollRectOf::try_new(
+                    Point::new(
+                        round_layout_coordinate(x) - round_layout_coordinate(origin.x),
+                        round_layout_coordinate(y) - round_layout_coordinate(origin.y),
+                    ),
+                    crate::Size::new(extent(x, size.width), extent(y, size.height)),
+                )
+            })
+            .transpose()?,
+    })
 }
 
 /// Named readback tracks the actual raw and published border frames without

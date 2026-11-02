@@ -317,6 +317,7 @@ fn nonformatted_eligibility_rejects_forced_text_and_real_zero_inflow_atomic() {
                 fit: crate::AtomicFitAllocation::NativeOccupied,
                 flow: AtomicFlowAllocation {
                     advance: 0.0,
+                    normal_border_inline_size: 0.0,
                     before_baseline: 0.0,
                     after_baseline: 0.0,
                     occupied_start: 0.0,

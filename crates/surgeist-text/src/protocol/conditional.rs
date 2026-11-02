@@ -712,6 +712,7 @@ pub(crate) fn request_context(request: super::input::RequestInput<'_>) -> Vec<u6
                 allocation_alignment(&mut values, alignment);
                 for value in [
                     flow.advance,
+                    flow.normal_border_inline_size,
                     flow.before_baseline,
                     flow.after_baseline,
                     flow.occupied_start,

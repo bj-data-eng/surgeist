@@ -455,6 +455,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
         fit: crate::AtomicFitAllocation::NativeOccupied,
         flow: AtomicFlowAllocation {
             advance: -TEXT_ADVANCE,
+            normal_border_inline_size: 0.0,
             before_baseline: 0.0,
             after_baseline: 0.0,
             occupied_start: 0.0,

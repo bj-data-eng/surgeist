@@ -359,6 +359,7 @@ fn direct_native_allocation_keeps_occupied10_when_its_unrelated_flow_is6() {
                 allocation: text::AtomicLineAllocation::InFlow {
                     fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
                     flow: text::AtomicFlowAllocation {
+                        normal_border_inline_size: 10.0,
                         advance: 6.0,
                         before_baseline: 8.0,
                         after_baseline: 2.0,

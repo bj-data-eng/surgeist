@@ -2603,7 +2603,7 @@ mod tests {
     use crate::{
         Compute, ComputeInput, ComputeOutput, DefaultScalar, LayoutErrorKind, LayoutErrorSite,
         LayoutInvalidInput, LayoutOperation, LayoutResultOf, LengthPercentageOf, NodeInput,
-        NodeInputOf, NodeOutput, PreferredSize, Size, SubgridTrack, TrackComponent, Traverse,
+        NodeInputOf, PreferredSize, Size, SubgridTrack, TrackComponent, Traverse,
     };
 
     struct TraversalTree {
@@ -2686,7 +2686,25 @@ mod tests {
             crate::LayoutInputViewOf::Box(self.input)
         }
 
-        fn set_unrounded(&mut self, _node: Self::Node, _layout: NodeOutput) {}
+        fn staged_unrounded(
+            &self,
+            node: Self::Node,
+        ) -> crate::LayoutResultOf<
+            Self::Node,
+            crate::LayoutOutputEntryOf<Self::Node, Self::Scalar>,
+            Self::Scalar,
+            Infallible,
+        > {
+            Err(crate::LayoutErrorOf::new(
+                crate::LayoutErrorSiteOf::Node(node),
+                crate::LayoutOperation::ChildLayout,
+                crate::LayoutErrorKindOf::InternalInvariant(
+                    crate::LayoutInternalInvariant::MissingStagedUnroundedOutput,
+                ),
+            ))
+        }
+
+        fn set_unrounded(&mut self, _entry: crate::LayoutOutputEntry<Self::Node>) {}
 
         fn compute_child(
             &mut self,

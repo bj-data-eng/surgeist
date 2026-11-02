@@ -95,8 +95,9 @@ pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
 pub(super) enum InlineSourcePositionOf<S: LayoutScalar = DefaultScalar> {
     /// Numeric run-local coordinates, before the parent-frame projection.
     Logical(LogicalPointOf<S>),
-    /// Native parent-relative coordinates from the actual accepted frame.
-    Physical(Point<S>),
+    /// Coupled parent-relative coordinates from the actual accepted normal and
+    /// visual frames; neither coordinate is reconstructed from the other.
+    Physical { normal: Point<S>, visual: Point<S> },
 }
 
 #[cfg(test)]
@@ -111,6 +112,7 @@ pub(super) fn expect_logical_position<S: LayoutScalar>(
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct AtomicInlineSourceOf<S: LayoutScalar = DefaultScalar> {
+    pub canonical_geometry: Option<crate::output::CanonicalAtomicGeometryOf<S>>,
     pub item: AtomicInlineBoxParticipant<S>,
     pub position: InlineSourcePositionOf<S>,
     pub line_index: usize,
@@ -3754,6 +3756,7 @@ where
                         item_block_start,
                     )?;
                     atomics.push(AtomicInlineSourceOf {
+                        canonical_geometry: None,
                         item,
                         position: InlineSourcePositionOf::Logical(LogicalPointOf::new(
                             inline_start + logical_margin.inline_start,

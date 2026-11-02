@@ -826,11 +826,17 @@ fn validate_atomics(
         finite("placed atomic baseline", actual.baseline)?;
         if let crate::engine::layout::data::FinalizedBoxGeometry::InFlow {
             box_geometry,
-            rect,
+            border_origin,
             ..
         } = item.geometry
         {
-            let border = crate::layout::line_rect(placed, rect);
+            let border = crate::layout::line_rect(
+                placed,
+                Rect {
+                    origin: border_origin,
+                    size: box_geometry.border.size,
+                },
+            );
             let content = crate::layout::line_rect(
                 placed,
                 Rect::new(

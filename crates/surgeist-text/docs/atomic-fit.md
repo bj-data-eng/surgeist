@@ -5,9 +5,14 @@ An in-flow atomic allocation carries an explicit `AtomicFitAllocation`. Use
 `CssMarginBox(CssMarginBoxFit::try_new(start_margin, border_inline_size, end_margin)?)`.
 The receipt retains finite signed margins, a nonnegative border inline size and
 its checked used advance. Selection validates it against the same issued atomic's
-actual flow, border size and occupied envelope. It does not infer CSS authority
-from a difference between advance and occupied size. Relative positioning and
-cross-axis metrics remain separate geometry facts.
+actual normal flow, `AtomicFlowAllocation::normal_border_inline_size` and occupied
+envelope. The normal border extent is finite and nonnegative in the allocation's
+local inline axis; it is not another advance. Relative visual placement and
+corner snapping may give `AtomicBoxAllocation` a different border width. Selection
+still validates the visual border/content rectangles and baseline independently,
+and placement still requires the exact visual boxes for the same occurrence.
+It does not infer CSS authority from a difference between advance and occupied
+size. Relative positioning and cross-axis metrics remain separate geometry facts.
 
 For a non-atomic inline BoxEdge, use the checked native-lane
 `InlineBoxEdgeComponents` with its authenticated owner, parent and assigned side.

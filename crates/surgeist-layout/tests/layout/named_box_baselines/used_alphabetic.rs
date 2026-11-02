@@ -754,6 +754,7 @@ fn parent_allocation(parent: &Captured, case: Case) -> t::AtomicAllocation {
         allocation: t::AtomicLineAllocation::InFlow {
             fit: surgeist_text::AtomicFitAllocation::NativeOccupied,
             flow: t::AtomicFlowAllocation {
+                normal_border_inline_size: if cw { 14.0 } else { 6.0 },
                 advance: if cw { 14.0 } else { 6.0 },
                 before_baseline: before,
                 after_baseline: if cw { p } else { 14.0 - p },
