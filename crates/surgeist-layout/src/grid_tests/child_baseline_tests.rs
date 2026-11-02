@@ -8802,3 +8802,6 @@ fn subgrid_child_context_rejects_inheritable_axis_without_parent_tracks() {
         &LayoutErrorKind::InternalInvariant(LayoutInternalInvariant::SubgridTrackInheritance),
     );
 }
+
+#[path = "child_baseline/last_port_authority.rs"]
+mod last_port_authority;
