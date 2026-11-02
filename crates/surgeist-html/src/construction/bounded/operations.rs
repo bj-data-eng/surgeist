@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+mod charges;
 mod depth;
 mod orders;
 use crate::{Attribute, bounded::HtmlValidatedAttributes, values::HTML_NAMESPACE_URI};
@@ -57,9 +59,6 @@ pub enum HtmlConstructionCommand {
         host: HtmlBuilderNode,
         contents: HtmlBuilderNode,
     },
-    DetachShadow {
-        host: HtmlBuilderNode,
-    },
     SetTemplateShadowContents {
         template: HtmlBuilderNode,
         contents: HtmlBuilderNode,
@@ -103,7 +102,7 @@ impl HtmlConstructionCommand {
             (Self::ReplaceAttributes { element, .. } | Self::SetLinkFlags { element, .. }, 0) => {
                 Some(element)
             }
-            (Self::AttachShadow { host, .. } | Self::DetachShadow { host }, 0) => Some(host),
+            (Self::AttachShadow { host, .. }, 0) => Some(host),
             (Self::AttachShadow { contents, .. }, 1) => Some(contents),
             (
                 Self::AttachTemplateShadow { template, .. }
@@ -960,7 +959,22 @@ impl HtmlConstructionOperation {
                         }
                         _ => return Err(HtmlConstructionError::WrongNodeKind),
                     }
-                    plan.copied_bytes = add(plan.copied_bytes, size_of::<HtmlNodeKind>())?;
+                    // A name replacement assigns the name, and clears the link
+                    // history unless the new name keeps it; every other payload
+                    // assigns the record's kind.
+                    let (writes, bytes) = match content {
+                        HtmlConstructionContent::ElementName(_) => {
+                            let history = usize::from(!plan.link);
+                            (
+                                1 + history,
+                                size_of::<QualifiedName>()
+                                    + history * size_of::<Option<crate::HtmlLinkFlags>>(),
+                            )
+                        }
+                        _ => (1, size_of::<HtmlNodeKind>()),
+                    };
+                    plan.record_writes = add(plan.record_writes, writes)?;
+                    plan.copied_bytes = add(plan.copied_bytes, bytes)?;
                 }
                 Command::ReplaceAttributes { attributes, .. } => {
                     let HtmlNodeKind::Element(old) = &arena.records[a].kind else {
@@ -968,6 +982,8 @@ impl HtmlConstructionOperation {
                     };
                     plan.new_attributes = attributes.as_slice().len();
                     plan.old_attributes = old.attributes().len();
+                    // The element's attribute collection is the one assignment.
+                    plan.record_writes = add(plan.record_writes, 1)?;
                     plan.copied_bytes = add(plan.copied_bytes, size_of::<OrderedAttributes>())?;
                 }
                 Command::AttachShadow { .. } => {
@@ -1024,18 +1040,6 @@ impl HtmlConstructionOperation {
                         }
                         None => return Err(HtmlConstructionError::InvalidTemplateAssociation),
                     }
-                }
-                Command::DetachShadow { .. } => {
-                    if !matches!(arena.records[a].kind, HtmlNodeKind::Element(_)) {
-                        return Err(HtmlConstructionError::ShadowHostMustBeElement);
-                    }
-                    plan.old_contents = arena.records[a]
-                        .shadow
-                        .as_ref()
-                        .map(|value| value.contents.index);
-                    plan.no_op = plan.old_contents.is_none();
-                    plan.usage.edges =
-                        subtract(plan.usage.edges, usize::from(plan.old_contents.is_some()))?;
                 }
                 Command::SetDocumentMode { .. } => {
                     if !matches!(arena.records[a].kind, HtmlNodeKind::Document(_)) {
@@ -1153,7 +1157,6 @@ impl HtmlConstructionOperation {
             HtmlConstructionCommand::Insert { .. }
                 | HtmlConstructionCommand::Detach { .. }
                 | HtmlConstructionCommand::AttachShadow { .. }
-                | HtmlConstructionCommand::DetachShadow { .. }
                 | HtmlConstructionCommand::AttachTemplateShadow { .. }
                 | HtmlConstructionCommand::SetTemplateShadowContents { .. }
                 | HtmlConstructionCommand::ReassignTemplateContents { .. }
@@ -1193,24 +1196,23 @@ impl HtmlConstructionOperation {
                             .ok_or(HtmlConstructionError::RepresentationExhausted)?,
                     )?;
                 }
-                Command::AttachShadow { .. } | Command::AttachTemplateShadow { .. } => {
+                // Each arm below charges the fields its commit arm assigns, and
+                // no others; the usage write is already in the base.
+                Command::AttachShadow { .. } => {
+                    // The contents' owner and the host's shadow association.
                     plan.references = 3;
-                    plan.record_writes = add(plan.record_writes, 5)?;
+                    plan.record_writes = add(plan.record_writes, 2)?;
                     plan.copied_bytes = add(
                         plan.copied_bytes,
-                        size_of::<ShadowAssociation>()
-                            + 2 * size_of::<Option<HtmlFragmentOwner>>()
-                            + size_of::<Option<TemplateContents>>(),
+                        size_of::<Option<HtmlFragmentOwner>>()
+                            + size_of::<Option<ShadowAssociation>>(),
                     )?;
                 }
-                Command::SetTemplateShadowContents { .. }
-                | Command::ReassignTemplateContents { .. }
-                | Command::DetachShadow { .. } => {
-                    plan.references = usize::from(matches!(
-                        self.command(),
-                        Command::ReassignTemplateContents { .. }
-                    ));
-                    plan.record_writes = add(plan.record_writes, 3)?;
+                Command::AttachTemplateShadow { .. } => {
+                    // The old contents' owner, the template's contents, the new
+                    // contents' owner and the host's shadow association.
+                    plan.references = 3;
+                    plan.record_writes = add(plan.record_writes, 4)?;
                     plan.copied_bytes = add(
                         plan.copied_bytes,
                         2 * size_of::<Option<HtmlFragmentOwner>>()
@@ -1218,12 +1220,35 @@ impl HtmlConstructionOperation {
                             + size_of::<Option<ShadowAssociation>>(),
                     )?;
                 }
+                Command::SetTemplateShadowContents { .. } => {
+                    // The old contents' owner and the template's contents.
+                    plan.record_writes = add(plan.record_writes, 2)?;
+                    plan.copied_bytes = add(
+                        plan.copied_bytes,
+                        size_of::<Option<HtmlFragmentOwner>>()
+                            + size_of::<Option<TemplateContents>>(),
+                    )?;
+                }
+                Command::ReassignTemplateContents { .. } => {
+                    // The template's contents and the new contents' owner, and
+                    // the old contents' owner when the template owned them: a
+                    // shadow reference owns nothing to release.
+                    let releases = usize::from(plan.old_contents.is_some());
+                    plan.references = 1;
+                    plan.record_writes = add(plan.record_writes, 2 + releases)?;
+                    plan.copied_bytes = add(
+                        plan.copied_bytes,
+                        (1 + releases) * size_of::<Option<HtmlFragmentOwner>>()
+                            + size_of::<Option<TemplateContents>>(),
+                    )?;
+                }
                 Command::SetDocumentMode { .. } => {
-                    plan.copied_bytes = add(plan.copied_bytes, size_of::<HtmlDocumentMode>())?;
+                    plan.copied_bytes = add(plan.copied_bytes, size_of::<HtmlNodeKind>())?;
                     plan.record_writes += 1;
                 }
                 Command::SetLinkFlags { .. } => {
-                    plan.copied_bytes = add(plan.copied_bytes, size_of::<crate::HtmlLinkFlags>())?;
+                    plan.copied_bytes =
+                        add(plan.copied_bytes, size_of::<Option<crate::HtmlLinkFlags>>())?;
                     plan.record_writes += 1;
                 }
                 _ => {}
@@ -1243,8 +1268,12 @@ impl HtmlConstructionOperation {
                     .record_count
                     .checked_mul(size_of::<Record>())
                     .ok_or(HtmlConstructionError::RepresentationExhausted)?;
-                plan.copied_bytes = add(plan.copied_bytes, plan.initialized_bytes)?;
-                // Each record, and the histogram count of its depth.
+                // Each record, and the histogram count of its depth, one word.
+                let counts = plan
+                    .record_count
+                    .checked_mul(size_of::<usize>())
+                    .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+                plan.copied_bytes = add(add(plan.copied_bytes, plan.initialized_bytes)?, counts)?;
                 plan.record_writes = add(plan.record_writes, 2 * plan.record_count)?;
                 plan.references = 1 + usize::from(plan.template);
                 plan.reserve_required = add(self.arena().records.len(), plan.record_count)?;
@@ -1908,6 +1937,12 @@ impl HtmlConstructionReadyOperation {
         }
         if !plan.no_op {
             let arena = &mut storage.arena;
+            // A reservation and a transfer check assign nothing, not even the
+            // unchanged usage, and describe no write.
+            let assigns_usage = !matches!(
+                command,
+                Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. }
+            );
             // Depths move while the edges are the ones planning walked.
             plan.commit_depths(arena);
             match command {
@@ -2013,10 +2048,6 @@ impl HtmlConstructionReadyOperation {
                         contents: plan.ids[1].take().expect("preadmitted contents ID"),
                     });
                 }
-                Command::DetachShadow { .. } => {
-                    arena.records[plan.old_contents.expect("ready shadow detach")].owner = None;
-                    arena.records[p[0]].shadow = None;
-                }
                 Command::SetTemplateShadowContents { .. } => {
                     arena.records[plan.old_contents.expect("ordinary owning contents")].owner =
                         None;
@@ -2043,7 +2074,9 @@ impl HtmlConstructionReadyOperation {
                 }
                 Command::Publish { .. } => unreachable!("publication handled separately"),
             }
-            arena.usage = plan.usage;
+            if assigns_usage {
+                arena.usage = plan.usage;
+            }
         }
         HtmlConstructionCommit::Changed {
             storage,

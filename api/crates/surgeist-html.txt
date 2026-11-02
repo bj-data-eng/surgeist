@@ -176,8 +176,6 @@ pub surgeist_html::bounded::HtmlConstructionCommand::CreateShadowContents
 pub surgeist_html::bounded::HtmlConstructionCommand::CreateShadowContents::properties: surgeist_html::HtmlShadowRootProperties
 pub surgeist_html::bounded::HtmlConstructionCommand::Detach
 pub surgeist_html::bounded::HtmlConstructionCommand::Detach::node: surgeist_html::HtmlBuilderNode
-pub surgeist_html::bounded::HtmlConstructionCommand::DetachShadow
-pub surgeist_html::bounded::HtmlConstructionCommand::DetachShadow::host: surgeist_html::HtmlBuilderNode
 pub surgeist_html::bounded::HtmlConstructionCommand::Insert
 pub surgeist_html::bounded::HtmlConstructionCommand::Insert::before: core::option::Option<surgeist_html::HtmlBuilderNode>
 pub surgeist_html::bounded::HtmlConstructionCommand::Insert::node: surgeist_html::HtmlBuilderNode
