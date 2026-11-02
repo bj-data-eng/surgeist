@@ -60,8 +60,11 @@ enum Decision {
     Unsatisfied,
 }
 /// The insertion or removal of a subtree during which a selection was last
-/// walked. The topology count makes it one particular change: a later change
-/// of the same subtree has a different count.
+/// walked. The topology count makes it one particular change. The subtree, the
+/// stage and the detached root alone do not: a subtree that leaves the tree
+/// unobserved, because it holds no candidate then, and returns with candidates
+/// moved into it meanwhile, repeats all three while the selection has changed
+/// without it.
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) struct MetaBatch {
     root: usize,
@@ -1051,12 +1054,15 @@ impl SessionStorage {
         theme: bool,
         scheme: bool,
     ) -> Result<(), SessionError> {
-        let batch = MetaBatch {
-            root: effects.root,
-            removal: effects.stage == FormEffectStage::Removal,
-            detached,
-            topology_changes: self.payloads.topology_changes,
-        };
+        let batch = self
+            .payloads
+            .topology_changes
+            .map(|topology_changes| MetaBatch {
+                root: effects.root,
+                removal: effects.stage == FormEffectStage::Removal,
+                detached,
+                topology_changes,
+            });
         let slot = self.document_slot(c, document)?;
         for (enabled, domain) in [
             (theme, MetaDomain::ThemeColor),
@@ -1066,7 +1072,8 @@ impl SessionStorage {
                 continue;
             }
             c.charge(WorkCategory::RecordVisit, 1)?;
-            let settled = self.meta_batches.copy(domain) == Some(batch)
+            let settled = batch.is_some()
+                && self.meta_batches.copy(domain) == batch
                 && self
                     .meta_history(slot)
                     .map_err(|_| latch_registry_row(c))?
@@ -1082,7 +1089,7 @@ impl SessionStorage {
                     domain == MetaDomain::ThemeColor,
                     domain == MetaDomain::ColorScheme,
                 )?;
-                *self.meta_batches.get_mut(domain) = Some(batch);
+                *self.meta_batches.get_mut(domain) = batch;
             }
             #[cfg(test)]
             self.assert_selection_matches_walk(c, document, detached, domain)?;
@@ -1634,6 +1641,19 @@ mod tests {
         Vec<ParserNode>,
         LexerFixture<'static>,
     ) {
+        detached_metas_with_edges(source, 1_000_000)
+    }
+    /// As [`detached_metas`], with room for `edges` parent-child edges.
+    fn detached_metas_with_edges(
+        source: &str,
+        edges: u64,
+    ) -> (
+        ParseControl,
+        ParserArenaSession,
+        ParserNode,
+        Vec<ParserNode>,
+        LexerFixture<'static>,
+    ) {
         let source: &'static crate::HtmlSource =
             Box::leak(Box::new(crate::HtmlSource::utf8(source)));
         // The walk oracle reads every candidate after every change.
@@ -1649,7 +1669,7 @@ mod tests {
             .source_map_entries(1_000_000)
             .source_map_payload_units(1_000_000)
             .managed_nodes(1_000_000)
-            .managed_edges(1_000_000)
+            .managed_edges(edges)
             .auxiliary_entries(100_000_000)
             .finish()
             .unwrap();
@@ -1822,6 +1842,87 @@ mod tests {
         take(&mut session, &mut c, dark);
         take(&mut session, &mut c, light);
         assert_eq!(scheme(&session), None);
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
+    }
+
+    #[test]
+    fn a_refused_insertion_ends_its_announcement_and_leaves_exact_roots() {
+        // One edge is allowed: the span goes into the div, and the div's move
+        // under the root is refused after the announcement that its subtree may
+        // change root, and it stays detached. The refusal latches the stop, so
+        // the cache is read without a charge: no cell may hold a root other than
+        // the one a full climb finds, and the new generation the announcement
+        // started leaves none holding any.
+        let (mut c, mut session, root, nodes, lexer) = detached_metas_with_edges("<div><span>", 1);
+        let [div, span] = &nodes[..] else {
+            panic!("two elements")
+        };
+        put(&mut session, &mut c, div, span, None);
+        let storage = session.active_mut().unwrap();
+        let view = storage.construction.storage(&mut c).unwrap();
+        for node in [div, span] {
+            assert_eq!(
+                storage
+                    .payloads
+                    .tree_root(&mut c, view, node.index)
+                    .unwrap(),
+                div.index
+            );
+        }
+        let refused = storage.insert(&mut c, &root, div, None, InsertionCause::NonParser);
+        assert!(matches!(
+            refused,
+            Err(SessionError::Stop(ParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedEdges,
+                ..
+            }))
+        ));
+        let view = storage.construction.test_storage();
+        for node in [div, span] {
+            assert_eq!(
+                storage.payloads.cached_root(node.index),
+                None,
+                "record {}",
+                node.index
+            );
+            assert_eq!(
+                PayloadStorage::full_climb_root(view, node.index),
+                Some(div.index)
+            );
+        }
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+    }
+
+    #[test]
+    fn a_subtree_inserted_again_walks_although_its_last_insertion_did() {
+        // The subtree S is inserted with two candidates and walked. Both
+        // candidates leave it one at a time, which settles the selection, and S
+        // leaves the tree holding none, which no candidate's hook observes. The
+        // candidates return while S is detached, in the other order, and S is
+        // inserted again with the same root, stage and detached root as the
+        // first time. Only the count of changes tells the two insertions apart.
+        let (mut c, mut session, root, nodes, lexer) = detached_metas(
+            "<meta name=theme-color content=red><meta name=theme-color content=blue><div>",
+        );
+        let [red, blue, subtree] = &nodes[..] else {
+            panic!("three elements")
+        };
+        put(&mut session, &mut c, subtree, red, None);
+        put(&mut session, &mut c, subtree, blue, None);
+        put(&mut session, &mut c, &root, subtree, None);
+        assert_eq!(theme(&session), RED);
+        take(&mut session, &mut c, red);
+        assert_eq!(theme(&session), BLUE);
+        take(&mut session, &mut c, blue);
+        assert_eq!(theme(&session), None);
+        take(&mut session, &mut c, subtree);
+        put(&mut session, &mut c, subtree, blue, None);
+        put(&mut session, &mut c, subtree, red, None);
+        put(&mut session, &mut c, &root, subtree, None);
+        assert_eq!(theme(&session), BLUE);
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);

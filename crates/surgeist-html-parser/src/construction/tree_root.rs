@@ -52,7 +52,7 @@ pub(super) enum Reroot {
 
 impl PayloadStorage {
     /// The root cached for `node`, when its cell is current.
-    fn cached_root(&self, node: usize) -> Option<usize> {
+    pub(super) fn cached_root(&self, node: usize) -> Option<usize> {
         let stamp = self.tree_stamp?;
         match self.node_joins.get(node)?.tree_root {
             TreeRootCell::Cached { root, stamp: held } if held == stamp => cell_slot(root),
@@ -102,7 +102,10 @@ impl PayloadStorage {
     /// The root found by following parent edges all the way, uncharged: the
     /// oracle every cached answer is compared with in test builds.
     #[cfg(test)]
-    fn full_climb_root(storage: &bounded::HtmlConstructionStorage, node: usize) -> Option<usize> {
+    pub(super) fn full_climb_root(
+        storage: &bounded::HtmlConstructionStorage,
+        node: usize,
+    ) -> Option<usize> {
         let mut at = node;
         for _ in 0..=storage.len() {
             match storage.node_at(at)?.parent() {
@@ -158,6 +161,14 @@ impl PayloadStorage {
         }
         Err(SessionError::Cycle)
     }
+    /// Counts one more announced topology change. A count that cannot advance
+    /// is dropped, as a generation is, rather than wrapped onto an earlier
+    /// value: with no count nothing is taken for the same change twice.
+    fn count_topology_change(&mut self) {
+        self.topology_changes = self
+            .topology_changes
+            .and_then(|changes| changes.checked_add(1));
+    }
     /// Makes the cell of `node` stale. The caller has charged the write.
     fn forget_tree_root(&mut self, node: usize) {
         if let Some(cell) = self.node_joins.get_mut(node) {
@@ -180,7 +191,7 @@ impl SessionStorage {
         node: usize,
         destination: Option<usize>,
     ) -> Result<Reroot, SessionError> {
-        self.payloads.topology_changes = self.payloads.topology_changes.wrapping_add(1);
+        self.payloads.count_topology_change();
         control.charge(WorkCategory::RecordVisit, 1)?;
         let bare = self
             .construction
@@ -210,7 +221,7 @@ impl SessionStorage {
     /// repeats the invalidation, so a cell filled between the two cannot
     /// outlive the topology it described.
     pub(super) fn end_reroot(&mut self, reroot: Reroot) {
-        self.payloads.topology_changes = self.payloads.topology_changes.wrapping_add(1);
+        self.payloads.count_topology_change();
         match reroot {
             Reroot::Bare(node) => self.payloads.forget_tree_root(node),
             Reroot::Same => {}

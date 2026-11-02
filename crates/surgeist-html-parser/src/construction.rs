@@ -553,8 +553,9 @@ struct PayloadStorage {
     /// The generation of the cached tree roots in [`NodeJoins`]; `None` once no
     /// later generation can be named, when nothing is cached.
     tree_stamp: Option<NonZeroU32>,
-    /// How many topology changes have been announced; see [`tree_root`].
-    topology_changes: u64,
+    /// How many topology changes have been announced, or `None` once the count
+    /// cannot go on; see [`tree_root`].
+    topology_changes: Option<u64>,
 }
 /// Derived joins into the actual payload registry, one cell per record
 /// position. Dense record positions are append-only; a join never substitutes
@@ -2235,7 +2236,7 @@ impl SessionStorage {
                 selectedcontent_rows: 0,
                 repeated_unique_rows: 0,
                 tree_stamp: NonZeroU32::new(1),
-                topology_changes: 0,
+                topology_changes: Some(0),
             },
         };
         let kind = match root {
