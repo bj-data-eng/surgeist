@@ -275,6 +275,57 @@ table vocabulary, and their owner keeps their tests. Absent shadow roots and
 unavailable (rather than absent) associations of ordinary elements are not
 asserted, because the adapter does not claim them.
 
+## Finite campaign record
+
+Source `63e350fa50c5a29e8e608818a356e7f2436a9688` (a clean detached checkout
+outside the active worktree), Apple Silicon macOS, one Cargo job, memory policy
+`unbounded` (RSS sampling is unavailable, so no memory bound is claimed). These
+are counts of attempted cases against the finished parser, builders and
+semantics adapter. They are not conformance percentages, performance baselines
+or resource guarantees, and `Sufficient` means only that the declared minimum
+number of evaluations ran.
+
+| Campaign | Target | Seed | Attempts | Outcome |
+| --- | --- | --- | --- | --- |
+| `check`, fresh worker per case, rustc 1.97.0 | native authoring | 1172 | 5000 | sufficient |
+| | native authoring | 7001 | 2128 | stopped at the 1,500 s wall allowance |
+| | markup parse | 1172 | 5000 | sufficient |
+| | markup parse | 7001 | 2729 | stopped at the 1,500 s wall allowance |
+| | capture import | 1172 | 2913 | stopped at the 1,500 s wall allowance |
+| | capture import | 7001 | 2304 | stopped at the 1,500 s wall allowance |
+| `check --regressions` over the checked-in seeds | markup, capture, native | n/a | 12, 16, 8 | sufficient |
+| `run`, libFuzzer with AddressSanitizer and coverage level 4, nightly-2026-09-01 | each of the three | 1172 | 3000 | sufficient |
+| `run`, same engine, 46 finite rounds each | each of the three | 7001 | 150000 | sufficient |
+
+No run produced a failure, an unexpected incomplete case or a cleanup error, so
+there is no retained failure, replay or reduction and no regression case is
+bundled. The campaign summaries do not
+count rejections and unsupported outcomes separately. A local, unrecorded sample
+of 6,000 to 20,000 generated cases per target gave 91% to 93% verified results
+and the rest expected resource or cancellation stops, with no unsupported
+outcomes. A stop on
+the wall allowance is a resource stop, not a finding. The tool does not name
+the bound that tripped; the wall allowance is the only configured bound the
+runs could have reached (entry and byte quotas were far from their ceilings).
+
+Reproduce from a clean committed checkout, with the work directory outside the
+source and not yet existing:
+
+```sh
+cargo build --offline --locked -j 1 -p surgeist-fuzz --features execution --bin surgeist-fuzz
+surgeist-fuzz check --source "$src" --work "$work" --target surgeist-html::capture-import \
+  --toolchain 1.97.0 --memory-policy unbounded --cases 5000 --wall-ms 1500000 \
+  --case-ms 5000 --input-bytes 16384 --storage-entries 100000 --seed 1172
+surgeist-fuzz run --source "$src" --work "$work2" --target surgeist-html::capture-import \
+  --toolchain nightly-2026-09-01 --memory-policy unbounded --cases 150000 \
+  --wall-ms 1500000 --case-ms 5000 --build-ms 3000000 --input-bytes 16384 \
+  --storage-entries 100000 --seed 7001 --round-cases 10000 --retained-entries 256
+```
+
+The default 4 KiB input ceiling and 1,024 stored entries are too small for these
+targets (a first run with the defaults stopped on the entry quota before
+evaluating a case); the entry quota may not exceed 100,000.
+
 ## Native authoring
 
 The separate `surgeist-html::native-authoring` target uses the actual public
