@@ -4668,15 +4668,9 @@ impl SessionStorage {
             values, ..
         }))) = self.payloads.values.get(stage)
         else {
-            return Err(control
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into());
+            return Err(latch_registry_row(control));
         };
-        let attribute = values.last().ok_or_else(|| {
-            SessionError::Stop(
-                control.fail_invariant(crate::parser::control::Invariant::PendingFormEffects),
-            )
-        })?;
+        let attribute = values.last().ok_or_else(|| latch_registry_row(control))?;
         if attribute.name().namespace().uri().is_some()
             || !exact_ascii(control, Some(attribute.name().local_name()), "id")?
         {
@@ -7601,9 +7595,7 @@ impl ParserArenaSession {
             return Ok(());
         }
         if storage.textarea_slot(control, node)?.is_none() {
-            return Err(control
-                .fail_invariant(crate::parser::control::Invariant::PendingFormEffects)
-                .into());
+            return Err(latch_registry_row(control));
         }
         match storage.refresh_textarea(control, node, None, true) {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),

@@ -93,7 +93,9 @@ pub enum Invariant {
     CleanupWhileRunning,
     /// A shared allocation that must be uniquely held was aliased.
     SharedAllocationAliased,
-    /// A construction session was used while form effects were still pending.
+    /// A construction session was used while its effects (form, radio, range
+    /// or a queued task) were still pending, or an effect it was draining
+    /// failed with an error that only an inconsistent session produces.
     PendingFormEffects,
     /// A creation that holds a form, link, select or details association
     /// failed with an error other than a stop.
