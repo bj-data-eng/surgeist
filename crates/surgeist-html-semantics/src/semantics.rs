@@ -149,9 +149,9 @@ use surgeist_html::bounded::{
 /// query's own steps, which are charged one unit per visit, unit read or write:
 ///
 /// - `HtmlSemanticSession::query` reserves the whole batch's result vector
-///   once (1 work, `requests.len()` output records, that many
-///   `size_of::<HtmlSemanticResult>()` bytes) and charges 1 work per result
-///   written.
+///   once through `reserve_records` and charges 1 work per result written. An
+///   empty batch reserves nothing (`reserve_record_capacity` charges nothing
+///   when `additional` is 0).
 /// - A subject lookup (`node`) charges 1.
 /// - A namespace test (`namespace_is`) charges 1, plus one per compared UTF-16
 ///   unit when the namespace length equals the expected length, stopping at the
@@ -159,20 +159,118 @@ use surgeist_html::bounded::{
 /// - Vocabulary recognition (`known`) charges
 ///   `(local-name units + 1) * KnownHtmlElement::ALL.len() + namespace units`
 ///   before the existing recognizer runs.
-/// - An attribute lookup (`attribute_ns`) charges 1 per attribute scanned plus
-///   one per compared unit of a length-matching name.
-/// - A capacity reservation (`reserve_record_capacity`) that grows a vector
-///   charges 1 work, adds the actual capacity growth to the usage of its
-///   resource and `growth * size_of::<element>()` to allocated bytes. Output
-///   and nested records use exact reservation, so reserving one record at a
-///   time grows capacity one record at a time. Scratch records are the live
-///   capacity of iterator-frame stacks (one `HtmlCapturedChildIds` per
-///   entered element, document or fragment) and are released when the stack
-///   is dropped; the peak is reported separately.
+/// - An attribute lookup (`attribute_ns`) charges 1 per attribute scanned. When
+///   an attribute has a namespace URI of the expected length it also charges
+///   one per compared URI unit up to the first mismatch, and, for a
+///   length-matching local name, one per compared local-name unit.
+/// - A record reservation (`reserve_record_capacity`, reached through
+///   `reserve_records`, `reserve_scratch` and `reserve_nested_output`) charges
+///   nothing for `additional == 0`. When the request fits the vector's existing
+///   capacity it charges 1 work and grows nothing. Otherwise it checks the
+///   resource and byte limits and then charges 1 work, adds the actual capacity
+///   growth to the usage of its resource and `growth * size_of::<element>()` to
+///   allocated bytes. Output and nested records use exact reservation, so
+///   reserving one record at a time grows capacity one record at a time.
+///
+/// Scratch records count the live capacity of any transient working vector
+/// reserved with `reserve_scratch`, whatever it holds, and are released when
+/// that vector's owner calls `release_scratch`; the peak is reported
+/// separately. Examples are the iterator-frame stacks of the tree walks (one
+/// `HtmlCapturedChildIds` per entered element, document or fragment), the list
+/// owner's `items`, the template-for `names`, the microdata `visited`,
+/// `on_path`, `contributors` and `keys`, the table `scopes` and `output`
+/// vectors, the natural-dimension product and difference buffers, and the
+/// language `tasks` stack.
 ///
 /// A query that composes further owner steps (intrinsic envelopes, form
 /// association, option text) charges them under the same one-unit-per-visit
-/// rule; their exact layout is not otherwise part of the contract.
+/// rule; their exact layout is not otherwise part of the contract unless that
+/// query's own documentation states it.
+///
+/// # Documented per-query work
+///
+/// Write `N` for `KnownHtmlElement::ALL.len()`, `D` for the 29 units of a
+/// matched HTML namespace test, and `K(l)` for the recognition charge
+/// `(l + 1) * N + 28` of an HTML element whose local name has `l` units. Each
+/// request's generic prefix is the subject lookup (1) and the dispatcher's HTML
+/// namespace test (`D`); the batch adds its one reservation (1) and each result
+/// write adds 1. The following walks are stable and their charges are stated
+/// here so tests can pin them; every other query's work is only required to be
+/// charged.
+///
+/// - **Tree walk** (`ordinary_tree_next` / `ordinary_tree_resume`). Leaving an
+///   element, document or fragment charges 1, then a frame reservation (1) and a
+///   push (1). Resuming charges 1 per loop iteration; popping an exhausted frame
+///   is one further iteration, and an empty stack ends with one iteration that
+///   yields nothing.
+/// - **Text content** (`control_text_content`). Entry is a lookup (1) and 1.
+///   Direct-child mode charges, per child, a loop charge (1) and a lookup (1),
+///   plus 1 for the end of the iterator. Descendant mode reserves one frame (a
+///   reservation of 1 and a push of 1) when the node has children and then, per
+///   iteration, 1, a lookup (1) for each yielded node and, for a descended
+///   element, 1 plus its own frame (2); an exhausted frame costs 2. Each text unit
+///   costs 3: a read (1), an exact one-record reservation (1) and a push (1).
+///   Closing charges 1.
+/// - **Non-element subject.** A text, comment or document subject answered
+///   `Inapplicable` costs the batch reservation (1), the lookup (1) and the
+///   result write (1).
+/// - **TitleText.** The request prefix, the local-name test `title_local_is`
+///   (1 plus one per compared unit of `title`), then text content in direct-child
+///   mode.
+/// - **TextareaDefaultValue, OutputValue, OutputDefaultValue.** The
+///   request prefix, then a second lookup (1) and namespace test (`D`) and
+///   `K(l)`, then text content. An output default override scans one record (1)
+///   per supplied record up to the match; a text override then costs 1 and
+///   returns the shared string without further allocation.
+/// - **Intrinsic envelope** (`admit_intrinsic`). One charge of
+///   `3 * (element units + 1) * N + (attribute-name units + 1) *
+///   KnownHtmlAttribute::ALL.len() + value units * keywords + 3 * (namespace
+///   units + 1)`, where an absent attribute has 0 name and value units.
+/// - **Disabledness** of a parentless `button`, `input`, `select`, `textarea` or
+///   `fieldset` without attributes. The query prefix, `K(l)`, then `form_disabled`:
+///   a lookup (1), the intrinsic envelope with 1 keyword, one parent step (1).
+/// - **TabIndex.** Lookup (1), namespace test (`D`), an attribute scan (1 for a
+///   one-attribute element plus 8 compared units of `tabindex`), the HTML value
+///   owner's published `integer_long_work_bound` of the raw units, and 1 for a
+///   recovered value.
+/// - **TableCaption, TableHead, TableFoot** on a `table`. Lookup (1), `D`,
+///   `K(5)`, then `first_html_element_child`: a lookup (1), 1, and per scanned
+///   child a loop charge (1) and a lookup (1) plus `K(l)` for an element; an
+///   unmatched scan ends with 1.
+/// - **Table walks** (`table_children`, `table_next`). `table_children` is a
+///   lookup plus 1. `table_next` charges, per visited child, 1 and a lookup (1)
+///   plus `K(l)` when the child is an element (it yields only elements); an
+///   exhausted iterator costs 1. A retained id costs 2 (reservation 1, push 1).
+/// - **TableRows.** The query prefix, a lookup (1), `D`, `K(5)`, then three
+///   passes (head, body, foot). Each pass charges 1, `table_children`, and for
+///   every element child one `table_next` and 1, then a final exhausted
+///   `table_next`. A matching section additionally charges `table_children`,
+///   per `tr` child one `table_next`, 1 and a retained id (2), and a final
+///   exhausted `table_next`; a direct `tr` child in the body pass charges a
+///   retained id (2).
+/// - **TableRowIndex, TableSectionRowIndex, TableCellIndex.** The query prefix,
+///   a lookup (1), `D` and `K(l)` of the subject, then one parent step (1), the
+///   parent's lookup (1) and `K(l)` of the parent; a row in a section also steps
+///   to the table (1, lookup 1, `K(5)`). The collection walk is the one above,
+///   stopping at the target: every collection element costs 2 (1 visit, 1 for
+///   matching or counting), the target included.
+/// - **FooterScope** with a sectioning ancestor. Lookup (1), `D`, `K(6)` for the
+///   footer, then per ancestor one parent step (1), a lookup (1) and `K(l)`, and
+///   1 when the ancestor is a section.
+/// - **DatalistOptions.** The query prefix, a lookup (1), `D`, `K(8)`, then
+///   entry (a lookup and 1), a frame (2), and per iteration 1, a lookup (1),
+///   `K(l)` for an element, 2 for a retained option, and for a descended
+///   element 1 plus its own non-empty frame (2). An exhausted frame costs 2, the
+///   closing charge 1.
+/// - **MapAreas.** The query prefix, a lookup (1), `D`, `K(3)`, then the tree
+///   walk from the map: per visited node a lookup (1) and `K(l)`, 2 for a
+///   retained `area`, and the tree-walk charges above, then a closing charge (1).
+/// - **OptionText.** The query prefix, a lookup (1), `D`, `K(6)`, then entry (a
+///   lookup and 1) and a frame (2). Per iteration 1; per yielded node a lookup
+///   (1), per text unit 1, a kept unit a one-record reservation (1) and a push
+///   (1), a pending separator a further push (1) and reservation growth of 2;
+///   for a descended element 1 plus `K(l)` and its own frame (2). An exhausted
+///   frame costs 2, the closing charge 1.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticLimits {
     work: usize,
