@@ -6,20 +6,21 @@ use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
-    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue, HtmlCapturedNodeKind,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag, HtmlCustomControlClassification,
-    HtmlDesignMode, HtmlDirectionality, HtmlDocumentDesignModeFact, HtmlDocumentLanguageFallback,
-    HtmlFlatTreeProducerId, HtmlFlatTreeRevision, HtmlGlobalInheritanceFacts,
-    HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision,
-    HtmlInertFactLimits, HtmlInertFacts, HtmlInputControlState, HtmlLanguageDirectionFacts,
-    HtmlLanguageDirectionLimits, HtmlLanguageOrigin, HtmlListParticipation,
-    HtmlListParticipationFact, HtmlListParticipationRevision, HtmlParticipationProducerId,
-    HtmlPragmaLanguage, HtmlProgressState, HtmlProtocolLanguage, HtmlScriptingStatus,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
-    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailure,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession,
-    HtmlSemanticUnsupported, HtmlSemanticValue, HtmlTranslationMode,
+    HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedChildIds, HtmlCapturedIsValue,
+    HtmlCapturedNodeKind, HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag,
+    HtmlCustomControlClassification, HtmlDesignMode, HtmlDirectionality,
+    HtmlDocumentDesignModeFact, HtmlDocumentLanguageFallback, HtmlFlatTreeProducerId,
+    HtmlFlatTreeRevision, HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits,
+    HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision, HtmlInertFactLimits,
+    HtmlInertFacts, HtmlInputControlState, HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits,
+    HtmlLanguageOrigin, HtmlListParticipation, HtmlListParticipationFact,
+    HtmlListParticipationRevision, HtmlParticipationProducerId, HtmlPragmaLanguage,
+    HtmlProgressState, HtmlProtocolLanguage, HtmlScriptingStatus, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput,
+    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailure, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported,
+    HtmlSemanticValue, HtmlTranslationMode,
 };
 
 fn name(ns: Namespace, local: &str) -> QualifiedName {
@@ -1519,11 +1520,32 @@ fn exact_list_resource_admission_and_late_failure_leave_no_scratch_or_result_pre
         .iter()
         .map(|e| request(&c, e, HtmlSemanticQuery::ListOrdinal))
         .collect();
-    let baseline = session(&c, &cx).query(&requests).unwrap();
+    // Two ordinals are two result records with no nested storage. "99" plus the
+    // start offset is a three-digit value, so three integer digits admit and two
+    // do not. The ordinal walk keeps at least the owner list, an item list and
+    // one more frame live (three records); its visit layout is private, so work
+    // is required to be charged without being pinned. The helper proves the
+    // reported work, scratch and bytes are the least admitting caps before the
+    // loop below reuses them.
+    let baseline = assert_exact_and_one_short_caps(
+        "list ordinals",
+        &c,
+        &cx,
+        10000,
+        HtmlSemanticLimits::new(1000000, 100, 10000, 3, 1000000, 0),
+        &requests,
+        ExpectedUsage {
+            output_records: Charge::Exactly(2),
+            peak_scratch_records: Charge::AtLeast(3),
+            allocated_bytes: Charge::AtLeast(
+                2 * std::mem::size_of::<HtmlSemanticResult>()
+                    + 3 * std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
     let usage = baseline.usage();
     assert_eq!(usage.scratch_records(), 0);
-    assert!(usage.peak_scratch_records() >= 3);
-    assert!(usage.allocated_bytes() > 0);
     let exact = HtmlSemanticLimits::new(
         usage.work(),
         usage.output_records(),

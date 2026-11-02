@@ -701,8 +701,11 @@ fn actual_output_capacity_can_be_reused_at_its_exact_reported_byte_and_record_li
     let (c, id) = fixture("textarea", &[], false);
     let cx = context(&c, &[]);
     let r = report(&c, &cx, &id, query_for("textarea"), 100);
-    let bytes = r.usage().allocated_bytes();
-    let records = r.usage().output_records();
+    // Derived, not measured: one Boolean result record is the only allocation.
+    let bytes = crate::semantics::support::result_record_bytes();
+    let records = 1;
+    assert_eq!(r.usage().allocated_bytes(), bytes);
+    assert_eq!(r.usage().output_records(), records);
     let req = request(&id, query_for("textarea"));
     let mut s = session(
         &c,

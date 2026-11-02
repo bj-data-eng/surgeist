@@ -827,7 +827,27 @@ fn nonterminal_missing_evidence_never_hides_a_later_terminal_work_stop() {
     let c = b.finish().unwrap();
     let cx = context(&c, &[]);
     let sid = c.subject_id(&s).unwrap();
-    let r = report(&c, &cx, &sid, 0);
+    // The unknown sibling's children are missing evidence, but the walk still
+    // reaches the option, so the answer is one Missing result with the select's
+    // frame live. The walk's visit layout is private, so work is required to be
+    // charged without being pinned; the helper proves the reported work is the
+    // least admitting cap before the stop below reuses it.
+    let r = assert_exact_and_one_short_caps(
+        "select value missing, late terminal stop",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&sid)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>(),
+            ),
+            ..ExpectedUsage::none()
+        },
+    );
     assert_eq!(
         missing(&r),
         &HtmlSemanticMissing::OrderedChildren(c.subject_id(&gap).unwrap())
@@ -1136,7 +1156,13 @@ fn predecessor_queries_charge_each_traversal_and_late_work_failure_is_atomic() {
         ));
     }
     assert_eq!(complete.usage().nested_output_records(), 0);
-    assert!(complete.usage().work() > report(&c, &cx, &s, 0).usage().work());
+    // Derived from the shared tariff: the batch's one result reservation (1) is
+    // charged once, so two identical requests cost twice one request's work less
+    // that shared unit.
+    assert_eq!(
+        complete.usage().work(),
+        2 * report(&c, &cx, &s, 0).usage().work() - 1
+    );
     let mut ss = session(
         &c,
         &cx,

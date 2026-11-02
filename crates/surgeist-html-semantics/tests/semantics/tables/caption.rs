@@ -429,8 +429,13 @@ fn repeats_and_duplicate_batch_charge_cumulatively_and_late_failure_is_atomic() 
         HtmlSemanticCancellation::new(),
     );
     let old = s.query(std::slice::from_ref(&req)).unwrap();
+    // Derived from the documented tariffs: one reservation plus one request, and
+    // a duplicate batch shares its single reservation between both requests.
+    let single = 1 + caption_request_work();
+    let batch = 1 + 2 * caption_request_work();
+    assert_eq!(old.usage().work(), single);
     let again = s.query(std::slice::from_ref(&req)).unwrap();
-    assert_eq!(again.usage().work(), 2 * old.usage().work());
+    assert_eq!(again.usage().work(), 2 * single);
     assert_eq!(
         again.usage().allocated_bytes(),
         2 * old.usage().allocated_bytes()
@@ -445,11 +450,11 @@ fn repeats_and_duplicate_batch_charge_cumulatively_and_late_failure_is_atomic() 
     .query(&[req.clone(), req.clone()])
     .unwrap();
     assert_eq!(duplicate.results().len(), 2);
-    assert_eq!(duplicate.usage().work(), 2 * old.usage().work() - 1);
+    assert_eq!(duplicate.usage().work(), batch);
     let mut bounded = session(
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, duplicate.usage().work() - 1),
+        resource_limits(HtmlSemanticResource::Work, batch - 1),
         0,
         HtmlSemanticCancellation::new(),
     );

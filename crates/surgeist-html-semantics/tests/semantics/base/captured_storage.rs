@@ -255,6 +255,12 @@ fn null_frozen_url_counts_href_and_preserves_exact_existing_formation_limits() {
         53 * size_of::<u16>()
     );
     let usage = small.formation_usage();
+    // One frozen record whose href is the single unit "x" and whose URL is null.
+    // The step layout of the validation work is private to the bank producer,
+    // so the work cap below is the producer's own report; the exact cap must
+    // admit and one less must stop at WorkLimit, which proves it is the minimum.
+    assert_eq!(usage.record_capacity(), 1);
+    assert_eq!(usage.utf16_extent(), 1);
     let exact = HtmlBaseFactsLimits::new(
         usage.record_capacity(),
         usage.utf16_extent(),

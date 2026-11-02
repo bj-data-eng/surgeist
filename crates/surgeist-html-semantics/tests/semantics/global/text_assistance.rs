@@ -2051,8 +2051,24 @@ fn long_default_walk_is_bounded_and_sticky_cancelled_before_entry() {
         writing(&r).selecting_subject(),
         &c.subject_id(&root).unwrap()
     );
-    assert_eq!(r.usage().peak_scratch_records(), 0);
-    assert_eq!(r.usage().nested_output_records(), 1);
+    // The parent walk keeps no iterator stack and retains one report payload;
+    // its per-ancestor visit layout is private, so work is required to be
+    // charged without being pinned. The helper proves the reported work is the
+    // least admitting cap before the stop below reuses it.
+    assert_exact_and_one_short_caps(
+        "long default walk",
+        &c,
+        &cx,
+        5,
+        limits(),
+        &[req(&id, HtmlSemanticQuery::ComputedWritingSuggestions)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 1),
+            ..ExpectedUsage::none()
+        },
+    );
     let mut ss = session(
         &c,
         &cx,
@@ -2145,12 +2161,27 @@ fn work_failure_after_real_reset_traversal_releases_all_scratch() {
         &c,
         vec![(id.clone(), HtmlFormAssociationState::ResetAgainstCapture)],
     );
-    let full = query(
+    // The reset association finds its form by id through the document's child
+    // list (one iterator record); the used hint retains the own hint it was
+    // derived from (two payloads). Work is private layout, required to be
+    // charged; the helper proves the reported work is the least admitting cap
+    // before the stop below reuses it.
+    let full = assert_exact_and_one_short_caps(
+        "reset owner used hint, late work stop",
         &c,
         &cx,
-        &id,
-        HtmlSemanticQuery::UsedAutocapitalizationHint,
         6,
+        limits(),
+        &[req(&id, HtmlSemanticQuery::UsedAutocapitalizationHint)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(2),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes() + std::mem::size_of::<HtmlCapturedChildIds<'static>>() + 2,
+            ),
+            ..ExpectedUsage::none()
+        },
     );
     let mut ss = session(
         &c,

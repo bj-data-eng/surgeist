@@ -563,11 +563,14 @@ fn actual_output_capacity_limits_and_repeated_queries_are_cumulative() {
     let req = request(&id);
     let r = report(&c, &id, 4);
     let u = r.usage();
+    // The caps below are derived, not measured: one result record, three
+    // normalized text units grown one `u16` at a time, and exactly the bytes
+    // of those two allocations.
+    assert_eq!(u.output_records(), 1);
     assert_eq!(u.nested_output_records(), 3);
     assert_eq!(
         u.allocated_bytes(),
-        u.output_records() * std::mem::size_of::<HtmlSemanticResult>()
-            + 3 * std::mem::size_of::<u16>()
+        std::mem::size_of::<HtmlSemanticResult>() + 3 * std::mem::size_of::<u16>()
     );
     let make =
         |bytes, nested| HtmlSemanticLimits::new(10000, u.output_records(), 0, 0, bytes, nested);

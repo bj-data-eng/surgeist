@@ -1,4 +1,6 @@
-use crate::semantics::support::{builder, session};
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, session,
+};
 use surgeist_html::*;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
@@ -1651,9 +1653,25 @@ fn later_sticky_cap_drops_complete_batch_and_keeps_scratch_released() {
             HtmlSemanticQuery::CommandForElement,
         ),
     ];
-    let good = session(&c, &cx, limits(), 1, HtmlSemanticCancellation::new())
-        .query(&requests)
-        .unwrap();
+    // The batch retains its two result records and no nested storage; the
+    // command-for resolution's traversal depth and visit layout are private, so
+    // scratch and work are required to be charged without being pinned. The helper proves the batch
+    // total is the least admitting work cap, which makes total - 1 the point
+    // where the last request cannot finish.
+    let good = assert_exact_and_one_short_caps(
+        "command-for batch",
+        &c,
+        &cx,
+        1,
+        limits(),
+        &requests,
+        ExpectedUsage {
+            output_records: Charge::Exactly(2),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(2 * std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
     let mut limited = session(
         &c,
         &cx,
@@ -1662,8 +1680,16 @@ fn later_sticky_cap_drops_complete_batch_and_keeps_scratch_released() {
         HtmlSemanticCancellation::new(),
     );
     let failure = limited.query(&requests).unwrap_err();
+    assert!(matches!(
+        failure.kind(),
+        HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::Work,
+            limit,
+            required,
+        } if *limit == good.usage().work() - 1 && *required == good.usage().work()
+    ));
     assert_eq!(limited.usage().scratch_records(), 0);
-    assert!(limited.usage().work() > 0);
+    assert_eq!(limited.usage().work(), good.usage().work() - 1);
     assert_eq!(limited.query(&requests).unwrap_err(), failure);
 }
 

@@ -635,7 +635,32 @@ fn unavailable_gap_does_not_hide_terminal_work_or_scratch_admission() {
     let c = b.finish().unwrap();
     let id = c.subject_id(&m).unwrap();
     let cx = context(&c);
-    let u = report(&c, &id, 1).usage();
+    // The walk climbs to the wrapper div and descends, so the div's list and the
+    // subject's own (empty) list are live together: two iterator records, and one
+    // retained report. Its visit layout is private, so work is required to be
+    // charged without being pinned. The helper proves the reported work is the
+    // least admitting cap before the stop below reuses it; a zero scratch
+    // allowance is below the first frame by construction.
+    let u = assert_exact_and_one_short_caps(
+        "map name behind an unavailable gap",
+        &c,
+        &cx,
+        1,
+        limits(),
+        &[request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Exactly(2),
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(
+                result_record_bytes()
+                    + 2 * std::mem::size_of::<HtmlCapturedChildIds<'static>>()
+                    + 1,
+            ),
+            ..ExpectedUsage::none()
+        },
+    )
+    .usage();
     for (resource, cap) in [
         (HtmlSemanticResource::Work, u.work() - 1),
         (HtmlSemanticResource::ScratchRecords, 0),
