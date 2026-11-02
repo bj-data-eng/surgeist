@@ -360,12 +360,15 @@ fn an_unsupported_stage_state_latches_its_stop_in_the_ordinary_driver() {
     }
 }
 
+/// A named constructor of a stage error.
+pub(super) type StructureCase = (&'static str, fn() -> HeadError);
+
 /// Errors of the tree builder's own structures that no outcome of the document
 /// or of supplied facts names but that input may reach: the stack of open
 /// elements or the tokenizer handoff is in a shape the standalone environment
 /// does not continue from. They are the unsupported nesting state, in both
 /// drivers and in the failure's reason.
-pub(super) fn structure_errors() -> Vec<(&'static str, fn() -> HeadError)> {
+pub(super) fn structure_errors() -> Vec<StructureCase> {
     vec![
         ("EmptyStack", || HeadError::Kernel(KernelError::EmptyStack)),
         ("NotElement", || HeadError::Kernel(KernelError::NotElement)),

@@ -13,7 +13,7 @@
 // 877d6146487f15b15bc8dd0e3c625063a37b456a governs behavior and PI.
 
 use super::{
-    KernelError, LocationKernel, copy_node,
+    KernelError, LocationKernel, StopCause, copy_node,
     formatting::FormattingEntry,
     prologue::{BeforeHead, Payload, PendingToken, PrologueError},
     tag_sets, write,
@@ -21,8 +21,8 @@ use super::{
 use crate::{
     HtmlParseResource, HtmlSource, HtmlSourceRange,
     construction::{
-        BodyTextRuns, ParserNode, SessionClass, SessionError, TextRun,
-        split_leading_ascii_whitespace, validate_token_kind,
+        BodyTextRuns, ParserNode, SessionError, TextRun, split_leading_ascii_whitespace,
+        validate_token_kind,
     },
     parser::{
         control::{ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, WorkCategory},
@@ -145,50 +145,20 @@ pub(crate) enum HeadError {
     IncompleteCompletion,
 }
 impl HeadError {
-    /// The error names a state the stage's own sequencing cannot produce: an
-    /// owner, slot or mode it keeps is gone, or a token, formatting entry,
-    /// script nesting or tokenizer state is one it never creates, or a driver
-    /// steps a stage that waits at a boundary. No input reaches these; they are
-    /// faults of the parser, not unsupported documents.
+    /// What ends a parse that this error ends; the stop and the failure's
+    /// reason are both derived from it.
     ///
-    /// `AlreadyAtBoundary` is among them because the parse functions stop at
-    /// the first boundary a stage returns and the driver consumes the
-    /// after-head boundary itself. The other errors are not proven unreachable
-    /// from input and stay as they are: a tokenizer handoff that is refused
-    /// (queued events behind the first token are not excluded), the stack and
-    /// node errors of the kernel, and the session errors, which many sites share.
-    /// A session error is classified by `session_class` when the driver latches
-    /// the stop for it (`StopCause`), not here: an outcome ends the parse as its
-    /// own stop and a fault as the invariant of its kind.
-    pub(super) fn invariant_fault(&self) -> bool {
-        match self {
-            Self::Consumed
-            | Self::MissingInput
-            | Self::MissingTokenizer
-            | Self::MissingReturnMode
-            | Self::InvalidFormattingState
-            | Self::InvalidTextToken
-            | Self::InvalidScriptNesting
-            | Self::AlreadyAtBoundary
-            | Self::TokenizerExhausted => true,
-            Self::Kernel(KernelError::Consumed) => true,
-            Self::Prologue(error) => error.invariant_fault(),
-            Self::Kernel(_)
-            | Self::Handoff(_)
-            | Self::ConstructionCapabilityUnavailable
-            | Self::UnsupportedScriptPause
-            | Self::UnsupportedPendingScript
-            | Self::IncompleteCompletion => false,
-            #[cfg(test)]
-            Self::NotAtBoundary => false,
-        }
-    }
-}
-impl HeadError {
-    /// The class this error stands for, if it stands for a session outcome or
-    /// fault or for a state the closed standalone environment cannot continue
-    /// from; the stop and the failure's reason are derived from it.
-    ///
+    /// - A lost owner is a state the stage's own sequencing cannot produce: an
+    ///   owner, slot or mode it keeps is gone, or a token, formatting entry,
+    ///   script nesting or tokenizer state is one it never creates, or a driver
+    ///   steps a stage that waits at a boundary. No input reaches these; they
+    ///   are faults of the parser, not unsupported documents.
+    ///   `AlreadyAtBoundary` is among them because the parse functions stop at
+    ///   the first boundary a stage returns and the driver consumes the
+    ///   after-head boundary itself.
+    /// - A tokenizer handoff that is refused is a shape of the document the
+    ///   environment does not continue from: queued events behind the first
+    ///   token are not excluded. A stop it carries is already latched.
     /// - A completion that is not reached is the state that incomplete
     ///   completion metadata reports.
     /// - A script that asks the parser to pause, or a blocking script it would
@@ -199,24 +169,20 @@ impl HeadError {
     ///   drivers install the capability when the stage is created, so a parse
     ///   cannot reach it, and an owner imported without it is refused rather
     ///   than guessed at.
-    pub(super) fn class(&self) -> Option<SessionClass> {
+    pub(super) fn stop_cause(&self) -> StopCause {
+        use crate::parser::control::StandaloneUnsupported as State;
         match self {
-            Self::Kernel(error) => error.class(),
-            Self::Prologue(error) => error.class(),
-            Self::IncompleteCompletion => Some(crate::construction::session_class(
-                &SessionError::CompletionIncomplete,
-            )),
-            Self::UnsupportedScriptPause => Some(SessionClass::unsupported(
-                crate::parser::control::StandaloneUnsupported::ScriptPause,
-            )),
-            Self::UnsupportedPendingScript => Some(SessionClass::unsupported(
-                crate::parser::control::StandaloneUnsupported::PendingScript,
-            )),
-            Self::ConstructionCapabilityUnavailable => Some(SessionClass::unsupported(
-                crate::parser::control::StandaloneUnsupported::Provenance,
-            )),
-            Self::Handoff(_)
-            | Self::MissingInput
+            Self::Kernel(error) => error.stop_cause(),
+            Self::Prologue(error) => error.stop_cause(),
+            Self::Handoff(TokenizerHandoffError::Stop(stop)) => {
+                StopCause::Session(SessionError::Stop(*stop))
+            }
+            Self::Handoff(_) => StopCause::Unsupported(State::InvalidNesting),
+            Self::IncompleteCompletion => StopCause::Session(SessionError::CompletionIncomplete),
+            Self::UnsupportedScriptPause => StopCause::Unsupported(State::ScriptPause),
+            Self::UnsupportedPendingScript => StopCause::Unsupported(State::PendingScript),
+            Self::ConstructionCapabilityUnavailable => StopCause::Unsupported(State::Provenance),
+            Self::MissingInput
             | Self::MissingTokenizer
             | Self::Consumed
             | Self::AlreadyAtBoundary
@@ -224,9 +190,9 @@ impl HeadError {
             | Self::InvalidTextToken
             | Self::MissingReturnMode
             | Self::InvalidScriptNesting
-            | Self::InvalidFormattingState => None,
+            | Self::InvalidFormattingState => StopCause::LostOwner,
             #[cfg(test)]
-            Self::NotAtBoundary => None,
+            Self::NotAtBoundary => StopCause::LostOwner,
         }
     }
 }
@@ -1358,7 +1324,7 @@ impl HeadState<'_> {
                 .node(context.context_element().subject())
                 .map_err(|_| SessionError::ContextUnavailable)?;
             let crate::HtmlCapturedNodeKind::Element(element) = node.kind() else {
-                return Err(KernelError::NotElement.into());
+                return Err(crate::construction::SessionError::ContextUnavailable.into());
             };
             super::tag_sets::html_named(element.name(), "template", c)?
         } else {

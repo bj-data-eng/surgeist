@@ -233,7 +233,7 @@ fn a_completion_stopped_for_an_invariant_fault_latches_the_invariant_and_still_c
         completed.stop_for_public_failure(if lost {
             super::super::StopCause::LostOwner
         } else {
-            super::super::StopCause::Other
+            super::super::StopCause::Unsupported(StandaloneUnsupported::Provenance)
         });
         let expected = if lost {
             ParseStop::InternalInvariant(crate::parser::control::Invariant::TreeBuilderState)

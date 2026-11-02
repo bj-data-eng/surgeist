@@ -90,12 +90,11 @@ impl<'source> StandaloneDocumentDriver<'source> {
     }
 }
 impl<'source> CompletedStandaloneDocument<'source> {
-    /// Latches the stop a public failure reports: a lost owner is an invariant,
-    /// a session error is its class's stop, and anything else is the
-    /// provenance boundary. A stop already latched stays the first one.
+    /// Latches the stop a public failure reports for its cause. A stop already
+    /// latched stays the first one.
     pub(super) fn stop_for_public_failure(&mut self, cause: super::StopCause) {
         if let Some(d) = &mut self.driver {
-            cause.latch(&mut d.control, super::StandaloneUnsupported::Provenance);
+            cause.latch(&mut d.control);
         }
     }
     pub(super) fn take_public_failure(

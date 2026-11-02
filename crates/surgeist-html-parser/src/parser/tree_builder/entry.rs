@@ -2,7 +2,7 @@
 //! Source backing remains borrowed from the actual request; public source-owning
 //! report assembly and frozen-result transfer are separate consumers.
 use super::{StandaloneDocumentDriver, StandaloneError, prologue, write};
-use crate::parser::control::{ParseControl, ParseStop, ParseUsage, StandaloneUnsupported};
+use crate::parser::control::{ParseControl, ParseStop, ParseUsage};
 use crate::{HtmlDocumentParseRequest, HtmlParseResource, HtmlParserScriptingMode, HtmlSource};
 use std::mem::size_of;
 
@@ -130,9 +130,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
                 // prefix; a lost owner is an invariant, not an unsupported
                 // document.
                 if driver.control.stop().is_none() {
-                    error
-                        .stop_cause()
-                        .latch(&mut driver.control, StandaloneUnsupported::InvalidNesting);
+                    error.stop_cause().latch(&mut driver.control);
                 }
                 Phase::Failed
             }

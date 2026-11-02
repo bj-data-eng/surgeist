@@ -43,9 +43,7 @@ impl<'source> FragmentEntry<'source> {
         ) {
             Ok(()) => None,
             Err(error) => {
-                error
-                    .stop_cause()
-                    .latch(&mut driver.control, StandaloneUnsupported::Provenance);
+                error.stop_cause().latch(&mut driver.control);
                 Some(error)
             }
         };
