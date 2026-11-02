@@ -382,6 +382,17 @@ fn a_comment_adds_the_same_visits_whatever_elements_are_open_around_it() {
 /// open spans. The table cell is a scope boundary, so a check the pinned text
 /// makes with "in scope" ends at the cell and every walk that remains reaches
 /// beyond it only because the algorithm asks about an ancestor.
+///
+/// Outside a cell the per-level cost of the start tags below is the scope
+/// check the pinned text makes, which no cached state replaces:
+/// "has a `p` element in button scope" for `details`, `summary` and `form`
+/// (`references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md`
+/// lines 4368-4370 and 4392-4398), and "has a `select` element in scope" for
+/// `input`, `select` and `option` (lines 4664, 4750 and 4768). An `input` or a
+/// `select` also resets its form owner, which asks for its nearest `form`
+/// ancestor (lines 10831 and 10841 of
+/// `references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md`),
+/// so a walk up the ancestors is the algorithm's own.
 fn visits_added_in_a_cell_at_depth(depth: usize, prefix: &str, element: &str) -> i64 {
     let page = |inner: &str| {
         format!(
