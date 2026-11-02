@@ -8811,3 +8811,6 @@ mod subgrid_refresh_last_port;
 
 #[path = "child_baseline/native_coordinate_alignment.rs"]
 mod native_coordinate_alignment;
+
+#[path = "child_baseline/standalone_query_frame.rs"]
+mod standalone_query_frame;
