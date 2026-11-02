@@ -84,6 +84,13 @@ pub(super) fn construction_error(
         HtmlConstructionError::ReleaseUnderflow => {
             SessionError::Stop(control.fail_invariant(Invariant::ReleaseUnderflow))
         }
+        // `layout_bytes: 0` means the layout is unknown here, not that none was
+        // requested. Every bounded producer of this error reports it with its
+        // real layout before it gets this far: the record and child reserves
+        // in `ConstructionOwner::perform_action_with_commit`, the name-decision
+        // and attribute-slot reserves in `attributes.rs`, and the candidate
+        // backing reserve in `text_append.rs`. This arm is only a failure a
+        // caller without a layout still has to report.
         HtmlConstructionError::AllocationFailed => {
             SessionError::Stop(control.construction_allocation_failed(0))
         }

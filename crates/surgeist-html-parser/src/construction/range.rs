@@ -1065,6 +1065,52 @@ mod absent_owner_tests {
         crate::construction::tests::storage_zero(&c);
     }
 
+    /// A row-level fault met inside the range policy is the fault of the row,
+    /// not of the machine: asking for the "min" content of a record that is not
+    /// an element finds a record of another kind. The machine itself is not in
+    /// a state its sequencing excludes.
+    #[test]
+    fn a_row_fault_inside_the_range_policy_reports_the_registry_row() {
+        let registry_row = ParseStop::InternalInvariant(Invariant::RegistryRow);
+        let unbounded = crate::construction::tests::limits()
+            .into_builder()
+            .work_credits(u64::MAX)
+            .finish()
+            .unwrap();
+        let request = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8("<body><input type=range value=50 step=any>"),
+            unbounded,
+        );
+        let (mut c, mut session, _proof, nodes) =
+            crate::construction::effects::tests::graph(&request);
+        let input = crate::construction::effects::tests::named(&nodes, "input", 0).index;
+        let storage = session.active_mut().unwrap();
+        let slot = storage
+            .payloads
+            .values
+            .iter()
+            .position(|row| {
+                matches!(row, RetainedPayload::Input { node: Some(owner), .. } if *owner == input)
+            })
+            .unwrap();
+        let raw = storage.input_raw_slot(&mut c, slot).unwrap();
+        // Record 0 is the document, which has no attributes to read.
+        assert_eq!(
+            storage.install_range_input_value(&mut c, 0, slot, raw),
+            Err(SessionError::Stop(registry_row))
+        );
+        assert_eq!(c.stop(), Some(registry_row));
+        storage
+            .effects
+            .range
+            .take()
+            .unwrap()
+            .release(&mut c)
+            .unwrap();
+        session.release(&mut c).unwrap();
+        crate::construction::tests::storage_zero(&c);
+    }
+
     /// Staging that holds no machine has nothing to drive. The staging is
     /// present, so no registry row is missing: the machine state inside it is.
     #[test]

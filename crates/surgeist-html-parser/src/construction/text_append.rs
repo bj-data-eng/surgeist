@@ -618,3 +618,29 @@ struct StoppedAppend {
     original: Option<DocumentStringAllocation>,
     discarded: Option<DocumentString>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wrapper's provider call was charged when it was prepared. A work
+    /// plan that counts none has nothing for that charge to be part of, so the
+    /// plan differs from the work already charged for it. No row is missing.
+    #[test]
+    fn a_work_plan_below_the_prepaid_provider_call_reports_the_capacity_mismatch() {
+        let mismatch =
+            ParseStop::InternalInvariant(crate::parser::control::Invariant::CapacityMismatch);
+        let mut c = crate::construction::tests::control();
+        let before = c.usage().clone();
+        assert_eq!(
+            admit_work(&mut c, Work::default(), true),
+            Err(SessionError::Stop(mismatch))
+        );
+        assert_eq!(c.stop(), Some(mismatch));
+        assert_eq!(
+            c.usage().resource(HtmlParseResource::WorkCredits).current,
+            before.resource(HtmlParseResource::WorkCredits).current,
+            "no provider call is charged for the refused plan"
+        );
+    }
+}

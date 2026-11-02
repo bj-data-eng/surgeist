@@ -519,6 +519,7 @@ fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_aliased_allocation()
 fn effect_work_errors_map_to_their_precise_invariant() {
     let pending = ParseStop::InternalInvariant(Invariant::PendingFormEffects);
     let aliased = ParseStop::InternalInvariant(Invariant::SharedAllocationAliased);
+    let refusal = ParseStop::InternalInvariant(Invariant::ConstructionOwnerRefusal);
     for (error, expected) in [
         (SessionError::PendingIntrinsicWork, pending),
         (SessionError::AliasedPayload, aliased),
@@ -529,6 +530,15 @@ fn effect_work_errors_map_to_their_precise_invariant() {
         (SessionError::NodeDocumentUnavailable, registry_row()),
         (SessionError::SelectMetadataUnavailable, registry_row()),
         (SessionError::NonceMetadataUnavailable, registry_row()),
+        // A placement the tree refuses is effect work asking the owner for
+        // something the parser's sequencing guarantees valid.
+        (SessionError::RootMove, refusal),
+        (SessionError::AssociationMove, refusal),
+        (SessionError::NotContainer, refusal),
+        (SessionError::TemplateContentsRequired, refusal),
+        (SessionError::WrongSibling, refusal),
+        (SessionError::Cycle, refusal),
+        (SessionError::DuplicateAttribute, refusal),
     ] {
         let mut c = control();
         assert_eq!(
