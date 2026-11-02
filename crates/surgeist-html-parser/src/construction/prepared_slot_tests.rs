@@ -24,22 +24,16 @@ use surgeist_html::*;
 use surgeist_html_semantics::*;
 
 /// Resources a stopped parse returns whatever it was doing.
-const RETAINED: [HtmlParseResource; 8] = [
+const RETAINED: [HtmlParseResource; 9] = [
     HtmlParseResource::BufferedUtf16Units,
     HtmlParseResource::TokenAttributes,
     HtmlParseResource::AuxiliaryEntries,
     HtmlParseResource::ManagedEdges,
     HtmlParseResource::ManagedAttributes,
     HtmlParseResource::ManagedUtf16Units,
+    HtmlParseResource::SourceMapPayloadUnits,
     HtmlParseResource::ContextEffects,
     HtmlParseResource::OpenElements,
-];
-/// Resources that also hold the diagnostics a stopped parse keeps, so they
-/// return to zero only when it kept none.
-const RETAINED_WITHOUT_DIAGNOSTICS: [HtmlParseResource; 3] = [
-    HtmlParseResource::SourceMapEntries,
-    HtmlParseResource::SourceMapPayloadUnits,
-    HtmlParseResource::ManagedCapacityBytes,
 ];
 
 /// What a stopped parse left once cleanup ran.
@@ -49,18 +43,45 @@ struct Stopped {
     cleanup_refused: bool,
     at_stop: Option<crate::HtmlParseUsage>,
     after_cleanup: Option<crate::HtmlParseUsage>,
+    /// The diagnostics the failure keeps, and the distinct locations they name.
+    kept_records: usize,
+    kept_locations: usize,
 }
 fn stopped(failure: &HtmlParseFailure) -> Box<Stopped> {
+    let mut locations = std::collections::HashSet::new();
+    let mut kept_records = 0;
+    if let Some(view) = failure.diagnostics() {
+        kept_records = view.len();
+        for index in 0..view.len() {
+            let (_, location) = view
+                .retained_record(index)
+                .expect("a kept diagnostic is readable")
+                .expect("a kept diagnostic is within the view");
+            locations.insert(std::ptr::from_ref(location) as usize);
+        }
+    }
     Box::new(Stopped {
         stop: failure.first_stop(),
         cleanup_refused: failure.cleanup_error().is_some(),
         at_stop: failure.at_stop().cloned(),
         after_cleanup: failure.after_cleanup().cloned(),
+        kept_records,
+        kept_locations: locations.len(),
     })
 }
 
 /// Notes in `retained` what the stopped parse `stop` left, under `label`.
+///
+/// A stopped parse keeps the diagnostics it committed, in a records vector
+/// and a locations vector that cleanup does not touch. So the expected state
+/// is not zero everywhere: the diagnostics themselves are the baseline. Each
+/// kept record is one `Diagnostics` unit and `size_of::<DiagnosticRecord>()`
+/// bytes of capacity, and each distinct location it names is one
+/// `SourceMapEntries` unit and `size_of::<DiagnosticLocation>()` bytes. Both
+/// vectors hold exactly the length they were filled to. Anything beyond that
+/// baseline is a leak, including capacity bytes while diagnostics are kept.
 fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
+    use crate::construction::evidence::{DiagnosticLocation, DiagnosticRecord};
     if stop.cleanup_refused {
         retained.push(format!("{label}: cleanup refused"));
     }
@@ -68,16 +89,28 @@ fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
         .after_cleanup
         .as_ref()
         .expect("a stopped parse reports cleanup");
-    let kept_diagnostics = after.resource(HtmlParseResource::Diagnostics).current() != 0;
-    let checked = RETAINED.into_iter().chain(
-        RETAINED_WITHOUT_DIAGNOSTICS
-            .into_iter()
-            .filter(|_| !kept_diagnostics),
-    );
+    let expected = |resource| match resource {
+        HtmlParseResource::Diagnostics => stop.kept_records as u64,
+        HtmlParseResource::SourceMapEntries => stop.kept_locations as u64,
+        HtmlParseResource::ManagedCapacityBytes => {
+            (stop.kept_records * std::mem::size_of::<DiagnosticRecord>()
+                + stop.kept_locations * std::mem::size_of::<DiagnosticLocation>())
+                as u64
+        }
+        _ => 0,
+    };
+    let checked = RETAINED.into_iter().chain([
+        HtmlParseResource::Diagnostics,
+        HtmlParseResource::SourceMapEntries,
+        HtmlParseResource::ManagedCapacityBytes,
+    ]);
     for resource in checked {
         let current = after.resource(resource).current();
-        if current != 0 {
-            retained.push(format!("{label}: {resource:?}={current}"));
+        let expected = expected(resource);
+        if current != expected {
+            retained.push(format!(
+                "{label}: {resource:?}={current}, expected {expected}"
+            ));
         }
     }
 }
