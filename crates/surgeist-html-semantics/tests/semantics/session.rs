@@ -400,12 +400,12 @@ fn complete_batch_limits_and_first_terminal_failure_are_sticky() {
     let c = b.finish().unwrap();
     let cx = context(&c);
     let request = request(&c, &e, HtmlSemanticQuery::Disabledness);
-    // Derived from the documented tariffs: reservation (1), request lookup (1),
-    // dispatcher namespace test (29), "input" recognition, the subject lookup
-    // (1), the disabled attribute's intrinsic envelope (three vocabulary
-    // searches over the 5-unit name, one attribute-vocabulary search over an
-    // absent name and three namespace passes), the ancestor step (1) that
-    // reaches the root, and the result write (1).
+    // Derived from the documented per-query work for the disabledness of a
+    // parentless attribute-free form control: the query prefix (reservation 1,
+    // lookup 1, namespace test 29), "input" recognition, the form-disabled
+    // lookup (1), the intrinsic envelope (three element searches over the
+    // 5-unit name, one attribute-vocabulary search over an absent name and three
+    // namespace passes), the parent step (1) and the result write (1).
     let n = KnownHtmlElement::ALL.len();
     let exact = 1
         + 1

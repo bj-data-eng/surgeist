@@ -260,8 +260,10 @@ pub struct ExpectedUsage {
 }
 
 impl ExpectedUsage {
-    /// Every resource is pinned to the given amount; use struct update syntax
-    /// to relax a field to [`Charge::Charged`].
+    /// Defaults for a scalar query: work and allocated bytes are only required
+    /// to be charged ([`Charge::Charged`]), while output, peak scratch and
+    /// nested records must be zero ([`Charge::Zero`]). Use struct update syntax
+    /// to pin or relax individual resources.
     pub const fn none() -> Self {
         Self {
             work: Charge::Charged,
@@ -388,4 +390,50 @@ pub fn assert_exact_and_one_short_caps(
         assert_eq!(ss.usage().scratch_records(), 0, "{label}: scratch released");
     }
     baseline
+}
+
+/// Runs `requests` under `base` and proves the run's work is the least
+/// admitting work cap: the exact cap reproduces the baseline results and usage
+/// and one less stops with exactly that resource. Returns that work so a test
+/// can place a later stop relative to it (for example one request's work as the
+/// cap of a two-request batch) without trusting an unvalidated measurement.
+pub fn validated_work(
+    label: &str,
+    c: &HtmlCapture,
+    cx: &HtmlSemanticContext,
+    raw: usize,
+    base: HtmlSemanticLimits,
+    requests: &[HtmlSemanticRequest],
+) -> usize {
+    let baseline = session(c, cx, base, raw, HtmlSemanticCancellation::new())
+        .query(requests)
+        .unwrap_or_else(|f| panic!("{label}: baseline failed: {f:?}"));
+    let work = baseline.usage().work();
+    assert!(work > 0, "{label}: work must be charged");
+    let at = cap_resources(base, ALL_RESOURCES, HtmlSemanticResource::Work, work);
+    let r = session(c, cx, at, raw, HtmlSemanticCancellation::new())
+        .query(requests)
+        .unwrap_or_else(|f| panic!("{label}: exact work cap {work}: {f:?}"));
+    assert_eq!(
+        r.results(),
+        baseline.results(),
+        "{label}: exact cap results"
+    );
+    assert_eq!(r.usage(), baseline.usage(), "{label}: exact cap usage");
+    let short = cap_resources(base, ALL_RESOURCES, HtmlSemanticResource::Work, work - 1);
+    let f = session(c, cx, short, raw, HtmlSemanticCancellation::new())
+        .query(requests)
+        .expect_err(&format!("{label}: work cap {} must fail", work - 1));
+    assert!(
+        matches!(
+            f.kind(),
+            HtmlSemanticFailureKind::LimitExceeded {
+                resource: HtmlSemanticResource::Work,
+                limit,
+                ..
+            } if *limit == work - 1
+        ),
+        "{label}: {f:?}"
+    );
+    work
 }

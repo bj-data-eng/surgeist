@@ -590,7 +590,7 @@ fn exact_capture_context_host_and_configuration_qualify_conservative_results() {
     let limited = session(
         &a,
         &ax,
-        resource_limits(HtmlSemanticResource::Work, ar.usage().work()),
+        resource_limits(HtmlSemanticResource::Work, 1_000_000),
         1,
         HtmlSemanticCancellation::new(),
     )

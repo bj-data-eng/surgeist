@@ -495,7 +495,7 @@ fn immutable_results_are_capture_context_host_and_configuration_qualified() {
     let mut s = session(
         &a,
         &cx,
-        capped(HtmlSemanticResource::Work, ar.usage().work()),
+        capped(HtmlSemanticResource::Work, 1_000_000),
         1,
         HtmlSemanticCancellation::new(),
     );

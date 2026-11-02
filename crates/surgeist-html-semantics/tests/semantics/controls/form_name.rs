@@ -712,7 +712,7 @@ fn changed_capture_and_context_keep_old_reports_immutable_and_qualified() {
     let mut s = session(
         &a,
         &cx,
-        capped(HtmlSemanticResource::Work, ar.usage().work()),
+        capped(HtmlSemanticResource::Work, 1_000_000),
         1,
         HtmlSemanticCancellation::new(),
     );

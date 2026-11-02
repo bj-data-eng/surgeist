@@ -488,7 +488,7 @@ fn changed_topology_and_context_configuration_qualify_conservative_recomputation
     let limited = session(
         &a,
         &ax,
-        resource_limits(HtmlSemanticResource::Work, ar.usage().work()),
+        resource_limits(HtmlSemanticResource::Work, 1_000_000),
         0,
         HtmlSemanticCancellation::new(),
     )

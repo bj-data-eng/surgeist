@@ -1,7 +1,7 @@
 use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
     scalar_limits as resource_limits, scalar_semantic_limits as limits,
-    session_without_raw_values as session,
+    session_without_raw_values as session, validated_work,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -425,17 +425,52 @@ fn ignored_attributes_spans_text_and_member_descendants_need_no_raw_or_nested_bu
     assert_eq!(report.usage().nested_output_records(), 0);
     assert_eq!(report.usage().peak_scratch_records(), 0);
 }
+/// `K(l)` of the documented per-query work: the recognition charge of an HTML
+/// element whose local name has `l` units.
+fn known(l: usize) -> usize {
+    (l + 1) * KnownHtmlElement::ALL.len() + "http://www.w3.org/1999/xhtml".len()
+}
+/// `D`: a matched HTML namespace test.
+const D: usize = 1 + "http://www.w3.org/1999/xhtml".len();
+
 #[test]
 fn exact_one_short_work_output_and_physical_batch_bytes_stop_stickily_without_interim_snapshot() {
     let (c, ids) = ordered();
     let cx = context(&c);
-    for q in [
-        HtmlSemanticQuery::TableRowIndex,
-        HtmlSemanticQuery::TableSectionRowIndex,
+    // Documented table walks for `ordered()`: a table whose children are
+    // tfoot[f0, f1], a direct tr, one tbody[b0, b1] and two theads of one tr each.
+    // `next(l)` is one `table_next` over an element of `l` units (1, a lookup,
+    // `K(l)`); a retained or counted row costs 2.
+    let next = |l: usize| 2 + known(l);
+    // children_walk: five element children and the final exhausted `table_next`,
+    // each element also charging 1: tfoot, tr, tbody, thead, thead.
+    let children_walk = 4 * (next(5) + 1) + (next(2) + 1) + 1;
+    // A section's row list: `table_children` (2), each tr child's next, 1 and 2,
+    // and a final exhausted next (1).
+    let section = |rows: usize| 2 + rows * (next(2) + 1 + 2) + 1;
+    // Rows collection stopping at f1 (the last row): head pass, body pass, foot
+    // pass; the foot pass returns at the target without a final next.
+    let head_pass = 1 + 2 + children_walk + 2 * section(1);
+    let body_pass = 1 + 2 + children_walk + section(2) + 2;
+    let foot_pass = 1 + 2 + (next(5) + 1) + 2 + 2 * (next(2) + 1 + 2);
+    let rows_walk = head_pass + body_pass + foot_pass;
+    // Query prefix (reservation, lookup, D), the subject's lookup, D and K(2),
+    // the parent step, lookup and K(5) of the tfoot, then the step to the table.
+    let row_index =
+        1 + 1 + D + 1 + D + known(2) + (1 + 1 + known(5)) + (1 + 1 + known(5)) + rows_walk + 1;
+    // The section-row collection walks only the tfoot's two rows.
+    let section_row_index =
+        1 + 1 + D + 1 + D + known(2) + (1 + 1 + known(5)) + (2 + 2 * (next(2) + 1 + 2)) + 1;
+    for (q, work, expected) in [
+        (HtmlSemanticQuery::TableRowIndex, row_index, 6),
+        (
+            HtmlSemanticQuery::TableSectionRowIndex,
+            section_row_index,
+            1,
+        ),
     ] {
         // An ordinal is a scalar answer: one result record and no nested or
-        // scratch storage. The visits of the three row passes are private
-        // step layout, so work must be charged but is not pinned.
+        // scratch storage.
         let report = assert_exact_and_one_short_caps(
             &format!("{q:?}"),
             &c,
@@ -444,6 +479,7 @@ fn exact_one_short_work_output_and_physical_batch_bytes_stop_stickily_without_in
             limits(),
             &[request(&ids[6], q)],
             ExpectedUsage {
+                work: Charge::Exactly(work),
                 output_records: Charge::Exactly(1),
                 allocated_bytes: Charge::Exactly(result_record_bytes()),
                 ..ExpectedUsage::none()
@@ -452,14 +488,7 @@ fn exact_one_short_work_output_and_physical_batch_bytes_stop_stickily_without_in
         // The last footer row is the final row of the footer section and of
         // the reordered table collection (headers, direct and body rows,
         // footers).
-        assert_eq!(
-            value(&report),
-            &HtmlSemanticValue::Known(Some(if q == HtmlSemanticQuery::TableRowIndex {
-                6
-            } else {
-                1
-            }))
-        );
+        assert_eq!(value(&report), &HtmlSemanticValue::Known(Some(expected)));
     }
 }
 #[test]
@@ -527,7 +556,7 @@ fn fresh_capture_context_and_limits_qualify_conservative_recomputation_without_i
     let limited = session(
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, old.usage().work()),
+        resource_limits(HtmlSemanticResource::Work, 1_000_000),
         HtmlSemanticCancellation::new(),
     )
     .query(&[request(&ids[2], q)])
@@ -622,6 +651,11 @@ fn cell_exact_one_short_budgets_and_duplicate_batch_keep_zero_nested_and_scratch
     let cx = context(&c);
     let id = c.subject_id(&target).unwrap();
     let q = HtmlSemanticQuery::TableCellIndex;
+    // Documented: prefix (reservation, lookup, D), the cell's lookup, D and K(2),
+    // the parent step, lookup and K(2) of the tr, then the row's direct cell walk:
+    // `table_children` (2) and, per cell, next, 1 and 2, ending at the target.
+    let next = 2 + known(2);
+    let work = 1 + 1 + D + 1 + D + known(2) + (1 + 1 + known(2)) + 2 + 2 * (next + 1 + 2) + 1;
     let report = assert_exact_and_one_short_caps(
         "cell index",
         &c,
@@ -630,6 +664,7 @@ fn cell_exact_one_short_budgets_and_duplicate_batch_keep_zero_nested_and_scratch
         limits(),
         &[request(&id, q)],
         ExpectedUsage {
+            work: Charge::Exactly(work),
             output_records: Charge::Exactly(1),
             allocated_bytes: Charge::Exactly(result_record_bytes()),
             ..ExpectedUsage::none()
@@ -652,10 +687,20 @@ fn later_index_work_failure_is_atomic_and_retains_earlier_physical_batch_allocat
     let early = query(&c, &cx, &ids[0], q);
     let late = query(&c, &cx, &ids[6], q);
     assert!(late.usage().work() > early.usage().work());
+    // The late request's own work, proved least-admitting, admits the shared
+    // reservation and the early request but not the late request after it.
+    let late_work = validated_work(
+        "late row index",
+        &c,
+        &cx,
+        0,
+        limits(),
+        &[request(&ids[6], q)],
+    );
     let mut ss = session(
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, late.usage().work()),
+        resource_limits(HtmlSemanticResource::Work, late_work),
         HtmlSemanticCancellation::new(),
     );
     let f = ss

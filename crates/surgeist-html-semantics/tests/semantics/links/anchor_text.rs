@@ -419,27 +419,32 @@ fn late_text_limit_discards_the_batch_prefix_and_releases_all_live_frames() {
 fn exact_batch_work_and_one_short_late_failure_keep_qualification_and_prior_reports() {
     let (c, id) = leaf("AB");
     let cx = context(&c);
-    let mut measuring = session(&c, &cx, limits(), 0, HtmlSemanticCancellation::new());
-    let measured = measuring
-        .query(&[request(&id), request(&id)])
-        .unwrap()
-        .usage()
-        .work();
-    let mut exact = session(
+    // Each request grows its own text buffer by two `u16` records and its own
+    // one-record frame stack; the text walk's visit layout is private, so work
+    // is required to be charged without being pinned. The helper proves the
+    // reported batch work is the least admitting cap before the late stop below
+    // reuses it.
+    let measured = assert_exact_and_one_short_caps(
+        "anchor text duplicate batch",
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, measured),
         0,
-        HtmlSemanticCancellation::new(),
-    );
-    assert_eq!(
-        exact
-            .query(&[request(&id), request(&id)])
-            .unwrap()
-            .results()
-            .len(),
-        2
-    );
+        limits(),
+        &[request(&id), request(&id)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(2),
+            peak_scratch_records: Charge::Exactly(1),
+            nested_output_records: Charge::Exactly(4),
+            allocated_bytes: Charge::Exactly(
+                2 * (std::mem::size_of::<HtmlSemanticResult>()
+                    + std::mem::size_of::<HtmlCapturedChildIds<'_>>()
+                    + 2 * std::mem::size_of::<u16>()),
+            ),
+            ..ExpectedUsage::none()
+        },
+    )
+    .usage()
+    .work();
     let mut short = session(
         &c,
         &cx,

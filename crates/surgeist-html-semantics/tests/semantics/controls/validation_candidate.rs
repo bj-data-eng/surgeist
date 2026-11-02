@@ -1,6 +1,7 @@
 use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context, result_record_bytes,
     scalar_limits as capped, semantic_limits_with_integer_digits as limits, session,
+    validated_work,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -576,10 +577,20 @@ fn duplicate_cumulative_work_cancel_and_late_failure_return_no_successful_prefix
     assert_eq!(batch.usage().output_records(), 2);
     assert_eq!(batch.usage().nested_output_records(), 0);
     assert_eq!(batch.usage().peak_scratch_records(), 0);
+    // One request's work, proved least-admitting, admits the first request of a
+    // two-request batch (its reservation is shared) and stops inside the second.
+    let one_work = validated_work(
+        "validation candidate select",
+        &c,
+        &cx,
+        0,
+        limits(),
+        std::slice::from_ref(&req),
+    );
     let mut ss = session(
         &c,
         &cx,
-        capped(HtmlSemanticResource::Work, one.usage().work()),
+        capped(HtmlSemanticResource::Work, one_work),
         0,
         HtmlSemanticCancellation::new(),
     );
@@ -617,7 +628,7 @@ fn classification_only_changes_and_exact_capture_configuration_qualify_results()
     let changed = session(
         &c,
         &a,
-        capped(HtmlSemanticResource::Work, ar.usage().work()),
+        capped(HtmlSemanticResource::Work, 1_000_000),
         1,
         HtmlSemanticCancellation::new(),
     )

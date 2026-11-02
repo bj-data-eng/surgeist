@@ -1,6 +1,6 @@
 use crate::semantics::support::{
     Charge, ExpectedUsage, assert_exact_and_one_short_caps, builder, context,
-    scalar_limits as resource_limits, scalar_semantic_limits as limits, session,
+    scalar_limits as resource_limits, scalar_semantic_limits as limits, session, validated_work,
 };
 use surgeist_html::*;
 use surgeist_html_semantics::{
@@ -682,10 +682,13 @@ fn repeated_queries_charge_again_and_late_batch_failure_discards_the_prefix() {
         next.usage().allocated_bytes(),
         2 * old.usage().allocated_bytes()
     );
+    // One request's work, proved least-admitting, admits the first request of a
+    // two-request batch (its reservation is shared) and stops inside the second.
+    let one = validated_work("footer", &c, &cx, 0, limits(), std::slice::from_ref(&req));
     let mut bounded = session(
         &c,
         &cx,
-        resource_limits(HtmlSemanticResource::Work, old.usage().work()),
+        resource_limits(HtmlSemanticResource::Work, one),
         0,
         HtmlSemanticCancellation::new(),
     );

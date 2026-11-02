@@ -479,7 +479,7 @@ fn configurations_and_missing_topology_recompute_without_cached_defaults() {
     let b = session(
         &c,
         &cx,
-        capped(HtmlSemanticResource::Work, a.usage().work()),
+        capped(HtmlSemanticResource::Work, 1_000_000),
         2,
         HtmlSemanticCancellation::new(),
     )

@@ -1271,10 +1271,27 @@ fn work_scratch_and_allocation_caps_latch_without_partial_results_and_release_fr
     );
     let id = c.subject_id(&button).unwrap();
     let req = request(&id, HtmlSemanticQuery::CommandForElement);
-    let preserved = query(&c, &cx, &id, HtmlSemanticQuery::CommandForElement, 1);
+    // The explicit-null reference is preserved: one result record, no nested
+    // storage, and a transient traversal stack whose depth and visit layout are
+    // private, so scratch and work are required to be charged without being
+    // pinned. The helper proves the reported work is the least admitting cap
+    // before the stops below reuse it.
+    let preserved = assert_exact_and_one_short_caps(
+        "command-for preserved null",
+        &c,
+        &cx,
+        1,
+        limits(),
+        std::slice::from_ref(&req),
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            allocated_bytes: Charge::AtLeast(std::mem::size_of::<HtmlSemanticResult>() + 1),
+            ..ExpectedUsage::none()
+        },
+    );
     let work = preserved.usage().work();
     assert_eq!(preserved.usage().scratch_records(), 0);
-    assert_eq!(preserved.usage().nested_output_records(), 0);
     let mut exact = session(
         &c,
         &cx,

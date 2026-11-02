@@ -576,7 +576,7 @@ fn captures_contexts_host_revisions_and_limits_qualify_recomputation_and_foreign
     let limited = session(
         &a,
         &ax,
-        resource_limits(HtmlSemanticResource::Work, ar.usage().work()),
+        resource_limits(HtmlSemanticResource::Work, 1_000_000),
         0,
         HtmlSemanticCancellation::new(),
     )

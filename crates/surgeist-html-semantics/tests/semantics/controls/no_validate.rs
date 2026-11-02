@@ -696,8 +696,26 @@ fn reset_traversal_scratch_is_bounded_and_released_on_stop() {
         true,
     );
     let cx = context(&f, Some(HtmlFormAssociationState::ResetAgainstCapture));
-    let baseline = report(&f, &cx).usage();
-    assert!(baseline.peak_scratch_records() > 0);
+    // The reset form lookup walks the document's child lists with a transient
+    // stack whose depth is private, so scratch and work are required to be
+    // charged without being pinned. The helper proves the reported peak scratch
+    // is the least admitting cap before the loop below reuses it.
+    let baseline = assert_exact_and_one_short_caps(
+        "no-validate reset traversal",
+        &f.capture,
+        &cx,
+        100,
+        HtmlSemanticLimits::new(10000000, 100, 1000, 0, 1000000, 10000),
+        &[request(&f, HtmlSemanticQuery::SubmitterNoValidate)],
+        ExpectedUsage {
+            output_records: Charge::Exactly(1),
+            peak_scratch_records: Charge::Charged,
+            nested_output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::AtLeast(result_record_bytes() + 1),
+            ..ExpectedUsage::none()
+        },
+    )
+    .usage();
     for cap in [
         baseline.peak_scratch_records(),
         baseline.peak_scratch_records() - 1,
