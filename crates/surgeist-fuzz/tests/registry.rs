@@ -205,22 +205,58 @@ fn source_reference_naming_a_directory_is_rejected() {
     f.descriptor(declaration_citing(&["owner/fuzz/seeds"]));
     assert!(f.discover(&f.metadata()).is_err());
 }
+impl Fixture {
+    /// A real file beside the workspace root, so that a reference to it is
+    /// rejected because it leaves the root, not because the file is absent.
+    fn outside_file(&self) -> PathBuf {
+        let name = self.root.file_name().unwrap().to_str().unwrap();
+        let outside = self.root.with_file_name(format!("{name}-outside.rs"));
+        fs::write(&outside, b"").unwrap();
+        outside
+    }
+    fn rejection_of(&self, reference: &str) -> FuzzError {
+        self.descriptor(declaration_citing(&[reference]));
+        self.discover(&self.metadata())
+            .expect_err("reference should be rejected")
+    }
+}
 #[test]
 fn source_reference_cannot_leave_the_workspace() {
     let f = Fixture::new();
-    f.descriptor(declaration_citing(&["../outside.rs"]));
-    assert!(f.discover(&f.metadata()).is_err());
+    let outside = f.outside_file();
+    let reference = format!("../{}", outside.file_name().unwrap().to_str().unwrap());
+    assert!(f.root.join(&reference).is_file());
+    let rejected = f.rejection_of(&reference);
+    fs::remove_file(&outside).unwrap();
+    assert_eq!(rejected.kind(), FuzzErrorKind::Registry);
+}
+#[test]
+fn source_reference_rejections_name_the_target_and_distinguish_their_cause() {
+    let f = Fixture::new();
+    let id = target().id().to_string();
+    let missing = f.rejection_of("owner/gone.rs#anchor");
+    let malformed = f.rejection_of("owner/../Cargo.toml");
+    let directory = f.rejection_of("owner/fuzz/seeds");
+    for rejected in [&missing, &malformed, &directory] {
+        assert!(rejected.detail().contains(&id), "{rejected}");
+        assert!(rejected.detail().contains("fuzz.toml"), "{rejected}");
+    }
+    assert!(missing.detail().contains("does not exist"), "{missing}");
+    assert!(malformed.detail().contains("malformed"), "{malformed}");
+    assert!(directory.detail().contains("not a file"), "{directory}");
+    // Path failures keep their underlying cause.
+    assert!(std::error::Error::source(&missing).is_some());
+    assert!(std::error::Error::source(&malformed).is_some());
 }
 #[cfg(unix)]
 #[test]
-fn symlinked_source_reference_cannot_escape_workspace() {
+fn escaping_source_reference_is_reported_as_escaping_not_missing() {
     let f = Fixture::new();
-    let outside =
-        std::env::temp_dir().join(format!("surgeist-registry-outside-{}", std::process::id()));
-    fs::write(&outside, b"").unwrap();
+    let outside = f.outside_file();
     std::os::unix::fs::symlink(&outside, f.root.join("owner/link.rs")).unwrap();
-    f.descriptor(declaration_citing(&["owner/link.rs"]));
-    let accepted = f.discover(&f.metadata()).is_ok();
+    let rejected = f.rejection_of("owner/link.rs");
     fs::remove_file(&outside).unwrap();
-    assert!(!accepted);
+    assert!(rejected.detail().contains("escapes"), "{rejected}");
+    assert!(!rejected.detail().contains("does not exist"), "{rejected}");
+    assert!(std::error::Error::source(&rejected).is_some());
 }
