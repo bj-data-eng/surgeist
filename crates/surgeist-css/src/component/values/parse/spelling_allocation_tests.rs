@@ -1,11 +1,10 @@
-//! Allocation evidence at the real component collector, excluding its source owner.
+//! Allocation evidence at the real component promotion, excluding its source owner.
 
-use crate::component::values::parse::collect;
+use crate::component::values::parse::promote_nodes;
 use crate::component::{
     CssComponentValueLimits, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
 };
 use crate::source::CssSourceSnapshot;
-use cssparser::{Parser, ParserInput};
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region};
 
 fn retained_whitespace_bytes(nested: bool, length: usize) -> usize {
@@ -16,16 +15,19 @@ fn retained_whitespace_bytes(nested: bool, length: usize) -> usize {
         whitespace.clone()
     };
     let snapshot = CssSourceSnapshot::new(&text);
-    let mut input = ParserInput::new(&text);
-    let mut parser = Parser::new(&mut input);
+    let document = crate::syntax_consumption::source_document_snapshot_with_limits(
+        &snapshot,
+        CssComponentValueLimits::default(),
+    )
+    .unwrap();
+    let nodes = document.list(document.root_list());
 
     // The crate test allocator is installed by numeric::borrowed_admission_tests.
-    // This process runs only this case; fixture/snapshot construction is excluded.
+    // This process runs only this case; fixture/snapshot/tree construction is excluded.
     let region = Region::new(&INSTRUMENTED_SYSTEM);
-    let values = collect(&mut parser, &snapshot, CssComponentValueLimits::default()).unwrap();
+    let values = promote_nodes(&document, nodes, CssComponentValueLimits::default()).unwrap();
     let allocations = region.change();
 
-    assert!(parser.is_exhausted());
     assert_eq!(
         values
             .serialize_tokens(Default::default())

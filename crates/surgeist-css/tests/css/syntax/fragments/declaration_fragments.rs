@@ -104,14 +104,78 @@ fn terminal_important_accepts_case_escapes_and_comments() {
             );
         }
     }
-    for source in [
-        "color:red!",
-        "color:red!important tail",
-        "--x:a!urgent",
-        "--x:a!important!important",
-        "--x:a! important x",
-    ] {
+    for source in ["color:red!", "color:red!important tail"] {
         rejected(source);
+    }
+    // The flag is the last two tokens of the value only (Syntax 3 section 5.5.6
+    // step 6); anywhere else the `!` is part of a custom property's value, as a
+    // declaration in a block has it.
+    for (source, value, importance) in [
+        ("--x:a!urgent", "a!urgent", CssImportance::Normal),
+        (
+            "--x:a! important x",
+            "a! important x",
+            CssImportance::Normal,
+        ),
+        ("--x:1!important x", "1!important x", CssImportance::Normal),
+        (
+            "--x:a!important!important",
+            "a!important",
+            CssImportance::Important,
+        ),
+    ] {
+        let report = CssDeclaration::parse(&CssParser::default(), source);
+        assert!(report.is_clean(), "{source:?}: {report:?}");
+        let declaration = report.syntax().as_ref().unwrap();
+        assert_eq!(declaration.importance(), importance, "{source:?}");
+        let span = declaration.parsed_value().unwrap().span();
+        assert_eq!(
+            &source[span.start().byte_offset().value()..span.end().byte_offset().value()],
+            value,
+            "{source:?}"
+        );
+        let in_block = CssParser::default().parse_block_contents(source);
+        assert!(in_block.is_clean(), "{source:?}: {in_block:?}");
+        assert_eq!(in_block.syntax()[0].importance(), importance, "{source:?}");
+    }
+}
+
+#[test]
+fn a_backslash_before_a_newline_is_no_escape_in_a_declaration_text() {
+    // Syntax 3 sections 4.3.1 and 4.3.8: `\` followed by a newline is not a valid
+    // escape, so the `-` before it does not start an ident and is a delimiter.
+    let report = CssDeclaration::parse(&CssParser::default(), "inia -\\\n btial");
+    assert!(report.syntax().is_none(), "{report:?}");
+    let error = report.diagnostics()[0].error();
+    assert_eq!(
+        error.code(),
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedToken
+    );
+    assert_eq!(error.encountered().unwrap().authored(), "-");
+    assert_eq!(error.position().byte_offset().value(), 5);
+}
+
+#[test]
+fn a_block_as_part_of_a_larger_value_rejects_the_declaration() {
+    // A top-level `{}` block may be the whole value of a property and nothing
+    // else (Syntax 3 section 5.5.6 step 5); a custom property's value takes any
+    // components.
+    for source in [
+        "width:var(--a){}",
+        "color:red{x}",
+        "width:var(--a)/**/{a:b;",
+    ] {
+        let report = CssDeclaration::parse(&CssParser::default(), source);
+        assert!(report.syntax().is_none(), "{source:?}: {report:?}");
+        assert_eq!(
+            report.diagnostics()[0].error().code(),
+            surgeist_css::diagnostic::CssErrorCode::UnexpectedToken,
+            "{source:?}"
+        );
+    }
+    for source in ["--x:{a}", "--x:{a} b", "--x:a{b}"] {
+        let report = CssDeclaration::parse(&CssParser::default(), source);
+        assert!(report.is_clean(), "{source:?}: {report:?}");
     }
 }
 

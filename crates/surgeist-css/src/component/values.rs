@@ -16,7 +16,7 @@ use std::ops::Range;
 
 use surgeist_css_parser::Token;
 
-use crate::source::{CssParsedOrigin, CssSourceSnapshot};
+use crate::source::CssParsedOrigin;
 
 use crate::STRUCTURAL_NESTING_LIMIT as MAX_COMPONENT_DEPTH;
 
@@ -1070,13 +1070,6 @@ pub struct CssComponentValues {
 }
 
 impl CssComponentValues {
-    pub(crate) fn collect_from_parser(
-        input: &mut cssparser::Parser<'_, '_>,
-        source: &CssSourceSnapshot,
-    ) -> Result<Self, CssComponentValueError> {
-        parse::collect(input, source, CssComponentValueLimits::default())
-    }
-
     /// Token-category detection for parser-proved complete forgiving members.
     pub(crate) fn contains_delimiter(
         &self,

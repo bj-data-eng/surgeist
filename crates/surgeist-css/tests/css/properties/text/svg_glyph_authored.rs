@@ -1991,15 +1991,22 @@ fn nested_rule_fragment_import_keyframe_and_recovery_fronts_retain_definition() 
         "glyph-orientation-vertical:180deg!important extra",
     );
     assert!(malformed.syntax().is_none());
+    // `!important` is an importance flag only as the last two tokens of the
+    // value (Syntax 3 section 5.5.6 step 6): here it is part of the value, which
+    // the property's grammar rejects.
     let detail = malformed.diagnostics()[0].error();
     assert_eq!(
         detail.code(),
-        CssErrorCode::InvalidDeclarationAnnotation,
-        "ordinary SVG annotation"
+        CssErrorCode::UnexpectedToken,
+        "ordinary SVG value"
     );
+    let in_block = CssParser::new(SVG, Default::default())
+        .parse_block_contents("glyph-orientation-vertical:180deg!important extra");
+    assert!(in_block.syntax().is_empty());
     assert_eq!(
-        detail.declaration_context().unwrap(),
-        CssDeclarationContextRef::SvgGlyphOrientationVertical
+        in_block.diagnostics()[0].error().code(),
+        detail.code(),
+        "the single declaration and a declaration in a block reject the value alike"
     );
     let descriptor = CssRule::parse(
         &CssParser::new(SVG, Default::default()),

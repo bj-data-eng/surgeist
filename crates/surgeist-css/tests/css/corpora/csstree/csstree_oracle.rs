@@ -48,9 +48,9 @@ fn committed_csstree_oracle_has_validated_metadata_and_outcome_partition() {
     assert_eq!(
         oracle.outcome_counts(),
         [
-            ("clean", 354),
+            ("clean", 355),
             ("recovered", 91),
-            ("strict_rejected", 337),
+            ("strict_rejected", 336),
             ("unsupported", 153),
         ]
     );

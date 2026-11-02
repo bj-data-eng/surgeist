@@ -166,10 +166,9 @@ fn raw_declaration_corpus_obeys_selected_grammar() {
             "declaration/custom-property.json#/empty with important (parseCustomProperty:true)",
             None,
         ),
-        (
-            "declaration/custom-property.json#/error/0",
-            Some("invalid_declaration_annotation"),
-        ),
+        // `!important` followed by more components is no importance flag
+        // (Syntax 3 section 5.5.6 step 6): the custom property's value holds it.
+        ("declaration/custom-property.json#/error/0", None),
         ("declaration/custom-property.json#/only a comment", None),
         (
             "declaration/custom-property.json#/only a comment (parseCustomProperty:true)",

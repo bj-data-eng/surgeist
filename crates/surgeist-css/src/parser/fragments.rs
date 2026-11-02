@@ -3,17 +3,19 @@ use crate::declaration::{CssDeclaration, CssImportance};
 use crate::diagnostic::CssError;
 use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{from_parse_error, from_rule_parse_error, with_media_query_context};
-use crate::parser::block_units::{grammar_error, location_at, native_error, offset_of};
+use crate::parser::block_units::{
+    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, native_error, offset_of,
+};
 use crate::parser::nesting::parse_style_contents;
 use crate::parser::reconstruction::{BoundedParseContext, BoundedParseSyntax, parse_bounded};
 use crate::parser::recovery::{RecoveryState, SharedNamespaces, recovery_action_for_error};
 use crate::parser::rule_list::RuleParser;
 use crate::parser::selectors::SelectorRecovery;
-use crate::parser::syntax_types::{Stream, SyntaxError};
+use crate::parser::syntax_types::{Attached, Stream, SyntaxError};
 use crate::parser::{
     DeclarationMode, PropertyValueGrammar, ScopedBodyKind, color_profile, conditional_chains,
-    counter_style, descriptor_stream, font_face, font_feature_values, font_palette_values,
-    keyframes, named_supports, page, parse_declaration_core, parse_nested_group_rules,
+    counter_style, declaration_unit, descriptor_stream, font_face, font_feature_values,
+    font_palette_values, keyframes, named_supports, page, parse_nested_group_rules,
     parse_property_value_from_parser, parse_scoped_rule_list, queries, recovery, selectors,
 };
 use crate::property::{CssPropertyGrammar, CssPropertyNameRef};
@@ -26,8 +28,9 @@ use crate::rule::font_palette_values::{
 use crate::rule::{CssRule, CssStyleBlock};
 use crate::selector::{CssNamespaceContext, CssRelativeSelectorList, CssSelector};
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
-use cssparser::{ParseError, Parser, ParserInput, Token};
+use cssparser::ParseError;
 use surgeist_css_parser::Offset;
+use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
 /// Complete fragment parsing whose refusal retains no syntax.
 pub(super) fn bounded<T: Send>(
@@ -589,6 +592,56 @@ fn text_document(
     )
 }
 
+/// The declaration a front admits: Syntax 3 section 5.4.7 hands it the
+/// declaration it consumed, and the shell every declaration shares admits it.
+struct SingleDeclaration<'a> {
+    state: &'a RecoveryState,
+    openings: Vec<usize>,
+}
+
+impl<'i> RuleGrammar<'i, Attached<'i>> for SingleDeclaration<'_> {
+    type Item = CssDeclaration;
+    type Error = NativeError<'i>;
+
+    fn at_rule(
+        &mut self,
+        rule: AtRule<'i, Attached<'i>>,
+    ) -> Result<CssDeclaration, GrammarError<'i>> {
+        Err(SyntaxError::unknown_at_rule_error(
+            rule.start(),
+            rule.name(),
+        ))
+    }
+
+    fn qualified_rule(
+        &mut self,
+        rule: QualifiedRule<'i, Attached<'i>>,
+    ) -> Result<CssDeclaration, GrammarError<'i>> {
+        Err(SyntaxError::invalid_qualified_rule_error(rule.start()))
+    }
+}
+
+impl<'i> BlockGrammar<'i, Attached<'i>> for SingleDeclaration<'_> {
+    fn declaration(
+        &mut self,
+        declaration: DeclarationUnit<'i>,
+    ) -> Result<CssDeclaration, GrammarError<'i>> {
+        let at = declaration.start();
+        let parsed = declaration_unit::parse_declaration_unit(
+            DeclarationMode::Ordinary,
+            declaration.name(),
+            &declaration_unit::DeclarationText::of(&declaration),
+            self.state.source_snapshot(),
+            self.state.parser_context(),
+        )
+        .map_err(|error| grammar_error(at, error))?;
+        self.state
+            .retain_component_closures(std::mem::take(&mut self.openings));
+        self.state.retain_navigation_diagnostic(&parsed.body);
+        Ok(parsed.into_declaration())
+    }
+}
+
 pub(crate) fn parse_declaration_with_context(
     source: &str,
     parser_context: crate::CssParserContext,
@@ -596,52 +649,61 @@ pub(crate) fn parse_declaration_with_context(
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, SharedNamespaces::default())
             .with_parser_context(parser_context);
-        let working_source = crate::tokenization::prepare(source);
-        let mut parser_input = ParserInput::new(&working_source);
-        let mut input = Parser::new(&mut parser_input);
+        let snapshot = state.source_snapshot().clone();
+        let document = match text_document(&snapshot) {
+            Ok(document) => document,
+            Err(error) => {
+                return crate::CssParseReport::new(
+                    None,
+                    vec![reject(
+                        source,
+                        error,
+                        crate::diagnostic::CssRecoveryAction::RejectInput,
+                    )],
+                );
+            }
+        };
         let result = (|| {
-            input.skip_whitespace();
-            let declaration_start = input.state();
-            let name = input.expect_ident_cloned()?;
-            input.expect_colon()?;
+            let mut root = document.root();
+            root.discard_whitespace();
+            let declaration_start = root.mark();
+            // The name and the colon are reported where a reader of the text
+            // points: before the whitespace that precedes the offending token.
+            descriptor_stream::from_here(&mut root, Stream::consume_ident)
+                .and_then(|_| descriptor_stream::from_here(&mut root, Stream::consume_colon))
+                .map_err(|error: GrammarError<'_>| native_error(&snapshot, &error))?;
             let openings = state.check_component_values_from(
                 source,
-                input.position().byte_index(),
+                offset_of(root.site()),
                 "css.declaration",
             )?;
-            // RuleBodyParser normally supplies list boundaries. This singular
-            // entry instead rejects all root delimiters, while letting the
-            // tokenizer skip nested blocks (including custom-property braces).
-            let value_start = input.state();
+            // This singular entry rejects every root delimiter, while a nested
+            // block (a custom property's braces included) is one component.
             loop {
-                let location = input.current_source_location();
-                let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
+                let before = root.site();
+                let Ok(token) = root.consume_token_with_comments() else {
                     break;
                 };
                 if matches!(
                     token,
-                    Token::Semicolon
-                        | Token::CloseCurlyBracket
-                        | Token::CloseParenthesis
-                        | Token::CloseSquareBracket
+                    surgeist_css_parser::Token::Semicolon
+                        | surgeist_css_parser::Token::CloseCurly
+                        | surgeist_css_parser::Token::CloseParen
+                        | surgeist_css_parser::Token::CloseSquare
                 ) {
-                    return Err(location.new_unexpected_token_error::<CssError>(token));
+                    return Err(crate::diagnostic::error::unexpected_syntax_token(
+                        location_at(&snapshot, offset_of(before)),
+                        token,
+                    ));
                 }
-                finish_nested_component(&mut input, &token)?;
             }
-            input.reset(&value_start);
-            let declaration = parse_declaration_core(
-                DeclarationMode::Ordinary,
-                name,
-                &mut input,
-                &declaration_start,
-                state.source_snapshot(),
-                parser_context,
-            )?;
-            input.expect_exhausted()?;
-            state.retain_component_closures(openings);
-            state.retain_navigation_diagnostic(&declaration.body);
-            Ok(declaration.into_declaration())
+            root.restore(declaration_start);
+            let mut grammar = SingleDeclaration {
+                state: &state,
+                openings,
+            };
+            root.parse_declaration(&mut grammar)
+                .map_err(|failed| native_error(&snapshot, failed.error()))
         })();
         match result {
             Ok(declaration) => crate::CssParseReport::new(
@@ -1433,25 +1495,4 @@ pub(super) fn parse_style_block_inner(
         }
         Err(diagnostics) => crate::CssParseReport::new(None, diagnostics),
     }
-}
-
-pub(super) fn finish_nested_component<'i>(
-    input: &mut Parser<'i, '_>,
-    token: &Token<'i>,
-) -> Result<(), ParseError<'i, CssError>> {
-    if matches!(
-        token,
-        Token::Function(_)
-            | Token::ParenthesisBlock
-            | Token::SquareBracketBlock
-            | Token::CurlyBracketBlock
-    ) {
-        // Finish this block now so the next root token's location and source
-        // slice begin after it, rather than before implicit tokenizer skipping.
-        input.parse_nested_block(|nested| {
-            while nested.next_including_whitespace_and_comments().is_ok() {}
-            Ok(())
-        })?;
-    }
-    Ok(())
 }
