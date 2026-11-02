@@ -1501,8 +1501,8 @@ mod tests {
                 )
                 .unwrap();
                 let request = layout::LayoutRootRequest::viewport(layout::Size::new(
-                    layout::Available::definite(120.0),
-                    layout::Available::definite(120.0),
+                    layout::Available::MAX_CONTENT,
+                    layout::Available::MAX_CONTENT,
                 ))
                 .unwrap();
                 let batch = layout::compute_layout_with_flow(&flow, 0, request).unwrap();
