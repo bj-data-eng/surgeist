@@ -198,6 +198,9 @@ fn latch_registry_row(control: &mut ParseControl) -> SessionError {
 ///   have no invariant: the caller passes them through unchanged.
 /// - An intrinsic operation that is still owed is the pending-effects stop.
 /// - A uniqueness check that failed is the aliased-allocation stop.
+/// - A placement the tree refuses, or a duplicated attribute, is the
+///   construction owner declining a request the parser's sequencing
+///   guarantees valid.
 /// - A retained row that is missing, of another kind, unjoined or out of
 ///   place is a registry row.
 fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::control::Invariant> {
@@ -215,17 +218,17 @@ fn session_fault_invariant(error: &SessionError) -> Option<crate::parser::contro
         | SessionError::ContextReactionUnavailable => None,
         SessionError::PendingIntrinsicWork => Some(Invariant::PendingFormEffects),
         SessionError::AliasedPayload => Some(Invariant::SharedAllocationAliased),
-        SessionError::NonceMetadataUnavailable
-        | SessionError::ForeignNode
-        | SessionError::RootMove
+        SessionError::RootMove
         | SessionError::AssociationMove
         | SessionError::NotContainer
         | SessionError::TemplateContentsRequired
         | SessionError::WrongSibling
         | SessionError::Cycle
+        | SessionError::DuplicateAttribute => Some(Invariant::ConstructionOwnerRefusal),
+        SessionError::NonceMetadataUnavailable
+        | SessionError::ForeignNode
         | SessionError::Consumed
         | SessionError::WrongToken
-        | SessionError::DuplicateAttribute
         | SessionError::TemplateInsertionStateUnavailable
         | SessionError::NotDocument
         | SessionError::OriginSplitUnavailable
@@ -252,19 +255,40 @@ fn latch_effect_fault(control: &mut ParseControl, error: SessionError) -> Sessio
         None => error,
     }
 }
-/// The stop for a non-stop error that ended a creation after its association
-/// metadata was registered. The unbound metadata can only be cleaned up under
-/// a stop, so the error becomes one, labelled by the fault it reports.
+/// What a non-stop error that ended a creation after its association metadata
+/// was registered becomes. A fault of the creation's own is a stop labelled by
+/// what it reports, as in effect work.
 ///
-/// The creation's own steps produce no document or service outcome: the one
-/// that is reachable from input (an unavailable image-support fact) is passed
-/// on by the caller before this runs. Such an outcome met here is a creation
+/// An outcome the driver classifies itself passes through unchanged, as the
+/// unavailable image-support fact does: the creation runs image update,
+/// associated-fact (`start_img_update` and `set_hyperlink`), nonce and
+/// context-fact work, whose outcomes come from the facts the caller supplied
+/// and so must keep the classification the driver gives them.
+///
+/// The outcomes of script, SVG-wrapper and completion work are different. The
+/// callees of the creation (`allocate_ordered_payload`,
+/// `allocate_html_payload_prepared`, `mark_document_parser_style` and
+/// `normalize_radio`, and what they call for attribute, input, select,
+/// details, nonce, meta, dialog, style and associated-state set-up) were read
+/// for calls into script preparation, SVG-wrapper or completion code, and
+/// none was found; the form-effect drain they reach only steps the id-change
+/// stage of the creation's own element. Such an outcome met here is a creation
 /// that returned something that belongs to another stage, which is what the
 /// creation label names.
 fn latch_creation_fault(control: &mut ParseControl, error: SessionError) -> SessionError {
-    let invariant = session_fault_invariant(&error)
-        .unwrap_or(crate::parser::control::Invariant::IncompleteFormAssociationCreation);
-    SessionError::Stop(control.fail_invariant(invariant))
+    use crate::parser::control::Invariant;
+    if let Some(invariant) = session_fault_invariant(&error) {
+        return SessionError::Stop(control.fail_invariant(invariant));
+    }
+    match error {
+        SessionError::ScriptMetadataUnavailable
+        | SessionError::SvgScriptMetadataUnavailable
+        | SessionError::CompletionMetadataUnavailable
+        | SessionError::CompletionIncomplete => {
+            SessionError::Stop(control.fail_invariant(Invariant::IncompleteFormAssociationCreation))
+        }
+        other => other,
+    }
 }
 /// The position after `cursor`. Every caller reaches it only after the work
 /// list yielded an entry at `cursor`, so `cursor` is below an in-memory length
@@ -7708,10 +7732,6 @@ impl ParserArenaSession {
             Ok(node)
         })();
         match result {
-            Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
-            Err(SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport)) => Err(
-                SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
-            ),
             Err(error)
                 if slot.is_some()
                     || link_slot.is_some()

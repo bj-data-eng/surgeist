@@ -101,11 +101,13 @@ pub enum Invariant {
     /// SVG-wrapper or task effect, an open checkpoint, an intrinsic operation
     /// not yet performed, or a base response not yet returned.
     PendingFormEffects,
-    /// A creation that holds a form, link, select or details association met
-    /// an outcome of the document or of a service that none of its own steps
-    /// produces, so the association it registered stays unbound. A creation
-    /// that fails for a fault of its own reports what that fault violates
-    /// instead: a missing row, an aliased allocation, a pending operation.
+    /// A creation that holds a form, link, select or details association
+    /// returned the outcome of script, SVG-wrapper or completion work, which
+    /// none of its steps runs, so the association it registered stays unbound.
+    /// Outcomes of the creation's own image, associated-fact, nonce and context
+    /// work keep the classification the driver gives them, and a creation that
+    /// fails for a fault of its own reports what that fault violates instead: a
+    /// missing row, an aliased allocation, a pending operation.
     IncompleteFormAssociationCreation,
     /// A construction registry row, record, child or payload that internal
     /// state names is missing, out of range or of another kind, a construction
@@ -121,12 +123,13 @@ pub enum Invariant {
     /// that the parser's well-formed requests cannot produce.
     RangeMachineState,
     /// HTML's construction owner refused a request that the parser's own
-    /// sequencing guarantees valid: a record of the wrong kind, a shadow,
-    /// template or contents association that is already held or malformed,
-    /// an attribute that is duplicated or out of order, an invalid output
-    /// root, or an operation that was already consumed or is not ready. The
-    /// owner's error enum is open, so an error this parser does not yet
-    /// classify reports the same fault.
+    /// sequencing guarantees valid: a record of the wrong kind, a placement the
+    /// tree cannot take (a root or association move, a parent that cannot hold
+    /// children, a cycle), a shadow, template or contents association that is
+    /// already held or malformed, an attribute that is duplicated or out of
+    /// order, an invalid output root, or an operation that was already
+    /// consumed or is not ready. The owner's error enum is open, so an error
+    /// this parser does not yet classify reports the same fault.
     ConstructionOwnerRefusal,
     /// The tree-builder drivers or algorithm are in a state their sequencing
     /// excludes: a driver, stage or prologue owner that the sequencing keeps in
