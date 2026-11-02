@@ -237,6 +237,72 @@ fn document_missing_end_tag_name_diagnostic_locates_the_greater_than_sign() {
     }
 }
 
+const EOF_IN_PROCESSING_INSTRUCTION: Expected = (
+    HtmlParseDiagnosticKind::Tokenizer(HtmlTokenizerDiagnostic::EofInProcessingInstruction),
+    "parse-error-eof-in-processing-instruction",
+    "eof-in-processing-instruction",
+);
+
+#[test]
+fn document_ending_inside_a_processing_instruction_emits_only_end_of_file() {
+    // 13.2.5.7 Tag open state: U+003F enters the processing instruction open
+    // state, and EOF in any of the processing instruction states is an
+    // eof-in-processing-instruction parse error that emits only an end-of-file
+    // token. The unfinished instruction leaves nothing behind, so the input
+    // parses as if it were absent, also when the document starts with it and
+    // the initial insertion mode has to hand the tokenizer over.
+    let cases: [(&str, &str, HtmlDocumentMode, &[Expected]); 5] = [
+        (
+            "<?a?",
+            "<html>\n  <head>\n  <body>\n",
+            HtmlDocumentMode::Quirks,
+            &[EOF_IN_PROCESSING_INSTRUCTION, MISSING_DOCTYPE],
+        ),
+        (
+            "<?a b",
+            "<html>\n  <head>\n  <body>\n",
+            HtmlDocumentMode::Quirks,
+            &[EOF_IN_PROCESSING_INSTRUCTION, MISSING_DOCTYPE],
+        ),
+        (
+            "<?a?<?a?",
+            "<html>\n  <head>\n  <body>\n",
+            HtmlDocumentMode::Quirks,
+            &[EOF_IN_PROCESSING_INSTRUCTION, MISSING_DOCTYPE],
+        ),
+        (
+            "<!doctype html><?a ?",
+            "<!DOCTYPE html>\n<html>\n  <head>\n  <body>\n",
+            HtmlDocumentMode::NoQuirks,
+            &[EOF_IN_PROCESSING_INSTRUCTION],
+        ),
+        (
+            "<!doctype html><p><?a b?",
+            "<!DOCTYPE html>\n<html>\n  <head>\n  <body>\n    <p>\n",
+            HtmlDocumentMode::NoQuirks,
+            &[EOF_IN_PROCESSING_INSTRUCTION],
+        ),
+    ];
+    for (input, tree, mode, diagnostics) in cases {
+        for source in sources(input) {
+            let report = parse_document(source);
+            assert_eq!(document_tree(&report), (mode, tree.to_owned()), "{input:?}");
+            assert_diagnostics(&report, diagnostics, input);
+        }
+    }
+}
+
+#[test]
+fn fragment_ending_inside_a_processing_instruction_emits_only_end_of_file() {
+    for (input, tree) in [("<?a?", ""), ("<?a b", ""), ("x<?a ?", "\"x\"\n")] {
+        for source in sources(input) {
+            let report = parse_fragment(source);
+            assert_eq!(fragment_tree(&report), tree, "{input:?}");
+            assert_diagnostics(&report, &[EOF_IN_PROCESSING_INSTRUCTION], input);
+        }
+    }
+}
+
 #[test]
 fn fragment_missing_end_tag_name_parses_as_if_the_markup_were_absent() {
     let cases: [(&str, &str, usize); 5] = [

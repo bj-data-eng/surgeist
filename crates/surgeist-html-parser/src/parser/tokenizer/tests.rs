@@ -2106,6 +2106,37 @@ fn missing_end_tag_name_abandons_its_markup_occurrence() {
 }
 
 #[test]
+fn eof_in_a_processing_instruction_leaves_no_active_draft_for_the_head_handoff() {
+    // HTML877d processing instruction states: EOF is an
+    // eof-in-processing-instruction error that emits only end-of-file. The
+    // unfinished instruction's target and data drafts are discarded with it, so
+    // a document prologue that ends here can hand the tokenizer over.
+    for input in [
+        "<?a?", "<?a ", "<?a b", "<?a ?", "<?a b?", "<?a?x", "<?a?<?a?",
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        let mut tokens = 0;
+        while let Some(event) = lexer.next(&mut c, false).unwrap() {
+            if matches!(&event, Event::Token(_)) {
+                tokens += 1;
+            }
+            event.release(&mut c).unwrap();
+        }
+        assert_eq!(tokens, 1, "{input:?}: only end-of-file is emitted");
+        assert_eq!(
+            lexer.lexer.validate_head_handoff(&source, &mut c),
+            Ok(()),
+            "{input:?}"
+        );
+        lexer.release(&mut c).unwrap();
+        assert_storage_released(&c);
+    }
+}
+
+#[test]
 fn lexical_cdata_chunk_coordinates_accumulate_exact_actual_output_units() {
     use crate::construction::provenance::{LexicalDisposition, LexicalKind, LexicalRole};
     let source = HtmlSource::utf8("<![CDATA[A🙂\r\nB]]>");
