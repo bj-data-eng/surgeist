@@ -33,28 +33,6 @@ enum Bank {
     Wrapper,
 }
 
-/// The session error for a refusal from HTML's construction owner, with every
-/// variant of its error classified by what it violates.
-///
-/// - Handle, placement and cycle refusals are errors about the document's own
-///   shape; their callers classify them and nothing is latched here.
-/// - A payload that was aliased and a count that cannot be represented keep
-///   their own stops.
-/// - A ticket, layout or limit that disagrees with what the controller
-///   charged, and a release beyond what was held, are accounting faults. The
-///   parse controller admits every resource before the owner is asked, so a
-///   limit the owner reports is the owner's accounting disagreeing with it.
-/// - An allocation that failed is the environment refusing, a reached stop
-///   that never names an invariant. The sites that know the layout classify
-///   it themselves first, so none is known here.
-/// - Every other refusal is the owner declining a request that the parser's
-///   sequencing guarantees valid.
-///
-/// The owner keeps its error's cause private and open to later causes, so the
-/// compiler cannot make this crate classify a new one. [`classify`] names each
-/// current cause through the owner's predicates, [`disposition`] maps every
-/// named fault exhaustively, and a cause neither names reports the same fault
-/// as the declined requests. The inventory tests cover every current cause.
 /// What the construction owner's error violates, one fault per cause it can
 /// report today, plus the cause this parser does not yet name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -220,10 +198,11 @@ fn classify(error: &HtmlConstructionError) -> OwnerFault {
 /// How a fault is reported to the session.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Disposition {
-    /// A document-shaped error the caller classifies; nothing is latched.
+    /// A document-shaped error that `session_class` classifies; nothing is
+    /// latched here.
     Session(SessionError),
-    /// A reached invariant stop.
-    Invariant(crate::parser::control::Invariant),
+    /// The class a stage error of the same kind would carry, latched through it.
+    Class(SessionClass),
     /// A count that cannot be represented.
     Representation,
     /// An allocation whose layout is unknown here.
@@ -233,7 +212,7 @@ enum Disposition {
 /// Maps every fault to its report. A new fault needs a row here to compile.
 fn disposition(fault: OwnerFault) -> Disposition {
     use crate::parser::control::Invariant;
-    use Disposition::{AllocationFailed, Invariant as Stop, Representation, Session};
+    use Disposition::{AllocationFailed, Class, Representation, Session};
     match fault {
         OwnerFault::ForeignBuilder | OwnerFault::UnknownNode => Session(SessionError::ForeignNode),
         OwnerFault::RootMove => Session(SessionError::RootMove),
@@ -244,12 +223,14 @@ fn disposition(fault: OwnerFault) -> Disposition {
             Session(SessionError::WrongSibling)
         }
         OwnerFault::Cycle => Session(SessionError::Cycle),
-        OwnerFault::SharedAllocationAliased => Stop(Invariant::SharedAllocationAliased),
+        OwnerFault::SharedAllocationAliased => {
+            Class(SessionClass::Fault(Invariant::SharedAllocationAliased))
+        }
         OwnerFault::RepresentationExhausted => Representation,
         OwnerFault::CapacityMismatch
         | OwnerFault::ForeignAllocation
-        | OwnerFault::LimitExceeded => Stop(Invariant::CapacityMismatch),
-        OwnerFault::ReleaseUnderflow => Stop(Invariant::ReleaseUnderflow),
+        | OwnerFault::LimitExceeded => Class(SessionClass::Fault(Invariant::CapacityMismatch)),
+        OwnerFault::ReleaseUnderflow => Class(SessionClass::Fault(Invariant::ReleaseUnderflow)),
         // `layout_bytes: 0` means the layout is unknown here, not that none was
         // requested. Every bounded producer of this error reports it with its
         // real layout before it gets this far: the record and child reserves
@@ -271,10 +252,44 @@ fn disposition(fault: OwnerFault) -> Disposition {
         | OwnerFault::InvalidOutputRoot
         | OwnerFault::OperationConsumed
         | OwnerFault::OperationNotReady
-        | OwnerFault::Unlisted => Stop(Invariant::ConstructionOwnerRefusal),
+        | OwnerFault::Unlisted => Class(SessionClass::Fault(Invariant::ConstructionOwnerRefusal)),
     }
 }
 
+/// The session error for a refusal from HTML's construction owner, with every
+/// cause of its error classified by what it violates.
+///
+/// Classification has one table, [`session_class`]. A document-shaped refusal
+/// becomes the [`SessionError`] that `session_class` already classifies, and
+/// nothing is latched here. Every other cause becomes the [`SessionClass`] that
+/// a stage error would carry, and is latched through [`SessionClass::latch`], so
+/// the stop and the failure's reason derive from the same class
+/// (`StopCause`). Two environment stops, a count that cannot be represented
+/// and an allocation that failed, are latched directly, as their controller
+/// owners latch them.
+///
+/// - Handle, placement and cycle refusals are errors about the document's own
+///   shape; their callers classify them and nothing is latched here.
+/// - A payload that was aliased and a count that cannot be represented keep
+///   their own stops.
+/// - A ticket, layout or limit that disagrees with what the controller
+///   charged, and a release beyond what was held, are accounting faults. The
+///   parse controller admits every resource before the owner is asked, so a
+///   limit the owner reports is the owner's accounting disagreeing with it.
+/// - An allocation that failed is the environment refusing, a reached stop
+///   that never names an invariant. The sites that know the layout classify
+///   it themselves first, so none is known here.
+/// - Every other refusal is the owner declining a request that the parser's
+///   sequencing guarantees valid.
+///
+/// The owner keeps its error's cause private and open to later causes, so the
+/// compiler cannot make this crate classify a new one. [`classify`] names each
+/// current cause through the owner's predicates and [`disposition`] maps every
+/// named fault exhaustively. A cause neither names is a fault of the parser,
+/// never an outcome of the document: every cause that parsed input can reach
+/// (a limit, an allocation, a count) is named, so `Unlisted` reports the
+/// construction-owner invariant and cannot end a parse as a document outcome.
+/// The inventory tests cover every current cause.
 pub(super) fn construction_error(
     control: &mut ParseControl,
     error: HtmlConstructionError,
@@ -286,7 +301,7 @@ pub(super) fn construction_error(
 fn report(control: &mut ParseControl, disposition: Disposition) -> SessionError {
     match disposition {
         Disposition::Session(error) => error,
-        Disposition::Invariant(invariant) => SessionError::Stop(control.fail_invariant(invariant)),
+        Disposition::Class(class) => SessionError::Stop(class.latch(control)),
         Disposition::Representation => {
             SessionError::Stop(control.stop_representation(HtmlParseResource::ManagedCapacityBytes))
         }

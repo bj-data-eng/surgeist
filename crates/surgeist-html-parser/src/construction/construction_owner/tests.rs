@@ -698,6 +698,52 @@ fn every_owner_fault_reports_what_it_violates() {
     }
 }
 
+/// The construction path has no classification of its own: a document-shaped
+/// fault is a session error that `session_class` classifies as a fault of the
+/// parser, an accounting fault is the class a stage error would carry, and the
+/// error returned for a latched stop is the outcome `session_class` assigns to
+/// that stop. The unnamed cause is a parser fault, never a document outcome.
+#[test]
+fn owner_dispositions_agree_with_the_session_classification() {
+    let faults = OWNER_CAUSES
+        .iter()
+        .map(|(_, fault)| *fault)
+        .chain([OwnerFault::Unlisted]);
+    for fault in faults {
+        let mut c = crate::construction::tests::control();
+        let reported = report(&mut c, disposition(fault));
+        match disposition(fault) {
+            Disposition::Session(error) => {
+                assert_eq!(reported, error, "{fault:?}");
+                assert!(
+                    matches!(session_class(&error), SessionClass::Fault(_)),
+                    "{fault:?}"
+                );
+                assert_eq!(c.stop(), None, "{fault:?}");
+            }
+            Disposition::Class(class) => {
+                assert!(matches!(class, SessionClass::Fault(_)), "{fault:?}");
+                let SessionError::Stop(stop) = reported else {
+                    panic!("{fault:?} did not latch a stop");
+                };
+                assert_eq!(session_class(&reported), SessionClass::Outcome(stop));
+                assert_eq!(c.stop(), Some(stop), "{fault:?}");
+            }
+            Disposition::Representation | Disposition::AllocationFailed => {
+                let SessionError::Stop(stop) = reported else {
+                    panic!("{fault:?} did not latch a stop");
+                };
+                assert_eq!(session_class(&reported), SessionClass::Outcome(stop));
+                assert_eq!(c.stop(), Some(stop), "{fault:?}");
+            }
+        }
+    }
+    assert_eq!(
+        disposition(OwnerFault::Unlisted),
+        Disposition::Class(SessionClass::Fault(Invariant::ConstructionOwnerRefusal))
+    );
+}
+
 /// The cause table lists each fault once, so no two causes share a report by
 /// accident and the unlisted fault is reachable only for an unnamed cause.
 #[test]
