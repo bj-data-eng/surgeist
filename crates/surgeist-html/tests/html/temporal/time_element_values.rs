@@ -190,14 +190,17 @@ fn processing_year_has_no_author_only_four_digit_minimum() {
         ),
     ] {
         let report = read(text);
-        assert_eq!(
-            matches!(
+        if author_valid {
+            // Four or more digits, at least one nonzero (elements line 6835):
+            // the authored year is the canonical digits of the table.
+            assert_eq!(
                 report.author(),
-                HtmlValueAuthorState::Valid(HtmlTimeElementValue::Year(_))
-            ),
-            author_valid
-        );
-        if !author_valid {
+                &HtmlValueAuthorState::Valid(HtmlTimeElementValue::Year(
+                    HtmlYear::from_decimal_digits(canonical).unwrap()
+                )),
+                "{text}"
+            );
+        } else {
             // A year needs four or more digits (elements capture line 6835),
             // and the digit-only text is no duration either.
             assert_rejected_author(&report, text);
@@ -304,25 +307,31 @@ fn negative_zero_offset_recovery_does_not_certify_authored_syntax() {
 
 #[test]
 fn duration_recovery_keeps_its_own_whitespace_and_exact_fraction_rules() {
-    for (text, integer, fraction, author_valid) in [
-        ("PT0.0001S", "0", Some("0001"), false),
-        (" 1h ", "3600", None, true),
-        ("1h1H", "7200", None, false),
+    // The authored value is Some only for a valid duration string: " 1h " is one
+    // component with optional surrounding whitespace (foundations line 3304
+    // onward) of 1 * 3600 s.
+    for (text, integer, fraction, authored) in [
+        ("PT0.0001S", "0", Some("0001"), None),
+        (
+            " 1h ",
+            "3600",
+            None,
+            Some(HtmlDuration::new(3600_u128.into(), 0).unwrap()),
+        ),
+        ("1h1H", "7200", None, None),
     ] {
         let report = read(text);
-        assert_eq!(
-            matches!(
+        if let Some(duration) = authored {
+            assert_eq!(
                 report.author(),
-                HtmlValueAuthorState::Valid(HtmlTimeElementValue::Duration(_))
-            ),
-            author_valid,
-            "{text}"
-        );
-        if !author_valid {
-            // A fraction has one to three digits (foundations lines 3296 and 3312)
-            // and the components of the second form need different scales
-            // (line 3304); the
-            // duration alternative is the last one, so its error is reported.
+                &HtmlValueAuthorState::Valid(HtmlTimeElementValue::Duration(duration)),
+                "{text}"
+            );
+        } else {
+            // A fraction has one to three digits (foundations lines 3296 and
+            // 3312) and the components of the second form need different scales
+            // (line 3304); the duration alternative is the last one, so its error
+            // is reported.
             assert_rejected_author(&report, text);
         }
         let HtmlMachineReadableTime::Duration(value) = recovered(&report) else {
@@ -332,16 +341,19 @@ fn duration_recovery_keeps_its_own_whitespace_and_exact_fraction_rules() {
         assert_eq!(value.seconds().fractional_digits(), fraction);
     }
     // The processing grammar admits zero calendar quantities, not nonzero ones.
-    assert!(matches!(
-        recovered(&read("P0Y")),
-        HtmlMachineReadableTime::Duration(_)
-    ));
-    assert!(matches!(
+    // Zero years contribute no seconds (foundations parse-a-duration rules, line 3350).
+    let zero = read("P0Y");
+    let HtmlMachineReadableTime::Duration(value) = recovered(&zero) else {
+        panic!("expected duration")
+    };
+    assert_eq!(value.seconds().integer_part().decimal_digits(), "0");
+    assert_eq!(value.seconds().fractional_digits(), None);
+    assert_eq!(
         read("P1Y").recovery(),
-        HtmlValueRecoveryState::Failed(HtmlValueFailure::Syntax(HtmlValueSyntaxError::Temporal(
+        &HtmlValueRecoveryState::Failed(HtmlValueFailure::Syntax(HtmlValueSyntaxError::Temporal(
             HtmlTemporalError::NonzeroCalendarDuration
         )))
-    ));
+    );
 }
 
 #[test]
@@ -424,11 +436,29 @@ fn native_ten_format_values_serialize_conforming_attributes() {
         let report = HtmlValueInterpreter::new(attribute.value().len())
             .time_element_value(Some(attribute.value()))
             .unwrap();
-        assert_eq!(report.author(), &HtmlValueAuthorState::Valid(value));
-        assert!(matches!(
-            report.recovery(),
-            HtmlValueRecoveryState::Value(_)
-        ));
+        assert_eq!(report.author(), &HtmlValueAuthorState::Valid(value.clone()));
+        // The recovery of a conforming value is its own machine-readable
+        // equivalent: the parsed counterpart of the authored value (each
+        // conversion is owned by the value types, not by the recovery parser).
+        let expected = match &value {
+            HtmlTimeElementValue::Month(v) => HtmlMachineReadableTime::Month(v.clone()),
+            HtmlTimeElementValue::Date(v) => HtmlMachineReadableTime::Date(v.clone()),
+            HtmlTimeElementValue::YearlessDate(v) => HtmlMachineReadableTime::YearlessDate(*v),
+            HtmlTimeElementValue::Time(v) => HtmlMachineReadableTime::Time((*v).into()),
+            HtmlTimeElementValue::LocalDateTime(v) => {
+                HtmlMachineReadableTime::LocalDateTime(v.clone().into())
+            }
+            HtmlTimeElementValue::TimeZoneOffset(v) => HtmlMachineReadableTime::TimeZoneOffset(*v),
+            HtmlTimeElementValue::GlobalDateTime(v) => {
+                HtmlMachineReadableTime::GlobalDateTime(v.clone().into())
+            }
+            HtmlTimeElementValue::Week(v) => HtmlMachineReadableTime::Week(v.clone()),
+            HtmlTimeElementValue::Year(v) => HtmlMachineReadableTime::Year(v.clone()),
+            HtmlTimeElementValue::Duration(v) => {
+                HtmlMachineReadableTime::Duration(v.clone().into())
+            }
+        };
+        assert_eq!(report.recovery(), &HtmlValueRecoveryState::Value(expected));
     }
 }
 
@@ -442,11 +472,8 @@ fn missing_standalone_input_is_not_present_empty_or_child_text_fallback() {
     let empty = DocumentString::from("");
     let present = interpreter.time_element_value(Some(&empty)).unwrap();
     assert_eq!(present.raw(), Some(&empty));
-    assert!(matches!(present.author(), HtmlValueAuthorState::Invalid(_)));
-    assert!(matches!(
-        present.recovery(),
-        HtmlValueRecoveryState::Failed(_)
-    ));
+    assert_rejected_author(&present, "");
+    assert_rejected_recovery(&present, "");
     assert_eq!(absent.input_code_units(), 0);
     assert_eq!(present.input_code_units(), 0);
 }
@@ -467,16 +494,14 @@ fn whole_utf16_admission_precedes_any_syntax_and_preserves_non_scalar_units() {
         assert_eq!(report.raw(), Some(&raw));
         assert_eq!(report.input_code_units(), 4);
         if raw.code_units()[0] == 0xd800 {
-            assert!(matches!(report.author(), HtmlValueAuthorState::Invalid(_)));
-            assert!(matches!(
-                report.recovery(),
-                HtmlValueRecoveryState::Failed(_)
-            ));
+            // A lone surrogate and NUL form no duration (the last alternative).
+            assert_rejected_author(&report, "surrogates");
+            assert_rejected_recovery(&report, "surrogates");
         } else {
-            assert!(matches!(
+            assert_eq!(
                 report.author(),
-                HtmlValueAuthorState::Valid(HtmlTimeElementValue::Year(_))
-            ));
+                &HtmlValueAuthorState::Valid(HtmlTimeElementValue::Year(year(1)))
+            );
         }
     }
 }
@@ -487,19 +512,33 @@ fn prior_reports_and_narrow_common_and_modification_domains_remain_unchanged() {
     let interpreter = HtmlValueInterpreter::new(64);
     let old = interpreter.time_element_value(Some(&raw)).unwrap();
     let common = interpreter.date_with_optional_time(Some(&raw)).unwrap();
-    assert!(matches!(common.author(), HtmlValueAuthorState::Invalid(_)));
-    assert!(matches!(
+    // Date-with-optional-time author syntax is a date or a global date and
+    // time, whose year needs four digits, so "14:54" fails there; the date or
+    // time processing rules (foundations lines 3471-3495) then read it as a time.
+    assert_eq!(
+        common.author(),
+        &HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(
+            HtmlTemporalError::InvalidSyntax
+        ))
+    );
+    assert_eq!(
         common.recovery(),
-        HtmlValueRecoveryState::Value(HtmlDateOrTime::Time(_))
-    ));
+        &HtmlValueRecoveryState::Value(HtmlDateOrTime::Time(
+            HtmlTime::new(14, 54, 0, 0).unwrap().into()
+        ))
+    );
     let date_or_time = interpreter
         .date_or_time(Some(&DocumentString::from("2011-11")))
         .unwrap();
     assert_eq!(date_or_time.author(), &HtmlValueAuthorState::NotDefined);
-    assert!(matches!(
+    // "2011-11" is no date, and as a time "2011" has hour 20 followed by "1"
+    // instead of the colon, so both attempts fail on syntax.
+    assert_eq!(
         date_or_time.recovery(),
-        HtmlValueRecoveryState::Failed(_)
-    ));
+        &HtmlValueRecoveryState::Failed(HtmlValueFailure::Syntax(HtmlValueSyntaxError::Temporal(
+            HtmlTemporalError::InvalidSyntax
+        )))
+    );
     let attribute = Attribute::new(KnownHtmlAttribute::Datetime.qualified_name(), raw.clone());
     let modification = interpreter
         .modification_datetime(&KnownHtmlElement::Ins.qualified_name(), Some(&attribute))
@@ -511,14 +550,15 @@ fn prior_reports_and_narrow_common_and_modification_domains_remain_unchanged() {
     let other = interpreter
         .time_element_value(Some(&DocumentString::from("2011-W47")))
         .unwrap();
-    assert!(matches!(
+    assert_eq!(
         recovered(&other),
-        HtmlMachineReadableTime::Week(_)
-    ));
+        &HtmlMachineReadableTime::Week(HtmlWeek::new(year(2011), 47).unwrap())
+    );
     assert_eq!(old.raw(), Some(&raw));
-    assert!(matches!(
+    let time = HtmlTime::new(14, 54, 0, 0).unwrap();
+    assert_eq!(
         old.author(),
-        HtmlValueAuthorState::Valid(HtmlTimeElementValue::Time(_))
-    ));
-    assert!(matches!(recovered(&old), HtmlMachineReadableTime::Time(_)));
+        &HtmlValueAuthorState::Valid(HtmlTimeElementValue::Time(time))
+    );
+    assert_eq!(recovered(&old), &HtmlMachineReadableTime::Time(time.into()));
 }
