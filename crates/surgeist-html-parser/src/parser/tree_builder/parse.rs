@@ -405,11 +405,17 @@ fn head_reason(e: &super::head::HeadError) -> HtmlParseFailureReason {
         super::head::HeadError::Handoff(crate::parser::tokenizer::TokenizerHandoffError::Stop(
             stop,
         )) => HtmlParseFailureReason::Stop(*stop),
-        // The completion that is not reached is the state that incomplete
-        // completion metadata reports.
-        super::head::HeadError::IncompleteCompletion => {
-            session_reason(SessionError::CompletionIncomplete)
-        }
+        // A stage state that stands for an unsupported state of the closed
+        // environment reports that state, the stop the same class latches.
+        stage @ (super::head::HeadError::IncompleteCompletion
+        | super::head::HeadError::UnsupportedScriptPause
+        | super::head::HeadError::UnsupportedPendingScript
+        | super::head::HeadError::ConstructionCapabilityUnavailable) => match stage.class() {
+            Some(SessionClass::Outcome(stop)) => HtmlParseFailureReason::Stop(stop),
+            Some(SessionClass::Fault(_)) | None => {
+                HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tree)
+            }
+        },
         _ => HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Tree),
     }
 }
@@ -610,7 +616,7 @@ pub(crate) fn document(
         Ok(report) => Ok(report),
         Err((e, mut sealed)) => {
             let reason = session_reason(e);
-            StopCause::Session(e)
+            StopCause::Class(session_class(&e))
                 .latch(&mut sealed.parts.control, StandaloneUnsupported::Provenance);
             let refused = sealed.parts.cleanup_failure().is_err();
             Err(HtmlParseFailure {
@@ -806,7 +812,7 @@ pub(crate) fn fragment(
         Ok(report) => Ok(report),
         Err((e, mut sealed)) => {
             let reason = session_reason(e);
-            StopCause::Session(e)
+            StopCause::Class(session_class(&e))
                 .latch(&mut sealed.parts.control, StandaloneUnsupported::Provenance);
             let refused = sealed.parts.cleanup_failure().is_err();
             Err(HtmlParseFailure {

@@ -74,7 +74,8 @@ use super::{
 use crate::{
     HtmlParseResource,
     construction::{
-        ElementInsertionIgnored, ParserArenaSession, ParserNode, SessionError, TextInsertion,
+        ElementInsertionIgnored, ParserArenaSession, ParserNode, SessionClass, SessionError,
+        TextInsertion,
     },
 };
 use std::mem::size_of;
@@ -101,11 +102,11 @@ impl From<SessionError> for KernelError {
     }
 }
 impl KernelError {
-    /// The session outcome or fault this error carries, if it carries one.
-    /// A stop is already latched and has nothing left to classify.
-    pub(super) fn session(&self) -> Option<SessionError> {
+    /// The class of the session outcome or fault this error carries, if it
+    /// carries one. A stop is already latched and has nothing left to classify.
+    pub(super) fn class(&self) -> Option<SessionClass> {
         match self {
-            Self::Session(error) => Some(*error),
+            Self::Session(error) => Some(crate::construction::session_class(error)),
             Self::Stop(_)
             | Self::EmptyStack
             | Self::NotElement
@@ -125,9 +126,9 @@ pub(super) enum StopCause {
     /// An owner the driver's own sequencing keeps is gone: the first stop is
     /// the invariant, or stays the stop that was already first.
     LostOwner,
-    /// A session outcome or fault, which ends the parse as its class says
-    /// (`SessionClass`).
-    Session(SessionError),
+    /// A session outcome or fault, or a stage state that stands for one, which
+    /// ends the parse as its class says (`SessionClass`).
+    Class(SessionClass),
     /// Anything else a document or a limit can lead to, which ends the parse
     /// as the unsupported state the driver names for it.
     Other,
@@ -138,8 +139,8 @@ impl StopCause {
             Self::LostOwner => {
                 control.fail_invariant(Invariant::TreeBuilderState);
             }
-            Self::Session(error) => {
-                crate::construction::session_class(&error).latch(control);
+            Self::Class(class) => {
+                class.latch(control);
             }
             Self::Other => {
                 control.stop_unsupported_standalone(other);
@@ -1160,16 +1161,16 @@ impl StandaloneError {
         if self.invariant_fault() {
             return StopCause::LostOwner;
         }
-        let session = match self {
-            Self::Head(error) => error.session(),
-            Self::Prologue(error) => error.session(),
+        let class = match self {
+            Self::Head(error) => error.class(),
+            Self::Prologue(error) => error.class(),
             Self::Stop(_)
             | Self::UnsupportedDocumentInitialization
             | Self::UnsupportedExecutionProfile
             | Self::Consumed
             | Self::TokenizerExhausted => None,
         };
-        session.map_or(StopCause::Other, StopCause::Session)
+        class.map_or(StopCause::Other, StopCause::Class)
     }
 }
 impl From<ParseStop> for StandaloneError {
@@ -1245,21 +1246,12 @@ impl<'source> StandaloneDocumentDriver<'source> {
         if let Err(error) = &result {
             // One controller owns terminality. Retained owners support cleanup,
             // never resumption or successful partial continuation publication.
+            // A stop is already the controller's first, so naming it changes
+            // nothing. A fault of the parser's own sequencing is a lost owner,
+            // and a session error or a stage state the environment does not
+            // support ends the parse as its class says, in whichever stage it
+            // was met; none of them reaches this state.
             let other = match error {
-                StandaloneError::Head(head::HeadError::UnsupportedScriptPause) => {
-                    StandaloneUnsupported::ScriptPause
-                }
-                StandaloneError::Head(head::HeadError::UnsupportedPendingScript) => {
-                    StandaloneUnsupported::PendingScript
-                }
-                StandaloneError::Head(head::HeadError::ConstructionCapabilityUnavailable) => {
-                    StandaloneUnsupported::Provenance
-                }
-                // Every other error a document or a limit can lead to. A stop
-                // is already the controller's first, so naming it changes
-                // nothing. A fault of the parser's own sequencing is a lost
-                // owner, and a session error ends the parse as its class says,
-                // in whichever stage it was met; neither reaches this state.
                 StandaloneError::Stop(_)
                 | StandaloneError::Prologue(_)
                 | StandaloneError::Head(_)

@@ -21,8 +21,8 @@ use super::{
 use crate::{
     HtmlParseResource, HtmlSource, HtmlSourceRange,
     construction::{
-        BodyTextRuns, ParserNode, SessionError, TextRun, split_leading_ascii_whitespace,
-        validate_token_kind,
+        BodyTextRuns, ParserNode, SessionClass, SessionError, TextRun,
+        split_leading_ascii_whitespace, validate_token_kind,
     },
     parser::{
         control::{ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, WorkCategory},
@@ -185,14 +185,36 @@ impl HeadError {
     }
 }
 impl HeadError {
-    /// The session outcome or fault this error stands for, if it does. A
-    /// completion that is not reached is the same state as the session error
-    /// that reports incomplete completion metadata.
-    pub(super) fn session(&self) -> Option<SessionError> {
+    /// The class this error stands for, if it stands for a session outcome or
+    /// fault or for a state the closed standalone environment cannot continue
+    /// from; the stop and the failure's reason are derived from it.
+    ///
+    /// - A completion that is not reached is the state that incomplete
+    ///   completion metadata reports.
+    /// - A script that asks the parser to pause, or a blocking script it would
+    ///   have to wait for, is a script state the environment does not run.
+    /// - A head owner that holds no proof of the construction capability
+    ///   cannot prove the browsing context or the document's provenance, so no
+    ///   effect that depends on it may run: the provenance boundary. Both
+    ///   drivers install the capability when the stage is created, so a parse
+    ///   cannot reach it, and an owner imported without it is refused rather
+    ///   than guessed at.
+    pub(super) fn class(&self) -> Option<SessionClass> {
         match self {
-            Self::Kernel(error) => error.session(),
-            Self::Prologue(error) => error.session(),
-            Self::IncompleteCompletion => Some(SessionError::CompletionIncomplete),
+            Self::Kernel(error) => error.class(),
+            Self::Prologue(error) => error.class(),
+            Self::IncompleteCompletion => Some(crate::construction::session_class(
+                &SessionError::CompletionIncomplete,
+            )),
+            Self::UnsupportedScriptPause => Some(SessionClass::unsupported(
+                crate::parser::control::StandaloneUnsupported::ScriptPause,
+            )),
+            Self::UnsupportedPendingScript => Some(SessionClass::unsupported(
+                crate::parser::control::StandaloneUnsupported::PendingScript,
+            )),
+            Self::ConstructionCapabilityUnavailable => Some(SessionClass::unsupported(
+                crate::parser::control::StandaloneUnsupported::Provenance,
+            )),
             Self::Handoff(_)
             | Self::MissingInput
             | Self::MissingTokenizer
@@ -201,9 +223,6 @@ impl HeadError {
             | Self::TokenizerExhausted
             | Self::InvalidTextToken
             | Self::MissingReturnMode
-            | Self::ConstructionCapabilityUnavailable
-            | Self::UnsupportedScriptPause
-            | Self::UnsupportedPendingScript
             | Self::InvalidScriptNesting
             | Self::InvalidFormattingState => None,
             #[cfg(test)]

@@ -43,12 +43,12 @@ impl FragmentExecutionError {
         if self.invariant_fault() {
             return StopCause::LostOwner;
         }
-        let session = match self {
-            Self::Kernel(error) => error.session(),
-            Self::Head(error) => error.session(),
+        let class = match self {
+            Self::Kernel(error) => error.class(),
+            Self::Head(error) => error.class(),
             Self::Stop(_) | Self::Consumed => None,
         };
-        session.map_or(StopCause::Other, StopCause::Session)
+        class.map_or(StopCause::Other, StopCause::Class)
     }
 }
 impl std::fmt::Debug for FragmentExecutionError {

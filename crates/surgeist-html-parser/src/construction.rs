@@ -217,6 +217,11 @@ pub(crate) enum SessionClass {
     Fault(crate::parser::control::Invariant),
 }
 impl SessionClass {
+    /// An outcome that ends the parse as an unsupported state of the closed
+    /// standalone environment.
+    pub(crate) const fn unsupported(state: StandaloneUnsupported) -> Self {
+        Self::Outcome(ParseStop::UnsupportedStandaloneState(state))
+    }
     /// Latches the stop for this class on `control`, unless an earlier stop is
     /// already the first. Returns the first stop either way.
     pub(crate) fn latch(self, control: &mut ParseControl) -> ParseStop {
@@ -266,19 +271,13 @@ pub(crate) fn session_class(error: &SessionError) -> SessionClass {
         }
         SessionError::AssociatedFacts => SessionClass::Outcome(ParseStop::InvalidAssociatedFacts),
         SessionError::ScriptMetadataUnavailable | SessionError::SvgScriptMetadataUnavailable => {
-            SessionClass::Outcome(ParseStop::UnsupportedStandaloneState(
-                StandaloneUnsupported::ScriptDocument,
-            ))
+            SessionClass::unsupported(StandaloneUnsupported::ScriptDocument)
         }
         SessionError::CompletionMetadataUnavailable | SessionError::CompletionIncomplete => {
-            SessionClass::Outcome(ParseStop::UnsupportedStandaloneState(
-                StandaloneUnsupported::Completion,
-            ))
+            SessionClass::unsupported(StandaloneUnsupported::Completion)
         }
         SessionError::ContextFactUnavailable(_) | SessionError::ContextReactionUnavailable => {
-            SessionClass::Outcome(ParseStop::UnsupportedStandaloneState(
-                StandaloneUnsupported::Provenance,
-            ))
+            SessionClass::unsupported(StandaloneUnsupported::Provenance)
         }
         SessionError::PendingIntrinsicWork => SessionClass::Fault(Invariant::PendingFormEffects),
         SessionError::AliasedPayload => SessionClass::Fault(Invariant::SharedAllocationAliased),

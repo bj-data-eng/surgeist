@@ -13,8 +13,8 @@
 
 use super::{InsertionLocation, KernelError, LocationKernel, doctype, write};
 use crate::construction::{
-    ParserArenaSession, RootKind, SessionError, release_token_kind, split_leading_ascii_whitespace,
-    validate_token_kind,
+    ParserArenaSession, RootKind, SessionClass, SessionError, release_token_kind,
+    split_leading_ascii_whitespace, validate_token_kind,
 };
 use crate::parser::{
     control::{ControlIdentity, Invariant, OwnedVec, ParseControl, ParseStop, WorkCategory},
@@ -74,10 +74,11 @@ impl PrologueError {
     }
 }
 impl PrologueError {
-    /// The session outcome or fault this error carries, if it carries one.
-    pub(super) fn session(&self) -> Option<SessionError> {
+    /// The class of the session outcome or fault this error carries, if it
+    /// carries one.
+    pub(super) fn class(&self) -> Option<SessionClass> {
         match self {
-            Self::Kernel(error) => error.session(),
+            Self::Kernel(error) => error.class(),
             Self::AlreadyAtBeforeHead
             | Self::NotAtBeforeHead
             | Self::PendingInput
