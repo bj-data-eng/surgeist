@@ -250,7 +250,7 @@ views and compares every captured node:
 - the subject count, the adapter mapping count and the immutability of the first
   capture across a second, deterministic import of the same source.
 
-The twelve faults are none, a host revision other than the builder's, a missing
+A plan injects no fault or one of eleven: a host revision other than the builder's, a missing
 node, a duplicated node, a fact of the wrong role, a node of another result, a
 registry of another builder, cancellation before the call, a mapping allowance of
 one fewer than the reachable nodes, a scratch allowance of zero, a small work
