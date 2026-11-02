@@ -188,6 +188,12 @@ fn source_reference_to_missing_workspace_file_is_rejected() {
         "owner/src/gone.rs",
         "owner/src/gone.rs#anchor",
         "free-form note",
+        // A URL is a scheme (RFC 3986 section 3.1) then `://` with no whitespace;
+        // text that merely contains `://` is still a path reference.
+        "owner/src/gone.rs#see https://example.org/x",
+        "https://example.org/has a space",
+        "://missing-scheme",
+        "1http://example.org/leading-digit",
     ] {
         f.descriptor(declaration_citing(&["owner/src/lib.rs", stale]));
         assert!(f.discover(&f.metadata()).is_err(), "{stale:?} was accepted");
