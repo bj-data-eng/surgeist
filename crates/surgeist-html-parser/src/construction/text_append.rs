@@ -6,6 +6,12 @@ use crate::bounded::{
 };
 use construction_owner::construction_error;
 
+/// A work plan that counts less than was already charged for it: no row is
+/// missing, the plan and the charge disagree.
+pub(super) fn plan_below_charge(control: &mut ParseControl) -> SessionError {
+    SessionError::Stop(control.fail_invariant(crate::parser::control::Invariant::CapacityMismatch))
+}
+
 fn admit_work(
     control: &mut ParseControl,
     work: Work,
@@ -17,7 +23,9 @@ fn admit_work(
         .provider_calls
         .checked_sub(usize::from(wrapper_prepared))
     else {
-        return Err(latch_registry_row(control));
+        // The wrapper's call was charged when it was prepared; a plan that
+        // counts fewer differs from the work already charged for it.
+        return Err(plan_below_charge(control));
     };
     control.charge(WorkCategory::ProviderCall, provider_calls as u64)?;
     control.charge(WorkCategory::InspectByte, work.inspected_bytes as u64)?;

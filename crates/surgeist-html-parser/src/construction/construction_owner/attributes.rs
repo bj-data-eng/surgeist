@@ -227,7 +227,7 @@ impl ConstructionOwner {
                     HtmlConstructionAttributeDescription::ReservePlan { .. }
                 ) {
                     let Some(calls) = work.provider_calls.checked_sub(1) else {
-                        return Err(latch_registry_row(control));
+                        return Err(super::super::text_append::plan_below_charge(control));
                     };
                     work.provider_calls = calls;
                 }

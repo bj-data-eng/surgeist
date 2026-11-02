@@ -164,8 +164,10 @@ impl ConstructionOwner {
             return Err(latch_registry_row(control));
         };
         control.prepare_construction_share(payload_bytes)?;
+        // The first call was charged above; a plan that counts none differs
+        // from the work already charged for it.
         let Some(further_calls) = provider_calls.checked_sub(1) else {
-            return Err(latch_registry_row(control));
+            return Err(super::text_append::plan_below_charge(control));
         };
         control.charge(WorkCategory::ProviderCall, further_calls as u64)?;
         control.admit_atomic_layout(initialized_bytes)?;

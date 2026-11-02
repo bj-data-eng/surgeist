@@ -77,7 +77,8 @@ pub enum Invariant {
     NonReclaimableNodes,
     /// A buffer, ticket or allocation differs from what was charged for it: its
     /// capacity, layout, ownership or finalization state, or a byte extent that
-    /// no charged allocation could have.
+    /// no charged allocation could have. A work plan that counts less than was
+    /// already charged for it is the same disagreement.
     CapacityMismatch,
     /// Storage was requested for a zero-sized element type.
     ZeroSizedStorage,
