@@ -5162,16 +5162,16 @@ pub fn surgeist_html::HtmlEmbeddedDimensionReport::common(&self) -> core::option
 pub fn surgeist_html::HtmlEmbeddedDimensionReport::recovered(&self) -> core::option::Option<&surgeist_html::HtmlNonNegativeInteger>
 pub struct surgeist_html::HtmlFloatingPointList
 impl surgeist_html::HtmlFloatingPointList
-pub fn surgeist_html::HtmlFloatingPointList::as_document_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlFloatingPointList::new(values: impl core::convert::Into<alloc::vec::Vec<surgeist_html::HtmlFloatingPointNumber>>) -> Self
+pub fn surgeist_html::HtmlFloatingPointList::to_plain_decimal_string(&self) -> surgeist_html::DocumentString
 pub fn surgeist_html::HtmlFloatingPointList::values(&self) -> &[surgeist_html::HtmlFloatingPointNumber]
 pub struct surgeist_html::HtmlFloatingPointNumber
 impl surgeist_html::HtmlFloatingPointNumber
-pub fn surgeist_html::HtmlFloatingPointNumber::as_document_string(&self) -> surgeist_html::DocumentString
-pub fn surgeist_html::HtmlFloatingPointNumber::value(&self) -> f64
-impl surgeist_html::HtmlFloatingPointNumber
 pub fn surgeist_html::HtmlFloatingPointNumber::into_input_max_attribute(self) -> surgeist_html::Attribute
 pub fn surgeist_html::HtmlFloatingPointNumber::into_input_min_attribute(self) -> surgeist_html::Attribute
+impl surgeist_html::HtmlFloatingPointNumber
+pub fn surgeist_html::HtmlFloatingPointNumber::to_plain_decimal_string(&self) -> surgeist_html::DocumentString
+pub fn surgeist_html::HtmlFloatingPointNumber::value(&self) -> f64
 impl core::convert::From<surgeist_html::HtmlFloatingPointNumber> for surgeist_html::bounded::HtmlInputRangeNumber
 pub fn surgeist_html::bounded::HtmlInputRangeNumber::from(value: surgeist_html::HtmlFloatingPointNumber) -> Self
 impl core::convert::TryFrom<f64> for surgeist_html::HtmlFloatingPointNumber
