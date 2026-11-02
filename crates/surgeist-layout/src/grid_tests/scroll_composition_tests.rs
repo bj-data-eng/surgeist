@@ -4497,8 +4497,8 @@ fn fri05_c05_grid_intrinsic_overflow_subgrid_uses_the_parent_flow_projection() {
 }
 
 #[test]
-fn fri05_c05_grid_intrinsic_overflow_percentage_tracks_keep_item_priority_when_trapped() {
-    for (overflow, expected) in [
+fn cyclic_percent_grid_keeps_query_border_separate_from_overflow() {
+    for (overflow, expected_overflow) in [
         (Overflow::Visible, Size::new(80.0, 90.0)),
         (Overflow::Clip, Size::new(20.0, 30.0)),
         (Overflow::Hidden, Size::new(20.0, 30.0)),
@@ -4537,7 +4537,7 @@ fn fri05_c05_grid_intrinsic_overflow_percentage_tracks_keep_item_priority_when_t
         )
         .expect("percentage-track intrinsic overflow case computes");
 
-        assert_eq!(output.size, expected, "{overflow:?}");
+        assert_fri05_c05_grid_border_and_overflow(&tree, &output, 1, expected_overflow);
     }
 }
 
@@ -5341,3 +5341,6 @@ fn grid_gutter_intrinsic_auto_flows_and_context_in_f32() {
 fn grid_gutter_intrinsic_auto_flows_and_context_in_f64() {
     assert_grid_gutter_intrinsic_auto_flows_and_context::<f64>();
 }
+
+#[path = "scroll_composition/cyclic_query_border.rs"]
+mod cyclic_query_border;
