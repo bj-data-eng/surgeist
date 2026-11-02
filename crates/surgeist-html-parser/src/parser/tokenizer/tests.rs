@@ -2025,6 +2025,46 @@ fn lexical_comment_doctype_pi_cdata_and_raw_recovery_keep_original_field_atoms()
 }
 
 #[test]
+fn missing_end_tag_name_abandons_its_markup_occurrence() {
+    use crate::construction::provenance::{LexicalDisposition as D, LexicalKind as K};
+    // HTML877d end tag open state: U+003E is missing-end-tag-name, switches to
+    // the data state and emits no token. The `</>` is consumed markup that no
+    // token carries, so its occurrence ends Abandoned, wherever it sits and
+    // whatever follows it, never Draft and never literal recovery.
+    for (input, start) in [
+        ("</>", 0),
+        ("a</>", 1),
+        ("</>a", 0),
+        ("a</>b", 1),
+        ("x</><p>", 1),
+        ("</></>", 3),
+    ] {
+        let source = HtmlSource::utf8(input);
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut lexer = LexerFixture::new(&source, State::Data, None, &mut c).unwrap();
+        while let Some(event) = lexer.next(&mut c, false).unwrap() {
+            event.release(&mut c).unwrap();
+        }
+        let (occurrences, _, _) = lexer.evidence.lexical_observations();
+        let dispositions: Vec<_> = occurrences
+            .iter()
+            .map(|o| (o.kind, o.source.start(), o.source.end(), o.disposition))
+            .collect();
+        assert!(
+            dispositions.contains(&(K::Markup, start, start + 3, D::Abandoned)),
+            "{input:?}: {dispositions:?}"
+        );
+        assert!(
+            !dispositions.iter().any(|(.., d)| *d == D::Draft),
+            "{input:?}: {dispositions:?}"
+        );
+        lexer.release(&mut c).unwrap();
+        assert_storage_released(&c);
+    }
+}
+
+#[test]
 fn lexical_cdata_chunk_coordinates_accumulate_exact_actual_output_units() {
     use crate::construction::provenance::{LexicalDisposition, LexicalKind, LexicalRole};
     let source = HtmlSource::utf8("<![CDATA[A🙂\r\nB]]>");
