@@ -210,9 +210,7 @@ impl HtmlConstructionOperation {
             Command::Insert { .. } => (None, Some((p[0], p[1]))),
             Command::Detach { .. } => (Some(p[0]), None),
             Command::AttachShadow { .. } => (None, Some((p[1], p[0]))),
-            Command::DetachShadow { .. } | Command::SetTemplateShadowContents { .. } => {
-                (Some(old.ok_or(missing)?), None)
-            }
+            Command::SetTemplateShadowContents { .. } => (Some(old.ok_or(missing)?), None),
             Command::ReassignTemplateContents { .. } => (old, Some((p[1], p[0]))),
             Command::AttachTemplateShadow { .. } => (Some(old.ok_or(missing)?), Some((p[2], p[1]))),
             _ => return Ok(Phase::Layout),
@@ -703,7 +701,7 @@ mod tests {
     #[test]
     fn every_topology_command_keeps_depths_usage_and_histogram_exact_under_random_use() {
         use crate::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment};
-        const KINDS: usize = 8;
+        const KINDS: usize = 7;
         let properties = || {
             HtmlShadowRootProperties::new(
                 HtmlShadowRootMode::Closed,
@@ -723,17 +721,20 @@ mod tests {
             };
             let (mut elements, mut templates, mut shadows, mut fragments) =
                 (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-            for _ in 0..8 {
+            // No command detaches a shadow root, so each host and each shadow
+            // contents fragment is spent by one attachment; the pools are sized
+            // so that every command keeps succeeding often enough to matter.
+            for _ in 0..32 {
                 let (next, node) = create(storage, element("e"));
                 storage = next;
                 elements.push(node);
             }
-            for _ in 0..4 {
+            for _ in 0..12 {
                 let (next, node) = create(storage, element("template"));
                 storage = next;
                 templates.push(node);
             }
-            for _ in 0..3 {
+            for _ in 0..24 {
                 let (next, node) = create(
                     storage,
                     HtmlConstructionCommand::CreateShadowContents {
@@ -788,15 +789,12 @@ mod tests {
                         host: pick(&mut sequence, &movable),
                         contents: pick(&mut sequence, &shadows),
                     },
-                    4 => HtmlConstructionCommand::DetachShadow {
-                        host: pick(&mut sequence, &movable),
-                    },
-                    5 => HtmlConstructionCommand::AttachTemplateShadow {
+                    4 => HtmlConstructionCommand::AttachTemplateShadow {
                         template: pick(&mut sequence, &templates),
                         host: pick(&mut sequence, &movable),
                         contents: pick(&mut sequence, &shadows),
                     },
-                    6 => HtmlConstructionCommand::SetTemplateShadowContents {
+                    5 => HtmlConstructionCommand::SetTemplateShadowContents {
                         template: pick(&mut sequence, &templates),
                         contents: pick(&mut sequence, &shadows),
                     },
