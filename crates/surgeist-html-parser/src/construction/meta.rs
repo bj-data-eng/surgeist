@@ -70,7 +70,7 @@ pub(super) struct MetaBatch {
     topology_changes: u64,
 }
 
-/// How many levels of the shallower record `branches` remembers.
+/// How many levels of each record `branches` remembers.
 const CHAIN: usize = 24;
 /// How two records of one tree lie in relation to each other.
 enum Lineage {
@@ -113,7 +113,63 @@ impl Chain {
     }
 }
 type Parent<'a> = &'a dyn Fn(&mut ParseControl, usize) -> Result<Option<usize>, SessionError>;
-/// Finds how `first` and `second` branch, climbing the deeper record once.
+/// One record's climb toward the root.
+struct Side {
+    /// The levels passed so far, kept while the other side may still meet them.
+    chain: Chain,
+    /// The next level up, or `None` once the root has been passed.
+    next: Option<usize>,
+    /// The level passed last, which is the child of the next one on this path.
+    last: Option<usize>,
+}
+/// What one step of a climb found.
+enum Climb {
+    /// Neither a meeting nor the end of the memory.
+    Climbed,
+    /// The memory is full and the paths have not met.
+    Overflow,
+    /// The paths meet at `node`; `below_this` and `below_other` are the levels
+    /// under it on the climbing side's path and on the other's.
+    Met {
+        node: usize,
+        below_this: Option<usize>,
+        below_other: Option<usize>,
+    },
+}
+/// Advances `this` one level and looks for it among the levels `other` has
+/// passed. A side remembers its levels only while the other side is still
+/// climbing, since only then will the other test its levels against them.
+fn climb_one(
+    c: &mut ParseControl,
+    parent: Parent<'_>,
+    this: &mut Side,
+    other: &Side,
+) -> Result<Climb, SessionError> {
+    let Some(node) = this.next else {
+        return Ok(Climb::Climbed);
+    };
+    if other.next.is_some() && !this.chain.push(node) {
+        return Ok(Climb::Overflow);
+    }
+    if let Some(level) = other.chain.levels().iter().position(|&m| m == node) {
+        return Ok(Climb::Met {
+            node,
+            below_this: this.last,
+            below_other: level
+                .checked_sub(1)
+                .and_then(|below| other.chain.levels().get(below))
+                .copied(),
+        });
+    }
+    this.last = Some(node);
+    this.next = parent(c, node)?;
+    Ok(Climb::Climbed)
+}
+/// Finds how `first` and `second` branch. The records climb in step and each
+/// level is tested against the levels the other has passed, so the climb ends
+/// at their lowest common ancestor: two looks for each level between the
+/// farther record and that ancestor. A record that reaches the root stops
+/// climbing and the other goes on alone, one look for each level.
 fn branches(
     c: &mut ParseControl,
     parent: Parent<'_>,
@@ -121,76 +177,47 @@ fn branches(
     second: usize,
     records: usize,
 ) -> Result<Lineage, SessionError> {
-    let (mut one, mut two) = (Chain::new(), Chain::new());
-    let (mut left_next, mut right_next) = (Some(first), Some(second));
-    while let (Some(left), Some(right)) = (left_next, right_next) {
-        if !one.push(left) || !two.push(right) {
-            return branches_by_depth(c, parent, first, second, records);
-        }
-        left_next = parent(c, left)?;
-        right_next = parent(c, right)?;
-    }
-    // The side that reached the root first has its whole ancestry remembered.
-    let first_is_short = left_next.is_none();
-    let (short, long, mut cursor) = if first_is_short {
-        (&one, &two, right_next)
-    } else {
-        (&two, &one, left_next)
+    let side = |node: usize| Side {
+        chain: Chain::new(),
+        next: Some(node),
+        last: None,
     };
-    let level_in_short = |node: usize| short.levels().iter().position(|&level| level == node);
-    // The first level of the deep record that the shallow one passed.
-    let mut met = long
-        .levels()
-        .iter()
-        .enumerate()
-        .find_map(|(index, &node)| level_in_short(node).map(|level| (level, index)));
-    let mut below_long = met
-        .and_then(|(_, index)| index.checked_sub(1))
-        .and_then(|below| long.levels().get(below))
-        .copied();
-    if met.is_none() {
-        let mut passed = long.levels().last().copied();
-        for _ in 0..records {
-            let Some(node) = cursor else {
-                return Err(SessionError::Cycle);
-            };
-            if let Some(level) = level_in_short(node) {
-                met = Some((level, 0));
-                below_long = passed;
-                break;
-            }
-            passed = Some(node);
-            cursor = parent(c, node)?;
+    let (mut one, mut two) = (side(first), side(second));
+    let enclose = |one_below: Option<usize>, two_below: Option<usize>, above: usize| match (
+        one_below, two_below,
+    ) {
+        (None, _) => Lineage::FirstEncloses,
+        (_, None) => Lineage::SecondEncloses,
+        (Some(first), Some(second)) => Lineage::Branches {
+            above,
+            first,
+            second,
+        },
+    };
+    for _ in 0..records.saturating_mul(2) {
+        match climb_one(c, parent, &mut one, &two)? {
+            Climb::Climbed => {}
+            Climb::Overflow => return branches_by_depth(c, parent, first, second, records),
+            Climb::Met {
+                node,
+                below_this,
+                below_other,
+            } => return Ok(enclose(below_this, below_other, node)),
+        }
+        match climb_one(c, parent, &mut two, &one)? {
+            Climb::Climbed => {}
+            Climb::Overflow => return branches_by_depth(c, parent, first, second, records),
+            Climb::Met {
+                node,
+                below_this,
+                below_other,
+            } => return Ok(enclose(below_other, below_this, node)),
+        }
+        if one.next.is_none() && two.next.is_none() {
+            break;
         }
     }
-    let (level, _) = met.ok_or(SessionError::Cycle)?;
-    let above = short
-        .levels()
-        .get(level)
-        .copied()
-        .ok_or(SessionError::Cycle)?;
-    let below_short = level
-        .checked_sub(1)
-        .and_then(|below| short.levels().get(below))
-        .copied();
-    Ok(match (below_short, below_long) {
-        (None, _) if first_is_short => Lineage::FirstEncloses,
-        (None, _) => Lineage::SecondEncloses,
-        (_, None) if first_is_short => Lineage::SecondEncloses,
-        (_, None) => Lineage::FirstEncloses,
-        (Some(short), Some(long)) => {
-            let (first, second) = if first_is_short {
-                (short, long)
-            } else {
-                (long, short)
-            };
-            Lineage::Branches {
-                above,
-                first,
-                second,
-            }
-        }
-    })
+    Err(SessionError::Cycle)
 }
 /// As [`branches`] for records too deep to remember: both are climbed to the
 /// root to learn their depths, the deeper is lifted to the other's, and both
@@ -1129,13 +1156,15 @@ impl SessionStorage {
     /// Tree order is defined by the pinned algorithms that ask for it (the
     /// selections of a theme color and of a color scheme take their candidates
     /// "in tree order"), and two records in different branches are ordered by
-    /// the children of their lowest common ancestor, so the levels between the
-    /// deeper record and that ancestor are looked at: the cost is the depth of
-    /// the deeper one. Both are climbed in step until one reaches the root,
-    /// remembering the levels it passed, and only the other goes on, testing
-    /// each level against what was remembered: each level of the deeper record
-    /// is looked at once. Chains longer than [`CHAIN`] make both climb to the
-    /// root before they meet, two looks for each level.
+    /// the children of their lowest common ancestor, so the levels between each
+    /// record and that ancestor are looked at. Siblings cost two looks. Other
+    /// records climb in step, testing each level against the levels the other
+    /// has passed, so the climb stops at the lowest common ancestor and costs
+    /// two looks for each level between the farther record and it; a record
+    /// that reaches the root first stops, and the other goes on alone for one
+    /// look a level. Climbs that meet only beyond [`CHAIN`] levels of each
+    /// record are done again by their depths, two looks for each level to the
+    /// root.
     pub(super) fn precedes(
         &self,
         c: &mut ParseControl,
@@ -1900,29 +1929,37 @@ mod tests {
 
     #[test]
     fn tree_order_agrees_with_the_construction_of_deep_and_shallow_branches() {
-        // Thirty nested divs, a span at the bottom, a span under the twenty-sixth
-        // div after its child, one under the eleventh and one under the root.
-        // Pre-order is built into the list: each node's place is its index.
+        // Two chains of thirty nested divs under the root, a span at the bottom
+        // of the first, one under its twenty-sixth div after that div's child,
+        // one under its eleventh, and one under the root after both chains.
+        // Pre-order is built into the list: each node's place is its index. Pairs
+        // from the two chains meet only at the root, thirty levels up, beyond
+        // what the climb remembers.
         let depth = 30;
         let (mut c, mut session, root, nodes, lexer) = detached_metas(&format!(
             "{}<span><span><span><span>",
-            "<div>".repeat(depth)
+            "<div>".repeat(2 * depth)
         ));
-        let (divs, spans) = nodes.split_at(depth);
+        let (divs, spans) = nodes.split_at(2 * depth);
+        let (first, second) = divs.split_at(depth);
         let [bottom, under_twenty_sixth, under_eleventh, under_root] = spans else {
             panic!("four spans")
         };
-        put(&mut session, &mut c, &root, &divs[0], None);
-        for pair in divs.windows(2) {
-            put(&mut session, &mut c, &pair[0], &pair[1], None);
+        for chain in [first, second] {
+            put(&mut session, &mut c, &root, &chain[0], None);
+            for pair in chain.windows(2) {
+                put(&mut session, &mut c, &pair[0], &pair[1], None);
+            }
         }
-        put(&mut session, &mut c, &divs[depth - 1], bottom, None);
-        put(&mut session, &mut c, &divs[25], under_twenty_sixth, None);
-        put(&mut session, &mut c, &divs[10], under_eleventh, None);
+        put(&mut session, &mut c, &first[depth - 1], bottom, None);
+        put(&mut session, &mut c, &first[25], under_twenty_sixth, None);
+        put(&mut session, &mut c, &first[10], under_eleventh, None);
         put(&mut session, &mut c, &root, under_root, None);
-        let order: Vec<&ParserNode> = divs
+        let order: Vec<&ParserNode> = first
             .iter()
-            .chain([bottom, under_twenty_sixth, under_eleventh, under_root])
+            .chain([bottom, under_twenty_sixth, under_eleventh])
+            .chain(second)
+            .chain([under_root])
             .collect();
         let storage = session.active().unwrap();
         for (i, earlier) in order.iter().enumerate() {
