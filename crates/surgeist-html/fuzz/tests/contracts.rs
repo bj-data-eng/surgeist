@@ -486,8 +486,11 @@ fn owner_package_registers_real_workers_and_canonical_seed_directories() {
         let target = registry.get(&TargetId::new(id).unwrap()).unwrap();
         assert_eq!(target.package(), "surgeist-html-fuzz");
         assert_eq!(target.descriptor().binary(), binary);
-        assert_eq!(target.fixtures().len(), 2);
+        // The descriptor names every seed directory for provider hashing.
         assert!(target.fixtures().iter().all(|p| p.is_dir()));
+        for name in ["seeds/document", "seeds/fragment"] {
+            assert!(target.fixtures().iter().any(|p| p.ends_with(name)));
+        }
     }
 }
 #[cfg(not(feature = "coverage"))]
