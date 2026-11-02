@@ -466,14 +466,19 @@ impl SessionStorage {
         if first {
             payload_write::<Option<MetaDomain>>(c, 1)?;
         }
-        self.prepare_payload_slot_owned(c)?;
-        let gap = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::MetaMissing {
-            document,
-            subject,
-            kind,
-            cause,
-        });
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let gap = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::MetaMissing {
+                    document,
+                    subject,
+                    kind,
+                    cause,
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
         let meta = self
             .meta_history_mut(slot)
             .map_err(|_| latch_registry_row(c))?;

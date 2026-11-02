@@ -49,14 +49,17 @@ impl SessionStorage {
     }
     pub(super) fn prepare_pi_map(&mut self, c: &mut ParseControl) -> Result<usize, SessionError> {
         let values = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        self.prepare_payload_slot_owned(c)?;
-        let map = self.payloads.values.len();
-        self.payloads.values.push(RetainedPayload::PiAttributes {
-            node: None,
-            values,
-            ready: false,
-        });
-        Ok(map)
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        self.payloads
+            .push_row(
+                prepared,
+                RetainedPayload::PiAttributes {
+                    node: None,
+                    values,
+                    ready: false,
+                },
+            )
+            .map_err(|_| latch_registry_row(c))
     }
     pub(super) fn bind_pi_map(
         &mut self,
