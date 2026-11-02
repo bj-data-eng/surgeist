@@ -121,8 +121,14 @@ pub enum HtmlSelectSetterReply {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SetterPhase {
+    /// Deselect before any match is known; the comparison follows.
     Deselect(usize),
     Match(usize),
+    /// Deselect after the first match, which is remembered.
+    DeselectMatched {
+        ordinal: usize,
+        matched: usize,
+    },
     Select(usize),
     Refresh,
     Complete,
@@ -143,7 +149,6 @@ enum SetterPhase {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlSelectSetterCursor {
     option_count: usize,
-    first_match: Option<usize>,
     phase: SetterPhase,
 }
 
@@ -151,7 +156,6 @@ impl HtmlSelectSetterCursor {
     pub const fn new(option_count: usize) -> Self {
         Self {
             option_count,
-            first_match: None,
             phase: if option_count == 0 {
                 SetterPhase::Refresh
             } else {
@@ -162,7 +166,9 @@ impl HtmlSelectSetterCursor {
 
     pub fn action(&self) -> HtmlSelectSetterAction {
         match self.phase {
-            SetterPhase::Deselect(ordinal) => HtmlSelectSetterAction::Deselect { ordinal },
+            SetterPhase::Deselect(ordinal) | SetterPhase::DeselectMatched { ordinal, .. } => {
+                HtmlSelectSetterAction::Deselect { ordinal }
+            }
             SetterPhase::Match(ordinal) => HtmlSelectSetterAction::ReadMatch { ordinal },
             SetterPhase::Select(ordinal) => HtmlSelectSetterAction::SelectAndDirty { ordinal },
             SetterPhase::Refresh => HtmlSelectSetterAction::UpdateSelectedcontent,
@@ -178,16 +184,22 @@ impl HtmlSelectSetterCursor {
         Ok(())
     }
 
-    fn after_option(&mut self, ordinal: usize) -> Result<(), HtmlSelectCursorError> {
+    fn after_option(
+        &mut self,
+        ordinal: usize,
+        matched: Option<usize>,
+    ) -> Result<(), HtmlSelectCursorError> {
         // Every reachable ordinal is below the complete extent. The last valid
         // ordinal for usize::MAX is MAX-1; its successor MAX is representable.
         let next = ordinal.checked_add(1).ok_or(HtmlSelectCursorError::Reply)?;
-        self.phase = if next < self.option_count {
-            SetterPhase::Deselect(next)
-        } else if let Some(matched) = self.first_match {
-            SetterPhase::Select(matched)
-        } else {
-            SetterPhase::Refresh
+        self.phase = match (next < self.option_count, matched) {
+            (true, None) => SetterPhase::Deselect(next),
+            (true, Some(matched)) => SetterPhase::DeselectMatched {
+                ordinal: next,
+                matched,
+            },
+            (false, Some(matched)) => SetterPhase::Select(matched),
+            (false, None) => SetterPhase::Refresh,
         };
         Ok(())
     }
@@ -195,17 +207,13 @@ impl HtmlSelectSetterCursor {
     fn advance(&mut self, reply: HtmlSelectSetterReply) -> Result<(), HtmlSelectCursorError> {
         match (self.phase, reply) {
             (SetterPhase::Deselect(ordinal), HtmlSelectSetterReply::Applied) => {
-                if self.first_match.is_none() {
-                    self.phase = SetterPhase::Match(ordinal);
-                } else {
-                    self.after_option(ordinal)?;
-                }
+                self.phase = SetterPhase::Match(ordinal);
+            }
+            (SetterPhase::DeselectMatched { ordinal, matched }, HtmlSelectSetterReply::Applied) => {
+                self.after_option(ordinal, Some(matched))?
             }
             (SetterPhase::Match(ordinal), HtmlSelectSetterReply::Matches(matches)) => {
-                if matches {
-                    self.first_match = Some(ordinal);
-                }
-                self.after_option(ordinal)?;
+                self.after_option(ordinal, matches.then_some(ordinal))?;
             }
             (SetterPhase::Select(_), HtmlSelectSetterReply::Applied) => {
                 self.phase = SetterPhase::Refresh;
@@ -671,7 +679,6 @@ mod setter_tests {
         for matches in [false, true] {
             let mut cursor = Cursor {
                 option_count: usize::MAX,
-                first_match: None,
                 phase: SetterPhase::Match(usize::MAX - 1),
             };
             assert_eq!(
@@ -700,8 +707,10 @@ mod setter_tests {
     fn maximum_extent_last_deselection_retains_an_earlier_match() {
         let mut cursor = Cursor {
             option_count: usize::MAX,
-            first_match: Some(0),
-            phase: SetterPhase::Deselect(usize::MAX - 1),
+            phase: SetterPhase::DeselectMatched {
+                ordinal: usize::MAX - 1,
+                matched: 0,
+            },
         };
         let before = cursor;
         assert!(cursor.reply(Reply::Matches(true)).is_err());

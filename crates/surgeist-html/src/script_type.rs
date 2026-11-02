@@ -48,9 +48,9 @@ pub enum HtmlScriptTypeWork {
     /// Actual inspected bytes, including UTF-16 operands and ASCII keywords.
     InspectByte(u64),
 }
-/// Borrowed ASCII-insensitive virtual-prefix/range matcher, also consumed by
-/// the construction owner's actual hidden-input comparison. Credits precede
-/// length comparison and each read; a completed result has no further work.
+/// Borrowed ASCII-insensitive virtual-prefix/range matcher consumed by
+/// [`HtmlScriptTypeCursor`]. Credits precede length comparison and each read;
+/// a completed result has no further work.
 pub(crate) struct ScriptTypeMatchCursor<'a> {
     prefix: &'static [u8],
     value: &'a DocumentString,
