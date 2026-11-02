@@ -232,17 +232,20 @@ impl ParserArenaSession {
             }
         }
         let usage = inputs.usage(c)?;
-        storage.prepare_payload_slot_owned(c)?;
+        let prepared = storage.prepare_payload_slot_owned(c)?;
         payload_write::<Arc<Inputs>>(c, 1)?;
         c.charge(WorkCategory::ProviderCall, 1)?;
         usage.acquire(c)?;
         storage
             .payloads
-            .values
-            .push(RetainedPayload::AssociatedInputs {
-                inputs: inputs.clone(),
-                usage,
-            });
+            .push_row(
+                prepared,
+                RetainedPayload::AssociatedInputs {
+                    inputs: inputs.clone(),
+                    usage,
+                },
+            )
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
 }
@@ -275,13 +278,16 @@ impl SessionStorage {
             c.charge(WorkCategory::ProviderCall, 1)?;
             payload_write::<crate::HtmlParseBaseFacts>(c, 1)?;
             let facts = facts.clone();
-            self.prepare_payload_slot_owned(c)?;
+            let prepared = self.prepare_payload_slot_owned(c)?;
             self.payloads
-                .push_row(RetainedPayload::BaseDocument {
-                    node,
-                    facts,
-                    first: None,
-                })
+                .push_row(
+                    prepared,
+                    RetainedPayload::BaseDocument {
+                        node,
+                        facts,
+                        first: None,
+                    },
+                )
                 .map_err(|_| latch_registry_row(c))?;
         }
         Ok(())
@@ -327,22 +333,25 @@ impl SessionStorage {
         if matches!(tag, Some(KnownHtmlElement::A | KnownHtmlElement::Area)) {
             let document = self.node_document_ref(c, node)?;
             let cause = self.associated_cause(c)?;
-            self.prepare_payload_slot_owned(c)?;
+            let prepared = self.prepare_payload_slot_owned(c)?;
             self.payloads
-                .push_row(RetainedPayload::Hyperlink {
-                    node,
-                    state: HyperlinkMetadata {
-                        document,
-                        raw: None,
-                        value: HyperlinkValue::Absent,
-                        cause,
-                        usage: AssociatedStorageUsage::default(),
+                .push_row(
+                    prepared,
+                    RetainedPayload::Hyperlink {
+                        node,
+                        state: HyperlinkMetadata {
+                            document,
+                            raw: None,
+                            value: HyperlinkValue::Absent,
+                            cause,
+                            usage: AssociatedStorageUsage::default(),
+                        },
                     },
-                })
+                )
                 .map_err(|_| latch_registry_row(c))?;
             self.set_hyperlink(c, node, None)?;
         } else if tag == Some(KnownHtmlElement::Img) {
-            self.prepare_payload_slot_owned(c)?;
+            let prepared = self.prepare_payload_slot_owned(c)?;
             // The shared fresh tuple owns exactly one public Arc<Vec<u16>> URL.
             // Admit its known empty Vec payload before calling the constructor;
             // opaque allocator bookkeeping has the same limitation as strings.
@@ -351,17 +360,20 @@ impl SessionStorage {
             payload_write::<ImageMetadata>(c, 1)?;
             usage.acquire(c)?;
             self.payloads
-                .push_row(RetainedPayload::Image {
-                    node,
-                    state: ImageMetadata {
-                        fresh: HtmlImgFreshState::fresh(),
-                        dimension_source: node,
-                        latest: 0,
-                        waiting: None,
-                        cause: None,
-                        usage,
+                .push_row(
+                    prepared,
+                    RetainedPayload::Image {
+                        node,
+                        state: ImageMetadata {
+                            fresh: HtmlImgFreshState::fresh(),
+                            dimension_source: node,
+                            latest: 0,
+                            waiting: None,
+                            cause: None,
+                            usage,
+                        },
                     },
-                })
+                )
                 .map_err(|_| latch_registry_row(c))?;
             self.start_img_update(c, node, HtmlImageUpdateFlags::new(false, false))?;
         } else {

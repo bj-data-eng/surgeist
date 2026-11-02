@@ -133,20 +133,20 @@ fn a_transfer_from_a_stage_that_was_already_reversed_hands_the_stage_back() {
     let div = named(&nodes, "div", 0).index;
     let storage = session.active_mut().unwrap();
     let container = storage.element_attribute_container(&mut c, div).unwrap();
-    storage.prepare_payload_slot(&mut c).unwrap();
+    let prepared = storage.prepare_payload_slot(&mut c).unwrap();
     let (values, allocation) = c.new_vector().unwrap();
-    let stage = storage.payloads.values.len();
-    storage
+    let stage = storage
         .payloads
-        .values
-        .push(RetainedPayload::Attributes(Some(
-            AttributeStorage::Building {
+        .push_row(
+            prepared,
+            RetainedPayload::Attributes(Some(AttributeStorage::Building {
                 values,
                 allocation,
                 original_len: 0,
                 reversed_pairs: 1,
-            },
-        )));
+            })),
+        )
+        .unwrap();
     // The stage is not the unchanged reverse stage a transfer consumes.
     assert_registry_row(
         storage.begin_attribute_transfer(&mut c, stage, container, 0),

@@ -272,24 +272,30 @@ impl SessionStorage {
             },
         )?;
         fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
-        self.prepare_payload_slot_owned(c)?;
-        let fact = self.payloads.values.len();
-        self.payloads
-            .push_row(RetainedPayload::Document {
-                node: None,
-                state: template::DocumentState::InertTemplate,
-                class,
-                meta: meta::MetaHistory::offline(),
-                interaction: dialog::InteractionHistory::new(),
-            })
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let fact = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::Document {
+                    node: None,
+                    state: template::DocumentState::InertTemplate,
+                    class,
+                    meta: meta::MetaHistory::offline(),
+                    interaction: dialog::InteractionHistory::new(),
+                },
+            )
             .map_err(|_| latch_registry_row(c))?;
-        self.prepare_payload_slot_owned(c)?;
-        let binding = self.payloads.values.len();
-        self.payloads
-            .push_row(RetainedPayload::NodeDocument {
-                node: None,
-                document: DocumentRef::Owned(self.construction.storage(c)?.len()),
-            })
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let binding = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::NodeDocument {
+                    node: None,
+                    document: DocumentRef::Owned(self.construction.storage(c)?.len()),
+                },
+            )
             .map_err(|_| latch_registry_row(c))?;
         payload_write::<Option<usize>>(c, 3)?;
         let node = self.allocate_native(
@@ -440,18 +446,21 @@ impl ParserArenaSession {
         let root = self.allocate_implicit_html(c)?;
         let storage = self.active_mut()?;
         let registry = storage.captured_registry_ref(c, request.context().root_registry())?;
-        storage.prepare_payload_slot_owned(c)?;
+        let prepared = storage.prepare_payload_slot_owned(c)?;
         storage
             .payloads
-            .push_row(RetainedPayload::LookupRegistry {
-                node: Some(root.index),
-                registry,
-                creation: Some(ElementCreationState {
-                    common_scope: surgeist_html::HtmlCommonScope::Html,
-                    state: crate::HtmlCustomElementState::Uncustomized,
-                    saved_is: None,
-                }),
-            })
+            .push_row(
+                prepared,
+                RetainedPayload::LookupRegistry {
+                    node: Some(root.index),
+                    registry,
+                    creation: Some(ElementCreationState {
+                        common_scope: surgeist_html::HtmlCommonScope::Html,
+                        state: crate::HtmlCustomElementState::Uncustomized,
+                        saved_is: None,
+                    }),
+                },
+            )
             .map_err(|_| latch_registry_row(c))?;
         let document = self.root(c)?;
         self.insert(c, &document, &root, None, None)?;
@@ -886,22 +895,25 @@ impl SessionStorage {
         // The payload slot below admits its complete creation metadata. This
         // separate move writes the actual PreparedDocuments registry receiver.
         payload_write::<Option<usize>>(c, 1)?;
-        self.prepare_payload_slot_owned(c)?;
-        let slot = self.payloads.values.len();
-        self.payloads
-            .push_row(RetainedPayload::LookupRegistry {
-                node: None,
-                registry,
-                creation: Some(ElementCreationState {
-                    common_scope: if html {
-                        surgeist_html::HtmlCommonScope::Html
-                    } else {
-                        surgeist_html::HtmlCommonScope::Element
-                    },
-                    state,
-                    saved_is,
-                }),
-            })
+        let admission = self.prepare_payload_slot_owned(c)?;
+        let slot = self
+            .payloads
+            .push_row(
+                admission,
+                RetainedPayload::LookupRegistry {
+                    node: None,
+                    registry,
+                    creation: Some(ElementCreationState {
+                        common_scope: if html {
+                            surgeist_html::HtmlCommonScope::Html
+                        } else {
+                            surgeist_html::HtmlCommonScope::Element
+                        },
+                        state,
+                        saved_is,
+                    }),
+                },
+            )
             .map_err(|_| latch_registry_row(c))?;
         prepared
             .as_mut()
@@ -1402,16 +1414,21 @@ impl ParserArenaSession {
         fragment.source_entries = fragment.source_entries.saturating_add(1);
         fragment.unbound_effects = fragment.unbound_effects.saturating_add(1);
         let result = (|| {
-            storage.prepare_payload_slot_owned(c)?;
-            let shadow_slot = storage.payloads.values.len();
-            storage.payloads.values.push(RetainedPayload::Shadow {
-                root: None,
-                state: ShadowState {
-                    keep_registry_null: keep_null,
-                    declarative: true,
-                    available_to_internals: true,
-                },
-            });
+            let prepared = storage.prepare_payload_slot_owned(c)?;
+            let shadow_slot = storage
+                .payloads
+                .push_row(
+                    prepared,
+                    RetainedPayload::Shadow {
+                        root: None,
+                        state: ShadowState {
+                            keep_registry_null: keep_null,
+                            declarative: true,
+                            available_to_internals: true,
+                        },
+                    },
+                )
+                .map_err(|_| latch_registry_row(c))?;
             payload_write::<Option<usize>>(c, 1)?;
             let root = storage.allocate_shadow_contents(c, properties, document)?;
             let Some(RetainedPayload::Shadow { root: bound, .. }) =
@@ -1420,14 +1437,17 @@ impl ParserArenaSession {
                 return Err(latch_registry_row(c));
             };
             *bound = Some(root.index);
-            storage.prepare_payload_slot_owned(c)?;
+            let prepared = storage.prepare_payload_slot_owned(c)?;
             storage
                 .payloads
-                .push_row(RetainedPayload::LookupRegistry {
-                    node: Some(root.index),
-                    registry,
-                    creation: None,
-                })
+                .push_row(
+                    prepared,
+                    RetainedPayload::LookupRegistry {
+                        node: Some(root.index),
+                        registry,
+                        creation: None,
+                    },
+                )
                 .map_err(|_| latch_registry_row(c))?;
             let local_host = match storage.fragment_storage(c)?.effects.as_slice().get(slot) {
                 Some(ContextEffect::AttachShadow {
@@ -1903,8 +1923,7 @@ impl SessionStorage {
                 ));
             }
         };
-        self.prepare_payload_slot_owned(c)?;
-        let fact = self.payloads.values.len();
+        let prepared = self.prepare_payload_slot_owned(c)?;
         // Attach creates false available-to-internals for these actual
         // uncustomized same-owner clone producers; DOM clone copies only the
         // declarative and keep-null flags after attachment.
@@ -1913,17 +1932,21 @@ impl SessionStorage {
             keep_registry_null: state.keep_registry_null,
             available_to_internals: false,
         };
-        self.payloads
-            .values
-            .push(RetainedPayload::Shadow { root: None, state });
-        self.prepare_payload_slot_owned(c)?;
-        let lookup = self.payloads.values.len();
-        self.payloads
-            .push_row(RetainedPayload::LookupRegistry {
-                node: None,
-                registry,
-                creation: None,
-            })
+        let fact = self
+            .payloads
+            .push_row(prepared, RetainedPayload::Shadow { root: None, state })
+            .map_err(|_| latch_registry_row(c))?;
+        let prepared = self.prepare_payload_slot_owned(c)?;
+        let lookup = self
+            .payloads
+            .push_row(
+                prepared,
+                RetainedPayload::LookupRegistry {
+                    node: None,
+                    registry,
+                    creation: None,
+                },
+            )
             .map_err(|_| latch_registry_row(c))?;
         payload_write::<Option<usize>>(c, 2)?;
         let document = document.try_clone(c)?;
