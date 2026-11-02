@@ -48,8 +48,8 @@ impl Reader<'_> {
         let mut out = Vec::new();
         if allocate {
             reserve(&mut out, n)?;
-            for b in bytes.chunks_exact(2) {
-                out.push(u16::from_le_bytes([b[0], b[1]]));
+            for pair in bytes.as_chunks::<2>().0 {
+                out.push(u16::from_le_bytes(*pair));
             }
         }
         Ok(out)
