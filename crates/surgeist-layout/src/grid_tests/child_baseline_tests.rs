@@ -8808,3 +8808,6 @@ mod last_port_authority;
 
 #[path = "child_baseline/subgrid_refresh_last_port.rs"]
 mod subgrid_refresh_last_port;
+
+#[path = "child_baseline/native_coordinate_alignment.rs"]
+mod native_coordinate_alignment;
