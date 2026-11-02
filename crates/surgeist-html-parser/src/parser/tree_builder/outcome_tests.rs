@@ -359,3 +359,49 @@ fn an_unsupported_stage_state_latches_its_stop_in_the_ordinary_driver() {
         driver.release().unwrap();
     }
 }
+
+/// Errors of the tree builder's own structures that no outcome of the document
+/// or of supplied facts names but that input may reach: the stack of open
+/// elements or the tokenizer handoff is in a shape the standalone environment
+/// does not continue from. They are the unsupported nesting state, in both
+/// drivers and in the failure's reason.
+pub(super) fn structure_errors() -> Vec<(&'static str, fn() -> HeadError)> {
+    vec![
+        ("EmptyStack", || HeadError::Kernel(KernelError::EmptyStack)),
+        ("NotElement", || HeadError::Kernel(KernelError::NotElement)),
+        ("FirstOpenElementNotHtml", || {
+            HeadError::Kernel(KernelError::FirstOpenElementNotHtml)
+        }),
+        ("DuplicateOpenElement", || {
+            HeadError::Kernel(KernelError::DuplicateOpenElement)
+        }),
+        ("ForeignSource", || {
+            HeadError::Handoff(crate::parser::tokenizer::TokenizerHandoffError::ForeignSource)
+        }),
+        ("NotData", || {
+            HeadError::Handoff(crate::parser::tokenizer::TokenizerHandoffError::NotData)
+        }),
+        ("PendingEvents", || {
+            HeadError::Handoff(crate::parser::tokenizer::TokenizerHandoffError::PendingEvents)
+        }),
+        ("ActiveDraft", || {
+            HeadError::Handoff(crate::parser::tokenizer::TokenizerHandoffError::ActiveDraft)
+        }),
+    ]
+}
+
+#[test]
+fn a_structure_error_latches_the_unsupported_nesting_stop_in_the_ordinary_driver() {
+    for (name, error) in structure_errors() {
+        let request =
+            HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>x"), super::tests::limits(100));
+        let mut driver = super::entry::initialized_driver(&request);
+        driver.retain_terminal_failure(&Err::<(), _>(StandaloneError::Head(error())));
+        assert_eq!(
+            driver.control.stop(),
+            Some(unsupported(StandaloneUnsupported::InvalidNesting)),
+            "{name}"
+        );
+        driver.release().unwrap();
+    }
+}

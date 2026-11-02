@@ -1304,4 +1304,25 @@ mod tests {
             );
         }
     }
+
+    /// The reason for an error of the tree builder's own structures that input
+    /// may reach is the unsupported state its stop names, in both drivers.
+    #[test]
+    fn a_structure_error_reports_the_unsupported_nesting_state_as_its_reason() {
+        let reason = HtmlParseFailureReason::Stop(ParseStop::UnsupportedStandaloneState(
+            StandaloneUnsupported::InvalidNesting,
+        ));
+        for (name, error) in super::super::outcome_tests::structure_errors() {
+            assert_eq!(
+                ordinary_reason(&StandaloneError::Head(error())),
+                reason,
+                "{name}"
+            );
+            assert_eq!(
+                fragment_reason(&FragmentExecutionError::Head(error())),
+                reason,
+                "{name}"
+            );
+        }
+    }
 }

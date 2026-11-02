@@ -1241,6 +1241,27 @@ pub(super) mod tests {
         }
     }
 
+    /// An error of the tree builder's own structures that input may reach ends
+    /// a fragment parse as the unsupported nesting state, as it does an
+    /// ordinary one.
+    #[test]
+    fn a_structure_error_latches_the_unsupported_nesting_stop_in_the_fragment_driver() {
+        for (name, error) in super::super::outcome_tests::structure_errors() {
+            let request = request("<p>x", "div", HtmlScriptingStatus::Disabled);
+            let mut driver = initialized_driver(&request);
+            let error = FragmentExecutionError::Head(error());
+            driver.stop_for_public_failure(error.stop_cause());
+            assert_eq!(
+                driver.control.stop(),
+                Some(ParseStop::UnsupportedStandaloneState(
+                    StandaloneUnsupported::InvalidNesting
+                )),
+                "{name}"
+            );
+            driver.release().unwrap();
+        }
+    }
+
     /// Frozen parts of a finished fragment parse and the carrier that owns its
     /// request, stopped as a refused seal would stop them.
     fn frozen_fragment_parts() -> (FragmentInitialization, FrozenContextFragmentParts) {
