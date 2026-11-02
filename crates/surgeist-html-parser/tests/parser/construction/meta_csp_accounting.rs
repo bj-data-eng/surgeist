@@ -500,3 +500,53 @@ fn preexecution_zero_work_keeps_original_source_without_entering_the_processor()
     assert_eq!(count(&seen.scratch), 0);
     assert_eq!(count(&seen.errors), 0);
 }
+
+/// A processor that returns without a result while it still holds storage it
+/// admitted breaks the accounting contract of the service it was given. Its
+/// parse ends as a failed Meta CSP processing, not as a fault of the parser.
+struct Leaking {
+    profile: HtmlCspProcessorProfile,
+}
+impl HtmlMetaCspProcessor for Leaking {
+    type Error = BackendError;
+    fn profile(&self) -> &HtmlCspProcessorProfile {
+        &self.profile
+    }
+    fn prepare<E>(
+        &mut self,
+        request: &HtmlMetaCspRequest,
+        admit: &mut impl FnMut(HtmlCspLayout) -> Result<(), E>,
+        _release: &mut impl FnMut(HtmlCspStorage),
+    ) -> Result<HtmlMetaCspOutcome<Self::Error>, HtmlCspError<E>> {
+        request
+            .qualification()
+            .processor()
+            .validate_selected_with(&self.profile, admit)?;
+        admit(HtmlCspLayout::processing(
+            8,
+            Scratch::storage(),
+            HtmlCspDisposalWork::try_new(7, size_of::<Scratch>())?,
+            size_of::<Scratch>(),
+        )?)
+        .map_err(HtmlCspError::Interrupted)?;
+        Ok(HtmlMetaCspOutcome::Unavailable(HtmlCspUnavailable::Profile))
+    }
+}
+
+#[test]
+fn a_processor_that_keeps_admitted_storage_without_a_result_fails_the_processing() {
+    let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+    let profile = authority.profile_with(17, &mut allow).unwrap();
+    let request = HtmlDocumentParseRequest::offline(source(), limits());
+    let failure = request
+        .parse_with_meta_csp(&mut Leaking { profile })
+        .unwrap_err();
+    assert_eq!(
+        failure.parse_failure().reason(),
+        HtmlParseFailureReason::CspProcessing
+    );
+    assert_eq!(
+        failure.parse_failure().first_stop(),
+        Some(HtmlParseStop::CspProcessing)
+    );
+}

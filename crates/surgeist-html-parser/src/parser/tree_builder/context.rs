@@ -4942,6 +4942,33 @@ pub(super) mod tests {
         }
     }
 
+    /// A captured shadow host whose own host or parent the capture never
+    /// established leaves the parse without a fact it needs. The failure names
+    /// the missing fact, as it does for every other fact the capture lacks,
+    /// and the parse ends at the provenance boundary.
+    #[test]
+    fn a_captured_host_with_unavailable_ancestry_names_the_missing_fact() {
+        for kind in ["checkbox", "radio"] {
+            let source =
+                format!("<template shadowrootmode=open><input type={kind} form=f></template>");
+            let failure = shadow_request_with_ancestry(&source, true, true, true)
+                .parse()
+                .unwrap_err();
+            assert_eq!(
+                failure.reason(),
+                HtmlParseFailureReason::MissingContextFact(HtmlCaptureFact::FragmentHost),
+                "{kind}"
+            );
+            assert_eq!(
+                failure.first_stop(),
+                Some(ParseStop::UnsupportedStandaloneState(
+                    StandaloneUnsupported::Provenance
+                )),
+                "{kind}"
+            );
+        }
+    }
+
     #[test]
     fn radio_shadow_form_insertion_cancel_preserves_first_stop_and_cleanup() {
         let request = shadow_request(
