@@ -3,7 +3,7 @@ use surgeist_html::*;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseFailureReason, HtmlParseLimits,
     HtmlParseLimitsBuilder, HtmlParseLimitsError, HtmlParseRequestError, HtmlParseResource,
-    HtmlSource, HtmlSourceCoordinates,
+    HtmlParseStop, HtmlParseUnsupportedState, HtmlSource, HtmlSourceCoordinates,
 };
 use surgeist_html_semantics::HtmlBaseEncoding;
 use surgeist_html_semantics::HtmlCaptureDocumentId;
@@ -642,6 +642,14 @@ fn an_input_image_source_with_unavailable_image_support_names_the_missing_fact()
     assert_eq!(
         failure.reason(),
         HtmlParseFailureReason::MissingContextFact(HtmlCaptureFact::ImageSupport)
+    );
+    // The missing fact is reported as the provenance boundary, as the same
+    // fact is by every driver that meets it.
+    assert_eq!(
+        failure.first_stop(),
+        Some(HtmlParseStop::UnsupportedStandaloneState(
+            HtmlParseUnsupportedState::Provenance
+        ))
     );
     assert_eq!(failure.cleanup_error(), None);
 }

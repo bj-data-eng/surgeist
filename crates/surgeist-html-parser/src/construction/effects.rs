@@ -356,13 +356,14 @@ impl SessionStorage {
                 | SessionError::CspService
                 | SessionError::CspProtocol(_)),
             ) => Err(error),
+            // A fact or reaction the capture lacks leaves the session terminal
+            // at the point it is met, whoever drives it, as the stop its class
+            // names (the provenance boundary).
             Err(
                 error @ (SessionError::ContextFactUnavailable(_)
                 | SessionError::ContextReactionUnavailable),
             ) => {
-                c.stop_unsupported_standalone(
-                    crate::parser::control::StandaloneUnsupported::Provenance,
-                );
+                super::session_class(&error).latch(c);
                 Err(error)
             }
             Err(error) => Err(super::latch_effect_fault(c, error)),

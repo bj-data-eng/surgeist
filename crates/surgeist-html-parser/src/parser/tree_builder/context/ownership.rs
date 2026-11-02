@@ -43,13 +43,7 @@ impl<'source> FragmentEntry<'source> {
         ) {
             Ok(()) => None,
             Err(error) => {
-                if error.invariant_fault() {
-                    FragmentExecutionError::latch_invariant(&mut driver.control);
-                } else {
-                    driver
-                        .control
-                        .stop_unsupported_standalone(StandaloneUnsupported::Provenance);
-                }
+                error.stop_cause().latch(&mut driver.control);
                 Some(error)
             }
         };

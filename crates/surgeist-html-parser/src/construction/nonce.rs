@@ -222,7 +222,9 @@ impl SessionStorage {
         let document = match self.captured_shadow_including_document(c, host) {
             Ok(Some(document)) => document,
             Ok(None) => return Ok((C::NotBrowsingContextConnected, P::Unavailable)),
-            Err(SessionError::ContextUnavailable) => return Ok((C::Unavailable, P::Unavailable)),
+            Err(SessionError::ContextFactUnavailable(
+                crate::HtmlCaptureFact::Parent | crate::HtmlCaptureFact::FragmentHost,
+            )) => return Ok((C::Unavailable, P::Unavailable)),
             Err(error) => return Err(error),
         };
         let environment = document.nonce_environment();
@@ -266,7 +268,9 @@ impl SessionStorage {
                         .map_err(|_| SessionError::ForeignNode)?;
                 }
                 crate::HtmlCapturedParent::Unavailable => {
-                    return Err(SessionError::ContextUnavailable);
+                    return Err(SessionError::ContextFactUnavailable(
+                        crate::HtmlCaptureFact::Parent,
+                    ));
                 }
                 crate::HtmlCapturedParent::Root => {
                     // A plain fragment's generic host may be its Template
@@ -285,7 +289,9 @@ impl SessionStorage {
                                 .map_err(|_| SessionError::ForeignNode)?;
                         }
                         Some(crate::HtmlCapturedHost::Unavailable) => {
-                            return Err(SessionError::ContextUnavailable);
+                            return Err(SessionError::ContextFactUnavailable(
+                                crate::HtmlCaptureFact::FragmentHost,
+                            ));
                         }
                         _ => return Ok(None),
                     }
