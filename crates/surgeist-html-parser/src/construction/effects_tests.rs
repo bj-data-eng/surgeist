@@ -1,5 +1,7 @@
 use super::super::select::*;
-use super::super::tests::{fresh_script_owner, limits, storage_zero};
+use super::super::tests::{
+    assert_freeze_reports_first_stop, fresh_script_owner, limit_stop_of, limits, storage_zero,
+};
 use super::*;
 use crate::parser::tokenizer::{
     states::{Raw, State},
@@ -1068,12 +1070,19 @@ fn select_text_clone_every_interruption_keeps_ticket_binding_coherent_for_dispos
             - c.usage().resource(HtmlParseResource::WorkCredits).current;
         c.charge(WorkCategory::StateStep, remaining - extra)
             .unwrap();
-        let _result = session
+        let result = session
             .active_mut()
             .unwrap()
             .clone_node(&mut c, text, DocumentRef::Owned(0));
         if c.stop().is_some() {
-            assert!(session.freeze(&mut c).is_err());
+            // The sweep leaves only `extra` work credits, so the first stop is
+            // the exhausted work-credit limit of the request's limits.
+            let first = limit_stop_of(
+                &result,
+                HtmlParseResource::WorkCredits,
+                request.limits().work_credits(),
+            );
+            assert_freeze_reports_first_stop(&mut session, &mut c, first);
         }
         let release = session.release(&mut c);
         assert!(
@@ -1375,9 +1384,12 @@ fn select_script_parent_preparation_precedes_every_static_list_admission_prefix(
             RetainedPayload::Script { node: Some(node), metadata } if *node == copy.index && metadata.flags.already_started()));
         saw_list |= collected;
         if result.is_err() {
-            let first = c.stop().expect("canonical stopped prefix");
-            assert!(session.freeze(&mut c).is_err());
-            assert_eq!(c.stop(), Some(first));
+            let first = limit_stop_of(
+                &result,
+                HtmlParseResource::WorkCredits,
+                request.limits().work_credits(),
+            );
+            assert_freeze_reports_first_stop(&mut session, &mut c, first);
         }
         if let Some(text) = text {
             text.release(&mut c).unwrap();
@@ -1531,9 +1543,12 @@ fn select_fragment_insert_interruption_keeps_original_sibling_snapshot_and_coher
             }
         }
         if result.is_err() {
-            let first = c.stop().expect("canonical stopped batch");
-            assert!(session.freeze(&mut c).is_err());
-            assert_eq!(c.stop(), Some(first));
+            let first = limit_stop_of(
+                &result,
+                HtmlParseResource::WorkCredits,
+                request.limits().work_credits(),
+            );
+            assert_freeze_reports_first_stop(&mut session, &mut c, first);
         }
         let running_before_cleanup = c.stop().is_none();
         let released = session.release(&mut c);
