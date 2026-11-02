@@ -22,7 +22,11 @@ use std::convert::Infallible;
 use surgeist_html::*;
 use surgeist_html_semantics::*;
 
-/// Resources a stopped parse returns whatever it was doing.
+/// Resources a stopped parse returns whatever it was doing and that no kept
+/// diagnostic holds. With the resources compared with the kept diagnostics in
+/// `note_retained`, they are every resource cleanup refunds. `ManagedNodes` and
+/// `WorkCredits` are never refunded, `SourceUnits` is admitted once for the
+/// source, and `TreeDepth` and `AtomicLayoutBytes` record a high water.
 const RETAINED: [HtmlParseResource; 9] = [
     HtmlParseResource::BufferedUtf16Units,
     HtmlParseResource::TokenAttributes,
@@ -34,7 +38,6 @@ const RETAINED: [HtmlParseResource; 9] = [
     HtmlParseResource::ContextEffects,
     HtmlParseResource::OpenElements,
 ];
-
 /// What a stopped parse left once cleanup ran.
 #[derive(Debug)]
 struct Stopped {
@@ -76,7 +79,8 @@ fn stopped(failure: &HtmlParseFailure) -> Box<Stopped> {
 /// is not zero everywhere: the diagnostics themselves are the baseline. Each
 /// kept record is one `Diagnostics` unit and `size_of::<DiagnosticRecord>()`
 /// bytes of capacity, and each distinct location it names is one
-/// `SourceMapEntries` unit and `size_of::<DiagnosticLocation>()` bytes. Both
+/// `SourceMapEntries` unit and `size_of::<DiagnosticLocation>()` bytes, held as
+/// both `ManagedCapacityBytes` and `PeakTransientBytes`. Both
 /// vectors hold exactly the length they were filled to. Anything beyond that
 /// baseline is a leak, including capacity bytes while diagnostics are kept.
 fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
@@ -91,17 +95,39 @@ fn note_retained(retained: &mut Vec<String>, label: &str, stop: &Stopped) {
     let expected = |resource| match resource {
         HtmlParseResource::Diagnostics => stop.kept_records as u64,
         HtmlParseResource::SourceMapEntries => stop.kept_locations as u64,
-        HtmlParseResource::ManagedCapacityBytes => {
+        // See the payload check below.
+        HtmlParseResource::DiagnosticPayloadUnits => 0,
+        HtmlParseResource::ManagedCapacityBytes | HtmlParseResource::PeakTransientBytes => {
             (stop.kept_records * std::mem::size_of::<DiagnosticRecord>()
                 + stop.kept_locations * std::mem::size_of::<DiagnosticLocation>())
                 as u64
         }
         _ => 0,
     };
+    // The failure view reports no payload for a kept diagnostic: a record
+    // names its kind, context, severity, rule and location, and a location a
+    // source range, role and token, none of them text. What the diagnostics
+    // keep can never exceed the most the parse held, so a parse that never
+    // held any diagnostic payload keeps none. A parse that did has a baseline
+    // this test does not derive, and says so rather than expect zero.
+    let at_stop = stop
+        .at_stop
+        .as_ref()
+        .expect("a stopped parse reports its usage");
+    let payload_high_water = at_stop
+        .resource(HtmlParseResource::DiagnosticPayloadUnits)
+        .high_water();
+    if payload_high_water != 0 {
+        retained.push(format!(
+            "{label}: diagnostic payload reached {payload_high_water}, so its baseline is not derived"
+        ));
+    }
     let checked = RETAINED.into_iter().chain([
         HtmlParseResource::Diagnostics,
+        HtmlParseResource::DiagnosticPayloadUnits,
         HtmlParseResource::SourceMapEntries,
         HtmlParseResource::ManagedCapacityBytes,
+        HtmlParseResource::PeakTransientBytes,
     ]);
     for resource in checked {
         let current = after.resource(resource).current();
