@@ -489,14 +489,16 @@ impl SessionStorage {
         Ok(Some(order))
     }
     /// Applies a style element's insertion or removal to the main tree's style
-    /// order. A removal, or an insertion that is not at the end of the tree,
-    /// drops the order for the next trigger to rebuild.
+    /// order. A removal, or an insertion that is not after every listed style,
+    /// drops the order for the next trigger to rebuild. `root` is the root of
+    /// the subtree whose insertion or removal is being applied.
     fn style_order_changed(
         &mut self,
         c: &mut ParseControl,
         style: usize,
         detached: Option<usize>,
         removal: bool,
+        root: usize,
     ) -> Result<(), SessionError> {
         let Some(current) = self.style_order else {
             return Ok(());
@@ -529,7 +531,34 @@ impl SessionStorage {
                 .child_at(position)
                 .is_some_and(|child| matches!(child.kind(), HtmlNodeKind::Element(_)));
         }
-        if elements || !self.ends_subtree(c, MAIN_TREE, style)? {
+        if elements {
+            self.style_order = None;
+            return Ok(());
+        }
+        // The order lists every style of the tree but those in the subtree being
+        // applied, whose own hooks have not run. A style that is the whole
+        // subtree has none after it that is unlisted, so it belongs at the end
+        // of the order when it follows the last listed style, wherever in the
+        // tree that is. Within a larger subtree it must end the tree.
+        let appends = if root == style {
+            let last = match current.slot {
+                None => None,
+                Some(slot) => {
+                    let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get(slot)
+                    else {
+                        return Err(latch_registry_row(c));
+                    };
+                    list.as_slice().last().copied()
+                }
+            };
+            match last {
+                None => true,
+                Some(last) => self.precedes(c, last, style)?,
+            }
+        } else {
+            self.ends_subtree(c, MAIN_TREE, style)?
+        };
+        if !appends {
             self.style_order = None;
             return Ok(());
         }
@@ -972,9 +1001,10 @@ impl SessionStorage {
         detached: Option<usize>,
         removal: bool,
         old_parent: Option<usize>,
+        root: usize,
     ) -> Result<(), SessionError> {
         if self.html_local(c, node, "style")? {
-            self.style_order_changed(c, node, detached, removal)?;
+            self.style_order_changed(c, node, detached, removal, root)?;
             let Some(slot) = self.style_slot(c, node)? else {
                 return Ok(());
             };

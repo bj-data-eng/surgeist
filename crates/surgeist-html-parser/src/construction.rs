@@ -5815,6 +5815,7 @@ impl SessionStorage {
                             detached,
                             effects.stage == FormEffectStage::Removal,
                             effects.old_parent,
+                            effects.root,
                         )?;
                         self.intrinsic_tree_hook(
                             control,

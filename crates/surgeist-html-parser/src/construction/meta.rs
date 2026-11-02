@@ -886,7 +886,7 @@ impl SessionStorage {
     }
     /// Whether `first` comes before `second` in tree order. Both are in one
     /// tree and are different records.
-    fn precedes(
+    pub(super) fn precedes(
         &self,
         c: &mut ParseControl,
         first: usize,
