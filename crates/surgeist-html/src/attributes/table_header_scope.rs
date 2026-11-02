@@ -57,6 +57,10 @@ enum_rule!(TH_SCOPE, HtmlTableHeaderScopeState, Scope,
 pub(crate) mod bounded_scope {
     use super::*;
 
+    // The bound below counts the ASCII case-insensitive path, which reads pairs
+    // only against keywords of the input's own length.
+    const _: () = assert!(!TH_SCOPE.exact_keywords);
+
     /// Returns the th `scope` content state for `raw` without allocating.
     ///
     /// This is the `intrinsic` state of `HtmlValueInterpreter::th_scope` for the
@@ -85,18 +89,48 @@ pub(crate) mod bounded_scope {
             .unwrap_or(HtmlTableHeaderScopeState::Auto))
     }
 
-    /// Returns an upper bound on the work units [`th_scope_state`] performs for a raw
+    /// Returns the worst-case work units [`th_scope_state`] performs for a raw
     /// value of `input_units` UTF-16 code units, or `None` when it is not
     /// representable.
     ///
-    /// One unit is one admitted read (`HtmlAttributeKeywordRead`): the value header,
-    /// each of the four keywords' headers, and one per raw unit compared against a
-    /// keyword of the same length. Only `row` and `col` share a length (3), and only
-    /// `rowgroup` and `colgroup` share another (8), so at most two keywords compare
-    /// at most n units each: the total is at most 2n + 5. An absent attribute costs
-    /// one unit, and a mismatch stops a comparison early.
+    /// One unit is one admitted read (`HtmlAttributeKeywordRead`): the value
+    /// header, one header per keyword, and one pair read per raw unit compared
+    /// with a keyword spelling. A keyword whose spelling length differs from the
+    /// input's costs its header only, so the bound depends on the length only
+    /// through the keywords of that length (`row` and `col` at 3, `rowgroup` and
+    /// `colgroup` at 8); any other length, however long, costs the headers alone.
+    ///
+    /// Among the keywords of the input's length, the worst input is a keyword
+    /// altered at its last unit: it costs `n` pair reads against that keyword
+    /// and, against each other keyword, the ASCII case-insensitive common prefix
+    /// of the two spellings plus one mismatching pair (at most `n`). An input's
+    /// longest-agreeing keyword agrees with every other keyword at least as much
+    /// as the input does, so the maximum over keywords bounds every input. The
+    /// bound is computed from the keyword table, so a changed table stays
+    /// correct. Matching earlier or an absent attribute only reduces the work.
     pub fn th_scope_work_bound(input_units: usize) -> Option<usize> {
-        input_units.checked_mul(2)?.checked_add(5)
+        let keywords = TH_SCOPE.keywords;
+        let mut worst_pairs = 0_usize;
+        for (index, keyword) in keywords.iter().enumerate() {
+            if keyword.spelling.len() != input_units {
+                continue;
+            }
+            let mut pairs = input_units;
+            for (other_index, other) in keywords.iter().enumerate() {
+                if other_index == index || other.spelling.len() != input_units {
+                    continue;
+                }
+                let common = keyword
+                    .spelling
+                    .bytes()
+                    .zip(other.spelling.bytes())
+                    .take_while(|(a, b)| a.eq_ignore_ascii_case(b))
+                    .count();
+                pairs = pairs.checked_add(common.saturating_add(1).min(input_units))?;
+            }
+            worst_pairs = worst_pairs.max(pairs);
+        }
+        keywords.len().checked_add(1)?.checked_add(worst_pairs)
     }
 
     #[cfg(test)]
@@ -228,7 +262,6 @@ pub(crate) mod bounded_scope {
 
         #[test]
         fn work_never_exceeds_the_published_bound_and_the_bound_is_reached() {
-            assert!(!TH_SCOPE.exact_keywords);
             assert_eq!(counted(None), (HtmlTableHeaderScopeState::Auto, 1));
             let mut worst = std::collections::BTreeMap::new();
             for units in corpus() {

@@ -386,10 +386,13 @@ associations. These local reports use ordinary allocation and admit the entire
 original UTF-16 value before applicability through the per-value cap.
 
 `bounded::th_scope_state` returns the same scope state without a report, and
-`bounded::th_scope_work_bound(n)` publishes its bound for an n-unit raw value:
-at most `2n + 5` admitted reads (the value header, four keyword headers, and at
-most two same-length keywords compared unit by unit). The caller admits the raw
-length and charges the bound before the call.
+`bounded::th_scope_work_bound(n)` publishes its worst-case work for an n-unit raw
+value, computed from the keyword table. Every value costs five admitted reads
+(the value header and four keyword headers); unit comparisons occur only against
+a keyword of the value's own length. That adds at most four reads at length 3
+(`row` and `col`, nine in all) and nine at length 8 (`rowgroup` and `colgroup`,
+fourteen in all), and nothing at any other length, however long. The caller
+admits the raw length and charges the bound before the call.
 
 `textarea_wrap` retains Soft/Hard content state, raw spelling and lexical
 conformance separately; missing and invalid content select Soft. Hard leaves
