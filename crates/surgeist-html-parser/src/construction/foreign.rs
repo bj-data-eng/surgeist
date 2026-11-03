@@ -188,7 +188,7 @@ impl ParserArenaSession {
         let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         let result = (|| {
             for &unit in original.value.text().code_units() {
-                c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                c.charge_unit_inspection()?;
                 if unit != 0 {
                     return Err(SessionError::WrongToken);
                 }

@@ -536,7 +536,7 @@ impl<'a> PreparedReportStorage<'a> {
                                 }
                                 surgeist_html::bounded::HtmlElementNameRead::NamespacePair
                                 | surgeist_html::bounded::HtmlElementNameRead::LocalNamePair => {
-                                    c.charge(HtmlParseWorkCategory::InspectByte, 3)
+                                    c.charge_unit_literal_comparison()
                                 }
                             },
                         )?;

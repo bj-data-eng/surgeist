@@ -315,7 +315,7 @@ impl SessionStorage {
                 RangeNumericRequest::SourceUnit { index } => {
                     let source = stage.source;
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                    c.charge_unit_inspection()?;
                     let unit = admitted_input_string(&self.payloads, c, source)?
                         .code_units()
                         .get(index)
@@ -566,7 +566,7 @@ impl SessionStorage {
             while !grammar.is_finished() {
                 c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 if grammar.inspects_unit() {
-                    c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                    c.charge_unit_inspection()?;
                 }
                 c.charge(
                     HtmlParseWorkCategory::CopyByte,
@@ -842,7 +842,7 @@ impl SessionStorage {
                                 // The lengths are equal, so the enumeration covers
                                 // the keyword exactly.
                                 for (index, &unit) in raw.code_units().iter().enumerate() {
-                                    c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                                    c.charge_unit_inspection()?;
                                     c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                                     if !HtmlInputNumericStep::any_keyword_unit_matches(index, unit)
                                     {

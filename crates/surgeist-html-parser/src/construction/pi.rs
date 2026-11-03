@@ -115,7 +115,7 @@ impl SessionStorage {
                         };
                         let unit = match pi.data().code_units().get(offset) {
                             Some(&unit) => {
-                                c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                                c.charge_unit_inspection()?;
                                 Some(unit)
                             }
                             None if offset == pi.data().len() => None,
@@ -201,7 +201,7 @@ impl SessionStorage {
                         let Some(&unit) = units.get(offset) else {
                             return Err(SessionError::WrongToken);
                         };
-                        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                        c.charge_unit_inspection()?;
                         Reply::Unit(Some(unit))
                     }
                     Action::Commit => {

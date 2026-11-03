@@ -45,7 +45,7 @@ pub(super) fn insensitive(
     }
     // The lengths are equal, so the pairs are exactly the literal's indices.
     for (&unit, byte) in value.code_units().iter().zip(literal.bytes()) {
-        c.charge(HtmlParseWorkCategory::InspectByte, 3)?;
+        c.charge_unit_literal_comparison()?;
         let lower = if (65..=90).contains(&unit) {
             unit | 0x20
         } else {

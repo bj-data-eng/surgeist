@@ -120,7 +120,7 @@ fn matches(
     // literal's indices.
     for (&unit, byte) in units.iter().zip(literal.bytes()) {
         c.charge(HtmlParseWorkCategory::StateStep, 1)?;
-        c.charge(HtmlParseWorkCategory::InspectByte, 3)?;
+        c.charge_unit_literal_comparison()?;
         let mut unit = unit;
         if insensitive && (65..=90).contains(&unit) {
             unit |= 0x20;

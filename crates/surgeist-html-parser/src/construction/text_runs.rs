@@ -210,7 +210,7 @@ fn stage_text_runs(
             }
             let mut kind = None;
             for index in origin.start..origin.end {
-                control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                control.charge_unit_inspection()?;
                 let Some(&unit) = units.get(index) else {
                     return Err(latch_registry_row(control));
                 };
@@ -308,7 +308,7 @@ pub(crate) fn split_first_lf(
     if text.value.text().is_empty() {
         return Ok(None);
     }
-    control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+    control.charge_unit_inspection()?;
     if text.value.text().code_units().first() != Some(&10) {
         return Ok(None);
     }
@@ -371,7 +371,7 @@ pub(crate) fn split_leading_ascii_whitespace(
     SessionStorage::check_text(control, text)?;
     let mut cut = 0usize;
     for &unit in text.value.text().code_units() {
-        control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+        control.charge_unit_inspection()?;
         if !matches!(unit, 0x09 | 0x0a | 0x0c | 0x0d | 0x20) {
             break;
         }

@@ -314,7 +314,7 @@ impl SessionStorage {
                 payload_write::<crate::HtmlInputColorSpaceCursor<'_>>(c, 1)?;
                 match work {
                     crate::HtmlInputRuleWork::CompareAsciiUnit => {
-                        c.charge(HtmlParseWorkCategory::InspectByte, 3)?;
+                        c.charge_unit_literal_comparison()?;
                     }
                     crate::HtmlInputRuleWork::ReadField => {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;

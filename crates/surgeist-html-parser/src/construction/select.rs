@@ -733,7 +733,7 @@ impl SessionStorage {
         payload_write::<usize>(c, 1)?;
         let mut scanner = surgeist_html::bounded::IntegerPrefixScanner::new(true);
         for &unit in value.code_units() {
-            c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+            c.charge_unit_inspection()?;
             payload_write::<surgeist_html::bounded::IntegerPrefixScanner>(c, 1)?;
             if !scanner.feed(unit) {
                 break;
@@ -750,7 +750,7 @@ impl SessionStorage {
             .get(prefix.start()..prefix.end())
             .ok_or_else(|| latch_registry_row(c))?;
         for &unit in digits {
-            c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+            c.charge_unit_inspection()?;
             if prefix.is_negative() && unit != b'0' as u16 {
                 return Ok(fallback);
             }

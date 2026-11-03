@@ -463,7 +463,7 @@ impl SessionStorage {
                             c.charge(HtmlParseWorkCategory::RecordVisit, 1)
                         }
                         surgeist_html::bounded::HtmlAttributeKeywordRead::KeywordPair => {
-                            c.charge(HtmlParseWorkCategory::InspectByte, 3)
+                            c.charge_unit_literal_comparison()
                         }
                     };
                     let changed = if effect == HtmlImageAttributeEffect::CompareCrossOrigin {

@@ -815,7 +815,7 @@ impl SessionStorage {
             if let Some(media) = self.meta_attribute(c, node, "media")? {
                 let mut known_match = true;
                 for unit in media.code_units() {
-                    c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                    c.charge_unit_inspection()?;
                     if !bounded::is_ascii_whitespace(*unit) {
                         known_match = false;
                         break;
@@ -1360,14 +1360,14 @@ fn theme_color(
     SessionError,
 > {
     while let Some((unit, rest)) = input.split_first() {
-        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+        c.charge_unit_inspection()?;
         if !bounded::is_ascii_whitespace(*unit) {
             break;
         }
         input = rest;
     }
     while let Some((unit, rest)) = input.split_last() {
-        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+        c.charge_unit_inspection()?;
         if !bounded::is_ascii_whitespace(*unit) {
             break;
         }
@@ -1413,7 +1413,7 @@ fn meta_ascii(
         return Ok(false);
     }
     for (unit, byte) in value.code_units().iter().zip(expected.bytes()) {
-        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+        c.charge_unit_inspection()?;
         if !u8::try_from(*unit).is_ok_and(|unit| unit.eq_ignore_ascii_case(&byte)) {
             return Ok(false);
         }

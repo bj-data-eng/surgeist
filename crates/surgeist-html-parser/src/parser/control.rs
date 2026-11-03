@@ -449,6 +449,14 @@ pub(crate) struct OwnedSpanObservation {
 #[derive(Clone)]
 pub(crate) struct ControlIdentity(Arc<()>);
 
+/// Bytes inspected for one stored UTF-16 code unit.
+const UNIT_BYTES: u64 = 2;
+/// Bytes inspected comparing a stored UTF-16 code unit with a literal ASCII byte:
+/// the unit's two bytes and the literal's one.
+const UNIT_LITERAL_PAIR_BYTES: u64 = 3;
+/// Bytes inspected comparing one byte of each of two byte sequences.
+const BYTE_PAIR_BYTES: u64 = 2;
+
 impl ParseControl {
     pub(crate) fn new(limits: HtmlParseLimits, cancellation: HtmlParseCancellation) -> Self {
         let limits = limits.values();
@@ -927,6 +935,19 @@ impl ParseControl {
         units: u64,
     ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[(category, units)])
+    }
+    /// Charges the inspection of one stored UTF-16 code unit: its two bytes.
+    pub(crate) fn charge_unit_inspection(&mut self) -> Result<(), HtmlParseStop> {
+        self.charge(HtmlParseWorkCategory::InspectByte, UNIT_BYTES)
+    }
+    /// Charges comparing one stored UTF-16 code unit with one byte of an ASCII
+    /// literal: the two bytes of the unit and the one byte of the literal.
+    pub(crate) fn charge_unit_literal_comparison(&mut self) -> Result<(), HtmlParseStop> {
+        self.charge(HtmlParseWorkCategory::InspectByte, UNIT_LITERAL_PAIR_BYTES)
+    }
+    /// Charges comparing one byte of each of two byte sequences.
+    pub(crate) fn charge_byte_pair_comparison(&mut self) -> Result<(), HtmlParseStop> {
+        self.charge(HtmlParseWorkCategory::InspectByte, BYTE_PAIR_BYTES)
     }
     fn charge_many(
         &mut self,

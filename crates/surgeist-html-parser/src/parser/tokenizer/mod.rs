@@ -99,7 +99,7 @@ impl Names {
         }
         let mut index = 0;
         for unit in units {
-            c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+            c.charge_unit_inspection()?;
             let unit = *unit;
             for shift in (0..16).rev() {
                 c.charge(HtmlParseWorkCategory::StateStep, 1)?;
@@ -1665,7 +1665,7 @@ impl<'source> Tokenizer<'source> {
                 .iter()
                 .zip(self.temporary.origins.as_slice())
             {
-                c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                c.charge_unit_inspection()?;
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 text.push(u32::from(unit), &origin.source, origin.kind, c)?;
             }
@@ -1716,7 +1716,7 @@ impl<'source> Tokenizer<'source> {
             .iter()
             .zip(self.temporary.origins.as_slice())
         {
-            c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+            c.charge_unit_inspection()?;
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             self.comment
                 .as_mut()
@@ -1817,7 +1817,7 @@ fn ascii_eq(
         return Ok(false);
     }
     for (unit, byte) in units.iter().zip(bytes) {
-        c.charge(HtmlParseWorkCategory::InspectByte, 3)?;
+        c.charge_unit_literal_comparison()?;
         if (if insensitive {
             lower(u32::from(*unit))
         } else {

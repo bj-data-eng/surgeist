@@ -33,12 +33,10 @@ pub(super) fn input_type_state(
                 control.charge(HtmlParseWorkCategory::RecordVisit, 2)?
             }
             crate::HtmlInputRuleWork::CompareAsciiUnit => {
-                control.charge(HtmlParseWorkCategory::InspectByte, 3)?
+                control.charge_unit_literal_comparison()?
             }
             crate::HtmlInputRuleWork::CompareValueUnits
-            | crate::HtmlInputRuleWork::InspectValueUnit => {
-                control.charge(HtmlParseWorkCategory::InspectByte, 2)?
-            }
+            | crate::HtmlInputRuleWork::InspectValueUnit => control.charge_unit_inspection()?,
         }
         cursor.advance();
     }
@@ -80,7 +78,7 @@ pub(super) fn validate_initial_input_origins(
                 };
                 let mut omitted = 0usize;
                 for &unit in units {
-                    control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                    control.charge_unit_inspection()?;
                     if !policy.retain_unit(unit) {
                         // At most one per unit of the range being counted.
                         omitted = omitted.saturating_add(1);
@@ -278,7 +276,7 @@ fn copy_whole_generated_input_value(
             payload_write::<Option<crate::HtmlInputRetainedRange>>(c, 1)?;
             range = next_input_range(c, &mut cursor)?;
         }
-        c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+        c.charge_unit_inspection()?;
         if range.is_some_and(|range| range.start() <= position && position < range.end())
             && cursor.retain_unit(unit)
         {
@@ -327,9 +325,7 @@ fn next_input_range(
 ) -> Result<Option<crate::HtmlInputRetainedRange>, SessionError> {
     while let Some(work) = cursor.required_work() {
         match work {
-            crate::HtmlInputRuleWork::InspectValueUnit => {
-                control.charge(HtmlParseWorkCategory::InspectByte, 2)?
-            }
+            crate::HtmlInputRuleWork::InspectValueUnit => control.charge_unit_inspection()?,
             _ => control.charge(HtmlParseWorkCategory::RecordVisit, 1)?,
         }
         payload_write::<crate::HtmlInputSanitizationCursor<'_>>(control, 1)?;
@@ -390,7 +386,7 @@ fn copy_input_value_core(
                     };
                     let mut omitted = 0usize;
                     for (position, &unit) in (origin.start..origin.end).zip(origin_units) {
-                        control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                        control.charge_unit_inspection()?;
                         let keep = if let Some(cursor) = &mut selection {
                             while range.is_some_and(|range| range.end() <= position) {
                                 payload_write::<Option<crate::HtmlInputRetainedRange>>(control, 1)?;
@@ -415,7 +411,7 @@ fn copy_input_value_core(
                         let mut transformed = false;
                         if matches!(policy, crate::HtmlInputSanitization::Temporal(_)) {
                             for (position, &unit) in (origin.start..origin.end).zip(origin_units) {
-                                control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                                control.charge_unit_inspection()?;
                                 let replacement = selection
                                     .as_ref()
                                     .and_then(|cursor| cursor.replacement_unit(position));

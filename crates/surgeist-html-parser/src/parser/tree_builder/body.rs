@@ -1316,7 +1316,7 @@ impl HeadState<'_> {
             if details {
                 // Both sides are seven bytes, so the pairs are the seven indices.
                 for (actual, expected) in block.bytes().zip(b"details".iter().copied()) {
-                    c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+                    c.charge_byte_pair_comparison()?;
                     details &= actual == expected;
                 }
             }

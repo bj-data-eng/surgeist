@@ -40,7 +40,7 @@ pub(super) fn ascii_eq(
     // The lengths are equal, so the pairs are exactly the literal's indices.
     for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
         // Two stored UTF-16 bytes and one defining literal byte are inspected.
-        control.charge(HtmlParseWorkCategory::InspectByte, 3)?;
+        control.charge_unit_literal_comparison()?;
         if unit != u16::from(byte) {
             return Ok(false);
         }

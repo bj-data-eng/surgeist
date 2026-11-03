@@ -1079,7 +1079,7 @@ fn charged_custom_name(name: &DocumentString, c: &mut ParseControl) -> Result<bo
     Ok(validate_custom_element_name_with(name, |action| {
         match action {
             A::Header | A::ReservedHeader => c.charge(HtmlParseWorkCategory::RecordVisit, 1)?,
-            A::Unit => c.charge(HtmlParseWorkCategory::InspectByte, 2)?,
+            A::Unit => c.charge_unit_inspection()?,
             A::ReservedPair => c.charge(HtmlParseWorkCategory::InspectByte, 4)?,
         }
         Ok::<(), HtmlParseStop>(())
@@ -1137,7 +1137,7 @@ fn insensitive(
     }
     // The lengths are equal, so the pairs cover both sequences exactly.
     for (&left, right) in value.code_units().iter().zip(literal.bytes()) {
-        c.charge(HtmlParseWorkCategory::InspectByte, 3)?;
+        c.charge_unit_literal_comparison()?;
         let left = if matches!(left, 65..=90) {
             left | 0x20
         } else {

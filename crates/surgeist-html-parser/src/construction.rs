@@ -238,7 +238,7 @@ fn lowercase_token_name(
     name: &DocumentString,
 ) -> Result<(), SessionError> {
     for &unit in name.code_units() {
-        control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
+        control.charge_unit_inspection()?;
         if matches!(unit, 0x41..=0x5a) {
             return Err(SessionError::WrongToken);
         }
@@ -257,7 +257,7 @@ fn exact_ascii(
         return Ok(false);
     }
     for (&unit, byte) in value.code_units().iter().zip(expected.bytes()) {
-        control.charge(HtmlParseWorkCategory::InspectByte, 3)?;
+        control.charge_unit_literal_comparison()?;
         if unit != u16::from(byte) {
             return Ok(false);
         }
