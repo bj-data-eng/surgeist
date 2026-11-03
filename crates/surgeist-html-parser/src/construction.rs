@@ -11261,6 +11261,28 @@ fn test_owning_depth(result: &HtmlConstructionResult, position: usize) -> usize 
 }
 
 #[cfg(test)]
+/// A real CSP protocol error: an association presented to a different owner.
+pub(crate) fn csp_protocol_error() -> surgeist_html::HtmlCspProtocolError {
+    use surgeist_html::{HtmlCspError, HtmlCspOwner, HtmlCspProcessorAuthority};
+    let admit = &mut |_| Ok::<(), std::convert::Infallible>(());
+    let mut owner = HtmlCspOwner::new_with(admit).unwrap();
+    let mut other = HtmlCspOwner::new_with(admit).unwrap();
+    let association = owner.initial_document_with(admit).unwrap();
+    let profile = HtmlCspProcessorAuthority::new_with(admit)
+        .unwrap()
+        .profile_with(1, admit)
+        .unwrap();
+    let content = surgeist_html::DocumentString::from("default-src 'none'");
+    match other.request_meta_insertion_with(&association, &profile, content, admit) {
+        Err(rejected) => match rejected.error {
+            HtmlCspError::Protocol(error) => error,
+            HtmlCspError::Interrupted(never) => match never {},
+        },
+        Ok(_) => panic!("a foreign association was accepted"),
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

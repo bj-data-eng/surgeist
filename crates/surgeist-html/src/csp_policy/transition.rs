@@ -262,7 +262,7 @@ impl HtmlCspProcessorAuthority {
     }
     fn require(&self, request: &HtmlMetaCspRequest) -> Result<(), HtmlCspProtocolError> {
         if self.identity != request.qualification.0.processor.issuer {
-            return Err(HtmlCspProtocolError::WrongProcessor);
+            return Err(HtmlCspProtocolErrorKind::WrongProcessor.error());
         }
         if let Some(prior) = request.prior.profile() {
             prior.require(&request.qualification.0.processor)?;
@@ -285,7 +285,7 @@ impl HtmlCspProcessorAuthority {
             let next = self
                 .policy_serial
                 .checked_add(1)
-                .ok_or(HtmlCspProtocolError::RepresentationExhausted)?;
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
             // The artifact contract makes this one fixed, nonpanicking metadata
             // read. It is not a processing or destruction callback.
             let native = artifact.retained_layout();
@@ -386,7 +386,7 @@ impl HtmlCspOwner {
         let next = self
             .document_serial
             .checked_add(1)
-            .ok_or(HtmlCspProtocolError::RepresentationExhausted)?;
+            .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
         let policy_layout = HtmlCspArtifactLayout::inline::<PolicyRecord>(8);
         let retained =
             HtmlCspArtifactLayout::inline::<HtmlCspAssociation>(12).add(policy_layout)?;
@@ -440,7 +440,7 @@ impl HtmlCspOwner {
         let next = self
             .document_serial
             .checked_add(1)
-            .ok_or(HtmlCspProtocolError::RepresentationExhausted)?;
+            .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
         let retained = source.retained_layout()?;
         admit(HtmlCspLayout::retain::<HtmlCspAssociation>(
             retained,
@@ -481,23 +481,23 @@ impl HtmlCspOwner {
         let ready = (|| {
             admit(HtmlCspLayout::read::<Self>(14)).map_err(HtmlCspError::Interrupted)?;
             if current.document.owner != self.identity {
-                return Err(HtmlCspProtocolError::ForeignOwner.into());
+                return Err(HtmlCspProtocolErrorKind::ForeignOwner.into());
             }
             if let Some(profile) = current.policy.profile() {
                 profile.require(processor)?;
             }
             if content.is_empty() {
-                return Err(HtmlCspProtocolError::EmptyContent.into());
+                return Err(HtmlCspProtocolErrorKind::EmptyContent.into());
             }
             current
                 .generation
                 .serial
                 .checked_add(1)
-                .ok_or(HtmlCspProtocolError::RepresentationExhausted)?;
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
             let next = self
                 .occurrence_serial
                 .checked_add(1)
-                .ok_or(HtmlCspProtocolError::RepresentationExhausted)?;
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
             let input = HtmlCspArtifactLayout::text(&content)?;
             let additional = HtmlCspArtifactLayout::inline::<HtmlMetaCspRequest>(10)
                 .add(current.policy.retained_layout())?
@@ -555,9 +555,7 @@ mod representation_tests {
         owner.document_serial = u64::MAX;
         assert!(matches!(
             owner.initial_document_with(&mut allow),
-            Err(HtmlCspError::Protocol(
-                HtmlCspProtocolError::RepresentationExhausted
-            ))
+            Err(HtmlCspError::Protocol(ref error)) if error.is_representation_exhausted()
         ));
         let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
         let profile = authority.profile_with(0, &mut allow).unwrap();
@@ -572,7 +570,7 @@ mod representation_tests {
             .unwrap_err();
         assert!(matches!(
             rejected.error,
-            HtmlCspError::Protocol(HtmlCspProtocolError::RepresentationExhausted)
+            HtmlCspError::Protocol(ref error) if error.is_representation_exhausted()
         ));
         assert_eq!(rejected.retained, DocumentString::from("exact input"));
         assert!(association.latest().is_none());
@@ -592,7 +590,7 @@ mod representation_tests {
             .unwrap_err();
         assert!(matches!(
             rejected.error,
-            HtmlCspError::Protocol(HtmlCspProtocolError::RepresentationExhausted)
+            HtmlCspError::Protocol(ref error) if error.is_representation_exhausted()
         ));
         assert_eq!(owner.occurrence_serial, 0);
         assert!(association.policy().profile().is_none());
@@ -627,7 +625,7 @@ mod representation_tests {
             .unwrap_err();
         assert!(matches!(
             rejected.error,
-            HtmlCspError::Protocol(HtmlCspProtocolError::RepresentationExhausted)
+            HtmlCspError::Protocol(ref error) if error.is_representation_exhausted()
         ));
         assert_eq!(Arc::as_ptr(&rejected.retained), pointer);
         assert_eq!(authority.policy_serial, u64::MAX);
@@ -743,22 +741,22 @@ impl HtmlCspOwner {
                 .map_err(HtmlCspError::Interrupted)?;
             let q = &request.qualification;
             if current.document.owner != self.identity || q.0.document.owner != self.identity {
-                return Err(HtmlCspProtocolError::ForeignOwner.into());
+                return Err(HtmlCspProtocolErrorKind::ForeignOwner.into());
             }
             if current.document != q.0.document {
-                return Err(HtmlCspProtocolError::ForeignDocument.into());
+                return Err(HtmlCspProtocolErrorKind::ForeignDocument.into());
             }
             if !q.matches(&prepared.qualification) {
-                return Err(HtmlCspProtocolError::WrongRequest.into());
+                return Err(HtmlCspProtocolErrorKind::WrongRequest.into());
             }
             if current.generation != q.0.generation {
-                return Err(HtmlCspProtocolError::StaleAssociation.into());
+                return Err(HtmlCspProtocolErrorKind::StaleAssociation.into());
             }
             if current.policy.id() != &q.0.prior_policy
                 || current.policy.revision() != q.0.prior_revision
                 || current.policy != request.prior
             {
-                return Err(HtmlCspProtocolError::PriorPolicyMismatch.into());
+                return Err(HtmlCspProtocolErrorKind::PriorPolicyMismatch.into());
             }
             if let Some(profile) = current.policy.profile() {
                 profile.require(&q.0.processor)?;
@@ -770,7 +768,7 @@ impl HtmlCspOwner {
                 .generation
                 .serial
                 .checked_add(1)
-                .ok_or(HtmlCspProtocolError::RepresentationExhausted)?;
+                .ok_or(HtmlCspProtocolErrorKind::RepresentationExhausted)?;
             let next_layout = association_layout(&prepared.policy, Some(q))?;
             let receipt_layout = receipt_layout(&prepared.policy, q)?;
             let additional = next_layout.add(receipt_layout)?;

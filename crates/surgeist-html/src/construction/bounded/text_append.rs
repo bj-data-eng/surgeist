@@ -242,7 +242,7 @@ impl HtmlConstructionTextAppend {
             return Err(error.clone());
         }
         if self.phase == Phase::Observing {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok(
             (self.phase != Phase::Ready)
@@ -254,12 +254,12 @@ impl HtmlConstructionTextAppend {
     ) -> Result<HtmlConstructionTextAppendReady, HtmlConstructionError> {
         let append = owner
             .as_ref()
-            .ok_or(HtmlConstructionError::OperationConsumed)?;
+            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
         if let Some(error) = &append.failure {
             return Err(error.clone());
         }
         if append.phase != Phase::Ready {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok(HtmlConstructionTextAppendReady {
             owner: owner.take().expect("ready append"),
@@ -440,29 +440,29 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
         minimum_capacity: Option<usize>,
     ) -> Result<HtmlConstructionTextAppendObservation<'a>, HtmlConstructionError> {
         let owner = self.owner;
-        let result = (|| {
+        let result = (|| -> Result<_, HtmlConstructionError> {
             if owner.phase != Phase::Reserve && minimum_capacity.is_some() {
-                return Err(HtmlConstructionError::CapacityMismatch);
+                return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
             }
             Ok(match owner.phase {
                 Phase::Inspect => {
                     let target = owner.storage.position(&owner.node)?;
                     let HtmlNodeKind::Text(value) = &owner.storage.arena.records[target].kind
                     else {
-                        return Err(HtmlConstructionError::WrongNodeKind);
+                        return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
                     };
                     let old_len = value.len();
                     let required = old_len
                         .checked_add(owner.incoming.len())
-                        .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+                        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
                     if required > isize::MAX as usize / size_of::<u16>() {
-                        return Err(HtmlConstructionError::RepresentationExhausted);
+                        return Err(HtmlConstructionErrorKind::RepresentationExhausted.into());
                     }
                     let mut usage = owner.storage.usage();
                     usage.utf16_units = usage
                         .utf16_units
                         .checked_add(owner.incoming.len())
-                        .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+                        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
                     owner.target = Some(target);
                     owner.old_len = old_len;
                     owner.required = required;
@@ -497,13 +497,13 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
                         .min(isize::MAX as usize / size_of::<u16>());
                     let minimum = minimum_capacity.unwrap_or(preferred);
                     if minimum < owner.required || minimum > preferred {
-                        return Err(HtmlConstructionError::CapacityMismatch);
+                        return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
                     }
                     let backing = Arc::get_mut(owner.candidate_mut().construction_backing_mut())
-                        .ok_or(HtmlConstructionError::SharedAllocationAliased)?;
+                        .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
                     backing
                         .try_reserve_exact(minimum - backing.len())
-                        .map_err(|_| HtmlConstructionError::AllocationFailed)?;
+                        .map_err(|_| HtmlConstructionErrorKind::AllocationFailed)?;
                     owner.after_reserve()
                 }
                 Phase::CopyPrefix => {
@@ -521,7 +521,7 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
                             .expect("pending copy")
                             .construction_backing_mut(),
                     )
-                    .ok_or(HtmlConstructionError::SharedAllocationAliased)?;
+                    .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
                     backing.extend_from_slice(&original.code_units()[start..end]);
                     owner.prefix = end;
                     if end == owner.old_len {
@@ -533,7 +533,7 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
                 Phase::Preflight => Phase::QualifyTail,
                 Phase::QualifyTail => {
                     if Arc::get_mut(owner.candidate_mut().construction_backing_mut()).is_none() {
-                        return Err(HtmlConstructionError::SharedAllocationAliased);
+                        return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
                     }
                     owner.exclusive_tail = true;
                     if owner.incoming.is_empty() {
@@ -565,7 +565,7 @@ impl<'a> HtmlConstructionTextAppendAction<'a> {
                     }
                 }
                 Phase::Commit => Phase::Ready,
-                _ => return Err(HtmlConstructionError::OperationNotReady),
+                _ => return Err(HtmlConstructionErrorKind::OperationNotReady.into()),
             })
         })();
         match result {
@@ -795,7 +795,7 @@ mod tests {
         }
         assert!(matches!(
             owner.next_action(),
-            Err(HtmlConstructionError::OperationNotReady)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
         let (storage, node, incoming, discarded) = owner.abort().into_parts();
         assert!(discarded.is_none());
@@ -937,7 +937,7 @@ mod tests {
             action.perform(None).unwrap().accept();
             assert!(matches!(
                 owner.next_action().unwrap().unwrap().perform(None),
-                Err(HtmlConstructionError::SharedAllocationAliased)
+                Err(ref error) if error.kind == HtmlConstructionErrorKind::SharedAllocationAliased
             ));
             let (storage, node, _, discarded) = owner.abort().into_parts();
             assert_eq!(text(&storage, &node), [1, 2, 3]);
@@ -956,7 +956,7 @@ mod tests {
             HtmlConstructionTextAppend::begin(storage, foreign, DocumentString::from("x"));
         assert!(matches!(
             owner.next_action().unwrap().unwrap().perform(None),
-            Err(HtmlConstructionError::ForeignBuilder)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::ForeignBuilder
         ));
         let (storage, _, incoming, discarded) = owner.abort().into_parts();
         assert_eq!(storage.usage(), usage);
@@ -965,7 +965,7 @@ mod tests {
         let mut owner = HtmlConstructionTextAppend::begin(storage, node, incoming);
         assert!(matches!(
             owner.next_action().unwrap().unwrap().perform(None),
-            Err(HtmlConstructionError::WrongNodeKind)
+            Err(ref error) if error.kind == HtmlConstructionErrorKind::WrongNodeKind
         ));
         assert_eq!(owner.abort().into_parts().0.usage(), usage);
     }
@@ -996,7 +996,7 @@ mod tests {
             if invalid {
                 assert!(matches!(
                     action.perform(Some(8)),
-                    Err(HtmlConstructionError::CapacityMismatch)
+                    Err(ref error) if error.kind == HtmlConstructionErrorKind::CapacityMismatch
                 ));
                 assert_eq!(owner.capacity().unwrap().capacity(), 8);
             } else {
@@ -1036,7 +1036,7 @@ mod tests {
             } else {
                 assert!(matches!(
                     HtmlConstructionTextAppend::try_ready(&mut owner),
-                    Err(HtmlConstructionError::OperationNotReady)
+                    Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
                 ));
                 owner.take().unwrap().abort()
             };

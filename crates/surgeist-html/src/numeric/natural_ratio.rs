@@ -19,12 +19,15 @@ pub struct HtmlNonNegativeRational {
     denominator: HtmlNonNegativeInteger,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlRationalError {
     ZeroDenominator,
 }
 impl fmt::Display for HtmlRationalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        f.write_str(match self {
+            Self::ZeroDenominator => "rational denominator is zero",
+        })
     }
 }
 impl Error for HtmlRationalError {}
@@ -162,7 +165,7 @@ impl RationalIntegerMaterializationFailure {
 }
 impl fmt::Display for RationalIntegerMaterializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.failure, f)
+        f.write_str("rational integer materialization failed")
     }
 }
 impl Error for RationalIntegerMaterializationFailure {
@@ -225,6 +228,7 @@ impl<'a> NaturalDigits<'a> {
 }
 /// Invalid external operands, unadmitted scratch, or premature completion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum NaturalArithmeticError {
     NonCanonical,
     InvalidDigit { index: usize, value: u8 },
@@ -236,7 +240,24 @@ pub enum NaturalArithmeticError {
 }
 impl fmt::Display for NaturalArithmeticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::NonCanonical => {
+                f.write_str("natural number digits are empty or have a leading zero")
+            }
+            Self::InvalidDigit { index, value } => {
+                write!(f, "natural number digit {value} at index {index} exceeds 9")
+            }
+            Self::ScratchNotEmpty => f.write_str("arithmetic scratch storage is not empty"),
+            Self::ScratchCapacity { required, capacity } => write!(
+                f,
+                "arithmetic scratch storage holds {capacity} digits but {required} are required"
+            ),
+            Self::RepresentationExhausted => {
+                f.write_str("arithmetic size cannot be represented on this platform")
+            }
+            Self::NotReady => f.write_str("arithmetic operation has an unfinished step"),
+            Self::EmptySlot => f.write_str("arithmetic operation was already consumed"),
+        }
     }
 }
 impl Error for NaturalArithmeticError {}

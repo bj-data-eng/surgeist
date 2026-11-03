@@ -68,18 +68,53 @@ pub enum HtmlFocusEventReply {
     Dispatched,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlFocusEventError {
+pub struct HtmlFocusEventError {
+    kind: HtmlFocusEventErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlFocusEventErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlFocusEventError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending fire-focus-event action",
-            Self::Terminal => "fire-focus-event is already complete",
-        })
+
+impl HtmlFocusEventErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlFocusEventError {
+        HtmlFocusEventError { kind: self }
     }
 }
+
+impl From<HtmlFocusEventErrorKind> for HtmlFocusEventError {
+    fn from(kind: HtmlFocusEventErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlFocusEventError {
+    /// Whether the cause is: reply does not match the pending fire-focus-event action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlFocusEventErrorKind::WrongReply)
+    }
+    /// Whether the cause is: fire-focus-event is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlFocusEventErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlFocusEventError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlFocusEventErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending fire-focus-event action")
+            }
+            HtmlFocusEventErrorKind::Terminal => {
+                f.write_str("fire-focus-event is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlFocusEventError {}
 
 /// Constant-state, non-Copy source protocol with no identity, dispatch or host
@@ -109,7 +144,7 @@ impl HtmlFocusEventCursor {
         use HtmlFocusEventAction as A;
         use HtmlFocusEventReply as R;
         if self.pending == A::Complete {
-            return Err(HtmlFocusEventError::Terminal);
+            return Err(HtmlFocusEventErrorKind::Terminal.error());
         }
         let next = match (self.pending, reply) {
             (A::CaptureWindowView, R::Applied) => A::Dispatch {
@@ -127,9 +162,37 @@ impl HtmlFocusEventCursor {
                 composed: true,
             },
             (A::Dispatch { .. }, R::Dispatched) => A::Complete,
-            _ => return Err(HtmlFocusEventError::WrongReply),
+            _ => return Err(HtmlFocusEventErrorKind::WrongReply.error()),
         };
         self.pending = next;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_focus_event_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlFocusEventError) -> bool;
+        let cases: Vec<(HtmlFocusEventError, &str, Predicate)> = vec![
+            (
+                HtmlFocusEventErrorKind::WrongReply.error(),
+                "reply does not match the pending fire-focus-event action",
+                HtmlFocusEventError::is_wrong_reply,
+            ),
+            (
+                HtmlFocusEventErrorKind::Terminal.error(),
+                "fire-focus-event is already complete",
+                HtmlFocusEventError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

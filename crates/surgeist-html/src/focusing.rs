@@ -74,18 +74,51 @@ pub enum HtmlFocusingReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlFocusingError {
+pub struct HtmlFocusingError {
+    kind: HtmlFocusingErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlFocusingErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlFocusingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending focusing action",
-            Self::Terminal => "focusing steps are already complete",
-        })
+
+impl HtmlFocusingErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlFocusingError {
+        HtmlFocusingError { kind: self }
     }
 }
+
+impl From<HtmlFocusingErrorKind> for HtmlFocusingError {
+    fn from(kind: HtmlFocusingErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlFocusingError {
+    /// Whether the cause is: reply does not match the pending focusing action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlFocusingErrorKind::WrongReply)
+    }
+    /// Whether the cause is: focusing steps are already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlFocusingErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlFocusingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlFocusingErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending focusing action")
+            }
+            HtmlFocusingErrorKind::Terminal => f.write_str("focusing steps are already complete"),
+        }
+    }
+}
+
 impl std::error::Error for HtmlFocusingError {}
 
 /// Constant-state complete source-body protocol. The adapter qualifies source
@@ -114,7 +147,7 @@ impl HtmlFocusingCursor {
         use HtmlFocusingAction as A;
         use HtmlFocusingReply as R;
         if self.pending == A::Complete {
-            return Err(HtmlFocusingError::Terminal);
+            return Err(HtmlFocusingErrorKind::Terminal.error());
         }
         let next = match (self.pending, reply) {
             (A::ReadInitialTargetFocusableArea, R::InitialTargetFocusableArea(true)) => {
@@ -158,9 +191,37 @@ impl HtmlFocusingCursor {
             (A::RunCurrentFocusChain, R::CurrentFocusChainReady) => A::RunFocusChain,
             (A::RunFocusChain, R::FocusChainReady) => A::RunFocusUpdate,
             (A::RunFocusUpdate, R::FocusUpdateCompleted) => A::Complete,
-            _ => return Err(HtmlFocusingError::WrongReply),
+            _ => return Err(HtmlFocusingErrorKind::WrongReply.error()),
         };
         self.pending = next;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_focusing_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlFocusingError) -> bool;
+        let cases: Vec<(HtmlFocusingError, &str, Predicate)> = vec![
+            (
+                HtmlFocusingErrorKind::WrongReply.error(),
+                "reply does not match the pending focusing action",
+                HtmlFocusingError::is_wrong_reply,
+            ),
+            (
+                HtmlFocusingErrorKind::Terminal.error(),
+                "focusing steps are already complete",
+                HtmlFocusingError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

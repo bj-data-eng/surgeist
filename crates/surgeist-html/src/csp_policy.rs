@@ -12,8 +12,12 @@ pub use transition::*;
 
 /// Invalid protocol input or exhausted checked representation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlCspProtocolError {
+pub struct HtmlCspProtocolError {
+    kind: HtmlCspProtocolErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlCspProtocolErrorKind {
     ForeignOwner,
     ForeignDocument,
     WrongProcessor,
@@ -26,12 +30,104 @@ pub enum HtmlCspProtocolError {
     RepresentationExhausted,
     InvalidStorage,
 }
-impl fmt::Display for HtmlCspProtocolError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HTML CSP protocol: {self:?}")
+
+impl HtmlCspProtocolErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlCspProtocolError {
+        HtmlCspProtocolError { kind: self }
     }
 }
-impl Error for HtmlCspProtocolError {}
+
+impl From<HtmlCspProtocolErrorKind> for HtmlCspProtocolError {
+    fn from(kind: HtmlCspProtocolErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlCspProtocolError {
+    /// Whether the cause is: policy state belongs to a different CSP owner.
+    pub fn is_foreign_owner(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::ForeignOwner)
+    }
+    /// Whether the cause is: association belongs to a different document.
+    pub fn is_foreign_document(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::ForeignDocument)
+    }
+    /// Whether the cause is: processor does not match the request.
+    pub fn is_wrong_processor(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::WrongProcessor)
+    }
+    /// Whether the cause is: processor profile does not match the request.
+    pub fn is_wrong_profile(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::WrongProfile)
+    }
+    /// Whether the cause is: request does not match the pending meta element state.
+    pub fn is_wrong_request(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::WrongRequest)
+    }
+    /// Whether the cause is: association is stale.
+    pub fn is_stale_association(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::StaleAssociation)
+    }
+    /// Whether the cause is: prior policy does not match the document's current policy.
+    pub fn is_prior_policy_mismatch(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::PriorPolicyMismatch)
+    }
+    /// Whether the cause is: native policy artifact has the wrong type.
+    pub fn is_wrong_native_artifact_type(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::WrongNativeArtifactType)
+    }
+    /// Whether the cause is: meta CSP content is empty.
+    pub fn is_empty_content(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::EmptyContent)
+    }
+    /// Whether the cause is: CSP accounting size cannot be represented on this platform.
+    pub fn is_representation_exhausted(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::RepresentationExhausted)
+    }
+    /// Whether the cause is: CSP policy storage is invalid.
+    pub fn is_invalid_storage(&self) -> bool {
+        matches!(self.kind, HtmlCspProtocolErrorKind::InvalidStorage)
+    }
+}
+
+impl std::fmt::Display for HtmlCspProtocolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlCspProtocolErrorKind::ForeignOwner => {
+                f.write_str("policy state belongs to a different CSP owner")
+            }
+            HtmlCspProtocolErrorKind::ForeignDocument => {
+                f.write_str("association belongs to a different document")
+            }
+            HtmlCspProtocolErrorKind::WrongProcessor => {
+                f.write_str("processor does not match the request")
+            }
+            HtmlCspProtocolErrorKind::WrongProfile => {
+                f.write_str("processor profile does not match the request")
+            }
+            HtmlCspProtocolErrorKind::WrongRequest => {
+                f.write_str("request does not match the pending meta element state")
+            }
+            HtmlCspProtocolErrorKind::StaleAssociation => f.write_str("association is stale"),
+            HtmlCspProtocolErrorKind::PriorPolicyMismatch => {
+                f.write_str("prior policy does not match the document's current policy")
+            }
+            HtmlCspProtocolErrorKind::WrongNativeArtifactType => {
+                f.write_str("native policy artifact has the wrong type")
+            }
+            HtmlCspProtocolErrorKind::EmptyContent => f.write_str("meta CSP content is empty"),
+            HtmlCspProtocolErrorKind::RepresentationExhausted => {
+                f.write_str("CSP accounting size cannot be represented on this platform")
+            }
+            HtmlCspProtocolErrorKind::InvalidStorage => {
+                f.write_str("CSP policy storage is invalid")
+            }
+        }
+    }
+}
+
+impl std::error::Error for HtmlCspProtocolError {}
 
 /// Original-controller interruption remains distinct from protocol misuse.
 #[derive(Debug)]
@@ -39,12 +135,12 @@ pub enum HtmlCspError<E> {
     Protocol(HtmlCspProtocolError),
     Interrupted(E),
 }
-impl<E: fmt::Display> fmt::Display for HtmlCspError<E> {
+impl<E> fmt::Display for HtmlCspError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Protocol(e) => e.fmt(f),
-            Self::Interrupted(e) => write!(f, "HTML CSP interrupted: {e}"),
-        }
+        f.write_str(match self {
+            Self::Protocol(_) => "CSP protocol was violated",
+            Self::Interrupted(_) => "CSP processing was interrupted by the caller's admission",
+        })
     }
 }
 impl<E: Error + 'static> Error for HtmlCspError<E> {
@@ -53,6 +149,11 @@ impl<E: Error + 'static> Error for HtmlCspError<E> {
             Self::Protocol(e) => Some(e),
             Self::Interrupted(e) => Some(e),
         }
+    }
+}
+impl<E> From<HtmlCspProtocolErrorKind> for HtmlCspError<E> {
+    fn from(kind: HtmlCspProtocolErrorKind) -> Self {
+        Self::Protocol(kind.into())
     }
 }
 impl<E> From<HtmlCspProtocolError> for HtmlCspError<E> {
@@ -66,6 +167,17 @@ impl<E> From<HtmlCspProtocolError> for HtmlCspError<E> {
 pub struct HtmlCspRejected<T, E> {
     pub retained: T,
     pub error: HtmlCspError<E>,
+}
+
+impl<T, E> fmt::Display for HtmlCspRejected<T, E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("CSP request rejected and its input retained")
+    }
+}
+impl<T: fmt::Debug, E: Error + 'static> Error for HtmlCspRejected<T, E> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.error)
+    }
 }
 
 /// Required external capability; absence never certifies empty policy.
@@ -149,7 +261,7 @@ impl HtmlCspPolicyState {
             .native
             .as_ref()
             .and_then(|native| native.native().downcast_ref::<A>())
-            .ok_or(HtmlCspProtocolError::WrongNativeArtifactType)?;
+            .ok_or(HtmlCspProtocolErrorKind::WrongNativeArtifactType)?;
         Ok(HtmlCspNativePolicy::External(native))
     }
 }
@@ -200,3 +312,78 @@ pub enum HtmlMetaCspOutcome<E> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    /// Every cause states its documented meaning, and exactly one of the
+    /// cause predicates, its own, recognizes it.
+    #[test]
+    fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
+        type Predicate = fn(&HtmlCspProtocolError) -> bool;
+        let cases: Vec<(HtmlCspProtocolError, &str, Predicate)> = vec![
+            (
+                HtmlCspProtocolErrorKind::ForeignOwner.error(),
+                "policy state belongs to a different CSP owner",
+                HtmlCspProtocolError::is_foreign_owner,
+            ),
+            (
+                HtmlCspProtocolErrorKind::ForeignDocument.error(),
+                "association belongs to a different document",
+                HtmlCspProtocolError::is_foreign_document,
+            ),
+            (
+                HtmlCspProtocolErrorKind::WrongProcessor.error(),
+                "processor does not match the request",
+                HtmlCspProtocolError::is_wrong_processor,
+            ),
+            (
+                HtmlCspProtocolErrorKind::WrongProfile.error(),
+                "processor profile does not match the request",
+                HtmlCspProtocolError::is_wrong_profile,
+            ),
+            (
+                HtmlCspProtocolErrorKind::WrongRequest.error(),
+                "request does not match the pending meta element state",
+                HtmlCspProtocolError::is_wrong_request,
+            ),
+            (
+                HtmlCspProtocolErrorKind::StaleAssociation.error(),
+                "association is stale",
+                HtmlCspProtocolError::is_stale_association,
+            ),
+            (
+                HtmlCspProtocolErrorKind::PriorPolicyMismatch.error(),
+                "prior policy does not match the document's current policy",
+                HtmlCspProtocolError::is_prior_policy_mismatch,
+            ),
+            (
+                HtmlCspProtocolErrorKind::WrongNativeArtifactType.error(),
+                "native policy artifact has the wrong type",
+                HtmlCspProtocolError::is_wrong_native_artifact_type,
+            ),
+            (
+                HtmlCspProtocolErrorKind::EmptyContent.error(),
+                "meta CSP content is empty",
+                HtmlCspProtocolError::is_empty_content,
+            ),
+            (
+                HtmlCspProtocolErrorKind::RepresentationExhausted.error(),
+                "CSP accounting size cannot be represented on this platform",
+                HtmlCspProtocolError::is_representation_exhausted,
+            ),
+            (
+                HtmlCspProtocolErrorKind::InvalidStorage.error(),
+                "CSP policy storage is invalid",
+                HtmlCspProtocolError::is_invalid_storage,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
+    }
+}

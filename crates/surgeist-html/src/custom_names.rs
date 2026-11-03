@@ -54,6 +54,7 @@ impl HtmlCustomElementName {
 
 /// A rejected custom-element name, with offsets measured in UTF-16 code units.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlCustomElementNameError {
     Empty,
     FirstCodePointNotLowercaseAscii,
@@ -69,7 +70,21 @@ pub enum HtmlCustomElementNameError {
 
 impl fmt::Display for HtmlCustomElementNameError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid HTML custom-element name: {self:?}")
+        match self {
+            Self::Empty => f.write_str("custom-element name is empty"),
+            Self::FirstCodePointNotLowercaseAscii => {
+                f.write_str("custom-element name does not start with a lowercase ASCII letter")
+            }
+            Self::ForbiddenCodeUnit {
+                code_unit_offset,
+                code_unit,
+            } => write!(
+                f,
+                "custom-element name contains forbidden code unit U+{code_unit:04X} at UTF-16 offset {code_unit_offset}"
+            ),
+            Self::MissingHyphen => f.write_str("custom-element name contains no hyphen"),
+            Self::ReservedName => f.write_str("custom-element name is reserved by HTML"),
+        }
     }
 }
 impl Error for HtmlCustomElementNameError {}

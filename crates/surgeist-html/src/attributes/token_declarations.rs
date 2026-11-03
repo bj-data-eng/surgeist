@@ -12,6 +12,7 @@ use std::{error::Error, fmt};
 
 /// A local author error; raw tokens remain in the common report independently.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlTokenDeclarationError {
     Duplicate(HtmlDuplicateTokenError),
     AccessKeyLength {
@@ -27,10 +28,36 @@ pub enum HtmlTokenDeclarationError {
 }
 impl fmt::Display for HtmlTokenDeclarationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid HTML token declaration: {self:?}")
+        match self {
+            Self::Duplicate(_) => f.write_str("token declaration contains a duplicate token"),
+            Self::AccessKeyLength { token_index } => write!(
+                f,
+                "accesskey token at index {token_index} is not exactly one code point"
+            ),
+            Self::InvalidBlockingToken { token_index } => write!(
+                f,
+                "blocking token at index {token_index} is not a recognized keyword"
+            ),
+            Self::InvalidIconSize { token_index, .. } => {
+                write!(f, "icon size token at index {token_index} is invalid")
+            }
+        }
     }
 }
-impl Error for HtmlTokenDeclarationError {}
+impl From<HtmlDuplicateTokenError> for HtmlTokenDeclarationError {
+    fn from(error: HtmlDuplicateTokenError) -> Self {
+        Self::Duplicate(error)
+    }
+}
+impl Error for HtmlTokenDeclarationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Duplicate(error) => Some(error),
+            Self::InvalidIconSize { reason, .. } => Some(reason),
+            Self::AccessKeyLength { .. } | Self::InvalidBlockingToken { .. } => None,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlTokenDeclarationAuthorState {
@@ -50,8 +77,7 @@ impl HtmlAccessKeys {
     pub fn new(
         tokens: impl IntoIterator<Item = HtmlSpaceToken>,
     ) -> Result<Self, HtmlTokenDeclarationError> {
-        let tokens = HtmlOrderedTokenSet::new(HtmlTokenComparison::CaseSensitive, tokens)
-            .map_err(HtmlTokenDeclarationError::Duplicate)?;
+        let tokens = HtmlOrderedTokenSet::new(HtmlTokenComparison::CaseSensitive, tokens)?;
         for (token_index, token) in tokens.tokens().iter().enumerate() {
             if !single_code_point(token) {
                 return Err(HtmlTokenDeclarationError::AccessKeyLength { token_index });
@@ -101,6 +127,7 @@ pub struct HtmlBitmapIconSize {
     height: HtmlNonNegativeInteger,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlIconSizeError {
     ZeroDimension,
     LeadingZero,
@@ -109,7 +136,12 @@ pub enum HtmlIconSizeError {
 }
 impl fmt::Display for HtmlIconSizeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid HTML icon size: {self:?}")
+        f.write_str(match self {
+            Self::ZeroDimension => "icon size has a zero width or height",
+            Self::LeadingZero => "icon size dimension has a leading zero",
+            Self::Separator => "icon size dimensions are not separated by a single 'x' or 'X'",
+            Self::DimensionDigits => "icon size dimension is not a sequence of ASCII digits",
+        })
     }
 }
 impl Error for HtmlIconSizeError {}

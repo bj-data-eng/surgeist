@@ -6,6 +6,7 @@
 //! and failures"); the expected UTF-16 usage is derived here from the literals,
 //! never read back from the owner.
 use super::*;
+use crate::html::support::cause;
 use surgeist_html::{
     Attribute, HtmlAuthoredProcessingInstruction, HtmlDoctype, HtmlLinkFlags,
     HtmlProcessingInstruction,
@@ -490,7 +491,7 @@ fn renaming_a_template_keeps_its_contents_only_while_it_stays_a_template() {
     let owner = refuse(
         owner,
         rename(&template, name(Namespace::html(), None, "div")),
-        HtmlConstructionError::InvalidTemplateAssociation,
+        cause::INVALID_TEMPLATE_ASSOCIATION,
     );
     assert_eq!(counters(&owner)[3], usage[3] + units("p"));
     assert!(element_of(&owner, &template).name().local_name() == &text("template"));
@@ -509,7 +510,7 @@ fn renaming_a_non_template_to_a_template_is_refused_because_it_has_no_contents()
     let owner = refuse(
         owner,
         rename(&plain, name(Namespace::html(), None, "template")),
-        HtmlConstructionError::InvalidTemplateAssociation,
+        cause::INVALID_TEMPLATE_ASSOCIATION,
     );
     assert_eq!(counters(&owner), usage);
     assert!(element_of(&owner, &plain).name().local_name() == &text("div"));
@@ -566,7 +567,7 @@ fn replacing_content_of_the_wrong_kind_is_refused_and_leaves_the_record_unchange
                     node: target.clone(),
                     content: content(),
                 },
-                HtmlConstructionError::WrongNodeKind,
+                cause::WRONG_NODE_KIND,
             );
             assert_eq!(counters(&owner), before, "{held} refused {offered}");
             assert_eq!(
@@ -599,7 +600,7 @@ fn replacing_the_content_of_a_root_or_foreign_record_is_refused() {
                 node: node.clone(),
                 content: HtmlConstructionContent::Text(text("x")),
             },
-            HtmlConstructionError::WrongNodeKind,
+            cause::WRONG_NODE_KIND,
         );
     }
     assert_eq!(counters(&owner), before);
@@ -619,7 +620,7 @@ fn replacing_the_content_of_a_root_or_foreign_record_is_refused() {
             node: foreign.clone(),
             content: HtmlConstructionContent::Text(text("x")),
         },
-        HtmlConstructionError::ForeignBuilder,
+        cause::FOREIGN_BUILDER,
     );
     assert_eq!(counters(&owner), before);
     assert_eq!(
@@ -919,7 +920,7 @@ fn replacing_attributes_of_a_record_that_is_not_an_element_is_refused() {
         let owner = refuse(
             owner,
             replace_attributes(&target, new_attributes()),
-            HtmlConstructionError::WrongNodeKind,
+            cause::WRONG_NODE_KIND,
         );
         assert_eq!(counters(&owner), before, "{kind:?}");
         assert_eq!(owner.node(&target).unwrap().kind(), &kind);
@@ -929,7 +930,7 @@ fn replacing_attributes_of_a_record_that_is_not_an_element_is_refused() {
     let owner = refuse(
         owner,
         replace_attributes(&root, new_attributes()),
-        HtmlConstructionError::WrongNodeKind,
+        cause::WRONG_NODE_KIND,
     );
     assert_eq!(counters(&owner), before);
 }
@@ -946,7 +947,7 @@ fn replacing_attributes_of_a_foreign_handle_is_refused_and_keeps_the_collection(
     let owner = refuse(
         owner,
         replace_attributes(&foreign, new_attributes()),
-        HtmlConstructionError::ForeignBuilder,
+        cause::FOREIGN_BUILDER,
     );
     assert_eq!(counters(&owner), before);
     assert_eq!(

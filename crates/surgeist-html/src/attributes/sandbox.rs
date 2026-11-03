@@ -226,6 +226,22 @@ pub enum HtmlSandboxRedundancy {
     CustomProtocolsAndPopups,
 }
 
+impl fmt::Display for HtmlSandboxRedundancy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::TopNavigationAndByUserActivation => {
+                "sandbox lists both allow-top-navigation and allow-top-navigation-by-user-activation, which is redundant"
+            }
+            Self::CustomProtocolsAndTopNavigation => {
+                "sandbox lists both allow-top-navigation-to-custom-protocols and allow-top-navigation, which is redundant"
+            }
+            Self::CustomProtocolsAndPopups => {
+                "sandbox lists both allow-top-navigation-to-custom-protocols and allow-popups, which is redundant"
+            }
+        })
+    }
+}
+
 fn redundancies(bits: u16) -> [Option<HtmlSandboxRedundancy>; 3] {
     use HtmlSandboxKeyword::{
         AllowPopups, AllowTopNavigation, AllowTopNavigationByUserActivation,
@@ -273,8 +289,7 @@ impl HtmlSandboxValue {
                 bits |= keyword.bit();
                 keyword.token()
             }),
-        )
-        .map_err(HtmlSandboxValueError::Duplicate)?;
+        )?;
         if let Some(redundancy) = redundancies(bits).into_iter().flatten().next() {
             return Err(HtmlSandboxValueError::Redundant(redundancy));
         }
@@ -298,6 +313,7 @@ impl HtmlSandboxValue {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlSandboxValueError {
     Duplicate(HtmlDuplicateTokenError),
     Redundant(HtmlSandboxRedundancy),
@@ -306,9 +322,14 @@ pub enum HtmlSandboxValueError {
 impl fmt::Display for HtmlSandboxValueError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Duplicate(error) => error.fmt(f),
-            Self::Redundant(error) => write!(f, "redundant sandbox keywords: {error:?}"),
+            Self::Duplicate(_) => f.write_str("sandbox value contains a duplicate keyword"),
+            Self::Redundant(error) => error.fmt(f),
         }
+    }
+}
+impl From<HtmlDuplicateTokenError> for HtmlSandboxValueError {
+    fn from(error: HtmlDuplicateTokenError) -> Self {
+        Self::Duplicate(error)
     }
 }
 impl Error for HtmlSandboxValueError {

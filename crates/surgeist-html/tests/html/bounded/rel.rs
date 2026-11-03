@@ -33,6 +33,13 @@ fn interpreted<'a>(inputs: RelInputs<'a>) -> HtmlRelInterpretation<'a> {
     owner.interpret(&mut Meter::default()).unwrap();
     owner
 }
+/// A refinement and the predicate that recognizes its expected refusal.
+type RefusalCase = (
+    usize,
+    HtmlRelRefinement,
+    fn(&HtmlRelInterpretationError) -> bool,
+);
+
 #[test]
 fn initial_only_finish_preserves_original_ranges_aliases_and_alternate_stylesheet_rules() {
     let rel = DocumentString::from("ALTERNATE stylesheet alternate");
@@ -61,9 +68,10 @@ fn initial_only_finish_preserves_original_ranges_aliases_and_alternate_styleshee
         report.rel().unwrap().shared_code_units(),
         rel.shared_code_units()
     ));
-    assert_eq!(
-        HtmlRelInterpretation::try_finish(&mut slot).unwrap_err(),
-        HtmlRelInterpretationError::Consumed
+    assert!(
+        HtmlRelInterpretation::try_finish(&mut slot)
+            .unwrap_err()
+            .is_consumed()
     );
 }
 #[test]
@@ -77,42 +85,43 @@ fn checked_refinement_rejects_wrong_source_spelling_order_and_extension_effect_w
     );
     owner.begin_refinement().unwrap();
     let mut meter = Meter::default();
-    for (index, value, expected) in [
+    let cases: [RefusalCase; 6] = [
         (
             9,
             HtmlRelRefinement::NoEffect,
-            HtmlRelInterpretationError::UnknownOccurrence,
+            HtmlRelInterpretationError::is_unknown_occurrence,
         ),
         (
             3,
             HtmlRelRefinement::NoEffect,
-            HtmlRelInterpretationError::WrongSource,
+            HtmlRelInterpretationError::is_wrong_source,
         ),
         (
             2,
             HtmlRelRefinement::NoEffect,
-            HtmlRelInterpretationError::WrongSpelling,
+            HtmlRelInterpretationError::is_wrong_spelling,
         ),
         (
             0,
             HtmlRelRefinement::Extension(HtmlRelEffect::InternalResource),
-            HtmlRelInterpretationError::InvalidExtensionEffect,
+            HtmlRelInterpretationError::is_invalid_extension_effect,
         ),
         (
             0,
             HtmlRelRefinement::Extension(HtmlRelEffect::StylesheetModifier),
-            HtmlRelInterpretationError::InvalidExtensionEffect,
+            HtmlRelInterpretationError::is_invalid_extension_effect,
         ),
         (
             0,
             HtmlRelRefinement::Extension(HtmlRelEffect::Annotation),
-            HtmlRelInterpretationError::InvalidExtensionEffect,
+            HtmlRelInterpretationError::is_invalid_extension_effect,
         ),
-    ] {
-        assert_eq!(
+    ];
+    for (index, value, expected) in cases {
+        assert!(matches!(
             owner.refine(index, value, &mut meter),
-            Err(HtmlRelActionError::Protocol(expected))
-        );
+            Err(HtmlRelActionError::Protocol(ref error)) if expected(error)
+        ));
     }
     assert!(meter.work.is_empty());
     owner
@@ -123,22 +132,17 @@ fn checked_refinement_rejects_wrong_source_spelling_order_and_extension_effect_w
         )
         .unwrap();
     assert_eq!(meter.work, [4]);
-    assert_eq!(
-        owner.refine(1, HtmlRelRefinement::NoEffect, &mut meter),
-        Err(HtmlRelActionError::Protocol(
-            HtmlRelInterpretationError::RepeatedRefinement
-        ))
+    assert!(
+        matches!(owner.refine(1, HtmlRelRefinement::NoEffect, &mut meter), Err(HtmlRelActionError::Protocol(ref e)) if e.is_repeated_refinement())
     );
-    assert_eq!(
-        owner.refine(0, HtmlRelRefinement::NoEffect, &mut meter),
-        Err(HtmlRelActionError::Protocol(
-            HtmlRelInterpretationError::OutOfOrderRefinement
-        ))
+    assert!(
+        matches!(owner.refine(0, HtmlRelRefinement::NoEffect, &mut meter), Err(HtmlRelActionError::Protocol(ref e)) if e.is_out_of_order_refinement())
     );
     let mut slot = Some(owner);
-    assert_eq!(
-        HtmlRelInterpretation::try_finish(&mut slot).unwrap_err(),
-        HtmlRelInterpretationError::NotReady
+    assert!(
+        HtmlRelInterpretation::try_finish(&mut slot)
+            .unwrap_err()
+            .is_not_ready()
     );
     slot.as_mut().unwrap().refresh(&mut meter).unwrap();
     let report = HtmlRelInterpretation::try_finish(&mut slot).unwrap();
@@ -211,13 +215,14 @@ fn every_refresh_admission_failure_hides_report_and_occurrences_including_after_
             owner.as_mut().unwrap().refresh(&mut meter),
             Err(HtmlRelActionError::Admission("original stop"))
         );
-        assert_eq!(
-            HtmlRelInterpretation::try_finish(&mut owner).unwrap_err(),
-            HtmlRelInterpretationError::Stopped
+        assert!(
+            HtmlRelInterpretation::try_finish(&mut owner)
+                .unwrap_err()
+                .is_stopped()
         );
         assert!(matches!(
             owner.as_ref().unwrap().occurrences(),
-            Err(HtmlRelInterpretationError::Stopped)
+            Err(ref error) if error.is_stopped()
         ));
         let inputs = owner.take().unwrap().abort();
         assert!(std::ptr::eq(inputs.rel().unwrap(), &raw));
@@ -238,9 +243,10 @@ fn initial_error_retains_raw_and_actual_reservation_and_between_action_stop_is_t
         Err(HtmlRelActionError::Admission("original reserve stop"))
     );
     assert!(meter.reservations[0].1 >= 1);
-    assert_eq!(
-        HtmlRelInterpretation::try_finish(&mut slot).unwrap_err(),
-        HtmlRelInterpretationError::Stopped
+    assert!(
+        HtmlRelInterpretation::try_finish(&mut slot)
+            .unwrap_err()
+            .is_stopped()
     );
     assert!(std::ptr::eq(
         slot.take().unwrap().abort().rel().unwrap(),
@@ -250,8 +256,9 @@ fn initial_error_retains_raw_and_actual_reservation_and_between_action_stop_is_t
         RelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
     ));
     owner.as_mut().unwrap().stop();
-    assert_eq!(
-        HtmlRelInterpretation::try_finish(&mut owner).unwrap_err(),
-        HtmlRelInterpretationError::Stopped
+    assert!(
+        HtmlRelInterpretation::try_finish(&mut owner)
+            .unwrap_err()
+            .is_stopped()
     );
 }

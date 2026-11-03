@@ -557,7 +557,7 @@ fn effect_work_errors_map_to_their_precise_invariant() {
         SessionError::CompletionIncomplete,
         SessionError::ContextReactionUnavailable,
         SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
-        SessionError::CspProtocol(surgeist_html::HtmlCspProtocolError::WrongProcessor),
+        SessionError::CspProtocol(csp_protocol_error()),
         // A stop is already latched by whoever raised it; mapping adds none.
         SessionError::Stop(ParseStop::Cancelled),
     ] {
@@ -606,7 +606,7 @@ fn creation_errors_map_to_the_fault_they_report() {
     }
     for error in [
         SessionError::CspService,
-        SessionError::CspProtocol(surgeist_html::HtmlCspProtocolError::WrongProcessor),
+        SessionError::CspProtocol(csp_protocol_error()),
         SessionError::AssociatedFacts,
         SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::ImageSupport),
         SessionError::ContextFactUnavailable(crate::HtmlCaptureFact::BrowsingContextConnection),

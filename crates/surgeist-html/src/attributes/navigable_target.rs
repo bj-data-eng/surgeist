@@ -6,6 +6,7 @@ use super::*;
 /// A local navigable target-name author violation, measured in UTF-16 units.
 /// A leading underscore is reported before the combined-character restriction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlNavigableTargetError {
     Empty,
     /// Names beginning with underscore are reserved for special keywords.
@@ -16,6 +17,25 @@ pub enum HtmlNavigableTargetError {
         less_than_code_unit_offset: usize,
     },
 }
+
+impl std::fmt::Display for HtmlNavigableTargetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => f.write_str("navigable target name is empty"),
+            Self::ReservedLeadingUnderscore => {
+                f.write_str("navigable target name starts with an underscore")
+            }
+            Self::TabOrNewlineWithLessThan {
+                tab_or_newline_code_unit_offset,
+                less_than_code_unit_offset,
+            } => write!(
+                f,
+                "navigable target name contains a tab or newline at UTF-16 offset {tab_or_newline_code_unit_offset} and a less-than sign at offset {less_than_code_unit_offset}"
+            ),
+        }
+    }
+}
+impl std::error::Error for HtmlNavigableTargetError {}
 
 /// Exact checked local authored name, without a navigable/document identity.
 ///

@@ -153,6 +153,7 @@ impl HtmlValueSyntax {
 
 /// Failure of the selected grammar or a source-defined rejection condition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlValueSyntaxError {
     /// Legacy-color processing rejects an originally empty raw value.
     EmptyLegacyColor,
@@ -170,18 +171,69 @@ pub enum HtmlValueSyntaxError {
 
 /// A mathematical value outside the selected machine representation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlValueRepresentationError {
     /// The decimal number rounds to infinity in the selected binary64 model.
     FloatingPointOverflow,
 }
 
+impl std::fmt::Display for HtmlValueSyntaxError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::EmptyLegacyColor => "legacy color value is empty",
+            Self::TransparentLegacyColor => "legacy color value is the transparent keyword",
+            Self::InvalidNumericSyntax => "value does not match the selected numeric syntax",
+            Self::NegativeNonnegativeInteger => {
+                "nonnegative integer recovery produced a negative integer"
+            }
+            Self::ZeroNonzeroDimension => "nonzero dimension recovery produced zero",
+            Self::Temporal(_) => "value is not a valid temporal string",
+        })
+    }
+}
+impl std::error::Error for HtmlValueSyntaxError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Temporal(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for HtmlValueRepresentationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::FloatingPointOverflow => "decimal number rounds to infinity in binary64",
+        })
+    }
+}
+impl std::error::Error for HtmlValueRepresentationError {}
+
 /// A failed recovery operation, distinct from resource admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlValueFailure {
     /// Failure of source-defined syntax or a rejection condition.
     Syntax(HtmlValueSyntaxError),
     /// A value cannot be represented by the selected numeric model.
     Representation(HtmlValueRepresentationError),
+}
+
+impl std::fmt::Display for HtmlValueFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Syntax(_) => "value recovery failed on source-defined syntax",
+            Self::Representation(_) => "value recovery produced an unrepresentable value",
+        })
+    }
+}
+impl std::error::Error for HtmlValueFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Syntax(error) => Some(error),
+            Self::Representation(error) => Some(error),
+        }
+    }
 }
 
 /// Authored conformance and checked construction for one common value clause.

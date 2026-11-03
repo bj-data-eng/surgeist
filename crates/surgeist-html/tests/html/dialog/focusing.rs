@@ -2,9 +2,9 @@
 use surgeist_html::{
     HtmlDialogAction, HtmlDialogCursor, HtmlDialogFocusControl as Control,
     HtmlDialogFocusingAction as A, HtmlDialogFocusingCursor as Cursor,
-    HtmlDialogFocusingError as Error, HtmlDialogFocusingReply as R, HtmlDialogOperation,
-    HtmlDialogReply, HtmlDialogSubjectFocusFacts as Facts,
-    HtmlDialogSubjectFocusingDecision as Decision, dialog_subject_focusing_decision,
+    HtmlDialogFocusingReply as R, HtmlDialogOperation, HtmlDialogReply,
+    HtmlDialogSubjectFocusFacts as Facts, HtmlDialogSubjectFocusingDecision as Decision,
+    dialog_subject_focusing_decision,
 };
 
 fn step(c: &mut Cursor, action: A, reply: R) {
@@ -15,7 +15,7 @@ fn step(c: &mut Cursor, action: A, reply: R) {
     } else {
         R::AllowFocus(false)
     };
-    assert_eq!(c.reply(wrong), Err(Error::WrongReply));
+    assert!(matches!(c.reply(wrong), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(*c, before);
     c.reply(reply).unwrap();
 }
@@ -23,7 +23,7 @@ fn complete(c: &mut Cursor) {
     assert_eq!(c.action(), A::Complete);
     let before = *c;
     for reply in [R::Applied, R::AllowFocus(true), R::SameOrigin(false)] {
-        assert_eq!(c.reply(reply), Err(Error::Terminal));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(*c, before);
     }
 }
@@ -78,7 +78,7 @@ fn future_stage_and_applied_instead_of_known_observations_cannot_advance() {
         R::Applied,
     ] {
         let before = c;
-        assert_eq!(c.reply(reply), Err(Error::WrongReply));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_wrong_reply()));
         assert_eq!(c, before);
     }
     step(&mut c, A::ReadAllowFocus, R::AllowFocus(true));
@@ -88,13 +88,13 @@ fn future_stage_and_applied_instead_of_known_observations_cannot_advance() {
         R::Applied,
     ] {
         let before = c;
-        assert_eq!(c.reply(reply), Err(Error::WrongReply));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_wrong_reply()));
         assert_eq!(c, before);
     }
     step(&mut c, A::ReadAutofocus, R::Autofocus(false));
     for reply in [R::Autofocus(true), R::SameOrigin(true), R::Applied] {
         let before = c;
-        assert_eq!(c.reply(reply), Err(Error::WrongReply));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_wrong_reply()));
         assert_eq!(c, before);
     }
     step(&mut c, A::FindFocusDelegate, R::FocusDelegatePresent(true));
@@ -113,7 +113,7 @@ fn future_stage_and_applied_instead_of_known_observations_cannot_advance() {
         R::Applied,
     );
     let before = c;
-    assert_eq!(c.reply(R::Applied), Err(Error::WrongReply));
+    assert!(matches!(c.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(c, before);
     step(
         &mut c,

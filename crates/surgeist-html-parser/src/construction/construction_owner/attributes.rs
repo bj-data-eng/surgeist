@@ -287,7 +287,7 @@ impl ConstructionOwner {
                                 expected,
                             )?;
                         }
-                        return Err(if error == HtmlConstructionError::AllocationFailed {
+                        return Err(if error.is_allocation_failed() {
                             control
                                 .construction_allocation_failed(expected.unwrap_or(0))
                                 .into()
@@ -377,7 +377,7 @@ pub(in crate::construction) fn prepare_attribute_slot<'a>(
                         expected,
                     )?;
                 }
-                return Err(if error == HtmlConstructionError::AllocationFailed {
+                return Err(if error.is_allocation_failed() {
                     control
                         .construction_allocation_failed(expected.unwrap_or(0))
                         .into()

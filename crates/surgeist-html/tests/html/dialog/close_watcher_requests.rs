@@ -2,21 +2,20 @@
 use std::num::NonZeroUsize;
 use surgeist_html::{
     HtmlCloseWatcherRequestAction as A, HtmlCloseWatcherRequestCursor as C,
-    HtmlCloseWatcherRequestError as E, HtmlCloseWatcherRequestReply as R, HtmlCloseWatcherState,
-    HtmlCloseWatcherStateError as S,
+    HtmlCloseWatcherRequestReply as R, HtmlCloseWatcherState,
 };
 
 fn step(c: &mut C, action: A, reply: R) {
     assert_eq!(c.action(), action);
     let before = *c;
-    assert_eq!(c.reply(R::CancelActionResult(false)), Err(E::WrongReply));
+    assert!(matches!(c.reply(R::CancelActionResult(false)), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(*c, before);
     c.reply(reply).unwrap();
 }
 fn complete(c: &mut C, result: bool) {
     assert_eq!(c.action(), A::Complete(result));
     let before = *c;
-    assert_eq!(c.reply(R::Applied), Err(E::Terminal));
+    assert!(matches!(c.reply(R::Applied), Err(ref e) if e.is_terminal()));
     assert_eq!(*c, before);
 }
 fn request_guards(c: &mut C) {
@@ -35,7 +34,7 @@ fn cancel(c: &mut C, can_prevent: bool, result: bool) {
         }
     );
     let before = *c;
-    assert_eq!(c.reply(R::Applied), Err(E::WrongReply));
+    assert!(matches!(c.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(*c, before);
     c.reply(R::CancelActionResult(result)).unwrap();
     step(c, A::SetRunningCancelAction(false), R::Applied);
@@ -180,9 +179,8 @@ fn cancel_that_does_not_continue_is_refused_when_close_cannot_be_prevented() {
         }
         step(&mut c, A::SetRunningCancelAction(true), R::Applied);
         let before = c;
-        assert_eq!(
-            c.reply(R::CancelActionResult(false)),
-            Err(E::NoncancelableActionPreventedClose)
+        assert!(
+            matches!(c.reply(R::CancelActionResult(false)), Err(ref e) if e.is_noncancelable_action_prevented_close())
         );
         assert_eq!(c, before);
     }
@@ -231,9 +229,8 @@ fn impossible_non_cancelable_result_preserves_exact_pending_cursor() {
     );
     step(&mut c, A::SetRunningCancelAction(true), R::Applied);
     let before = c;
-    assert_eq!(
-        c.reply(R::CancelActionResult(false)),
-        Err(E::NoncancelableActionPreventedClose)
+    assert!(
+        matches!(c.reply(R::CancelActionResult(false)), Err(ref e) if e.is_noncancelable_action_prevented_close())
     );
     assert_eq!(c, before);
     c.reply(R::CancelActionResult(true)).unwrap();
@@ -245,12 +242,12 @@ fn impossible_non_cancelable_result_preserves_exact_pending_cursor() {
 fn checked_running_state_rejects_duplicate_transitions_without_mutation() {
     let mut state = HtmlCloseWatcherState::fresh();
     let fresh = state;
-    assert_eq!(state.finish_cancel_action(), Err(S::NotRunning));
+    assert!(matches!(state.finish_cancel_action(), Err(ref e) if e.is_not_running()));
     assert_eq!(state, fresh);
     state.begin_cancel_action().unwrap();
     assert!(state.running_cancel_action());
     let running = state;
-    assert_eq!(state.begin_cancel_action(), Err(S::AlreadyRunning));
+    assert!(matches!(state.begin_cancel_action(), Err(ref e) if e.is_already_running()));
     assert_eq!(state, running);
     // Cursor lifetime is independent: discarding a producer cannot reset state.
     let _ = C::new(false);

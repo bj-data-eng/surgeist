@@ -31,18 +31,53 @@ pub enum HtmlCurrentFocusChainReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlCurrentFocusChainError {
+pub struct HtmlCurrentFocusChainError {
+    kind: HtmlCurrentFocusChainErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlCurrentFocusChainErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlCurrentFocusChainError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending current focus chain action",
-            Self::Terminal => "current focus chain is already complete",
-        })
+
+impl HtmlCurrentFocusChainErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlCurrentFocusChainError {
+        HtmlCurrentFocusChainError { kind: self }
     }
 }
+
+impl From<HtmlCurrentFocusChainErrorKind> for HtmlCurrentFocusChainError {
+    fn from(kind: HtmlCurrentFocusChainErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlCurrentFocusChainError {
+    /// Whether the cause is: reply does not match the pending current focus chain action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlCurrentFocusChainErrorKind::WrongReply)
+    }
+    /// Whether the cause is: current focus chain is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlCurrentFocusChainErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlCurrentFocusChainError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlCurrentFocusChainErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending current focus chain action")
+            }
+            HtmlCurrentFocusChainErrorKind::Terminal => {
+                f.write_str("current focus chain is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlCurrentFocusChainError {}
 
 /// Constant-state language continuation. Called algorithms must actually finish;
@@ -68,7 +103,7 @@ impl HtmlCurrentFocusChainCursor {
         use HtmlCurrentFocusChainAction as A;
         use HtmlCurrentFocusChainReply as R;
         if self.pending == A::Complete {
-            return Err(HtmlCurrentFocusChainError::Terminal);
+            return Err(HtmlCurrentFocusChainErrorKind::Terminal.error());
         }
         let next = match (self.pending, reply) {
             (A::ReadTraversable, R::TraversablePresent(false)) => A::InitializeEmptyChain,
@@ -80,7 +115,7 @@ impl HtmlCurrentFocusChainCursor {
             (A::InitializeEmptyChain, R::Applied) | (A::RunFocusChain, R::FocusChainReady) => {
                 A::Complete
             }
-            _ => return Err(HtmlCurrentFocusChainError::WrongReply),
+            _ => return Err(HtmlCurrentFocusChainErrorKind::WrongReply.error()),
         };
         self.pending = next;
         Ok(())
@@ -141,21 +176,60 @@ pub enum HtmlFocusChainReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlFocusChainError {
+pub struct HtmlFocusChainError {
+    kind: HtmlFocusChainErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlFocusChainErrorKind {
     WrongReply,
     /// An actual non-area currentObject is not a Document either.
     InvalidCurrentObject,
     Terminal,
 }
-impl std::fmt::Display for HtmlFocusChainError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending focus chain action",
-            Self::InvalidCurrentObject => "focus chain object is neither an area nor a Document",
-            Self::Terminal => "focus chain is already complete",
-        })
+
+impl HtmlFocusChainErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlFocusChainError {
+        HtmlFocusChainError { kind: self }
     }
 }
+
+impl From<HtmlFocusChainErrorKind> for HtmlFocusChainError {
+    fn from(kind: HtmlFocusChainErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlFocusChainError {
+    /// Whether the cause is: reply does not match the pending focus chain action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlFocusChainErrorKind::WrongReply)
+    }
+    /// Whether the cause is: focus chain object is neither an area nor a Document.
+    pub fn is_invalid_current_object(&self) -> bool {
+        matches!(self.kind, HtmlFocusChainErrorKind::InvalidCurrentObject)
+    }
+    /// Whether the cause is: focus chain is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlFocusChainErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlFocusChainError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlFocusChainErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending focus chain action")
+            }
+            HtmlFocusChainErrorKind::InvalidCurrentObject => {
+                f.write_str("focus chain object is neither an area nor a Document")
+            }
+            HtmlFocusChainErrorKind::Terminal => f.write_str("focus chain is already complete"),
+        }
+    }
+}
+
 impl std::error::Error for HtmlFocusChainError {}
 
 /// Allocation-free, constant-state, non-Copy language continuation. The original
@@ -186,7 +260,7 @@ impl HtmlFocusChainCursor {
         use HtmlFocusChainAction as A;
         use HtmlFocusChainReply as R;
         if self.pending == A::Complete {
-            return Err(HtmlFocusChainError::Terminal);
+            return Err(HtmlFocusChainErrorKind::Terminal.error());
         }
         let next = match (self.pending, reply) {
             (A::InitializeEmptyChain, R::Applied) => A::CaptureSubject,
@@ -210,7 +284,7 @@ impl HtmlFocusChainCursor {
             (A::ReadFocusableArea, R::FocusableArea(false)) => A::ReadDocument,
             (A::ReadDocument, R::Document(true)) => A::ReadNodeNavigable,
             (A::ReadDocument, R::Document(false)) => {
-                return Err(HtmlFocusChainError::InvalidCurrentObject);
+                return Err(HtmlFocusChainErrorKind::InvalidCurrentObject.error());
             }
             (A::ReadNodeNavigable, R::NodeNavigablePresent(true)) => A::ReadNavigableParent,
             (A::ReadNodeNavigable, R::NodeNavigablePresent(false))
@@ -218,7 +292,7 @@ impl HtmlFocusChainCursor {
             (A::ReadNavigableParent, R::NavigableParentPresent(true)) => {
                 A::CaptureChildNavigableContainerElement
             }
-            _ => return Err(HtmlFocusChainError::WrongReply),
+            _ => return Err(HtmlFocusChainErrorKind::WrongReply.error()),
         };
         self.pending = next;
         Ok(())
@@ -227,5 +301,61 @@ impl HtmlFocusChainCursor {
 impl Default for HtmlFocusChainCursor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_current_focus_chain_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlCurrentFocusChainError) -> bool;
+        let cases: Vec<(HtmlCurrentFocusChainError, &str, Predicate)> = vec![
+            (
+                HtmlCurrentFocusChainErrorKind::WrongReply.error(),
+                "reply does not match the pending current focus chain action",
+                HtmlCurrentFocusChainError::is_wrong_reply,
+            ),
+            (
+                HtmlCurrentFocusChainErrorKind::Terminal.error(),
+                "current focus chain is already complete",
+                HtmlCurrentFocusChainError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
+    }
+
+    #[test]
+    fn html_focus_chain_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlFocusChainError) -> bool;
+        let cases: Vec<(HtmlFocusChainError, &str, Predicate)> = vec![
+            (
+                HtmlFocusChainErrorKind::WrongReply.error(),
+                "reply does not match the pending focus chain action",
+                HtmlFocusChainError::is_wrong_reply,
+            ),
+            (
+                HtmlFocusChainErrorKind::InvalidCurrentObject.error(),
+                "focus chain object is neither an area nor a Document",
+                HtmlFocusChainError::is_invalid_current_object,
+            ),
+            (
+                HtmlFocusChainErrorKind::Terminal.error(),
+                "focus chain is already complete",
+                HtmlFocusChainError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

@@ -21,6 +21,12 @@ Immutable copies retain the same evidence; captured external Documents cannot
 acquire it from matching metadata. This grants no viewport, focus execution,
 system focus or completion of pending autofocus/interaction work.
 
+Public errors implement `Display` and `Error` with prose messages and keep
+their causes private or `#[non_exhaustive]`; enums are closed only where the
+pinned standard or an owner protocol enumerates them. The crate documentation
+records this error and API-evolution policy, and that errors capture no
+backtrace.
+
 The [selected WHATWG edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
 defines behavior. [INVENTORY.md](INVENTORY.md) connects the vocabulary and local
 operations to their clauses. The [detailed HTML guide](../../docs/reference/html-operations.md)

@@ -114,7 +114,7 @@ impl HtmlConstructionAllocationSnapshot {
         let payload_bytes = values
             .capacity()
             .checked_mul(size_of::<T>())
-            .ok_or(HtmlConstructionError::RepresentationExhausted)?;
+            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
         Ok(Self {
             id: HtmlConstructionAllocationId {
                 identity: Arc::downgrade(identity),
@@ -183,10 +183,10 @@ impl HtmlConstructionResult {
     }
     pub fn position(&self, handle: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         if handle.identity.as_ptr() != Arc::as_ptr(&self.arena().identity) {
-            return Err(HtmlConstructionError::ForeignBuilder);
+            return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
         }
         if handle.index >= self.arena().records.len() {
-            return Err(HtmlConstructionError::UnknownNode);
+            return Err(HtmlConstructionErrorKind::UnknownNode.into());
         }
         Ok(handle.index)
     }
@@ -240,36 +240,36 @@ impl<'a> HtmlConstructionNode<'a> {
     /// Checks only this retained record's generic container invariant.
     pub fn check_container(self) -> Result<(), HtmlConstructionError> {
         if self.arena.records[self.index].template_contents.is_some() {
-            return Err(HtmlConstructionError::TemplateContentsRequired);
+            return Err(HtmlConstructionErrorKind::TemplateContentsRequired.into());
         }
         if !matches!(
             self.kind(),
             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
         ) {
-            return Err(HtmlConstructionError::ParentCannotHaveChildren);
+            return Err(HtmlConstructionErrorKind::ParentCannotHaveChildren.into());
         }
         Ok(())
     }
     /// Checks the fixed movable-node invariant, without scanning ancestry or order.
     pub fn check_detachment(self) -> Result<(), HtmlConstructionError> {
         if matches!(self.kind(), HtmlNodeKind::Document(_)) {
-            return Err(HtmlConstructionError::RootMove);
+            return Err(HtmlConstructionErrorKind::RootMove.into());
         }
         if self.fragment_owner().is_some() {
-            return Err(HtmlConstructionError::AssociationMove);
+            return Err(HtmlConstructionErrorKind::AssociationMove.into());
         }
         if matches!(self.kind(), HtmlNodeKind::Fragment) {
-            return Err(HtmlConstructionError::RootMove);
+            return Err(HtmlConstructionErrorKind::RootMove.into());
         }
         Ok(())
     }
     /// Qualifies an actual retained reference child against the supplied parent.
     pub fn check_reference_child_of(self, parent: Self) -> Result<(), HtmlConstructionError> {
         if !std::ptr::eq(self.arena, parent.arena) {
-            return Err(HtmlConstructionError::ForeignBuilder);
+            return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
         }
         if self.arena.records[self.index].parent != Some(parent.index) {
-            return Err(HtmlConstructionError::WrongSibling);
+            return Err(HtmlConstructionErrorKind::WrongSibling.into());
         }
         Ok(())
     }
@@ -393,10 +393,10 @@ impl HtmlConstructionStorage {
     }
     pub fn position(&self, handle: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         if handle.identity.as_ptr() != Arc::as_ptr(&self.arena.identity) {
-            return Err(HtmlConstructionError::ForeignBuilder);
+            return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
         }
         if handle.index >= self.arena.records.len() {
-            return Err(HtmlConstructionError::UnknownNode);
+            return Err(HtmlConstructionErrorKind::UnknownNode.into());
         }
         Ok(handle.index)
     }
@@ -490,7 +490,9 @@ impl HtmlConstructionInitialization {
                 Ok(Some(HtmlConstructionInitializationAction { owner: self }))
             }
             InitializationPhase::Ready => Ok(None),
-            InitializationPhase::Observing => Err(HtmlConstructionError::OperationNotReady),
+            InitializationPhase::Observing => {
+                Err(HtmlConstructionErrorKind::OperationNotReady.into())
+            }
         }
     }
     pub fn try_ready(
@@ -498,9 +500,9 @@ impl HtmlConstructionInitialization {
     ) -> Result<HtmlConstructionReadyInitialization, HtmlConstructionError> {
         let value = owner
             .as_ref()
-            .ok_or(HtmlConstructionError::OperationConsumed)?;
+            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
         if value.phase != InitializationPhase::Ready {
-            return Err(HtmlConstructionError::OperationNotReady);
+            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
         }
         Ok(HtmlConstructionReadyInitialization {
             identity: owner
@@ -612,15 +614,15 @@ impl HtmlConstructionLease {
     ) -> Result<HtmlConstructionRecovery, HtmlConstructionError> {
         let value = result
             .as_ref()
-            .ok_or(HtmlConstructionError::OperationConsumed)?;
+            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
         let capability = lease
             .as_ref()
-            .ok_or(HtmlConstructionError::OperationConsumed)?;
+            .ok_or(HtmlConstructionErrorKind::OperationConsumed)?;
         if capability.arena.as_ptr() != Arc::as_ptr(value.arena()) {
-            return Err(HtmlConstructionError::ForeignAllocation);
+            return Err(HtmlConstructionErrorKind::ForeignAllocation.into());
         }
         if Arc::strong_count(value.arena()) != 1 {
-            return Err(HtmlConstructionError::SharedAllocationAliased);
+            return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
         }
         let (arena, _) = result.take().expect("checked result owner").into_arena();
         let capability = lease.take().expect("checked lease owner");

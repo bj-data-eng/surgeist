@@ -38,8 +38,8 @@ pub use crate::values::sharing::{
     HtmlAttributePoolResult, HtmlStringPool, HtmlStringPoolCandidate, HtmlStringPoolOperation,
     HtmlStringPoolResult, HtmlValuePoolAction, HtmlValuePoolActionKind, HtmlValuePoolChange,
     HtmlValuePoolError, HtmlValuePoolLayout, HtmlValuePoolMark, HtmlValuePoolOccurrence,
-    HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal, HtmlValuePoolUsage,
-    HtmlValuePoolWork,
+    HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal, HtmlValuePoolSealRefusal,
+    HtmlValuePoolUsage, HtmlValuePoolWork,
 };
 
 pub use crate::construction::bounded::*;

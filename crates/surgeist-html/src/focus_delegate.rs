@@ -89,18 +89,53 @@ pub enum HtmlFocusDelegateReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlFocusDelegateError {
+pub struct HtmlFocusDelegateError {
+    kind: HtmlFocusDelegateErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlFocusDelegateErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlFocusDelegateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending focus delegate action",
-            Self::Terminal => "focus delegate is already complete",
-        })
+
+impl HtmlFocusDelegateErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlFocusDelegateError {
+        HtmlFocusDelegateError { kind: self }
     }
 }
+
+impl From<HtmlFocusDelegateErrorKind> for HtmlFocusDelegateError {
+    fn from(kind: HtmlFocusDelegateErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlFocusDelegateError {
+    /// Whether the cause is: reply does not match the pending focus delegate action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlFocusDelegateErrorKind::WrongReply)
+    }
+    /// Whether the cause is: focus delegate is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlFocusDelegateErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlFocusDelegateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlFocusDelegateErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending focus delegate action")
+            }
+            HtmlFocusDelegateErrorKind::Terminal => {
+                f.write_str("focus delegate is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlFocusDelegateError {}
 
 /// Constant-state complete language cursor. Actual ordinary preorder traversal
@@ -127,7 +162,7 @@ impl HtmlFocusDelegateCursor {
         use HtmlFocusDelegateOutcome as O;
         use HtmlFocusDelegateReply as R;
         if matches!(self.pending, A::Complete(_)) {
-            return Err(HtmlFocusDelegateError::Terminal);
+            return Err(HtmlFocusDelegateErrorKind::Terminal.error());
         }
         let mut next = *self;
         next.pending = match (self.pending, reply) {
@@ -167,7 +202,7 @@ impl HtmlFocusDelegateCursor {
             (A::GetFocusableArea, R::ResolvedAreaPresent(true)) => {
                 A::Complete(O::Candidate(HtmlFocusDelegateCandidate::ResolvedArea))
             }
-            _ => return Err(HtmlFocusDelegateError::WrongReply),
+            _ => return Err(HtmlFocusDelegateErrorKind::WrongReply.error()),
         };
         *self = next;
         Ok(())
@@ -206,18 +241,53 @@ pub enum HtmlAutofocusDelegateReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlAutofocusDelegateError {
+pub struct HtmlAutofocusDelegateError {
+    kind: HtmlAutofocusDelegateErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlAutofocusDelegateErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlAutofocusDelegateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending autofocus delegate action",
-            Self::Terminal => "autofocus delegate is already complete",
-        })
+
+impl HtmlAutofocusDelegateErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlAutofocusDelegateError {
+        HtmlAutofocusDelegateError { kind: self }
     }
 }
+
+impl From<HtmlAutofocusDelegateErrorKind> for HtmlAutofocusDelegateError {
+    fn from(kind: HtmlAutofocusDelegateErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlAutofocusDelegateError {
+    /// Whether the cause is: reply does not match the pending autofocus delegate action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlAutofocusDelegateErrorKind::WrongReply)
+    }
+    /// Whether the cause is: autofocus delegate is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlAutofocusDelegateErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlAutofocusDelegateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlAutofocusDelegateErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending autofocus delegate action")
+            }
+            HtmlAutofocusDelegateErrorKind::Terminal => {
+                f.write_str("autofocus delegate is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlAutofocusDelegateError {}
 
 /// Complete identity-free autofocus-delegate language cursor. Actual search root,
@@ -259,7 +329,7 @@ impl HtmlAutofocusDelegateCursor {
         use HtmlAutofocusDelegateOutcome as O;
         use HtmlAutofocusDelegateReply as R;
         if matches!(self.pending, A::Complete(_)) {
-            return Err(HtmlAutofocusDelegateError::Terminal);
+            return Err(HtmlAutofocusDelegateErrorKind::Terminal.error());
         }
         let mut next = *self;
         next.pending = match (self.pending, reply) {
@@ -280,9 +350,60 @@ impl HtmlAutofocusDelegateCursor {
             (A::ReadClickFocusable { candidate }, R::ClickFocusable(true)) => {
                 A::Complete(O::Candidate(candidate))
             }
-            _ => return Err(HtmlAutofocusDelegateError::WrongReply),
+            _ => return Err(HtmlAutofocusDelegateErrorKind::WrongReply.error()),
         };
         *self = next;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_focus_delegate_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlFocusDelegateError) -> bool;
+        let cases: Vec<(HtmlFocusDelegateError, &str, Predicate)> = vec![
+            (
+                HtmlFocusDelegateErrorKind::WrongReply.error(),
+                "reply does not match the pending focus delegate action",
+                HtmlFocusDelegateError::is_wrong_reply,
+            ),
+            (
+                HtmlFocusDelegateErrorKind::Terminal.error(),
+                "focus delegate is already complete",
+                HtmlFocusDelegateError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
+    }
+
+    #[test]
+    fn html_autofocus_delegate_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlAutofocusDelegateError) -> bool;
+        let cases: Vec<(HtmlAutofocusDelegateError, &str, Predicate)> = vec![
+            (
+                HtmlAutofocusDelegateErrorKind::WrongReply.error(),
+                "reply does not match the pending autofocus delegate action",
+                HtmlAutofocusDelegateError::is_wrong_reply,
+            ),
+            (
+                HtmlAutofocusDelegateErrorKind::Terminal.error(),
+                "autofocus delegate is already complete",
+                HtmlAutofocusDelegateError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

@@ -1356,7 +1356,7 @@ mod tests {
     /// session error or the controller latched it as a stop.
     #[test]
     fn a_meta_csp_stop_has_the_same_reason_as_the_error_that_names_it() {
-        let protocol = surgeist_html::HtmlCspProtocolError::WrongProcessor;
+        let protocol = crate::construction::csp_protocol_error();
         assert_eq!(
             session_reason(SessionError::Stop(ParseStop::CspProcessing)),
             session_reason(SessionError::CspService)

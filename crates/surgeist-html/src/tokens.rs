@@ -69,6 +69,7 @@ impl HtmlCommaToken {
 
 /// A rejected native token's grammar error, using UTF-16 code-unit offsets.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlTokenError {
     EmptySpaceToken,
     SpaceTokenWhitespace { code_unit_offset: usize },
@@ -78,7 +79,21 @@ pub enum HtmlTokenError {
 
 impl fmt::Display for HtmlTokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid native HTML token: {self:?}")
+        match self {
+            Self::EmptySpaceToken => f.write_str("space-separated token is empty"),
+            Self::SpaceTokenWhitespace { code_unit_offset } => write!(
+                f,
+                "space-separated token contains ASCII whitespace at UTF-16 offset {code_unit_offset}"
+            ),
+            Self::CommaTokenBoundaryWhitespace { code_unit_offset } => write!(
+                f,
+                "comma-separated token has leading or trailing ASCII whitespace at UTF-16 offset {code_unit_offset}"
+            ),
+            Self::CommaTokenComma { code_unit_offset } => write!(
+                f,
+                "comma-separated token contains a comma at UTF-16 offset {code_unit_offset}"
+            ),
+        }
     }
 }
 impl Error for HtmlTokenError {}
@@ -314,10 +329,14 @@ impl HtmlDuplicateTokenError {
 
 impl fmt::Display for HtmlDuplicateTokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let comparison = match self.comparison {
+            HtmlTokenComparison::CaseSensitive => "case-sensitive",
+            HtmlTokenComparison::AsciiCaseInsensitive => "ASCII case-insensitive",
+        };
         write!(
             f,
-            "HTML token at index {} duplicates index {} under {:?} comparison",
-            self.duplicate_index, self.first_index, self.comparison
+            "token at index {} duplicates the token at index {} under {comparison} comparison",
+            self.duplicate_index, self.first_index
         )
     }
 }

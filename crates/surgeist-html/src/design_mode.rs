@@ -73,18 +73,53 @@ pub enum HtmlDesignModeReply {
     Applied,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlDesignModeError {
+pub struct HtmlDesignModeError {
+    kind: HtmlDesignModeErrorKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlDesignModeErrorKind {
     WrongReply,
     Terminal,
 }
-impl std::fmt::Display for HtmlDesignModeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::WrongReply => "reply does not match the pending designMode action",
-            Self::Terminal => "designMode setter is already complete",
-        })
+
+impl HtmlDesignModeErrorKind {
+    /// Wraps this cause as the public error where inference cannot convert it.
+    pub(crate) const fn error(self) -> HtmlDesignModeError {
+        HtmlDesignModeError { kind: self }
     }
 }
+
+impl From<HtmlDesignModeErrorKind> for HtmlDesignModeError {
+    fn from(kind: HtmlDesignModeErrorKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl HtmlDesignModeError {
+    /// Whether the cause is: reply does not match the pending designMode action.
+    pub fn is_wrong_reply(&self) -> bool {
+        matches!(self.kind, HtmlDesignModeErrorKind::WrongReply)
+    }
+    /// Whether the cause is: designMode setter is already complete.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.kind, HtmlDesignModeErrorKind::Terminal)
+    }
+}
+
+impl std::fmt::Display for HtmlDesignModeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            HtmlDesignModeErrorKind::WrongReply => {
+                f.write_str("reply does not match the pending designMode action")
+            }
+            HtmlDesignModeErrorKind::Terminal => {
+                f.write_str("designMode setter is already complete")
+            }
+        }
+    }
+}
+
 impl std::error::Error for HtmlDesignModeError {}
 
 /// Allocation-free constant-state language cursor. Actual identities, Source
@@ -113,7 +148,7 @@ impl HtmlDesignModeCursor {
         use HtmlDesignModeAction as A;
         use HtmlDesignModeReply as R;
         if self.pending == A::Complete {
-            return Err(HtmlDesignModeError::Terminal);
+            return Err(HtmlDesignModeErrorKind::Terminal.error());
         }
         let next = match (self.pending, reply) {
             (A::ReadEnabled, R::Enabled(true)) => A::Complete,
@@ -126,9 +161,37 @@ impl HtmlDesignModeCursor {
             (A::ReadDocumentElement, R::DocumentElementPresent(false)) => A::Complete,
             (A::ReadDocumentElement, R::DocumentElementPresent(true)) => A::RunFocusingSteps,
             (A::RunFocusingSteps, R::FocusingStepsCompleted) => A::Complete,
-            _ => return Err(HtmlDesignModeError::WrongReply),
+            _ => return Err(HtmlDesignModeErrorKind::WrongReply.error()),
         };
         self.pending = next;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cause_tests {
+    use super::*;
+
+    #[test]
+    fn html_design_mode_error_causes_have_their_message_and_exactly_one_predicate() {
+        type Predicate = fn(&HtmlDesignModeError) -> bool;
+        let cases: Vec<(HtmlDesignModeError, &str, Predicate)> = vec![
+            (
+                HtmlDesignModeErrorKind::WrongReply.error(),
+                "reply does not match the pending designMode action",
+                HtmlDesignModeError::is_wrong_reply,
+            ),
+            (
+                HtmlDesignModeErrorKind::Terminal.error(),
+                "designMode setter is already complete",
+                HtmlDesignModeError::is_terminal,
+            ),
+        ];
+        for (error, message, predicate) in &cases {
+            assert_eq!(error.to_string(), *message);
+            assert!(predicate(error), "{message}");
+            let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
+            assert_eq!(matching, 1, "{message}");
+        }
     }
 }

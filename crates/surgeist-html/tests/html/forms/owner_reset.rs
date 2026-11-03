@@ -4,8 +4,7 @@
 
 use surgeist_html::bounded::{
     HtmlFormOwnerLookup as Lookup, HtmlFormOwnerResetAction as A,
-    HtmlFormOwnerResetCursor as Cursor, HtmlFormOwnerResetCursorError as Error,
-    HtmlFormOwnerResetReply as R, form_owner_lookup,
+    HtmlFormOwnerResetCursor as Cursor, HtmlFormOwnerResetReply as R, form_owner_lookup,
 };
 
 fn trace(cursor: &mut Cursor, steps: &[(A, R)]) {
@@ -175,11 +174,11 @@ fn wrong_replies_preserve_pending_state_and_its_valid_continuation() {
         } else {
             R::Applied
         };
-        assert_eq!(cursor.reply(wrong), Err(Error::Reply));
+        assert!(matches!(cursor.reply(wrong), Err(ref e) if e.is_reply()));
         assert_eq!(cursor.action(), action);
         cursor.reply(right_reply).unwrap();
     }
     assert_eq!(cursor.action(), A::Complete);
-    assert_eq!(cursor.reply(R::Applied), Err(Error::Reply));
+    assert!(matches!(cursor.reply(R::Applied), Err(ref e) if e.is_reply()));
     assert_eq!(cursor.action(), A::Complete);
 }

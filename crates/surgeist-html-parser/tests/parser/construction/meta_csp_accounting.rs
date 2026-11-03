@@ -621,7 +621,7 @@ impl HtmlMetaCspProcessor for Misbehaving {
                 if matches!(self.misuse, Misuse::LeakThenCancelled) {
                     Ok(HtmlMetaCspOutcome::Cancelled)
                 } else {
-                    Err(HtmlCspError::Protocol(HtmlCspProtocolError::WrongProcessor))
+                    Err(HtmlCspError::Protocol(protocol_error()))
                 }
             }
             Misuse::OverRelease => {
@@ -696,7 +696,7 @@ fn a_processor_that_reports_cancellation_while_holding_storage_is_cancelled_and_
 fn a_processor_that_reports_a_protocol_error_while_holding_storage_fails_with_it_and_is_torn_down()
 {
     let failure = parse_misusing(Misuse::LeakThenProtocol);
-    let protocol = HtmlCspProtocolError::WrongProcessor;
+    let protocol = protocol_error();
     assert_eq!(failure.kind(), HtmlParseCspFailureKind::Protocol(protocol));
     let parse = failure.parse_failure();
     assert_eq!(
@@ -729,5 +729,27 @@ fn a_processor_that_releases_storage_it_never_held_fails_the_processing() {
             "{misuse:?}"
         );
         assert_torn_down(&failure);
+    }
+}
+
+/// A real protocol error: an association presented to an owner that did not
+/// issue it. The error keeps its cause private, so a test obtains one by
+/// provoking it.
+fn protocol_error() -> HtmlCspProtocolError {
+    let admit = &mut |_| Ok::<(), std::convert::Infallible>(());
+    let mut owner = surgeist_html::HtmlCspOwner::new_with(admit).unwrap();
+    let mut other = surgeist_html::HtmlCspOwner::new_with(admit).unwrap();
+    let association = owner.initial_document_with(admit).unwrap();
+    let profile = surgeist_html::HtmlCspProcessorAuthority::new_with(admit)
+        .unwrap()
+        .profile_with(1, admit)
+        .unwrap();
+    let content = surgeist_html::DocumentString::from("default-src 'none'");
+    match other.request_meta_insertion_with(&association, &profile, content, admit) {
+        Err(rejected) => match rejected.error {
+            HtmlCspError::Protocol(error) => error,
+            HtmlCspError::Interrupted(never) => match never {},
+        },
+        Ok(_) => panic!("a foreign association was accepted"),
     }
 }

@@ -161,13 +161,48 @@ impl AutocompleteMaterializationFailure {
 }
 impl fmt::Display for AutocompleteMaterializationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::RawAdmission(_) => {
+                f.write_str("autocomplete value was refused by raw-value admission")
+            }
+            Self::BytesLimit { limit, required } => write!(
+                f,
+                "autocomplete materialization needs {required} allocated bytes, exceeding the limit of {limit}"
+            ),
+            Self::OutputLimit { limit, required } => write!(
+                f,
+                "autocomplete materialization needs {required} nested output records, exceeding the limit of {limit}"
+            ),
+            Self::ScratchLimit { limit, required } => write!(
+                f,
+                "autocomplete materialization needs {required} scratch records, exceeding the limit of {limit}"
+            ),
+            Self::Allocation { requested_bytes } => write!(
+                f,
+                "allocating {requested_bytes} bytes for autocomplete materialization failed"
+            ),
+            Self::Representation => f.write_str(
+                "autocomplete materialization size cannot be represented on this platform",
+            ),
+        }
     }
 }
-impl Error for AutocompleteMaterializationError {}
+impl From<HtmlValueAdmissionError> for AutocompleteMaterializationError {
+    fn from(error: HtmlValueAdmissionError) -> Self {
+        Self::RawAdmission(error)
+    }
+}
+impl Error for AutocompleteMaterializationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::RawAdmission(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 impl fmt::Display for AutocompleteMaterializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.kind, f)
+        f.write_str("autocomplete materialization failed")
     }
 }
 impl Error for AutocompleteMaterializationFailure {
@@ -555,16 +590,32 @@ pub struct HtmlAutocompleteSection {
     token: HtmlSpaceToken,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAutocompleteSectionError {
     Token(HtmlTokenError),
     MissingSectionPrefix,
 }
 impl fmt::Display for HtmlAutocompleteSectionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid autocomplete section: {self:?}")
+        f.write_str(match self {
+            Self::Token(_) => "autocomplete section is not a valid space-separated token",
+            Self::MissingSectionPrefix => "autocomplete section does not start with \"section-\"",
+        })
     }
 }
-impl Error for HtmlAutocompleteSectionError {}
+impl From<HtmlTokenError> for HtmlAutocompleteSectionError {
+    fn from(error: HtmlTokenError) -> Self {
+        Self::Token(error)
+    }
+}
+impl Error for HtmlAutocompleteSectionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Token(error) => Some(error),
+            Self::MissingSectionPrefix => None,
+        }
+    }
+}
 
 fn section_prefix(value: &DocumentString) -> bool {
     value.code_units().get(..8).is_some_and(|units| {
@@ -577,7 +628,7 @@ fn section_prefix(value: &DocumentString) -> bool {
 impl HtmlAutocompleteSection {
     /// Requires the section- prefix and one space token, with no suffix grammar.
     pub fn new(value: impl Into<DocumentString>) -> Result<Self, HtmlAutocompleteSectionError> {
-        let token = HtmlSpaceToken::new(value).map_err(HtmlAutocompleteSectionError::Token)?;
+        let token = HtmlSpaceToken::new(value)?;
         if !section_prefix(token.value()) {
             return Err(HtmlAutocompleteSectionError::MissingSectionPrefix);
         }
@@ -601,8 +652,8 @@ impl fmt::Display for HtmlAutocompleteContactFieldError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "autocomplete field {:?} does not admit a contact hint",
-            self.field
+            "autocomplete field \"{}\" does not admit a contact hint",
+            self.field.canonical_keyword()
         )
     }
 }
@@ -702,6 +753,7 @@ impl HtmlAutocompleteValue {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlAutocompleteSyntaxError {
     EmptyTokens,
     MissingDetailField,
@@ -709,6 +761,28 @@ pub enum HtmlAutocompleteSyntaxError {
     ContactHintRequiresContactField { field: HtmlAutofillField },
     UnexpectedToken { token_index: usize },
 }
+impl fmt::Display for HtmlAutocompleteSyntaxError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyTokens => f.write_str("autocomplete value has no tokens"),
+            Self::MissingDetailField => f.write_str("autocomplete value has no detail field"),
+            Self::UnrecognizedDetailField { token_index } => write!(
+                f,
+                "autocomplete token at index {token_index} is not a recognized detail field"
+            ),
+            Self::ContactHintRequiresContactField { field } => write!(
+                f,
+                "autocomplete contact hint requires a contact field, but \"{}\" is not one",
+                field.canonical_keyword()
+            ),
+            Self::UnexpectedToken { token_index } => write!(
+                f,
+                "autocomplete token at index {token_index} is not expected at that position"
+            ),
+        }
+    }
+}
+impl Error for HtmlAutocompleteSyntaxError {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlAutocompleteSyntaxState {
     Missing,
@@ -1324,8 +1398,7 @@ impl HtmlValueInterpreter {
         state: Option<HtmlInputType>,
         storage: &mut Materialization,
     ) -> Result<HtmlAutocompleteReport, AutocompleteMaterializationError> {
-        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))
-            .map_err(AutocompleteMaterializationError::RawAdmission)?;
+        self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut input = report(RULE, element, raw);
         if let Some(state) = state {
             input.supplied_context = SuppliedContext::Input(state);

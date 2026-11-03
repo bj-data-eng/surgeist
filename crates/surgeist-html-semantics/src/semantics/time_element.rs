@@ -177,11 +177,10 @@ impl HtmlSemanticSession<'_> {
         error: HtmlTimeElementInterpretationError,
         baseline: usize,
     ) -> HtmlSemanticFailure {
-        let kind = match error {
-            HtmlTimeElementInterpretationError::RepresentationExhausted => {
-                HtmlSemanticFailureKind::RepresentationExhausted
-            }
-            HtmlTimeElementInterpretationError::Processing(error) => match error {
+        let kind = if error.is_representation_exhausted() {
+            HtmlSemanticFailureKind::RepresentationExhausted
+        } else if let Some(error) = error.processing_failure() {
+            match error {
                 NumericMaterializationError::Digits(_) => {
                     HtmlSemanticFailureKind::IntrinsicUnavailable
                 }
@@ -217,8 +216,9 @@ impl HtmlSemanticSession<'_> {
                         }
                     }
                 },
-            },
-            _ => HtmlSemanticFailureKind::IntrinsicUnavailable,
+            }
+        } else {
+            HtmlSemanticFailureKind::IntrinsicUnavailable
         };
         self.stop(kind)
     }

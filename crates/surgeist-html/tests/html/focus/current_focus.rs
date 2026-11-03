@@ -2,8 +2,8 @@
 //! returns roles; exact Document/area identities remain with the actual adapter.
 use surgeist_html::{
     HtmlCurrentlyFocusedAreaAction as A, HtmlCurrentlyFocusedAreaCursor as C,
-    HtmlCurrentlyFocusedAreaError as E, HtmlCurrentlyFocusedAreaOutcome as O,
-    HtmlCurrentlyFocusedAreaReply as R, HtmlFocusedAreaKind as Area,
+    HtmlCurrentlyFocusedAreaOutcome as O, HtmlCurrentlyFocusedAreaReply as R,
+    HtmlFocusedAreaKind as Area,
 };
 
 const REPLIES: [R; 10] = [
@@ -23,7 +23,7 @@ fn step(c: &mut C, action: A, reply: R) {
     for wrong in REPLIES {
         if std::mem::discriminant(&wrong) != std::mem::discriminant(&reply) {
             let before = *c;
-            assert_eq!(c.reply(wrong), Err(E::WrongReply));
+            assert!(matches!(c.reply(wrong), Err(ref e) if e.is_wrong_reply()));
             assert_eq!(*c, before);
         }
     }
@@ -33,7 +33,7 @@ fn complete(c: &mut C, outcome: O) {
     assert_eq!(c.action(), A::Complete(outcome));
     for reply in REPLIES {
         let before = *c;
-        assert_eq!(c.reply(reply), Err(E::Terminal));
+        assert!(matches!(c.reply(reply), Err(ref e) if e.is_terminal()));
         assert_eq!(*c, before);
     }
 }
@@ -203,14 +203,13 @@ fn final_result_uses_actual_final_designation_instead_of_cached_loop_observation
 fn malformed_stage_replies_preserve_pending_document_and_content_captures() {
     let mut c = C::new();
     let initial = c;
-    assert_eq!(
-        c.reply(R::ResultFocusedAreaPresent(false)),
-        Err(E::WrongReply)
+    assert!(
+        matches!(c.reply(R::ResultFocusedAreaPresent(false)), Err(ref e) if e.is_wrong_reply())
     );
     assert_eq!(c, initial);
     step(&mut c, A::ReadSystemFocus, R::SystemFocus(true));
     let waiting = c;
-    assert_eq!(c.reply(R::LoopFocusedArea(Area::Null)), Err(E::WrongReply));
+    assert!(matches!(c.reply(R::LoopFocusedArea(Area::Null)), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(c, waiting);
     step(&mut c, A::CaptureTraversableActiveDocument, R::Applied);
     step(
@@ -224,10 +223,7 @@ fn malformed_stage_replies_preserve_pending_document_and_content_captures() {
         R::ContentNavigablePresent(true),
     );
     let waiting = c;
-    assert_eq!(
-        c.reply(R::ContentNavigablePresent(false)),
-        Err(E::WrongReply)
-    );
+    assert!(matches!(c.reply(R::ContentNavigablePresent(false)), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(c, waiting);
     step(&mut c, A::CaptureContentActiveDocument, R::Applied);
     step(
