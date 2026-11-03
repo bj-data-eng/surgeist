@@ -2846,7 +2846,7 @@ mod order_commit_guard_tests {
             let (mut operation, children, usage) = pending_commit(append, spoil);
             let node = operation.plan.positions[0];
             let action = operation.next_action().unwrap().unwrap();
-            let failure = action.perform().err().expect("guarded commit");
+            let failure = action.perform().expect_err("guarded commit");
             assert_eq!(
                 failure.reason(),
                 &HtmlConstructionErrorKind::CapacityMismatch.error()
@@ -2898,7 +2898,7 @@ mod order_commit_guard_tests {
         for (build, spoil) in STALE {
             let (mut operation, children, usage) = pending_commit(build, spoil);
             let action = operation.next_action().unwrap().unwrap();
-            let failure = action.perform().err().expect("guarded commit");
+            let failure = action.perform().expect_err("guarded commit");
             assert_eq!(
                 failure.reason(),
                 &HtmlConstructionErrorKind::ParentChildConflict.error()
