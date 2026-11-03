@@ -209,6 +209,46 @@ fn reservation_work_added_by_each_doubling_of_one_elements_attributes_is_near_do
 }
 
 #[test]
+fn reservation_work_added_by_each_doubling_of_merged_attributes_beyond_creating_them_is_near_double()
+ {
+    // A second `html` start tag merges its attributes into the first element one candidate at a
+    // time ("in body" insertion mode, `html` start tag, retained HTML Standard capture
+    // `html-language-syntax-parser--877d6146487f--37a9ba51eed8.md`, line 4306). The plan that
+    // records each candidate's decision grows by one slot per candidate unless it grows
+    // geometrically, so its reservation work is quadratic. The same attributes on a new element
+    // are tokenized and installed without a plan, so the reservation work beyond that baseline,
+    // `E(n)`, is the merge's own. The comparisons of names are quadratic by the standard's own
+    // definition, so only reservation work is measured.
+    //
+    // As in `assert_doublings_add_near_double`, let D(n) = E(2n) - E(n). Linear work
+    // E(n) = a*n + b gives D(n) = a*n, so D(2n) = 2*D(n) whatever the constant b is; quadratic
+    // work gives D(2n) = 4*D(n). Three is the midpoint. Differences, unlike ratios of E, are not
+    // moved by the constant term, which is as large as the linear term at these sizes.
+    let extra = |attributes: usize| {
+        let names: String = (0..attributes).map(|i| format!(" a{i}=v")).collect();
+        let merged = parse_work(format!("<!doctype html><html><body><html{names}>")).reserved;
+        let created = parse_work(format!("<!doctype html><html><body><div{names}>")).reserved;
+        merged
+            .checked_sub(created)
+            .expect("merging reserves at least what creating does")
+    };
+    let sizes = [100_usize, 200, 400, 800];
+    let measured: Vec<u64> = sizes.iter().map(|&n| extra(n)).collect();
+    for (pair, window) in sizes.windows(3).zip(measured.windows(3)) {
+        let (first, second) = (window[1] - window[0], window[2] - window[1]);
+        assert!(
+            second <= 3 * first,
+            "merge reservation work grew faster than linearly: doubling {} -> {} attributes \
+             added {first} bytes beyond creating them, doubling {} -> {} added {second}",
+            pair[0],
+            pair[1],
+            pair[1],
+            pair[2],
+        );
+    }
+}
+
+#[test]
 fn reservation_work_added_by_each_doubling_of_one_selects_options_is_near_double() {
     // An option inserted last settles from the select's summary of its list, so
     // the list is not collected per insertion and total work is linear too.
