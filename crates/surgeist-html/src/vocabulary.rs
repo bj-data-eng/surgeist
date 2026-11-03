@@ -54,7 +54,7 @@ impl KnownHtmlElement {
     /// Unknown, foreign, uppercase, and malformed names return `None`. The raw
     /// name remains unchanged; this is recognition, not HTML parser case folding.
     pub fn from_name(name: &(impl crate::HtmlNameInput + ?Sized)) -> Option<Self> {
-        crate::values::is_html_namespace_uri(name.namespace_uri()).then(|| {
+        crate::internal::values::is_html_namespace_uri(name.namespace_uri()).then(|| {
             Self::ALL
                 .iter()
                 .copied()

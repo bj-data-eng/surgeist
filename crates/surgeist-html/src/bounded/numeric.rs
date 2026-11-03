@@ -4,18 +4,20 @@
 //! Work bounds describe atomic scans; cursors expose fixed steps. These APIs
 //! neither allocate a controller nor certify that a caller admitted the work.
 
-pub use crate::numeric::natural_ratio::{
+pub use crate::internal::microsyntax::numeric::natural_ratio::{
     NaturalArithmeticError, NaturalComparison, NaturalDifference, NaturalDigits, NaturalProduct,
     RationalIntegerMaterializationFailure,
 };
-pub use crate::numeric::range::best::BestFiniteNumberCursor;
-pub use crate::numeric::range::ingress::FiniteDecimalIngressCursor;
-pub use crate::numeric::range::lattice::{RangeLatticeCursor, RangeMidpointCursor};
-pub use crate::numeric::range::{
+pub use crate::internal::microsyntax::numeric::range::best::BestFiniteNumberCursor;
+pub use crate::internal::microsyntax::numeric::range::ingress::FiniteDecimalIngressCursor;
+pub use crate::internal::microsyntax::numeric::range::lattice::{
+    RangeLatticeCursor, RangeMidpointCursor,
+};
+pub use crate::internal::microsyntax::numeric::range::{
     RangeBufferHeader, RangeCell, RangeDecimalParts, RangeNumericError, RangeNumericHeaders,
     RangeNumericLayout, RangeNumericReply, RangeNumericRequest, RangeScratchRole,
 };
-pub use crate::numeric::{
+pub use crate::internal::microsyntax::numeric::{
     FloatingPointAllocationError, FloatingPointGrammarCursor, FloatingPointParseMode,
     FloatingPointParseResult, IntegerPrefixScanner, IntegerRecoveryError, IntegerUnitStep,
     IntegerUnitStepError, IntegerUnitStepResult, NumericMaterializationError,
