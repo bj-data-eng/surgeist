@@ -81,7 +81,15 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 1);
     assert_eq!(
@@ -103,7 +111,15 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
         );
     }
     assert_eq!(output(&batch, 2).size.height, S::from_f64(20.0));
-    let warm = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
+    let warm = compute_layout_with_flow(
+        &capture,
+        2,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(warm.final_entries(), batch.final_entries());
     let facts = |batch: &CompletedLayoutBatchOf<u32, S>| {
         batch
@@ -187,7 +203,15 @@ fn assert_ordinary<S: LayoutScalar>(rtl: bool, side: Float) {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(30.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(30.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 1);
     assert_eq!(layout.lines()[0].range(), text::Range::new(0, 2));
@@ -252,7 +276,15 @@ impl<S: LayoutScalar> CachedHost<S> {
             },
             Vec::new(),
         )?;
-        compute_layout_with_flow_invalidated(&capture, 2, request(30.0), dirty)
+        compute_layout_with_flow_invalidated(
+            &capture,
+            2,
+            request(30.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+            dirty,
+        )
     }
 }
 impl<S: LayoutScalar> Traverse for CachedHost<S> {
@@ -502,7 +534,15 @@ fn leading_empty_origin_float_keeps_its_encounter_while_text_avoids_its_band() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(10.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(output(&batch, 30).location, Point::ZERO);
     assert_eq!(batch.placed_text()[0].layout().lines().len(), 1);
     assert_eq!(
@@ -540,7 +580,15 @@ fn assert_soft_replay<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(25.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(25.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 2);
     assert_eq!(layout.lines()[0].range(), text::Range::new(0, 2));
@@ -603,7 +651,15 @@ fn assert_clear<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(
         output(&batch, 30).location,
         Point::new(S::ZERO, S::from_f64(16.0))
@@ -704,7 +760,15 @@ fn assert_signed<S: LayoutScalar>(adjustment: f64) {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(12.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(12.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(output(&batch, 30).location, Point::ZERO);
     assert_eq!(
         output(&batch, 31).location,
@@ -771,7 +835,15 @@ fn preceding_unbreakable_content_keeps_its_line_and_defers_the_encountered_float
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(20.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(output(&batch, 30).location, Point::new(0.0, 10.0));
     assert_eq!(batch.placed_text()[0].layout().lines().len(), 1);
     assert_eq!(
@@ -810,7 +882,15 @@ fn assert_discarded_prefix<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(10.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(output(&batch, 30).location, Point::ZERO);
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [32, 88]);
@@ -892,7 +972,15 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(26.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(26.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.lines().len(), 2);
     assert_eq!(layout.lines()[0].range(), text::Range::new(0, 1));
@@ -981,7 +1069,15 @@ fn discretionary_control_float_seam_lends_the_actual_selected_replacement_bundle
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(35.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(35.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [65, 88, 88, 88, 88]);
     assert_eq!(layout.lines().len(), 2);
@@ -1064,7 +1160,15 @@ fn assert_retained_zero_prefix<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(10.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(10.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [65, 88]);
     assert_eq!(layout.lines().len(), 1);
@@ -1137,7 +1241,15 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
             },
             Vec::new(),
         )?;
-        compute_layout_with_flow_invalidated(&capture, 2, request(10.0), &[2])
+        compute_layout_with_flow_invalidated(
+            &capture,
+            2,
+            request(10.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+            &[2],
+        )
     };
     let mut host = CachedHost::new(tree);
     let cold = compute(&host).unwrap();
@@ -1281,15 +1393,49 @@ fn captured_float_intrinsic<S: LayoutScalar>(side: Float, minimum: bool) -> (f64
             },
         )
         .input(10, paragraph.text_input(10));
-    let request = LayoutRootRequestOf::viewport(Size::new(
-        if minimum {
-            AvailableOf::MIN_CONTENT
-        } else {
-            AvailableOf::MAX_CONTENT
-        },
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input(&tree, 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            if minimum {
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MinContent,
+                )
+            } else {
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::MaxContent,
+                )
+            },
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     // Existing ordinary-float lane is an independent control using the same
     // actual preparation and box geometry, without interleaved-window capture.
     let ordinary = LayoutFlowInput::try_new(
@@ -1392,7 +1538,15 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(40.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let layout = batch.placed_text()[0].layout();
     assert_eq!(layout.source().text().code_units(), [65, 10]);
     assert_eq!(layout.lines().len(), 1);
@@ -1492,11 +1646,42 @@ fn assert_max_float_cohort<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let request = LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::MAX_CONTENT,
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     let batch = compute_layout_with_flow(&capture, 2, request).unwrap();
     assert_eq!(
         output(&batch, 2).size.width,
@@ -1632,11 +1817,42 @@ fn expired_captured_max_cohorts<S: LayoutScalar>() -> f64 {
         Vec::new(),
     )
     .unwrap();
-    let request = LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::MAX_CONTENT,
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     let batch = compute_layout_with_flow(&capture, 2, request).unwrap();
     assert_eq!(output(&batch, 30).location, Point::new(S::ZERO, S::ZERO));
     assert_eq!(
@@ -1703,7 +1919,15 @@ fn source_ordered_clear_tops<S: LayoutScalar>(mirror: bool, capture_all: bool) -
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 2, request(100.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(100.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     [30, 31, 32]
         .into_iter()
         .map(|node| output(&batch, node).location.y.to_f64())
@@ -1788,8 +2012,15 @@ fn transparent_leading_capture<S: LayoutScalar>(
         Vec::new(),
     )
     .map_err(|e| format!("admission {e:?}"))?;
-    let batch = compute_layout_with_flow(&capture, 2, request(40.0))
-        .map_err(|e| format!("consumption {e:?}"))?;
+    let batch = compute_layout_with_flow(
+        &capture,
+        2,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .map_err(|e| format!("consumption {e:?}"))?;
     assert_eq!(batch.placed_text().len(), 1);
     assert_eq!(
         batch.placed_text()[0].layout().source().text().code_units(),
@@ -1811,8 +2042,15 @@ fn transparent_leading_capture<S: LayoutScalar>(
     if with_float {
         assert_eq!(output(&batch, 30).location, Point::ZERO);
     }
-    let warm =
-        compute_layout_with_flow(&capture, 2, request(40.0)).map_err(|e| format!("warm {e:?}"))?;
+    let warm = compute_layout_with_flow(
+        &capture,
+        2,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .map_err(|e| format!("warm {e:?}"))?;
     assert_eq!(warm.final_entries(), batch.final_entries());
     Ok(())
 }
@@ -1948,11 +2186,42 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let request = LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::MAX_CONTENT,
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     let batch = compute_layout_with_flow(&capture, 2, request).unwrap();
     let layout = batch.placed_text()[0].layout();
     assert!(layout.source().text().code_units().is_empty());
@@ -2132,7 +2401,15 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            2,
+            request(80.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let layout = batch.placed_text()[0].layout();
         assert_eq!(
             layout.source().text().code_units(),
@@ -2163,7 +2440,15 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
                 .definition(),
             text::PreparedAlternativeDefinition::Source { .. }
         ));
-        let warm = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
+        let warm = compute_layout_with_flow(
+            &capture,
+            2,
+            request(80.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         assert_eq!(warm.final_entries(), batch.final_entries());
     }
     check::<f32>();
@@ -2213,7 +2498,15 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            2,
+            request(80.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let layout = batch.placed_text()[0].layout();
         assert_eq!(
             layout.source().text().code_units(),
@@ -2242,7 +2535,15 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
                 .iter()
                 .any(|line| line.range() == text::Range::new(3, 9))
         );
-        let warm = compute_layout_with_flow(&capture, 2, request(80.0)).unwrap();
+        let warm = compute_layout_with_flow(
+            &capture,
+            2,
+            request(80.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 2);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         assert_eq!(warm.final_entries(), batch.final_entries());
     }
     check::<f32>();

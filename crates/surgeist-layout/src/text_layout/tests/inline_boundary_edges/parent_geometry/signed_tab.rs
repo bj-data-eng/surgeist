@@ -35,7 +35,15 @@ fn execute<S: LayoutScalar>(fixture: &Fixture) -> CompletedLayoutBatchOf<u32, S>
         Vec::new(),
     )
     .unwrap();
-    compute_layout_with_flow(&input, 0, request(40.0)).unwrap()
+    compute_layout_with_flow(
+        &input,
+        0,
+        request(40.0, {
+            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap()
 }
 fn interval(line: &text::FinalizedLine, fixture: &Fixture, node: u32) -> ((f64, f64), (f64, f64)) {
     let occurrence = control(fixture, node);
@@ -55,7 +63,25 @@ fn lane<S: LayoutScalar>() {
         false,
         Some(10.0),
         false,
-        AvailableOf::definite(S::from_f64(10.0)),
+        crate::SizingRequestOf::new(
+            crate::Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     let digit_line = finalized_lines(&digit_layout).remove(0);
     assert_eq!(glyphs(&digit_line), [(18, 0.0, 10.0)]);

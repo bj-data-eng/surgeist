@@ -56,7 +56,12 @@ fn input<S: LayoutScalar>(
             axes.direction(),
         ),
         observe_tail: true,
-        available_inline_extent: AvailableOf::definite(n(capacity)),
+        available_inline_extent: crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(n(capacity)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         flow_axes: axes,
         text_align: TextAlign::Start,
         text_align_last: crate::TextAlignLast::Auto,
@@ -200,7 +205,10 @@ fn decorated_lane<S: LayoutScalar>() {
     let flow = InlineFlowOf::new(
         WritingMode::HorizontalTb,
         Direction::Rtl,
-        AvailableOf::definite(n(60.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(60.0)).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
     );
     let metrics =
         InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, n(8.0), n(10.0)).unwrap();

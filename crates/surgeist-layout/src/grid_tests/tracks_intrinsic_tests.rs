@@ -5,15 +5,33 @@ use super::fixtures::{
     compute_oracle_grid_output, computed_overflow, fri04_c03_grid_track_nested,
     fri04_c03_grid_track_percentage_nested, fri04_c03_grid_track_value,
     fri04_c04_grid_dispatch_input, fri05_c05_grid_sizing_input, fri06_c07_height_output,
-    fri06_mr02_geometry_error_assert, fri06_mr02_geometry_error_largest_finite,
-    fri08_c01_placement_output, fri08_c02_auto_fit_output, fri08_c02_auto_fit_repeat,
-    fri08_c02_fit_content_track, fri08_c02_flex_track, fri08_c02_stretch_track,
-    fri08_c02_stretch_tree, fri08_c02_track_mix_tree, fri08_c02_track_sizes,
-    fri08_c03_auto_fit_batch, fri08_c03_auto_fit_named_repeat, fri08_c03_intrinsic_facts,
-    fri08_c03_intrinsic_projected_item, fri08_c04_standalone_intrinsic_minimum_width,
-    invalid_numeric_lp, lp, subgrid_track_of, track_component_flex,
+    fri06_mr02_geometry_error_largest_finite, fri08_c01_placement_output,
+    fri08_c02_auto_fit_output, fri08_c02_auto_fit_repeat, fri08_c02_fit_content_track,
+    fri08_c02_flex_track, fri08_c02_stretch_track, fri08_c02_stretch_tree,
+    fri08_c02_track_mix_tree, fri08_c02_track_sizes, fri08_c03_auto_fit_batch,
+    fri08_c03_auto_fit_named_repeat, fri08_c03_intrinsic_facts, fri08_c03_intrinsic_projected_item,
+    fri08_c04_standalone_intrinsic_minimum_width, inherited_placement_member, invalid_numeric_lp,
+    lp, subgrid_track_of, track_component_flex,
 };
 use super::*;
+
+// Numeric fixtures author item incidence directly. The argument is a zero-based
+// single-track index; the contribution row carries the actual1-based grid lines.
+fn single_track_item<S: LayoutScalar>(
+    track: usize,
+    minimum: S,
+    min_content: S,
+    max_content: S,
+) -> GridIntrinsicContributionRow<S> {
+    GridIntrinsicContributionRow {
+        span: GridTrackSpan::new(track + 1, track + 2),
+        contributions: GridTrackContributions {
+            minimum,
+            min_content,
+            max_content,
+        },
+    }
+}
 
 fn grid_item_sizing_with_grid_flow_status<S: LayoutScalar>(
     child_style: &NodeInputOf<S>,
@@ -247,12 +265,25 @@ fn assert_fri08_c04_standalone_edges_gaps_and_percentage<S: LayoutScalar>() {
                 ..NodeInputOf::default()
             },
         );
-    let batch = compute_layout(
-        &tree,
-        1,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-            .expect("standalone definite percentage viewport"),
-    )
+    let batch = compute_layout(&tree, 1, {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("standalone percentage and unequal-gap layout succeeds");
     let wrapper = fri08_c01_placement_output(&batch, 2);
     let first = fri08_c01_placement_output(&batch, 3);
@@ -366,7 +397,6 @@ fn fri08_c03_intrinsic_collapsed_auto_fit_tracks_are_not_candidate_starts() {
         "active-only",
         1,
         None,
-        LaneIntrinsicBaselineRole::None,
         LaneIntrinsicEdgeFactsOf::default(),
         fri08_c03_intrinsic_facts(20.0, 30.0, 40.0),
     )];
@@ -463,12 +493,27 @@ fn fri08_c02_stretch_uses_only_active_gaps_and_noncollapsed_auto_fit_tracks() {
         tracks: vec![repeat],
         measurements: &[0.0, 0.0],
     });
-    let batch = compute_layout(
-        &tree,
-        1,
-        LayoutRootRequestOf::viewport(viewport.map(AvailableOf::definite))
-            .expect("finite collapsed stretch viewport"),
-    )
+    let batch = compute_layout(&tree, 1, {
+        let axes = viewport.map(|value| {
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                SizingOperation::Normal,
+            )
+        });
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("valid collapsed stretch grid");
     let first = fri08_c01_placement_output(&batch, 2);
     let second = fri08_c01_placement_output(&batch, 3);
@@ -501,16 +546,43 @@ fn fri08_c02_stretch_requires_normal_or_stretch_positive_definite_remainder() {
     assert_eq!(resolve(Some(100.0), Some(AlignContent::Start)), 20.0);
     assert_eq!(resolve(Some(100.0), Some(AlignContent::Center)), 20.0);
     assert_eq!(
-        resolve_tracks(
-            &[TrackSizingOf::minmax(
+        {
+            // Each listed row is one authored single-track item, including zero-sized items.
+            let tracks = &[TrackSizingOf::minmax(
                 MinTrackSizingOf::MIN_CONTENT,
                 MaxTrackSizingOf::AUTO,
-            )],
-            None,
-            0.0,
-            AlignContent::Stretch,
-            &[20.0],
-        ),
+            )];
+            let items = [single_track_item(0, 20.0, 20.0, 20.0)];
+            let phases = resolve_grid_contribution_rows(
+                SpanningTrackContext {
+                    tracks,
+                    basis: None,
+                    available: GridTrackSizingConstraint {
+                        operation: SizingOperation::MaxContent,
+                        available_extent: None,
+                    },
+                    gap: 0.0,
+                    gutters: None,
+                    base_floors: &[],
+                },
+                &items,
+            )
+            .expect("authored item incidence resolves checked phases");
+            resolve_tracks_from_phases(ResolvedAxisTrackInput {
+                tracks,
+                phases: &phases,
+                items: &items,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                stretch_size: None,
+                gap: 0.0,
+                alignment: AlignContent::Stretch,
+                gutters: None,
+            })
+            .expect("authored track phases finish without losing item spans")
+        },
         [20.0]
     );
     assert_eq!(resolve(Some(10.0), Some(AlignContent::Stretch)), 20.0);
@@ -863,15 +935,31 @@ fn fri08_c02_auto_fit_public_intrinsic_span_counts_only_active_boundary_gutters(
             },
         );
 
-    let batch = compute_layout(
-        &tree,
-        1,
-        LayoutRootRequest::viewport(Size::new(
-            Available::Definite(140.0),
-            Available::Definite(20.0),
-        ))
-        .expect("finite intrinsic auto-fit viewport"),
-    )
+    let batch = compute_layout(&tree, 1, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(140.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(20.0).unwrap()),
+                SizingOperation::Normal,
+            ),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequest::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("public intrinsic auto-fit layout");
     let grid = fri08_c01_placement_output(&batch, 1);
     let spanning = fri08_c01_placement_output(&batch, 2);
@@ -1162,15 +1250,28 @@ fn assert_fri06_c07_height_grid_lanes<S: LayoutScalar>(
 ) {
     let scalar = S::from_f64;
     let tree = fri06_c07_height_grid_lanes_tree(row, overflow_hidden);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(scalar(120.0)),
-            AvailableOf::MAX_CONTENT,
-        ))
-        .expect("grid-lanes viewport is valid"),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(scalar(120.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("grid-lanes packing computes through the public front door");
     let root = fri06_c07_height_output(batch.unrounded_entries(), 0);
 
@@ -1197,12 +1298,25 @@ fn assert_fri06_c07_height_grid_lanes<S: LayoutScalar>(
 fn assert_fri06_c07_height_subgrid<S: LayoutScalar>(row: Fri06C07HeightRow) {
     let scalar = S::from_f64;
     let tree = fri06_c07_height_subgrid_tree(row);
-    let batch = compute_layout(
-        &tree,
-        0,
-        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-            .expect("subgrid intrinsic viewport is valid"),
-    )
+    let batch = compute_layout(&tree, 0, {
+        let axes = Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Indefinite,
+            SizingOperation::MaxContent,
+        ));
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    })
     .expect("subgrid min-content layout computes through the public front door");
     let grid = fri06_c07_height_output(batch.unrounded_entries(), 1);
 
@@ -1267,7 +1381,7 @@ fn fri06_c07_height_exact_twelve_rows_preserve_packing_and_intrinsic_block_size(
     assert_fri06_c07_height_rows::<f64>();
 }
 
-fn assert_fri06_mr02_geometry_error_grid_track_subject<S: LayoutScalar>(display: Display) {
+fn assert_grid_track_sum_overflow_owner<S: LayoutScalar>(display: Display) {
     let largest = fri06_mr02_geometry_error_largest_finite::<S>();
     let size = Size::new(S::from_f64(100.0), S::from_f64(80.0));
     let mut tree = crate::test_support::layout_tree::OracleTreeOf::<S>::new()
@@ -1302,27 +1416,40 @@ fn assert_fri06_mr02_geometry_error_grid_track_subject<S: LayoutScalar>(display:
                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 ParentFormattingContext::NoParent,
             ),
-            size.map(AvailableOf::definite),
+            SizingRequestOf::new(
+                size.map(|value| {
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(value).unwrap()),
+                        SizingOperation::Normal,
+                    )
+                }),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .expect_err("overflowing track subject geometry must fail");
 
-    fri06_mr02_geometry_error_assert(
-        error,
-        LayoutErrorSiteOf::ContainerSubject {
-            container: 7,
-            subject: 7,
-        },
-        LayoutOperation::ChildLayout,
-        LayoutInternalInvariant::InvalidBlockScrollGeometry,
-    );
+    // Both authored tracks are finite; their sum overflows in the numeric
+    // owner before any child/scroll geometry exists. Preserve that owning
+    // identity and the specific arithmetic failure rather than a later site.
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(7));
+    assert_eq!(error.operation(), LayoutOperation::ValueResolution);
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::InvalidNumeric { value })
+            if !value.is_finite() && *value > S::ZERO
+    ));
 }
 
 #[test]
-fn fri06_mr02_geometry_error_grid_track_subject_preserves_node_identities_both_scalars() {
+fn grid_track_sum_overflow_preserves_owner_identity_both_scalars() {
     for display in [Display::Grid, Display::GridLanes] {
-        assert_fri06_mr02_geometry_error_grid_track_subject::<f32>(display);
-        assert_fri06_mr02_geometry_error_grid_track_subject::<f64>(display);
+        assert_grid_track_sum_overflow_owner::<f32>(display);
+        assert_grid_track_sum_overflow_owner::<f64>(display);
     }
 }
 
@@ -1517,25 +1644,62 @@ fn fri04_c04_grid_dispatch_supported_calc_size_and_intrinsic_geometry_in_both_ax
 fn fri04_c03_grid_track_nested_track_breadths_and_fit_content_use_complete_programs() {
     let fixed = TrackSizing::calculation(fri04_c03_grid_track_nested(20.0, 60.0, 80.0));
     assert_eq!(track_base_size(&fixed, None, 11.0), 60.0);
-    assert_eq!(track_growth_limit(&fixed, None, 11.0), Some(60.0));
+    assert_eq!(
+        track_growth_limit(
+            &fixed,
+            None,
+            GridTrackSizingConstraint {
+                operation: SizingOperation::MaxContent,
+                available_extent: None
+            },
+            GridTrackContributions {
+                minimum: 11.0,
+                min_content: 11.0,
+                max_content: 11.0
+            }
+        ),
+        Some(60.0)
+    );
 
     let negative = TrackSizing::calculation(fri04_c03_grid_track_nested(-30.0, -10.0, -5.0));
     assert_eq!(track_base_size(&negative, None, 11.0), 0.0);
 
     let fit = TrackSizing::fit_content(fri04_c03_grid_track_nested(20.0, 60.0, 80.0));
     assert_eq!(
-        resolve_axis_tracks(AxisTrackInput {
-            tracks: &[fit],
-            basis: None,
-            definite_size: None,
-            available_size: AvailableOf::MAX_CONTENT,
-            gap: 0.0,
-            alignment: AlignContent::Start,
-            stretch_empty_auto_to_available: false,
-            min_intrinsic_sizes: &[20.0],
-            max_intrinsic_sizes: &[100.0],
-            gutters: None,
-        }),
+        {
+            // Each listed row is one authored single-track item, including zero-sized items.
+            let tracks = &[fit];
+            let items = [single_track_item(0, 20.0, 20.0, 100.0)];
+            let phases = resolve_grid_contribution_rows(
+                SpanningTrackContext {
+                    tracks,
+                    basis: None,
+                    available: GridTrackSizingConstraint {
+                        operation: SizingOperation::MaxContent,
+                        available_extent: None,
+                    },
+                    gap: 0.0,
+                    gutters: None,
+                    base_floors: &[],
+                },
+                &items,
+            )
+            .expect("authored item incidence resolves checked phases");
+            resolve_tracks_from_phases(ResolvedAxisTrackInput {
+                tracks,
+                phases: &phases,
+                items: &items,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                stretch_size: None,
+                gap: 0.0,
+                alignment: AlignContent::Start,
+                gutters: None,
+            })
+            .expect("authored track phases finish without losing item spans")
+        },
         [60.0]
     );
 
@@ -1547,32 +1711,76 @@ fn fri04_c03_grid_track_nested_track_breadths_and_fit_content_use_complete_progr
     let dependent_fit =
         TrackSizing::fit_content(fri04_c03_grid_track_percentage_nested(20.0, 0.6, 80.0));
     assert_eq!(
-        resolve_axis_tracks(AxisTrackInput {
-            tracks: core::slice::from_ref(&dependent_fit),
-            basis: None,
-            definite_size: None,
-            available_size: AvailableOf::MAX_CONTENT,
-            gap: 0.0,
-            alignment: AlignContent::Start,
-            stretch_empty_auto_to_available: false,
-            min_intrinsic_sizes: &[20.0],
-            max_intrinsic_sizes: &[100.0],
-            gutters: None,
-        }),
+        {
+            // Each listed row is one authored single-track item, including zero-sized items.
+            let tracks = core::slice::from_ref(&dependent_fit);
+            let items = [single_track_item(0, 20.0, 20.0, 100.0)];
+            let phases = resolve_grid_contribution_rows(
+                SpanningTrackContext {
+                    tracks,
+                    basis: None,
+                    available: GridTrackSizingConstraint {
+                        operation: SizingOperation::MaxContent,
+                        available_extent: None,
+                    },
+                    gap: 0.0,
+                    gutters: None,
+                    base_floors: &[],
+                },
+                &items,
+            )
+            .expect("authored item incidence resolves checked phases");
+            resolve_tracks_from_phases(ResolvedAxisTrackInput {
+                tracks,
+                phases: &phases,
+                items: &items,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                stretch_size: None,
+                gap: 0.0,
+                alignment: AlignContent::Start,
+                gutters: None,
+            })
+            .expect("authored track phases finish without losing item spans")
+        },
         [100.0]
     );
-    let definite_fit = resolve_axis_tracks(AxisTrackInput {
-        tracks: &[dependent_fit],
-        basis: Some(100.0),
-        definite_size: Some(100.0),
-        available_size: AvailableOf::Definite(100.0),
-        gap: 0.0,
-        alignment: AlignContent::Start,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[20.0],
-        max_intrinsic_sizes: &[100.0],
-        gutters: None,
-    });
+    let definite_fit = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &[dependent_fit];
+        let items = [single_track_item(0, 20.0, 20.0, 100.0)];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: Some(100.0),
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(100.0),
+                },
+                gap: 0.0,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(100.0),
+            },
+            stretch_size: Some(100.0),
+            gap: 0.0,
+            alignment: AlignContent::Start,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
     assert!(
         (definite_fit[0] - 60.0).abs() <= 0.000_01,
         "definite nested fit-content limit: {}",
@@ -1584,7 +1792,7 @@ fn fri04_c03_grid_track_nested_track_breadths_and_fit_content_use_complete_progr
 fn fri04_c03_grid_track_nested_classification_controls_intrinsic_definite_space_and_floor() {
     let independent = TrackSizing::calculation(fri04_c03_grid_track_nested(20.0, 40.0, 60.0));
     assert!(!track_has_percent_sizing(&independent));
-    assert!(track_has_definite_min_floor(&independent));
+    assert_eq!(independent.min.definite(None), Some(40.0));
     assert_eq!(track_min_floor_space(&independent), 40.0);
     assert_eq!(
         intrinsic_span_definite_track_space(core::slice::from_ref(&independent)),
@@ -1605,7 +1813,7 @@ fn fri04_c03_grid_track_nested_classification_controls_intrinsic_definite_space_
         .expect("nested maximum is nonempty"),
     );
     assert!(track_has_percent_sizing(&dependent));
-    assert!(!track_has_definite_min_floor(&dependent));
+    assert_eq!(dependent.min.definite(None), None);
     assert_eq!(track_min_floor_space(&dependent), 0.0);
 }
 
@@ -1630,6 +1838,46 @@ fn fake_leaf_error(
 
 #[test]
 fn owner_to_current_placement_map_composes_two_boundaries_by_track_and_role() {
+    let inherited = inherit_subgrid_tracks::<f32>(SubgridTrackInheritanceInput {
+        parent_tracks: &[40.0, 50.0, 60.0],
+        parent_span: GridTrackSpan::new(1, 4),
+        reversed: false,
+        start_mbp: 0.0,
+        end_mbp: 0.0,
+        parent_gap: 10.0,
+        subgrid_gap: ResolvedSubgridGap::Length(20.0),
+    })
+    .unwrap();
+    assert_eq!(inherited.final_tracks, vec![35.0, 40.0, 55.0]);
+    assert_eq!(inherited.final_boundary_gutters, vec![20.0, 20.0]);
+    let child_geometry = UsedGridAxisGeometryOf::new(
+        inherited.final_tracks.clone(),
+        inherited.collapsed.clone(),
+        inherited.resolved_subgrid_gap,
+    );
+    assert_eq!(child_geometry.line_offsets(), &[0.0, 55.0, 115.0, 170.0]);
+    let nested = inherit_subgrid_tracks::<f32>(SubgridTrackInheritanceInput {
+        parent_tracks: &inherited.final_tracks,
+        parent_span: GridTrackSpan::new(2, 4),
+        reversed: false,
+        start_mbp: 0.0,
+        end_mbp: 0.0,
+        parent_gap: 20.0,
+        subgrid_gap: ResolvedSubgridGap::Length(30.0),
+    })
+    .unwrap();
+    assert_eq!(nested.final_tracks, vec![35.0, 50.0]);
+    assert_eq!(nested.final_boundary_gutters, vec![30.0]);
+    let nested_geometry = UsedGridAxisGeometryOf::new(
+        nested.final_tracks.clone(),
+        nested.collapsed.clone(),
+        nested.resolved_subgrid_gap,
+    );
+    assert_eq!(nested_geometry.line_offsets(), &[0.0, 65.0, 115.0]);
+    // Owner starts0/50/110 and ends40/100/170. Child starts0/55/115,
+    // ends35/95/170. The nested area starts55 in that child, giving actual
+    // nested starts55/120 and ends90/170 in the same physical coordinates.
+    // First frames are negative starts; Last frames are positive ends.
     let identity = CheckedOwnerToCurrentPlacementMap::identity(
         1_u32,
         GridAxisKind::Row,
@@ -1638,99 +1886,281 @@ fn owner_to_current_placement_map_composes_two_boundaries_by_track_and_role() {
         3,
     );
     let first = identity
-        .compose(owner_placement_boundary!(
-            1,
-            2,
-            GridTrackSpan::new(0, 3),
-            false,
-            PhysicalProgression::Increasing,
-            PhysicalProgression::Increasing,
-            &[0.0, 50.0, 110.0],
-            &[40.0, 100.0, 170.0],
-            &[0.0, 55.0, 125.0],
-            &[40.0, 105.0, 185.0],
-            10.0,
-            20.0,
-            0.0,
-            0.0,
-        ))
+        .compose(OwnerToCurrentPlacementBoundaryInput {
+            parent_grid: 1,
+            current_grid: 2,
+            parent_axis: GridAxisKind::Row,
+            current_axis: GridAxisKind::Row,
+            physical_axis: PhysicalAxis::Vertical,
+            parent_progression: PhysicalProgression::Increasing,
+            current_progression: PhysicalProgression::Increasing,
+            parent_span: GridTrackSpan::new(0, 3),
+            reversed: false,
+            parent_first_frame_origins: &[0.0, -50.0, -110.0],
+            parent_last_frame_origins: &[40.0, 100.0, 170.0],
+            current_first_frame_origins: &[0.0, -55.0, -115.0],
+            current_last_frame_origins: &[35.0, 95.0, 170.0],
+            inherited: true,
+        })
         .unwrap();
     let second = first
-        .compose(owner_placement_boundary!(
-            2,
-            3,
-            GridTrackSpan::new(1, 3),
-            false,
-            PhysicalProgression::Increasing,
-            PhysicalProgression::Increasing,
-            &[0.0, 55.0, 125.0],
-            &[40.0, 105.0, 185.0],
-            &[10.0, 90.0],
-            &[50.0, 150.0],
-            20.0,
-            30.0,
-            0.0,
-            0.0,
-        ))
+        .compose(OwnerToCurrentPlacementBoundaryInput {
+            parent_grid: 2,
+            current_grid: 3,
+            parent_axis: GridAxisKind::Row,
+            current_axis: GridAxisKind::Row,
+            physical_axis: PhysicalAxis::Vertical,
+            parent_progression: PhysicalProgression::Increasing,
+            current_progression: PhysicalProgression::Increasing,
+            parent_span: GridTrackSpan::new(1, 3),
+            reversed: false,
+            parent_first_frame_origins: &[0.0, -55.0, -115.0],
+            parent_last_frame_origins: &[35.0, 95.0, 170.0],
+            current_first_frame_origins: &[-55.0, -120.0],
+            current_last_frame_origins: &[90.0, 170.0],
+            inherited: true,
+        })
         .unwrap();
-
+    assert_eq!(second.owner(), 1);
+    assert_eq!(second.current_grid(), 3);
     assert_eq!(second.boundary_count(), 2);
     assert_eq!(second.owner_track_for_local(0), Some(1));
     assert_eq!(second.owner_track_for_local(1), Some(2));
-    assert_eq!(
-        second.translations_for(0, AncestorBaselineRole::First),
-        Some((-40.0, 5.0)),
-    );
-    assert_eq!(
-        second.translations_for(1, AncestorBaselineRole::First),
-        Some((-20.0, 10.0)),
-    );
-    assert_eq!(
-        second.translations_for(0, AncestorBaselineRole::Last),
-        Some((-50.0, -10.0)),
-    );
-    assert_eq!(
-        second.translations_for(1, AncestorBaselineRole::Last),
-        Some((-20.0, 0.0)),
-    );
+    for (
+        role,
+        local,
+        owner_track,
+        owner_start,
+        owner_end,
+        current_start,
+        current_end,
+        shift,
+        point,
+    ) in [
+        (
+            AncestorBaselineRole::First,
+            0,
+            1,
+            50.0,
+            100.0,
+            55.0,
+            90.0,
+            -5.0,
+            67.0,
+        ),
+        (
+            AncestorBaselineRole::First,
+            1,
+            2,
+            110.0,
+            170.0,
+            120.0,
+            170.0,
+            -10.0,
+            127.0,
+        ),
+        (
+            AncestorBaselineRole::Last,
+            0,
+            1,
+            50.0,
+            100.0,
+            55.0,
+            90.0,
+            -10.0,
+            83.0,
+        ),
+        (
+            AncestorBaselineRole::Last,
+            1,
+            2,
+            110.0,
+            170.0,
+            120.0,
+            170.0,
+            0.0,
+            153.0,
+        ),
+    ] {
+        let group = AncestorBaselineGroup::reduce(
+            1_u32,
+            GridAxisKind::Row,
+            PhysicalAxis::Vertical,
+            crate::GridBaselineReference::Physical,
+            3,
+            [inherited_placement_member(
+                91,
+                GridAxisKind::Row,
+                role,
+                owner_track,
+                17.0,
+            )],
+        );
+        let placement = InheritedCurrentGridBaselinePlacement::try_derive(
+            &group,
+            InheritedCurrentGridBaselinePlacementInput {
+                reference: crate::GridBaselineReference::Physical,
+                axis: GridAxisKind::Row,
+                physical_axis: PhysicalAxis::Vertical,
+                mapping: second.clone(),
+                direct_witness: CurrentGridDirectWitness::new(
+                    3,
+                    4,
+                    GridAxisKind::Row,
+                    GridTrackSpan::new(local, local + 1),
+                    role,
+                    PhysicalProgression::Increasing,
+                    PhysicalProgression::Increasing,
+                ),
+                current_grid: 3,
+                item: 4,
+            },
+        )
+        .unwrap();
+        assert_eq!(placement.selected_local_track(), local);
+        assert_eq!(placement.immutable_owner_target(), 17.0);
+        assert_eq!(placement.frame_translation(), shift);
+        let (owner_point, current_point) = match role {
+            AncestorBaselineRole::First => (
+                owner_start + 17.0,
+                current_start + placement.translated_target(),
+            ),
+            AncestorBaselineRole::Last => (
+                owner_end - 17.0,
+                current_end - placement.translated_target(),
+            ),
+        };
+        assert_eq!(owner_point, point);
+        assert_eq!(current_point, point);
+    }
 }
 
 #[test]
-fn owner_to_current_placement_map_keeps_mbp_in_frame_not_gutter_translation() {
-    let identity = CheckedOwnerToCurrentPlacementMap::identity(
+fn owner_to_current_placement_map_preserves_points_through_mbp_and_gutters() {
+    let inherited = inherit_subgrid_tracks::<f32>(SubgridTrackInheritanceInput {
+        parent_tracks: &[30.0, 40.0, 60.0],
+        parent_span: GridTrackSpan::new(1, 4),
+        reversed: false,
+        start_mbp: 3.0,
+        end_mbp: 4.0,
+        parent_gap: 10.0,
+        subgrid_gap: ResolvedSubgridGap::Length(20.0),
+    })
+    .unwrap();
+    assert_eq!(inherited.final_tracks, vec![22.0, 30.0, 51.0]);
+    assert_eq!(inherited.final_boundary_gutters, vec![20.0, 20.0]);
+    let child_geometry = UsedGridAxisGeometryOf::new(
+        inherited.final_tracks.clone(),
+        inherited.collapsed.clone(),
+        inherited.resolved_subgrid_gap,
+    );
+    assert_eq!(child_geometry.line_offsets(), &[0.0, 42.0, 92.0, 143.0]);
+    // The child content starts3 in the parent. Its actual track starts are
+    //3/45/95 and ends25/75/146; the parent's are0/40/90 and30/80/150.
+    let map = CheckedOwnerToCurrentPlacementMap::identity(
         1_u32,
         GridAxisKind::Row,
         PhysicalAxis::Vertical,
         PhysicalProgression::Increasing,
         3,
-    );
-    let map = identity
-        .compose(owner_placement_boundary!(
-            1,
+    )
+    .compose(OwnerToCurrentPlacementBoundaryInput {
+        parent_grid: 1,
+        current_grid: 2,
+        parent_axis: GridAxisKind::Row,
+        current_axis: GridAxisKind::Row,
+        physical_axis: PhysicalAxis::Vertical,
+        parent_progression: PhysicalProgression::Increasing,
+        current_progression: PhysicalProgression::Increasing,
+        parent_span: GridTrackSpan::new(0, 3),
+        reversed: false,
+        parent_first_frame_origins: &[0.0, -40.0, -90.0],
+        parent_last_frame_origins: &[30.0, 80.0, 150.0],
+        current_first_frame_origins: &[-3.0, -45.0, -95.0],
+        current_last_frame_origins: &[25.0, 75.0, 146.0],
+        inherited: true,
+    })
+    .unwrap();
+    assert_eq!(map.owner(), 1);
+    assert_eq!(map.current_grid(), 2);
+    assert_eq!(map.boundary_count(), 1);
+    for (role, track, owner_start, owner_end, current_start, current_end, shift) in [
+        (AncestorBaselineRole::First, 0, 0.0, 30.0, 3.0, 25.0, -3.0),
+        (AncestorBaselineRole::First, 1, 40.0, 80.0, 45.0, 75.0, -5.0),
+        (
+            AncestorBaselineRole::First,
             2,
-            GridTrackSpan::new(0, 3),
-            false,
-            PhysicalProgression::Increasing,
-            PhysicalProgression::Increasing,
-            &[0.0, 40.0, 90.0],
-            &[30.0, 80.0, 150.0],
-            &[-3.0, 37.0, 87.0],
-            &[34.0, 84.0, 154.0],
-            10.0,
-            20.0,
-            3.0,
-            4.0,
-        ))
+            90.0,
+            150.0,
+            95.0,
+            146.0,
+            -5.0,
+        ),
+        (AncestorBaselineRole::Last, 0, 0.0, 30.0, 3.0, 25.0, -5.0),
+        (AncestorBaselineRole::Last, 1, 40.0, 80.0, 45.0, 75.0, -5.0),
+        (
+            AncestorBaselineRole::Last,
+            2,
+            90.0,
+            150.0,
+            95.0,
+            146.0,
+            -4.0,
+        ),
+    ] {
+        let group = AncestorBaselineGroup::reduce(
+            1_u32,
+            GridAxisKind::Row,
+            PhysicalAxis::Vertical,
+            crate::GridBaselineReference::Physical,
+            3,
+            [inherited_placement_member(
+                91,
+                GridAxisKind::Row,
+                role,
+                track,
+                17.0,
+            )],
+        );
+        let placement = InheritedCurrentGridBaselinePlacement::try_derive(
+            &group,
+            InheritedCurrentGridBaselinePlacementInput {
+                reference: crate::GridBaselineReference::Physical,
+                axis: GridAxisKind::Row,
+                physical_axis: PhysicalAxis::Vertical,
+                mapping: map.clone(),
+                direct_witness: CurrentGridDirectWitness::new(
+                    2,
+                    4,
+                    GridAxisKind::Row,
+                    GridTrackSpan::new(track, track + 1),
+                    role,
+                    PhysicalProgression::Increasing,
+                    PhysicalProgression::Increasing,
+                ),
+                current_grid: 2,
+                item: 4,
+            },
+        )
         .unwrap();
-
-    assert_eq!(
-        map.translations_for(1, AncestorBaselineRole::First),
-        Some((-3.0, 5.0)),
-    );
-    assert_eq!(
-        map.translations_for(1, AncestorBaselineRole::Last),
-        Some((4.0, -5.0)),
-    );
+        assert_eq!(map.owner_track_for_local(track), Some(track));
+        assert_eq!(placement.immutable_owner_target(), 17.0);
+        assert_eq!(placement.frame_translation(), shift);
+        let (owner_point, current_point) = match role {
+            AncestorBaselineRole::First => (
+                owner_start + 17.0,
+                current_start + placement.translated_target(),
+            ),
+            AncestorBaselineRole::Last => (
+                owner_end - 17.0,
+                current_end - placement.translated_target(),
+            ),
+        };
+        assert_eq!(
+            current_point, owner_point,
+            "track{track}/{role:?} preserves the actual physical point"
+        );
+    }
 }
 
 #[test]
@@ -1742,22 +2172,22 @@ fn owner_to_current_placement_map_rejects_track_cardinality_mismatch() {
         PhysicalProgression::Increasing,
         2,
     );
-    let result = identity.compose(owner_placement_boundary!(
-        1,
-        2,
-        GridTrackSpan::new(0, 2),
-        false,
-        PhysicalProgression::Increasing,
-        PhysicalProgression::Increasing,
-        &[0.0, 40.0],
-        &[30.0, 80.0],
-        &[0.0],
-        &[30.0, 80.0],
-        10.0,
-        10.0,
-        0.0,
-        0.0,
-    ));
+    let result = identity.compose(OwnerToCurrentPlacementBoundaryInput {
+        parent_grid: 1,
+        current_grid: 2,
+        parent_axis: GridAxisKind::Row,
+        current_axis: GridAxisKind::Row,
+        physical_axis: PhysicalAxis::Vertical,
+        parent_progression: PhysicalProgression::Increasing,
+        current_progression: PhysicalProgression::Increasing,
+        parent_span: GridTrackSpan::new(0, 2),
+        reversed: false,
+        parent_first_frame_origins: &[0.0, -40.0],
+        parent_last_frame_origins: &[30.0, 80.0],
+        current_first_frame_origins: &[0.0],
+        current_last_frame_origins: &[30.0, 80.0],
+        inherited: true,
+    });
     assert_eq!(
         result,
         Err(InheritedCurrentGridBaselinePlacementError::SpanOutOfRange),
@@ -1800,7 +2230,23 @@ fn grid_column_gap_separates_declared_tracks() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1869,7 +2315,23 @@ fn grid_item_margins_reduce_stretched_grid_area() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1949,7 +2411,23 @@ fn grid_definite_column_line_places_item_in_explicit_track() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2026,7 +2504,23 @@ fn grid_definite_row_line_places_item_in_explicit_track() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2089,7 +2583,23 @@ fn grid_definite_column_span_covers_multiple_tracks_and_gap() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2144,7 +2654,23 @@ fn grid_definite_row_span_covers_multiple_tracks_and_gap() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2204,7 +2730,23 @@ fn grid_column_span_auto_places_across_multiple_free_tracks() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2331,7 +2873,23 @@ fn grid_definite_column_end_line_resolves_to_previous_track() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2390,7 +2948,23 @@ fn grid_definite_row_end_line_resolves_to_previous_track() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2439,7 +3013,23 @@ fn grid_justify_content_center_offsets_tracks_inside_inner_width() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2499,7 +3089,23 @@ fn grid_justify_content_space_between_distributes_free_width_between_tracks() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2556,7 +3162,23 @@ fn grid_fraction_tracks_share_leftover_space_after_fixed_tracks_and_gaps() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2634,7 +3256,23 @@ fn grid_fraction_tracks_use_available_space_when_container_size_is_auto() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(120.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2693,7 +3331,23 @@ fn grid_fraction_tracks_clamp_available_space_to_min_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(120.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(120.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2757,7 +3411,23 @@ fn grid_auto_fraction_tracks_resolve_after_required_tracks_are_known() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2808,7 +3478,23 @@ fn grid_stretch_distributes_free_space_to_auto_tracks() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2873,7 +3559,23 @@ fn grid_auto_track_uses_single_item_intrinsic_contribution() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2983,7 +3685,23 @@ fn grid_auto_width_does_not_stretch_auto_tracks_to_available_space() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(400.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(400.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3052,7 +3770,23 @@ fn grid_auto_width_uses_max_width_as_track_available_space() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3075,16 +3809,79 @@ fn grid_row_intrinsic_sizing_uses_resolved_column_width() {
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(30.0, 20.0)))
                 .known(Size::new(Some(30.0), None))
-                .available(Size::new(Available::definite(30.0), Available::MAX_CONTENT)),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(30.0, 20.0)))
                 .known(Size::new(Some(30.0), Some(20.0)))
-                .available(Size::new(
-                    Available::definite(30.0),
-                    Available::definite(20.0),
-                )),
+                .operations(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(20.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| Some(axis.operation())),
+                )
+                .spaces(
+                    (Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(30.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(20.0).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                    ))
+                    .map(|axis| {
+                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
+                    }),
+                ),
         )
         .measure(2, ComputeOutput::from_outer_size(Size::new(40.0, 10.0)));
     tree.insert_children(1, vec![2]);
@@ -3118,7 +3915,23 @@ fn grid_row_intrinsic_sizing_uses_resolved_column_width() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3133,7 +3946,11 @@ fn grid_row_intrinsic_sizing_uses_resolved_column_width() {
             .iter()
             .any(|input| input.run_mode() == RunMode::ComputeSize
                 && input.known().width == Some(30.0)
-                && input.available().width == Available::Definite(30.0)),
+                && input.sizing_request().axes().width
+                    == AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(30.0).unwrap()),
+                        SizingOperation::Normal
+                    )),
         "grid row sizing should measure the item against the resolved column width"
     );
 }
@@ -3184,7 +4001,23 @@ fn grid_layout_percent_columns_rerun_row_sizing_with_resolved_width() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3199,7 +4032,11 @@ fn grid_layout_percent_columns_rerun_row_sizing_with_resolved_width() {
             .iter()
             .any(|input| input.run_mode() == RunMode::ComputeSize
                 && input.known().width == Some(80.0)
-                && input.available().width == Available::Definite(80.0)),
+                && input.sizing_request().axes().width
+                    == AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(80.0).unwrap()),
+                        SizingOperation::Normal
+                    )),
         "layout-time row sizing should be rerun against the resolved percent column width"
     );
 }
@@ -3254,7 +4091,23 @@ fn logical_ordinary_grid_carriers_project_fixed_tracks() {
                             ),
                             crate::ParentFormattingContext::NoParent,
                         ),
-                        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+                        SizingRequestOf::new(
+                            Size::new(
+                                AxisSizingRequestOf::new(
+                                    AvailableSpaceOf::Indefinite,
+                                    SizingOperation::MaxContent,
+                                ),
+                                AxisSizingRequestOf::new(
+                                    AvailableSpaceOf::Indefinite,
+                                    SizingOperation::MaxContent,
+                                ),
+                            ),
+                            OrthogonalFallbackOf::new(
+                                Size::NONE,
+                                crate::NearestScrollportOf::Absent,
+                                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                            ),
+                        ),
                     ),
                 )
                 .unwrap();
@@ -3356,7 +4209,17 @@ where
                     crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::splat(AvailableOf::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .expect("ordinary grid fake measurement layout succeeds");
@@ -3405,7 +4268,17 @@ where
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::splat(AvailableOf::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MaxContent,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .expect("ordinary grid percentage rerun succeeds");
@@ -3416,10 +4289,18 @@ where
         child_inputs.iter().any(|input| {
             input.run_mode() == RunMode::ComputeSize
                 && input.known() == Size::new(None, Some(scalar(80.0)))
-                && input.available()
+                && input.sizing_request().axes()
                     == Size::new(
-                        AvailableOf::MAX_CONTENT,
-                        AvailableOf::definite(scalar(80.0)),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(scalar(80.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
                     )
         }),
         "constrained row sizing must map the resolved logical inline track to the child's physical height: {child_inputs:?}"
@@ -3490,7 +4371,23 @@ fn grid_row_intrinsic_sizing_includes_item_vertical_margins() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(50.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(50.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3549,7 +4446,23 @@ fn grid_minmax_max_content_minimum_overrides_fixed_maximum() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3600,7 +4513,23 @@ fn grid_auto_placed_intrinsic_items_size_their_placed_tracks() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3679,7 +4608,23 @@ fn grid_intrinsic_column_sizing_resolves_horizontal_percent_margins_against_cont
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3891,7 +4836,23 @@ fn grid_nested_stretch_resolves_block_padding_percent_against_inline_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4102,7 +5063,23 @@ fn grid_nested_percent_margins_resolve_against_resolved_nested_inline_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4119,7 +5096,8 @@ fn grid_spanning_item_grows_auto_track_after_min_content_track() {
         .measure_when(
             4,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(40.0, 10.0)))
-                .available_width(Available::MIN_CONTENT),
+                .operations(Size::new(Some(SizingOperation::MinContent), None))
+                .spaces(Size::new(None, None)),
         )
         .measure(4, ComputeOutput::from_outer_size(Size::new(80.0, 10.0)));
     tree.insert_children(1, vec![2, 3, 4]);
@@ -4161,7 +5139,23 @@ fn grid_spanning_item_grows_auto_track_after_min_content_track() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4195,7 +5189,8 @@ fn grid_clipped_spanning_item_distributes_across_min_content_and_auto_tracks() {
         .measure_when(
             4,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(40.0, 10.0)))
-                .available_width(Available::MIN_CONTENT),
+                .operations(Size::new(Some(SizingOperation::MinContent), None))
+                .spaces(Size::new(None, None)),
         )
         .measure(4, ComputeOutput::from_outer_size(Size::new(80.0, 10.0)));
     tree.insert_children(1, vec![2, 3, 4]);
@@ -4238,23 +5233,42 @@ fn grid_clipped_spanning_item_distributes_across_min_content_and_auto_tracks() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
 
+    // Limited min-content40 first gives20/20. Under the intrinsic MAX
+    // constraint, only the Auto minimum receives the remaining40; the
+    // min-content track keeps20. Both phases share the same occupancy.
     assert_eq!(output.size, Size::new(80.0, 50.0));
     assert_eq!(
         tree.layout(2).expect("node layout is staged").size,
-        Size::new(40.0, 40.0)
+        Size::new(20.0, 40.0)
     );
     assert_eq!(
         tree.layout(3).expect("node layout is staged").location,
-        Point::new(40.0, 0.0)
+        Point::new(20.0, 0.0)
     );
     assert_eq!(
         tree.layout(3).expect("node layout is staged").size,
-        Size::new(40.0, 40.0)
+        Size::new(60.0, 40.0)
     );
     assert_eq!(
         tree.layout(4).expect("node layout is staged").location,
@@ -4336,7 +5350,23 @@ fn grid_spanning_item_grows_underfilled_auto_track_first() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4374,7 +5404,8 @@ fn grid_spanning_item_reserves_percent_track_from_max_content_size() {
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(80.0, 40.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT)),
+                .operations(Size::new(Some(SizingOperation::MinContent), None))
+                .spaces(Size::new(None, None)),
         )
         .measure(2, ComputeOutput::from_outer_size(Size::new(160.0, 40.0)));
     tree.insert_children(1, vec![2, 3, 4, 5, 6, 7, 8]);
@@ -4410,6 +5441,9 @@ fn grid_spanning_item_reserves_percent_track_from_max_content_size() {
         tree.insert_style(node, NodeInput::default());
     }
 
+    // This performed request is normal layout in indefinite space. Intrinsic
+    // item contributions choose the container; final percentage reservation
+    // then uses its accepted extent rather than retaining formal MAX phases.
     let output = crate::compute_grid(
         &mut tree.borrow_compute(),
         1,
@@ -4426,10 +5460,31 @@ fn grid_spanning_item_reserves_percent_track_from_max_content_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
+    assert!(tree.inputs(2).iter().any(|input| {
+        input.sizing_request().axes()
+            == Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                    SizingOperation::Normal,
+                ),
+            )
+            && input.known().width.is_none()
+    }));
     assert_eq!(output.size, Size::new(160.0, 80.0));
     let mut root_layout = NodeOutput::new();
     root_layout.size = output.size;
@@ -4515,7 +5570,8 @@ fn grid_spanning_item_counts_definite_minmax_floors_when_reserving_percent_track
         .measure_when(
             2,
             OracleMeasurement::new(ComputeOutput::from_outer_size(Size::new(160.0, 40.0)))
-                .available(Size::new(Available::MIN_CONTENT, Available::MAX_CONTENT)),
+                .operations(Size::new(Some(SizingOperation::MinContent), None))
+                .spaces(Size::new(None, None)),
         )
         .measure(2, ComputeOutput::from_outer_size(Size::new(320.0, 40.0)));
     tree.insert_children(1, 2..=15);
@@ -4558,6 +5614,9 @@ fn grid_spanning_item_counts_definite_minmax_floors_when_reserving_percent_track
         tree.insert_style(node, NodeInput::default());
     }
 
+    // This performed request is normal layout in indefinite space. Intrinsic
+    // item contributions choose the container; final percentage reservation
+    // then uses its accepted extent rather than retaining formal MAX phases.
     let output = crate::compute_grid(
         &mut tree.borrow_compute(),
         1,
@@ -4574,10 +5633,40 @@ fn grid_spanning_item_counts_definite_minmax_floors_when_reserving_percent_track
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
+    assert!(tree.inputs(2).iter().any(|input| {
+        input.sizing_request().axes()
+            == Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                    SizingOperation::Normal,
+                ),
+            )
+            && input.known().width.is_none()
+    }));
+    assert!(tree.inputs(8).iter().any(|input| {
+        input.run_mode() == RunMode::ComputeSize
+            && input.sizing_request().axes().width
+                == AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MinContent,
+                )
+            && input.known().width.is_none()
+    }));
     let mut root_layout = NodeOutput::new();
     root_layout.size = output.size;
     root_layout.content_size = output.content_size;
@@ -4596,11 +5685,17 @@ fn grid_spanning_item_counts_definite_minmax_floors_when_reserving_percent_track
                 .width
         })
         .collect::<Vec<_>>();
-    assert_eq!(output.size, Size::new(322.0, 80.0));
+    // The non-affected pass consumes the fixed minmax(2,4) headroom before
+    // growing intrinsic tracks beyond their limits: total320, with no extra2
+    // left for maximize. The stored browser322 remains separate corpus evidence.
+    // Final percentages use accepted320; cumulative corner rounding applies to
+    // the raw widths76/7, 80+76/7, 76/7, 76/7, 10, 64, 2, 4, 2, 2,
+    // 76/7, 76/7, 80+76/7.
+    assert_eq!(output.size, Size::new(320.0, 80.0));
     assert_eq!(
         widths,
         vec![
-            11.0, 91.0, 11.0, 11.0, 10.0, 65.0, 2.0, 4.0, 2.0, 2.0, 11.0, 11.0, 91.0
+            11.0, 91.0, 11.0, 10.0, 10.0, 64.0, 2.0, 4.0, 2.0, 2.0, 11.0, 11.0, 91.0
         ]
     );
 }
@@ -4652,6 +5747,8 @@ fn grid_auto_size_re_resolves_indefinite_percentage_tracks_from_visible_content(
         },
     );
 
+    // This is unbounded normal layout: choose the intrinsic container first,
+    // then resolve its percentage tracks against that accepted size.
     let output = crate::compute_grid(
         &mut tree.borrow_compute(),
         1,
@@ -4668,7 +5765,17 @@ fn grid_auto_size_re_resolves_indefinite_percentage_tracks_from_visible_content(
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4726,7 +5833,23 @@ fn grid_percent_rows_resolve_against_known_layout_height() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4792,7 +5915,23 @@ fn grid_defaults_to_implicit_auto_tracks_when_no_auto_tracks_are_authored() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4851,7 +5990,23 @@ fn grid_spanning_item_distributes_intrinsic_contribution_across_auto_tracks() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::MaxContent,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -4925,7 +6080,23 @@ fn grid_intrinsic_keyword_tracks_use_single_item_contribution() {
                     ),
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             ),
         )
         .unwrap();
@@ -5114,24 +6285,51 @@ fn named_grid_lone_named_span_auto_defaults_to_one_track_auto_placement() {
 }
 
 #[test]
-fn resolve_axis_tracks_accepts_f64_track_inputs() {
+fn checked_track_phases_accept_f64_item_facts() {
+    // The scalar-lane witness supplies equal minimum and min-content facts.
     let tracks = [
         TrackSizingOf::<f64>::px(10.25),
         TrackSizingOf::<f64>::AUTO,
         track_flex::<f64>(0.5),
     ];
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: Some(90.75_f64),
-        definite_size: Some(90.75_f64),
-        available_size: AvailableOf::Definite(90.75_f64),
-        gap: 0.25_f64,
-        gutters: None,
-        alignment: AlignContent::Stretch,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[1.5_f64, 2.5_f64, 3.5_f64],
-        max_intrinsic_sizes: &[4.5_f64, 5.5_f64, 6.5_f64],
-    });
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [
+            single_track_item(0, 1.5_f64, 1.5_f64, 4.5_f64),
+            single_track_item(1, 2.5_f64, 2.5_f64, 5.5_f64),
+            single_track_item(2, 3.5_f64, 3.5_f64, 6.5_f64),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: Some(90.75_f64),
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(90.75_f64),
+                },
+                gap: 0.25_f64,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(90.75_f64),
+            },
+            stretch_size: Some(90.75_f64),
+            gap: 0.25_f64,
+            alignment: AlignContent::Stretch,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
 
     assert_eq!(sizes, vec![10.25_f64, 42.75_f64, 37.25_f64]);
 }
@@ -5153,36 +6351,70 @@ fn distribute_intrinsic_span_preserves_f64_fractional_shares() {
 }
 
 #[test]
-fn px_only_affine_max_track_does_not_force_max_intrinsic_resolution() {
+fn px_only_affine_max_track_keeps_its_min_content_minimum() {
     let tracks = [TrackSizing::new(
         MinTrackSizing::MinContent,
         MaxTrackSizing::Calculation(SizingCalculation::value(lp(24.0, 0.0))),
     )];
 
-    let sizes = track_resolution_intrinsic_sizes(&tracks, &[11.0], &[99.0]);
+    let size = track_min_size_for_intrinsics(
+        &tracks[0],
+        None,
+        GridTrackSizingConstraint {
+            operation: SizingOperation::MaxContent,
+            available_extent: None,
+        },
+        GridTrackContributions {
+            minimum: 0.0,
+            min_content: 11.0,
+            max_content: 99.0,
+        },
+    );
 
-    assert_eq!(sizes, vec![11.0]);
+    assert_eq!(size, 11.0);
 }
 
 #[test]
-fn basis_dependent_affine_max_track_uses_max_intrinsic_resolution() {
+fn basis_dependent_affine_max_track_uses_max_content_base_fallback() {
     let tracks = [TrackSizing::new(
         MinTrackSizing::MinContent,
         MaxTrackSizing::Calculation(SizingCalculation::value(lp(0.0, 0.5))),
     )];
 
-    let sizes = track_resolution_intrinsic_sizes(&tracks, &[11.0], &[99.0]);
+    let size = track_base_size_for_intrinsics(
+        &tracks[0],
+        None,
+        GridTrackSizingConstraint {
+            operation: SizingOperation::MaxContent,
+            available_extent: None,
+        },
+        GridTrackContributions {
+            minimum: 0.0,
+            min_content: 11.0,
+            max_content: 99.0,
+        },
+    );
 
-    assert_eq!(sizes, vec![99.0]);
+    assert_eq!(size, 99.0);
 }
 
 #[test]
 fn track_intrinsic_min_resolution_handles_invalid_affine_numeric_result() {
     let size = track_min_size_for_intrinsics(
-        &MinTrackSizing::Calculation(SizingCalculation::value(invalid_numeric_lp())),
+        &TrackSizing::new(
+            MinTrackSizing::Calculation(SizingCalculation::value(invalid_numeric_lp())),
+            MaxTrackSizing::AUTO,
+        ),
         Some(2.0),
-        11.0,
-        99.0,
+        GridTrackSizingConstraint {
+            operation: SizingOperation::MaxContent,
+            available_extent: None,
+        },
+        GridTrackContributions {
+            minimum: 11.0,
+            min_content: 11.0,
+            max_content: 99.0,
+        },
     );
 
     assert_eq!(size, 0.0);
@@ -5196,8 +6428,15 @@ fn track_intrinsic_max_resolution_handles_invalid_affine_numeric_result() {
             MaxTrackSizing::Calculation(SizingCalculation::value(invalid_numeric_lp())),
         ),
         Some(2.0),
-        11.0,
-        99.0,
+        GridTrackSizingConstraint {
+            operation: SizingOperation::MaxContent,
+            available_extent: None,
+        },
+        GridTrackContributions {
+            minimum: 11.0,
+            min_content: 11.0,
+            max_content: 99.0,
+        },
     );
 
     assert_eq!(size, 99.0);
@@ -5211,7 +6450,15 @@ fn track_fit_content_limit_handles_invalid_affine_numeric_result() {
             MaxTrackSizing::FitContent(SizingCalculation::value(invalid_numeric_lp())),
         ),
         Some(2.0),
-        99.0,
+        GridTrackSizingConstraint {
+            operation: SizingOperation::MaxContent,
+            available_extent: None,
+        },
+        GridTrackContributions {
+            minimum: 99.0,
+            min_content: 99.0,
+            max_content: 99.0,
+        },
     );
 
     assert_eq!(limit, Some(99.0));
@@ -5558,9 +6805,46 @@ fn max_content_span_reserves_resolved_percent_tracks() {
 }
 
 #[test]
-fn indefinite_flex_tracks_keep_span_resolved_bases() {
+fn indefinite_flex_tracks_preserve_two_authored_single_track_items() {
+    // Two independent single-track items have20/40 for each intrinsic purpose.
     let tracks = [track_flex(1.0), track_flex(2.0)];
-    let sizes = resolve_tracks(&tracks, None, 0.0, AlignContent::Start, &[20.0, 40.0]);
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [
+            single_track_item(0, 20.0, 20.0, 20.0),
+            single_track_item(1, 40.0, 40.0, 40.0),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: None,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                gap: 0.0,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::MaxContent,
+                available_extent: None,
+            },
+            stretch_size: None,
+            gap: 0.0,
+            alignment: AlignContent::Start,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
 
     assert_eq!(sizes, [20.0, 40.0]);
 }
@@ -5568,27 +6852,127 @@ fn indefinite_flex_tracks_keep_span_resolved_bases() {
 #[test]
 fn inline_sub_one_flex_tracks_keep_non_spanned_track_proportional_to_used_fraction() {
     let tracks = [track_flex(0.2), track_flex(0.3), track_flex(0.5)];
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: None,
-        definite_size: None,
-        available_size: AvailableOf::MAX_CONTENT,
-        gap: 0.0,
-        gutters: None,
-        alignment: AlignContent::Start,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[24.0, 36.0, 0.0],
-        max_intrinsic_sizes: &[24.0, 36.0, 0.0],
-    });
+    let sizes = {
+        // One actual60-wide item spans tracks1..3; track3 has a real zero item.
+        let tracks = &tracks;
+        let items = [
+            GridIntrinsicContributionRow {
+                span: GridTrackSpan::new(1, 3),
+                contributions: GridTrackContributions {
+                    minimum: 0.0,
+                    min_content: 60.0,
+                    max_content: 60.0,
+                },
+            },
+            single_track_item(2, 0.0, 0.0, 0.0),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: None,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                gap: 0.0,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        // Grid1§11.5 distributes the unused sub-one proportion equally:
+        // .2×60+15=27; .3×60+15=33. The zero item adds no floor.
+        assert_eq!(phases.base_sizes, [27.0, 33.0, 0.0]);
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::MaxContent,
+                available_extent: None,
+            },
+            stretch_size: None,
+            gap: 0.0,
+            alignment: AlignContent::Start,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
 
-    assert_eq!(sizes, [24.0, 36.0, 9.0]);
+    // Indefinite §11.7 uses max(27,33,0)=33 as the base-derived fr bound.
+    // The spanning-item candidate freezes both smaller-flex tracks; the third
+    // track grows to .5×33=16.5 while the first two retain their floors.
+    assert_eq!(sizes, [27.0, 33.0, 16.5]);
+}
+
+// The same60-wide spanning item is resolved under a definite constraint here;
+// its indefinite27/33 floors must not be imported into this separate phase.
+fn assert_definite_partial_flex_leaves_host_space<S: LayoutScalar>() {
+    let n = S::from_f64;
+    let tracks = [track_flex(n(0.2)), track_flex(n(0.3))];
+    let items = [GridIntrinsicContributionRow {
+        span: GridTrackSpan::new(1, 3),
+        contributions: GridTrackContributions {
+            minimum: S::ZERO,
+            min_content: n(60.0),
+            max_content: n(60.0),
+        },
+    }];
+    let phases = resolve_grid_contribution_rows(
+        SpanningTrackContext {
+            tracks: &tracks,
+            basis: Some(n(200.0)),
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(n(200.0)),
+            },
+            gap: S::ZERO,
+            gutters: None,
+            base_floors: &[],
+        },
+        &items,
+    )
+    .expect("the actual minimum is zero in this definite phase");
+    assert_eq!(phases.base_sizes, [S::ZERO; 2]);
+    let sizes = resolve_tracks_from_phases(ResolvedAxisTrackInput {
+        tracks: &tracks,
+        phases: &phases,
+        items: &items,
+        available: GridTrackSizingConstraint {
+            operation: SizingOperation::Normal,
+            available_extent: Some(n(200.0)),
+        },
+        stretch_size: Some(n(200.0)),
+        gap: S::ZERO,
+        alignment: AlignContent::Start,
+        gutters: None,
+    })
+    .expect("the definite fr search retains actual item incidence");
+    // §11.7.1 clamps the .5 factor sum to1: fr=200. Preserve the
+    // represented factors through each native-lane product and ordered sum;
+    // the unused remainder is host space, not intrinsic content padding.
+    let expected = [n(0.2) * n(200.0), n(0.3) * n(200.0)];
+    let expected_sum = (S::ZERO + expected[0]) + expected[1];
+    assert_eq!(sizes, expected);
+    assert_eq!(track_sum(&sizes, S::ZERO), expected_sum);
+    assert_eq!(
+        n(200.0) - track_sum(&sizes, S::ZERO),
+        n(200.0) - expected_sum
+    );
 }
 
 #[test]
-fn sub_one_flex_track_content_sum_includes_unfilled_fraction() {
-    let tracks = [track_flex(0.2), track_flex(0.3), track_flex(0.5)];
+fn definite_partial_flex_leaves_host_space_in_both_scalar_lanes() {
+    assert_definite_partial_flex_leaves_host_space::<f32>();
+    assert_definite_partial_flex_leaves_host_space::<f64>();
+}
 
-    assert_eq!(track_content_sum(&tracks, &[24.0, 36.0, 9.0], 0.0), 78.0);
+#[test]
+fn sub_one_flex_track_content_sum_uses_only_actual_track_extents() {
+    // Actual indefinite sizes27/33/16.5 total76.5. An unused fractional
+    // share is host space, not implicit content padding added by this sum.
+    assert_eq!(track_sum(&[27.0, 33.0, 16.5], 0.0), 76.5);
 }
 
 #[test]
@@ -5598,18 +6982,44 @@ fn inline_minmax_tracks_shrink_to_minimum_bounds() {
         TrackSizing::minmax(MinTrackSizing::px(20.0), MaxTrackSizing::px(40.0)),
         TrackSizing::px(40.0),
     ];
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: Some(90.0),
-        definite_size: Some(90.0),
-        available_size: AvailableOf::MAX_CONTENT,
-        gap: 0.0,
-        gutters: None,
-        alignment: AlignContent::Start,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[0.0, 0.0, 0.0],
-        max_intrinsic_sizes: &[0.0, 0.0, 0.0],
-    });
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [
+            single_track_item(0, 0.0, 0.0, 0.0),
+            single_track_item(1, 0.0, 0.0, 0.0),
+            single_track_item(2, 0.0, 0.0, 0.0),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: Some(90.0),
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(90.0),
+                },
+                gap: 0.0,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(90.0),
+            },
+            stretch_size: Some(90.0),
+            gap: 0.0,
+            alignment: AlignContent::Start,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
 
     assert_eq!(sizes, [40.0, 20.0, 40.0]);
 }
@@ -5621,18 +7031,44 @@ fn inline_minmax_tracks_grow_until_the_available_space_is_exhausted() {
         TrackSizing::minmax(MinTrackSizing::px(20.0), MaxTrackSizing::px(40.0)),
         TrackSizing::px(40.0),
     ];
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: Some(110.0),
-        definite_size: Some(110.0),
-        available_size: AvailableOf::MAX_CONTENT,
-        gap: 0.0,
-        gutters: None,
-        alignment: AlignContent::Start,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[0.0, 0.0, 0.0],
-        max_intrinsic_sizes: &[0.0, 0.0, 0.0],
-    });
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [
+            single_track_item(0, 0.0, 0.0, 0.0),
+            single_track_item(1, 0.0, 0.0, 0.0),
+            single_track_item(2, 0.0, 0.0, 0.0),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: Some(110.0),
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(110.0),
+                },
+                gap: 0.0,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(110.0),
+            },
+            stretch_size: Some(110.0),
+            gap: 0.0,
+            alignment: AlignContent::Start,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
 
     assert_eq!(sizes, [40.0, 30.0, 40.0]);
 }
@@ -5643,18 +7079,40 @@ fn inline_minmax_max_content_minimum_overrides_fixed_maximum() {
         MinTrackSizing::MAX_CONTENT,
         MaxTrackSizing::px(10.0),
     )];
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: None,
-        definite_size: None,
-        available_size: AvailableOf::MAX_CONTENT,
-        gap: 0.0,
-        gutters: None,
-        alignment: AlignContent::Start,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[20.0],
-        max_intrinsic_sizes: &[40.0],
-    });
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [single_track_item(0, 20.0, 20.0, 40.0)];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: None,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                gap: 0.0,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::MaxContent,
+                available_extent: None,
+            },
+            stretch_size: None,
+            gap: 0.0,
+            alignment: AlignContent::Start,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
 
     assert_eq!(sizes, [40.0]);
 }
@@ -5665,32 +7123,86 @@ fn inline_minmax_auto_minimum_allows_fixed_maximum() {
         MinTrackSizing::AUTO,
         MaxTrackSizing::px(10.0),
     )];
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: None,
-        definite_size: None,
-        available_size: AvailableOf::MAX_CONTENT,
-        gap: 0.0,
-        gutters: None,
-        alignment: AlignContent::Start,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[20.0],
-        max_intrinsic_sizes: &[40.0],
-    });
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [single_track_item(0, 10.0, 20.0, 40.0)];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: None,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::MaxContent,
+                    available_extent: None,
+                },
+                gap: 0.0,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::MaxContent,
+                available_extent: None,
+            },
+            stretch_size: None,
+            gap: 0.0,
+            alignment: AlignContent::Start,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
 
     assert_eq!(sizes, [10.0]);
 }
 
 #[test]
 fn definite_flex_tracks_respect_larger_base_tracks() {
+    // The middle fixed contribution is 100 for each intrinsic purpose.
     let tracks = [TrackSizing::px(40.0), track_flex(1.0), track_flex(1.0)];
-    let sizes = resolve_tracks(
-        &tracks,
-        Some(200.0),
-        0.0,
-        AlignContent::Start,
-        &[0.0, 100.0, 0.0],
-    );
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [
+            single_track_item(0, 0.0, 0.0, 0.0),
+            single_track_item(1, 100.0, 100.0, 100.0),
+            single_track_item(2, 0.0, 0.0, 0.0),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: Some(200.0),
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(200.0),
+                },
+                gap: 0.0,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(200.0),
+            },
+            stretch_size: Some(200.0),
+            gap: 0.0,
+            alignment: AlignContent::Start,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
 
     assert_eq!(sizes, [40.0, 100.0, 60.0]);
 }
@@ -5777,24 +7289,84 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
     };
     let tracks = [bounded(20.0, 100.0), bounded(0.0, 200.0)];
     for (available, gap, expected) in [
-        (AvailableOf::Definite(px(150.0)), px(0.0), [85.0, 65.0]),
-        (AvailableOf::Definite(px(150.0)), px(10.0), [80.0, 60.0]),
-        (AvailableOf::Definite(px(250.0)), px(10.0), [100.0, 140.0]),
-        (AvailableOf::MIN_CONTENT, px(10.0), [20.0, 0.0]),
-        (AvailableOf::MAX_CONTENT, px(10.0), [100.0, 200.0]),
+        (
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(px(150.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            px(0.0),
+            [85.0, 65.0],
+        ),
+        (
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(px(150.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            px(10.0),
+            [80.0, 60.0],
+        ),
+        (
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(px(250.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            px(10.0),
+            [100.0, 140.0],
+        ),
+        (
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            px(10.0),
+            [20.0, 0.0],
+        ),
+        (
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            px(10.0),
+            [100.0, 200.0],
+        ),
     ] {
-        let sizes = resolve_axis_tracks(AxisTrackInput {
-            tracks: &tracks,
-            basis: None,
-            definite_size: None,
-            available_size: available,
-            gap,
-            gutters: None,
-            alignment: AlignContent::Start,
-            stretch_empty_auto_to_available: false,
-            min_intrinsic_sizes: &[S::ZERO; 2],
-            max_intrinsic_sizes: &[S::ZERO; 2],
-        });
+        let sizes = {
+            // Each listed row is one authored single-track item, including zero-sized items.
+            let tracks = &tracks;
+            let items = [
+                single_track_item(0, S::ZERO, S::ZERO, S::ZERO),
+                single_track_item(1, S::ZERO, S::ZERO, S::ZERO),
+            ];
+            let phases = resolve_grid_contribution_rows(
+                SpanningTrackContext {
+                    tracks,
+                    basis: None,
+                    available: GridTrackSizingConstraint {
+                        operation: (available).operation(),
+                        available_extent: (available)
+                            .space()
+                            .definite_size()
+                            .map(crate::NonNegativeFiniteOf::get),
+                    },
+                    gap,
+                    gutters: None,
+                    base_floors: &[],
+                },
+                &items,
+            )
+            .expect("authored item incidence resolves checked phases");
+            resolve_tracks_from_phases(ResolvedAxisTrackInput {
+                tracks,
+                phases: &phases,
+                items: &items,
+                available: GridTrackSizingConstraint {
+                    operation: (available).operation(),
+                    available_extent: (available)
+                        .space()
+                        .definite_size()
+                        .map(crate::NonNegativeFiniteOf::get),
+                },
+                stretch_size: None,
+                gap,
+                alignment: AlignContent::Start,
+                gutters: None,
+            })
+            .expect("authored track phases finish without losing item spans")
+        };
         assert_eq!(
             sizes,
             expected.map(px),
@@ -5807,18 +7379,43 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
         bounded(0.0, 200.0),
     ];
     let gutters = OrdinaryGridAxisGuttersOf::new(3, &[false, true, false], px(10.0));
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: None,
-        definite_size: Some(px(150.0)),
-        available_size: AvailableOf::Definite(px(150.0)),
-        gap: px(10.0),
-        gutters: Some(&gutters),
-        alignment: AlignContent::Start,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[S::ZERO; 3],
-        max_intrinsic_sizes: &[S::ZERO; 3],
-    });
+    let sizes = {
+        // Only active tracks0/2 contain real zero-sized items; track1 is collapsed.
+        let tracks = &tracks;
+        let items = [
+            single_track_item(0, S::ZERO, S::ZERO, S::ZERO),
+            single_track_item(2, S::ZERO, S::ZERO, S::ZERO),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: None,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(px(150.0)),
+                },
+                gap: px(10.0),
+                gutters: Some(&gutters),
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(px(150.0)),
+            },
+            stretch_size: Some(px(150.0)),
+            gap: px(10.0),
+            alignment: AlignContent::Start,
+            gutters: Some(&gutters),
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
     assert_eq!(
         sizes,
         [px(70.0), S::ZERO, px(70.0)],
@@ -5831,18 +7428,45 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
         track_flex(S::ONE),
         TrackSizingOf::AUTO,
     ];
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: None,
-        definite_size: Some(px(300.0)),
-        available_size: AvailableOf::Definite(px(300.0)),
-        gap: S::ZERO,
-        gutters: None,
-        alignment: AlignContent::Stretch,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[S::ZERO, S::ZERO, S::ZERO, px(20.0)],
-        max_intrinsic_sizes: &[S::ZERO, S::ZERO, S::ZERO, px(30.0)],
-    });
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [
+            single_track_item(0, S::ZERO, S::ZERO, S::ZERO),
+            single_track_item(1, S::ZERO, S::ZERO, S::ZERO),
+            single_track_item(2, S::ZERO, S::ZERO, S::ZERO),
+            single_track_item(3, px(20.0), px(20.0), px(30.0)),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: None,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(px(300.0)),
+                },
+                gap: S::ZERO,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(px(300.0)),
+            },
+            stretch_size: Some(px(300.0)),
+            gap: S::ZERO,
+            alignment: AlignContent::Stretch,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
     assert_eq!(
         sizes,
         [40.0, 100.0, 130.0, 30.0].map(px),
@@ -5853,18 +7477,44 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
         bounded(0.0, 100.0),
         TrackSizingOf::AUTO,
     ];
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: None,
-        definite_size: Some(px(300.0)),
-        available_size: AvailableOf::Definite(px(300.0)),
-        gap: S::ZERO,
-        gutters: None,
-        alignment: AlignContent::Stretch,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[S::ZERO, S::ZERO, px(20.0)],
-        max_intrinsic_sizes: &[S::ZERO, S::ZERO, px(30.0)],
-    });
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [
+            single_track_item(0, S::ZERO, S::ZERO, S::ZERO),
+            single_track_item(1, S::ZERO, S::ZERO, S::ZERO),
+            single_track_item(2, px(20.0), px(20.0), px(30.0)),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: None,
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(px(300.0)),
+                },
+                gap: S::ZERO,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(px(300.0)),
+            },
+            stretch_size: Some(px(300.0)),
+            gap: S::ZERO,
+            alignment: AlignContent::Stretch,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
     assert_eq!(
         sizes,
         [40.0, 100.0, 160.0].map(px),
@@ -5872,18 +7522,43 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
     );
 
     let tracks = [TrackSizingOf::percent(px(0.5)), bounded(0.0, 200.0)];
-    let sizes = resolve_axis_tracks(AxisTrackInput {
-        tracks: &tracks,
-        basis: Some(px(200.0)),
-        definite_size: Some(px(150.0)),
-        available_size: AvailableOf::Definite(px(150.0)),
-        gap: S::ZERO,
-        gutters: None,
-        alignment: AlignContent::Start,
-        stretch_empty_auto_to_available: false,
-        min_intrinsic_sizes: &[S::ZERO; 2],
-        max_intrinsic_sizes: &[S::ZERO; 2],
-    });
+    let sizes = {
+        // Each listed row is one authored single-track item, including zero-sized items.
+        let tracks = &tracks;
+        let items = [
+            single_track_item(0, S::ZERO, S::ZERO, S::ZERO),
+            single_track_item(1, S::ZERO, S::ZERO, S::ZERO),
+        ];
+        let phases = resolve_grid_contribution_rows(
+            SpanningTrackContext {
+                tracks,
+                basis: Some(px(200.0)),
+                available: GridTrackSizingConstraint {
+                    operation: SizingOperation::Normal,
+                    available_extent: Some(px(150.0)),
+                },
+                gap: S::ZERO,
+                gutters: None,
+                base_floors: &[],
+            },
+            &items,
+        )
+        .expect("authored item incidence resolves checked phases");
+        resolve_tracks_from_phases(ResolvedAxisTrackInput {
+            tracks,
+            phases: &phases,
+            items: &items,
+            available: GridTrackSizingConstraint {
+                operation: SizingOperation::Normal,
+                available_extent: Some(px(150.0)),
+            },
+            stretch_size: Some(px(150.0)),
+            gap: S::ZERO,
+            alignment: AlignContent::Start,
+            gutters: None,
+        })
+        .expect("authored track phases finish without losing item spans")
+    };
     assert_eq!(
         sizes,
         [100.0, 50.0].map(px),
@@ -5989,3 +7664,138 @@ fn grid_intrinsic_track_constraints_override_finite_viewport_f32() {
 fn grid_intrinsic_track_constraints_override_finite_viewport_f64() {
     assert_grid_intrinsic_track_constraints::<f64>();
 }
+
+fn assert_intrinsic_traversal_allocation_authority<S: LayoutScalar>() {
+    use crate::grid::subgrid::{
+        GridMinimumParentFunctions, SubgridParentTrackSource, SubgridTraversalError,
+        intrinsic_traversal_area_size,
+    };
+    let n = S::from_f64;
+    let rows = [n(7.0)];
+    let row_geometry = UsedGridAxisGeometryOf::new(rows.to_vec(), vec![false], S::ZERO);
+    let axes = FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl);
+    let area = GridArea {
+        column: 0,
+        column_end: 1,
+        row: 0,
+        row_end: 1,
+        // The preliminary area estimate does not establish used track size.
+        size: LogicalSizeOf::new(n(58.0), n(7.0)),
+    };
+    for (tracks, allocated, container, expected) in [
+        (vec![n(86.0)], true, Some(n(58.0)), n(86.0)),
+        (vec![n(86.0)], false, Some(n(58.0)), n(58.0)),
+        (vec![S::ZERO], true, Some(n(58.0)), S::ZERO),
+        (vec![S::ZERO], false, Some(n(58.0)), n(58.0)),
+        (vec![n(86.0)], false, None, n(86.0)),
+        (vec![S::ZERO], false, None, S::ZERO),
+        (vec![], false, Some(n(58.0)), n(58.0)),
+        (vec![], false, None, S::ZERO),
+    ] {
+        let column_geometry =
+            UsedGridAxisGeometryOf::new(tracks.clone(), vec![false; tracks.len()], S::ZERO);
+        let source = SubgridParentTrackSource {
+            baseline_references: crate::GridBaselineReferences::default(),
+            flow_axes: axes,
+            gap: Size::ZERO,
+            columns: Some(&column_geometry),
+            rows: Some(&row_geometry),
+            minimum_functions: GridMinimumParentFunctions {
+                columns: None,
+                rows: None,
+            },
+            algorithm: None,
+            allocated: LogicalSizeOf::new(allocated.then_some(tracks.as_slice()), Some(&rows)),
+        };
+        let actual = intrinsic_traversal_area_size(
+            area,
+            &tracks,
+            &rows,
+            Size::new(container, Some(n(99.0))),
+            source,
+        )
+        .unwrap();
+        assert_eq!(actual, Size::new(expected, n(7.0)));
+        assert_eq!(
+            axes.physical_size(LogicalSizeOf::new(actual.width, actual.height)),
+            Size::new(n(7.0), expected),
+            "allocated columns/rows remain in the owning logical axes",
+        );
+    }
+
+    // The real span includes its actual gutter, including when it is the
+    // whole grid and exceeds the containing content extent58.
+    let tracks = [n(30.0), n(46.0)];
+    let geometry = UsedGridAxisGeometryOf::new(tracks.to_vec(), vec![false; 2], n(10.0));
+    let source = SubgridParentTrackSource {
+        baseline_references: crate::GridBaselineReferences::default(),
+        flow_axes: axes,
+        gap: Size::new(n(10.0), S::ZERO),
+        columns: Some(&geometry),
+        rows: Some(&row_geometry),
+        minimum_functions: GridMinimumParentFunctions {
+            columns: None,
+            rows: None,
+        },
+        algorithm: None,
+        allocated: LogicalSizeOf::new(Some(&tracks), Some(&rows)),
+    };
+    let full = GridArea {
+        column_end: 2,
+        ..area
+    };
+    let container = Size::new(Some(n(58.0)), Some(n(99.0)));
+    assert_eq!(
+        intrinsic_traversal_area_size(full, &tracks, &rows, container, source).unwrap(),
+        Size::new(n(86.0), n(7.0)),
+    );
+    assert_eq!(
+        intrinsic_traversal_area_size(area, &tracks, &rows, container, source).unwrap(),
+        Size::new(n(30.0), n(7.0)),
+    );
+    let provisional = SubgridParentTrackSource {
+        baseline_references: crate::GridBaselineReferences::default(),
+        allocated: LogicalSizeOf::new(None, Some(&rows)),
+        ..source
+    };
+    assert_eq!(
+        intrinsic_traversal_area_size(full, &tracks, &rows, container, provisional).unwrap(),
+        Size::new(n(58.0), n(7.0)),
+    );
+    let invalid = GridArea {
+        column_end: 3,
+        ..area
+    };
+    assert_eq!(
+        intrinsic_traversal_area_size(invalid, &tracks, &rows, container, source),
+        Err(SubgridTraversalError::SpanOutOfRange),
+    );
+}
+
+#[test]
+fn intrinsic_traversal_allocation_authority_f32() {
+    assert_intrinsic_traversal_allocation_authority::<f32>();
+}
+
+#[test]
+fn intrinsic_traversal_allocation_authority_f64() {
+    assert_intrinsic_traversal_allocation_authority::<f64>();
+}
+
+#[path = "tracks_intrinsic/native_flex_spans.rs"]
+mod native_flex_spans;
+
+#[path = "tracks_intrinsic/native_flex_budget.rs"]
+mod native_flex_budget;
+
+#[path = "tracks_intrinsic/native_minmax_caps.rs"]
+mod native_minmax_caps;
+
+#[path = "tracks_intrinsic/native_flex_three_tracks.rs"]
+mod native_flex_three_tracks;
+
+#[path = "tracks_intrinsic/native_cyclic_subgrid_gap.rs"]
+mod native_cyclic_subgrid_gap;
+
+#[path = "tracks_intrinsic/native_thirteen_tracks.rs"]
+mod native_thirteen_tracks;

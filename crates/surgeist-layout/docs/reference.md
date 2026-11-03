@@ -285,6 +285,40 @@ name and first/last set before child computation; that demand is part of cache
 identity. It does not change the child's own alignment context or grant an
 unsupported producer named authority.
 
+#### Grid alignment baseline references
+
+`NodeInputOf::grid_baseline_references` supplies resolved references for this
+Grid container's local Column and Row alignment contexts. Both default to
+`GridBaselineReference::Physical`. A `Named(BaselineName)` value is an explicit
+normalized choice; writing mode does not choose a name. An inherited shared
+subgrid context retains the actual owning axis's reference, including before
+that context has any baseline target. A standalone context keeps its own input.
+
+Grid chooses First or Last from its actual baseline-alignment preference. The
+child's inline reference and `baseline_source` do not select Grid's set or name.
+Available named facts retain their actual physical border-frame coordinate and
+axis; a wrong axis is `LayoutInvalidInputOf::GridBaseline`. An unknown demanded
+fact is `LayoutMissingContext::NamedGridBaseline`, not evidence of absence.
+Genuine Absent facts allow Grid to synthesize alphabetic at the border line-under
+edge and central at the border-box midpoint. Actual margins enter the owning
+Grid contribution once, separately from this border point. Inline atomic
+margin-edge synthesis remains a different operation.
+
+The same selected source governs intrinsic contributions, performed census and
+placement. First/Last selection, including Available Last0, remains distinct
+from owner-relative role reversal. Actual subgrid maps transport the selected
+point once; a reference change cannot reuse another context's target or cached
+named demand. Existing scroll-container Last-set export and clamping remain
+producer facts as specified above; they do not make Grid use inline set selection.
+
+GridLanes retains its existing physical placement operation. Its actual inherited
+Grid-axis reference and census can be transported, but this does not establish
+a local named baseline-placement algorithm or a named container export. A real
+participant requiring named Lane placement, or a named stacking-axis baseline
+operation, returns `LayoutUnsupportedCapability::NamedGridLanesBaseline` with
+the actual axis. An unused selector does not reject unrelated physical layout.
+A generic Lane output with unavailable named facts remains Unknown.
+
 #### Prepared Text and inline flow
 
 Prepared Text participation carries actual issued origin, atomic, control and scope
@@ -926,7 +960,8 @@ Sources: [sizing](../src/sizing.rs) and [values](../src/value.rs).
 
 - Property domains: `PreferredSizeOf`, `MinSizeOf`, `MaxSizeOf`, and `FlexBasisOf`.
 - Validated calculations: `SizingCalculationOf` and `CalcSizeCalculationOf`.
-- Finite values and resolution: `LengthPercentageOf`, `PercentageBasisOf`, `LengthOf`, `LengthAutoOf`, and `AvailableOf`.
+- Finite values and resolution: `LengthPercentageOf`, `PercentageBasisOf`, `LengthOf`, and `LengthAutoOf`.
+- Sizing requests: `AvailableSpaceOf`, `SizingOperation`, `AxisSizingRequestOf`, `SizingRequestOf`, and `OrthogonalFallbackOf`.
 
 ### Geometry and scroll
 
@@ -964,12 +999,18 @@ Nested preparation stops at the corresponding physical-axis sizing point,
 including reversed axis order for orthogonal subgrids. Grid-lanes stacking
 placement is evaluated when its actual stacking-size dependency is reached or a
 qualified child-layout observation needs the stacking range; a grid-axis-only
-prefix does not run otherwise unused stacking measurements. Minimum and maximum
-contributions are measured separately against that point's track basis. A changed
-individual minimum contribution permits the source-defined once-only axis
+prefix does not run otherwise unused stacking measurements. Minimum, min-content
+and max-content contributions are measured separately against that point's track
+basis. The minimum uses the item's actual minimum-size frame; min-content and
+max-content retain their distinct intrinsic measurement purposes. A changed
+individual min-content contribution permits the source-defined once-only axis
 revisit; that revisit replaces obsolete basis-dependent contributions. The final
 row stage does not reopen columns. Final placement uses the actual used box,
 including saturation when a maximum size shrinks its gutters.
+Subgrid gaps use actual own-content definiteness: cyclic percentages resolve
+against zero for intrinsic contributions while retaining fixed calculation terms.
+Normal content layout uses the accepted child box. Grid-lanes Auto preparation
+keeps issued opposite availability when its common stage and source qualify it.
 An intrinsic Auto observation runs actual child layout in a disposable computation session over
 the same immutable inputs and invalidation basis; only its geometry observation
 returns. Probe node, inline-fragment, warm-cache, and cache-publication staging
@@ -1048,13 +1089,45 @@ working state or a measured speed improvement.
 a `LayoutErrorOf<Node, S, M>` returns no partial public result. Recursive
 algorithm modes remain internal.
 
+Each `AxisSizingRequestOf` carries physical `AvailableSpaceOf` independently
+from its `SizingOperation`: Normal, MinContent or MaxContent. Finite space does
+not turn an intrinsic contribution into normal layout. Genuine imposed sizes,
+percentage-parent bases and the containing flow axes remain separate inputs.
+`SizingRequestOf` also retains qualified initial-containing-block, nearest
+scrollport and local containing-block limits for orthogonal fallback. Unknown
+authority is distinct from an authenticated unbounded limit; entering a nearer
+scrollport replaces the previous scrollport candidate.
+
+Flex separates intrinsic contributions from Normal contents sizing. After
+accepting an unrounded inline content extent, it resolves contents percentages
+against that extent and finishes an auto block size from actual child
+measurements. Definite or imposed block sizes retain their own authority.
+Contents cannot enlarge the accepted
+[cyclic inline extent](../../../references/css-sizing-3--WD-css-sizing-3-20260904--ca0f1db3d5ad.md#cyclic-percentage-contribution).
+Normal size queries use the same sizing rule without staging geometry;
+MinContent and MaxContent requests remain intrinsic operations.
+
+Cyclic Flex gap percentages
+[resolve against zero](../../../references/css-align-3--WD-css-align-3-20260130--7361249cbb73.md#gap-percent)
+in every phase, preserving a calculation's fixed term. A later contents size
+does not replace the gap's original qualified basis.
+
+Standalone roots explicitly declare their containing axes and percentage-parent
+bases. Flex-item roots additionally declare the actual host allocation. The
+bounded BlockFlow and PositionedAutoInsets root contexts carry their own
+admission conditions; source/capture adapters establish those facts before
+constructing a request. Measured leaf providers receive `ContentSizingRequestOf`
+after Layout's property and box-edge lowering, together with the node's flow
+axes and actual containing context.
+
 `compute_leaf` is the direct, fallible leaf-measurement boundary. Its provider
 receives non-negative content-space constraints, and invalid provider output or a
 provider error becomes a typed layout error. Resolved padding and border must be
 non-negative and finite, including their combined axis sums. Overflow in
 layout-owned box arithmetic returns `LayoutInvalidInputOf::InvalidNumeric`;
 invalid provider dimensions retain the distinct `MeasurementOutput` diagnostic.
-Valid fully known sizing requests can complete without calling the provider.
+Valid fully known size-only requests can complete without calling the provider.
+Performed leaf layout still measures the actual content and scroll facts.
 
 Visible inline boundaries and line breaks must match their containing block's
 `FlowAxes`. A mismatch returns `LayoutInvalidInputOf::InlineFlowMismatch` with
@@ -1084,8 +1157,8 @@ content, not absence.
 `ContainingLayoutContext` keeps the containing flow axes and
 `ParentFormattingContext` role together as the complete containing context and
 cache identity. Flex-item roots require explicit parent flow axes and keep the
-host allocation in the root request separate from the viewport percentage
-context in `FlexItemRootContext`.
+host allocation in the root request separate from the percentage
+parent in `FlexItemRootContext`.
 
 ## Inline metrics
 

@@ -25,7 +25,8 @@ pub(crate) mod input_coordinate;
 
 use crate::{
     internal::microsyntax::numeric::{
-        HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger, borrowed_decimal_remainder,
+        HtmlDecimalColumns, HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
+        borrowed_decimal_remainder,
     },
     internal::values::Attribute,
     internal::values::DocumentString,
@@ -1798,7 +1799,7 @@ impl<'a> BorrowedDurationComponent<'a> {
         self.millisecond
     }
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct BorrowedDurationCursor<'a> {
     cursor: Cursor<'a>,
     phase: TemporalPhase,
@@ -1831,11 +1832,19 @@ impl<'a> BorrowedDurationCursor<'a> {
             finished: false,
         }
     }
-    /// Each step can consume a run of T markers, whitespace and one component.
-    /// The same checked linear envelope covers the remaining run and its digit
-    /// zero/fraction checks. The caller polls before and after each step.
+    /// The envelope of the next step, which consumes the T markers and whitespace before one
+    /// component and then that component with the whitespace after it, or the trailing
+    /// whitespace of the last step. The step's scan visits each consumed unit a bounded number
+    /// of times (its digit zero/fraction checks included), so the checked linear envelope of
+    /// the consumed units covers it, and a duration of any number of components is charged
+    /// linearly in total. The measurement replays the step on a copy of the cursor, which
+    /// visits only the units that the step then consumes; a recognized plan cannot fail here.
+    /// The caller polls before and after each step.
     pub(crate) fn next_work_bound(&self) -> Option<usize> {
-        temporal_recognition_work_bound(self.cursor.input.len() - self.cursor.position)
+        let mut probe = self.clone();
+        let before = probe.cursor.position;
+        let _ = probe.next_component();
+        temporal_recognition_work_bound(probe.cursor.position.saturating_sub(before))
     }
     pub(crate) fn next_component(
         &mut self,
@@ -1998,7 +2007,7 @@ impl<'a> BorrowedDurationCursor<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Cursor<'a> {
     input: &'a [u16],
     position: usize,
@@ -2422,19 +2431,27 @@ pub(crate) fn parse_duration(
     else {
         unreachable!()
     };
-    Ok(ordinary_recovery_duration(plan))
+    ordinary_recovery_duration(plan)
 }
-fn ordinary_recovery_duration(plan: BorrowedDurationPlan<'_>) -> HtmlParsedDuration {
+fn ordinary_recovery_duration(
+    plan: BorrowedDurationPlan<'_>,
+) -> Result<HtmlParsedDuration, HtmlTemporalError> {
     let mut cursor = plan.cursor();
-    let mut seconds = HtmlNonNegativeDecimal::from(HtmlNonNegativeInteger::from(0_u128));
-    while let Some(component) = cursor.next_component().expect("recognized duration") {
+    // Each component adds its own digits to the column sums, so a long first number followed
+    // by many repeated units costs the digits plus the components, not their product.
+    let mut seconds = HtmlDecimalColumns::default();
+    while let Some(component) = cursor.next_component()? {
         if let Some(scale) = component.scale() {
-            let quantity =
-                ordinary_decimal(component.integer_digits(), component.fraction_digits());
-            seconds = seconds.added_to(&quantity.multiplied_by(scale));
+            seconds
+                .add_scaled(
+                    component.integer_digits(),
+                    component.fraction_digits(),
+                    scale,
+                )
+                .map_err(|_| HtmlTemporalError::InvalidSyntax)?;
         }
     }
-    plan.assemble_recovery(seconds)
+    Ok(plan.assemble_recovery(seconds.finish()))
 }
 
 pub(crate) fn validate_date_with_optional_time(
@@ -2467,8 +2484,8 @@ impl BorrowedTemporalPlan<'_> {
             }
         }
     }
-    fn ordinary_recovery(self) -> HtmlMachineReadableTime {
-        match self {
+    fn ordinary_recovery(self) -> Result<HtmlMachineReadableTime, HtmlTemporalError> {
+        Ok(match self {
             Self::Month(value) => HtmlMachineReadableTime::Month(value.ordinary()),
             Self::Date(value) => HtmlMachineReadableTime::Date(value.ordinary()),
             Self::YearlessDate(value) => HtmlMachineReadableTime::YearlessDate(value),
@@ -2483,9 +2500,9 @@ impl BorrowedTemporalPlan<'_> {
             Self::Week(value) => HtmlMachineReadableTime::Week(value.ordinary()),
             Self::Year(value) => HtmlMachineReadableTime::Year(value.ordinary()),
             Self::Duration(value) => {
-                HtmlMachineReadableTime::Duration(ordinary_recovery_duration(value))
+                HtmlMachineReadableTime::Duration(ordinary_recovery_duration(value)?)
             }
-        }
+        })
     }
 }
 /// The ten author alternatives share allocation-free recognition with the
@@ -2526,7 +2543,7 @@ pub(crate) fn parse_time_element_value(
     let mut final_error = HtmlTemporalError::InvalidSyntax;
     for alternative in TemporalAlternative::ALL {
         match recognize_time_alternative(input.code_units(), TemporalPhase::Recovery, alternative) {
-            Ok(plan) => return Ok(plan.ordinary_recovery()),
+            Ok(plan) => return plan.ordinary_recovery(),
             Err(error) => final_error = error,
         }
     }
@@ -3849,5 +3866,59 @@ mod tests {
             assert_eq!(cursor.result().unwrap().unwrap_err(), error, "{input}");
             assert!(cursor.normalization().is_none());
         }
+    }
+    /// The digit visits that the ordinary recovery duration makes on `text`.
+    fn recovery_duration_steps(text: &str) -> (HtmlParsedDuration, u64) {
+        let input = DocumentString::from(text);
+        crate::internal::microsyntax::numeric::digit_steps_during(|| {
+            parse_duration(&input).unwrap()
+        })
+    }
+    fn assert_linear_growth(steps: &[u64]) {
+        for pair in steps.windows(2) {
+            assert!(
+                pair[1] * 10 <= pair[0] * 22,
+                "doubling the input grew the digit visits from {} to {}: {steps:?}",
+                pair[0],
+                pair[1]
+            );
+        }
+    }
+    /// "parse a duration string" (html-source:7160-7340) lets one unit repeat, so after one
+    /// long number many one-digit components follow; each is added to the running total.
+    /// The first token is the N nines and the first `1` (10^(N+1) - 9); the other k - 1
+    /// components add one each, so the total is 10^(N+1) + k - 10.
+    #[test]
+    fn ordinary_recovery_duration_digit_visits_grow_linearly_with_a_long_integer() {
+        let mut steps = Vec::new();
+        for digits in [3_000_usize, 6_000, 12_000, 24_000] {
+            let components = digits / 3;
+            let text = format!("{}{}", "9".repeat(digits), "1s".repeat(components));
+            let (value, visits) = recovery_duration_steps(&text);
+            let tail = (components - 10).to_string();
+            let expected = format!("1{}{}", "0".repeat(digits + 1 - tail.len()), tail);
+            assert_eq!(value.seconds().integer_part().decimal_digits(), expected);
+            assert_eq!(value.seconds().fractional_digits(), None);
+            steps.push(visits);
+        }
+        assert_linear_growth(&steps);
+    }
+    /// 0.99...9s plus m components of 1s is m + 0.99...9.
+    #[test]
+    fn ordinary_recovery_duration_digit_visits_grow_linearly_with_a_long_fraction() {
+        let mut steps = Vec::new();
+        for digits in [4_000_usize, 8_000, 16_000, 32_000] {
+            let components = digits / 4;
+            let text = format!("0.{}s{}", "9".repeat(digits), "1s".repeat(components));
+            let (value, visits) = recovery_duration_steps(&text);
+            assert_eq!(
+                value.seconds().integer_part().decimal_digits(),
+                components.to_string()
+            );
+            let nines = "9".repeat(digits);
+            assert_eq!(value.seconds().fractional_digits(), Some(nines.as_str()));
+            steps.push(visits);
+        }
+        assert_linear_growth(&steps);
     }
 }

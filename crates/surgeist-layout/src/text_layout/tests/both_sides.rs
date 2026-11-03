@@ -206,7 +206,7 @@ fn qualify(p: &text::PreparedText, definition: Definition, consecutive: bool) {
 
 fn compute<S: LayoutScalar>(
     p: &text::PreparedText,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     width: Option<f64>,
 ) -> CompletedLayoutBatchOf<u32, S> {
     compute_with_style::<S>(p, available, width, crate::TextWrapStyle::Auto)
@@ -214,7 +214,7 @@ fn compute<S: LayoutScalar>(
 
 fn compute_with_style<S: LayoutScalar>(
     p: &text::PreparedText,
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
     width: Option<f64>,
     wrap_style: crate::TextWrapStyle,
 ) -> CompletedLayoutBatchOf<u32, S> {
@@ -294,8 +294,39 @@ fn compute_with_style<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let input =
-        LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
+    let input = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((captured).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            available,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     compute_layout_with_flow(&captured, 0, input).unwrap()
 }
 
@@ -339,7 +370,12 @@ fn assert_lines_with_style<S: LayoutScalar>(
         .collect::<Vec<_>>();
     let batch = compute_with_style::<S>(
         p,
-        AvailableOf::definite(S::from_f64(40.0)),
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ),
         Some(40.0),
         wrap_style,
     );
@@ -486,8 +522,20 @@ fn assert_lines_with_style<S: LayoutScalar>(
 
 fn assert_intrinsics<S: LayoutScalar>(p: &text::PreparedText, minimum: f64, maximum: f64) {
     for (available, expected) in [
-        (AvailableOf::MIN_CONTENT, minimum),
-        (AvailableOf::MAX_CONTENT, maximum),
+        (
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MinContent,
+            ),
+            minimum,
+        ),
+        (
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+            maximum,
+        ),
     ] {
         let batch = compute::<S>(p, available, None);
         let root = batch
@@ -543,7 +591,10 @@ fn assert_outgoing_counter_once_with_style(
             prepared: p,
             segment: p.source_segments().next().unwrap(),
             scope_alignments: &scope_alignments,
-            available: fit::Available::Definite(40.0),
+            available: crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+                crate::SizingOperation::Normal,
+            ),
             base_direction: text::ParagraphBaseDirection::LeftToRight,
             block_direction: text::ParagraphBaseDirection::LeftToRight,
             alignment: TextAlign::Start,

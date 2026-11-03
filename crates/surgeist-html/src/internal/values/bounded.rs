@@ -1,9 +1,9 @@
 //! Exact expanded-name validation without a controller or scratch allocation.
 
-use super::name_index::{
-    CLEAR_CHUNK, HtmlAttributeNameIndex, HtmlNameIndexProbe, HtmlNameIndexStep, Occupant, entry,
-    occupant, tag,
+use super::attribute_name_index::{
+    CLEAR_CHUNK, HtmlAttributeNameIndex, Occupant, entry, occupant, tag,
 };
+use super::name_index::{HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexStep};
 use super::{Attribute, DocumentString, OrderedAttributes};
 use std::{error::Error, fmt, mem::size_of, sync::Arc};
 
@@ -50,6 +50,7 @@ impl HtmlAttributeStorage {
             failure: None,
             indexed: None,
             stage: Stage::Pairs,
+            probe: None,
         }
     }
 
@@ -78,6 +79,7 @@ impl HtmlAttributeStorage {
             failure: None,
             indexed: Some(index),
             stage: Stage::Clear,
+            probe: None,
         }
     }
 }
@@ -170,11 +172,11 @@ enum Stage {
     HashLength,
     /// Hash the next name, which has `units` code units.
     Hash { units: usize },
-    /// Read the slot the probe is at.
-    Probe { probe: HtmlNameIndexProbe, tag: u32 },
+    /// Move the probe to its next slot and read it.
+    Probe { tag: u32 },
     /// Compare the next name with the attribute found in the probe's slot by the comparison in
     /// `phase`.
-    Compare { probe: HtmlNameIndexProbe, tag: u32 },
+    Compare { tag: u32 },
 }
 
 /// An exclusive cursor retaining its allocation on interruption or refusal.
@@ -187,6 +189,8 @@ pub struct HtmlAttributeValidation {
     failure: Option<HtmlAttributeValidationError>,
     indexed: Option<HtmlAttributeNameIndex>,
     stage: Stage,
+    /// The probe of the name being entered in the index.
+    probe: Option<HtmlNameIndexProbe>,
 }
 
 impl HtmlAttributeValidation {
@@ -305,16 +309,18 @@ impl HtmlAttributeValidationAction<'_> {
                 })
             }
             Stage::Clear => {
-                let slots = validation
-                    .indexed
-                    .as_ref()
+                let table = validation.indexed.as_ref();
+                let slots = table
                     .map_or(0, HtmlAttributeNameIndex::unwritten)
-                    .min(CLEAR_CHUNK) as u64;
+                    .min(CLEAR_CHUNK);
+                // The chunk that finishes the table also binds it to its index, which reads
+                // every slot once.
+                let scanned = table.map_or(0, |table| table.scanned_by_clearing(CLEAR_CHUNK));
                 HtmlAttributeValidationLayout {
                     record_visits: 0,
-                    inspected_bytes: 0,
-                    record_writes: slots,
-                    copied_bytes: slots * size_of::<usize>() as u64,
+                    inspected_bytes: (scanned * size_of::<HtmlNameIndexSlot>()) as u64,
+                    record_writes: slots as u64,
+                    copied_bytes: (slots * size_of::<HtmlNameIndexSlot>()) as u64,
                 }
             }
             // The attribute and its two name headers.
@@ -335,7 +341,7 @@ impl HtmlAttributeValidationAction<'_> {
                 record_visits: 1,
                 inspected_bytes: 0,
                 record_writes: 1,
-                copied_bytes: size_of::<usize>() as u64,
+                copied_bytes: size_of::<HtmlNameIndexSlot>() as u64,
             },
         }
     }
@@ -366,6 +372,9 @@ impl HtmlAttributeValidationAction<'_> {
                 };
                 index.clear_chunk(CLEAR_CHUNK);
                 if index.unwritten() == 0 {
+                    if index.bind_storage().is_err() {
+                        return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
+                    }
                     validation.stage = Stage::HashLength;
                 }
                 Ok(())
@@ -381,56 +390,52 @@ impl HtmlAttributeValidationAction<'_> {
                 Ok(())
             }
             Stage::Hash { .. } => {
-                let Some(index) = validation.indexed.as_ref() else {
-                    return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
-                };
                 let name = validation.storage.attributes[validation.duplicate].name();
-                let hash = index.hash(name);
-                let Some(probe) = index.probe(hash) else {
-                    return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
-                };
-                validation.stage = Stage::Probe {
-                    probe,
-                    tag: tag(hash),
-                };
-                Ok(())
-            }
-            Stage::Probe { mut probe, tag } => {
                 let Some(index) = validation.indexed.as_mut() else {
                     return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
                 };
-                match index.step(&probe) {
-                    Ok(HtmlNameIndexStep::Vacant(vacancy)) => {
+                let hash = index.hash(name);
+                let Ok(probe) = index.probe(hash) else {
+                    return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
+                };
+                validation.probe = Some(probe);
+                validation.stage = Stage::Probe { tag: tag(hash) };
+                Ok(())
+            }
+            Stage::Probe { tag } => {
+                let (Some(index), Some(probe)) =
+                    (validation.indexed.as_mut(), validation.probe.as_mut())
+                else {
+                    return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
+                };
+                match index.advance(probe) {
+                    Ok(Some(HtmlNameIndexStep::Vacant(vacancy))) => {
                         let placed = entry(tag, Occupant::Attribute(validation.duplicate))
                             .is_some_and(|entry| index.insert(vacancy, entry).is_ok());
                         if !placed {
                             return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
                         }
+                        validation.probe = None;
                         validation.next_attribute();
                         Ok(())
                     }
-                    Ok(HtmlNameIndexStep::Occupied(held)) => match occupant(held) {
-                        // Another name's tag: not this name, so not read.
-                        (_, held_tag) if held_tag != tag => {
-                            if probe.next_slot().is_none() {
-                                return validation
-                                    .fail(HtmlAttributeValidationError::IndexUnavailable);
-                            }
-                            validation.stage = Stage::Probe { probe, tag };
-                            Ok(())
-                        }
+                    // Another name's tag: not this name, so not read; the next action advances.
+                    Ok(Some(HtmlNameIndexStep::Occupied(held))) => match occupant(held) {
+                        (_, held_tag) if held_tag != tag => Ok(()),
                         (Occupant::Attribute(first), _) if first < validation.duplicate => {
                             validation.first = first;
                             validation.phase = Phase::Pair;
-                            validation.stage = Stage::Compare { probe, tag };
+                            validation.stage = Stage::Compare { tag };
                             Ok(())
                         }
                         _ => validation.fail(HtmlAttributeValidationError::IndexUnavailable),
                     },
-                    Err(_) => validation.fail(HtmlAttributeValidationError::IndexUnavailable),
+                    Ok(None) | Err(_) => {
+                        validation.fail(HtmlAttributeValidationError::IndexUnavailable)
+                    }
                 }
             }
-            Stage::Compare { mut probe, tag } => {
+            Stage::Compare { tag } => {
                 let (old, new) = validation.names();
                 match advance_comparison(
                     validation.phase,
@@ -444,11 +449,8 @@ impl HtmlAttributeValidationAction<'_> {
                         Ok(())
                     }
                     ComparisonStep::Different => {
-                        if probe.next_slot().is_none() {
-                            return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
-                        }
                         validation.phase = Phase::Pair;
-                        validation.stage = Stage::Probe { probe, tag };
+                        validation.stage = Stage::Probe { tag };
                         Ok(())
                     }
                     ComparisonStep::Equal => validation.duplicate(),
@@ -594,7 +596,6 @@ pub(crate) fn advance_comparison(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internal::values::name_index::HtmlNameIndexSlot;
     use crate::internal::values::{Namespace, QualifiedName};
 
     /// A deterministic generator, so a failing case is replayable.

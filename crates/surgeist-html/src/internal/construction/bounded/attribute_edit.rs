@@ -3,12 +3,14 @@
 use super::operations::attribute_units;
 use super::*;
 use crate::internal::values::Attribute;
+use crate::internal::values::attribute_name_index::{
+    Binding, CLEAR_CHUNK, HtmlAttributeNameIndex, Occupant, entry, occupant, tag,
+};
 use crate::internal::values::bounded::{
     ComparisonStep, Phase as NamePhase, advance_comparison, comparison_layout,
 };
 use crate::internal::values::name_index::{
-    Binding, CLEAR_CHUNK, HtmlAttributeNameIndex, HtmlNameIndexProbe, HtmlNameIndexStep,
-    HtmlNameIndexVacancy, Occupant, entry, occupant, tag,
+    HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexStep, HtmlNameIndexVacancy,
 };
 
 /// Which protocol an attribute edit follows. It is fixed when the edit begins.
@@ -497,6 +499,8 @@ impl HtmlConstructionAttributeEdit {
             complete: false,
             failure: None,
             table: &mut self.index,
+            probe: None,
+            tag: 0,
         })
     }
     /// Whether the planned candidate `index` is kept: `true` if no existing attribute and no
@@ -542,6 +546,8 @@ impl HtmlConstructionAttributeEdit {
             minimum_capacity: 0,
             plan_index: 0,
             insert_slot: None,
+            probe: None,
+            tag: 0,
         })
     }
     /// Starts a step that ensures the backing can hold `additional` more attributes.
@@ -744,34 +750,23 @@ enum CandidatePhase<'n> {
         subject: Subject,
         units: usize,
     },
-    /// Enter the existing attribute at `position` in the first empty slot of its probe.
+    /// Enter the existing attribute at `position` in the first empty slot of the probe.
     IndexInsert {
         position: usize,
-        probe: HtmlNameIndexProbe,
-        tag: u32,
     },
-    /// Read the slot the candidate's probe is at.
-    IndexProbe {
-        probe: HtmlNameIndexProbe,
-        tag: u32,
-    },
-    /// Comparing the candidate with the existing attribute at `position` found by `probe`.
+    /// Move the candidate's probe to its next slot and read it.
+    IndexProbe,
+    /// Comparing the candidate with the existing attribute at `position` that the probe found.
     IndexTargetName {
-        probe: HtmlNameIndexProbe,
-        tag: u32,
         position: usize,
         name: NamePhase,
     },
     /// The probe found the earlier candidate `index`; its name is needed.
     IndexPrior {
-        probe: HtmlNameIndexProbe,
-        tag: u32,
         index: usize,
     },
-    /// Comparing the candidate with the earlier candidate's name found by `probe`.
+    /// Comparing the candidate with the earlier candidate's name that the probe found.
     IndexPriorName {
-        probe: HtmlNameIndexProbe,
-        tag: u32,
         index: usize,
         name: NamePhase,
         prior: &'n DocumentString,
@@ -810,6 +805,9 @@ pub struct HtmlConstructionAttributeCandidate<'e, 'n> {
     complete: bool,
     failure: Option<HtmlConstructionError>,
     table: &'e mut Option<HtmlAttributeNameIndex>,
+    /// The probe of the name being looked up or entered, and its tag.
+    probe: Option<HtmlNameIndexProbe>,
+    tag: u32,
 }
 /// One pending candidate action. It borrows the candidate exclusively; `perform` consumes it.
 #[derive(Debug)]
@@ -891,16 +889,21 @@ fn probe_work() -> HtmlConstructionAttributeWork {
     HtmlConstructionAttributeWork {
         record_visits: 1,
         record_writes: 1,
-        copied_bytes: size_of::<usize>(),
+        copied_bytes: size_of::<HtmlNameIndexSlot>(),
         ..Default::default()
     }
 }
-/// The work of clearing the next slots of the index.
-fn clear_work(unwritten: usize) -> HtmlConstructionAttributeWork {
-    let slots = unwritten.min(CLEAR_CHUNK);
+/// The work of clearing the next slots of the index. The action that finishes the table also
+/// binds it to its index, which reads each slot once.
+fn clear_work(table: Option<&HtmlAttributeNameIndex>) -> HtmlConstructionAttributeWork {
+    let slots = table
+        .map_or(0, HtmlAttributeNameIndex::unwritten)
+        .min(CLEAR_CHUNK);
+    let scanned = table.map_or(0, |table| table.scanned_by_clearing(CLEAR_CHUNK));
     HtmlConstructionAttributeWork {
         record_writes: slots,
-        copied_bytes: slots * size_of::<usize>(),
+        copied_bytes: slots * size_of::<HtmlNameIndexSlot>(),
+        inspected_bytes: scanned * size_of::<HtmlNameIndexSlot>(),
         ..Default::default()
     }
 }
@@ -1031,16 +1034,16 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                     ..Default::default()
                 })
             }
-            CandidatePhase::IndexClear => HtmlConstructionAttributeDescription::Inspect(
-                clear_work(c.table.as_ref().map_or(0, |table| table.unwritten())),
-            ),
+            CandidatePhase::IndexClear => {
+                HtmlConstructionAttributeDescription::Inspect(clear_work(c.table.as_ref()))
+            }
             CandidatePhase::IndexHashLength { .. } => {
                 HtmlConstructionAttributeDescription::Inspect(hash_length_work())
             }
             CandidatePhase::IndexHash { units, .. } => {
                 HtmlConstructionAttributeDescription::Inspect(hash_work(units))
             }
-            CandidatePhase::IndexInsert { .. } | CandidatePhase::IndexProbe { .. } => {
+            CandidatePhase::IndexInsert { .. } | CandidatePhase::IndexProbe => {
                 HtmlConstructionAttributeDescription::Inspect(probe_work())
             }
             CandidatePhase::IndexTargetName { name, .. } => {
@@ -1196,6 +1199,7 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                     let table = c.table.as_mut().ok_or_else(table_error)?;
                     table.clear_chunk(CLEAR_CHUNK);
                     if table.unwritten() == 0 {
+                        table.bind_storage().map_err(|_| table_error())?;
                         c.after_clear()?
                     } else {
                         CandidatePhase::IndexClear
@@ -1223,7 +1227,7 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                     },
                 },
                 CandidatePhase::IndexHash { subject, .. } => {
-                    let table = c.table.as_ref().ok_or_else(table_error)?;
+                    let table = c.table.as_mut().ok_or_else(table_error)?;
                     let hash = match subject {
                         Subject::Existing(position) => table.hash_local(
                             element_attributes(c.storage, c.target)?
@@ -1235,136 +1239,102 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                         ),
                         Subject::Incoming => table.hash_local(c.name.code_units()),
                     };
-                    let probe = table.probe(hash).ok_or_else(table_error)?;
-                    let tag = tag(hash);
+                    c.probe = Some(table.probe(hash).map_err(|_| table_error())?);
+                    c.tag = tag(hash);
                     match subject {
-                        Subject::Existing(position) => CandidatePhase::IndexInsert {
-                            position,
-                            probe,
-                            tag,
-                        },
-                        Subject::Incoming => CandidatePhase::IndexProbe { probe, tag },
+                        Subject::Existing(position) => CandidatePhase::IndexInsert { position },
+                        Subject::Incoming => CandidatePhase::IndexProbe,
                     }
                 }
-                CandidatePhase::IndexInsert {
-                    position,
-                    mut probe,
-                    tag,
-                } => {
+                CandidatePhase::IndexInsert { position } => {
                     let table = c.table.as_mut().ok_or_else(table_error)?;
-                    match table.step(&probe).map_err(|_| table_error())? {
-                        HtmlNameIndexStep::Vacant(vacancy) => {
-                            let placed = entry(tag, Occupant::Attribute(position))
+                    let probe = c.probe.as_mut().ok_or_else(table_error)?;
+                    match table.advance(probe).map_err(|_| table_error())? {
+                        Some(HtmlNameIndexStep::Vacant(vacancy)) => {
+                            let placed = entry(c.tag, Occupant::Attribute(position))
                                 .is_some_and(|entry| table.insert(vacancy, entry).is_ok());
                             if !placed {
                                 return Err(table_error());
                             }
+                            c.probe = None;
                             c.after_existing(position)?
                         }
-                        HtmlNameIndexStep::Occupied(_) => {
-                            probe.next_slot().ok_or_else(table_error)?;
-                            CandidatePhase::IndexInsert {
-                                position,
-                                probe,
-                                tag,
-                            }
+                        Some(HtmlNameIndexStep::Occupied(_)) => {
+                            CandidatePhase::IndexInsert { position }
                         }
+                        None => return Err(table_error()),
                     }
                 }
-                CandidatePhase::IndexProbe { mut probe, tag } => {
+                CandidatePhase::IndexProbe => {
                     let table = c.table.as_mut().ok_or_else(table_error)?;
-                    match table.step(&probe).map_err(|_| table_error())? {
-                        HtmlNameIndexStep::Vacant(vacancy) => {
+                    let probe = c.probe.as_mut().ok_or_else(table_error)?;
+                    match table.advance(probe).map_err(|_| table_error())? {
+                        Some(HtmlNameIndexStep::Vacant(vacancy)) => {
                             // Nothing has the name: the candidate is kept and entered.
-                            let placed = entry(tag, Occupant::Candidate(c.index))
+                            let placed = entry(c.tag, Occupant::Candidate(c.index))
                                 .is_some_and(|entry| table.insert(vacancy, entry).is_ok());
                             if !placed {
                                 return Err(table_error());
                             }
+                            c.probe = None;
                             c.settled()
                         }
-                        HtmlNameIndexStep::Occupied(held) => match occupant(held) {
-                            (_, held_tag) if held_tag != tag => {
-                                probe.next_slot().ok_or_else(table_error)?;
-                                CandidatePhase::IndexProbe { probe, tag }
-                            }
+                        Some(HtmlNameIndexStep::Occupied(held)) => match occupant(held) {
+                            (_, held_tag) if held_tag != c.tag => CandidatePhase::IndexProbe,
                             (Occupant::Candidate(index), _) if index < c.index => {
-                                CandidatePhase::IndexPrior { probe, tag, index }
+                                CandidatePhase::IndexPrior { index }
                             }
                             (Occupant::Attribute(position), _) => CandidatePhase::IndexTargetName {
-                                probe,
-                                tag,
                                 position,
                                 name: NamePhase::LocalLength,
                             },
                             _ => return Err(table_error()),
                         },
+                        None => return Err(table_error()),
                     }
                 }
-                CandidatePhase::IndexTargetName {
-                    mut probe,
-                    tag,
-                    position,
-                    name,
-                } => {
+                CandidatePhase::IndexTargetName { position, name } => {
                     let old = element_attributes(c.storage, c.target)?
                         .get(position)
                         .ok_or_else(table_error)?
                         .name()
                         .local_name();
                     match advance_comparison(name, None, old, None, c.name) {
-                        ComparisonStep::Continue(name) => CandidatePhase::IndexTargetName {
-                            probe,
-                            tag,
-                            position,
-                            name,
-                        },
-                        ComparisonStep::Different => {
-                            probe.next_slot().ok_or_else(table_error)?;
-                            CandidatePhase::IndexProbe { probe, tag }
+                        ComparisonStep::Continue(name) => {
+                            CandidatePhase::IndexTargetName { position, name }
                         }
+                        ComparisonStep::Different => CandidatePhase::IndexProbe,
                         ComparisonStep::Equal => {
                             c.found = true;
+                            c.probe = None;
                             c.settled()
                         }
                     }
                 }
-                CandidatePhase::IndexPrior { probe, tag, index } => {
+                CandidatePhase::IndexPrior { index } => {
                     let prior = prior.ok_or(HtmlConstructionErrorKind::AttributeNameMismatch)?;
                     if c.decisions[index].name.as_ptr() != Arc::as_ptr(prior.shared_code_units()) {
                         return Err(HtmlConstructionErrorKind::AttributeNameMismatch.into());
                     }
                     CandidatePhase::IndexPriorName {
-                        probe,
-                        tag,
                         index,
                         name: NamePhase::LocalLength,
                         prior,
                     }
                 }
-                CandidatePhase::IndexPriorName {
-                    mut probe,
-                    tag,
-                    index,
-                    name,
-                    prior,
-                } => match advance_comparison(name, None, prior, None, c.name) {
-                    ComparisonStep::Continue(name) => CandidatePhase::IndexPriorName {
-                        probe,
-                        tag,
-                        index,
-                        name,
-                        prior,
-                    },
-                    ComparisonStep::Different => {
-                        probe.next_slot().ok_or_else(table_error)?;
-                        CandidatePhase::IndexProbe { probe, tag }
+                CandidatePhase::IndexPriorName { index, name, prior } => {
+                    match advance_comparison(name, None, prior, None, c.name) {
+                        ComparisonStep::Continue(name) => {
+                            CandidatePhase::IndexPriorName { index, name, prior }
+                        }
+                        ComparisonStep::Different => CandidatePhase::IndexProbe,
+                        ComparisonStep::Equal => {
+                            c.found = true;
+                            c.probe = None;
+                            c.settled()
+                        }
                     }
-                    ComparisonStep::Equal => {
-                        c.found = true;
-                        c.settled()
-                    }
-                },
+                }
                 CandidatePhase::Reserve => {
                     let new_generation = c
                         .storage
@@ -1471,21 +1441,14 @@ enum SlotPhase {
         subject: Subject,
         units: usize,
     },
-    /// Enter the stored attribute at `position` in the first empty slot of its probe.
+    /// Enter the stored attribute at `position` in the first empty slot of the probe.
     IndexInsert {
         position: usize,
-        probe: HtmlNameIndexProbe,
-        tag: u32,
     },
-    /// Read the slot the appended name's probe is at.
-    IndexProbe {
-        probe: HtmlNameIndexProbe,
-        tag: u32,
-    },
-    /// Comparing the appended name with the stored attribute at `position` found by `probe`.
+    /// Move the appended name's probe to its next slot and read it.
+    IndexProbe,
+    /// Comparing the appended name with the stored attribute at `position` that the probe found.
     IndexCompare {
-        probe: HtmlNameIndexProbe,
-        tag: u32,
         position: usize,
         name: NamePhase,
     },
@@ -1513,6 +1476,9 @@ pub struct HtmlConstructionAttributeSlot<'a> {
     /// The empty slot of the index that the appended name's probe reached, with the name's
     /// tag, which the commit fills.
     insert_slot: Option<(HtmlNameIndexVacancy, u32)>,
+    /// The probe of the name being looked up or entered, and its tag.
+    probe: Option<HtmlNameIndexProbe>,
+    tag: u32,
 }
 /// One pending slot action. It borrows the slot exclusively; `perform` consumes it.
 #[derive(Debug)]
@@ -1847,16 +1813,16 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                     },
                 }
             }
-            SlotPhase::IndexClear => HtmlConstructionAttributeDescription::Inspect(clear_work(
-                s.edit.index.as_ref().map_or(0, |table| table.unwritten()),
-            )),
+            SlotPhase::IndexClear => {
+                HtmlConstructionAttributeDescription::Inspect(clear_work(s.edit.index.as_ref()))
+            }
             SlotPhase::IndexHashLength { .. } => {
                 HtmlConstructionAttributeDescription::Inspect(hash_length_work())
             }
             SlotPhase::IndexHash { units, .. } => {
                 HtmlConstructionAttributeDescription::Inspect(hash_work(units))
             }
-            SlotPhase::IndexInsert { .. } | SlotPhase::IndexProbe { .. } => {
+            SlotPhase::IndexInsert { .. } | SlotPhase::IndexProbe => {
                 HtmlConstructionAttributeDescription::Inspect(probe_work())
             }
             SlotPhase::IndexCompare { name, .. } => HtmlConstructionAttributeDescription::Compare {
@@ -2024,14 +1990,17 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                     table.clear_chunk(CLEAR_CHUNK);
                     if table.unwritten() != 0 {
                         SlotPhase::IndexClear
-                    } else if s.edit.capacity.initialized_len == 0 {
-                        s.bind_described()?;
-                        SlotPhase::IndexHashLength {
-                            subject: Subject::Incoming,
-                        }
                     } else {
-                        SlotPhase::IndexHashLength {
-                            subject: Subject::Existing(0),
+                        table.bind_storage().map_err(|_| table_error())?;
+                        if s.edit.capacity.initialized_len == 0 {
+                            s.bind_described()?;
+                            SlotPhase::IndexHashLength {
+                                subject: Subject::Incoming,
+                            }
+                        } else {
+                            SlotPhase::IndexHashLength {
+                                subject: Subject::Existing(0),
+                            }
                         }
                     }
                 }
@@ -2053,7 +2022,6 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                     SlotPhase::IndexHash { subject, units }
                 }
                 SlotPhase::IndexHash { subject, .. } => {
-                    let table = s.edit.index.as_ref().ok_or_else(table_error)?;
                     let name = match subject {
                         Subject::Existing(position) => s
                             .edit
@@ -2063,75 +2031,57 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                             .name(),
                         Subject::Incoming => s.input.attribute().ok_or_else(table_error)?.name(),
                     };
-                    let hash = table.hash(name);
-                    let probe = table.probe(hash).ok_or_else(table_error)?;
-                    let tag = tag(hash);
+                    let hash = s.edit.index.as_ref().ok_or_else(table_error)?.hash(name);
+                    let table = s.edit.index.as_mut().ok_or_else(table_error)?;
+                    s.probe = Some(table.probe(hash).map_err(|_| table_error())?);
+                    s.tag = tag(hash);
                     match subject {
-                        Subject::Existing(position) => SlotPhase::IndexInsert {
-                            position,
-                            probe,
-                            tag,
-                        },
-                        Subject::Incoming => SlotPhase::IndexProbe { probe, tag },
+                        Subject::Existing(position) => SlotPhase::IndexInsert { position },
+                        Subject::Incoming => SlotPhase::IndexProbe,
                     }
                 }
-                SlotPhase::IndexInsert {
-                    position,
-                    mut probe,
-                    tag,
-                } => {
+                SlotPhase::IndexInsert { position } => {
                     let table = s.edit.index.as_mut().ok_or_else(table_error)?;
-                    match table.step(&probe).map_err(|_| table_error())? {
-                        HtmlNameIndexStep::Vacant(vacancy) => {
-                            let placed = entry(tag, Occupant::Attribute(position))
+                    let probe = s.probe.as_mut().ok_or_else(table_error)?;
+                    match table.advance(probe).map_err(|_| table_error())? {
+                        Some(HtmlNameIndexStep::Vacant(vacancy)) => {
+                            let placed = entry(s.tag, Occupant::Attribute(position))
                                 .is_some_and(|entry| table.insert(vacancy, entry).is_ok());
                             if !placed {
                                 return Err(table_error());
                             }
+                            s.probe = None;
                             s.after_existing(position)?
                         }
-                        HtmlNameIndexStep::Occupied(_) => {
-                            probe.next_slot().ok_or_else(table_error)?;
-                            SlotPhase::IndexInsert {
-                                position,
-                                probe,
-                                tag,
-                            }
-                        }
+                        Some(HtmlNameIndexStep::Occupied(_)) => SlotPhase::IndexInsert { position },
+                        None => return Err(table_error()),
                     }
                 }
-                SlotPhase::IndexProbe { mut probe, tag } => {
-                    let table = s.edit.index.as_ref().ok_or_else(table_error)?;
-                    match table.step(&probe).map_err(|_| table_error())? {
-                        HtmlNameIndexStep::Vacant(vacancy) => {
-                            s.insert_slot = Some((vacancy, tag));
+                SlotPhase::IndexProbe => {
+                    let table = s.edit.index.as_mut().ok_or_else(table_error)?;
+                    let probe = s.probe.as_mut().ok_or_else(table_error)?;
+                    match table.advance(probe).map_err(|_| table_error())? {
+                        Some(HtmlNameIndexStep::Vacant(vacancy)) => {
+                            s.insert_slot = Some((vacancy, s.tag));
+                            s.probe = None;
                             SlotPhase::Layout
                         }
-                        HtmlNameIndexStep::Occupied(held) => match occupant(held) {
-                            (_, held_tag) if held_tag != tag => {
-                                probe.next_slot().ok_or_else(table_error)?;
-                                SlotPhase::IndexProbe { probe, tag }
-                            }
+                        Some(HtmlNameIndexStep::Occupied(held)) => match occupant(held) {
+                            (_, held_tag) if held_tag != s.tag => SlotPhase::IndexProbe,
                             (Occupant::Attribute(position), _)
                                 if position < s.edit.capacity.initialized_len =>
                             {
                                 SlotPhase::IndexCompare {
-                                    probe,
-                                    tag,
                                     position,
                                     name: NamePhase::Pair,
                                 }
                             }
                             _ => return Err(table_error()),
                         },
+                        None => return Err(table_error()),
                     }
                 }
-                SlotPhase::IndexCompare {
-                    mut probe,
-                    tag,
-                    position,
-                    name,
-                } => {
+                SlotPhase::IndexCompare { position, name } => {
                     let old = s
                         .edit
                         .attributes()?
@@ -2146,16 +2096,10 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                         new.namespace().uri(),
                         new.local_name(),
                     ) {
-                        ComparisonStep::Continue(name) => SlotPhase::IndexCompare {
-                            probe,
-                            tag,
-                            position,
-                            name,
-                        },
-                        ComparisonStep::Different => {
-                            probe.next_slot().ok_or_else(table_error)?;
-                            SlotPhase::IndexProbe { probe, tag }
+                        ComparisonStep::Continue(name) => {
+                            SlotPhase::IndexCompare { position, name }
                         }
+                        ComparisonStep::Different => SlotPhase::IndexProbe,
                         ComparisonStep::Equal => {
                             return Err(HtmlConstructionErrorKind::DuplicateAttribute {
                                 first: position,
@@ -2361,7 +2305,6 @@ impl HtmlConstructionAttributeRetirementAction<'_> {
 mod tests {
     use super::*;
     use crate::internal::construction::bounded::operations::HtmlConstructionCommit;
-    use crate::internal::values::name_index::HtmlNameIndexSlot;
 
     fn attribute(name: impl Into<DocumentString>, value: &str) -> Attribute {
         Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)

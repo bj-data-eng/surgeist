@@ -190,11 +190,28 @@ fn known_size_baseline<S: LayoutScalar>() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::NoParent,
         );
-        let available = Size::splat(AvailableOf::definite(S::from_f64(100.0)));
+        let available = Size::splat(crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(
+                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+            ),
+            crate::SizingOperation::Normal,
+        ));
         // The actual public constructor issues ComputeSize/ContentSize/Both;
         // do not substitute a viewport root or a PerformLayout parent probe.
-        let input =
-            ComputeInputOf::leaf_content_size(known, parent, containing, available).unwrap();
+        let input = ComputeInputOf::leaf_content_size(
+            known,
+            parent,
+            containing,
+            crate::SizingRequestOf::new(
+                available,
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Unknown,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
+        )
+        .unwrap();
         let mut session = ComputeSession::with_flow(&flow, flow.invalidated.clone());
         let output = session.compute_child(0, input).unwrap();
         assert_eq!(output.size, Size::new(S::from_f64(30.0), S::from_f64(50.0)));
@@ -208,7 +225,20 @@ fn known_size_baseline<S: LayoutScalar>() {
         let output = placed
             .compute_child(
                 0,
-                ComputeInputOf::leaf_layout(known, parent, containing, available).unwrap(),
+                ComputeInputOf::leaf_layout(
+                    known,
+                    parent,
+                    containing,
+                    crate::SizingRequestOf::new(
+                        available,
+                        crate::OrthogonalFallbackOf::new(
+                            crate::Size::NONE,
+                            crate::NearestScrollportOf::Unknown,
+                            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                        ),
+                    ),
+                )
+                .unwrap(),
             )
             .unwrap();
         assert_eq!(output.size, Size::new(S::from_f64(30.0), S::from_f64(50.0)));

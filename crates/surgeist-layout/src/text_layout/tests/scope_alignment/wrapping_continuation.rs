@@ -265,7 +265,15 @@ fn continuation<S: LayoutScalar>() {
     };
     let rows = || vec![case.row(1, shifted::<S>(3.0))];
     let input = LayoutFlowInput::try_new(&tree, 0, case.bindings(), wrapping(), rows()).unwrap();
-    let batch = compute_layout_with_flow(&input, 0, request(20.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &input,
+        0,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let final_lines = lines(&batch);
     let layout = placed(&batch);
     assert_eq!(
@@ -436,7 +444,15 @@ fn continuation<S: LayoutScalar>() {
     );
     raw(layout);
     source_custody(layout);
-    let replay = compute_layout_with_flow(&input, 0, request(20.0)).unwrap();
+    let replay = compute_layout_with_flow(
+        &input,
+        0,
+        request(20.0, {
+            let root_input = crate::LayoutTree::node_input((input).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(batch.final_entries(), replay.final_entries());
     assert_eq!(
         lines(&replay)[2].selected_line().request().line_box_struts,

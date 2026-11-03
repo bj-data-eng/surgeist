@@ -11,7 +11,10 @@ fn common_named_reference<S: LayoutScalar>() {
         InlineFlowOf::new(
             WritingMode::HorizontalTb,
             Direction::Ltr,
-            AvailableOf::MAX_CONTENT,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
         ),
         metrics,
         InlineControlAlignment::Baseline,
@@ -42,7 +45,12 @@ fn common_named_reference<S: LayoutScalar>() {
             ),
             observe_tail: false,
             wrapping: None,
-            available_inline_extent: AvailableOf::definite(n(110.0)),
+            available_inline_extent: crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(n(110.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
             flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             text_align: TextAlign::Start,
             text_align_last: crate::TextAlignLast::Start,

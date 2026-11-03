@@ -209,7 +209,18 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
     let prior = compute_layout_with_flow(
         &baseline,
         0,
-        request_at(AvailableOf::definite(S::from_f64(40.0))),
+        request_at(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            {
+                let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            },
+        ),
     )
     .unwrap();
     assert!(prior.placed_text().is_empty());
@@ -265,7 +276,18 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
             let batch = compute_layout_with_flow(
                 &demanded,
                 0,
-                request_at(AvailableOf::definite(S::from_f64(40.0))),
+                request_at(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    {
+                        let root_input = crate::LayoutTree::node_input((demanded).tree(), 0);
+                        crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+                    },
+                ),
             )
             .unwrap();
             assert_eq!(batch.final_entries(), prior.final_entries());
@@ -317,7 +339,18 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
     let replay = compute_layout_with_flow(
         &baseline,
         0,
-        request_at(AvailableOf::definite(S::from_f64(40.0))),
+        request_at(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            {
+                let root_input = crate::LayoutTree::node_input((baseline).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            },
+        ),
     )
     .unwrap();
     assert_eq!(replay.final_entries(), prior.final_entries());

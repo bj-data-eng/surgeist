@@ -4,10 +4,11 @@ use crate::error::layout_child_geometry_error;
 use crate::geometry::{LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
 use crate::inline::PostLineClearIntent;
 use crate::{
-    AvailableOf, Clear, Compute, Edges, Float, FloatExclusion, FloatExclusionIntervalErrorOf,
-    FloatExclusionIntervalOf, FloatExclusionQueryOf, LayoutErrorKindOf, LayoutErrorOf,
-    LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutMissingContext, LayoutOperation, LayoutResultOf,
-    LayoutScalar, NodeOutputOf, Point, ScrollGeometryOf, ScrollRectOf, Size, Traverse,
+    AxisSizingRequestOf, Clear, Compute, Edges, Float, FloatExclusion,
+    FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQueryOf,
+    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf,
+    LayoutMissingContext, LayoutOperation, LayoutResultOf, LayoutScalar, NodeOutputOf, Point,
+    ScrollGeometryOf, ScrollRectOf, Size, Traverse,
 };
 
 #[derive(Clone)]
@@ -1153,14 +1154,14 @@ where
 }
 
 pub(super) struct FloatIntrinsics<S: LayoutScalar> {
-    available_inline: AvailableOf<S>,
+    available_inline: AxisSizingRequestOf<S>,
     contribution: S,
     line_start: S,
     line_end: S,
 }
 
 impl<S: LayoutScalar> FloatIntrinsics<S> {
-    pub(super) const fn new(available_inline: AvailableOf<S>) -> Self {
+    pub(super) const fn new(available_inline: AxisSizingRequestOf<S>) -> Self {
         Self {
             available_inline,
             contribution: S::ZERO,
@@ -1170,10 +1171,16 @@ impl<S: LayoutScalar> FloatIntrinsics<S> {
     }
 
     pub(super) fn add(&mut self, width: S, float: Float, clear: Clear) {
-        match self.available_inline {
-            AvailableOf::<S>::Definite(_) => {}
-            AvailableOf::<S>::MinContent => self.contribution = self.contribution.max(width),
-            AvailableOf::<S>::MaxContent => {
+        match (
+            self.available_inline.operation(),
+            self.available_inline.space(),
+        ) {
+            (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(_)) => {}
+            (crate::SizingOperation::MinContent, _) => {
+                self.contribution = self.contribution.max(width)
+            }
+            (crate::SizingOperation::MaxContent, _)
+            | (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
                 match clear {
                     Clear::None => {}
                     Clear::Left => self.line_start = S::ZERO,
@@ -1195,10 +1202,16 @@ impl<S: LayoutScalar> FloatIntrinsics<S> {
     /// Captured Text-line and float-query receipts own Max cohort composition.
     /// Neither a global side sum nor an artificial Text height participates.
     pub(super) fn add_captured(&mut self, width: S, intrinsic_demand: Option<S>) {
-        match self.available_inline {
-            AvailableOf::Definite(_) => {}
-            AvailableOf::MinContent => self.contribution = self.contribution.max(width),
-            AvailableOf::MaxContent => {
+        match (
+            self.available_inline.operation(),
+            self.available_inline.space(),
+        ) {
+            (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(_)) => {}
+            (crate::SizingOperation::MinContent, _) => {
+                self.contribution = self.contribution.max(width)
+            }
+            (crate::SizingOperation::MaxContent, _)
+            | (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
                 self.contribution = self.contribution.max(width);
                 if let Some(demand) = intrinsic_demand {
                     self.contribution = self.contribution.max(demand);

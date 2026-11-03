@@ -284,11 +284,29 @@ mod tests {
             .style(3, independent)
             .style(4, floated(10.0, 200.0))
             .style(6, clear);
-        let request = crate::LayoutRootRequestOf::viewport(crate::Size::new(
-            crate::AvailableOf::definite(S::from_f64(100.0)),
-            crate::AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap();
+        let request = crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(
+                crate::Size::new(
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        crate::SizingOperation::Normal,
+                    ),
+                    crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::Normal,
+                    ),
+                ),
+                crate::OrthogonalFallbackOf::new(
+                    crate::Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::Size::NONE,
+        );
         let batch = crate::compute_layout(&tree, 0, request).unwrap();
         // The normal block's only in-flow child is the fixed-height flow root.
         // Its own float belongs to the outer context; the 200-unit interior
@@ -327,9 +345,24 @@ mod tests {
                     FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
                     ParentFormattingContext::BlockFlow,
                 ),
-                crate::Size::new(
-                    crate::AvailableOf::definite(S::from_f64(100.0)),
-                    crate::AvailableOf::MAX_CONTENT,
+                crate::SizingRequestOf::new(
+                    crate::Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
                 ),
             );
             let output = session.compute_child(1, input).unwrap();
@@ -405,10 +438,28 @@ mod tests {
                                     axes,
                                     ParentFormattingContext::BlockFlow,
                                 ),
-                                axes.physical_size(LogicalSizeOf::new(
-                                    crate::AvailableOf::definite(S::from_f64(100.0)),
-                                    crate::AvailableOf::MAX_CONTENT,
-                                )),
+                                crate::SizingRequestOf::new(
+                                    axes.physical_size(LogicalSizeOf::new(
+                                        crate::AxisSizingRequestOf::new(
+                                            crate::AvailableSpaceOf::Definite(
+                                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0))
+                                                    .unwrap(),
+                                            ),
+                                            crate::SizingOperation::Normal,
+                                        ),
+                                        crate::AxisSizingRequestOf::new(
+                                            crate::AvailableSpaceOf::Indefinite,
+                                            crate::SizingOperation::Normal,
+                                        ),
+                                    )),
+                                    crate::OrthogonalFallbackOf::new(
+                                        crate::Size::NONE,
+                                        crate::NearestScrollportOf::Absent,
+                                        crate::Size::splat(
+                                            crate::OrthogonalFallbackLimitOf::Unbounded,
+                                        ),
+                                    ),
+                                ),
                             );
                             let output = session.compute_child(1, input).unwrap();
                             // The five-unit shared box owns no separate float

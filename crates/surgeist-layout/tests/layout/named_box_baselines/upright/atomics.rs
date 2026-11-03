@@ -7,10 +7,13 @@ fn central() -> l::InlineBaselineContext {
     l::InlineBaselineContext::Named(l::BaselineName::Central)
 }
 
-fn available<S: l::LayoutScalar>(width: f64, height: f64) -> l::Size<l::AvailableOf<S>> {
-    l::Size::new(
-        l::AvailableOf::definite(n(width)),
-        l::AvailableOf::definite(n(height)),
+fn available<S: l::LayoutScalar>(width: f64, height: f64) -> surgeist_layout::SizingRequestOf<S> {
+    crate::layout::native_request::sizing(
+        surgeist_layout::Size::new(Some(n(width)), Some(n(height))),
+        surgeist_layout::Size::new(
+            surgeist_layout::SizingOperation::Normal,
+            surgeist_layout::SizingOperation::Normal,
+        ),
     )
 }
 
@@ -28,11 +31,19 @@ fn solve<S: l::LayoutScalar>(
         Vec::new(),
     )
     .expect("actual processed captures and issued occurrence roles must bind to their real nodes");
-    l::compute_layout_with_flow(
-        &flow,
-        0,
-        l::LayoutRootRequestOf::viewport(available(width, height)).unwrap(),
-    )
+    l::compute_layout_with_flow(&flow, 0, {
+        let sizing_request = available(width, height);
+        l::LayoutRootRequestOf::standalone(
+            sizing_request,
+            surgeist_layout::FlowAxes::new(
+                surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                surgeist_layout::LayoutTree::node_input(host, 0).direction,
+            ),
+            sizing_request
+                .orthogonal_fallback()
+                .initial_containing_block(),
+        )
+    })
     .expect("native atomic adapter must retain physical size and match the child's actual Central")
 }
 

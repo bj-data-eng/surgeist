@@ -387,6 +387,7 @@ impl fmt::Display for DuplicateAttributeError {
 
 impl Error for DuplicateAttributeError {}
 
+pub(crate) mod attribute_name_index;
 pub(crate) mod bounded;
 pub(crate) mod custom_names;
 pub(crate) mod interpretation;

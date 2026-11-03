@@ -28,8 +28,8 @@ pub use flex::{
     FlexDirection, FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap,
 };
 pub use grid::{
-    GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridPlacement, RawGridLine,
-    RawGridPlacement,
+    GridAutoFlow, GridBaselineError, GridBaselineReference, GridBaselineReferences,
+    GridFlowTolerance, GridFlowToleranceOf, GridPlacement, RawGridLine, RawGridPlacement,
 };
 pub use inline::{
     AtomicInlineParticipation, BaselineSource, BlockGeneration, InlineBaselineContext,
@@ -86,6 +86,8 @@ fn validate_numeric_property<S: LayoutScalar>(
 pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     /// Intrinsic resolved reference for this node's inline lines.
     pub inline_baseline_context: InlineBaselineContext,
+    /// Resolved references for this Grid container's local alignment contexts.
+    pub grid_baseline_references: GridBaselineReferences,
     /// This child's non-inherited source preference for named inline matching.
     pub baseline_source: BaselineSource,
     pub wrap_edges: crate::WrapEdges,
@@ -206,6 +208,10 @@ pub type NodeInput = NodeInputOf<DefaultScalar>;
 impl NodeInputOf<DefaultScalar> {
     pub const DEFAULT: Self = Self {
         inline_baseline_context: InlineBaselineContext::Physical,
+        grid_baseline_references: GridBaselineReferences {
+            columns: GridBaselineReference::Physical,
+            rows: GridBaselineReference::Physical,
+        },
         baseline_source: BaselineSource::Auto,
         wrap_edges: crate::WrapEdges::AUTO,
         display: Display::Flex,
@@ -297,6 +303,10 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
     fn default() -> Self {
         Self {
             inline_baseline_context: InlineBaselineContext::Physical,
+            grid_baseline_references: GridBaselineReferences {
+                columns: GridBaselineReference::Physical,
+                rows: GridBaselineReference::Physical,
+            },
             baseline_source: BaselineSource::Auto,
             wrap_edges: crate::WrapEdges::AUTO,
             display: Display::Flex,

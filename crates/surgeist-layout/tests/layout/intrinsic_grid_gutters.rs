@@ -100,15 +100,25 @@ fn qualify<S: LayoutScalar>(intrinsic: bool) {
                     preferred(available)
                 };
                 let tree = fixture::<S>(display, gutter, width);
-                let batch = compute_layout(
-                    &tree,
-                    0,
-                    LayoutRootRequestOf::viewport(Size::new(
-                        AvailableOf::Definite(S::from_f64(available)),
-                        AvailableOf::MAX_CONTENT,
-                    ))
-                    .unwrap(),
-                )
+                let batch = compute_layout(&tree, 0, {
+                    let sizing_request = crate::layout::native_request::sizing(
+                        surgeist_layout::Size::new(Some(S::from_f64(available)), None),
+                        surgeist_layout::Size::new(
+                            surgeist_layout::SizingOperation::Normal,
+                            surgeist_layout::SizingOperation::Normal,
+                        ),
+                    );
+                    LayoutRootRequestOf::standalone(
+                        sizing_request,
+                        surgeist_layout::FlowAxes::new(
+                            surgeist_layout::WritingMode::HorizontalTb,
+                            surgeist_layout::Direction::Ltr,
+                        ),
+                        sizing_request
+                            .orthogonal_fallback()
+                            .initial_containing_block(),
+                    )
+                })
                 .unwrap();
                 let root = batch
                     .unrounded_entries()
@@ -264,8 +274,25 @@ fn qualify_inherited_columns<S: LayoutScalar>() {
                     }),
                 ],
             };
-            let request =
-                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap();
+            let request = {
+                let sizing_request = crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                );
+                LayoutRootRequestOf::standalone(
+                    sizing_request,
+                    surgeist_layout::FlowAxes::new(
+                        surgeist_layout::WritingMode::HorizontalTb,
+                        surgeist_layout::Direction::Ltr,
+                    ),
+                    sizing_request
+                        .orthogonal_fallback()
+                        .initial_containing_block(),
+                )
+            };
             let batch = match compute_layout(&tree, 0, request) {
                 Ok(batch) => batch,
                 Err(error) => {
@@ -440,12 +467,25 @@ fn qualify_reciprocal_axis_modes<S: LayoutScalar>() {
                             }),
                         ],
                     };
-                    let batch = match compute_layout(
-                        &tree,
-                        0,
-                        LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT))
-                            .unwrap(),
-                    ) {
+                    let batch = match compute_layout(&tree, 0, {
+                        let sizing_request = crate::layout::native_request::sizing(
+                            surgeist_layout::Size::new(None, None),
+                            surgeist_layout::Size::new(
+                                surgeist_layout::SizingOperation::Normal,
+                                surgeist_layout::SizingOperation::Normal,
+                            ),
+                        );
+                        LayoutRootRequestOf::standalone(
+                            sizing_request,
+                            surgeist_layout::FlowAxes::new(
+                                writing_mode,
+                                surgeist_layout::Direction::Ltr,
+                            ),
+                            sizing_request
+                                .orthogonal_fallback()
+                                .initial_containing_block(),
+                        )
+                    }) {
                         Ok(batch) => batch,
                         Err(error) => {
                             failures.push(format!("{writing_mode:?} columns={columns} {display:?} overflowing={overflowing}: {error:?}"));
@@ -716,11 +756,25 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(
-            &capture,
-            0,
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
-        )
+        let batch = compute_layout_with_flow(&capture, 0, {
+            let sizing_request = crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::Normal,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            );
+            LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::WritingMode::HorizontalTb,
+                    surgeist_layout::Direction::Ltr,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        })
         .unwrap();
         let output = |node| {
             batch
@@ -866,11 +920,25 @@ fn qualify_max_constrained_alignment<S: LayoutScalar>() {
             root.max_size.width =
                 MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(2.0)).unwrap());
             tree.inputs[0] = LayoutInputOf::box_input(root);
-            let batch = compute_layout(
-                &tree,
-                0,
-                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
-            )
+            let batch = compute_layout(&tree, 0, {
+                let sizing_request = crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                );
+                LayoutRootRequestOf::standalone(
+                    sizing_request,
+                    surgeist_layout::FlowAxes::new(
+                        surgeist_layout::WritingMode::HorizontalTb,
+                        surgeist_layout::Direction::Ltr,
+                    ),
+                    sizing_request
+                        .orthogonal_fallback()
+                        .initial_containing_block(),
+                )
+            })
             .unwrap();
             let output = |node| {
                 batch
@@ -1045,11 +1113,22 @@ fn qualify_orthogonal_standalone_contribution<S: LayoutScalar>() {
             // share one such track, so max(40,60)=60; the two inherited tracks
             // in the perpendicular dimension sum30+50=80. Writing Modes4 §6.1
             // maps those literal dimensions to60x80 or reciprocal80x60.
-            let batch = match compute_layout(
-                &tree,
-                0,
-                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
-            ) {
+            let batch = match compute_layout(&tree, 0, {
+                let sizing_request = crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                );
+                LayoutRootRequestOf::standalone(
+                    sizing_request,
+                    surgeist_layout::FlowAxes::new(parent_mode, surgeist_layout::Direction::Ltr),
+                    sizing_request
+                        .orthogonal_fallback()
+                        .initial_containing_block(),
+                )
+            }) {
                 Ok(batch) => batch,
                 Err(error) => {
                     failures.push(format!(
@@ -1145,7 +1224,7 @@ impl<S: LayoutScalar> LayoutTree for OppositeTrackMeasuredGrid<S> {
             return None;
         }
         let known = request.known_content_size();
-        let available = request.available_content_size();
+        let available = request.content_sizing_request().axes();
         let (known_inline, known_block, available_inline, available_block) = match self.writing_mode
         {
             WritingMode::HorizontalTb => {
@@ -1159,19 +1238,26 @@ impl<S: LayoutScalar> LayoutTree for OppositeTrackMeasuredGrid<S> {
         // content dimensions have priority; definite inline space uses the
         // declared min/max shrink-to-fit interval. No phase/call-count input
         // or fake compute result influences the response.
-        let opposite =
-            known_block.or_else(|| available_block.definite_value().map(|value| value.get()));
+        let opposite = known_block.or_else(|| {
+            available_block
+                .space()
+                .definite_size()
+                .map(|value| value.get())
+        });
         let natural = S::from_f64(if opposite == Some(S::from_f64(20.0)) {
             40.0
         } else {
             80.0
         });
-        let inline = known_inline.unwrap_or_else(|| match available_inline {
-            MeasurementAvailableOf::MinContent => S::from_f64(10.0),
-            MeasurementAvailableOf::MaxContent => natural,
-            MeasurementAvailableOf::Definite(value) => {
-                value.get().min(natural).max(S::from_f64(10.0))
-            }
+        let inline = known_inline.unwrap_or_else(|| match available_inline.operation() {
+            SizingOperation::MinContent => S::from_f64(10.0),
+            SizingOperation::MaxContent => natural,
+            SizingOperation::Normal => available_inline
+                .space()
+                .definite_size()
+                .map_or(natural, |value| {
+                    value.get().min(natural).max(S::from_f64(10.0))
+                }),
         });
         let measured = physical_size(
             self.writing_mode,
@@ -1224,11 +1310,22 @@ fn qualify_first_axis_opposite_estimate<S: LayoutScalar>() {
             // Therefore the initial inline MAX is 40 vs 80. The provider's
             // MIN remains 10 at either basis, so the later MIN-change condition
             // does not permit a column revisit to replace the AUTO control.
-            let batch = compute_layout(
-                &tree,
-                0,
-                LayoutRootRequestOf::viewport(Size::splat(AvailableOf::MAX_CONTENT)).unwrap(),
-            )
+            let batch = compute_layout(&tree, 0, {
+                let sizing_request = crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(
+                        surgeist_layout::SizingOperation::Normal,
+                        surgeist_layout::SizingOperation::Normal,
+                    ),
+                );
+                LayoutRootRequestOf::standalone(
+                    sizing_request,
+                    surgeist_layout::FlowAxes::new(writing_mode, surgeist_layout::Direction::Ltr),
+                    sizing_request
+                        .orthogonal_fallback()
+                        .initial_containing_block(),
+                )
+            })
             .unwrap();
             let output = |node| {
                 batch

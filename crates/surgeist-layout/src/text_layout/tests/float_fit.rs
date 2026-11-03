@@ -61,7 +61,15 @@ fn native_batch<S: LayoutScalar>(
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(width)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(width, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     if with_float {
         let float = batch
             .final_entries()
@@ -218,7 +226,7 @@ fn fitting_word_stays_beside_float_and_float_free_overflow_never_fabricates_clea
 }
 
 fn intrinsic_root_batch<S: LayoutScalar>(
-    available: AvailableOf<S>,
+    available: crate::AxisSizingRequestOf<S>,
 ) -> (PreparedParagraph, CompletedLayoutBatchOf<u32, S>) {
     let paragraph = PreparedParagraph::plain(
         1,
@@ -264,8 +272,39 @@ fn intrinsic_root_batch<S: LayoutScalar>(
     .unwrap();
     // This is the actual root PerformLayout front with both preferred axes
     // AUTO. No separate ComputeSize or caller-provided known width is used.
-    let request =
-        LayoutRootRequestOf::viewport(Size::new(available, AvailableOf::MAX_CONTENT)).unwrap();
+    let request = {
+        let containing_flow_axes = {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        };
+        let requested_axes = Size::new(
+            available,
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::MaxContent,
+            ),
+        );
+        let mut logical_requests = containing_flow_axes.logical_size(requested_axes);
+        // These fixtures perform ordinary block-size layout independently of
+        // the explicitly requested inline contribution operation.
+        logical_requests.block = logical_requests
+            .block
+            .with_operation(crate::SizingOperation::Normal);
+        let axes = containing_flow_axes.physical_size(logical_requests);
+        // The old Native NoParent fixture explicitly supplied these percentage
+        // bases. It supplied no independent ICB dimensions or ancestor scrollport.
+        let percentage_parent = requested_axes.map(|axis| axis.space().definite_size());
+        let fallback = crate::OrthogonalFallbackOf::new(
+            crate::Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+        );
+        crate::LayoutRootRequestOf::standalone(
+            crate::SizingRequestOf::new(axes, fallback),
+            containing_flow_axes,
+            percentage_parent,
+        )
+    };
     let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
     let float = batch
         .final_entries()
@@ -280,7 +319,10 @@ fn intrinsic_root_batch<S: LayoutScalar>(
 }
 
 fn assert_min_content_root<S: LayoutScalar>() {
-    let (paragraph, batch) = intrinsic_root_batch::<S>(AvailableOf::MIN_CONTENT);
+    let (paragraph, batch) = intrinsic_root_batch::<S>(crate::AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Indefinite,
+        crate::SizingOperation::MinContent,
+    ));
     assert_actual_text(&batch, &paragraph, "XXXX", 40.0);
     let root = batch
         .final_entries()
@@ -298,7 +340,10 @@ fn assert_min_content_root<S: LayoutScalar>() {
 }
 
 fn assert_max_content_root<S: LayoutScalar>() {
-    let (paragraph, batch) = intrinsic_root_batch::<S>(AvailableOf::MAX_CONTENT);
+    let (paragraph, batch) = intrinsic_root_batch::<S>(crate::AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Indefinite,
+        crate::SizingOperation::MaxContent,
+    ));
     assert_actual_text(&batch, &paragraph, "XXXX", 40.0);
     let root = batch
         .final_entries()

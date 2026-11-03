@@ -1,0 +1,12 @@
+<test name="grid-reference-upright__border_box_ltr" measurement-version="4" observation-frame="root-border" use-rounding="true">
+  <viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[&quot;/&quot;]}" grid-alignment-reference="{&quot;profile&quot;:1,&quot;display&quot;:&quot;grid&quot;,&quot;writingMode&quot;:&quot;vertical-lr&quot;,&quot;direction&quot;:&quot;ltr&quot;,&quot;textOrientation&quot;:&quot;upright&quot;,&quot;dominantBaseline&quot;:&quot;auto&quot;,&quot;alignmentBaseline&quot;:&quot;auto&quot;,&quot;font&quot;:{&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;family&quot;:&quot;ahem&quot;,&quot;size&quot;:10.0,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;loaded&quot;:true},&quot;reference&quot;:&quot;central&quot;}" source-tag="div" layout-ready-inline-root="true" display="grid" direction="ltr" writing-mode="vertical-lr" width="40px" height="10px" font-family="ahem" font-size="10px"/>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="40" height="10"/>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="40" height="10" scroll-width="40" scroll-height="10" client-width="40" client-height="10"/>
+  </diagnostics>
+</test>

@@ -244,7 +244,15 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(batch.placed_text().len(), 3);
     assert!(
         batch
@@ -273,7 +281,15 @@ fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
         gaps: Vec::new(), scopes: Vec::new(), child_order: Vec::new() }, Vec::new()).unwrap_or_else(|error| {
         panic!("the complete global inline pair [1,5] must support its actual paragraph projections: {error:?}")
     });
-    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(batch.placed_text().len(), 3);
     let generated: Vec<_> = batch
         .final_inline_fragments()
@@ -711,7 +727,15 @@ fn middle_continuation_with_neither_endpoint_keeps_one_global_owner_and_local_ge
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     let mut facts: Vec<_> = batch
         .final_inline_fragments()
         .iter()
@@ -770,7 +794,15 @@ fn genuine_nonemitting_endpoint_paragraphs_supply_remote_controls_without_genera
         Vec::new(),
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(500.0)).unwrap();
+    let batch = compute_layout_with_flow(
+        &capture,
+        0,
+        request(500.0, {
+            let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+            crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+        }),
+    )
+    .unwrap();
     assert_eq!(batch.placed_text().len(), 7);
     let generated: Vec<_> = batch
         .final_inline_fragments()
@@ -932,7 +964,15 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
             Vec::new(),
         )
         .unwrap();
-        compute_layout_with_flow(&capture, 0, request(500.0)).unwrap()
+        compute_layout_with_flow(
+            &capture,
+            0,
+            request(500.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap()
     };
     let zero = compute(&tree);
     for (node, kind, border, padding) in [

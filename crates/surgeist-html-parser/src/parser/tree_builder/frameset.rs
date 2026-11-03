@@ -262,8 +262,12 @@ impl HeadState<'_> {
                     .kernel
                     .pop(c, self.script.as_ref().map(|script| &script.capability))?
                     .ok_or(KernelError::EmptyStack)?;
+                // HTML877d "in frameset": the switch needs a null fragment
+                // context element and a current node that is no longer a
+                // frameset.
+                let fragment = self.before.kernel.session.fragment_context(c)?.is_some();
                 let current = self.before.kernel.current(c)?;
-                if !self.before.kernel.named(&current, "frameset", c)? {
+                if !fragment && !self.before.kernel.named(&current, "frameset", c)? {
                     self.set_mode(HtmlInsertionMode::AfterFrameset, c)?;
                 }
                 return self.discard(c);

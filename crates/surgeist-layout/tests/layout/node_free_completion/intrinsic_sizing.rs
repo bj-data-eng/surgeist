@@ -8,7 +8,22 @@ fn auto_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
         // are genuinely auto, with the original zero edges/default constraints.
         fixture.tree.input.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO);
         let pin = fixture.inventory_facts(force);
-        for available in [l::AvailableOf::MIN_CONTENT, l::AvailableOf::MAX_CONTENT] {
+        for available in [
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::MinContent,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            ),
+            crate::layout::native_request::sizing(
+                surgeist_layout::Size::new(None, None),
+                surgeist_layout::Size::new(
+                    surgeist_layout::SizingOperation::MaxContent,
+                    surgeist_layout::SizingOperation::Normal,
+                ),
+            ),
+        ] {
             let batch = fixture.try_compute(fixture.inventory(), available).unwrap();
             let root = batch
                 .final_entries()

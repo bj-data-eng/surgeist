@@ -72,9 +72,24 @@ fn parent_context_gates_only_block_boundary_collapse_in_both_scalar_lanes() {
                     Size::NONE,
                     Size::new(Some(S::from_f64(100.0)), Some(S::from_f64(100.0))),
                     ContainingLayoutContext::new(flow_axes, parent_context),
-                    Size::new(
-                        AvailableOf::definite(S::from_f64(100.0)),
-                        AvailableOf::MAX_CONTENT,
+                    SizingRequestOf::new(
+                        Size::new(
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Definite(
+                                    NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                                ),
+                                SizingOperation::Normal,
+                            ),
+                            AxisSizingRequestOf::new(
+                                AvailableSpaceOf::Indefinite,
+                                SizingOperation::Normal,
+                            ),
+                        ),
+                        OrthogonalFallbackOf::new(
+                            Size::NONE,
+                            NearestScrollportOf::Unknown,
+                            Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                        ),
                     ),
                 ),
             )
@@ -116,7 +131,19 @@ fn parent_context_gates_only_block_boundary_collapse_in_both_scalar_lanes() {
                 Size::NONE,
                 Size::new(Some(S::from_f64(100.0)), Some(S::from_f64(100.0))),
                 ContainingLayoutContext::new(flow_axes, ParentFormattingContext::BlockFlow),
-                Size::splat(AvailableOf::definite(S::from_f64(100.0))),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .expect("root-mode block layout succeeds");
@@ -202,7 +229,19 @@ where
                 Size::NONE,
                 Size::splat(Some(S::from_f64(100.0))),
                 ContainingLayoutContext::new(flow_axes, ParentFormattingContext::BlockFlow),
-                Size::splat(AvailableOf::definite(S::from_f64(100.0))),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .expect("block layout with physical margin sentinels succeeds");
@@ -266,7 +305,19 @@ fn assert_fri06_mr02_physical_edge_leaf_collapse_selection<S: LayoutScalar>() {
                     Size::NONE,
                     Size::splat(Some(S::from_f64(100.0))),
                     ContainingLayoutContext::new(flow_axes, ParentFormattingContext::BlockFlow),
-                    Size::splat(AvailableOf::definite(S::from_f64(100.0))),
+                    SizingRequestOf::new(
+                        Size::splat(AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        )),
+                        OrthogonalFallbackOf::new(
+                            Size::NONE,
+                            NearestScrollportOf::Unknown,
+                            Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                        ),
+                    ),
                 )
                 .expect("physical-edge leaf input is valid");
                 let output = compute_leaf(input, &style, |_| Ok::<_, ()>(Size::ZERO))
@@ -329,11 +380,25 @@ fn replaced_block_child_keeps_measured_auto_inline_size_in_both_scalar_lanes() {
         let batch = compute_layout(
             &tree,
             0,
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(scalar(200.0)),
-                AvailableOf::MAX_CONTENT,
-            ))
-            .expect("finite viewport request"),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::new(Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()), None),
+                OrthogonalFallbackOf::new(
+                    Size::new(Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()), None),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
         )
         .expect("measured block children lay out");
 
@@ -395,11 +460,30 @@ fn assert_replaced_block_consumes_host_selected_content_sizes<S: LayoutScalar>()
                 let batch = compute_layout(
                     &tree,
                     0,
-                    LayoutRootRequestOf::viewport(Size::new(
-                        AvailableOf::definite(scalar(400.0)),
-                        AvailableOf::MAX_CONTENT,
-                    ))
-                    .expect("finite host-measurement viewport"),
+                    crate::test_support::requests::NativeRootFrameOf::new(
+                        FlowAxes::new(
+                            tree.node_input(0).writing_mode,
+                            tree.node_input(0).direction,
+                        ),
+                        Size::new(Some(NonNegativeFiniteOf::new(scalar(400.0)).unwrap()), None),
+                        OrthogonalFallbackOf::new(
+                            Size::new(Some(NonNegativeFiniteOf::new(scalar(400.0)).unwrap()), None),
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    )
+                    .request(Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(
+                                NonNegativeFiniteOf::new(scalar(400.0)).unwrap(),
+                            ),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
+                        ),
+                    )),
                 )
                 .expect("host-selected content measurement lays out");
                 let expected = if authored_size {
@@ -479,11 +563,25 @@ fn assert_replaced_zero_height_leaf_prevents_margin_collapse_through<S: LayoutSc
         let batch = compute_layout(
             &tree,
             0,
-            LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(scalar(200.0)),
-                AvailableOf::MAX_CONTENT,
-            ))
-            .expect("finite margin viewport"),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::new(Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()), None),
+                OrthogonalFallbackOf::new(
+                    Size::new(Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()), None),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )),
         )
         .expect("zero-height measured leaf and sibling lay out");
         let first = public_final_output(&batch, 1);
@@ -558,8 +656,22 @@ fn block_layout_ignores_item_order_for_geometry() {
                     ..NodeInput::default()
                 },
             );
-        let request = LayoutRootRequest::viewport(Size::splat(Available::definite(100.0)))
-            .expect("finite viewport is valid");
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(
+                tree.node_input(0).writing_mode,
+                tree.node_input(0).direction,
+            ),
+            Size::splat(Some(NonNegativeFiniteOf::new(100.0).unwrap())),
+            OrthogonalFallbackOf::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(100.0).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+            SizingOperation::Normal,
+        )));
         let batch = compute_layout(&tree, 0, request).expect("ordinary block layout succeeds");
 
         [
@@ -619,8 +731,22 @@ fn assert_ordinary_block_flow<S: LayoutScalar>(
         )
         .with_style(1, child_style.clone())
         .with_style(2, child_style);
-    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(100.0))))
-        .expect("finite viewport is valid");
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(
+            tree.node_input(0).writing_mode,
+            tree.node_input(0).direction,
+        ),
+        Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+        OrthogonalFallbackOf::new(
+            Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+        SizingOperation::Normal,
+    )));
 
     let batch = compute_layout(&tree, 0, request).expect("ordinary block layout succeeds");
 
@@ -803,9 +929,19 @@ fn assert_ordinary_block_boundaries<S: LayoutScalar>() {
                     ..NodeInputOf::default()
                 },
             );
-        let request =
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(100.0))))
-                .expect("finite viewport is valid");
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+            OrthogonalFallbackOf::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+            SizingOperation::Normal,
+        )));
         let relative =
             compute_layout(&relative_tree, 0, request).expect("relative block layout succeeds");
 
@@ -857,9 +993,19 @@ fn assert_ordinary_block_boundaries<S: LayoutScalar>() {
                     ..NodeInputOf::default()
                 },
             );
-        let request =
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(100.0))))
-                .expect("finite viewport is valid");
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+            OrthogonalFallbackOf::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+            SizingOperation::Normal,
+        )));
         let inline =
             compute_layout(&inline_tree, 0, request).expect("inline block layout succeeds");
 
@@ -908,9 +1054,19 @@ fn assert_ordinary_block_boundaries<S: LayoutScalar>() {
                     ..NodeInputOf::default()
                 },
             );
-        let request =
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(100.0))))
-                .expect("finite viewport is valid");
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+            OrthogonalFallbackOf::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+            SizingOperation::Normal,
+        )));
         let static_position =
             compute_layout(&static_tree, 0, request).expect("static fallback layout succeeds");
 
@@ -990,7 +1146,19 @@ where
                     flow_axes,
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::splat(AvailableOf::definite(S::from_f64(100.0))),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .expect("block layout succeeds");
@@ -1063,8 +1231,22 @@ fn assert_ordinary_block_boundary_inline_report_overflow<S: LayoutScalar>() {
         let batch = compute_layout(
             &tree,
             0,
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(100.0))))
-                .expect("finite viewport is valid"),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+                OrthogonalFallbackOf::new(
+                    Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ))),
         )
         .expect("inline run layout succeeds");
         let root = public_final_output(&batch, 0);
@@ -1137,8 +1319,22 @@ fn assert_ordinary_block_boundaries_keep_inline_content_coordinates<S: LayoutSca
         let batch = compute_layout(
             &tree,
             0,
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(50.0))))
-                .expect("finite viewport is valid"),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::splat(Some(NonNegativeFiniteOf::new(scalar(50.0)).unwrap())),
+                OrthogonalFallbackOf::new(
+                    Size::splat(Some(NonNegativeFiniteOf::new(scalar(50.0)).unwrap())),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(50.0)).unwrap()),
+                SizingOperation::Normal,
+            ))),
         )
         .expect("padded inline block layout succeeds");
         let root = public_final_output(&batch, 0);
@@ -1254,8 +1450,22 @@ fn assert_ordinary_block_boundaries_use_logical_float_bfc_cursor<S: LayoutScalar
         let batch = compute_layout(
             &tree,
             0,
-            LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(100.0))))
-                .expect("finite viewport is valid"),
+            crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+                OrthogonalFallbackOf::new(
+                    Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ))),
         )
         .expect("vertical float and BFC layout succeeds");
 
@@ -1314,8 +1524,22 @@ fn assert_ordinary_block_logical_sizing<S: LayoutScalar>(writing_mode: WritingMo
                 ..NodeInputOf::default()
             },
         );
-    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(100.0))))
-        .expect("finite viewport is valid");
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(
+            tree.node_input(0).writing_mode,
+            tree.node_input(0).direction,
+        ),
+        Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+        OrthogonalFallbackOf::new(
+            Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+        SizingOperation::Normal,
+    )));
 
     let batch = compute_layout(&tree, 0, request).expect("ordinary block layout succeeds");
     let root = public_final_output(&batch, 0);
@@ -1411,8 +1635,22 @@ fn assert_ordinary_block_collapse_relationship<S: LayoutScalar>(
         };
         tree = tree.with_measurement(1, measured);
     }
-    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(100.0))))
-        .expect("finite viewport is valid");
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(
+            tree.node_input(0).writing_mode,
+            tree.node_input(0).direction,
+        ),
+        Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+        OrthogonalFallbackOf::new(
+            Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+        SizingOperation::Normal,
+    )));
 
     let batch = compute_layout(&tree, 0, request).expect("ordinary block layout succeeds");
 
@@ -1473,11 +1711,34 @@ fn assert_ordinary_block_relationship_matrix<S: LayoutScalar>() {
         if measured_leaf {
             tree = tree.with_measurement(1, Size::new(scalar(5.0), scalar(10.0)));
         }
-        let request = LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(scalar(100.0)),
-            AvailableOf::definite(scalar(200.0)),
-        ))
-        .expect("finite viewport is valid");
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(
+                tree.node_input(0).writing_mode,
+                tree.node_input(0).direction,
+            ),
+            Size::new(
+                Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::new(
+                    Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+                ),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+        ));
 
         let batch = compute_layout(&tree, 0, request).expect("orthogonal layout succeeds");
         assert_eq!(
@@ -1517,11 +1778,34 @@ fn assert_ordinary_block_relationship_matrix<S: LayoutScalar>() {
             if measured_leaf {
                 tree = tree.with_measurement(1, Size::new(scalar(10.0), scalar(5.0)));
             }
-            let request = LayoutRootRequestOf::viewport(Size::new(
-                AvailableOf::definite(scalar(100.0)),
-                AvailableOf::definite(scalar(200.0)),
-            ))
-            .expect("finite viewport is valid");
+            let request = crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(
+                    tree.node_input(0).writing_mode,
+                    tree.node_input(0).direction,
+                ),
+                Size::new(
+                    Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::new(
+                        Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                        Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+                    ),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+            ));
 
             let batch = compute_layout(&tree, 0, request).expect("parallel layout succeeds");
             assert_eq!(
@@ -1583,8 +1867,22 @@ fn assert_ordinary_block_opposing_flow_collapse<S: LayoutScalar>(measured_leaf: 
     if measured_leaf {
         tree = tree.with_measurement(1, Size::new(S::ZERO, scalar(10.0)));
     }
-    let request = LayoutRootRequestOf::viewport(Size::splat(AvailableOf::definite(scalar(100.0))))
-        .expect("finite viewport is valid");
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(
+            tree.node_input(0).writing_mode,
+            tree.node_input(0).direction,
+        ),
+        Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+        OrthogonalFallbackOf::new(
+            Size::splat(Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+        SizingOperation::Normal,
+    )));
 
     let batch = compute_layout(&tree, 0, request).expect("opposing block layout succeeds");
 
@@ -1641,11 +1939,34 @@ fn assert_ordinary_block_orthogonal_inline_margin_subtraction<S: LayoutScalar>(
     if measured_leaf {
         tree = tree.with_measurement(1, Size::new(scalar(5.0), scalar(10.0)));
     }
-    let request = LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::definite(scalar(100.0)),
-        AvailableOf::definite(scalar(200.0)),
-    ))
-    .expect("finite viewport is valid");
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(
+            tree.node_input(0).writing_mode,
+            tree.node_input(0).direction,
+        ),
+        Size::new(
+            Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+            Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+        ),
+        OrthogonalFallbackOf::new(
+            Size::new(
+                Some(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+                Some(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+            ),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(100.0)).unwrap()),
+            SizingOperation::Normal,
+        ),
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(scalar(200.0)).unwrap()),
+            SizingOperation::Normal,
+        ),
+    ));
 
     let batch = compute_layout(&tree, 0, request).expect("orthogonal layout succeeds");
 
@@ -1761,7 +2082,20 @@ fn block_layout_stacks_in_flow_children_vertically() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1839,7 +2173,20 @@ fn block_in_flow_affine_margin_resolves_against_containing_block_width() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::Definite(200.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(200.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1890,7 +2237,20 @@ fn block_container_affine_padding_uses_parent_basis() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(100.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -1946,7 +2306,17 @@ fn block_auto_width_includes_in_flow_child_horizontal_margins() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2020,7 +2390,20 @@ fn block_layout_collapses_adjacent_in_flow_vertical_margins() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2082,7 +2465,20 @@ fn block_layout_collapses_first_child_top_margin_through_parent() {
                 ),
                 crate::ParentFormattingContext::BlockFlow,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2151,7 +2547,20 @@ fn block_scroll_container_keeps_first_child_top_margin_inside() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2221,7 +2630,20 @@ fn block_rtl_scrollbar_gutter_uses_left_inset() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2281,7 +2703,20 @@ fn block_layout_collapses_last_child_bottom_margin_through_parent() {
                 ),
                 crate::ParentFormattingContext::BlockFlow,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2346,7 +2781,17 @@ fn block_layout_keeps_grid_child_margins_inside_parent_flow() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2434,7 +2879,20 @@ fn block_layout_collapses_margins_through_empty_in_flow_child() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2593,7 +3051,20 @@ fn block_empty_auto_height_can_collapse_through() {
                 ),
                 crate::ParentFormattingContext::BlockFlow,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2758,7 +3229,20 @@ fn block_with_padding_reports_own_margins_when_child_collapse_is_blocked() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -2828,9 +3312,26 @@ fn assert_collapsible_percentage_margins_use_containing_inline_extent<S: LayoutS
                 crate::geometry::FlowAxes::new(writing_mode, Direction::Ltr),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(
-                AvailableOf::definite(S::from_f64(40.0)),
-                AvailableOf::definite(S::from_f64(120.0)),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            NonNegativeFiniteOf::new(S::from_f64(120.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
             ),
         ),
     )
@@ -2910,7 +3411,20 @@ fn block_in_flow_invalid_numeric_horizontal_margin_uses_zero_fallback() {
                 crate::geometry::FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(f32::MAX), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(f32::MAX).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .expect("the in-flow invalid-numeric margin falls back to zero");
@@ -2979,7 +3493,20 @@ fn block_layout_positions_in_flow_children_from_right_edge_in_rtl() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3046,7 +3573,20 @@ fn block_layout_expands_horizontal_auto_margins_for_in_flow_children() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3113,7 +3653,20 @@ fn block_content_size_includes_visible_child_overflow_content() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3181,7 +3734,20 @@ fn block_relative_child_inset_offsets_final_layout_location() {
                 ),
                 crate::ParentFormattingContext::BlockFlow,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3246,7 +3812,20 @@ fn block_layout_stretches_auto_width_in_flow_children() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3314,7 +3893,20 @@ fn block_compute_size_uses_in_flow_children_for_auto_height() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3471,7 +4063,20 @@ fn block_compute_size_uses_definite_min_max_without_measuring_children() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3634,7 +4239,23 @@ fn block_definite_compute_size_keeps_grid_children_on_fast_path_until_grid_basel
                     ),
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::new(Available::definite(500.0), Available::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .unwrap();
@@ -3686,7 +4307,20 @@ fn block_auto_height_clamps_to_max_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3741,7 +4375,17 @@ fn block_auto_size_applies_aspect_ratio_to_max_size() {
                 ),
                 crate::ParentFormattingContext::NoParent,
             ),
-            Size::new(Available::MAX_CONTENT, Available::MAX_CONTENT),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Unknown,
+                    Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                ),
+            ),
         ),
     )
     .unwrap();
@@ -3791,7 +4435,23 @@ fn block_legacy_text_align_offsets_table_child_in_free_inline_space() {
                     ),
                     crate::ParentFormattingContext::NoParent,
                 ),
-                Size::new(Available::definite(300.0), Available::MAX_CONTENT),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(300.0).unwrap()),
+                            SizingOperation::Normal,
+                        ),
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
+                        ),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Unknown,
+                        Size::splat(OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
             ),
         )
         .unwrap();

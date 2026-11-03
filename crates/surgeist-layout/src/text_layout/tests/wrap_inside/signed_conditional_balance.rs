@@ -59,7 +59,18 @@ fn signed_run<S: LayoutScalar>(
     compute_layout_with_flow(
         &flow,
         0,
-        request_at(AvailableOf::definite(S::from_f64(width))),
+        request_at(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            {
+                let root_input = crate::LayoutTree::node_input((flow).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            },
+        ),
     )
     .unwrap()
 }

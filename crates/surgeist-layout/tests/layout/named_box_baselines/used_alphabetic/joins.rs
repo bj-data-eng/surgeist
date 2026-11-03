@@ -276,7 +276,7 @@ fn compute<S: l::LayoutScalar>(
     host: &Host<S>,
     bindings: &[l::TextParagraphBinding<u32>],
     changed: &[u32],
-    available: l::Size<l::AvailableOf<S>>,
+    available: surgeist_layout::SizingRequestOf<S>,
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
     let flow = l::LayoutFlowInput::try_new(
         host,
@@ -289,7 +289,19 @@ fn compute<S: l::LayoutScalar>(
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,
-        l::LayoutRootRequestOf::viewport(available).unwrap(),
+        {
+            let sizing_request = available;
+            l::LayoutRootRequestOf::standalone(
+                sizing_request,
+                surgeist_layout::FlowAxes::new(
+                    surgeist_layout::LayoutTree::node_input(host, 0).writing_mode,
+                    surgeist_layout::LayoutTree::node_input(host, 0).direction,
+                ),
+                sizing_request
+                    .orthogonal_fallback()
+                    .initial_containing_block(),
+            )
+        },
         changed,
     )
 }
@@ -726,14 +738,20 @@ fn fitting<S: l::LayoutScalar>() {
                 input.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO)
             });
             let inline = if minimum {
-                l::AvailableOf::MIN_CONTENT
+                surgeist_layout::SizingOperation::MinContent
             } else {
-                l::AvailableOf::MAX_CONTENT
+                surgeist_layout::SizingOperation::MaxContent
             };
             let available = if cw {
-                l::Size::new(l::AvailableOf::MAX_CONTENT, inline)
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(surgeist_layout::SizingOperation::Normal, inline),
+                )
             } else {
-                l::Size::new(inline, l::AvailableOf::MAX_CONTENT)
+                crate::layout::native_request::sizing(
+                    surgeist_layout::Size::new(None, None),
+                    surgeist_layout::Size::new(inline, surgeist_layout::SizingOperation::Normal),
+                )
             };
             let batch = compute(&host, &bindings, &[], available).unwrap();
             let (width, height, first, last) =
@@ -1117,12 +1135,23 @@ impl<S: l::LayoutScalar> ShapeHost<S> {
         l::compute_layout_with_flow_invalidated(
             &flow,
             0,
-            l::LayoutRootRequestOf::viewport(if clockwise(self.mode) {
-                space(40.0, 10.0)
-            } else {
-                space(10.0, 40.0)
-            })
-            .unwrap(),
+            {
+                let sizing_request = if clockwise(self.mode) {
+                    space(40.0, 10.0)
+                } else {
+                    space(10.0, 40.0)
+                };
+                l::LayoutRootRequestOf::standalone(
+                    sizing_request,
+                    surgeist_layout::FlowAxes::new(
+                        surgeist_layout::LayoutTree::node_input(self, 0).writing_mode,
+                        surgeist_layout::LayoutTree::node_input(self, 0).direction,
+                    ),
+                    sizing_request
+                        .orthogonal_fallback()
+                        .initial_containing_block(),
+                )
+            },
             changed,
         )
     }

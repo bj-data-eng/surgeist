@@ -59,7 +59,25 @@ fn end_edge_stops_local_hanging_and_moves_the_actual_line_below_a_float_both_sca
                 false,
                 Some(40.0),
                 true,
-                AvailableOf::definite(S::from_f64(40.0)),
+                crate::SizingRequestOf::new(
+                    crate::Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(40.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             );
             let lines = finalized_lines(&batch);
             assert_eq!(lines.len(), 2);
@@ -135,7 +153,25 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
                 false,
                 Some(100.0),
                 false,
-                AvailableOf::definite(S::from_f64(100.0)),
+                crate::SizingRequestOf::new(
+                    crate::Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             );
             let lines = finalized_lines(&batch);
             assert_eq!(lines.len(), 1);
@@ -177,7 +213,23 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
                 false,
                 None,
                 false,
-                AvailableOf::MAX_CONTENT,
+                crate::SizingRequestOf::new(
+                    crate::Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::MaxContent,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             );
             assert_eq!(output(&intrinsic, 0).size.width, S::from_f64(advance));
             assert_eq!(finalized_lines(&intrinsic)[0].feedback().advance, advance);
@@ -198,7 +250,25 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
         false,
         Some(100.0),
         false,
-        AvailableOf::definite(100.0),
+        crate::SizingRequestOf::new(
+            crate::Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     let line = finalized_lines(&batch).remove(0);
     assert_eq!(line.feedback().advance, 30.0);
@@ -239,7 +309,25 @@ fn endpoint_node_uses_its_own_direction_and_control_fragment_without_a_scope_env
                 own_rtl,
                 Some(100.0),
                 false,
-                AvailableOf::definite(S::from_f64(100.0)),
+                crate::SizingRequestOf::new(
+                    crate::Size::new(
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            crate::SizingOperation::Normal,
+                        ),
+                    ),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
             );
             let strip = output(&batch, 20);
             assert_eq!(strip.size, Size::new(S::from_f64(8.0), S::ZERO));
@@ -317,7 +405,25 @@ fn generated_separator_scope_rectangles_keep_their_own_geometry_when_endpoints_w
         false,
         Some(500.0),
         false,
-        AvailableOf::definite(500.0),
+        crate::SizingRequestOf::new(
+            crate::Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(500.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     let widened = fixture.compute(
         InlineBoundaryEdgeOf::try_new(0.0, 3.0, 5.0).unwrap(),
@@ -325,7 +431,25 @@ fn generated_separator_scope_rectangles_keep_their_own_geometry_when_endpoints_w
         false,
         Some(500.0),
         false,
-        AvailableOf::definite(500.0),
+        crate::SizingRequestOf::new(
+            crate::Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(500.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     );
     let scopes = |batch: &CompletedLayoutBatchOf<u32, f64>| {
         batch
@@ -394,7 +518,15 @@ fn justification_feedback_preserves_one_selected_endpoint_total() {
             Vec::new(),
         )
         .unwrap();
-        let batch = compute_layout_with_flow(&capture, 0, request(48.0)).unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            0,
+            request(48.0, {
+                let root_input = crate::LayoutTree::node_input((capture).tree(), 0);
+                crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
+            }),
+        )
+        .unwrap();
         let line = finalized_lines(&batch).remove(0);
         qualify(&line);
         assert_eq!(line.feedback().advance, 48.0);

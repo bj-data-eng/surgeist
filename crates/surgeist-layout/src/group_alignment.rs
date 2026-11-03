@@ -1,5 +1,5 @@
 //! Accepted natural line groups and their immutable alignment-frame replay.
-use crate::{AvailableOf, ComputeInputOf, LayoutScalar, TextGroupAlign};
+use crate::{AxisSizingRequestOf, ComputeInputOf, LayoutScalar, TextGroupAlign};
 use surgeist_text::{LineAlignmentInsets, LineBoxDirection};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -184,7 +184,7 @@ pub(crate) fn dependencies<Tree: crate::LayoutTree>(
 struct Invocation<Node, S: LayoutScalar> {
     node: Node,
     input: ComputeInputOf<S>,
-    frame: Option<(AvailableOf<S>, bool)>,
+    frame: Option<(AxisSizingRequestOf<S>, bool)>,
 }
 #[derive(Clone, Debug, PartialEq)]
 struct Owner<Node, S: LayoutScalar> {
@@ -253,7 +253,6 @@ type Plan<Node, S> = Vec<Vec<Option<Assignment<Node, S>>>>;
 #[derive(Clone)]
 struct Active<Node, S: LayoutScalar> {
     invocation: Invocation<Node, S>,
-    axes: crate::FlowAxes,
     align: TextGroupAlign,
     independent: bool,
     owner: Option<(OwnerSlot, f64)>,
@@ -345,7 +344,6 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
                 input,
                 frame: None,
             },
-            axes: crate::FlowAxes::new(style.writing_mode, style.direction),
             align: style.text_group_align,
             independent,
             owner: None,
@@ -357,24 +355,22 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
     pub(crate) fn begin_flow(
         &mut self,
         input: ComputeInputOf<S>,
-        available: AvailableOf<S>,
+        available: AxisSizingRequestOf<S>,
         publication: bool,
     ) {
         let Some(active) = self.active.last_mut() else {
             return;
         };
-        let actual_available = active.axes.logical_size(input.available()).inline;
-        let available = if matches!(actual_available, AvailableOf::Definite(_)) || publication {
-            available
-        } else {
-            actual_available
-        };
+        // The traversal supplies the explicit phase and its accepted space.
+        // Publication and the caller's original request remain separate facts.
         active.invocation.input = input;
         active.invocation.frame = Some((available, publication));
         active.collecting = true;
         active.members.clear();
         active.owner = None;
-        if active.align == TextGroupAlign::None || !matches!(available, AvailableOf::Definite(_)) {
+        if active.align == TextGroupAlign::None
+            || crate::layout_math::normal_available_size(available).is_none()
+        {
             return;
         }
         let owner = Owner {
@@ -441,10 +437,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
     }
     fn active_owners(&self) -> &[Active<Node, S>] {
         if !self.active.last().is_some_and(|active| {
-            active
-                .invocation
-                .frame
-                .is_some_and(|(width, _)| matches!(width, AvailableOf::Definite(_)))
+            active.invocation.frame.is_some_and(|(width, _)| {
+                crate::layout_math::normal_available_size(width).is_some()
+            })
         }) {
             return &[];
         }

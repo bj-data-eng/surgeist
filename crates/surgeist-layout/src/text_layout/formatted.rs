@@ -170,7 +170,7 @@ pub(crate) struct ComputeScope<Node, S: crate::LayoutScalar> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FlowFrame<S: crate::LayoutScalar> {
     pub(crate) input: crate::ComputeInputOf<S>,
-    pub(crate) available: crate::AvailableOf<S>,
+    pub(crate) available: crate::AxisSizingRequestOf<S>,
     pub(crate) publication: bool,
 }
 
@@ -186,7 +186,7 @@ pub(crate) struct RunBinding<Node, S: crate::LayoutScalar> {
     pub(crate) nodes: Vec<Node>,
     pub(crate) segment: PreparedSourceSegment,
     pub(crate) input: crate::ComputeInputOf<S>,
-    pub(crate) mode: super::fit::Available,
+    pub(crate) mode: crate::AxisSizingRequestOf<f64>,
     pub(crate) lineage: Vec<ComputeScope<Node, S>>,
     pub(crate) owner: Node,
 }
@@ -283,7 +283,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         nodes: &[Node],
         segment: &PreparedSourceSegment,
         input: crate::ComputeInputOf<S>,
-        mode: super::fit::Available,
+        mode: crate::AxisSizingRequestOf<f64>,
     ) -> RunBinding<Node, S> {
         let owner = self
             .stack

@@ -607,3 +607,62 @@ fn report_lender_borrows_the_same_retained_report_after_usage_join() {
         assert_eq!(owner.storage_usage(), storage);
     }
 }
+
+/// The work the controlled owner charges for attaching a chain of `n` elements
+/// one `establish_children` call at a time, from the leaf up or the root down.
+fn chain_attachment_work(n: usize, leaf_first: bool) -> u64 {
+    let cancel = AtomicBool::new(false);
+    let envelope = HtmlOptionValueEnvelope::new(1 << 31, 1 << 24, 1 << 40);
+    let mut owner = HtmlControlledOptionValueCapture::new(
+        HtmlCaptureLimits::new(n + 2, 4 * n + 8, 0, 100 * n, n + 2, 0, 0, 1 << 30),
+        HtmlHostFactsRevision::fresh(),
+        envelope,
+        &cancel,
+    )
+    .unwrap();
+    let doc = owner
+        .add_document(HtmlDocumentMode::NoQuirks, envelope, &cancel)
+        .unwrap();
+    let empty = OrderedAttributes::new([]).unwrap();
+    let name = QualifiedName::new(Namespace::html(), None, "div");
+    let chain: Vec<_> = (0..n)
+        .map(|_| {
+            owner
+                .add_element(&doc, &name, &empty, None, envelope, &cancel)
+                .unwrap()
+        })
+        .collect();
+    let before = owner.usage().work();
+    let order: Vec<usize> = if leaf_first {
+        (1..n).collect()
+    } else {
+        (1..n).rev().collect()
+    };
+    for i in order {
+        owner
+            .establish_children(
+                &chain[i],
+                std::slice::from_ref(&chain[i - 1]),
+                envelope,
+                &cancel,
+            )
+            .unwrap();
+    }
+    owner.usage().work() - before
+}
+
+#[test]
+fn controlled_chain_attachment_work_is_linear_in_either_order() {
+    // Doubling the records may at most double the charged work, with a small
+    // allowance (2.2 to 2) for fixed costs, whatever order edges are attached in.
+    for (order, leaf_first) in [("leaf-first", true), ("root-first", false)] {
+        let sizes = [500usize, 1000, 2000, 4000];
+        let work = sizes.map(|n| chain_attachment_work(n, leaf_first));
+        for pair in work.windows(2) {
+            assert!(
+                pair[1] * 10 <= pair[0] * 22,
+                "{order}: work must grow no faster than 2.2x per doubling, saw {work:?} for {sizes:?} records"
+            );
+        }
+    }
+}

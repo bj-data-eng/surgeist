@@ -40,3 +40,8 @@ sha2 = "=0.10.9"
 name = "surgeist-layout-generate"
 path = "tests/bin/surgeist-layout-generate.rs"
 required-features = ["layout-golden-generate"]
+
+[[example]]
+name = "qualify-root-context"
+path = "examples/qualify-root-context.rs"
+required-features = ["layout-golden-generate"]

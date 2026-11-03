@@ -1294,6 +1294,22 @@ fn nested_templates(templates: usize) -> HtmlConstructionCaptureUsage {
     }
     usage_of_import(native.finish(), nodes, 2 * templates)
 }
+/// A fragment root holding a host whose declarative shadow root holds a host,
+/// and so on `hosts` times.
+fn nested_shadows(hosts: usize) -> HtmlConstructionCaptureUsage {
+    let nodes = 2 * hosts + 1;
+    let mut native = fragment_builder(nodes, 2 * hosts);
+    let mut parent = native.root();
+    for _ in 0..hosts {
+        let host = native
+            .append_element(&parent, name("div"), OrderedAttributes::default())
+            .unwrap();
+        parent = native
+            .attach_declarative_shadow(&host, properties())
+            .unwrap();
+    }
+    usage_of_import(native.finish(), nodes, 2 * hosts)
+}
 /// A chain of `size` nested elements whose deepest element holds `size`
 /// templates, each with one element in its contents.
 fn chain_with_templates(size: usize) -> HtmlConstructionCaptureUsage {
@@ -1384,6 +1400,34 @@ fn charged_work_stays_linear_for_templates_below_a_deep_chain() {
         HtmlConstructionCaptureUsage::work,
     );
 }
+/// The work charged per imported node of a deeply nested source, at two sizes
+/// eight times apart: finding the root below which an edge attaches stays a few
+/// steps however deep the nesting, so the charge per node does not grow.
+fn assert_work_per_node_is_constant(
+    shape: &str,
+    measure: impl Fn(usize) -> HtmlConstructionCaptureUsage,
+    nodes: impl Fn(usize) -> usize,
+) {
+    let (small, large) = (200, 1600);
+    let (small_work, large_work) = (measure(small).work(), measure(large).work());
+    let (small_nodes, large_nodes) = (nodes(small), nodes(large));
+    // Compare work / nodes of the two sizes without division, with 5% of slack
+    // for the amortized moves of growing arrays.
+    assert!(
+        large_work * small_nodes * 100 <= small_work * large_nodes * 105,
+        "{shape}: {small_work} work for {small_nodes} nodes but {large_work} for {large_nodes}: \
+         the charge per node grew by more than 5%"
+    );
+}
+#[test]
+fn deeply_nested_sources_charge_constant_work_per_node() {
+    assert_work_per_node_is_constant("chain", chain_fragment, |size| size + 1);
+    assert_work_per_node_is_constant("nested templates", nested_templates, |size| 2 * size + 1);
+    assert_work_per_node_is_constant("nested shadows", nested_shadows, |size| 2 * size + 1);
+    assert_work_per_node_is_constant("chain with templates", chain_with_templates, |size| {
+        1 + 4 * size
+    });
+}
 #[test]
 fn peak_scratch_grows_linearly_with_the_number_of_imported_nodes() {
     assert_charge_is_linear(
@@ -1416,6 +1460,18 @@ fn peak_scratch_grows_linearly_with_the_number_of_imported_nodes() {
         chain_with_templates,
         HtmlConstructionCaptureUsage::scratch_entries,
     );
+}
+#[test]
+fn a_fragment_of_childless_siblings_peaks_at_seven_scratch_entries_per_sibling() {
+    // The figure `docs/reference/html-crate-contracts.md` states for the
+    // adapter's scratch: seven per sibling plus two, measured here.
+    for siblings in [10, 100, 1000] {
+        assert_eq!(
+            wide_fragment(siblings).scratch_entries(),
+            7 * siblings + 2,
+            "{siblings} siblings"
+        );
+    }
 }
 #[test]
 fn reported_usage_of_a_wide_import_is_its_least_admitting_allowance() {

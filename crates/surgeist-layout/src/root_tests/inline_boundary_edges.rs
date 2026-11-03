@@ -80,11 +80,34 @@ fn first(batch: &CompletedLayoutBatchOf<u32, impl LayoutScalar>) -> text::Finali
 fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outgoing_flow() {
     fn lane<S: LayoutScalar>() {
         let fixture = Fixture::at_soft_seam();
-        let request = LayoutRootRequestOf::viewport(Size::new(
-            AvailableOf::definite(S::from_f64(10.0)),
-            AvailableOf::MAX_CONTENT,
-        ))
-        .unwrap();
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(
+                Some(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0))
+                        .expect("declared fixture extent is finite and nonnegative"),
+                ),
+                None,
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        )
+        .request(Size::new(
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Definite(
+                    crate::NonNegativeFiniteOf::new(S::from_f64(10.0))
+                        .expect("fixture physical extent is finite and nonnegative"),
+                ),
+                crate::SizingOperation::Normal,
+            ),
+            crate::AxisSizingRequestOf::new(
+                crate::AvailableSpaceOf::Indefinite,
+                crate::SizingOperation::Normal,
+            ),
+        ));
         let mut actual = tree::<S>(&fixture, InlineBoundaryEdgeOf::ZERO);
         let cold = actual.compute(request).unwrap();
         let zero = first(&cold);

@@ -58,7 +58,17 @@ fn leaf_query<S: LayoutScalar>(mode: RunMode) -> ComputeInputOf<S> {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             ParentFormattingContext::Grid,
         ),
-        Size::new(AvailableOf::MAX_CONTENT, AvailableOf::MAX_CONTENT),
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
     )
 }
 fn qualify_actual_leaf<S: LayoutScalar>(source: &PublicLayoutTreeOf<S>, overflow: Overflow) {
@@ -163,11 +173,25 @@ fn assert_actual_batch<S: LayoutScalar>(
     }
 }
 fn cyclic_border<S: LayoutScalar>(overflow: Overflow) {
-    let request = LayoutRootRequestOf::viewport(Size::new(
-        AvailableOf::MAX_CONTENT,
-        AvailableOf::MAX_CONTENT,
-    ))
-    .unwrap();
+    let request = {
+        let axes = Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        );
+        let definite = axes.map(|axis| axis.space().definite_size());
+        crate::LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                axes,
+                OrthogonalFallbackOf::new(
+                    definite,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            crate::geometry::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            definite,
+        )
+    };
     // Compare AUTO and percentage tracks for non-scrollable overflow. Hidden
     // is qualified directly through the actual cyclic-track operation below.
     if matches!(overflow, Overflow::Visible | Overflow::Clip) {
