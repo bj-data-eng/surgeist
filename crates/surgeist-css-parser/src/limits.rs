@@ -276,6 +276,8 @@ pub fn grow<T>(meter: &dyn Meter, values: &mut Vec<T>, additional: usize) -> Res
         return Err(meter.note(Failure::Allocation));
     }
     let Some(actual) = next.capacity().checked_mul(size_of::<T>()) else {
+        drop(next);
+        meter.released(prospective);
         return Err(meter.note(Failure::CapacityOverflow));
     };
     if actual > planned

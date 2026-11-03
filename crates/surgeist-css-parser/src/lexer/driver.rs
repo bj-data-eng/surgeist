@@ -130,10 +130,10 @@ impl Lookahead for Window<'_> {
             if let Some(scalar) = scalar {
                 self.next = scalar.end;
             }
-            self.slots[usize::from(self.filled)] = scalar;
+            *self.slots.get_mut(usize::from(self.filled))? = scalar;
             self.filled += 1;
         }
-        self.slots[index]
+        self.slots.get(index).copied().flatten()
     }
 }
 

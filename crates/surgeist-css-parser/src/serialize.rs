@@ -215,9 +215,9 @@ fn unit<W: Write + ?Sized>(value: &str, out: &mut W) -> fmt::Result {
     if let (Some(first @ ('e' | 'E')), Some(second)) = (points.next(), points.next()) {
         let exponent = second.is_ascii_digit()
             || (second == '-' && points.next().is_some_and(|third| third.is_ascii_digit()));
-        if exponent {
+        if exponent && let Some(rest) = value.strip_prefix(first) {
             hex_escape(first, out)?;
-            return name(&value[1..], out);
+            return name(rest, out);
         }
     }
     identifier(value, out)
@@ -647,12 +647,12 @@ const fn block_tokens(kind: BlockKind) -> (Token<'static>, Token<'static>) {
 ///
 /// # Errors
 ///
-/// Fails only when `out` does.
+/// Fails when `out` does, and when the document holds a denied block that has no
+/// source text to write, which no document built by this crate does.
 ///
 /// # Panics
 ///
-/// Panics if the document holds a denied block that has no source text, which no
-/// document built by this crate does.
+/// Panics if `list` is not a list of `document`.
 ///
 /// ```
 /// use surgeist_css_parser::lexer::Options;
@@ -718,7 +718,7 @@ pub fn list<P, W: Write>(document: &Document<'_, P>, list: ListId, out: W) -> fm
             Component::Denied { range, .. } => {
                 let text = range
                     .and_then(|range| document.slice(range.start, range.end))
-                    .expect("a denied block was lexed from source text, so its text is there");
+                    .ok_or(fmt::Error)?;
                 writer.verbatim(text)?;
             }
         }

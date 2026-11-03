@@ -347,12 +347,29 @@ fn token_data_bounded(
                 },
             }
         }
+        // The caller opens a function, reads a comment and rejects a bad
+        // string or url before it asks for the data of a token.
+        RawTokenKind::BadString => {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::BadString,
+                CssValueOrigin::Parsed(origin.clone()),
+            ));
+        }
+        RawTokenKind::BadUrl { .. } => {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::BadUrl,
+                CssValueOrigin::Parsed(origin.clone()),
+            ));
+        }
         RawTokenKind::Name {
             kind: NameKind::Function,
             ..
         }
-        | RawTokenKind::Comment { .. }
-        | RawTokenKind::BadString
-        | RawTokenKind::BadUrl { .. } => unreachable!("structural/error token handled"),
+        | RawTokenKind::Comment { .. } => {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::InvalidToken,
+                CssValueOrigin::Parsed(origin.clone()),
+            ));
+        }
     })
 }

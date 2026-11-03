@@ -322,10 +322,11 @@ fn declared_encoding(bytes: &[u8]) -> Option<Encoding> {
         .get(..bytes.len().min(1024))?
         .strip_prefix(b"@charset \"")?;
     let quote = prefix.iter().position(|byte| *byte == b'"')?;
-    if prefix.get(quote + 1) != Some(&b';') || !prefix[..quote].is_ascii() {
+    let (label, closing) = prefix.split_at_checked(quote)?;
+    if closing.get(1) != Some(&b';') || !label.is_ascii() {
         return None;
     }
-    let encoding = encoding_rs::Encoding::for_label(&prefix[..quote])?;
+    let encoding = encoding_rs::Encoding::for_label(label)?;
     Some(Encoding(if encoding == UTF_16LE || encoding == UTF_16BE {
         UTF_8
     } else {

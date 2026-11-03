@@ -39,6 +39,14 @@ impl NodeId {
         u32::try_from(index).ok().map(Self)
     }
 
+    /// The identifier of the node at `index` of a document that holds nodes
+    /// there. A document holds at most 2^32 nodes (a build that would add one
+    /// more fails), so no `index` of a stored node exceeds `u32::MAX`; a larger
+    /// one names the last position.
+    pub(crate) fn at(index: usize) -> Self {
+        Self(u32::try_from(index).unwrap_or(u32::MAX))
+    }
+
     /// Returns the position of the node among all the nodes of its document,
     /// counted from zero.
     #[must_use]
@@ -115,6 +123,14 @@ mod tests {
         assert_eq!(NodeId::from_index(MAX).map(NodeId::index), Some(MAX));
         assert_eq!(NodeId::from_index(MAX + 1), None);
         assert_eq!(NodeId::from_index(usize::MAX), None);
+    }
+
+    #[test]
+    fn a_stored_position_names_its_node_and_a_larger_one_the_last() {
+        assert_eq!(NodeId::at(0).index(), 0);
+        assert_eq!(NodeId::at(MAX).index(), MAX);
+        assert_eq!(NodeId::at(MAX + 1).index(), MAX);
+        assert_eq!(NodeId::at(usize::MAX).index(), MAX);
     }
 
     #[test]

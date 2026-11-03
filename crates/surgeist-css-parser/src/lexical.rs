@@ -59,6 +59,28 @@ pub const fn is_hex_digit(code_point: char) -> bool {
     code_point.is_ascii_hexdigit()
 }
 
+/// The value, 0 to 9, of a [digit](is_digit), or `None` for any other code
+/// point.
+pub(crate) const fn digit_value(code_point: char) -> Option<u8> {
+    if is_digit(code_point) {
+        Some(code_point as u8 - b'0')
+    } else {
+        None
+    }
+}
+
+/// The value, 0 to 15, of a [hex digit](is_hex_digit), or `None` for any other
+/// code point.
+pub(crate) const fn hex_digit_value(code_point: char) -> Option<u8> {
+    if is_digit(code_point) {
+        digit_value(code_point)
+    } else if is_hex_digit(code_point) {
+        Some((code_point as u8 | 0x20) - b'a' + 10)
+    } else {
+        None
+    }
+}
+
 /// Whether `code_point` is an uppercase letter: U+0041 LATIN CAPITAL LETTER A
 /// (A) to U+005A LATIN CAPITAL LETTER Z (Z) inclusive (section 4.2).
 ///
@@ -350,5 +372,27 @@ pub const fn would_start_unicode_range(
     match (first, second, third) {
         (Some('U' | 'u'), Some('+'), Some(third)) => third == '?' || is_hex_digit(third),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The values are those of the digits of section 4.2, which the standard
+    /// library's radix conversion also gives; every Unicode scalar is asked.
+    #[test]
+    fn digit_values_agree_with_the_digit_classes_for_every_scalar() {
+        for code in 0..=0x0010_FFFF_u32 {
+            let Some(point) = char::from_u32(code) else {
+                continue;
+            };
+            let decimal = point.to_digit(10).map(|value| value as u8);
+            let hexadecimal = point.to_digit(16).map(|value| value as u8);
+            assert_eq!(digit_value(point), decimal, "{point:?}");
+            assert_eq!(hex_digit_value(point), hexadecimal, "{point:?}");
+            assert_eq!(digit_value(point).is_some(), is_digit(point));
+            assert_eq!(hex_digit_value(point).is_some(), is_hex_digit(point));
+        }
     }
 }

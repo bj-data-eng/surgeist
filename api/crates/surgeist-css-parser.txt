@@ -275,6 +275,7 @@ impl surgeist_css_parser::input::PreprocessError
 pub const fn surgeist_css_parser::input::PreprocessError::exhausted_limit(&self) -> core::option::Option<surgeist_css_parser::input::PreprocessResource>
 pub const fn surgeist_css_parser::input::PreprocessError::is_allocation_failure(&self) -> bool
 pub const fn surgeist_css_parser::input::PreprocessError::is_capacity_overflow(&self) -> bool
+pub const fn surgeist_css_parser::input::PreprocessError::is_cursor_fault(&self) -> bool
 pub const fn surgeist_css_parser::input::PreprocessError::is_limit(&self) -> bool
 pub const fn surgeist_css_parser::input::PreprocessError::is_refused(&self) -> bool
 impl core::error::Error for surgeist_css_parser::input::PreprocessError

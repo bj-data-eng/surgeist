@@ -230,8 +230,11 @@ impl InputCursor {
         }
         let index = self.position;
         let next = index.checked_add(1).ok_or(InputError::BOUNDARY_OVERFLOW)?;
+        // The position moves once the decoder has taken the unit, so that an
+        // error from the decoder leaves the cursor as it was.
+        self.decode(index, unit)?;
         self.position = next;
-        self.decode(index, unit)
+        Ok(())
     }
 
     /// Processes the actual cached unit once; it never rereads original input.
@@ -248,8 +251,12 @@ impl InputCursor {
         if !matches!(self.request(), InputRequest::HeldUnit) {
             return Err(InputError::WRONG_REPLY);
         }
-        let (index, unit) = self.held_unit.take().ok_or(InputError::WRONG_REPLY)?;
-        self.decode(index, unit)
+        let held = self.held_unit.take().ok_or(InputError::WRONG_REPLY)?;
+        if let Err(error) = self.decode(held.0, held.1) {
+            self.held_unit = Some(held);
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Acknowledges actual admitted storage of the requested scalar.
@@ -346,6 +353,8 @@ impl InputCursor {
         }
     }
 
+    /// Takes one unit into the decoder. Every failure comes before the first
+    /// change to a register, so a failed call leaves the cursor unchanged.
     fn decode(&mut self, index: usize, unit: u16) -> Result<(), InputError> {
         let end = index.checked_add(1).ok_or(InputError::BOUNDARY_OVERFLOW)?;
         if self.kind == InputKind::Utf8 {
@@ -379,12 +388,9 @@ impl InputCursor {
                 } => {
                     let value = (value << 6) | u32::from(byte & 0x3f);
                     if left == 1 {
+                        let value = char::from_u32(value).ok_or(InputError::INVALID_UTF8)?;
                         self.decoder = Decoder::Ready;
-                        self.scalar(Scalar {
-                            value: char::from_u32(value).ok_or(InputError::INVALID_UTF8)?,
-                            start,
-                            end,
-                        });
+                        self.scalar(Scalar { value, start, end });
                     } else {
                         self.decoder = Decoder::Utf8 {
                             start,
@@ -399,16 +405,14 @@ impl InputCursor {
         } else {
             match self.decoder {
                 Decoder::High { start, value } => {
-                    self.decoder = Decoder::Ready;
                     if (0xdc00..=0xdfff).contains(&unit) {
                         let value = 0x10000 + ((u32::from(value) - 0xd800) << 10) + u32::from(unit)
                             - 0xdc00;
-                        self.scalar(Scalar {
-                            value: char::from_u32(value).ok_or(InputError::WRONG_UNIT)?,
-                            start,
-                            end,
-                        });
+                        let value = char::from_u32(value).ok_or(InputError::WRONG_UNIT)?;
+                        self.decoder = Decoder::Ready;
+                        self.scalar(Scalar { value, start, end });
                     } else {
+                        self.decoder = Decoder::Ready;
                         self.held_unit = Some((index, unit));
                         self.scalar(Scalar {
                             value: '\u{fffd}',
@@ -637,5 +641,37 @@ mod tests {
                 end: 2
             })
         );
+    }
+
+    /// A UTF-16 cursor whose decoder holds a UTF-8 sequence: no host reaches
+    /// this state, and the decode of a unit fails there.
+    fn utf16_cursor_in_a_utf8_sequence() -> InputCursor {
+        let mut cursor = InputCursor::new(InputKind::Utf16, 2);
+        cursor.decoder = Decoder::Utf8 {
+            start: 0,
+            value: 0,
+            left: 1,
+            minimum: 0x80,
+        };
+        cursor
+    }
+
+    #[test]
+    fn a_read_whose_decode_fails_leaves_the_cursor_unchanged() {
+        let mut cursor = utf16_cursor_in_a_utf8_sequence();
+        let before = format!("{cursor:?}");
+        assert!(cursor.read(0x41).unwrap_err().is_wrong_unit());
+        assert_eq!(format!("{cursor:?}"), before);
+        assert_eq!(cursor.request(), InputRequest::Read { index: 0 });
+    }
+
+    #[test]
+    fn processing_a_held_unit_that_fails_leaves_the_cursor_unchanged() {
+        let mut cursor = utf16_cursor_in_a_utf8_sequence();
+        cursor.held_unit = Some((1, 0x41));
+        let before = format!("{cursor:?}");
+        assert!(cursor.process_held().unwrap_err().is_wrong_unit());
+        assert_eq!(format!("{cursor:?}"), before);
+        assert_eq!(cursor.request(), InputRequest::HeldUnit);
     }
 }

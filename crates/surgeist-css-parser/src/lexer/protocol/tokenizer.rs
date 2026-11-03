@@ -276,19 +276,28 @@ impl TokenCursor {
         if scalar.end <= scalar.start {
             return Err(ProtocolError::BOUNDARY);
         }
-        let previous_end = if self.cached == 0 {
-            self.consumed_end
-        } else {
-            self.window[usize::from(self.cached - 1)]
-                .ok_or(ProtocolError::BOUNDARY)?
-                .end
+        let previous_end = match self.cached.checked_sub(1) {
+            None => self.consumed_end,
+            Some(last) => {
+                self.window
+                    .get(usize::from(last))
+                    .copied()
+                    .flatten()
+                    .ok_or(ProtocolError::BOUNDARY)?
+                    .end
+            }
         };
         if scalar.start != previous_end {
             return Err(ProtocolError::BOUNDARY);
         }
         let next = self.read.checked_add(1).ok_or(ProtocolError::OVERFLOW)?;
-        self.window[usize::from(self.cached)] = Some(scalar);
-        self.cached += 1;
+        let cached = self.cached.checked_add(1).ok_or(ProtocolError::OVERFLOW)?;
+        let slot = self
+            .window
+            .get_mut(usize::from(self.cached))
+            .ok_or(ProtocolError::BOUNDARY)?;
+        *slot = Some(scalar);
+        self.cached = cached;
         self.read = next;
         Ok(())
     }
@@ -374,10 +383,14 @@ impl TokenCursor {
         if count > self.cached {
             return Err(ProtocolError::BOUNDARY);
         }
-        if count == 0 {
+        let Some(last) = count.checked_sub(1) else {
             return Ok(());
-        }
-        self.consumed_end = self.window[usize::from(count - 1)]
+        };
+        self.consumed_end = self
+            .window
+            .get(usize::from(last))
+            .copied()
+            .flatten()
             .ok_or(ProtocolError::BOUNDARY)?
             .end;
         let count = usize::from(count);

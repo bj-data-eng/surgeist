@@ -393,8 +393,11 @@ impl<'d, P> TreeBuilder<'d, P> {
         let grown = reserve(meter, &mut self.document.lists, 1, at);
         self.latched(grown)?;
         let children = ListId::from_index(self.document.lists.len()).ok_or_else(overflow)?;
-        let node = NodeId::from_index(self.document.nodes.len()).ok_or_else(overflow)?;
         let opening_end = range.as_ref().map(|range| range.end);
+        // The node is pushed first, so that a refusal or a capacity overflow
+        // leaves no list that names a node that is not there; the room for the
+        // list was reserved above, so storing it cannot fail.
+        let node = self.push(parent, token, Some(children), range, payload)?;
         self.document.lists.push(List::of_group(
             Group {
                 node,
@@ -405,9 +408,7 @@ impl<'d, P> TreeBuilder<'d, P> {
             },
             depth,
         ));
-        let pushed = self.push(parent, token, Some(children), range, payload)?;
-        debug_assert_eq!(pushed, node, "the group's list names the node it is given");
-        Ok((pushed, children))
+        Ok((node, children))
     }
 
     /// Adds a `{}`-block that nested too deep, kept as one opaque node.
@@ -763,5 +764,55 @@ impl<P> Document<'static, P> {
         document.pool = source;
         document.owned_len = Some(length);
         Ok(document)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+    use crate::limits::{Failure, Refused};
+
+    /// Admits every step and the first `additions` additions of storage.
+    struct Storage {
+        additions: Cell<usize>,
+    }
+
+    impl Meter for Storage {
+        fn step(&self) -> Result<(), Refused> {
+            Ok(())
+        }
+        fn add(&self, _: usize) -> Result<(), Refused> {
+            let left = self.additions.get();
+            if left == 0 {
+                return Err(Refused);
+            }
+            self.additions.set(left - 1);
+            Ok(())
+        }
+        fn released(&self, _: usize) {}
+        fn note(&self, _: Failure) -> Refused {
+            Refused
+        }
+    }
+
+    #[test]
+    fn a_group_whose_node_storage_is_refused_leaves_no_list_behind() {
+        // The builder's own list storage is the one addition admitted; the
+        // group's room for a list needs none (the first bank has four), and
+        // the node vector's storage is refused.
+        let meter = Storage {
+            additions: Cell::new(1),
+        };
+        let mut builder = Document::<()>::builder(Limits::default(), 0, Some(&meter)).unwrap();
+        let root = builder.root();
+        let error = builder
+            .open(root, Token::Function("f"), None, None)
+            .unwrap_err();
+        assert!(error.is_refused());
+        let document = builder.finish(None);
+        assert_eq!(document.node_count(), 0);
+        assert_eq!(document.list_count(), 1);
     }
 }

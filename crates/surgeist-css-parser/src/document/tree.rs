@@ -114,6 +114,10 @@ impl<'s, P> Document<'s, P> {
     }
 
     /// Returns a stream over all of `list`, from its first node.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `list` is not a list of this document.
     #[must_use]
     pub fn stream(&self, list: ListId) -> Stream<'_, P> {
         let len = self.lists[list.index()].nodes.len();
@@ -191,6 +195,10 @@ impl<'s, P> Document<'s, P> {
     /// its opening token only. `None` when the document has no source text or
     /// the node has no interval.
     ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a node of this document.
+    ///
     /// ```
     /// use surgeist_css_parser::lexer::Options;
     /// use surgeist_css_parser::limits::{DepthExcess, Limits};
@@ -216,24 +224,40 @@ impl<'s, P> Document<'s, P> {
 
     /// Returns the interval of `node` in the text: for a function or block
     /// that has ended, through its closing token or the end of the text.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a node of this document.
     #[must_use]
     pub fn range(&self, node: NodeId) -> Option<Range<Offset>> {
         self.node(node).range()
     }
 
     /// Returns the payload attached to `node`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a node of this document.
     #[must_use]
     pub fn payload(&self, node: NodeId) -> Option<&P> {
         self.node(node).payload.as_ref()
     }
 
     /// Returns the token of `node`: for a function or block, its opening token.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a node of this document.
     #[must_use]
     pub fn token(&self, node: NodeId) -> Token<'_> {
         self.token_of(self.node(node))
     }
 
     /// Returns `node` as a component value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a node of this document.
     #[must_use]
     pub fn component(&self, node: NodeId) -> Component<'_, P> {
         let stored = self.node(node);
@@ -277,6 +301,10 @@ impl<'s, P> Document<'s, P> {
 
     /// Returns what kind of group `node` is, or `None` for a node that owns no
     /// list.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a node of this document.
     #[must_use]
     pub fn group_kind(&self, node: NodeId) -> Option<GroupKind> {
         self.lists[self.node(node).children?.index()].kind()
@@ -284,6 +312,10 @@ impl<'s, P> Document<'s, P> {
 
     /// Returns how the group `node` ended, or `None` for a node that is not a
     /// group.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a node of this document.
     #[must_use]
     pub fn group_end(&self, node: NodeId) -> Option<&GroupEnd<P>> {
         self.group_end_of(self.node(node))
@@ -336,8 +368,7 @@ impl<'s, P> Document<'s, P> {
     /// # Ok::<(), surgeist_css_parser::document::BuildError>(())
     /// ```
     pub fn nodes(&self) -> impl ExactSizeIterator<Item = NodeId> + use<'s, P> {
-        (0..self.nodes.len())
-            .map(|index| NodeId::from_index(index).expect("a document holds at most 2^32 nodes"))
+        (0..self.nodes.len()).map(NodeId::at)
     }
 
     /// Returns the number of lists, the root list included.
@@ -347,6 +378,10 @@ impl<'s, P> Document<'s, P> {
     }
 
     /// Returns the nodes of `list`, in order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `list` is not a list of this document.
     #[must_use]
     pub fn list(&self, list: ListId) -> &[NodeId] {
         &self.lists[list.index()].nodes
@@ -354,18 +389,30 @@ impl<'s, P> Document<'s, P> {
 
     /// Returns the list that the group `node` owns, or `None` for a node that
     /// is not a group.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a node of this document.
     #[must_use]
     pub fn children(&self, node: NodeId) -> Option<ListId> {
         self.node(node).children
     }
 
     /// Returns the group that owns `list`, or `None` for the root list.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `list` is not a list of this document.
     #[must_use]
     pub fn parent_group(&self, list: ListId) -> Option<NodeId> {
         self.lists[list.index()].parent()
     }
 
     /// Returns the list that holds `node` and the node's place in it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `node` is not a node of this document.
     #[must_use]
     pub fn location(&self, node: NodeId) -> (ListId, usize) {
         let node = self.node(node);
@@ -375,6 +422,10 @@ impl<'s, P> Document<'s, P> {
     /// Returns where `list` ends in the text: at its closing token, or at the
     /// end of the text if the group never closed. `None` when the document does
     /// not know.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `list` is not a list of this document.
     #[must_use]
     pub fn list_end(&self, list: ListId) -> Option<Offset> {
         self.lists[list.index()].end()
@@ -383,6 +434,10 @@ impl<'s, P> Document<'s, P> {
     /// Returns the boundary before the node at `index` of `list`, which is the
     /// end of the list when `index` is the list's length. `None` when `index`
     /// is past the end.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `list` is not a list of this document.
     ///
     /// ```
     /// use surgeist_css_parser::lexer::Options;
@@ -404,6 +459,10 @@ impl<'s, P> Document<'s, P> {
 
     /// Returns the closing boundary of the group `group`, or `None` when the
     /// node is not a function or a simple block.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `group` is not a node of this document.
     #[must_use]
     pub fn closing_site(&self, group: NodeId) -> Option<Site<'_, P>> {
         let node = self.node(group);

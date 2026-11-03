@@ -164,7 +164,9 @@ impl<'i> Number<'i> {
     pub fn parse(representation: &'i str) -> Option<Self> {
         let bytes = representation.as_bytes();
         let digits = |from: usize| {
-            bytes[from..]
+            bytes
+                .get(from..)
+                .unwrap_or_default()
                 .iter()
                 .take_while(|byte| byte.is_ascii_digit())
                 .count()

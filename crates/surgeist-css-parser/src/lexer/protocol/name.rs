@@ -1,6 +1,6 @@
 //! Finite CSS name/escape decoding. Inputs have already been preprocessed.
 
-use crate::lexical::{is_ident_code_point, is_whitespace, valid_escape};
+use crate::lexical::{hex_digit_value, is_ident_code_point, is_whitespace, valid_escape};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum State {
@@ -71,14 +71,16 @@ impl NameCursor {
                 _ => (Step::Done, State::Done),
             },
             State::Escape => match a {
-                Some(value) if value.is_ascii_hexdigit() => (
-                    Step::Consume { count: 1 },
-                    State::Hex {
-                        value: value.to_digit(16).expect("ASCII hex digit"),
-                        digits: 1,
-                    },
-                ),
-                Some(value) => (Step::Emit { value, count: 1 }, State::Name),
+                Some(value) => match hex_digit_value(value) {
+                    Some(digit) => (
+                        Step::Consume { count: 1 },
+                        State::Hex {
+                            value: u32::from(digit),
+                            digits: 1,
+                        },
+                    ),
+                    None => (Step::Emit { value, count: 1 }, State::Name),
+                },
                 None => (
                     Step::Emit {
                         value: '\u{fffd}',
@@ -87,23 +89,19 @@ impl NameCursor {
                     State::Done,
                 ),
             },
-            State::Hex { value, digits } => {
-                if digits < 6 && a.is_some_and(|value| value.is_ascii_hexdigit()) {
-                    let value = value * 16
-                        + a.and_then(|value| value.to_digit(16))
-                            .expect("ASCII hex digit");
-                    (
-                        Step::Consume { count: 1 },
-                        State::Hex {
-                            value,
-                            digits: digits + 1,
-                        },
-                    )
-                } else {
+            State::Hex { value, digits } => match a.and_then(hex_digit_value) {
+                Some(digit) if digits < 6 => (
+                    Step::Consume { count: 1 },
+                    State::Hex {
+                        value: value * 16 + u32::from(digit),
+                        digits: digits + 1,
+                    },
+                ),
+                _ => {
                     let count = u8::from(a.is_some_and(is_whitespace));
                     (Step::Consume { count }, State::EmitHex { value })
                 }
-            }
+            },
             State::EmitHex { value } => (
                 Step::Emit {
                     value: if value == 0 {

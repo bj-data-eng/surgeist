@@ -3,6 +3,8 @@
 
 use std::fmt;
 
+use crate::lexical::digit_value;
+
 /// One piece of a number's spelling that a [`NumberStep::Consume`] took.
 ///
 /// The set is closed: it mirrors the parts of a number in section 4.3.13, and
@@ -208,9 +210,7 @@ impl NumberCursor {
     /// [`NumberOverflow`] when a digit counter would exceed `usize`.
     #[inline]
     pub fn step(&mut self, [a, b, c]: [Option<char>; 3]) -> Result<NumberStep, NumberOverflow> {
-        let digit = a
-            .and_then(|value| value.to_digit(10).filter(|_| value.is_ascii_digit()))
-            .map(|value| value as u8);
+        let digit = a.and_then(digit_value);
         Ok(match self.state {
             State::Sign => {
                 self.state = State::Integer;
@@ -221,7 +221,15 @@ impl NumberCursor {
                     NumberStep::Transition
                 }
             }
-            State::Integer | State::Fraction if digit.is_some() => {
+            State::Integer | State::Fraction => {
+                let Some(digit) = digit else {
+                    self.state = if self.state == State::Integer {
+                        State::Point
+                    } else {
+                        State::Exponent
+                    };
+                    return Ok(NumberStep::Transition);
+                };
                 let mantissa =
                     self.layout
                         .mantissa_digits
@@ -232,17 +240,13 @@ impl NumberCursor {
                 // The fraction digits are among the mantissa digits, so they
                 // cannot overflow when the mantissa count did not.
                 let fraction = if self.state == State::Fraction {
-                    self.layout.fraction_digits + 1
+                    self.layout.fraction_digits.saturating_add(1)
                 } else {
                     self.layout.fraction_digits
                 };
                 self.layout.mantissa_digits = mantissa;
                 self.layout.fraction_digits = fraction;
-                NumberStep::Consume(NumberPart::Mantissa(digit.expect("fixed digit check")))
-            }
-            State::Integer => {
-                self.state = State::Point;
-                NumberStep::Transition
+                NumberStep::Consume(NumberPart::Mantissa(digit))
             }
             State::Point => {
                 if a == Some('.') && b.is_some_and(|value| value.is_ascii_digit()) {
@@ -252,10 +256,6 @@ impl NumberCursor {
                     self.state = State::Exponent;
                     NumberStep::Transition
                 }
-            }
-            State::Fraction => {
-                self.state = State::Exponent;
-                NumberStep::Transition
             }
             State::Exponent => {
                 if matches!(a, Some('e' | 'E'))
@@ -279,7 +279,11 @@ impl NumberCursor {
                     NumberStep::Transition
                 }
             }
-            State::ExponentDigits if digit.is_some() => {
+            State::ExponentDigits => {
+                let Some(digit) = digit else {
+                    self.state = State::Done;
+                    return Ok(NumberStep::Done(self.layout));
+                };
                 self.layout.exponent_digits =
                     self.layout
                         .exponent_digits
@@ -287,11 +291,7 @@ impl NumberCursor {
                         .ok_or(NumberOverflow {
                             kind: NumberOverflowKind::Exponent,
                         })?;
-                NumberStep::Consume(NumberPart::ExponentDigit(digit.expect("fixed digit check")))
-            }
-            State::ExponentDigits => {
-                self.state = State::Done;
-                NumberStep::Done(self.layout)
+                NumberStep::Consume(NumberPart::ExponentDigit(digit))
             }
             State::Done => NumberStep::Done(self.layout),
         })

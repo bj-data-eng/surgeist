@@ -7,7 +7,7 @@ use std::ops::Range;
 
 use crate::limits::{Failure, Meter};
 
-use super::cursor::{InputCursor, InputKind, InputRequest};
+use super::cursor::{InputCursor, InputError, InputKind, InputRequest};
 
 /// The size limits and the work limit of [`preprocess_utf16`].
 ///
@@ -185,6 +185,7 @@ enum PreprocessErrorKind {
     Allocation,
     CapacityOverflow,
     Refused,
+    Cursor,
 }
 
 impl PreprocessError {
@@ -205,6 +206,10 @@ impl PreprocessError {
         /// Whether the [`Meter`] refused an action or storage; the host holds
         /// the reason.
         is_refused => PreprocessErrorKind::Refused,
+        /// Whether the [`InputCursor`](super::InputCursor) reported a protocol
+        /// violation. The function answers each request of the cursor in turn,
+        /// so this reports a defect of the crate instead of ending in a panic.
+        is_cursor_fault => PreprocessErrorKind::Cursor,
     }
 
     /// Returns the limit that was exceeded, for a limit failure.
@@ -235,6 +240,9 @@ impl fmt::Display for PreprocessError {
             }
             PreprocessErrorKind::Refused => {
                 formatter.write_str("UTF-16 preprocessing was refused by the meter")
+            }
+            PreprocessErrorKind::Cursor => {
+                formatter.write_str("UTF-16 preprocessing met a cursor protocol violation")
             }
         }
     }
@@ -305,7 +313,8 @@ impl SourceMap {
             self.boundaries
                 .binary_search_by_key(&offset, |entry| entry.normalized)
                 .ok()
-                .map(|index| self.boundaries[index].original)
+                .and_then(|index| self.boundaries.get(index))
+                .map(|entry| entry.original)
         };
         Some(boundary(normalized.start)?..boundary(normalized.end)?)
     }
@@ -492,6 +501,11 @@ impl Run<'_> {
         PreprocessError::new(PreprocessErrorKind::Refused)
     }
 
+    /// The error for a call that the cursor refused as a protocol violation.
+    const fn cursor_fault(_: InputError) -> PreprocessError {
+        PreprocessError::new(PreprocessErrorKind::Cursor)
+    }
+
     fn check(
         actual: usize,
         maximum: usize,
@@ -524,12 +538,11 @@ impl Run<'_> {
         Ok(())
     }
 
-    /// Returns `bytes` of live bytes that have ended.
+    /// Returns `bytes` of live bytes that have ended: never more than are
+    /// live.
     fn released(&mut self, bytes: usize) {
-        self.bytes = self
-            .bytes
-            .checked_sub(bytes)
-            .expect("the preprocessing releases only what it charged");
+        let bytes = bytes.min(self.bytes);
+        self.bytes -= bytes;
         self.meter.released(bytes);
     }
 
@@ -653,12 +666,13 @@ impl Run<'_> {
         loop {
             self.step()?;
             match cursor.request() {
-                InputRequest::Read { index } => cursor
-                    .read(units[index])
-                    .expect("a UTF-16 cursor accepts every unit"),
-                InputRequest::HeldUnit => cursor
-                    .process_held()
-                    .expect("a held unit is processed once"),
+                InputRequest::Read { index } => {
+                    let Some(&unit) = units.get(index) else {
+                        return Err(Self::cursor_fault(InputError::WRONG_REPLY));
+                    };
+                    cursor.read(unit).map_err(Self::cursor_fault)?;
+                }
+                InputRequest::HeldUnit => cursor.process_held().map_err(Self::cursor_fault)?,
                 InputRequest::Emit(scalar) => {
                     let Some(end) = text.len().checked_add(scalar.value.len_utf8()) else {
                         return Err(self.overflow());
@@ -703,12 +717,10 @@ impl Run<'_> {
                         normalized: text.len(),
                         original: scalar.end,
                     });
-                    cursor
-                        .emitted()
-                        .expect("the emitted scalar was the pending request");
+                    cursor.emitted().map_err(Self::cursor_fault)?;
                 }
                 InputRequest::End => {
-                    if cursor.end().expect("the end was the pending request") {
+                    if cursor.end().map_err(Self::cursor_fault)? {
                         break;
                     }
                 }
@@ -963,6 +975,28 @@ mod tests {
             *meter.notes.borrow(),
             [Failure::CapacityOverflow; 6],
             "every overflow told the meter"
+        );
+    }
+
+    #[test]
+    fn a_release_never_returns_more_than_is_live() {
+        let limits = PreprocessLimits::default();
+        let meter = Ledger::new();
+        let mut run = run(&meter, &limits);
+        run.add(10).unwrap();
+        run.released(25);
+        assert_eq!(run.bytes, 0);
+        assert_eq!(meter.live.get(), 0);
+    }
+
+    #[test]
+    fn a_cursor_protocol_violation_is_a_typed_error() {
+        let error = Run::cursor_fault(InputError::WRONG_REPLY);
+        assert!(error.is_cursor_fault());
+        assert!(!error.is_refused());
+        assert_eq!(
+            error.to_string(),
+            "UTF-16 preprocessing met a cursor protocol violation"
         );
     }
 
