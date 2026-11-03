@@ -711,3 +711,111 @@ source_kind = "authored"
 [records.expected]
 kind = "unsupported"
 reason = "Root context: SourceBodySiblings"
+
+[[records]]
+source = "html/qualification/inline-edge-inset-collision.html"
+source_sha256 = "b423d537db60ce19553f7d8559e4ce6f837f7761263bd6c6bbf5447a9bd2bd67"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: ConflictingEdgeDeclarations"
+
+[[records]]
+source = "html/qualification/inline-edge-padding-collision.html"
+source_sha256 = "04e39d3b28a6fbf42120221f96e10ad677acd3778123fad83fc81a06f7bc2a83"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: ConflictingEdgeDeclarations"
+
+[[records]]
+source = "html/qualification/inline-edge-inset-shorthand.html"
+source_sha256 = "a017a56a3c9ba3dd1d86c4f23bd4485bfdc36dcb77b7a2ba63a2fec5671bd11f"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 20
+
+[[records]]
+source = "html/qualification/inline-edge-padding-shorthand.html"
+source_sha256 = "15f41eadfd2b300ee3559473a1085249deebb5ce07f2874199093effaaf6ec6a"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 20
+
+[[records]]
+source = "html/qualification/inline-edge-inset-distinct-sides.html"
+source_sha256 = "c7cb646b19dcc38594b9688232bddd1a28fd17e67f51ae3eb3ee57baf3e9cdfb"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 20
+
+[[records]]
+source = "html/qualification/inline-edge-padding-distinct-sides.html"
+source_sha256 = "9b25bee76a6530236b239dd5760d7fe83a36046915dd9e66d6456ec73b94253d"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 40
+height = 20
+
+[[records]]
+source = "html/qualification/unrepresented-block-inset.html"
+source_sha256 = "eea9463a3b41cc560d81b0a55d321f6e4a783c94de69e1dd69574dea6d8900ce"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnrepresentedLogicalBlockEdges"
+
+[[records]]
+source = "html/qualification/unrepresented-block-padding.html"
+source_sha256 = "6a59620e077f9ff72cdbaf6f34aa08c65debd74d57730584ab89c56c59ae50b1"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnrepresentedLogicalBlockEdges"

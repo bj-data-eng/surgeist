@@ -951,7 +951,7 @@ fn qualify_pairs(root: &Path, cases: &[ExpectedCase]) -> Result<()> {
         let right_xml = fs::read_to_string(root.join(peer.case.output().as_str()))?;
         let left = roxmltree::Document::parse(&left_xml)?;
         let right = roxmltree::Document::parse(&right_xml)?;
-        // Every generated tree has already passed the maintained strict Native
+        // Every generated tree has already undergone the maintained strict Native
         // comparison. Pair equality includes the complete rounded local tree,
         // not just root dimensions or a subset of scroll observations.
         compare_observation_tree(
